@@ -1,0 +1,13 @@
+-> Arrays with same elements are equal
+a = [1, 2, 3]
+b = [1, 2, 3]
+assert a = b
+
+-> Arrays with different elements are not equal
+c = [1, 2, 4]
+assert a ≠ c
+
+-> Empty arrays are equal
+d = []
+e = []
+assert d = e

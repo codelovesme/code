@@ -1,0 +1,9 @@
+-> `base` target: same shared child can emit to multiple base modules
+
+type Ping { value ∈ Number }
+
+link modules/base_mid_a as a
+link modules/base_mid_b as b
+
+assert a.a_out.value = 11
+assert b.b_out.value = 21

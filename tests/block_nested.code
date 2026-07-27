@@ -1,0 +1,10 @@
+-> Nested blocks: inner variables don't leak
+{
+    a = 1
+    {
+        b = 2
+    }
+}
+-> both a and b should be gone; define fresh c to prove execution continues
+c = 42
+assert c = 42

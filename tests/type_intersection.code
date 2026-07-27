@@ -1,0 +1,20 @@
+-> Type intersection: value must match ALL types in the intersection
+type Point { x ∈ Number, y ∈ Number }
+p = Point { x = 1, y = 2 }
+
+-> A Point is both a Point and an Object
+assert p ∈ Point ∩ Object
+
+-> A number is a Number (trivial intersection with itself)
+n = 42
+assert n ∈ Number ∩ Number
+
+-> Intersection with union: ∩ binds tighter than ∪
+-> `Number ∩ Number ∪ String` means `(Number ∩ Number) ∪ String`
+assert n ∈ Number ∩ Number ∪ String
+s = "hello"
+assert s ∈ Number ∩ Number ∪ String
+
+-> Negated intersection check
+assert s ∉ Number ∩ Number
+assert n ∉ String ∩ String

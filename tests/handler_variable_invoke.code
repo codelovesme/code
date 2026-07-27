@@ -1,0 +1,11 @@
+-> Handler invocation using a variable (not a literal)
+type Msg { content ∈ String }
+type Echo { text ∈ String }
+
+Msg => {
+    return Echo{ text = content }
+}
+
+m = Msg{content = "hello world"}
+emit m to this get result
+assert result.text = "hello world"

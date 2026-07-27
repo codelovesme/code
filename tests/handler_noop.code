@@ -1,0 +1,5 @@
+-> Missing handler should be a no-op
+result = 42
+
+emit NoHandler{x = 1} to this
+assert result = 42

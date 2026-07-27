@@ -1,0 +1,4 @@
+-> Common particle type definitions
+type Log { message ∈ String, level ∈ String }
+type Exception { source ∈ String, message ∈ String }
+type ACK { source ∈ String }

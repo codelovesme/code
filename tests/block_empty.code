@@ -1,0 +1,4 @@
+-> Empty block should parse and execute fine
+a = 1
+{}
+assert a = 1

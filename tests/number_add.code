@@ -1,0 +1,9 @@
+-> Number + Number arithmetic
+a = 1 + 2
+assert a = 3
+
+b = 10 + 0
+assert b = 10
+
+c = 100 + 200
+assert c = 300

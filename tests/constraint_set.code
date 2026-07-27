@@ -1,0 +1,7 @@
+-> MemberOf constraint: variable must belong to a set.
+a in ["hello", "world"]
+
+-> Domain constraint: variable belongs to a mathematical domain.
+b in Z
+c in R
+d in N

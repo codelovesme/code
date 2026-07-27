@@ -1,0 +1,11 @@
+-> String + String concatenation
+a = "hello" + " " + "world"
+assert a = "hello world"
+
+-> String + Number
+b = "count: " + 42
+assert b = "count: 42"
+
+-> Number + String
+c = 42 + " is the answer"
+assert c = "42 is the answer"

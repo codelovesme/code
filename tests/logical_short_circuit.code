@@ -1,0 +1,7 @@
+-> Short-circuit: false and (1/0) should NOT error
+result = false and 1 / 0 = 1
+assert result = false
+
+-> Short-circuit: true or (1/0) should NOT error
+result2 = true or 1 / 0 = 1
+assert result2 = true

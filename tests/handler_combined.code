@@ -1,0 +1,13 @@
+-> Combined handler definition: type + handler in one statement
+-> Log{message ∈ String, level ∈ String} => { body }
+
+type Ack { ok ∈ Number }
+
+Log{message ∈ String, level ∈ String} => {
+    assert message = "hello"
+    assert level = "info"
+    return Ack{ ok = 1 }
+}
+
+emit Log{message = "hello", level = "info"} to this get result
+assert result.ok = 1

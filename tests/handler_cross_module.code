@@ -1,0 +1,4 @@
+-> Cross-module handler dispatch: dispatch to handler in linked module
+link modules/handler_module as hmod
+
+emit Event{name = "click"} to hmod

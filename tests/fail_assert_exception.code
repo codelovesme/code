@@ -1,0 +1,3 @@
+-> Assert on an Exception value should fail
+e = Exception { message = "Something went wrong" }
+assert e

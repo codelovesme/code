@@ -1,0 +1,16 @@
+-> Comparison operators: <, >, ≤, ≥
+a = 5
+b = 10
+
+assert a < b
+assert b > a
+assert a ≤ b
+assert b ≥ a
+
+-> Equal values
+c = 7
+d = 7
+assert c ≤ d
+assert c ≥ d
+assert c ≥ d
+assert c ≤ d

@@ -1,0 +1,8 @@
+-> Typed assignments from '+' with different operand families
+n = 1 + 2
+s = "a" + "b"
+a = [1] + [2, 3]
+
+assert n = 3
+assert s = "ab"
+assert a = [1, 2, 3]

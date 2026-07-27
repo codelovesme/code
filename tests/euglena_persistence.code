@@ -1,0 +1,13 @@
+-> Test: persistence organelle — handler types and return values
+link euglena/src/organelles/persistence
+
+-> Save returns ACK
+emit Save { key = "color", value = "blue" } to this get ack
+assert ack._class = "ACK"
+assert ack.source = "persistence"
+
+-> Load returns LoadResult
+emit Load { key = "color" } to this get result
+assert result._class = "LoadResult"
+assert result.key = "color"
+

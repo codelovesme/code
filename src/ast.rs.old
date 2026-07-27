@@ -1,0 +1,265 @@
+use crate::native_module::{EmitQueue, NativeFnPtr, NativeHandlerInfo};
+
+/// Structured type expression: named type, string literal type, or union.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeExpr {
+    /// A named type: `String`, `Number`, `MyParticle`, etc.
+    Named(String),
+    /// A string literal type: `"Code"`, `"Info"` — matches only that exact string value.
+    Literal(String),
+    /// A union of types: `String | Number`, `"Code" | "Loves" | "Me"`.
+    Union(Vec<TypeExpr>),
+}
+
+impl std::fmt::Display for TypeExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeExpr::Named(n) => write!(f, "{}", n),
+            TypeExpr::Literal(s) => write!(f, "\"{}\"", s),
+            TypeExpr::Union(types) => {
+                let parts: Vec<String> = types.iter().map(|t| t.to_string()).collect();
+                write!(f, "{}", parts.join(" | "))
+            }
+        }
+    }
+}
+
+/// The top-level program: a sequence of statements.
+#[derive(Debug)]
+pub struct Program {
+    pub statements: Vec<Statement>,
+}
+
+/// A single statement in the Code language.
+#[derive(Debug, Clone)]
+pub enum Statement {
+    /// `link <module_ref> [as <alias>]` — parsed from source.
+    Link { module_ref: String, alias: Option<String> },
+    /// `private <ident>=<expr>` — defines a module-private variable.
+    PrivateAssignment { name: String, value: Expression },
+    Assignment { name: String, value: Expression },
+    /// `name:Type = expr` — typed variable declaration (must have initializer).
+    TypedAssignment { name: String, type_expr: TypeExpr, value: Expression },
+    /// `private name:Type = expr` — private typed variable declaration.
+    PrivateTypedAssignment { name: String, type_expr: TypeExpr, value: Expression },
+    /// `type Name { field: Type, ... }` — declares a particle type.
+    /// Fields are `(name, type_expr, is_optional)`.
+    TypeDeclaration { name: String, fields: Vec<(String, TypeExpr, bool)> },
+    /// `type Name = TypeExpr` — declares a type alias.
+    TypeAliasDeclaration { name: String, type_expr: TypeExpr },
+    /// `target.field = expr` — property assignment on an existing object.
+    PropertyAssignment { target: String, field: String, value: Expression },
+    Assert(Expression),
+    Block(Vec<Statement>),
+    /// `if <expr> { ... }` — conditional block (condition must be Boolean).
+    If { condition: Expression, body: Vec<Statement> },
+    /// `loop <var> over <expr> { ... }` — iterate over an array.
+    LoopOver { variable: String, iterable: Expression, body: Vec<Statement> },
+    /// `loop { ... }` — infinite loop (use `break` to exit).
+    LoopInfinite { body: Vec<Statement> },
+    /// `break` — exit the nearest enclosing loop.
+    Break,
+    /// Handler definition: `ClassName{field:Type,...} => { body }` (combined)
+    /// or `ClassName => { body }` (split/bare).
+    HandlerDefinition {
+        class_name: String,
+        /// If this is a combined definition, the inline type fields.
+        inline_type: Option<Vec<(String, TypeExpr, bool)>>,
+        body: Vec<Statement>,
+    },
+    /// Handler invocation: `expr => this`, `expr => base`, or `expr => moduleAlias`.
+    HandlerInvoke {
+        particle: Expression,
+        target: HandlerTarget,
+    },
+    /// Handler invocation with result assignment: `expr => target => result_name`.
+    HandlerInvokeAssign {
+        particle: Expression,
+        target: HandlerTarget,
+        result_name: String,
+    },
+    /// Handler return: `return expr` — returns a value from a handler.
+    HandlerReturn {
+        value: Expression,
+    },
+    /// Internal: produced by the module loader after resolving a link.
+    /// `alias` is `Some(name)` for `link ... as name` (namespace import)
+    /// and `None` for bare `link` (flatten into current scope).
+    /// `public_names` lists all non-private top-level definitions.
+    /// `public_types` lists type declarations exported by the module.
+    Import {
+        alias: Option<String>,
+        body: Vec<Statement>,
+        public_names: Vec<String>,
+        public_types: Vec<TypeInfo>,
+        public_handlers: Vec<HandlerInfo>,
+        public_aliases: Vec<TypeAliasInfo>,
+    },
+    /// Internal: produced by the module loader for linked native modules (.so/.wasm).
+    /// Contains pre-loaded values, native function wrappers, handler wrappers,
+    /// and type declarations from the native library.
+    NativeImport {
+        alias: Option<String>,
+        /// Absolute filesystem path to the .so / .wasm file (for codegen runtime loading).
+        native_path: String,
+        /// True if this is a WASM module (.wasm); false for shared-library (.so).
+        is_wasm: bool,
+        /// Exported variable names and their values.
+        vars: Vec<(String, std::rc::Rc<crate::runtime::Value>)>,
+        /// Exported functions: (name, callable wrapper, param_count).
+        functions: Vec<(String, NativeFnPtr, usize)>,
+        /// Exported handlers.
+        handlers: Vec<NativeHandlerInfo>,
+        /// Exported type declarations.
+        types: Vec<TypeInfo>,
+        /// Emission declarations.
+        emissions: Vec<EmissionDecl>,
+        /// Thread-safe queue for receiving emitted particles.
+        emit_queue: EmitQueue,
+    },
+}
+
+/// Information about a type declaration (used in Import nodes).
+#[derive(Debug, Clone)]
+pub struct TypeInfo {
+    pub name: String,
+    pub fields: Vec<(String, TypeExpr, bool)>,
+}
+
+/// Information about a type alias declaration (used in Import nodes).
+#[derive(Debug, Clone)]
+pub struct TypeAliasInfo {
+    pub name: String,
+    pub type_expr: TypeExpr,
+}
+
+/// Information about a handler definition (used in Import nodes).
+#[derive(Debug, Clone)]
+pub struct HandlerInfo {
+    pub class_name: String,
+    pub body: Vec<Statement>,
+}
+
+/// Emission declaration from a native module.
+#[derive(Debug, Clone)]
+pub struct EmissionDecl {
+    pub class_name: String,
+    /// Target: "base" (dispatched to linking module's handlers).
+    pub target: String,
+}
+
+/// Target for handler invocation.
+#[derive(Debug, Clone)]
+pub enum HandlerTarget {
+    /// Dispatch to the current module's handler.
+    This,
+    /// Dispatch to handler(s) in the base module(s) that linked the current module.
+    Base,
+    /// Dispatch to a handler in the given module alias.
+    ModuleAlias(String),
+}
+
+/// A function parameter: `name:Type`, `name:Type = default`, or `name = default`.
+#[derive(Debug, Clone)]
+pub struct FunctionParam {
+    pub name: String,
+    /// Optional type annotation (e.g., `Number` in `a:Number`, or `String | Number`).
+    pub type_expr: Option<TypeExpr>,
+    /// Optional default value expression.
+    pub default: Option<Expression>,
+}
+
+/// An expression node.
+#[derive(Debug, Clone)]
+pub enum Expression {
+    Identifier(String),
+    Number(f64),
+    String(String),
+    /// Boolean literal: `true` or `false`.
+    Boolean(bool),
+    /// Null literal.
+    Null,
+    /// Object literal: `{ field=val, ... }` or spread `{ ...source, field=val }`
+    Object { spread: Option<Box<Expression>>, fields: Vec<(String, Expression)> },
+    /// Particle constructor: `ClassName { field=val, ... }` or `module.ClassName { ... }`
+    /// Supports spread: `ClassName { ...source, field=val }`
+    Particle {
+        /// Optional module qualifier (e.g. "module1" in `module1.Log{...}`)
+        qualifier: Option<String>,
+        class_name: String,
+        spread: Option<Box<Expression>>,
+        fields: Vec<(String, Expression)>,
+    },
+    PropertyAccess(Box<Expression>, String),
+    /// Array literal: `[expr, expr, ...]`
+    ArrayLiteral(Vec<Expression>),
+    /// Array/string index access: `expr[expr]`
+    IndexAccess { receiver: Box<Expression>, index: Box<Expression> },
+    /// String interpolation: `"text $var more text"` — lowered to concat parts.
+    InterpolatedString(Vec<StringPart>),
+    /// Function literal: `(params) => { body }` or `(params):ReturnType => { body }`.
+    FunctionLiteral {
+        params: Vec<FunctionParam>,
+        return_type: Option<TypeExpr>,
+        body: Vec<Statement>,
+    },
+    /// Function call: `callee(args)`.
+    Call {
+        callee: Box<Expression>,
+        args: Vec<Expression>,
+    },
+    /// Unary expression: `!expr`.
+    Unary {
+        op: UnaryOp,
+        operand: Box<Expression>,
+    },
+    Binary {
+        left: Box<Expression>,
+        op: BinaryOp,
+        right: Box<Expression>,
+    },
+    /// Type check: `expr is TypeExpr` or `expr is not TypeExpr`.
+    TypeCheck {
+        expr: Box<Expression>,
+        type_expr: TypeExpr,
+        negated: bool,
+    },
+    /// Replace expression: `replace <var> in <list> where <condition> with <replacement>`
+    /// Produces a new array with matching elements replaced.
+    Replace {
+        variable: String,
+        list: Box<Expression>,
+        condition: Box<Expression>,
+        replacement: Box<Expression>,
+    },
+}
+
+/// Part of an interpolated string.
+#[derive(Debug, Clone)]
+pub enum StringPart {
+    Literal(String),
+    Variable(String),
+}
+
+/// Binary operators.
+#[derive(Debug, Clone)]
+pub enum BinaryOp {
+    Equal,
+    NotEqual,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Less,
+    Greater,
+    LessEqual,
+    GreaterEqual,
+    And,
+    Or,
+}
+
+/// Unary operators.
+#[derive(Debug, Clone)]
+pub enum UnaryOp {
+    Not,
+}

@@ -1,0 +1,9 @@
+-> Type checking with is not operator
+assert 42 ∉ String
+assert "hello" ∉ Number
+assert Null ∉ Number
+assert Null ∉ String
+assert Null ∉ Object
+assert Null = Null
+assert 42 ≠ Null
+assert "hello" ≠ Null

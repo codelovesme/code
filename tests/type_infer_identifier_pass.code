@@ -1,0 +1,4 @@
+-> Typed assignment from identifier with matching type
+b = 10
+a = b
+assert a = 10

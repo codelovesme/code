@@ -1,0 +1,18 @@
+-> Loop with index variable
+
+-> Basic index access
+colors = ["red", "green", "blue"]
+loop color, i over colors get result {
+    yield i
+}
+assert result[0] = 0
+assert result[1] = 1
+assert result[2] = 2
+
+-> Index used in expression
+loop item, idx over [10, 20, 30] get indexed {
+    yield item + idx
+}
+assert indexed[0] = 10
+assert indexed[1] = 21
+assert indexed[2] = 32

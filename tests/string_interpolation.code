@@ -1,0 +1,15 @@
+-> Basic string interpolation
+name = "world"
+greeting = "hello $name"
+assert greeting = "hello world"
+
+-> Multiple variables in one string
+first = "Jane"
+last = "Doe"
+full = "$first $last"
+assert full = "Jane Doe"
+
+-> Interpolation within longer text
+x = "Code"
+msg = "Welcome to $x language!"
+assert msg = "Welcome to Code language!"

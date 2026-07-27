@@ -1,0 +1,15 @@
+-> Narrowing: successive constraints tighten the domain.
+x > 0
+x < 100
+x ≥ 10
+x ≤ 50
+
+-> Pin a value within the narrowed domain.
+x = 25
+assert x = 25
+
+-> Another narrowing chain
+y ≥ 0
+y ≤ 10
+y = 5
+assert y = 5

@@ -1,0 +1,18 @@
+[package]
+name = "code-lsp"
+version = "0.2.0"
+edition = "2021"
+description = "Language Server Protocol implementation for the Code language"
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+publish = false
+
+[[bin]]
+name = "code-lsp"
+path = "src/main.rs"
+
+[dependencies]
+code_lang = { path = "../..", package = "code" }
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["io-std", "macros", "rt"] }
+serde_json = "1"

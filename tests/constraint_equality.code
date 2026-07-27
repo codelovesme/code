@@ -1,0 +1,15 @@
+-> Equality constraint: a = value pins a to that value.
+a = 12
+assert a = 12
+
+-> Another variable with equality constraint
+b = 42
+assert b = 42
+
+-> String equality
+name = "hello"
+assert name = "hello"
+
+-> Boolean equality
+flag = true
+assert flag = true

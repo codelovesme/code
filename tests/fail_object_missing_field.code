@@ -1,0 +1,3 @@
+-> Accessing a non-existent field should fail
+a = { x = 1 }
+assert a.y = 1

@@ -1,0 +1,4 @@
+-> Basic object creation and property access
+a = { x = 1, y = "hello" }
+assert a.x = 1
+assert a.y = "hello"

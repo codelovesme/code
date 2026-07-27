@@ -1,0 +1,7 @@
+-> Basic block scope: variable inside block does not leak out
+a = 1
+{
+    b = 2
+}
+-> a should still be accessible and unchanged
+assert a = 1

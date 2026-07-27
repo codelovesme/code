@@ -1,0 +1,13 @@
+-> Test: native module exports a type and handler.
+link native_modules/libtest_math.so as math
+
+-> Create a Point particle using the native type declaration.
+p = math.Point { x = 3, y = 4 }
+assert p.x = 3
+assert p.y = 4
+
+-> Dispatch to the native handler — it returns a Point with a "sum" field.
+emit p to math get result
+assert result.sum = 7
+assert result.x = 3
+assert result.y = 4

@@ -1,0 +1,7 @@
+-> Type declaration and typed particle constructor
+type Log { message ∈ String, level ∈ String }
+
+p = Log { message = "Hello World", level = "Info" }
+assert p._class = "Log"
+assert p.message = "Hello World"
+assert p.level = "Info"

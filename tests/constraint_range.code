@@ -1,0 +1,27 @@
+-> Range constraints narrow a variable's domain.
+a > 5
+a < 12
+
+-> After narrowing, the domain is (5, 12) — no concrete value yet,
+-> but assertions on domain bounds should hold.
+-> For now, range-constrained vars without an exact value are not
+-> directly readable, so we constrain then pin:
+b = 7
+b > 5
+b < 12
+assert b = 7
+
+-> GreaterEqual / LessEqual
+c = 10
+c ≥ 5
+c ≤ 15
+assert c = 10
+
+-> Single-sided range
+d = 100
+d > 0
+assert d = 100
+
+e = 0 - 3
+e < 0
+assert e = 0 - 3

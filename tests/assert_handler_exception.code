@@ -1,0 +1,54 @@
+-> Assert on Exception inside handler returns Exception to caller
+
+type Check { value ∈ Number }
+
+Check{value ∈ Number} => {
+    response = Exception { message = "Something failed" }
+    assert response
+    return Check { value = 0 }
+}
+
+emit Check { value = 42 } to this get result
+assert result ∈ Exception
+assert result.message = "Something failed"
+
+-> Assert false inside handler returns Exception to caller
+
+type Run { }
+
+Run{} => {
+    assert false
+    return Run {}
+}
+
+emit Run {} to this get result2
+assert result2 ∈ Exception
+assert result2.message = "Assertion failed"
+
+-> Assert true inside handler continues normally
+
+type Greet { name ∈ String }
+type Greeting { text ∈ String }
+
+Greet{name ∈ String} => {
+    assert true
+    return Greeting { text = "Hello" }
+}
+
+emit Greet { name = "World" } to this get result3
+assert result3 ∈ Greeting
+assert result3.text = "Hello"
+
+-> Assert on non-exception value inside handler continues normally
+
+type Compute { x ∈ Number }
+type Answer { value ∈ Number }
+
+Compute{x ∈ Number} => {
+    assert x
+    return Answer { value = x * 2 }
+}
+
+emit Compute { x = 5 } to this get result4
+assert result4 ∈ Answer
+assert result4.value = 10

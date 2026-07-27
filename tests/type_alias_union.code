@@ -1,0 +1,6 @@
+
+a = 42
+assert a = 42
+
+b = "hello"
+assert b = "hello"

@@ -1,0 +1,10 @@
+[package]
+name = "code-native"
+version = "0.2.0"
+edition = "2021"
+description = "Helper crate for writing Code native modules in Rust"
+license = "MIT"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["rlib"]

@@ -1,0 +1,26 @@
+-> Arithmetic operators: +, -, *, /
+a = 10
+b = 3
+
+sum = a + b
+assert sum = 13
+
+diff = a - b
+assert diff = 7
+
+prod = a * b
+assert prod = 30
+
+quot = a / 2
+assert quot = 5
+
+-> Chained operations
+c = 2 * 3 + 4
+assert c = 10
+
+d = 10 - 2 * 3
+assert d = 4
+
+-> Negative results
+e = 3 - 10
+assert e = 0 - 7

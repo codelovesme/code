@@ -1,0 +1,6 @@
+-> Test particle equality
+p1 = Event { name = "click" }
+p2 = Event { name = "click" }
+p3 = Event { name = "scroll" }
+assert p1 = p2
+assert p1 ≠ p3

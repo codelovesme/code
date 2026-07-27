@@ -1,0 +1,36 @@
+-> Spread operator in object literals
+source = { x = 1, y = 2, z = 3 }
+
+-> Spread copies all fields
+copy = { ...source }
+assert copy.x = 1
+assert copy.y = 2
+assert copy.z = 3
+
+-> Spread with override
+modified = { ...source, y = 99 }
+assert modified.x = 1
+assert modified.y = 99
+assert modified.z = 3
+
+-> Spread with multiple overrides
+multi = { ...source, x = 10, z = 30 }
+assert multi.x = 10
+assert multi.y = 2
+assert multi.z = 30
+
+-> Spread with new field added
+extended = { ...source, w = 4 }
+assert extended.x = 1
+assert extended.y = 2
+assert extended.z = 3
+assert extended.w = 4
+
+-> Spread with string fields
+str_obj = { name = "Alice", age = 30 }
+updated = { ...str_obj, name = "Bob" }
+assert updated.name = "Bob"
+assert updated.age = 30
+
+-> Original is not mutated by spread
+assert source.y = 2

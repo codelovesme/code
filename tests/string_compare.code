@@ -1,0 +1,5 @@
+a = "hello"
+b = "world"
+assert a≠b
+
+assert a=a

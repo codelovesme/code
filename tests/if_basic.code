@@ -1,0 +1,18 @@
+-> Basic if statement with assertion inside body
+x = 1
+if true {
+    assert x = 1
+}
+
+-> If with false condition does not execute body
+y = 5
+if false {
+    assert y = 99
+}
+
+-> If with comparison expression
+a = 3
+b = 3
+if a = b {
+    assert a + b = 6
+}

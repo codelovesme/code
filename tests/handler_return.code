@@ -1,0 +1,11 @@
+-> Handler return: handler returns a value via return
+type Ping { }
+type ACK { }
+
+Ping{} => {
+    return ACK{}
+}
+
+emit Ping{} to this get result
+assert result ∈ ACK
+assert result ≠ Null

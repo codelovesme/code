@@ -1,0 +1,12 @@
+-> Test: link a native .so module with alias and access its exports.
+link native_modules/libtest_math.so as math
+
+-> Test exported variable
+assert math.PI > 3.14
+assert math.PI < 3.15
+
+-> Test type declaration + handler dispatch
+emit math.Point { x = 2, y = 3 } to math get result
+assert result.x = 2
+assert result.y = 3
+assert result.sum = 5

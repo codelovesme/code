@@ -1,0 +1,9 @@
+-> 0-based array indexing
+a = [10, 20, 30]
+assert a[0] = 10
+assert a[1] = 20
+assert a[2] = 30
+
+-> Out-of-bounds returns Null
+assert a[5] = Null
+assert a[100] = Null

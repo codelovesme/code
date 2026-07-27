@@ -1,0 +1,10 @@
+-> Handler default return: handlers without return return Null
+type Ping { }
+
+Ping{} => {
+    -> no return statement
+    x = 42
+}
+
+emit Ping{} to this get result
+assert result = Null

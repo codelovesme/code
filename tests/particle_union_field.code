@@ -1,0 +1,9 @@
+
+type User {
+    name ∈ String,
+    status ∈ "active" ∪ "inactive" ∪ "pending"
+}
+
+u = User { name = "Alice", status = "active" }
+assert u.name = "Alice"
+assert u.status = "active"

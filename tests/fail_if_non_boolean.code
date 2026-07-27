@@ -1,0 +1,4 @@
+-> If requires a Boolean condition
+if 42 {
+    x = 1
+}

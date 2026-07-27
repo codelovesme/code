@@ -1,0 +1,5 @@
+-> Module-qualified typed particle field type mismatch
+link modules/typed_module as mod1
+
+-> Error: level should be String, got Number
+p = mod1.Log { message = "Hello World", level = 12 }

@@ -1,0 +1,8 @@
+-> Test: nucleus handles EuglenaHasBeenBorn and returns particle
+link euglena/src/organelles/nucleus
+
+-> Send EuglenaHasBeenBorn locally
+emit EuglenaHasBeenBorn { cell_name = "test" } to this get result
+assert result._class = "EuglenaHasBeenBorn"
+assert result.cell_name = "test"
+

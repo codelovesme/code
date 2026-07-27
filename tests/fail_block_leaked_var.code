@@ -1,0 +1,5 @@
+-> Variable defined inside block should not be accessible outside
+{
+    x = 99
+}
+assert x = 99

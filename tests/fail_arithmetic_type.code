@@ -1,0 +1,2 @@
+-> Arithmetic on non-number should fail
+x = "hello" - 1

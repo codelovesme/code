@@ -1,0 +1,8 @@
+-> Test: cell boots via flatten import and local dispatch
+link euglena/src/main
+
+-> Birth the cell
+emit EuglenaHasBeenBorn { cell_name = "integration" } to this get result
+assert result._class = "EuglenaHasBeenBorn"
+assert result.cell_name = "integration"
+

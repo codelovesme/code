@@ -1,0 +1,3 @@
+-> Module that exports a type definition
+type Log { message ∈ String, level ∈ String }
+greeting = "hello from typed module"

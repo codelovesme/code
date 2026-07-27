@@ -1,0 +1,9 @@
+# Canonical author identity for this repo.
+# Re-attributes commits made under other identities to the project owner, so
+# `git log`/`git shortlog`/`git blame` and GitHub's contributor display all show
+# a single identity — without rewriting history.
+#
+# Format: Canonical Name <canonical@email> <other@email>
+Codelovesme <codelovesme@gmail.com> <fedailyusein@experiencedata.nl>
+Codelovesme <codelovesme@gmail.com> <fedai@codeloves.me>
+Codelovesme <codelovesme@gmail.com> <cdlvsm@users.noreply.github.com>

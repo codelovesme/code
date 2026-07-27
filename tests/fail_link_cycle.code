@@ -1,0 +1,2 @@
+link modules/cycle_a
+assert a=1

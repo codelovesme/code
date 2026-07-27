@@ -1,0 +1,3 @@
+link modules/trailing_exports as m
+assert m.x=10
+assert m.y=20

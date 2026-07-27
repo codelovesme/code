@@ -1,0 +1,5 @@
+-> Block can read variables from outer scope
+a = 1
+{
+    assert a = 1
+}

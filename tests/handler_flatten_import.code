@@ -1,0 +1,4 @@
+-> Flatten import of module with handler
+link modules/handler_module
+
+emit Event{name = "test"} to this

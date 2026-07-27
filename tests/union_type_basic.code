@@ -1,0 +1,8 @@
+a = 12
+assert a = 12
+
+b = "hello"
+assert b = "hello"
+
+c = true
+assert c = true

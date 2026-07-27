@@ -1,0 +1,4 @@
+-> Nested object access via dot chains
+inner = { val = 42 }
+outer = { child = inner }
+assert outer.child.val = 42

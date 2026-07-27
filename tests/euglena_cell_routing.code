@@ -1,0 +1,16 @@
+-> Test: cell routes Log and Exception particles
+link euglena/src/main
+
+-> Boot first
+emit EuglenaHasBeenBorn { cell_name = "routing-test" } to this
+
+-> Send a Log — handler returns ACK
+emit Log { message = "routed msg", level = "Warn" } to this get log_ack
+assert log_ack._class = "ACK"
+assert log_ack.source = "logger"
+
+-> Send an Exception
+emit Exception { source = "test-src", message = "err detail" } to this get exc_ack
+assert exc_ack._class = "ACK"
+assert exc_ack.source = "logger"
+

@@ -1,0 +1,22 @@
+-> Test: native module built with code-native helper crate.
+link native_modules/libtest_helper.so as helper
+
+-> Test exported variables
+assert helper.VERSION = "1.0.0"
+assert helper.MAX_LEN = 1024
+
+-> Test type declaration + handler
+msg = helper.Message { text = "important", urgent = true }
+assert msg.text = "important"
+assert msg.urgent = true
+
+-> Dispatch to handler — urgent=true should uppercase the text
+emit msg to helper get result
+assert result.text = "IMPORTANT"
+assert result.processed = true
+
+-> Test handler with non-urgent message
+msg2 = helper.Message { text = "casual", urgent = false }
+emit msg2 to helper get result2
+assert result2.text = "casual"
+assert result2.processed = true

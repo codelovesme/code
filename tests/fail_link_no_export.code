@@ -1,0 +1,2 @@
+link modules/no_exports as m
+assert m.hidden=1

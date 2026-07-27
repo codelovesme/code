@@ -1,0 +1,14 @@
+-> Loop over an array and collect results
+items = [10, 20, 30]
+loop item over items get collected {
+    yield item
+}
+assert collected[0] = 10
+assert collected[1] = 20
+assert collected[2] = 30
+
+-> Loop variable is scoped to body
+colors = ["red", "blue"]
+loop color over colors {
+    assert color = "red" or color = "blue"
+}

@@ -1,0 +1,961 @@
+use chumsky::prelude::*;
+
+use crate::ast::{BinaryOp, Expression, HandlerTarget, Program, Statement, StringPart, TypeExpr, UnaryOp, FunctionParam};
+
+/// Whitespace and comment skipper (does NOT consume newlines).
+fn whitespace() -> impl Parser<char, (), Error = Simple<char>> + Clone {
+    // Comment: consume `->` and everything until (but NOT including) the newline.
+    let line_comment = just("->")
+        .then(filter(|c: &char| *c != '\n' && *c != '\r').repeated())
+        .ignored();
+
+    // Skip spaces, tabs, and comments only (not newlines)
+    filter(|c: &char| *c == ' ' || *c == '\t')
+        .ignored()
+        .or(line_comment)
+        .repeated()
+        .ignored()
+}
+
+/// Parse a number literal (f64).
+fn number() -> impl Parser<char, Expression, Error = Simple<char>> + Clone {
+    let digits = text::digits(10);
+
+    digits
+        .then(just('.').then(text::digits(10)).or_not())
+        .map(|(int_part, frac): (String, Option<(char, String)>)| {
+            let s = match frac {
+                Some((dot, frac_part)) => format!("{}{}{}", int_part, dot, frac_part),
+                None => int_part,
+            };
+            Expression::Number(s.parse::<f64>().unwrap())
+        })
+}
+
+/// Parse a string literal (double-quoted), with optional `$name` interpolation.
+fn string_literal() -> impl Parser<char, Expression, Error = Simple<char>> + Clone {
+    let dollar_var = just('$')
+        .ignore_then(text::ident())
+        .map(StringPart::Variable);
+
+    let literal_char = just('\\')
+        .ignore_then(any())
+        .or(filter(|c: &char| *c != '"' && *c != '$'));
+
+    let literal_segment = literal_char
+        .repeated()
+        .at_least(1)
+        .collect::<String>()
+        .map(StringPart::Literal);
+
+    let parts = dollar_var.or(literal_segment).repeated();
+
+    just('"')
+        .ignore_then(parts)
+        .then_ignore(just('"'))
+        .map(|parts| {
+            // If no interpolation, return a plain String expression
+            if parts.len() == 1 {
+                if let StringPart::Literal(s) = &parts[0] {
+                    return Expression::String(s.clone());
+                }
+            }
+            if parts.is_empty() {
+                return Expression::String(String::new());
+            }
+            // Check if all parts are literals (no variables)
+            let all_literal = parts.iter().all(|p| matches!(p, StringPart::Literal(_)));
+            if all_literal {
+                let mut s = String::new();
+                for p in &parts {
+                    if let StringPart::Literal(lit) = p {
+                        s.push_str(lit);
+                    }
+                }
+                return Expression::String(s);
+            }
+            Expression::InterpolatedString(parts)
+        })
+}
+
+/// Parse an identifier (excludes reserved keywords).
+fn identifier() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    text::ident().try_map(|s: String, span| {
+        match s.as_str() {
+            "if" | "loop" | "over" | "break" | "assert" | "link" | "as" | "type" | "private"
+            | "is" | "not" | "this" | "base" | "true" | "false" | "return"
+            | "replace" | "in" | "where" | "with" => Err(Simple::custom(span, format!("'{}' is a reserved keyword", s))),
+            _ => Ok(s),
+        }
+    })
+}
+
+/// Parse a class name (starts with uppercase letter).
+fn class_name() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    filter(|c: &char| c.is_ascii_uppercase())
+        .then(filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_').repeated())
+        .map(|(first, rest): (char, Vec<char>)| {
+            let mut s = String::new();
+            s.push(first);
+            s.extend(rest);
+            s
+        })
+}
+
+/// Parse a module reference for `link`: allows alphanumeric, `_`, `-`, `/`, `.`.
+fn module_ref() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_' || *c == '-' || *c == '/' || *c == '.')
+        .repeated()
+        .at_least(1)
+        .collect::<String>()
+}
+
+/// Parse an expression with access to a statement parser (for function literal bodies).
+/// Called from within the statement parser's recursive block.
+fn build_expression(
+    stmt: impl Parser<char, Statement, Error = Simple<char>> + Clone + 'static,
+) -> impl Parser<char, Expression, Error = Simple<char>> + Clone {
+    recursive(move |expr| {
+        // Object field: `name = expr`
+        let object_field = identifier()
+            .then_ignore(whitespace())
+            .then_ignore(just('='))
+            .then_ignore(whitespace())
+            .then(expr.clone())
+            .map(|(name, value)| (name, value));
+
+        // Spread: `...expr`
+        let spread = just('.')
+            .ignore_then(just('.'))
+            .ignore_then(just('.'))
+            .ignore_then(whitespace())
+            .ignore_then(expr.clone())
+            .map(|e| Some(Box::new(e)));
+
+        // Fields block with optional leading spread: `{ ...source, field=val, ... }`
+        // Returns (Option<Box<Expression>>, Vec<(String, Expression)>)
+        let spread_and_fields = {
+            let field_sep = any_whitespace()
+                .ignore_then(just(','))
+                .ignore_then(any_whitespace());
+
+            // Case 1: spread followed by comma and fields
+            let spread_then_fields = spread.clone()
+                .then_ignore(field_sep.clone())
+                .then(
+                    object_field.clone()
+                        .separated_by(field_sep.clone())
+                        .allow_trailing(),
+                );
+
+            // Case 2: spread only (no fields after)
+            let spread_only = spread.clone()
+                .map(|s| (s, Vec::new()));
+
+            // Case 3: fields only (no spread)
+            let fields_only = object_field.clone()
+                .separated_by(field_sep)
+                .allow_trailing()
+                .map(|fields| (None, fields));
+
+            spread_then_fields.or(spread_only).or(fields_only)
+        };
+
+        let object_literal = just('{')
+            .ignore_then(any_whitespace())
+            .ignore_then(spread_and_fields.clone())
+            .then_ignore(any_whitespace())
+            .then_ignore(just('}'))
+            .map(|(spread, fields)| Expression::Object { spread, fields });
+
+        // Qualified particle: `module.ClassName { ... }` or bare `ClassName { ... }`
+        let particle_fields = just('{')
+            .ignore_then(any_whitespace())
+            .ignore_then(spread_and_fields)
+            .then_ignore(any_whitespace())
+            .then_ignore(just('}'));
+
+        let qualified_particle = identifier()
+            .then_ignore(just('.'))
+            .then(class_name())
+            .then_ignore(whitespace())
+            .then(particle_fields.clone())
+            .map(|((qualifier, cname), (spread, fields))| Expression::Particle {
+                qualifier: Some(qualifier),
+                class_name: cname,
+                spread,
+                fields,
+            });
+
+        let bare_particle = class_name()
+            .then_ignore(whitespace())
+            .then(particle_fields)
+            .map(|(cname, (spread, fields))| Expression::Particle {
+                qualifier: None,
+                class_name: cname,
+                spread,
+                fields,
+            });
+
+        // Null literal
+        let null_literal = text::keyword("Null").to(Expression::Null);
+
+        // Array literal: `[expr, expr, ...]`
+        let array_literal = just('[')
+            .ignore_then(any_whitespace())
+            .ignore_then(
+                expr.clone()
+                    .separated_by(
+                        any_whitespace()
+                            .ignore_then(just(','))
+                            .ignore_then(any_whitespace()),
+                    )
+                    .allow_trailing(),
+            )
+            .then_ignore(any_whitespace())
+            .then_ignore(just(']'))
+            .map(Expression::ArrayLiteral);
+
+        // Boolean literals
+        let bool_literal = text::keyword("true").to(Expression::Boolean(true))
+            .or(text::keyword("false").to(Expression::Boolean(false)));
+
+        // Function literal: `(params) => { body }` or `(params):ReturnType => { body }`
+        // Param forms:
+        //   name:Type = defaultExpr   (typed with default)
+        //   name:Type                 (typed, required)
+        //   name = defaultExpr        (type inferred from default)
+        let fn_param = identifier()
+            .then(
+                just(':')
+                    .ignore_then(whitespace())
+                    .ignore_then(type_expr_parser())
+                    .or_not()
+            )
+            .then(
+                whitespace()
+                    .ignore_then(just('='))
+                    .then_ignore(whitespace())
+                    .ignore_then(expr.clone())
+                    .or_not()
+            )
+            .map(|((name, tn), default)| FunctionParam { name, type_expr: tn, default });
+
+        let fn_literal = just('(')
+            .ignore_then(any_whitespace())
+            .ignore_then(
+                fn_param
+                    .separated_by(
+                        any_whitespace()
+                            .ignore_then(just(','))
+                            .ignore_then(any_whitespace()),
+                    )
+                    .allow_trailing(),
+            )
+            .then_ignore(any_whitespace())
+            .then_ignore(just(')'))
+            .then(
+                just(':')
+                    .ignore_then(whitespace())
+                    .ignore_then(type_expr_parser())
+                    .or_not()
+            )
+            .then_ignore(any_whitespace())
+            .then_ignore(just("=>"))
+            .then_ignore(any_whitespace())
+            .then(
+                just('{')
+                    .ignore_then(any_whitespace())
+                    .ignore_then(
+                        stmt.clone()
+                            .separated_by(line_sep())
+                            .allow_trailing(),
+                    )
+                    .then_ignore(any_whitespace())
+                    .then_ignore(just('}')),
+            )
+            .map(|((params, return_type), body)| Expression::FunctionLiteral {
+                params,
+                return_type,
+                body,
+            });
+
+        // Parenthesized grouping: `( expr )`
+        // Must be tried AFTER fn_literal to avoid conflict with `(params) => { ... }`.
+        let grouped = just('(')
+            .ignore_then(any_whitespace())
+            .ignore_then(expr.clone())
+            .then_ignore(any_whitespace())
+            .then_ignore(just(')'))
+            .labelled("grouped expression");
+
+        // Replace expression: `replace <var> in <expr> where <condition> with <replacement>`
+        let replace_expr = text::keyword("replace")
+            .ignore_then(whitespace())
+            .ignore_then(text::ident())
+            .then_ignore(whitespace())
+            .then_ignore(text::keyword("in"))
+            .then_ignore(whitespace())
+            .then(expr.clone())
+            .then_ignore(whitespace())
+            .then_ignore(text::keyword("where"))
+            .then_ignore(whitespace())
+            .then(expr.clone())
+            .then_ignore(whitespace())
+            .then_ignore(text::keyword("with"))
+            .then_ignore(whitespace())
+            .then(expr.clone())
+            .map(|(((variable, list), condition), replacement)| Expression::Replace {
+                variable,
+                list: Box::new(list),
+                condition: Box::new(condition),
+                replacement: Box::new(replacement),
+            });
+
+        // Atom: number, string, boolean, null, qualified particle, bare particle, array, function literal, grouped expression, object literal, or identifier
+        let atom = number()
+            .or(string_literal())
+            .or(bool_literal)
+            .or(null_literal)
+            .or(qualified_particle)
+            .or(bare_particle)
+            .or(array_literal)
+            .or(fn_literal)
+            .or(grouped)
+            .or(object_literal)
+            .or(replace_expr)
+            .or(identifier().map(Expression::Identifier))
+            .labelled("expression");
+
+        // Postfix: `.field` chains, `[index]` access, and `(args)` function calls
+        let postfix = atom.then(
+            just('.')
+                .ignore_then(identifier())
+                .map(|field| PostfixOp::Property(field))
+            .or(
+                just('[')
+                    .ignore_then(any_whitespace())
+                    .ignore_then(expr.clone())
+                    .then_ignore(any_whitespace())
+                    .then_ignore(just(']'))
+                    .map(|index| PostfixOp::Index(index))
+            )
+            .or(
+                just('(')
+                    .ignore_then(any_whitespace())
+                    .ignore_then(
+                        expr.clone()
+                            .separated_by(
+                                any_whitespace()
+                                    .ignore_then(just(','))
+                                    .ignore_then(any_whitespace()),
+                            )
+                            .allow_trailing(),
+                    )
+                    .then_ignore(any_whitespace())
+                    .then_ignore(just(')'))
+                    .map(|args| PostfixOp::Call(args))
+            )
+            .repeated(),
+        )
+        .foldl(|expr, op| match op {
+            PostfixOp::Property(field) => Expression::PropertyAccess(Box::new(expr), field),
+            PostfixOp::Index(index) => Expression::IndexAccess {
+                receiver: Box::new(expr),
+                index: Box::new(index),
+            },
+            PostfixOp::Call(args) => Expression::Call {
+                callee: Box::new(expr),
+                args,
+            },
+        });
+
+        // Unary: `!expr` (right-binding, highest among non-postfix)
+        let unary = just('!')
+            .ignore_then(whitespace())
+            .repeated()
+            .then(postfix.clone())
+            .foldr(|_bang, operand| Expression::Unary {
+                op: UnaryOp::Not,
+                operand: Box::new(operand),
+            });
+
+        // Multiplicative: `*`, `/` (left-associative)
+        let multiplicative = unary.clone()
+            .then(
+                whitespace()
+                    .ignore_then(
+                        just('*').to(BinaryOp::Mul)
+                            .or(just('/').to(BinaryOp::Div))
+                    )
+                    .then_ignore(whitespace())
+                    .then(unary.clone())
+                    .repeated(),
+            )
+            .foldl(|left, (op, right)| Expression::Binary {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            });
+
+        // Additive: `+`, `-` (left-associative)
+        let additive = multiplicative.clone()
+            .then(
+                whitespace()
+                    .ignore_then(
+                        just('+').to(BinaryOp::Add)
+                            .or(just('-').to(BinaryOp::Sub))
+                    )
+                    .then_ignore(whitespace())
+                    .then(multiplicative.clone())
+                    .repeated(),
+            )
+            .foldl(|left, (op, right)| Expression::Binary {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            });
+
+        // Relational: `<=`, `>=`, `<`, `>` (left-associative, single comparison)
+        let relational = additive.clone()
+            .then(
+                whitespace()
+                    .ignore_then(
+                        just("<=").to(BinaryOp::LessEqual)
+                            .or(just(">=").to(BinaryOp::GreaterEqual))
+                            .or(just('<').to(BinaryOp::Less))
+                            .or(just('>').to(BinaryOp::Greater))
+                    )
+                    .then_ignore(whitespace())
+                    .then(additive.clone())
+                    .or_not(),
+            )
+            .map(|(left, suffix)| match suffix {
+                Some((op, right)) => Expression::Binary {
+                    left: Box::new(left),
+                    op,
+                    right: Box::new(right),
+                },
+                None => left,
+            });
+
+        // Type reference for `is` / `is not`: `Module.TypeName`, `TypeName`, or full type expr
+        let is_type_ref = identifier()
+            .then_ignore(just('.'))
+            .then(type_name())
+            .map(|(qualifier, tn)| TypeExpr::Named(format!("{}.{}", qualifier, tn)))
+            .or(type_expr_parser());
+
+        // Equality / type-check suffix: `== expr`, `!= expr`, `is [not] Type`
+        let type_check_suffix = text::keyword("is")
+            .ignore_then(whitespace())
+            .ignore_then(
+                text::keyword("not")
+                    .ignore_then(whitespace())
+                    .ignore_then(is_type_ref.clone())
+                    .map(|tn| (Some((tn, true)), None::<(BinaryOp, Expression)>))
+                .or(
+                    is_type_ref
+                        .map(|tn| (Some((tn, false)), None::<(BinaryOp, Expression)>))
+                )
+            );
+
+        let binary_suffix = just("==").to(BinaryOp::Equal)
+            .or(just("!=").to(BinaryOp::NotEqual))
+            .then_ignore(whitespace())
+            .then(relational.clone())
+            .map(|(op, rhs)| (None::<(TypeExpr, bool)>, Some((op, rhs))));
+
+        let equality = relational.clone()
+            .then(
+                whitespace()
+                    .ignore_then(type_check_suffix.or(binary_suffix))
+                    .or_not(),
+            )
+            .map(|(left, suffix)| match suffix {
+                Some((Some((tn, neg)), _)) => Expression::TypeCheck {
+                    expr: Box::new(left),
+                    type_expr: tn,
+                    negated: neg,
+                },
+                Some((_, Some((op, right)))) => Expression::Binary {
+                    left: Box::new(left),
+                    op,
+                    right: Box::new(right),
+                },
+                _ => left,
+            });
+
+        // Logical AND: `&&` (left-associative)
+        let logical_and = equality.clone()
+            .then(
+                whitespace()
+                    .ignore_then(just("&&"))
+                    .then_ignore(whitespace())
+                    .then(equality.clone())
+                    .repeated(),
+            )
+            .foldl(|left, (_op, right)| Expression::Binary {
+                left: Box::new(left),
+                op: BinaryOp::And,
+                right: Box::new(right),
+            });
+
+        // Logical OR: `||` (left-associative)
+        logical_and.clone()
+            .then(
+                whitespace()
+                    .ignore_then(just("||"))
+                    .then_ignore(whitespace())
+                    .then(logical_and.clone())
+                    .repeated(),
+            )
+            .foldl(|left, (_op, right)| Expression::Binary {
+                left: Box::new(left),
+                op: BinaryOp::Or,
+                right: Box::new(right),
+            })
+    })
+}
+
+/// Helper enum for postfix parsing.
+#[derive(Debug, Clone)]
+enum PostfixOp {
+    Property(String),
+    Index(Expression),
+    Call(Vec<Expression>),
+}
+
+/// Line separator: one or more newlines (with optional surrounding whitespace/comments).
+fn line_sep() -> impl Parser<char, (), Error = Simple<char>> + Clone {
+    whitespace()
+        .then(text::newline())
+        .then(whitespace())
+        .ignored()
+        .repeated()
+        .at_least(1)
+        .ignored()
+}
+
+/// Whitespace that may include newlines (used inside blocks).
+fn any_whitespace() -> impl Parser<char, (), Error = Simple<char>> + Clone {
+    filter(|c: &char| c.is_whitespace())
+        .ignored()
+        .or(
+            just("->")
+                .then(filter(|c: &char| *c != '\n' && *c != '\r').repeated())
+                .ignored(),
+        )
+        .repeated()
+        .ignored()
+}
+
+/// Parse a type name (starts with uppercase).
+fn type_name() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    filter(|c: &char| c.is_ascii_uppercase())
+        .then(filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_').repeated())
+        .map(|(first, rest): (char, Vec<char>)| {
+            let mut s = String::new();
+            s.push(first);
+            s.extend(rest);
+            s
+        })
+}
+
+/// Parse a string literal used as a type: `"Code"` → Literal("Code").
+fn type_string_literal() -> impl Parser<char, String, Error = Simple<char>> + Clone {
+    just('"')
+        .ignore_then(filter(|c: &char| *c != '"').repeated().collect::<String>())
+        .then_ignore(just('"'))
+}
+
+/// Parse a full type expression: `Named`, `"Literal"`, or `A | B | "C"`.
+fn type_expr_parser() -> impl Parser<char, TypeExpr, Error = Simple<char>> + Clone {
+    let type_atom = type_name().map(TypeExpr::Named)
+        .or(type_string_literal().map(TypeExpr::Literal));
+
+    type_atom.clone()
+        .then(
+            whitespace()
+                .ignore_then(just('|'))
+                .ignore_then(whitespace())
+                .ignore_then(type_atom)
+                .repeated()
+        )
+        .map(|(first, rest)| {
+            if rest.is_empty() {
+                first
+            } else {
+                let mut all = vec![first];
+                all.extend(rest);
+                TypeExpr::Union(all)
+            }
+        })
+}
+
+/// Parse a single statement: assignment, assert, block, type declaration, handler return, etc.
+/// Uses `recursive` because blocks contain statements.
+fn statement() -> impl Parser<char, Statement, Error = Simple<char>> + Clone {
+    recursive(|stmt| {
+        // Build expression parser with access to stmt for function literal bodies.
+        let expression = build_expression(stmt.clone());
+
+        // Type field: `name: Type` or `name?: Type` (optional)
+        let type_field = identifier()
+            .then(just('?').to(true).or_not().map(|o| o.unwrap_or(false)))
+            .then_ignore(whitespace())
+            .then_ignore(just(':'))
+            .then_ignore(whitespace())
+            .then(type_expr_parser())
+            .map(|((name, optional), tn)| (name, tn, optional));
+
+        // Type alias: `type Name = TypeExpr`
+        let type_alias = text::keyword("type")
+            .ignore_then(whitespace())
+            .ignore_then(class_name())
+            .then_ignore(whitespace())
+            .then_ignore(just('='))
+            .then_ignore(whitespace())
+            .then(type_expr_parser())
+            .map(|(name, type_expr)| Statement::TypeAliasDeclaration { name, type_expr });
+
+        // Type declaration: `type Name { field: Type, field?: Type }`
+        let type_decl = text::keyword("type")
+            .ignore_then(whitespace())
+            .ignore_then(class_name())
+            .then_ignore(whitespace())
+            .then(
+                just('{')
+                    .ignore_then(any_whitespace())
+                    .ignore_then(
+                        type_field
+                            .separated_by(
+                                any_whitespace()
+                                    .ignore_then(just(','))
+                                    .ignore_then(any_whitespace()),
+                            )
+                            .allow_trailing(),
+                    )
+                    .then_ignore(any_whitespace())
+                    .then_ignore(just('}')),
+            )
+            .map(|(name, fields)| Statement::TypeDeclaration { name, fields })
+            .or(type_alias);
+
+        // Property assignment: `ident.field = expr`
+        let property_assignment = identifier()
+            .then_ignore(just('.'))
+            .then(identifier())
+            .then_ignore(whitespace())
+            .then_ignore(just('='))
+            .then(whitespace().ignore_then(expression.clone()))
+            .map(|((target, field), value)| Statement::PropertyAssignment { target, field, value });
+
+        // Typed assignment: `name:Type = expr` or `name: String | Number = expr`
+        let typed_assignment = identifier()
+            .then_ignore(just(':'))
+            .then_ignore(whitespace())
+            .then(type_expr_parser())
+            .then_ignore(whitespace())
+            .then_ignore(just('='))
+            .then(whitespace().ignore_then(expression.clone()))
+            .map(|((name, type_expr), value)| Statement::TypedAssignment { name, type_expr, value });
+
+        // Plain assignment: `name = expr`
+        let assignment = identifier()
+            .then_ignore(whitespace())
+            .then_ignore(just('='))
+            .then(whitespace().ignore_then(expression.clone()))
+            .map(|(name, value)| Statement::Assignment { name, value });
+
+        let assert_stmt = text::keyword("assert")
+            .ignore_then(whitespace())
+            .ignore_then(expression.clone())
+            .map(Statement::Assert);
+
+        // Handler return: `return expr`
+        let handler_return = text::keyword("return")
+            .ignore_then(whitespace())
+            .ignore_then(expression.clone())
+            .map(|value| Statement::HandlerReturn { value });
+
+        // Break statement
+        let break_stmt = text::keyword("break").to(Statement::Break);
+
+        // If statement: `if <expr> { ... }`
+        let if_stmt = text::keyword("if")
+            .ignore_then(whitespace())
+            .ignore_then(expression.clone())
+            .then_ignore(any_whitespace())
+            .then(
+                just('{')
+                    .ignore_then(any_whitespace())
+                    .ignore_then(
+                        stmt.clone()
+                            .separated_by(line_sep())
+                            .allow_trailing(),
+                    )
+                    .then_ignore(any_whitespace())
+                    .then_ignore(just('}')),
+            )
+            .map(|(condition, body)| Statement::If { condition, body });
+
+        // Loop statement: `loop <var> over <expr> { ... }`
+        let loop_stmt = text::keyword("loop")
+            .ignore_then(whitespace())
+            .ignore_then(identifier())
+            .then_ignore(whitespace())
+            .then_ignore(text::keyword("over"))
+            .then_ignore(whitespace())
+            .then(expression.clone())
+            .then_ignore(any_whitespace())
+            .then(
+                just('{')
+                    .ignore_then(any_whitespace())
+                    .ignore_then(
+                        stmt.clone()
+                            .separated_by(line_sep())
+                            .allow_trailing(),
+                    )
+                    .then_ignore(any_whitespace())
+                    .then_ignore(just('}')),
+            )
+            .map(|((variable, iterable), body)| Statement::LoopOver { variable, iterable, body });
+
+        // Infinite loop: `loop { ... }`
+        let loop_infinite_stmt = text::keyword("loop")
+            .ignore_then(any_whitespace())
+            .ignore_then(
+                just('{')
+                    .ignore_then(any_whitespace())
+                    .ignore_then(
+                        stmt.clone()
+                            .separated_by(line_sep())
+                            .allow_trailing(),
+                    )
+                    .then_ignore(any_whitespace())
+                    .then_ignore(just('}')),
+            )
+            .map(|body| Statement::LoopInfinite { body });
+
+        let block = just('{')
+            .ignore_then(any_whitespace())
+            .ignore_then(
+                stmt.clone()
+                    .separated_by(line_sep())
+                    .allow_trailing(),
+            )
+            .then_ignore(any_whitespace())
+            .then_ignore(just('}'))
+            .map(Statement::Block);
+
+        // Handler body: a block of statements (reusable in handler definitions)
+        let handler_body = just('{')
+            .ignore_then(any_whitespace())
+            .ignore_then(
+                stmt.clone()
+                    .separated_by(line_sep())
+                    .allow_trailing(),
+            )
+            .then_ignore(any_whitespace())
+            .then_ignore(just('}'));
+
+        // Combined handler definition: ClassName{field:Type, field?:Type, ...} => { body }
+        let handler_type_field = identifier()
+            .then(just('?').to(true).or_not().map(|o| o.unwrap_or(false)))
+            .then_ignore(whitespace())
+            .then_ignore(just(':'))
+            .then_ignore(whitespace())
+            .then(type_expr_parser())
+            .map(|((name, optional), tn)| (name, tn, optional));
+
+        let combined_handler_def = class_name()
+            .then_ignore(whitespace())
+            .then(
+                just('{')
+                    .ignore_then(any_whitespace())
+                    .ignore_then(
+                        handler_type_field
+                            .separated_by(
+                                any_whitespace()
+                                    .ignore_then(just(','))
+                                    .ignore_then(any_whitespace()),
+                            )
+                            .allow_trailing(),
+                    )
+                    .then_ignore(any_whitespace())
+                    .then_ignore(just('}')),
+            )
+            .then_ignore(whitespace())
+            .then_ignore(just("=>"))
+            .then_ignore(any_whitespace())
+            .then(handler_body.clone())
+            .map(|((cname, fields), body)| Statement::HandlerDefinition {
+                class_name: cname,
+                inline_type: Some(fields),
+                body,
+            });
+
+        // Bare handler definition: ClassName => { body }
+        let bare_handler_def = class_name()
+            .then_ignore(whitespace())
+            .then_ignore(just("=>"))
+            .then_ignore(any_whitespace())
+            .then(handler_body)
+            .map(|(cname, body)| Statement::HandlerDefinition {
+                class_name: cname,
+                inline_type: None,
+                body,
+            });
+
+        // Handler target: `this` keyword, `base` keyword, or a module alias identifier
+        let handler_target = text::keyword("this").to(HandlerTarget::This)
+            .or(text::keyword("base").to(HandlerTarget::Base))
+            .or(identifier().map(HandlerTarget::ModuleAlias));
+
+        // Handler invocation (fire-and-forget or with result assignment):
+        //   expr => target           → HandlerInvoke
+        //   expr => target => ident  → HandlerInvokeAssign
+        let handler_invoke_or_assign = expression.clone()
+            .then_ignore(whitespace())
+            .then_ignore(just("=>"))
+            .then_ignore(whitespace())
+            .then(handler_target)
+            .then(
+                whitespace()
+                    .ignore_then(just("=>"))
+                    .ignore_then(whitespace())
+                    .ignore_then(identifier())
+                    .or_not()
+            )
+            .map(|((particle, target), result_name)| match result_name {
+                Some(name) => Statement::HandlerInvokeAssign {
+                    particle,
+                    target,
+                    result_name: name,
+                },
+                None => Statement::HandlerInvoke { particle, target },
+            });
+
+        let link_stmt = text::keyword("link")
+            .ignore_then(whitespace())
+            .ignore_then(module_ref())
+            .then(
+                whitespace()
+                    .ignore_then(text::keyword("as"))
+                    .ignore_then(whitespace())
+                    .ignore_then(identifier())
+                    .or_not(),
+            )
+            .map(|(module_ref, alias)| Statement::Link { module_ref, alias });
+
+        // Private typed assignment: `private name:Type = expr`
+        let private_typed_assignment = text::keyword("private")
+            .ignore_then(whitespace())
+            .ignore_then(
+                identifier()
+                    .then_ignore(just(':'))
+                    .then_ignore(whitespace())
+                    .then(type_expr_parser())
+                    .then_ignore(whitespace())
+                    .then_ignore(just('='))
+                    .then(whitespace().ignore_then(expression.clone()))
+                    .map(|((name, type_expr), value)| Statement::PrivateTypedAssignment { name, type_expr, value }),
+            );
+
+        let private_assignment = text::keyword("private")
+            .ignore_then(whitespace())
+            .ignore_then(
+                identifier()
+                    .then_ignore(whitespace())
+                    .then_ignore(just('='))
+                    .then(whitespace().ignore_then(expression.clone()))
+                    .map(|(name, value)| Statement::PrivateAssignment { name, value }),
+            );
+
+        assert_stmt
+            .or(handler_return)
+            .or(type_decl)
+            .or(link_stmt)
+            .or(private_typed_assignment)
+            .or(private_assignment)
+            .or(break_stmt)
+            .or(if_stmt)
+            .or(loop_infinite_stmt)
+            .or(loop_stmt)
+            .or(combined_handler_def)
+            .or(bare_handler_def)
+            .or(handler_invoke_or_assign)
+            .or(property_assignment)
+            .or(typed_assignment)
+            .or(assignment)
+            .or(block)
+            .labelled("statement")
+    })
+}
+
+/// Parse a full program.
+/// Uses error recovery: if a statement fails to parse, skip the rest of that
+/// line and continue parsing subsequent statements.  Use `parse_recovery()`
+/// on the returned parser to collect all errors.
+pub fn parser() -> impl Parser<char, Program, Error = Simple<char>> {
+    // Skip leading blank lines / comments
+    let blank_lines = whitespace()
+        .then(text::newline())
+        .ignored()
+        .repeated()
+        .ignored();
+
+    // Fallback: skip a bad line (any non-newline chars).
+    // When `statement()` fails, `.or()` backtracks and this arm consumes the
+    // rest of the line, producing `None`.  The `.validate()` call emits a
+    // custom error so that `parse_recovery()` collects it.
+    let skip_line = filter(|c: &char| *c != '\n' && *c != '\r')
+        .repeated()
+        .at_least(1)
+        .collect::<String>()
+        .validate(|text, span, emit| {
+            emit(Simple::custom(span, format!("Unexpected: {}", text.chars().take(40).collect::<String>())));
+            None
+        });
+
+    let stmt_or_skip = statement().map(Some).or(skip_line);
+
+    blank_lines
+        .ignore_then(
+            stmt_or_skip
+                .separated_by(line_sep())
+                .allow_trailing(),
+        )
+        .then_ignore(whitespace())
+        .then_ignore(end().labelled("end of input"))
+        .map(|statements| Program {
+            statements: statements.into_iter().flatten().collect()
+        })
+}
+
+/// Structured parse error with byte offset span.
+#[derive(Debug)]
+pub struct ParseError {
+    pub message: String,
+    pub start: usize,
+    pub end: usize,
+}
+
+/// Parse source code and return the program (if successful) and any errors.
+/// Uses error recovery to collect as many errors as possible.
+pub fn parse_source(source: &str) -> (Option<Program>, Vec<ParseError>) {
+    let (result, errors) = parser().parse_recovery(source);
+    let parse_errors = errors
+        .into_iter()
+        .map(|e| {
+            let span = e.span();
+            ParseError {
+                message: format!("{}", e),
+                start: span.start,
+                end: span.end,
+            }
+        })
+        .collect();
+    (result, parse_errors)
+}

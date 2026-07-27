@@ -1,0 +1,3 @@
+link modules/shared_values as shared
+assert shared.greeting="hello"
+assert shared.n=42
