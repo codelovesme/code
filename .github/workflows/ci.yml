@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # inkwell links LLVM 17.
+  LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    name: Build + language suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM 17 + clang + lld (WASM fixtures)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev clang-17 lld-17
+          echo "/usr/lib/llvm-17/bin" >> "$GITHUB_PATH"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build workspace
+        run: cargo build --workspace
+
+      - name: Cargo unit tests
+        run: cargo test --workspace
+
+      - name: Build native-module test fixtures
+        run: ./tests/native_modules/build.sh debug
+
+      - name: Language suite (.code tests)
+        run: ./target/debug/code test
