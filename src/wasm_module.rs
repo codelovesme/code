@@ -14,7 +14,7 @@
 //!
 //! # Memory layout of CodeModuleDesc (wasm32, little-endian)
 //!
-//! ```
+//! ```text
 //! Offset  Size  Field
 //! 0       4     abi_version       (u32)
 //! 4       4     vars_ptr          (u32 — offset to [CodeExportVar])
@@ -28,33 +28,33 @@
 //! ```
 //!
 //! CodeExportVar (16 bytes):
-//! ```
+//! ```text
 //! 0   4   name_ptr    (u32)
 //! 4   12  value       (CodeValue)
 //! ```
 //!
 //! CodeExportFn (12 bytes):
-//! ```
+//! ```text
 //! 0   4   name_ptr       (u32)
 //! 4   4   func_idx       (u32 — wasm function table index)
 //! 8   4   param_count    (u32)
 //! ```
 //!
 //! CodeExportHandler (8 bytes):
-//! ```
+//! ```text
 //! 0   4   class_name_ptr  (u32)
 //! 4   4   func_idx        (u32)
 //! ```
 //!
 //! CodeExportType (12 bytes):
-//! ```
+//! ```text
 //! 0   4   name_ptr       (u32)
 //! 4   4   fields_ptr     (u32 — offset to [CodeTypeField])
 //! 8   4   field_count    (u32)
 //! ```
 //!
 //! CodeTypeField (12 bytes):
-//! ```
+//! ```text
 //! 0   4   name_ptr        (u32)
 //! 4   4   type_name_ptr   (u32)
 //! 8   1   is_optional     (u8)
@@ -62,7 +62,7 @@
 //! ```
 //!
 //! CodeValue (32 bytes, mirrors the compiled layout):
-//! ```
+//! ```text
 //! 0   1   tag             (u8)
 //! 1   7   _pad
 //! 8   8   number          (f64)
@@ -78,14 +78,14 @@
 //! Arrays:  `ptr` points to array of `[ptr_count]` CodeValue.
 //!
 //! CodeField (8 bytes):
-//! ```
+//! ```text
 //! 0   4   name_ptr    (u32)
 //! 4   4   value_off   (u32 — offset of CodeValue within the field block)
 //! ```
 //! Wait, for simplicity we use a flat repr:
 //!
 //! CodeField inline (36 bytes):
-//! ```
+//! ```text
 //! 0   4   name_ptr    (u32)
 //! 4   32  value       (CodeValue, 32 bytes)
 //! ```
@@ -104,8 +104,8 @@ use crate::ast::{ConstraintExpr, FieldConstraint, TypeExpr, TypeInfo};
 use crate::native_module::{EmitQueue, EmissionDecl, NativeFnPtr, NativeHandlerInfo, NativeModule};
 use crate::runtime::Value;
 
-/// ABI version constant (must match the .so contract).
-const CODE_ABI_VERSION: u32 = 2;
+/// ABI version constant — shared with the `.so` contract via the `code-abi` crate.
+use code_abi::CODE_ABI_VERSION;
 
 // ------------------------------------------------------------------
 // Memory layout constants (wasm32 little-endian)

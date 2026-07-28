@@ -113,10 +113,15 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "chumsky",
+ "code-abi",
  "inkwell",
  "libloading",
  "wasmi",
 ]
+
+[[package]]
+name = "code-abi"
+version = "0.2.0"
 
 [[package]]
 name = "code-lsp"
@@ -131,6 +136,9 @@ dependencies = [
 [[package]]
 name = "code-native"
 version = "0.2.0"
+dependencies = [
+ "code-abi",
+]
 
 [[package]]
 name = "dashmap"

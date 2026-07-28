@@ -8,3 +8,6 @@ repository = "https://github.com/codelovesme/code"
 
 [lib]
 crate-type = ["rlib"]
+
+[dependencies]
+code-abi = { path = "../code-abi" }

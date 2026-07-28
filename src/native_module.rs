@@ -9,7 +9,7 @@
 //! A native module must export two C symbols:
 //!
 //! ```c
-//! uint32_t code_module_abi_version(void);   // must return 1
+//! uint32_t code_module_abi_version(void);   // must return 2
 //! const CodeModuleDesc* code_module_init(void);
 //! ```
 //!
@@ -28,125 +28,16 @@ use crate::ast::{ConstraintExpr, FieldConstraint, TypeExpr, TypeInfo};
 use crate::runtime::Value;
 
 // ---------------------------------------------------------------------------
-// ABI version
+// C-ABI contract — the single source of truth lives in the `code-abi` crate.
+// Re-exported here so existing `native_module::Code*` paths keep resolving.
 // ---------------------------------------------------------------------------
 
-/// Current ABI version. Native modules must return this from `code_module_abi_version`.
-pub const CODE_ABI_VERSION: u32 = 2;
-
-/// Emission target: dispatch to the linking module's base handlers.
-pub const CODE_EMIT_TARGET_BASE: u32 = 0;
-
-// ---------------------------------------------------------------------------
-// C-ABI tag constants (matching codegen tags)
-// ---------------------------------------------------------------------------
-
-pub const CODE_TAG_NUMBER: u8 = 0;
-pub const CODE_TAG_STRING: u8 = 1;
-pub const CODE_TAG_BOOLEAN: u8 = 2;
-pub const CODE_TAG_OBJECT: u8 = 3;
-pub const CODE_TAG_NULL: u8 = 4;
-pub const CODE_TAG_ARRAY: u8 = 5;
-
-// ---------------------------------------------------------------------------
-// C-ABI struct definitions (repr(C) — must match the native module's layout)
-// ---------------------------------------------------------------------------
-
-/// A single Code value in C-ABI representation.
-///
-/// Active fields depend on `tag`:
-/// - `CODE_TAG_NUMBER`  → `number`
-/// - `CODE_TAG_STRING`  → `string` (null-terminated UTF-8 C string)
-/// - `CODE_TAG_BOOLEAN` → `boolean` (0 = false, non-zero = true)
-/// - `CODE_TAG_OBJECT`  → `fields` + `field_count`
-/// - `CODE_TAG_NULL`    → (no data)
-/// - `CODE_TAG_ARRAY`   → `elements` + `element_count`
-#[repr(C)]
-pub struct CodeValue {
-    pub tag: u8,
-    pub number: f64,
-    pub string: *const c_char,
-    pub boolean: u8,
-    pub fields: *const CodeField,
-    pub field_count: u32,
-    pub elements: *const CodeValue,
-    pub element_count: u32,
-}
-
-/// A key-value pair for object fields.
-#[repr(C)]
-pub struct CodeField {
-    pub name: *const c_char,
-    pub value: CodeValue,
-}
-
-// ---------------------------------------------------------------------------
-// Native function / handler signatures
-// ---------------------------------------------------------------------------
-
-/// Native handler signature: `fn(particle) -> CodeValue`.
-pub type CodeNativeHandlerFn = unsafe extern "C" fn(particle: CodeValue) -> CodeValue;
-
-// ---------------------------------------------------------------------------
-// Export descriptor types
-// ---------------------------------------------------------------------------
-
-/// Exported variable: name + constant value.
-#[repr(C)]
-pub struct CodeExportVar {
-    pub name: *const c_char,
-    pub value: CodeValue,
-}
-
-/// Exported handler: class name + handler function.
-#[repr(C)]
-pub struct CodeExportHandler {
-    pub class_name: *const c_char,
-    pub handler: CodeNativeHandlerFn,
-}
-
-/// Field descriptor for type declarations.
-#[repr(C)]
-pub struct CodeTypeField {
-    pub name: *const c_char,
-    /// Type name as C string, e.g. "String", "Number".
-    pub type_name: *const c_char,
-    /// 0 = required, non-zero = optional.
-    pub is_optional: u8,
-}
-
-/// Exported type declaration.
-#[repr(C)]
-pub struct CodeExportType {
-    pub name: *const c_char,
-    pub fields: *const CodeTypeField,
-    pub field_count: u32,
-}
-
-/// Emission declaration exported by a native module.
-#[repr(C)]
-pub struct CodeEmission {
-    pub class_name: *const c_char,
-    /// 0 = base (dispatch to linking module's handlers).
-    pub target: u32,
-}
-
-/// Callback signature for native-module emission.
-pub type CodeEmitFn = unsafe extern "C" fn(context: *mut c_void, particle: CodeValue);
-
-/// Top-level module descriptor returned by `code_module_init()`.
-#[repr(C)]
-pub struct CodeModuleDesc {
-    pub abi_version: u32,
-    pub vars: *const CodeExportVar,
-    pub var_count: u32,
-    pub handlers: *const CodeExportHandler,
-    pub handler_count: u32,
-    pub types: *const CodeExportType,
-    pub type_count: u32,
-    pub emissions: *const CodeEmission,
-    pub emission_count: u32,
-}
+pub use code_abi::{
+    CodeEmission, CodeEmitFn, CodeExportHandler, CodeExportType, CodeExportVar, CodeField,
+    CodeModuleDesc, CodeNativeHandlerFn, CodeTypeField, CodeValue, CODE_ABI_VERSION,
+    CODE_EMIT_TARGET_BASE, CODE_TAG_ARRAY, CODE_TAG_BOOLEAN, CODE_TAG_NULL, CODE_TAG_NUMBER,
+    CODE_TAG_OBJECT, CODE_TAG_STRING,
+};
 
 // ---------------------------------------------------------------------------
 // Rust-side wrapper types
@@ -264,21 +155,6 @@ pub struct NativeModule {
 // CodeValue helpers (null initializer)
 // ---------------------------------------------------------------------------
 
-impl CodeValue {
-    /// Create a null CodeValue with all fields zeroed.
-    pub fn null() -> Self {
-        CodeValue {
-            tag: CODE_TAG_NULL,
-            number: 0.0,
-            string: std::ptr::null(),
-            boolean: 0,
-            fields: std::ptr::null(),
-            field_count: 0,
-            elements: std::ptr::null(),
-            element_count: 0,
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Conversion: CodeValue → Rc<Value>
