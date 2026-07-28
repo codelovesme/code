@@ -30,14 +30,17 @@ src/
 ├── native_module.rs  # Native module ABI contract + .so loader
 ├── wasm_module.rs    # Native module ABI contract + .wasm loader (wasmi)
 ├── runtime.rs        # Runtime value model
+├── runtime_native.c  # C bridge runtime compiled into LLVM/exe builds
 ├── environment.rs    # Scope stack + type/type-annotation registries
 ├── interpreter.rs    # Tree-walking interpreter
 ├── codegen.rs        # LLVM IR/object generation
 └── linker.rs         # Native/WASM link helpers
 
 crates/
-└── code-native/
-    └── src/lib.rs    # Rust helper library for authoring native modules
+├── code-native/      # Rust helper library for authoring native modules (MIT)
+│   └── src/lib.rs
+└── code-lsp/         # Language Server Protocol implementation for .code
+    └── src/main.rs
 ```
 
 ## Building
@@ -62,23 +65,23 @@ sudo apt install lld-17
 code build <file.code> [--target <type>]
 ```
 
-| Target   | Output                    | Description               |
-|----------|---------------------------|---------------------------|
-| `ir`     | `target/llvm/<name>.ll`   | LLVM IR text (default)    |
-| `exe`    | `target/llvm/<name>`      | Native ELF executable     |
-| `shared` | `target/llvm/lib<name>.so`| Shared library            |
-| `static` | `target/llvm/lib<name>.a` | Static library            |
-| `wasm`   | `target/llvm/<name>.wasm` | WebAssembly module        |
+| Target   | Output                    | Description                  |
+|----------|---------------------------|------------------------------|
+| `exe`    | `target/llvm/<name>`      | Native ELF executable (default) |
+| `ir`     | `target/llvm/<name>.ll`   | LLVM IR text                 |
+| `shared` | `target/llvm/lib<name>.so`| Shared library               |
+| `static` | `target/llvm/lib<name>.a` | Static library               |
+| `wasm`   | `target/llvm/<name>.wasm` | WebAssembly module           |
 
 #### Examples
 
 ```bash
-# LLVM IR (default)
+# Native executable (default) — run it directly
 ./target/debug/code build hello_world.code
-
-# Native executable — run it directly
-./target/debug/code build hello_world.code --target exe
 ./target/llvm/hello_world
+
+# LLVM IR
+./target/debug/code build hello_world.code --target ir
 
 # Shared library
 ./target/debug/code build hello_world.code --target shared
@@ -114,7 +117,10 @@ a = 1
 b = "hello world"
 ```
 
-The `=` operator pins a variable to an exact value. On first use it defines the variable; on subsequent use it reassigns.
+The `=` operator pins a variable to an exact value. Variables are
+**single-assignment**: once a variable is pinned, re-assigning it a different
+value is a runtime error (see `tests/fail_reassignment.code`). Prior range/set
+constraints on the same variable are still allowed and are checked at pin time.
 
 #### Range Constraints
 
@@ -163,15 +169,16 @@ a < 5     -> error: contradictory constraints, domain is empty
 
 ### String Interpolation
 
-Use `${}` inside double-quoted strings to embed expressions:
+Use `$name` inside double-quoted strings to embed a variable's value. Only a
+bare identifier is supported (no braces, no expressions or field access):
 
 ```
 name = "World"
-greeting = "Hello, ${name}!"
+greeting = "Hello, $name!"
 assert greeting = "Hello, World!"
 
 count = 3
-msg = "Count is ${count}"
+msg = "Count is $count"
 ```
 
 ### Expressions
@@ -193,7 +200,7 @@ Full operator support with standard precedence:
 | Array       | `+`                | Array         | Array       |
 | Comparison  | `<`, `>`, `≤`, `≥` | Number      | Boolean     |
 | Equality    | `=`, `≠`         | Any           | Boolean     |
-| Logical     | `&&`, `\|\|`     | Boolean       | Boolean     |
+| Logical     | `and`, `or`, `not` | Boolean     | Boolean     |
 
 `=` and `≠` also perform type checking when the right-hand side is a type name (e.g. `Number`, `String`, `Boolean`, `Null`, `Object`, `Array`, `Function`, or a particle class name):
 
@@ -204,14 +211,14 @@ assert p = Point
 ```
 
 **Precedence** (highest to lowest):
-`()` → `!` → `*` `/` → `+` `-` → `<` `>` `≤` `≥` → `=` `≠` → `&&` → `||`
+`()` → `not` → `*` `/` → `+` `-` → `<` `>` `≤` `≥` → `=` `≠` → `and` → `or`
 
 ```
-assert (1 + 2) * 3 = 9       -> () overrides precedence
-assert 2 + 3 * 4 = 14        -> * before +
-assert 10 - 4 / 2 = 8        -> / before -
-assert 3 < 5 && 10 > 2        -> comparisons before &&
-assert 1 > 2 || 3 < 4         -> comparisons before ||
+assert (1 + 2) * 3 = 9        -> () overrides precedence
+assert 2 + 3 * 4 = 14         -> * before +
+assert 10 - 4 / 2 = 8         -> / before -
+assert 3 < 5 and 10 > 2       -> comparisons before and
+assert 1 > 2 or 3 < 4         -> comparisons before or
 ```
 
 **`+` operator** is polymorphic — it concatenates strings, concatenates arrays, and adds numbers:
@@ -226,20 +233,20 @@ Arithmetic and comparison operators require Number operands. Logical operators r
 
 Division by zero is a runtime error.
 
-**Short-circuit evaluation**: `&&` and `||` do not evaluate the right operand when the left operand determines the result:
+**Short-circuit evaluation**: `and` and `or` do not evaluate the right operand when the left operand determines the result:
 
 ```
-result = false && 1 / 0 = 1   -> no error, right side not evaluated
+result = false and 1 / 0 = 1   -> no error, right side not evaluated
 ```
 
 #### Unary Operations
 
-The `!` (logical NOT) operator negates a Boolean value:
+The `not` (logical NOT) operator negates a Boolean value:
 
 ```
-assert !false = true
-assert !true = false
-assert !!true = true
+assert not false = true
+assert not true = false
+assert not not true = true
 ```
 
 ### Assertions
@@ -404,22 +411,22 @@ assert math.add(2, 3) = 5
 Required native exports:
 
 ```c
-uint32_t eug_module_abi_version(void);   // must return 1
-const EugModuleDesc* eug_module_init(void);
+uint32_t code_module_abi_version(void);   // must return 2
+const CodeModuleDesc* code_module_init(void);
 ```
 
 For `.wasm` native modules, the required exports are:
 
 ```c
-int32_t eug_module_abi_version(void);     // must return 1
-int32_t eug_module_init(void);            // returns offset to EugModuleDesc in linear memory
-int32_t eug_alloc(int32_t size);          // allocator used for arg/result marshalling
+uint32_t code_module_abi_version(void);   // must return 2
+uint32_t code_module_init(void);          // returns offset to CodeModuleDesc in linear memory
+int32_t  code_alloc(int32_t size);        // allocator used for arg/result marshalling
 ```
 
 WASM function and handler exports are resolved by index/name:
 
-- Function exports: `eug_fn_<idx>` (fallback: exported function name)
-- Handler exports: `eug_handler_<idx>` (fallback: `eug_handler_<ClassName>`)
+- Function exports: `code_fn_<idx>` (fallback: exported function name)
+- Handler exports: `code_handler_<idx>` (fallback: `code_handler_<ClassName>`)
 
 Native modules can export:
 - Variables
@@ -441,11 +448,11 @@ Use `crates/code-native` to remove Rust ABI boilerplate when building native mod
 
 The crate provides:
 - ABI structs/constants matching Code runtime loader
-- Value builders (`eug_number`, `eug_string`, `eug_object`, ...)
+- Value builders (`code_number`, `code_string`, `code_object`, ...)
 - Read helpers (`read_str`, `read_field_str`, ...)
 - `code_module!` macro to generate:
-    - `eug_module_abi_version`
-    - `eug_module_init`
+    - `code_module_abi_version`
+    - `code_module_init`
 
 See `tests/native_modules/test_helper.rs` for a compact helper-based native module example.
 
@@ -524,57 +531,35 @@ Handlers without an explicit `return` return `Null`.
 2. **Reference Counting**: `Rc<Value>` provides automatic memory management
 3. **Scope Stack**: Variables stored in frames (`Vec<HashMap<String, ConstrainedVar>>`)
 4. **Constraint Domains**: Each variable has a `Domain` describing its allowed values
-5. **Immutable Values**: Values don't change; reassignment creates a new heap value
+5. **Immutable, single-assignment**: Values never mutate, and a variable cannot be re-pinned to a different value once defined
 6. **Automatic Cleanup**: When scope is dropped, references are cleaned up; heap values deallocated automatically
 
 ### Example
 
 ```code
 a = 1           -> define a with Domain::Exact(Number(1.0))
-a = "hello"     -> reassign a = String("hello"), old Number(1.0) ref dropped
+b = "hello"     -> a distinct variable with its own heap value
 ```
 
-After reassignment, if no other references exist, `Number(1.0)` is deallocated.
+When a scope is dropped, its variables' references are released and any heap
+value with no remaining references is deallocated.
 
 ## Usage Example
 
 ### hello_world.code
 
 ```
--> Variable defined by equality constraint
+-> Variables are single-assignment
 a = 1
-a = "hello world"
-assert a ≠ 1
+assert a = 1
+greeting = "hello world"
+assert greeting ≠ "goodbye"
 ```
 
 ### Execution
 
 ```bash
 $ cargo run -- run hello_world.code
-=== AST ===
-Program {
-    statements: [
-        Constraint {
-            variable: "a",
-            constraint: Equals(Number(1.0)),
-            private: false,
-        },
-        Constraint {
-            variable: "a",
-            constraint: Equals(String("hello world")),
-            private: false,
-        },
-        Assert(
-            Binary {
-                left: Identifier("a"),
-                op: NotEqual,
-                right: Number(1.0),
-            },
-        ),
-    ],
-}
-
-=== Executing ===
 Program executed successfully.
 ```
 
@@ -604,7 +589,7 @@ Program executed successfully.
 - [x] Boolean literals (`true`, `false`)
 - [x] Arithmetic operators (`-`, `*`, `/`)
 - [x] Comparison operators (`<`, `>`, `≤`, `≥`)
-- [x] Logical operators (`&&`, `||`, `!`) with short-circuit evaluation
+- [x] Logical operators (`and`, `or`, `not`) with short-circuit evaluation
 - [x] Full operator precedence
 - [x] Functions: first-class definitions
 - [x] Functions: strict no-capture scope isolation (interpreter + LLVM)
@@ -619,14 +604,16 @@ Program executed successfully.
 - [x] WASM native module ABI linking (`link` to `.wasm` modules via `wasmi`)
 - [x] Native imports: variables/functions/handlers/types
 - [x] Rust native helper crate (`crates/code-native`) with macro-first API
-## Future Steps
 
-## Under negotitation
+## Roadmap
 
+Planned work is tracked as individual tickets under [`docs/tickets/`](docs/tickets/).
 
 ## Design Principles
 
-- **No unsafe Rust**: All memory safety guarantees intact
+- **Safe core, isolated `unsafe`**: The interpreter, parser, and runtime contain
+  no `unsafe`; it is confined to the native-module FFI boundary
+  (`native_module.rs`, `wasm_module.rs`, `crates/code-native`).
 - **Clean separation**: Parser → AST → Runtime → Interpreter
 - **Minimal but extensible**: Add features incrementally without breaking existing code
 - **Memory conscious**: Proper reference management, no leaks
@@ -639,9 +626,12 @@ chumsky = "0.9"
 anyhow = "1"
 inkwell = { version = "0.4", features = ["llvm17-0"] }
 libloading = "0.8"
-wasmi = "1"
+wasmi = "1.0"
 ```
 
 ## License
 
-See LICENSE file.
+The language (interpreter, compiler, LSP) is licensed under **GPL-3.0** — see the
+[LICENSE](LICENSE) file. The native-module helper crate `crates/code-native` is
+licensed under **MIT** (see [crates/code-native/LICENSE](crates/code-native/LICENSE))
+so it can be linked into native modules under any license.
