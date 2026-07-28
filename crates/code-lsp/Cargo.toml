@@ -12,7 +12,8 @@ name = "code-lsp"
 path = "src/main.rs"
 
 [dependencies]
-code_lang = { path = "../..", package = "code" }
+# Parser/AST only — no LLVM backend (default-features disables the `llvm` feature).
+code_lang = { path = "../..", package = "code", default-features = false }
 tower-lsp = "0.20"
 tokio = { version = "1", features = ["io-std", "macros", "rt"] }
 serde_json = "1"
