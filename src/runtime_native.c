@@ -100,8 +100,8 @@ typedef struct {
 /* Forward declarations                                                     */
 /* ======================================================================== */
 
-static CVal eugvalue_to_cval(const CodeValue* ev);
-static CodeValue cval_to_eugvalue(const CVal* cv);
+static CVal codevalue_to_cval(const CodeValue* ev);
+static CodeValue cval_to_codevalue(const CVal* cv);
 static void __native_register_handle(const void* desc, void* handle);
 static void* __native_lookup_handle(const void* desc);
 
@@ -194,7 +194,7 @@ int __native_bridge_poll_emission(void *out_cval, void **out_class_str) {
     pthread_mutex_unlock(&__emit_mutex);
 
     /* Convert to compiled CVal. */
-    CVal cv = eugvalue_to_cval(&node->particle);
+    CVal cv = codevalue_to_cval(&node->particle);
     memcpy(out_cval, &cv, sizeof(CVal));
 
     /* Extract _class string pointer. */
@@ -220,7 +220,7 @@ int __native_bridge_poll_emission(void *out_cval, void **out_class_str) {
 /* Conversion: CodeValue → CVal (native → compiled)                         */
 /* ======================================================================== */
 
-static CVal eugvalue_to_cval(const CodeValue* ev) {
+static CVal codevalue_to_cval(const CodeValue* ev) {
     CVal cv;
     memset(&cv, 0, sizeof(cv));
     cv.tag = ev->tag;
@@ -240,7 +240,7 @@ static CVal eugvalue_to_cval(const CodeValue* ev) {
         CField* cfields = (CField*)malloc(count * sizeof(CField));
         for (uint32_t i = 0; i < count; i++) {
             cfields[i].name  = ev->fields[i].name;
-            cfields[i].value = eugvalue_to_cval(&ev->fields[i].value);
+            cfields[i].value = codevalue_to_cval(&ev->fields[i].value);
         }
         cv.num = (double)count;
         cv.ptr = cfields;
@@ -250,7 +250,7 @@ static CVal eugvalue_to_cval(const CodeValue* ev) {
         uint32_t count = ev->element_count;
         CVal* celems = (CVal*)malloc(count * sizeof(CVal));
         for (uint32_t i = 0; i < count; i++) {
-            celems[i] = eugvalue_to_cval(&ev->elements[i]);
+            celems[i] = codevalue_to_cval(&ev->elements[i]);
         }
         cv.num = (double)count;
         cv.ptr = celems;
@@ -266,7 +266,7 @@ static CVal eugvalue_to_cval(const CodeValue* ev) {
 /* Conversion: CVal → CodeValue (compiled → native)                         */
 /* ======================================================================== */
 
-static CodeValue cval_to_eugvalue(const CVal* cv) {
+static CodeValue cval_to_codevalue(const CVal* cv) {
     CodeValue ev;
     memset(&ev, 0, sizeof(ev));
     ev.tag = cv->tag;
@@ -287,7 +287,7 @@ static CodeValue cval_to_eugvalue(const CVal* cv) {
         CodeField* efields = (CodeField*)malloc(count * sizeof(CodeField));
         for (uint32_t i = 0; i < count; i++) {
             efields[i].name  = cfields[i].name;
-            efields[i].value = cval_to_eugvalue(&cfields[i].value);
+            efields[i].value = cval_to_codevalue(&cfields[i].value);
         }
         ev.fields      = efields;
         ev.field_count = count;
@@ -298,7 +298,7 @@ static CodeValue cval_to_eugvalue(const CVal* cv) {
         const CVal* celems = (const CVal*)cv->ptr;
         CodeValue* eelems = (CodeValue*)malloc(count * sizeof(CodeValue));
         for (uint32_t i = 0; i < count; i++) {
-            eelems[i] = cval_to_eugvalue(&celems[i]);
+            eelems[i] = cval_to_codevalue(&celems[i]);
         }
         ev.elements      = eelems;
         ev.element_count = count;
@@ -370,7 +370,7 @@ void* __native_bridge_open(const char* path) {
 void __native_bridge_get_var(void* desc, uint32_t idx, void* out) {
     const CodeModuleDesc* d = (const CodeModuleDesc*)desc;
     const CodeExportVar* var = &d->vars[idx];
-    CVal cv = eugvalue_to_cval(&var->value);
+    CVal cv = codevalue_to_cval(&var->value);
     memcpy(out, &cv, sizeof(CVal));
 }
 
@@ -393,13 +393,13 @@ void __native_bridge_call_handler(void* handler_ptr, const void* particle, void*
     const CVal* cparticle = (const CVal*)particle;
 
     /* Convert compiled particle to native CodeValue. */
-    CodeValue ev = cval_to_eugvalue(cparticle);
+    CodeValue ev = cval_to_codevalue(cparticle);
 
     /* Call the native handler. */
     CodeValue result = handler(ev);
 
     /* Convert result back to compiled format. */
-    CVal cv = eugvalue_to_cval(&result);
+    CVal cv = codevalue_to_cval(&result);
     memcpy(out, &cv, sizeof(CVal));
 }
 

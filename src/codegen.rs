@@ -190,7 +190,7 @@ struct Codegen<'ctx> {
     /// LLVM global variables backing each native handler pointer.
     /// Key matches the key used in native_handler_ptrs (alias-prefixed or plain).
     /// These are module-level globals so they can be loaded from any function,
-    /// including __euglena_dispatch which runs after main() has returned.
+    /// including __code_dispatch which runs after main() has returned.
     native_handler_globals: HashMap<String, GlobalValue<'ctx>>,
     /// Yield collector: pointer to array pointer (for loop with `get`).
     yield_arr_ptr: Option<PointerValue<'ctx>>,
@@ -336,21 +336,21 @@ impl<'ctx> Codegen<'ctx> {
         // (e.g. user actions, timer events) to gene handlers via this function.
         // For native targets with emissions, the drain loop handles dispatch.
         if matches!(self.target, BuildTarget::Wasm) {
-            self.compile_euglena_dispatch_fn()?;
+            self.compile_code_dispatch_fn()?;
         }
 
         Ok(())
     }
 
-    /// Compile an exported WASM re-entry function `__euglena_dispatch`.
+    /// Compile an exported WASM re-entry function `__code_dispatch`.
     ///
     /// This function is callable from JavaScript after `main()` has returned.
     /// It accepts a class-name C-string pointer and a `value_type` pointer
     /// (pointing to a particle in WASM linear memory) and dispatches to the
     /// appropriate Code gene handler.
     ///
-    /// Signature: `fn __euglena_dispatch(class_ptr: i8*, particle_ptr: value_type*)`
-    fn compile_euglena_dispatch_fn(&mut self) -> Result<(), String> {
+    /// Signature: `fn __code_dispatch(class_ptr: i8*, particle_ptr: value_type*)`
+    fn compile_code_dispatch_fn(&mut self) -> Result<(), String> {
         let i32_type  = self.context.i32_type();
         let i8_ptr    = self.context.i8_type().ptr_type(AddressSpace::default());
         let val_ptr   = self.value_type.ptr_type(AddressSpace::default());
@@ -360,7 +360,7 @@ impl<'ctx> Codegen<'ctx> {
             false,
         );
         let dispatch_fn = self.module.add_function(
-            "__euglena_dispatch",
+            "__code_dispatch",
             fn_type,
             Some(inkwell::module::Linkage::External),
         );
@@ -973,7 +973,7 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
                 // Register native handler pointers under alias.
-                // Also store each pointer in an LLVM global so __euglena_dispatch
+                // Also store each pointer in an LLVM global so __code_dispatch
                 // can load a fresh copy without referencing main()'s instruction results.
                 for (class_name, handler_ptr) in &handler_ptr_vals {
                     let key = format!("{}.{}", alias_name, class_name);
