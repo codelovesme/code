@@ -71,7 +71,7 @@ fn print_usage() {
     println!("  code --version                              Print version");
     println!();
     println!("Build targets:");
-    println!("  exe      Native executable (.exe)        [default]");
+    println!("  exe      Native executable              [default]");
     println!("  ir       LLVM IR text (.ll)");
     println!("  shared   Shared library (.so)");
     println!("  static   Static library (.a)");
@@ -191,8 +191,16 @@ fn build_native(
         OutputKind::Static => codegen::BuildTarget::Static,
     };
 
-    let obj_path = out_dir.join(format!("{}.o", module_name));
-    let has_native = match codegen::emit_object_file(program, module_name, &obj_path, build_target, release) {
+    // Tag intermediate object files with the target kind so that concurrent
+    // builds of the same source for different targets don't race on them.
+    let kind_tag = match kind {
+        OutputKind::Executable => "exe",
+        OutputKind::Shared => "shared",
+        OutputKind::Static => "static",
+    };
+
+    let obj_path = out_dir.join(format!("{}.{}.o", module_name, kind_tag));
+    let _has_native = match codegen::emit_object_file(program, module_name, &obj_path, build_target, release) {
         Ok(flag) => flag,
         Err(e) => {
             eprintln!("Codegen error: {}", e);
@@ -200,13 +208,19 @@ fn build_native(
         }
     };
 
-    // If the program uses native imports, compile the C bridge runtime.
+    // Always compile+link the C bridge runtime. Besides the native-module
+    // dispatch helpers (used only when the program imports native modules), it
+    // defines `__value_to_cstr`, which codegen emits for the polymorphic `+`
+    // operator — so every native build needs it, native imports or not.
     let mut extra_obj_paths: Vec<PathBuf> = Vec::new();
     let mut extra_flags: Vec<&str> = Vec::new();
 
-    if has_native {
-        let rt_c_path = out_dir.join("__code_runtime_native.c");
-        let rt_o_path = out_dir.join("__code_runtime_native.o");
+    // Static libraries only archive the primary object (link_static ignores
+    // extras); the bridge is resolved when the .a is finally linked.
+    if !matches!(kind, OutputKind::Static) {
+        // Per-module, per-target names so concurrent builds don't race.
+        let rt_c_path = out_dir.join(format!("__code_runtime_native_{}_{}.c", module_name, kind_tag));
+        let rt_o_path = out_dir.join(format!("__code_runtime_native_{}_{}.o", module_name, kind_tag));
         if let Err(e) = fs::write(&rt_c_path, RUNTIME_NATIVE_C) {
             eprintln!("Error writing runtime C source: {}", e);
             return 1;
@@ -224,7 +238,7 @@ fn build_native(
 
     let (out_path, link_result) = match kind {
         OutputKind::Executable => {
-            let p = out_dir.join(format!("{}.exe", module_name));
+            let p = out_dir.join(module_name);
             let r = linker::link_executable(&obj_path, &p, &extra_obj_refs, &extra_flags);
             (p, r)
         }
@@ -261,8 +275,10 @@ fn build_native(
 
 /// Compile a C source file to an object file using `cc`.
 fn compile_c_runtime(c_path: &Path, o_path: &Path) -> Result<(), String> {
+    // -fPIC so the bridge object can be linked into shared libraries as well as
+    // executables.
     let output = std::process::Command::new("cc")
-        .args(["-c", "-O2", "-o"])
+        .args(["-c", "-O2", "-fPIC", "-o"])
         .arg(o_path)
         .arg(c_path)
         .output()

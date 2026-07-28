@@ -107,7 +107,7 @@ fn build_wasm_module() {
 }
 
 #[test]
-fn build_default_is_ir() {
+fn build_default_is_exe() {
     let exe = env!("CARGO_BIN_EXE_code");
     let status = Command::new(exe)
         .args(["build", "tests/equal_numbers.code"])
@@ -115,9 +115,16 @@ fn build_default_is_ir() {
         .expect("failed to run code build");
     assert!(status.success());
 
-    let ir = fs::read_to_string("target/llvm/equal_numbers.ll")
-        .expect("missing IR output");
-    assert!(ir.contains("define i32 @main"));
+    // The default target is a native executable (no extension).
+    let out_path = "target/llvm/equal_numbers";
+    assert!(
+        std::path::Path::new(out_path).exists(),
+        "default build should produce an executable"
+    );
+    let run_status = Command::new(out_path)
+        .status()
+        .expect("failed to run compiled executable");
+    assert!(run_status.success(), "default-built executable failed");
 }
 
 #[test]

@@ -1,0 +1,22 @@
+-> Models a JSON-shaped document using Code objects and arrays.
+-> Exercises nested objects, arrays, and deep equality via the interpreter.
+
+keywords = ["language", "interpreter", "llvm"]
+repository = { kind = "git", url = "https://github.com/codelovesme/code" }
+document = { name = "code", version = "0.2.0", keywords = keywords, repository = repository }
+
+assert document.name = "code"
+assert document.version = "0.2.0"
+assert document.keywords[0] = "language"
+assert document.keywords[2] = "llvm"
+assert document.repository.kind = "git"
+
+-> Nested object deep equality
+expected_repo = { kind = "git", url = "https://github.com/codelovesme/code" }
+assert document.repository = expected_repo
+
+-> Build a string from fields (JSON-ish rendering)
+doc_name = document.name
+doc_version = document.version
+summary = "$doc_name@$doc_version"
+assert summary = "code@0.2.0"
