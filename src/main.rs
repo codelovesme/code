@@ -76,7 +76,7 @@ fn print_usage() {
     println!("Usage:");
     println!("  code build <file.code> [--target <type>] [--release]    Compile a .code file");
     println!("  code run <file.code>                        Interpret a .code file");
-    println!("  code fmt <file.code> [--check]              Format a .code file in place");
+    println!("  code fmt <path> [--check]                   Format a .code file or directory");
     println!("  code test                                   Run all tests in tests/");
     println!("  code --version                              Print version");
     println!();
@@ -88,39 +88,105 @@ fn print_usage() {
     println!("  wasm     WebAssembly module (.wasm)");
 }
 
-/// Format a `.code` file in place, or verify formatting with `--check`.
+/// Format a `.code` file or directory in place, or verify with `--check`.
 ///
-/// Returns 0 when the file is (or was made) well-formatted; with `--check`,
-/// returns 1 if the file would change. Uses a 4-space indent.
+/// A directory is walked recursively for `.code` files. Returns 0 when
+/// everything is (or was made) well-formatted; with `--check`, returns 1 if any
+/// file would change. Uses a 4-space indent.
 fn fmt_file(path: &str, check: bool) -> i32 {
-    let src = match fs::read_to_string(path) {
+    let root = Path::new(path);
+
+    let files: Vec<PathBuf> = if root.is_dir() {
+        let mut v = Vec::new();
+        collect_code_files(root, &mut v);
+        v.sort();
+        v
+    } else {
+        vec![root.to_path_buf()]
+    };
+
+    if files.is_empty() {
+        println!("No .code files found in {}", path);
+        return 0;
+    }
+
+    let mut changed = 0usize;
+    for file in &files {
+        match fmt_one(file, check) {
+            Ok(true) => changed += 1,
+            Ok(false) => {}
+            Err(()) => return 1,
+        }
+    }
+
+    if check {
+        if changed > 0 {
+            eprintln!(
+                "{} of {} file(s) not formatted (run `code fmt {}`)",
+                changed,
+                files.len(),
+                path,
+            );
+            return 1;
+        }
+        println!("All {} file(s) already formatted", files.len());
+    } else if changed == 0 {
+        println!("{} file(s) already formatted", files.len());
+    } else {
+        println!("Formatted {} of {} file(s)", changed, files.len());
+    }
+    0
+}
+
+/// Format a single file. Returns `Ok(true)` if it changed (or would with
+/// `--check`), `Ok(false)` if already formatted, `Err(())` on an I/O error.
+fn fmt_one(file: &Path, check: bool) -> Result<bool, ()> {
+    let src = match fs::read_to_string(file) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Error reading '{}': {}", path, e);
-            return 1;
+            eprintln!("Error reading '{}': {}", file.display(), e);
+            return Err(());
         }
     };
 
     let formatted = code_lang::format::format_document(&src, 4);
-
     if formatted == src {
-        if !check {
-            println!("{} already formatted", path);
-        }
-        return 0;
+        return Ok(false);
     }
 
     if check {
-        eprintln!("{}: not formatted (run `code fmt {}`)", path, path);
-        return 1;
+        eprintln!("{}: not formatted", file.display());
+        return Ok(true);
     }
 
-    if let Err(e) = fs::write(path, &formatted) {
-        eprintln!("Error writing '{}': {}", path, e);
-        return 1;
+    if let Err(e) = fs::write(file, &formatted) {
+        eprintln!("Error writing '{}': {}", file.display(), e);
+        return Err(());
     }
-    println!("Formatted {}", path);
-    0
+    println!("Formatted {}", file.display());
+    Ok(true)
+}
+
+/// Recursively collect `*.code` files under `dir`, skipping build/VCS folders.
+fn collect_code_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let skip = matches!(
+                path.file_name().and_then(|n| n.to_str()),
+                Some("target") | Some(".git") | Some("node_modules")
+            );
+            if !skip {
+                collect_code_files(&path, out);
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("code") {
+            out.push(path);
+        }
+    }
 }
 
 /// Parse and execute a single source file (.code).

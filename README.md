@@ -101,15 +101,17 @@ cargo run -- run hello_world.code
 
 ## Formatting
 
-Re-indent a `.code` file in place (4-space indentation, driven by `{`/`}`
-nesting):
+Re-indent a `.code` file or directory in place (4-space indentation, driven by
+`{`/`}` nesting):
 
 ```bash
-code fmt hello_world.code          # rewrite the file
-code fmt hello_world.code --check  # exit non-zero if it isn't formatted (for CI)
+code fmt hello_world.code   # rewrite one file
+code fmt tests              # rewrite every .code file under a directory
+code fmt . --check          # exit non-zero if anything isn't formatted (for CI)
 ```
 
-The same formatter powers the language server's "Format Document" action.
+The same formatter powers the language server's "Format Document" action, and CI
+runs `code fmt . --check` to keep the tree canonical.
 
 ## Language Syntax
 

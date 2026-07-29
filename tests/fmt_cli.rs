@@ -35,6 +35,36 @@ fn fmt_check_then_format_in_place() {
 }
 
 #[test]
+fn fmt_directory_recurses() {
+    let exe = env!("CARGO_BIN_EXE_code");
+    let dir = std::env::temp_dir().join(format!("code_fmt_dir_{}", std::process::id()));
+    let nested = dir.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    let messy = nested.join("m.code");
+    fs::write(&messy, "loop {\nif x {\nyield x\n}\n}\n").unwrap();
+    fs::write(dir.join("ok.code"), "a = 1\n").unwrap(); // already formatted
+    let d = dir.to_str().unwrap();
+
+    // --check fails because a nested file is unformatted.
+    let st = Command::new(exe).args(["fmt", d, "--check"]).status().unwrap();
+    assert!(!st.success(), "--check on a dir with unformatted files should fail");
+
+    // Formatting the directory fixes the nested file.
+    let st = Command::new(exe).args(["fmt", d]).status().unwrap();
+    assert!(st.success());
+    assert_eq!(
+        fs::read_to_string(&messy).unwrap(),
+        "loop {\n    if x {\n        yield x\n    }\n}\n",
+    );
+
+    // --check now passes for the whole directory.
+    let st = Command::new(exe).args(["fmt", d, "--check"]).status().unwrap();
+    assert!(st.success(), "--check should pass once the directory is formatted");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn fmt_missing_file_argument_errors() {
     let exe = env!("CARGO_BIN_EXE_code");
     let st = Command::new(exe).arg("fmt").status().unwrap();

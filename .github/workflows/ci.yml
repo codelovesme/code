@@ -43,6 +43,9 @@ jobs:
       - name: Language suite (.code tests)
         run: ./target/debug/code test
 
+      - name: Formatting check
+        run: ./target/debug/code fmt . --check
+
   lsp-no-llvm:
     name: code-lsp builds without LLVM
     runs-on: ubuntu-latest
