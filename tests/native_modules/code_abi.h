@@ -9,6 +9,9 @@
 
 #include <stdint.h>
 
+/* ---- ABI version (return this from code_module_abi_version) ---- */
+#define CODE_ABI_VERSION  2
+
 /* ---- Value tags ---- */
 #define CODE_TAG_NUMBER   0
 #define CODE_TAG_STRING   1

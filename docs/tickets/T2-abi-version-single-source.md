@@ -66,8 +66,12 @@ compilable as a standalone `rlib` (it is compiled outside the host build).
 
 **Decision:** kept `code-abi` internal (`publish = false`), per owner.
 
-### Remaining sub-item (not blocking)
+### Follow-up (done)
 
-The C header `tests/native_modules/code_abi.h` is still hand-maintained. A
-follow-up could generate it from the Rust definitions (or add a test that fails
-on divergence). Left as a future enhancement.
+The C header `tests/native_modules/code_abi.h` is still hand-maintained, but it is
+now **guarded against drift**: `tests/abi_header_sync.rs` checks that the header's
+`#define`s (version, tags, emit target) equal the Rust constants, and compiles a
+C `_Static_assert` probe (seeded with Rust `size_of`/`offset_of`) so any struct
+size/field-offset divergence fails the build. A machine-checkable
+`#define CODE_ABI_VERSION 2` was added to the header. Both guards were verified to
+fail on injected drift.
