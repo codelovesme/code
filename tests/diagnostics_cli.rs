@@ -29,3 +29,25 @@ fn parse_error_is_rendered_with_caret() {
 
     let _ = fs::remove_file(&path);
 }
+
+#[test]
+fn runtime_type_error_names_the_found_type() {
+    let exe = env!("CARGO_BIN_EXE_code");
+    let path = std::env::temp_dir().join(format!("code_rt_{}.code", std::process::id()));
+    // `if` on a Number is a runtime type error.
+    fs::write(&path, "if 5 {\n  x = 1\n}\n").unwrap();
+
+    let out = Command::new(exe)
+        .args(["run", path.to_str().unwrap()])
+        .output()
+        .unwrap();
+
+    assert!(!out.status.success());
+    let text = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        text.contains("must be a Boolean") && text.contains("found Number"),
+        "runtime type error should name the found type:\n{text}"
+    );
+
+    let _ = fs::remove_file(&path);
+}

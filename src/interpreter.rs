@@ -377,7 +377,12 @@ impl Interpreter {
                         self.env.pop_scope();
                     }
                     Value::Boolean(false) => {}
-                    _ => return Err("If condition must be a Boolean".to_string()),
+                    _ => {
+                        return Err(format!(
+                            "If condition must be a Boolean, found {}",
+                            cond_val.type_name()
+                        ))
+                    }
                 }
             }
             Statement::LoopOver {
@@ -422,7 +427,10 @@ impl Interpreter {
                         }
                     }
                     _ => {
-                        return Err("Loop requires an Array value to iterate over".to_string())
+                        return Err(format!(
+                            "Loop requires an Array value to iterate over, found {}",
+                            iter_val.type_name()
+                        ))
                     }
                 }
             }
@@ -870,7 +878,10 @@ impl Interpreter {
                             let key_str = match key.as_ref() {
                                 Value::String(s) => s.clone(),
                                 Value::Number(n) => n.to_string(),
-                                _ => return Err("Computed property key must be a String or Number".to_string()),
+                                _ => return Err(format!(
+                                    "Computed property key must be a String or Number, found {}",
+                                    key.type_name()
+                                )),
                             };
                             let val = self.eval_expr(val_expr)?;
                             map.insert(key_str, val);
@@ -980,7 +991,10 @@ impl Interpreter {
                                 let key_str = match key.as_ref() {
                                     Value::String(s) => s.clone(),
                                     Value::Number(n) => n.to_string(),
-                                    _ => return Err("Computed property key must be a String or Number".to_string()),
+                                    _ => return Err(format!(
+                                    "Computed property key must be a String or Number, found {}",
+                                    key.type_name()
+                                )),
                                 };
                                 let val = self.eval_expr(val_expr)?;
                                 map.insert(key_str, val);
@@ -1013,7 +1027,10 @@ impl Interpreter {
                                 let key_str = match key.as_ref() {
                                     Value::String(s) => s.clone(),
                                     Value::Number(n) => n.to_string(),
-                                    _ => return Err("Computed property key must be a String or Number".to_string()),
+                                    _ => return Err(format!(
+                                    "Computed property key must be a String or Number, found {}",
+                                    key.type_name()
+                                )),
                                 };
                                 let val = self.eval_expr(val_expr)?;
                                 map.insert(key_str, val);
@@ -1054,8 +1071,14 @@ impl Interpreter {
                         }
                         Ok(elements.get(i).cloned().unwrap_or_else(|| Value::null()))
                     }
-                    (Value::Array(_), _) => Err("Array index must be a Number".to_string()),
-                    _ => Err("Index access requires an Array value".to_string()),
+                    (Value::Array(_), _) => Err(format!(
+                        "Array index must be a Number, found {}",
+                        idx_val.type_name()
+                    )),
+                    _ => Err(format!(
+                        "Index access requires an Array value, found {}",
+                        recv_val.type_name()
+                    )),
                 }
             }
             Expression::InterpolatedString(parts) => {
@@ -1146,7 +1169,10 @@ impl Interpreter {
                 match op {
                     UnaryOp::Not => match val.as_ref() {
                         Value::Boolean(b) => Ok(Value::boolean(!b)),
-                        _ => Err("Operand of 'not' must be a Boolean".to_string()),
+                        _ => Err(format!(
+                            "Operand of 'not' must be a Boolean, found {}",
+                            val.type_name()
+                        )),
                     },
                 }
             }

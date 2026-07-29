@@ -1,0 +1,53 @@
+# T9 — Carry source spans on the AST for located runtime/codegen errors
+
+- **Priority:** Medium (deferred — high value, high cost)
+- **Type:** Architecture / diagnostics
+- **Area:** `parser.rs`, `ast.rs`, `interpreter.rs`, `codegen.rs`, `diagnostics.rs`
+
+## Context
+
+Parse errors now render with `file:line:col` + a source caret via
+`code_lang::diagnostics` (see the "rustc-style diagnostics" work). Runtime and
+codegen errors, however, are bare `Result<_, String>` messages with **no source
+location** — because the AST nodes carry no span information.
+
+## Problem
+
+The parser produces a plain AST (`ast::Expression` / `ast::Statement`) with no
+byte/char offsets, so by the time the interpreter or LLVM backend raises an
+error it cannot say *where* in the source it happened. For small single files
+this is tolerable; for larger, `link`-ed multi-file programs it means hunting by
+hand — worst for anonymous errors like `contradictory constraints`,
+`arithmetic type mismatch`, `division by zero`.
+
+## Proposed change
+
+Thread spans end-to-end:
+
+1. Attach a span (char range, matching `chumsky`) to AST nodes — at least to
+   `Expression` and `Statement`, e.g. a `Spanned<T>` wrapper or a `span` field.
+2. Have the parser populate them (chumsky `map_with_span`).
+3. Change interpreter/codegen error types from `String` to an error that carries
+   an optional span (or thread the current node's span through), and render via
+   `code_lang::diagnostics::render` — the renderer already exists and is reused.
+
+This is a large, cross-cutting refactor of a currently green, well-tested
+codebase, so stage it: interpreter first (biggest win), codegen after.
+
+## Interim mitigation (done separately — "work 2")
+
+Runtime/codegen messages were enriched to include the actual type/identifier
+(e.g. `expected Number, found String`) so anonymous errors became more
+self-locating without spans. That reduces — but does not remove — the need for
+this ticket.
+
+## Acceptance criteria
+
+- A runtime error (e.g. arithmetic type mismatch) prints `file:line:col` + a
+  caret, matching the parse-error style.
+- The `.code` and cargo suites stay green.
+
+## Effort
+
+Large. The main risk is regressions from touching the parser + AST + both
+backends at once; mitigate with incremental, per-layer PRs.
