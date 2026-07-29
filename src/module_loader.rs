@@ -50,28 +50,21 @@ impl ModuleLoader {
         let (parsed, parse_errors) = parser::parser().parse_recovery(source.as_str());
 
         if !parse_errors.is_empty() {
-            let mut msg = format!("Parse errors in '{}':", canonical.display());
-            // Convert char offsets to line:col positions for user-friendly messages.
-            let line_starts: Vec<usize> = std::iter::once(0)
-                .chain(source.match_indices('\n').map(|(i, _)| i + 1))
+            let file = canonical.display().to_string();
+            let rendered: Vec<String> = parse_errors
+                .iter()
+                .map(|err| {
+                    // Use the custom reason if present, otherwise the default
+                    // Display which lists expected/found tokens.
+                    let detail = match err.reason() {
+                        chumsky::error::SimpleReason::Custom(s) => s.clone(),
+                        _ => format!("{}", err),
+                    };
+                    let span = err.span();
+                    crate::diagnostics::render(&source, &file, span.start, span.end, &detail)
+                })
                 .collect();
-
-            for err in &parse_errors {
-                let offset = err.span().start;
-                // Binary-search for the line that contains this offset.
-                let line_idx = line_starts.partition_point(|&s| s <= offset).saturating_sub(1);
-                let col = offset - line_starts[line_idx];
-                let line_num = line_idx + 1;
-
-                // Use the custom reason if present, otherwise fall back to the
-                // default Display which lists expected/found tokens.
-                let detail = match err.reason() {
-                    chumsky::error::SimpleReason::Custom(s) => s.clone(),
-                    _ => format!("{}", err),
-                };
-                msg.push_str(&format!("\n  [{}:{}] {}", line_num, col + 1, detail));
-            }
-            return Err(msg);
+            return Err(rendered.join("\n\n"));
         }
 
         let parsed = parsed.expect("Parser produced no output despite no errors");
