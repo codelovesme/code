@@ -6,19 +6,19 @@
 
 ## Status / what shipped
 
-**Done (interpreter path, single-file):**
+**Done (interpreter + codegen, single-file):**
 - `ast::Spanned<T>` + `ast::Span`; all statement lists are now
   `Vec<Spanned<Statement>>`. The parser tags each statement via
   `map_with_span`. `interpreter`, `codegen`, `environment`, and `module_loader`
   were adapted mechanically (per-statement functions unchanged; only the
   iterating callers unwrap `.node`) — no behavior change from the plumbing.
-- The interpreter tracks the executing statement's span and exposes
-  `error_span()`; `code run` renders runtime errors rustc-style
-  (`file:line:col` + caret) via `code_lang::diagnostics`.
+- Both backends track the executing/compiling statement's span: the interpreter
+  exposes `error_span()`, and codegen returns a `CodegenError { message, span }`.
+- `code run` **and** `code build` render located errors rustc-style
+  (`file:line:col` + caret) via `code_lang::diagnostics`, sharing one `Diag`
+  reporter in `main.rs`.
 
 **Deferred (still open):**
-- **codegen errors** remain plain `String` (spans are carried in the AST it
-  consumes, but its errors aren't rendered located yet).
 - **Multi-file / linked programs:** a span refers to its *own* file's source,
   which `run_file` doesn't have, so located rendering is intentionally limited
   to single-file programs (no top-level `Import`/`NativeImport`); linked

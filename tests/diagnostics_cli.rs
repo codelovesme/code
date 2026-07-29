@@ -57,6 +57,28 @@ fn runtime_type_error_names_the_found_type() {
 }
 
 #[test]
+fn codegen_error_is_located_in_single_file() {
+    let exe = env!("CARGO_BIN_EXE_code");
+    let path = std::env::temp_dir().join(format!("code_cg_{}.code", std::process::id()));
+    // `break` outside a loop is rejected by the LLVM backend.
+    fs::write(&path, "a = 1\nb = 2\nbreak\n").unwrap();
+
+    let out = Command::new(exe)
+        .args(["build", path.to_str().unwrap(), "--target", "ir"])
+        .output()
+        .unwrap();
+
+    assert!(!out.status.success());
+    let text = String::from_utf8_lossy(&out.stderr);
+    assert!(text.contains("outside of a loop"), "expected the codegen message:\n{text}");
+    assert!(text.contains("--> "), "codegen error should be located:\n{text}");
+    assert!(text.contains(":3:"), "break is on line 3:\n{text}");
+    assert!(text.contains('^'), "should carry a caret:\n{text}");
+
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
 fn runtime_error_in_linked_program_falls_back_to_plain() {
     let exe = env!("CARGO_BIN_EXE_code");
     let dir = std::env::temp_dir().join(format!("code_link_{}", std::process::id()));

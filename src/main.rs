@@ -189,8 +189,38 @@ fn collect_code_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Parse and execute a single source file (.code).
-/// Returns 0 on success, 1 on error.
+/// Context for rendering a located diagnostic during `run`/`build`.
+struct Diag<'a> {
+    source: &'a str,
+    path: &'a str,
+    /// Located rendering is only safe for single-file programs: a statement from
+    /// a linked module carries a span into *that* file's source, which we don't
+    /// have here. Multi-file programs fall back to a plain `prefix: message`.
+    single_file: bool,
+}
+
+impl Diag<'_> {
+    fn report(&self, prefix: &str, message: &str, span: Option<&ast::Span>) {
+        match (self.single_file, span) {
+            (true, Some(sp)) => eprintln!(
+                "{}",
+                code_lang::diagnostics::render(self.source, self.path, sp.start, sp.end, message)
+            ),
+            _ => eprintln!("{}: {}", prefix, message),
+        }
+    }
+}
+
+/// True when the program links no modules, so every span refers to `path`.
+fn is_single_file(program: &ast::Program) -> bool {
+    !program.statements.iter().any(|s| {
+        matches!(
+            s.node,
+            ast::Statement::Import { .. } | ast::Statement::NativeImport { .. }
+        )
+    })
+}
+
 fn run_file(path: &str) -> i32 {
     let source = std::fs::read_to_string(path).unwrap_or_default();
 
@@ -202,15 +232,7 @@ fn run_file(path: &str) -> i32 {
         }
     };
 
-    // Located runtime errors are only safe for single-file programs: a statement
-    // pulled in from a linked module carries a span into *that* file's source,
-    // which we don't have here. Multi-file programs fall back to a plain message.
-    let single_file = !program.statements.iter().any(|s| {
-        matches!(
-            s.node,
-            ast::Statement::Import { .. } | ast::Statement::NativeImport { .. }
-        )
-    });
+    let diag = Diag { source: &source, path, single_file: is_single_file(&program) };
 
     let mut interp = Interpreter::new();
     match interp.execute(program) {
@@ -219,13 +241,7 @@ fn run_file(path: &str) -> i32 {
             0
         }
         Err(e) => {
-            match (single_file, interp.error_span()) {
-                (true, Some(span)) => eprintln!(
-                    "{}",
-                    code_lang::diagnostics::render(&source, path, span.start, span.end, &e)
-                ),
-                _ => eprintln!("Runtime error: {}", e),
-            }
+            diag.report("Runtime error", &e, interp.error_span().as_ref());
             1
         }
     }
@@ -249,6 +265,8 @@ fn parse_target_flag(args: &[String]) -> String {
 /// Parse and compile a single source file to LLVM IR.
 /// Returns 0 on success, 1 on error.
 fn build_file(path: &str, target: &str, release: bool) -> i32 {
+    let source = std::fs::read_to_string(path).unwrap_or_default();
+
     let program = match module_loader::load_program_with_links(Path::new(path)) {
         Ok(p) => p,
         Err(e) => {
@@ -256,6 +274,8 @@ fn build_file(path: &str, target: &str, release: bool) -> i32 {
             return 1;
         }
     };
+
+    let diag = Diag { source: &source, path, single_file: is_single_file(&program) };
 
     let module_name = Path::new(path)
         .file_stem()
@@ -269,11 +289,11 @@ fn build_file(path: &str, target: &str, release: bool) -> i32 {
     }
 
     match target {
-        "ir" => build_ir(&program, module_name, &out_dir),
-        "exe" => build_native(&program, module_name, &out_dir, OutputKind::Executable, release),
-        "shared" => build_native(&program, module_name, &out_dir, OutputKind::Shared, release),
-        "static" => build_native(&program, module_name, &out_dir, OutputKind::Static, release),
-        "wasm" => build_wasm(&program, module_name, &out_dir, release),
+        "ir" => build_ir(&program, module_name, &out_dir, &diag),
+        "exe" => build_native(&program, module_name, &out_dir, OutputKind::Executable, release, &diag),
+        "shared" => build_native(&program, module_name, &out_dir, OutputKind::Shared, release, &diag),
+        "static" => build_native(&program, module_name, &out_dir, OutputKind::Static, release, &diag),
+        "wasm" => build_wasm(&program, module_name, &out_dir, release, &diag),
         other => {
             eprintln!("Unknown target '{}'. Use: ir, exe, shared, static, wasm", other);
             1
@@ -281,11 +301,11 @@ fn build_file(path: &str, target: &str, release: bool) -> i32 {
     }
 }
 
-fn build_ir(program: &ast::Program, module_name: &str, out_dir: &Path) -> i32 {
+fn build_ir(program: &ast::Program, module_name: &str, out_dir: &Path, diag: &Diag) -> i32 {
     let ir = match codegen::emit_llvm_ir(program, module_name) {
         Ok(ir) => ir,
         Err(e) => {
-            eprintln!("Codegen error: {}", e);
+            diag.report("Codegen error", &e.message, e.span.as_ref());
             return 1;
         }
     };
@@ -313,6 +333,7 @@ fn build_native(
     out_dir: &Path,
     kind: OutputKind,
     release: bool,
+    diag: &Diag,
 ) -> i32 {
     let build_target = match kind {
         OutputKind::Executable => codegen::BuildTarget::Exe,
@@ -332,7 +353,7 @@ fn build_native(
     let _has_native = match codegen::emit_object_file(program, module_name, &obj_path, build_target, release) {
         Ok(flag) => flag,
         Err(e) => {
-            eprintln!("Codegen error: {}", e);
+            diag.report("Codegen error", &e.message, e.span.as_ref());
             return 1;
         }
     };
@@ -420,10 +441,10 @@ fn compile_c_runtime(c_path: &Path, o_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn build_wasm(program: &ast::Program, module_name: &str, out_dir: &Path, release: bool) -> i32 {
+fn build_wasm(program: &ast::Program, module_name: &str, out_dir: &Path, release: bool, diag: &Diag) -> i32 {
     let obj_path = out_dir.join(format!("{}.wasm.o", module_name));
     if let Err(e) = codegen::emit_wasm_object(program, module_name, &obj_path, release) {
-        eprintln!("Codegen error: {}", e);
+        diag.report("Codegen error", &e.message, e.span.as_ref());
         return 1;
     }
 

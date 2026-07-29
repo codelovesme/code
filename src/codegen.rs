@@ -33,14 +33,35 @@ pub enum BuildTarget {
     Wasm,
 }
 
-pub fn emit_llvm_ir(program: &Program, module_name: &str) -> Result<String, String> {
+/// A codegen failure, optionally carrying the source span of the statement it
+/// occurred in so callers can render a located diagnostic.
+#[derive(Debug)]
+pub struct CodegenError {
+    pub message: String,
+    pub span: Option<crate::ast::Span>,
+}
+
+impl std::fmt::Display for CodegenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl From<String> for CodegenError {
+    fn from(message: String) -> Self {
+        CodegenError { message, span: None }
+    }
+}
+
+pub fn emit_llvm_ir(program: &Program, module_name: &str) -> Result<String, CodegenError> {
     emit_llvm_ir_with_target(program, module_name, BuildTarget::Ir)
 }
 
-pub fn emit_llvm_ir_with_target(program: &Program, module_name: &str, target: BuildTarget) -> Result<String, String> {
+pub fn emit_llvm_ir_with_target(program: &Program, module_name: &str, target: BuildTarget) -> Result<String, CodegenError> {
     let context = Context::create();
     let mut codegen = Codegen::new(&context, module_name, target);
-    codegen.compile_program(program)?;
+    let result = codegen.compile_program(program);
+    result.map_err(|message| CodegenError { message, span: codegen.current_span.clone() })?;
     Ok(codegen.module.print_to_string().to_string())
 }
 
@@ -53,10 +74,11 @@ pub fn emit_object_file(
     output_path: &Path,
     target: BuildTarget,
     release: bool,
-) -> Result<bool, String> {
+) -> Result<bool, CodegenError> {
     let context = Context::create();
     let mut codegen = Codegen::new(&context, module_name, target);
-    codegen.compile_program(program)?;
+    let result = codegen.compile_program(program);
+    result.map_err(|message| CodegenError { message, span: codegen.current_span.clone() })?;
     let has_native = codegen.has_native_imports;
     let machine = host_target_machine(release)?;
     machine
@@ -71,10 +93,11 @@ pub fn emit_wasm_object(
     module_name: &str,
     output_path: &Path,
     release: bool,
-) -> Result<(), String> {
+) -> Result<(), CodegenError> {
     let context = Context::create();
     let mut codegen = Codegen::new(&context, module_name, BuildTarget::Wasm);
-    codegen.compile_program(program)?;
+    let result = codegen.compile_program(program);
+    result.map_err(|message| CodegenError { message, span: codegen.current_span.clone() })?;
 
     Target::initialize_webassembly(&InitializationConfig::default());
     let triple = TargetTriple::create("wasm32-unknown-unknown");
@@ -101,7 +124,8 @@ pub fn emit_wasm_object(
 
     machine
         .write_to_file(&codegen.module, FileType::Object, output_path)
-        .map_err(|e| format!("Failed to write WASM object file: {}", e))
+        .map_err(|e| format!("Failed to write WASM object file: {}", e))?;
+    Ok(())
 }
 
 fn host_target_machine(release: bool) -> Result<TargetMachine, String> {
@@ -149,6 +173,8 @@ struct Codegen<'ctx> {
     type_registry: Vec<HashMap<String, Vec<(String, TypeExpr, bool)>>>,
     /// Handler definitions: scope-level -> class_name -> handler body.
     handler_registry: Vec<HashMap<String, Vec<Spanned<Statement>>>>,
+    /// Span of the statement currently compiling, for located codegen errors.
+    current_span: Option<crate::ast::Span>,
     /// Handler return alloca (set when compiling a handler body).
     handler_return_alloca: Option<PointerValue<'ctx>>,
     /// Handler exit block (set when compiling a handler body).
@@ -289,6 +315,7 @@ impl<'ctx> Codegen<'ctx> {
             type_annotations: vec![HashMap::new()],
             type_registry: vec![initial_types],
             handler_registry: vec![HashMap::new()],
+            current_span: None,
             handler_return_alloca: None,
             handler_exit_block: None,
             break_exit_block: None,
@@ -318,7 +345,7 @@ impl<'ctx> Codegen<'ctx> {
     fn compile_program(&mut self, program: &Program) -> Result<(), String> {
         self.build_values_equal_fn();
         for stmt in &program.statements {
-            self.compile_statement(&stmt.node)?;
+            { self.current_span = Some(stmt.span.clone()); self.compile_statement(&stmt.node)?; }
         }
 
         // If any native module emitted __KeepAlive, run the end-of-program
@@ -616,6 +643,7 @@ impl<'ctx> Codegen<'ctx> {
                             ));
                         }
                     }
+                    self.current_span = Some(inner.span.clone());
                     self.compile_statement(&inner.node)?;
                 }
                 self.pop_scope();
@@ -684,7 +712,7 @@ impl<'ctx> Codegen<'ctx> {
         self.push_scope();
 
         for stmt in body {
-            self.compile_statement(&stmt.node)?;
+            { self.current_span = Some(stmt.span.clone()); self.compile_statement(&stmt.node)?; }
         }
 
         let mut pub_ptrs: Vec<(String, PointerValue<'ctx>)> = Vec::new();
@@ -3084,7 +3112,7 @@ impl<'ctx> Codegen<'ctx> {
         self.push_scope();
 
         for stmt in body {
-            self.compile_statement(&stmt.node)?;
+            { self.current_span = Some(stmt.span.clone()); self.compile_statement(&stmt.node)?; }
         }
 
         self.pop_scope();
@@ -3372,7 +3400,7 @@ impl<'ctx> Codegen<'ctx> {
                         ));
                     }
                 }
-                self.compile_statement(&stmt.node)?;
+                { self.current_span = Some(stmt.span.clone()); self.compile_statement(&stmt.node)?; }
             }
 
             // Fall-through to exit.
@@ -3579,7 +3607,7 @@ impl<'ctx> Codegen<'ctx> {
                         ));
                     }
                 }
-                self.compile_statement(&stmt.node)?;
+                { self.current_span = Some(stmt.span.clone()); self.compile_statement(&stmt.node)?; }
             }
 
             // Fall-through: branch to exit (if not already terminated by a HandlerReturn).
@@ -3733,7 +3761,7 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(then_block);
         self.push_scope();
         for stmt in body {
-            self.compile_statement(&stmt.node)?;
+            { self.current_span = Some(stmt.span.clone()); self.compile_statement(&stmt.node)?; }
         }
         self.pop_scope();
         if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
@@ -3885,7 +3913,7 @@ impl<'ctx> Codegen<'ctx> {
         self.break_exit_block = Some(loop_end);
 
         for stmt in body {
-            self.compile_statement(&stmt.node)?;
+            { self.current_span = Some(stmt.span.clone()); self.compile_statement(&stmt.node)?; }
         }
 
         // Restore break context.
