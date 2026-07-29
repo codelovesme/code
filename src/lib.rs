@@ -2,6 +2,7 @@ pub mod ast;
 #[cfg(feature = "llvm")]
 pub mod codegen;
 pub mod environment;
+pub mod format;
 pub mod interpreter;
 pub mod linker;
 pub mod module_loader;

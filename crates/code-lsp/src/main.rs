@@ -5,6 +5,7 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
+use code_lang::format::format_document;
 use code_lang::parser;
 
 // ---------------------------------------------------------------------------
@@ -383,82 +384,6 @@ fn make_snippet(label: &str, detail: &str, body: &str) -> CompletionItem {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Formatter
-// ---------------------------------------------------------------------------
-
-/// Simple line-based formatter: normalises indentation, trims trailing
-/// whitespace, and inserts a final newline.
-fn format_document(text: &str, indent_size: usize) -> String {
-    let indent_str = " ".repeat(indent_size);
-    let mut result: Vec<String> = Vec::new();
-    let mut depth: usize = 0;
-
-    for line in text.lines() {
-        let trimmed = line.trim();
-
-        if trimmed.is_empty() {
-            result.push(String::new());
-            continue;
-        }
-
-        // Count leading `}` to dedent before writing
-        let leading_closes = trimmed
-            .chars()
-            .take_while(|c| *c == '}')
-            .count();
-
-        let effective_depth = depth.saturating_sub(leading_closes);
-        let indented = format!("{}{}", indent_str.repeat(effective_depth), trimmed);
-        result.push(indented);
-
-        // Update depth based on braces (skip those inside strings / comments)
-        let (opens, closes) = count_braces(trimmed);
-        depth = (depth + opens).saturating_sub(closes);
-    }
-
-    let mut formatted = result.join("\n");
-    if !formatted.ends_with('\n') {
-        formatted.push('\n');
-    }
-    formatted
-}
-
-/// Count opening and closing braces on a line, ignoring braces inside strings
-/// and after `->` comments.
-fn count_braces(line: &str) -> (usize, usize) {
-    let chars: Vec<char> = line.chars().collect();
-    let mut opens = 0usize;
-    let mut closes = 0usize;
-    let mut in_string = false;
-    let mut i = 0;
-
-    while i < chars.len() {
-        if in_string {
-            if chars[i] == '\\' {
-                i += 2;
-                continue;
-            }
-            if chars[i] == '"' {
-                in_string = false;
-            }
-        } else {
-            // Comment start — rest of line is comment
-            if chars[i] == '-' && i + 1 < chars.len() && chars[i + 1] == '>' {
-                break;
-            }
-            match chars[i] {
-                '"' => in_string = true,
-                '{' => opens += 1,
-                '}' => closes += 1,
-                _ => {}
-            }
-        }
-        i += 1;
-    }
-
-    (opens, closes)
-}
 
 // ---------------------------------------------------------------------------
 // Hover helpers

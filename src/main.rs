@@ -49,6 +49,15 @@ fn run() -> i32 {
         "test" => {
             run_tests()
         }
+        "fmt" => {
+            if args.len() < 3 {
+                eprintln!("Error: missing file argument");
+                eprintln!("Usage: code fmt <file.code> [--check]");
+                return 1;
+            }
+            let check = args.iter().any(|a| a == "--check");
+            fmt_file(&args[2], check)
+        }
         "--version" | "-v" => {
             println!("{}", VERSION);
             0
@@ -67,6 +76,7 @@ fn print_usage() {
     println!("Usage:");
     println!("  code build <file.code> [--target <type>] [--release]    Compile a .code file");
     println!("  code run <file.code>                        Interpret a .code file");
+    println!("  code fmt <file.code> [--check]              Format a .code file in place");
     println!("  code test                                   Run all tests in tests/");
     println!("  code --version                              Print version");
     println!();
@@ -76,6 +86,41 @@ fn print_usage() {
     println!("  shared   Shared library (.so)");
     println!("  static   Static library (.a)");
     println!("  wasm     WebAssembly module (.wasm)");
+}
+
+/// Format a `.code` file in place, or verify formatting with `--check`.
+///
+/// Returns 0 when the file is (or was made) well-formatted; with `--check`,
+/// returns 1 if the file would change. Uses a 4-space indent.
+fn fmt_file(path: &str, check: bool) -> i32 {
+    let src = match fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error reading '{}': {}", path, e);
+            return 1;
+        }
+    };
+
+    let formatted = code_lang::format::format_document(&src, 4);
+
+    if formatted == src {
+        if !check {
+            println!("{} already formatted", path);
+        }
+        return 0;
+    }
+
+    if check {
+        eprintln!("{}: not formatted (run `code fmt {}`)", path, path);
+        return 1;
+    }
+
+    if let Err(e) = fs::write(path, &formatted) {
+        eprintln!("Error writing '{}': {}", path, e);
+        return 1;
+    }
+    println!("Formatted {}", path);
+    0
 }
 
 /// Parse and execute a single source file (.code).

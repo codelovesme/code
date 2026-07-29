@@ -99,6 +99,18 @@ code build <file.code> [--target <type>]
 cargo run -- run hello_world.code
 ```
 
+## Formatting
+
+Re-indent a `.code` file in place (4-space indentation, driven by `{`/`}`
+nesting):
+
+```bash
+code fmt hello_world.code          # rewrite the file
+code fmt hello_world.code --check  # exit non-zero if it isn't formatted (for CI)
+```
+
+The same formatter powers the language server's "Format Document" action.
+
 ## Language Syntax
 
 ### Comments
