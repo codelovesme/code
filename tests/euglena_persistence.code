@@ -10,4 +10,3 @@ assert ack.source = "persistence"
 emit Load { key = "color" } to this get result
 assert result._class = "LoadResult"
 assert result.key = "color"
-

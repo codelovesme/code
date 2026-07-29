@@ -10,4 +10,3 @@ assert ack.source = "logger"
 emit Exception { source = "unit-test", message = "oops" } to this get ack2
 assert ack2._class = "ACK"
 assert ack2.source = "logger"
-

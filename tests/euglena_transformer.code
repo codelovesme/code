@@ -5,4 +5,3 @@ emit TransformRequest { input = "hello", operation = "uppercase" } to this get r
 assert result._class = "TransformResult"
 assert result.input = "hello"
 assert result.operation = "uppercase"
-

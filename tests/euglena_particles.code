@@ -23,4 +23,3 @@ assert exc._class = "Exception"
 ack = ACK { source = "logger" }
 assert ack._class = "ACK"
 assert ack.source = "logger"
-

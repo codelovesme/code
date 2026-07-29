@@ -13,4 +13,3 @@ assert log_ack.source = "logger"
 emit Exception { source = "test-src", message = "err detail" } to this get exc_ack
 assert exc_ack._class = "ACK"
 assert exc_ack.source = "logger"
-
