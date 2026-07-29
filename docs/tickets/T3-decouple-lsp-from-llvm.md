@@ -66,8 +66,10 @@ So (owner decision) the feature-gate was used instead:
 - `cargo build --workspace` (binary keeps LLVM via default features) and the full
   test suite stay green.
 
-### Follow-up (optional)
+### Follow-up (done)
 
-Add a CI job that runs `cargo build -p code-lsp` in an LLVM-free environment to
-lock the decoupling in place. The true `code-frontend` crate split remains a
-possible future refactor if `ast`/`runtime` are ever decoupled.
+A CI job `lsp-no-llvm` now builds `code-lsp` with **no LLVM installed**
+(`LLVM_SYS_170_PREFIX` blanked) and fails if `cargo tree -p code-lsp` shows
+`inkwell`/`llvm-sys` — locking the decoupling in place. The true `code-frontend`
+crate split remains a possible future refactor if `ast`/`runtime` are ever
+decoupled.

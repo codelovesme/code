@@ -42,3 +42,25 @@ jobs:
 
       - name: Language suite (.code tests)
         run: ./target/debug/code test
+
+  lsp-no-llvm:
+    name: code-lsp builds without LLVM
+    runs-on: ubuntu-latest
+    env:
+      # Prove the decoupling: no LLVM is installed and the sys path is empty, so
+      # any accidental inkwell dependency would fail to build here.
+      LLVM_SYS_170_PREFIX: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Assert code-lsp has no LLVM in its dependency tree
+        run: |
+          if cargo tree -p code-lsp -e normal | grep -Ei 'inkwell|llvm-sys'; then
+            echo "::error::code-lsp pulled in LLVM (inkwell/llvm-sys); it must build without the llvm feature"
+            exit 1
+          fi
+
+      - name: Build code-lsp with no LLVM installed
+        run: cargo build -p code-lsp
