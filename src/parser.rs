@@ -2,7 +2,7 @@ use chumsky::prelude::*;
 
 use crate::ast::{
     BinaryOp, ConstraintExpr, DomainKind, Expression, FieldConstraint,
-    HandlerTarget, ObjectField, Program, Statement, StringPart, TypeExpr, UnaryOp,
+    HandlerTarget, ObjectField, Program, Spanned, Statement, StringPart, TypeExpr, UnaryOp,
 };
 
 /// Whitespace and comment skipper (does NOT consume newlines).
@@ -116,7 +116,7 @@ fn module_ref() -> impl Parser<char, String, Error = Simple<char>> + Clone {
 
 /// Parse an expression with access to a statement parser (for function literal bodies).
 fn build_expression(
-    _stmt: impl Parser<char, Statement, Error = Simple<char>> + Clone + 'static,
+    _stmt: impl Parser<char, Spanned<Statement>, Error = Simple<char>> + Clone + 'static,
 ) -> impl Parser<char, Expression, Error = Simple<char>> + Clone {
     recursive(move |expr| {
         // Object field: `name = expr` or computed `[expr] = expr`
@@ -588,8 +588,8 @@ fn constraint_rhs(
             ))
 }
 
-/// Parse a single statement.
-fn statement() -> impl Parser<char, Statement, Error = Simple<char>> + Clone {
+/// Parse a single statement, tagged with its source span.
+fn statement() -> impl Parser<char, Spanned<Statement>, Error = Simple<char>> + Clone {
     recursive(|stmt| {
         let expression = build_expression(stmt.clone());
 
@@ -879,6 +879,7 @@ fn statement() -> impl Parser<char, Statement, Error = Simple<char>> + Clone {
             .or(constraint_stmt)
             .or(block)
             .labelled("statement")
+            .map_with_span(|node, span| Spanned::new(node, span))
     })
 }
 

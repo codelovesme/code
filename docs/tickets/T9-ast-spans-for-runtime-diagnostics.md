@@ -1,8 +1,31 @@
 # T9 — Carry source spans on the AST for located runtime/codegen errors
 
-- **Priority:** Medium (deferred — high value, high cost)
+- **Priority:** Medium (interpreter slice done; codegen + multi-file deferred)
 - **Type:** Architecture / diagnostics
 - **Area:** `parser.rs`, `ast.rs`, `interpreter.rs`, `codegen.rs`, `diagnostics.rs`
+
+## Status / what shipped
+
+**Done (interpreter path, single-file):**
+- `ast::Spanned<T>` + `ast::Span`; all statement lists are now
+  `Vec<Spanned<Statement>>`. The parser tags each statement via
+  `map_with_span`. `interpreter`, `codegen`, `environment`, and `module_loader`
+  were adapted mechanically (per-statement functions unchanged; only the
+  iterating callers unwrap `.node`) — no behavior change from the plumbing.
+- The interpreter tracks the executing statement's span and exposes
+  `error_span()`; `code run` renders runtime errors rustc-style
+  (`file:line:col` + caret) via `code_lang::diagnostics`.
+
+**Deferred (still open):**
+- **codegen errors** remain plain `String` (spans are carried in the AST it
+  consumes, but its errors aren't rendered located yet).
+- **Multi-file / linked programs:** a span refers to its *own* file's source,
+  which `run_file` doesn't have, so located rendering is intentionally limited
+  to single-file programs (no top-level `Import`/`NativeImport`); linked
+  programs fall back to a plain message. Full support needs per-span file
+  provenance (carry a file id/source handle on `Spanned`).
+- **Expression-level granularity:** errors currently point at the enclosing
+  statement, not the exact sub-expression.
 
 ## Context
 

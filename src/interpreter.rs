@@ -3,7 +3,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use crate::ast::{
-    BinaryOp, ConstraintExpr, Expression, HandlerTarget, ObjectField, Program, Statement, TypeExpr, UnaryOp,
+    BinaryOp, ConstraintExpr, Expression, HandlerTarget, ObjectField, Program, Spanned, Statement,
+    TypeExpr, UnaryOp,
 };
 use crate::environment::Environment;
 use crate::native_module::EmitQueue;
@@ -20,6 +21,8 @@ pub struct Interpreter {
     emit_queues: Vec<EmitQueue>,
     keep_alive: bool,
     yield_stack: Vec<Vec<Rc<Value>>>,
+    /// Span of the statement currently executing, for located runtime errors.
+    current_span: Option<crate::ast::Span>,
 }
 
 impl Interpreter {
@@ -33,13 +36,15 @@ impl Interpreter {
             emit_queues: Vec::new(),
             keep_alive: false,
             yield_stack: Vec::new(),
+            current_span: None,
         }
     }
 
     /// Execute an entire program.
     pub fn execute(&mut self, program: Program) -> Result<(), String> {
         for stmt in program.statements {
-            self.exec_statement(stmt)?;
+            self.current_span = Some(stmt.span.clone());
+            self.exec_statement(stmt.node)?;
             if self.handler_return_value.is_some() {
                 break;
             }
@@ -135,6 +140,12 @@ impl Interpreter {
         self.drain_native_emissions()
     }
 
+    /// Source span of the statement that was executing when the most recent
+    /// error occurred. Used to render located runtime diagnostics.
+    pub fn error_span(&self) -> Option<crate::ast::Span> {
+        self.current_span.clone()
+    }
+
     /// Execute a single statement.
     fn exec_statement(&mut self, stmt: Statement) -> Result<(), String> {
         match stmt {
@@ -212,7 +223,7 @@ impl Interpreter {
             } => {
                 self.env.push_scope();
                 for stmt in body {
-                    self.exec_statement(stmt)?;
+                    { self.current_span = Some(stmt.span.clone()); self.exec_statement(stmt.node)?; }
                 }
 
                 match alias {
@@ -369,7 +380,7 @@ impl Interpreter {
                     Value::Boolean(true) => {
                         self.env.push_scope();
                         for stmt in body {
-                            self.exec_statement(stmt)?;
+                            { self.current_span = Some(stmt.span.clone()); self.exec_statement(stmt.node)?; }
                             if self.handler_return_value.is_some() || self.break_signal {
                                 break;
                             }
@@ -406,7 +417,7 @@ impl Interpreter {
                                 self.env.define(idx_name.clone(), Value::number(i as f64));
                             }
                             for stmt in body.clone() {
-                                self.exec_statement(stmt)?;
+                                { self.current_span = Some(stmt.span.clone()); self.exec_statement(stmt.node)?; }
                                 if self.handler_return_value.is_some() || self.break_signal {
                                     break;
                                 }
@@ -442,7 +453,7 @@ impl Interpreter {
                 loop {
                     self.env.push_scope();
                     for stmt in body.clone() {
-                        self.exec_statement(stmt)?;
+                        { self.current_span = Some(stmt.span.clone()); self.exec_statement(stmt.node)?; }
                         self.drain_native_emissions()?;
                         if self.handler_return_value.is_some() || self.break_signal {
                             break;
@@ -618,9 +629,9 @@ impl Interpreter {
     }
 
     /// Execute statements inside a block.
-    fn exec_block_stmts(&mut self, stmts: Vec<Statement>) -> Result<(), String> {
+    fn exec_block_stmts(&mut self, stmts: Vec<Spanned<Statement>>) -> Result<(), String> {
         for stmt in stmts {
-            self.exec_statement(stmt)?;
+            { self.current_span = Some(stmt.span.clone()); self.exec_statement(stmt.node)?; }
             if self.handler_return_value.is_some() {
                 break;
             }
@@ -721,7 +732,7 @@ impl Interpreter {
             _ => return Err("Cannot dispatch non-object value as particle".to_string()),
         };
 
-        let handler_bodies: Vec<Vec<Statement>> = match target {
+        let handler_bodies: Vec<Vec<Spanned<Statement>>> = match target {
             HandlerTarget::This => self
                 .env
                 .get_handler(&class_name)
@@ -777,7 +788,8 @@ impl Interpreter {
 
             let mut exec_error: Option<String> = None;
             for stmt in handler_body {
-                if let Err(e) = self.exec_statement(stmt) {
+                self.current_span = Some(stmt.span.clone());
+                if let Err(e) = self.exec_statement(stmt.node) {
                     exec_error = Some(e);
                     break;
                 }

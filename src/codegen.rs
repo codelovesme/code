@@ -14,7 +14,7 @@ use inkwell::FloatPredicate;
 use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
-use crate::ast::{BinaryOp, ConstraintExpr, Expression, FieldConstraint, HandlerTarget, ObjectField, Program, Statement, TypeExpr, TypeInfo, UnaryOp};
+use crate::ast::{BinaryOp, ConstraintExpr, Expression, FieldConstraint, HandlerTarget, ObjectField, Program, Spanned, Statement, TypeExpr, TypeInfo, UnaryOp};
 
 const TAG_NUMBER: u8 = 0;
 const TAG_STRING: u8 = 1;
@@ -148,7 +148,7 @@ struct Codegen<'ctx> {
     /// Type definitions (particle schemas): scope-level -> name -> fields (name, TypeExpr, optional).
     type_registry: Vec<HashMap<String, Vec<(String, TypeExpr, bool)>>>,
     /// Handler definitions: scope-level -> class_name -> handler body.
-    handler_registry: Vec<HashMap<String, Vec<Statement>>>,
+    handler_registry: Vec<HashMap<String, Vec<Spanned<Statement>>>>,
     /// Handler return alloca (set when compiling a handler body).
     handler_return_alloca: Option<PointerValue<'ctx>>,
     /// Handler exit block (set when compiling a handler body).
@@ -318,7 +318,7 @@ impl<'ctx> Codegen<'ctx> {
     fn compile_program(&mut self, program: &Program) -> Result<(), String> {
         self.build_values_equal_fn();
         for stmt in &program.statements {
-            self.compile_statement(stmt)?;
+            self.compile_statement(&stmt.node)?;
         }
 
         // If any native module emitted __KeepAlive, run the end-of-program
@@ -597,7 +597,7 @@ impl<'ctx> Codegen<'ctx> {
             Statement::Block(stmts) => {
                 self.push_scope();
                 for inner in stmts {
-                    let name_to_check = match &inner {
+                    let name_to_check = match &inner.node {
                         Statement::Constraint { variable, constraint: ConstraintExpr::Equals(_), .. } => Some(variable.clone()),
                         _ => None,
                     };
@@ -616,7 +616,7 @@ impl<'ctx> Codegen<'ctx> {
                             ));
                         }
                     }
-                    self.compile_statement(inner)?;
+                    self.compile_statement(&inner.node)?;
                 }
                 self.pop_scope();
                 Ok(())
@@ -676,7 +676,7 @@ impl<'ctx> Codegen<'ctx> {
     fn compile_import(
         &mut self,
         alias: Option<&str>,
-        body: &[Statement],
+        body: &[Spanned<Statement>],
         public_names: &[String],
         public_types: &[TypeInfo],
         public_handlers: &[crate::ast::HandlerInfo],
@@ -684,7 +684,7 @@ impl<'ctx> Codegen<'ctx> {
         self.push_scope();
 
         for stmt in body {
-            self.compile_statement(stmt)?;
+            self.compile_statement(&stmt.node)?;
         }
 
         let mut pub_ptrs: Vec<(String, PointerValue<'ctx>)> = Vec::new();
@@ -2884,11 +2884,11 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn define_handler(&mut self, class_name: String, body: Vec<Statement>) {
+    fn define_handler(&mut self, class_name: String, body: Vec<Spanned<Statement>>) {
         self.handler_registry.last_mut().expect("No active scope").insert(class_name, body);
     }
 
-    fn get_handler(&self, class_name: &str) -> Option<&Vec<Statement>> {
+    fn get_handler(&self, class_name: &str) -> Option<&Vec<Spanned<Statement>>> {
         for scope in self.handler_registry.iter().rev() {
             if let Some(body) = scope.get(class_name) {
                 return Some(body);
@@ -3031,7 +3031,7 @@ impl<'ctx> Codegen<'ctx> {
     /// If the program has native module emissions, an inline emission drain
     /// step is appended at the end of each iteration.  This replaces the
     /// previous standalone drain loop and `__KeepAlive` mechanism.
-    fn compile_loop_infinite(&mut self, result: Option<&str>, body: &[Statement]) -> Result<(), String> {
+    fn compile_loop_infinite(&mut self, result: Option<&str>, body: &[Spanned<Statement>]) -> Result<(), String> {
         let i8_type = self.context.i8_type();
         let i32_type = self.context.i32_type();
         let i64_type = self.context.i64_type();
@@ -3084,7 +3084,7 @@ impl<'ctx> Codegen<'ctx> {
         self.push_scope();
 
         for stmt in body {
-            self.compile_statement(stmt)?;
+            self.compile_statement(&stmt.node)?;
         }
 
         self.pop_scope();
@@ -3242,7 +3242,7 @@ impl<'ctx> Codegen<'ctx> {
         target: &HandlerTarget,
     ) -> Result<(), String> {
         // Look up the handler body.
-        let handler_bodies: Vec<Vec<Statement>> = match target {
+        let handler_bodies: Vec<Vec<Spanned<Statement>>> = match target {
             HandlerTarget::This => self
                 .get_handler(class_name)
                 .cloned()
@@ -3363,7 +3363,7 @@ impl<'ctx> Codegen<'ctx> {
             // Execute handler body.
             for stmt in &handler_body {
                 // Prevent handler from mutating outer-scope variables.
-                if let Statement::Constraint { variable, constraint: ConstraintExpr::Equals(_), .. } = stmt {
+                if let Statement::Constraint { variable, constraint: ConstraintExpr::Equals(_), .. } = &stmt.node {
                     if self.exists_in_any_scope(variable) && !self.current_scope_has(variable) {
                         self.pop_scope();
                         return Err(format!(
@@ -3372,7 +3372,7 @@ impl<'ctx> Codegen<'ctx> {
                         ));
                     }
                 }
-                self.compile_statement(stmt)?;
+                self.compile_statement(&stmt.node)?;
             }
 
             // Fall-through to exit.
@@ -3400,7 +3400,7 @@ impl<'ctx> Codegen<'ctx> {
 
         let class_name = self.infer_particle_class(particle)?;
 
-        let invocations: Vec<(String, Vec<Statement>)> = match target {
+        let invocations: Vec<(String, Vec<Spanned<Statement>>)> = match target {
             HandlerTarget::This => self
                 .get_handler(&class_name)
                 .cloned()
@@ -3570,7 +3570,7 @@ impl<'ctx> Codegen<'ctx> {
             // Compile the handler body.
             for stmt in &handler_body {
                 // Prevent handler from mutating outer-scope variables.
-                if let Statement::Constraint { variable, constraint: ConstraintExpr::Equals(_), .. } = stmt {
+                if let Statement::Constraint { variable, constraint: ConstraintExpr::Equals(_), .. } = &stmt.node {
                     if self.exists_in_any_scope(variable) && !self.current_scope_has(variable) {
                         self.pop_scope();
                         return Err(format!(
@@ -3579,7 +3579,7 @@ impl<'ctx> Codegen<'ctx> {
                         ));
                     }
                 }
-                self.compile_statement(stmt)?;
+                self.compile_statement(&stmt.node)?;
             }
 
             // Fall-through: branch to exit (if not already terminated by a HandlerReturn).
@@ -3721,7 +3721,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     /// Compile an if statement: `if <expr> { ... }`.
-    fn compile_if(&mut self, condition: &Expression, body: &[Statement]) -> Result<(), String> {
+    fn compile_if(&mut self, condition: &Expression, body: &[Spanned<Statement>]) -> Result<(), String> {
         let cond_val = self.compile_expr(condition)?.into_struct_value();
 
         let bool_val = self.compile_truthy(cond_val);
@@ -3733,7 +3733,7 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(then_block);
         self.push_scope();
         for stmt in body {
-            self.compile_statement(stmt)?;
+            self.compile_statement(&stmt.node)?;
         }
         self.pop_scope();
         if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
@@ -3751,7 +3751,7 @@ impl<'ctx> Codegen<'ctx> {
         index: Option<&str>,
         iterable: &Expression,
         result: Option<&str>,
-        body: &[Statement],
+        body: &[Spanned<Statement>],
     ) -> Result<(), String> {
         let i8_type = self.context.i8_type();
         let i32_type = self.context.i32_type();
@@ -3885,7 +3885,7 @@ impl<'ctx> Codegen<'ctx> {
         self.break_exit_block = Some(loop_end);
 
         for stmt in body {
-            self.compile_statement(stmt)?;
+            self.compile_statement(&stmt.node)?;
         }
 
         // Restore break context.

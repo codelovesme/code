@@ -192,6 +192,8 @@ fn collect_code_files(dir: &Path, out: &mut Vec<PathBuf>) {
 /// Parse and execute a single source file (.code).
 /// Returns 0 on success, 1 on error.
 fn run_file(path: &str) -> i32 {
+    let source = std::fs::read_to_string(path).unwrap_or_default();
+
     let program = match module_loader::load_program_with_links(Path::new(path)) {
         Ok(p) => p,
         Err(e) => {
@@ -200,6 +202,16 @@ fn run_file(path: &str) -> i32 {
         }
     };
 
+    // Located runtime errors are only safe for single-file programs: a statement
+    // pulled in from a linked module carries a span into *that* file's source,
+    // which we don't have here. Multi-file programs fall back to a plain message.
+    let single_file = !program.statements.iter().any(|s| {
+        matches!(
+            s.node,
+            ast::Statement::Import { .. } | ast::Statement::NativeImport { .. }
+        )
+    });
+
     let mut interp = Interpreter::new();
     match interp.execute(program) {
         Ok(()) => {
@@ -207,7 +219,13 @@ fn run_file(path: &str) -> i32 {
             0
         }
         Err(e) => {
-            eprintln!("Runtime error: {}", e);
+            match (single_file, interp.error_span()) {
+                (true, Some(span)) => eprintln!(
+                    "{}",
+                    code_lang::diagnostics::render(&source, path, span.start, span.end, &e)
+                ),
+                _ => eprintln!("Runtime error: {}", e),
+            }
             1
         }
     }

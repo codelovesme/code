@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::ast::{ConstraintExpr, FieldConstraint, Statement, TypeExpr};
+use crate::ast::{ConstraintExpr, FieldConstraint, Spanned, Statement, TypeExpr};
 use crate::native_module::NativeFnPtr;
 use crate::runtime::{Domain, Value};
 
@@ -23,7 +23,7 @@ pub struct Environment {
     /// Type definitions (particle schemas): name -> field constraints.
     type_registry: Vec<HashMap<String, Vec<FieldConstraint>>>,
     /// Handler definitions: class_name -> handler body (statements).
-    handler_registry: Vec<HashMap<String, Vec<Statement>>>,
+    handler_registry: Vec<HashMap<String, Vec<Spanned<Statement>>>>,
     /// Native handler definitions: class_name -> native function wrapper.
     native_handler_registry: Vec<HashMap<String, NativeFnPtr>>,
 }
@@ -243,7 +243,7 @@ impl Environment {
     pub fn define_handler(
         &mut self,
         class_name: String,
-        body: Vec<Statement>,
+        body: Vec<Spanned<Statement>>,
     ) -> Result<(), String> {
         let scope = self.handler_registry.last_mut().expect("No active scope");
         if scope.contains_key(&class_name) {
@@ -257,7 +257,7 @@ impl Environment {
     }
 
     /// Look up a handler by class name, searching from innermost scope outward.
-    pub fn get_handler(&self, class_name: &str) -> Option<&Vec<Statement>> {
+    pub fn get_handler(&self, class_name: &str) -> Option<&Vec<Spanned<Statement>>> {
         for scope in self.handler_registry.iter().rev() {
             if let Some(body) = scope.get(class_name) {
                 return Some(body);
@@ -267,7 +267,7 @@ impl Environment {
     }
 
     /// Look up all handlers outside the current scope.
-    pub fn get_handlers_outside_current_scope(&self, class_name: &str) -> Vec<Vec<Statement>> {
+    pub fn get_handlers_outside_current_scope(&self, class_name: &str) -> Vec<Vec<Spanned<Statement>>> {
         self.handler_registry
             .iter()
             .rev()
@@ -340,7 +340,7 @@ impl Environment {
     ) -> (
         Vec<HashMap<String, ConstrainedVar>>,
         Vec<HashMap<String, Vec<FieldConstraint>>>,
-        Vec<HashMap<String, Vec<Statement>>>,
+        Vec<HashMap<String, Vec<Spanned<Statement>>>>,
         Vec<HashMap<String, NativeFnPtr>>,
     ) {
         // Collect all types from all scopes into one map.
@@ -366,7 +366,7 @@ impl Environment {
         saved: (
             Vec<HashMap<String, ConstrainedVar>>,
             Vec<HashMap<String, Vec<FieldConstraint>>>,
-            Vec<HashMap<String, Vec<Statement>>>,
+            Vec<HashMap<String, Vec<Spanned<Statement>>>>,
             Vec<HashMap<String, NativeFnPtr>>,
         ),
     ) {

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use chumsky::Parser;
 
-use crate::ast::{ConstraintExpr, HandlerInfo, Program, Statement, TypeInfo};
+use crate::ast::{ConstraintExpr, HandlerInfo, Program, Spanned, Statement, TypeInfo};
 use crate::native_module;
 use crate::wasm_module;
 use crate::parser;
@@ -76,7 +76,8 @@ impl ModuleLoader {
 
         let mut statements = Vec::new();
         for stmt in parsed.statements {
-            match stmt {
+            let Spanned { node, span } = stmt;
+            match node {
                 Statement::Link { module_ref, alias } => {
                     if is_native_extension(&module_ref) {
                         // --- Native module (.so / .a / .wasm) ---
@@ -108,7 +109,7 @@ impl ModuleLoader {
                             native_module::load_native_module(&lib_path)?
                         };
 
-                        statements.push(Statement::NativeImport {
+                        statements.push(Spanned::new(Statement::NativeImport {
                             alias,
                             native_path: lib_canonical.to_string_lossy().to_string(),
                             is_wasm,
@@ -122,7 +123,7 @@ impl ModuleLoader {
                                 }
                             }).collect(),
                             emit_queue: native_mod.emit_queue,
-                        });
+                        }, span));
                     } else {
                         // --- Source module (.code) ---
                         let module_path = self.resolve_module(&canonical, &module_ref)?;
@@ -143,16 +144,16 @@ impl ModuleLoader {
                         // Collect public names (all top-level definitions minus private ones).
                         let (body, public_names, public_types, public_handlers) = collect_public_names(module_program.statements);
 
-                        statements.push(Statement::Import {
+                        statements.push(Spanned::new(Statement::Import {
                             alias,
                             body,
                             public_names,
                             public_types,
                             public_handlers,
-                        });
+                        }, span));
                     }
                 }
-                other => statements.push(other),
+                other => statements.push(Spanned::new(other, span)),
             }
         }
 
@@ -263,7 +264,9 @@ fn is_native_extension(module_ref: &str) -> bool {
 /// declared via private constraints.
 /// `Import` nodes that were flattened (alias=None) contribute their public_names
 /// to this module's public set as well.
-fn collect_public_names(statements: Vec<Statement>) -> (Vec<Statement>, Vec<String>, Vec<TypeInfo>, Vec<HandlerInfo>) {
+fn collect_public_names(
+    statements: Vec<Spanned<Statement>>,
+) -> (Vec<Spanned<Statement>>, Vec<String>, Vec<TypeInfo>, Vec<HandlerInfo>) {
     let mut body = Vec::new();
     let mut pub_names: Vec<String> = Vec::new();
     let mut pub_types: Vec<TypeInfo> = Vec::new();
@@ -271,58 +274,72 @@ fn collect_public_names(statements: Vec<Statement>) -> (Vec<Statement>, Vec<Stri
     let mut private_names: HashSet<String> = HashSet::new();
 
     for stmt in statements {
-        match stmt {
-            Statement::Constraint { ref variable, private: true, .. } => {
+        let Spanned { node, span } = stmt;
+        match node {
+            Statement::Constraint { variable, constraint, private: true } => {
                 private_names.insert(variable.clone());
-                // Convert to a non-private constraint in the body so it executes normally.
-                let Statement::Constraint { variable, constraint, .. } = stmt else { unreachable!() };
-                body.push(Statement::Constraint { variable, constraint, private: false });
+                // Keep it in the body as a normal (non-private) constraint so it executes.
+                body.push(Spanned::new(
+                    Statement::Constraint { variable, constraint, private: false },
+                    span,
+                ));
             }
-            Statement::Constraint { ref variable, private: false, .. } => {
-                // Only equality constraints define a "name" for public export.
-                if let Statement::Constraint { ref constraint, .. } = stmt {
-                    if matches!(constraint, ConstraintExpr::Equals(_)) && !private_names.contains(variable) {
-                        pub_names.push(variable.clone());
+            Statement::Constraint { variable, constraint, private: false } => {
+                // Only equality constraints define a name for public export.
+                if matches!(constraint, ConstraintExpr::Equals(_))
+                    && !private_names.contains(&variable)
+                {
+                    pub_names.push(variable.clone());
+                }
+                body.push(Spanned::new(
+                    Statement::Constraint { variable, constraint, private: false },
+                    span,
+                ));
+            }
+            Statement::TypeDeclaration { name, fields } => {
+                pub_types.push(TypeInfo { name: name.clone(), fields: fields.clone() });
+                body.push(Spanned::new(Statement::TypeDeclaration { name, fields }, span));
+            }
+            Statement::Import {
+                alias,
+                body: import_body,
+                public_names,
+                public_types,
+                public_handlers,
+            } => {
+                if alias.is_none() {
+                    for n in &public_names {
+                        if !private_names.contains(n) {
+                            pub_names.push(n.clone());
+                        }
+                    }
+                    for t in &public_types {
+                        pub_types.push(t.clone());
+                    }
+                    for h in &public_handlers {
+                        pub_handlers.push(h.clone());
                     }
                 }
-                body.push(stmt);
+                body.push(Spanned::new(
+                    Statement::Import { alias, body: import_body, public_names, public_types, public_handlers },
+                    span,
+                ));
             }
-            Statement::TypeDeclaration { ref name, ref fields } => {
-                pub_types.push(TypeInfo {
-                    name: name.clone(),
-                    fields: fields.clone(),
-                });
-                body.push(stmt);
-            }
-            Statement::Import { alias: None, ref public_names, ref public_types, ref public_handlers, .. } => {
-                for n in public_names {
-                    if !private_names.contains(n) {
-                        pub_names.push(n.clone());
-                    }
-                }
-                for t in public_types {
-                    pub_types.push(t.clone());
-                }
-                for h in public_handlers {
-                    pub_handlers.push(h.clone());
-                }
-                body.push(stmt);
-            }
-            Statement::HandlerDefinition { ref class_name, ref inline_type, body: ref handler_body } => {
+            Statement::HandlerDefinition { class_name, inline_type, body: handler_body } => {
                 pub_handlers.push(HandlerInfo {
                     class_name: class_name.clone(),
                     body: handler_body.clone(),
                 });
                 // Propagate inline handler types so they survive scope pop in compile_import.
-                if let Some(fields) = inline_type {
-                    pub_types.push(TypeInfo {
-                        name: class_name.clone(),
-                        fields: fields.clone(),
-                    });
+                if let Some(ref fields) = inline_type {
+                    pub_types.push(TypeInfo { name: class_name.clone(), fields: fields.clone() });
                 }
-                body.push(stmt);
+                body.push(Spanned::new(
+                    Statement::HandlerDefinition { class_name, inline_type, body: handler_body },
+                    span,
+                ));
             }
-            other => body.push(other),
+            other => body.push(Spanned::new(other, span)),
         }
     }
 

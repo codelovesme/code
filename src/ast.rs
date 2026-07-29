@@ -120,10 +120,28 @@ impl FieldConstraint {
     }
 }
 
+/// A source span as a char-index range (matches the parser's `Simple<char>`
+/// spans and the char-based renderer in `crate::diagnostics`).
+pub type Span = std::ops::Range<usize>;
+
+/// A syntax node paired with its source span. Used to give runtime errors a
+/// `file:line:col` location without threading spans into every node type.
+#[derive(Debug, Clone)]
+pub struct Spanned<T> {
+    pub node: T,
+    pub span: Span,
+}
+
+impl<T> Spanned<T> {
+    pub fn new(node: T, span: Span) -> Self {
+        Spanned { node, span }
+    }
+}
+
 /// The top-level program: a sequence of statements.
 #[derive(Debug)]
 pub struct Program {
-    pub statements: Vec<Statement>,
+    pub statements: Vec<Spanned<Statement>>,
 }
 
 /// A single statement in the Code language.
@@ -147,11 +165,11 @@ pub enum Statement {
         fields: Vec<FieldConstraint>,
     },
     Assert(Expression),
-    Block(Vec<Statement>),
+    Block(Vec<Spanned<Statement>>),
     /// `if <expr> { ... }` — conditional block (condition must be Boolean).
     If {
         condition: Expression,
-        body: Vec<Statement>,
+        body: Vec<Spanned<Statement>>,
     },
     /// `loop <var> over <expr> [get <result>] { ... }` — iterate over an array.
     LoopOver {
@@ -159,14 +177,14 @@ pub enum Statement {
         index: Option<String>,
         iterable: Expression,
         result: Option<String>,
-        body: Vec<Statement>,
+        body: Vec<Spanned<Statement>>,
     },
     /// `yield <expr>` — yield a value to the enclosing loop with `get`.
     Yield(Expression),
     /// `loop [get <result>] { ... }` — infinite loop (use `break` to exit).
     LoopInfinite {
         result: Option<String>,
-        body: Vec<Statement>,
+        body: Vec<Spanned<Statement>>,
     },
     /// `break` — exit the nearest enclosing loop.
     Break,
@@ -176,7 +194,7 @@ pub enum Statement {
         class_name: String,
         /// If this is a combined definition, the inline field constraints.
         inline_type: Option<Vec<FieldConstraint>>,
-        body: Vec<Statement>,
+        body: Vec<Spanned<Statement>>,
     },
     /// Handler invocation: `emit expr to this`, `emit expr to base`, or `emit expr to moduleAlias`.
     HandlerInvoke {
@@ -198,7 +216,7 @@ pub enum Statement {
     /// and `None` for bare `link` (flatten into current scope).
     Import {
         alias: Option<String>,
-        body: Vec<Statement>,
+        body: Vec<Spanned<Statement>>,
         public_names: Vec<String>,
         public_types: Vec<TypeInfo>,
         public_handlers: Vec<HandlerInfo>,
@@ -234,7 +252,7 @@ pub struct TypeInfo {
 #[derive(Debug, Clone)]
 pub struct HandlerInfo {
     pub class_name: String,
-    pub body: Vec<Statement>,
+    pub body: Vec<Spanned<Statement>>,
 }
 
 /// Emission declaration from a native module.
