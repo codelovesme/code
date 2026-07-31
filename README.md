@@ -448,8 +448,8 @@ Native modules can export:
 
 Note: the `.wasm` ABI descriptor reserves 8 bytes (offsets 12/16) that were
 originally a function-export slot; Code has no function-call concept (see
-[`docs/tickets/T11-ditch-function-call-syntax-plan.md`](docs/tickets/T11-ditch-function-call-syntax-plan.md) /
-[`docs/tickets/T12-core-handlers-implementation.md`](docs/tickets/T12-core-handlers-implementation.md)),
+[`docs/tickets/done/11-ditch-function-call-syntax-plan.md`](docs/tickets/done/11-ditch-function-call-syntax-plan.md) /
+[`docs/tickets/done/12-core-handlers-implementation.md`](docs/tickets/done/12-core-handlers-implementation.md)),
 so those bytes are kept as reserved/zeroed padding rather than shrinking the
 layout — reshuffling every subsequent offset would be a breaking wire-format
 change for any `.wasm` module built against the current layout, for no

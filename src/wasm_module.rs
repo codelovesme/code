@@ -28,7 +28,7 @@
 //! ```
 //!
 //! Offsets 12/16 were originally a function-export slot; Code has no
-//! function-call concept (see docs/tickets/T11-*.md, T12-*.md), so they are
+//! function-call concept (see docs/tickets/done/11-*.md, done/12-*.md), so they are
 //! kept as reserved/zeroed padding rather than reshuffling every subsequent
 //! offset — a wire-format change that could break external `.wasm` modules
 //! built against this layout, for no functional gain.
