@@ -1,9 +1,10 @@
-# T12 — Implement `to core` handler dispatch; remove `Expression::Call`
+# T12 [DONE] — Implement `to core` handler dispatch; remove `Expression::Call`
 
 - **Priority:** High
 - **Type:** Implementation (follow-up to T11's decision: Option A, full retirement)
-- **Area:** `ast.rs`, `parser.rs`, `interpreter.rs`, `codegen.rs`, `runtime_native.c`,
-  `wasm_module.rs`
+- **Area:** `ast.rs`, `parser.rs`, `interpreter.rs`, `codegen.rs` (planned to also
+  touch `runtime_native.c`/`wasm_module.rs`; see Resolution — neither ended up
+  needed/done)
 
 ## Scope
 
@@ -111,6 +112,54 @@ removing (check `tests/native_modules/test_math_wasm.c` and rebuild).
 
 ## Effort
 
-Medium. Touches five files but each change mirrors an existing, working
-pattern in the same file (no new architecture invented) — closer to plumbing
-than design.
+Planned: Medium, five files. Actual: four files (`runtime_native.c` turned out
+unnecessary — see Resolution) — each change mirrored an existing, working
+pattern in the same file, closer to plumbing than design.
+
+## Resolution (implemented)
+
+Items 1, 2, 3, and 6 landed exactly as planned. **Item 4's plan was corrected
+during implementation** (no C bridge functions needed after all — see below).
+**Item 5 (`.wasm` dead ABI slot) was not done** — deferred as a separable
+follow-up, not required for `to core` to work.
+
+- **1. `Expression::Call` removed outright**: the `Call` variant is gone from
+  `ast.rs`, its postfix `(args)` grammar production is gone from `parser.rs`
+  (parenthesized *grouping* — `(1 + 2)` — is a separate, untouched rule), and
+  both match arms (`interpreter.rs`, `codegen.rs`) are deleted along with the
+  now-dead `compile_call`. `grep -rn 'Expression::Call' src/` is empty.
+- **2. `HandlerTarget::Core`** added (`ast.rs`) and parses via
+  `text::keyword("core")` alongside `this`/`base` (`core` wasn't reserved — no
+  grammar conflict).
+- **3. Interpreter**: a free function `dispatch_core_handler(class_name, particle)`
+  (not a method — no `self` needed) handles `"Timestamp"`/`"Length"` with a
+  plain match, called from an early-return special case in
+  `exec_handler_invoke` before the body/native dispatch logic runs. The two
+  now-non-exhaustive `match target` sites use `unreachable!()` for `Core`
+  (genuinely unreachable given the early return) — the same idiom already used
+  elsewhere in this codebase.
+- **4. Codegen — plan corrected during implementation**: the plan above assumed
+  `compile_call`'s `timestamp`/`length` called into `runtime_native.c` (like
+  `__value_to_cstr` does), so it proposed adding `__core_timestamp`/
+  `__core_length` C functions there. Reading `compile_call` showed this was
+  wrong — it already built the result **entirely as inline LLVM IR** (calls to
+  already-declared `time_fn`/`strlen_fn`, no bridge involved). So instead: that
+  exact IR was moved into a new `compile_core_handler` method (called from
+  `compile_handler_invoke`'s new `Core` early-return, mirroring the
+  interpreter), and a new `build_core_result` helper wraps its output as
+  `{ _class = "<X>Result", value = ... }` — a two-field object built with the
+  same malloc+`field_type`-array pattern `compile_object_fields` already uses.
+  **No `runtime_native.c` changes were needed** — lower risk than the original
+  plan, one fewer file touched.
+- **5. `.wasm` dead ABI slot — not done, deferred**: unaffected by item 4's
+  correction and separable from everything else here; left as a distinct,
+  low-risk future cleanup.
+- **6. Tests**: `tests/core_handler_length.code`, `tests/core_handler_timestamp.code`,
+  `tests/fail_core_handler_unknown.code` (interpreter path, run via `code test`);
+  `build_core_handler_length_exe_runs` in `tests/llvm_codegen.rs` (compiled
+  `--target exe` path). Verified interpreter/codegen parity directly: `Length`
+  on an array, a string, and an empty array; `Timestamp`; unknown class error.
+- **Full suite green**: `cargo test --workspace` (all green, `llvm_codegen`
+  18/18), `.code` suite 137/137 (+3), `code fmt . --check` canonical (155
+  files), `code-lsp` still has no `inkwell`/`llvm-sys` in its dependency tree,
+  `abi_header_sync` (T2's drift guard) unaffected.

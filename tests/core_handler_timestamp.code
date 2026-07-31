@@ -1,0 +1,4 @@
+-> Test: `Timestamp` is a compiled-in core handler.
+emit Timestamp {} to core get t
+assert t._class = "TimestampResult"
+assert t.value ∈ Number

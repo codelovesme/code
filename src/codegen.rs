@@ -1191,9 +1191,6 @@ impl<'ctx> Codegen<'ctx> {
             Expression::IndexAccess { receiver, index } => {
                 self.compile_index_access(receiver, index)
             }
-            Expression::Call { callee, args } => {
-                self.compile_call(callee, args)
-            }
             Expression::InterpolatedString(parts) => {
                 self.compile_interpolated_string(parts)
             }
@@ -3287,6 +3284,7 @@ impl<'ctx> Codegen<'ctx> {
                 .skip(1)
                 .filter_map(|scope| scope.get(class_name).cloned())
                 .collect(),
+            HandlerTarget::Core => unreachable!("emission drain never targets core"),
         };
 
         if handler_bodies.is_empty() {
@@ -3424,6 +3422,13 @@ impl<'ctx> Codegen<'ctx> {
         particle: &Expression,
         target: &HandlerTarget,
     ) -> Result<BasicValueEnum<'ctx>, String> {
+        // Core handlers are a small, fixed, compiled-in set — bypass the
+        // body/native dispatch below entirely (mirrors the interpreter).
+        if matches!(target, HandlerTarget::Core) {
+            let class_name = self.infer_particle_class(particle)?;
+            return self.compile_core_handler(&class_name, particle);
+        }
+
         let particle_val = self.compile_expr(particle)?.into_struct_value();
 
         let class_name = self.infer_particle_class(particle)?;
@@ -3453,6 +3458,7 @@ impl<'ctx> Codegen<'ctx> {
                         .map(|body| (class_name.clone(), body))
                 })
                 .collect(),
+            HandlerTarget::Core => unreachable!("handled by the early return above"),
         };
 
         // Check for native handler pointer (from native module imports).
@@ -3468,6 +3474,7 @@ impl<'ctx> Codegen<'ctx> {
                 .rev()
                 .skip(1)
                 .find_map(|scope| scope.get(&class_name).copied()),
+            HandlerTarget::Core => unreachable!("handled by the early return above"),
         };
 
         if invocations.is_empty() && native_handler_ptr.is_none() {
@@ -4082,45 +4089,103 @@ impl<'ctx> Codegen<'ctx> {
 
     /// Compile a function call: `callee(args)`.
     /// Handles built-in functions: `timestamp()`, `length(x)`.
-    fn compile_call(
+    /// Build a two-field result particle: `{ _class = "<ClassName>Result", value = <value> }`.
+    /// `value` must already be a compiled `CodeValue` struct.
+    fn build_core_result(
         &mut self,
-        callee: &Expression,
-        args: &[Expression],
-    ) -> Result<BasicValueEnum<'ctx>, String> {
-        // Only identifiers are supported as callees for now (built-in functions).
-        let name = match callee {
-            Expression::Identifier(n) => n.as_str(),
-            _ => return Err("Only named function calls are supported".to_string()),
-        };
+        class_name: &str,
+        value: StructValue<'ctx>,
+    ) -> BasicValueEnum<'ctx> {
+        let i32_type = self.context.i32_type();
+        let i64_type = self.context.i64_type();
+        let i8_type = self.context.i8_type();
+        let f64_type = self.context.f64_type();
+        let bool_false = self.context.bool_type().const_int(0, false);
 
-        match name {
-            "timestamp" => {
-                if !args.is_empty() {
-                    return Err("timestamp() takes no arguments".to_string());
-                }
-                let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let field_size = self.field_type.size_of().unwrap();
+        let total_size = self.builder.build_int_mul(
+            field_size, i64_type.const_int(2, false), "core_res_size",
+        ).unwrap();
+        let raw_ptr = self.builder.build_call(
+            self.malloc_fn, &[total_size.into()], "core_res_mem",
+        ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
+
+        // Field 0: `_class = "<ClassName>Result"`.
+        let class_field_name = self.builder.build_global_string_ptr(
+            "_class", &format!("core_fn_{}", self.string_count),
+        ).unwrap();
+        self.string_count += 1;
+        let class_str_global = self.builder.build_global_string_ptr(
+            &format!("{}Result", class_name), &format!("core_cls_{}", self.string_count),
+        ).unwrap();
+        self.string_count += 1;
+        let class_val = self.build_value(
+            i8_type.const_int(TAG_STRING as u64, false), f64_type.const_float(0.0),
+            class_str_global.as_pointer_value(), bool_false,
+        );
+        let field0_ptr = unsafe { self.builder.build_in_bounds_gep(
+            self.field_type, raw_ptr, &[i32_type.const_int(0, false)], "core_field0",
+        ) }.unwrap();
+        let name0_slot = self.builder.build_struct_gep(self.field_type, field0_ptr, 0, "core_n0").unwrap();
+        self.builder.build_store(name0_slot, class_field_name.as_pointer_value()).unwrap();
+        let val0_slot = self.builder.build_struct_gep(self.field_type, field0_ptr, 1, "core_v0").unwrap();
+        self.builder.build_store(val0_slot, class_val).unwrap();
+
+        // Field 1: `value = <value>`.
+        let value_field_name = self.builder.build_global_string_ptr(
+            "value", &format!("core_fn_{}", self.string_count),
+        ).unwrap();
+        self.string_count += 1;
+        let field1_ptr = unsafe { self.builder.build_in_bounds_gep(
+            self.field_type, raw_ptr, &[i32_type.const_int(1, false)], "core_field1",
+        ) }.unwrap();
+        let name1_slot = self.builder.build_struct_gep(self.field_type, field1_ptr, 0, "core_n1").unwrap();
+        self.builder.build_store(name1_slot, value_field_name.as_pointer_value()).unwrap();
+        let val1_slot = self.builder.build_struct_gep(self.field_type, field1_ptr, 1, "core_v1").unwrap();
+        self.builder.build_store(val1_slot, value).unwrap();
+
+        let count_f = f64_type.const_float(2.0);
+        self.build_value(i8_type.const_int(TAG_OBJECT as u64, false), count_f, raw_ptr, bool_false).into()
+    }
+
+    /// Compile `emit X { ... } to core get result` — the LLVM-side counterpart
+    /// of the interpreter's `dispatch_core_handler`. Code has no function-call
+    /// concept; built-ins are handlers dispatched to a small, fixed,
+    /// compiled-in set, not user-extensible like `.so`/`.wasm` handlers.
+    fn compile_core_handler(
+        &mut self,
+        class_name: &str,
+        particle: &Expression,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_type = self.context.i8_type();
+        let f64_type = self.context.f64_type();
+        let bool_val = self.context.bool_type().const_int(0, false);
+
+        match class_name {
+            "Timestamp" => {
                 let null_ptr = i8_ptr_type.const_null();
                 let ts = self.builder.build_call(
                     self.time_fn, &[null_ptr.into()], "ts_raw",
                 ).unwrap().try_as_basic_value().left().unwrap().into_int_value();
-                let ts_f64 = self.builder.build_signed_int_to_float(
-                    ts, self.context.f64_type(), "ts_f64",
-                ).unwrap();
-                let tag = self.context.i8_type().const_int(TAG_NUMBER as u64, false);
-                let str_ptr = i8_ptr_type.const_null();
-                let bool_val = self.context.bool_type().const_int(0, false);
-                Ok(self.build_value(tag, ts_f64, str_ptr, bool_val).into())
+                let ts_f64 = self.builder.build_signed_int_to_float(ts, f64_type, "ts_f64").unwrap();
+                let tag = i8_type.const_int(TAG_NUMBER as u64, false);
+                let value = self.build_value(tag, ts_f64, null_ptr, bool_val);
+                Ok(self.build_core_result(class_name, value))
             }
-            "length" => {
-                if args.len() != 1 {
-                    return Err("length() takes exactly 1 argument".to_string());
-                }
-                let val = self.compile_expr(&args[0])?.into_struct_value();
+            "Length" => {
+                let fields = match particle {
+                    Expression::Particle { fields, .. } => fields.as_slice(),
+                    _ => &[],
+                };
+                let value_expr = fields.iter().find_map(|f| match f {
+                    ObjectField::Static(n, e) if n == "value" => Some(e.clone()),
+                    _ => None,
+                }).ok_or_else(|| "Length { value = ... } requires a 'value' field".to_string())?;
+
+                let val = self.compile_expr(&value_expr)?.into_struct_value();
                 let tag = self.builder.build_extract_value(val, 0, "len_tag")
                     .unwrap().into_int_value();
-                let i8_type = self.context.i8_type();
-                let i8_ptr_type = i8_type.ptr_type(AddressSpace::default());
-                let f64_type = self.context.f64_type();
 
                 let is_array = self.builder.build_int_compare(
                     IntPredicate::EQ, tag,
@@ -4179,10 +4244,10 @@ impl<'ctx> Codegen<'ctx> {
                 let result_f64 = len_phi.as_basic_value().into_float_value();
                 let result_tag = i8_type.const_int(TAG_NUMBER as u64, false);
                 let null_ptr = i8_ptr_type.const_null();
-                let bool_val = self.context.bool_type().const_int(0, false);
-                Ok(self.build_value(result_tag, result_f64, null_ptr, bool_val).into())
+                let value = self.build_value(result_tag, result_f64, null_ptr, bool_val);
+                Ok(self.build_core_result(class_name, value))
             }
-            _ => Err(format!("Unknown function: {}", name)),
+            other => Err(format!("Unknown core handler: '{}'", other)),
         }
     }
 
@@ -5170,7 +5235,7 @@ impl<'ctx> Codegen<'ctx> {
                         format!("Cannot infer type of '{}' (no type annotation)", name)
                     })
             }
-            Expression::PropertyAccess(_, _) | Expression::IndexAccess { .. } | Expression::Call { .. } => {
+            Expression::PropertyAccess(_, _) | Expression::IndexAccess { .. } => {
                 Err("Cannot infer type of non-literal expression at compile time".to_string())
             }
         }

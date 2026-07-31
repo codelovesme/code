@@ -255,7 +255,9 @@ fn build_expression(
             .or(identifier().map(Expression::Identifier))
             .labelled("expression");
 
-        // Postfix: `.field`, `[index]`, `(args)`
+        // Postfix: `.field`, `[index]`
+        // No `(args)` call syntax — Code has no function-call concept; reusable
+        // logic is expressed only as handlers (`emit X to target get result`).
         let postfix = atom
             .then(
                 just('.')
@@ -267,18 +269,6 @@ fn build_expression(
                         .then_ignore(any_whitespace())
                         .then_ignore(just(']'))
                         .map(PostfixOp::Index))
-                    .or(just('(')
-                        .ignore_then(any_whitespace())
-                        .ignore_then(
-                            expr.clone()
-                                .separated_by(
-                                    any_whitespace().ignore_then(just(',')).ignore_then(any_whitespace()),
-                                )
-                                .allow_trailing(),
-                        )
-                        .then_ignore(any_whitespace())
-                        .then_ignore(just(')'))
-                        .map(PostfixOp::Call))
                     .repeated(),
             )
             .foldl(|expr, op| match op {
@@ -286,10 +276,6 @@ fn build_expression(
                 PostfixOp::Index(index) => Expression::IndexAccess {
                     receiver: Box::new(expr),
                     index: Box::new(index),
-                },
-                PostfixOp::Call(args) => Expression::Call {
-                    callee: Box::new(expr),
-                    args,
                 },
             });
 
@@ -444,7 +430,6 @@ fn build_expression(
 enum PostfixOp {
     Property(String),
     Index(Expression),
-    Call(Vec<Expression>),
 }
 
 /// Line separator: one or more newlines.
@@ -811,6 +796,7 @@ fn statement() -> impl Parser<char, Spanned<Statement>, Error = Simple<char>> + 
         let handler_target = text::keyword("this")
             .to(HandlerTarget::This)
             .or(text::keyword("base").to(HandlerTarget::Base))
+            .or(text::keyword("core").to(HandlerTarget::Core))
             .or(identifier().map(HandlerTarget::ModuleAlias));
 
         // Emit statement (fire-and-forget or with result):

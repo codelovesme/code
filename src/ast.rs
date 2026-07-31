@@ -272,6 +272,9 @@ pub enum HandlerTarget {
     Base,
     /// Dispatch to a handler in the given module alias.
     ModuleAlias(String),
+    /// Dispatch to a compiled-in core handler (e.g. `Length`, `Timestamp`).
+    /// Code has no user-defined functions — core built-ins are handlers too.
+    Core,
 }
 
 /// A field in an object or particle literal.
@@ -312,11 +315,6 @@ pub enum Expression {
     IndexAccess {
         receiver: Box<Expression>,
         index: Box<Expression>,
-    },
-    /// Function call: `callee(args)`.
-    Call {
-        callee: Box<Expression>,
-        args: Vec<Expression>,
     },
     /// String interpolation: `"text $var more text"`.
     InterpolatedString(Vec<StringPart>),

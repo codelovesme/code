@@ -16,7 +16,7 @@ per ticket.
 | [T9](T9-ast-spans-for-runtime-diagnostics.md) | Located errors via AST spans — `run` + `build`, single- & multi-file (expression-level dropped) | Medium | done |
 | [T10](T10-negative-number-literal.md) | Negative number literals (`-5`) don't parse | Medium | todo |
 | [T11](T11-ditch-function-call-syntax-plan.md) | [PLANNING] Retire `name(args)` call syntax; move built-ins to handlers | High | decided |
-| [T12](T12-core-handlers-implementation.md) | Implement `to core` handler dispatch; remove `Expression::Call` | High | todo |
+| [T12](T12-core-handlers-implementation.md) | Implement `to core` handler dispatch; remove `Expression::Call` | High | done |
 
 `cargo test --workspace` and the `.code` suite are fully green.
 
@@ -25,4 +25,7 @@ function value — reusable logic exists only as handlers (particle dispatch).
 The README's former "Functions" section documented a feature that never
 existed; it has been removed. T11 decided (full retirement, no `name(args)`
 sugar survives): `timestamp`/`length` move to `emit X to core get result`.
-T12 is the concrete implementation plan.
+T12 implemented it — `Expression::Call` is fully removed from the language
+(`grep -rn 'Expression::Call' src/` is empty). One small piece remains: the
+dead `.wasm` function-export ABI slot (noted in T12's resolution) is a
+separate, low-risk future cleanup.

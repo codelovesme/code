@@ -10,6 +10,55 @@ use crate::environment::Environment;
 use crate::native_module::EmitQueue;
 use crate::runtime::{values_equal, Domain, Value};
 
+/// Dispatch a particle to a compiled-in core handler (`emit X to core get r`).
+///
+/// Core handlers are how Code exposes built-in behavior — the language has no
+/// function-call concept, so `timestamp`/`length` and any future built-in are
+/// handlers like any other, just resolved from a fixed compiled-in set instead
+/// of a linked module.
+fn dispatch_core_handler(class_name: &str, particle: &Value) -> Result<Rc<Value>, String> {
+    let field = |name: &str| -> Option<Rc<Value>> {
+        match particle {
+            Value::Object(fields) => fields.get(name).cloned(),
+            _ => None,
+        }
+    };
+
+    match class_name {
+        "Timestamp" => {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as f64;
+            let mut result = HashMap::new();
+            result.insert("_class".to_string(), Value::string("TimestampResult"));
+            result.insert("value".to_string(), Value::number(ts));
+            Ok(Value::object(result))
+        }
+        "Length" => {
+            let value = field("value").ok_or_else(|| {
+                "Length { value = ... } requires a 'value' field".to_string()
+            })?;
+            let count = match value.as_ref() {
+                Value::Array(arr) => arr.len(),
+                Value::String(s) => s.len(),
+                other => {
+                    return Err(format!(
+                        "Length requires an array or string 'value', found {}",
+                        other.type_name()
+                    ))
+                }
+            };
+            let mut result = HashMap::new();
+            result.insert("_class".to_string(), Value::string("LengthResult"));
+            result.insert("value".to_string(), Value::number(count as f64));
+            Ok(Value::object(result))
+        }
+        other => Err(format!("Unknown core handler: '{}'", other)),
+    }
+}
+
 /// Tree-walking interpreter for Code.
 /// Executes a parsed AST using constraint-based variable semantics.
 pub struct Interpreter {
@@ -732,6 +781,13 @@ impl Interpreter {
             _ => return Err("Cannot dispatch non-object value as particle".to_string()),
         };
 
+        // Core handlers are a small, fixed, compiled-in set (not user-extensible
+        // like `.so`/`.wasm` handlers), so they bypass the body/native dispatch
+        // below entirely.
+        if matches!(target, HandlerTarget::Core) {
+            return dispatch_core_handler(&class_name, particle_val);
+        }
+
         let handler_bodies: Vec<Vec<Spanned<Statement>>> = match target {
             HandlerTarget::This => self
                 .env
@@ -748,6 +804,7 @@ impl Interpreter {
             HandlerTarget::Base => {
                 self.env.get_handlers_outside_current_scope(&class_name)
             }
+            HandlerTarget::Core => unreachable!("handled by the early return above"),
         };
 
         let native_handlers: Vec<crate::native_module::NativeFnPtr> = match target {
@@ -766,6 +823,7 @@ impl Interpreter {
             HandlerTarget::Base => self
                 .env
                 .get_native_handlers_outside_current_scope(&class_name),
+            HandlerTarget::Core => unreachable!("handled by the early return above"),
         };
 
         if handler_bodies.is_empty() && native_handlers.is_empty() {
@@ -1198,34 +1256,6 @@ impl Interpreter {
                     self.value_matches_type_expr(&val, &type_expr, &mut Vec::new());
                 let result = if negated { !matches } else { matches };
                 Ok(Value::boolean(result))
-            }
-            Expression::Call { callee, args } => {
-                let name = match *callee {
-                    Expression::Identifier(n) => n,
-                    _ => return Err("Only named function calls are supported".to_string()),
-                };
-                match name.as_str() {
-                    "timestamp" => {
-                        use std::time::{SystemTime, UNIX_EPOCH};
-                        let ts = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs() as f64;
-                        Ok(Value::number(ts))
-                    }
-                    "length" => {
-                        if args.len() != 1 {
-                            return Err("length() takes exactly 1 argument".to_string());
-                        }
-                        let val = self.eval_expr(args.into_iter().next().unwrap())?;
-                        match val.as_ref() {
-                            Value::Array(arr) => Ok(Value::number(arr.len() as f64)),
-                            Value::String(s) => Ok(Value::number(s.len() as f64)),
-                            _ => Err("length() requires an array or string argument".to_string()),
-                        }
-                    }
-                    _ => Err(format!("Unknown function: {}", name)),
-                }
             }
         }
     }

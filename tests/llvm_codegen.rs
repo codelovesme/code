@@ -160,6 +160,24 @@ fn build_object_exe_runs() {
 }
 
 #[test]
+fn build_core_handler_length_exe_runs() {
+    let exe = env!("CARGO_BIN_EXE_code");
+    let status = Command::new(exe)
+        .args(["build", "tests/core_handler_length.code", "--target", "exe"])
+        .status()
+        .expect("failed to run code build");
+    assert!(status.success(), "build with `to core` dispatch failed");
+
+    let out_path = "target/llvm/core_handler_length";
+    assert!(std::path::Path::new(out_path).exists(), "executable not created");
+
+    let run_status = Command::new(out_path)
+        .status()
+        .expect("failed to run compiled executable");
+    assert!(run_status.success(), "core_handler_length executable failed");
+}
+
+#[test]
 fn build_object_equality_exe_runs() {
     let exe = env!("CARGO_BIN_EXE_code");
     let status = Command::new(exe)

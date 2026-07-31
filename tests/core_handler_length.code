@@ -1,0 +1,12 @@
+-> Test: `Length` is a compiled-in core handler, not a function call.
+-> `emit X to core get result` — Code has no user-defined functions.
+
+emit Length { value = [1, 2, 3, 4] } to core get n1
+assert n1._class = "LengthResult"
+assert n1.value = 4
+
+emit Length { value = "hello world" } to core get n2
+assert n2.value = 11
+
+emit Length { value = [] } to core get n3
+assert n3.value = 0
