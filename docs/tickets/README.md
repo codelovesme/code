@@ -41,7 +41,7 @@ _(none right now)_
 
 | # | Title |
 |---|-------|
-| [15](medium/15-publish-code-native-crates-io.md) | Publish `code-native` to crates.io |
+| [15](medium/15-publish-code-native-crates-io.md) | Publish `code-native` to crates.io — **ready, `cargo publish` is the owner's one remaining step** |
 | [16](medium/16-vscode-extension-consolidation-and-publish.md) | Consolidate VS Code extension into this repo; publish to Marketplace |
 
 ## Active — Low priority
@@ -58,9 +58,10 @@ binaries, installer, `code-native` on crates.io, VS Code Marketplace) of a
 platform binaries, package registry) are planned but not yet ticketed.
 Tickets 13 (release workflow) and 14 (install script) are done — pushing a
 `v*` tag produces a GitHub Release with a standalone Linux x86_64 binary, and
-`curl -sSf .../install.sh | sh` installs it. The two remaining Phase 1 items
-are credential-gated to the repo owner (crates.io token, VS Code publisher
-PAT).
+`curl -sSf .../install.sh | sh` installs it. Ticket 15 is fully prepared and
+verified (`cargo publish --dry-run` succeeds) — `cargo login` + `cargo
+publish` is the one remaining, owner-only step. Ticket 16 (VS Code extension)
+is not started.
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).
