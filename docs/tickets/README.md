@@ -28,6 +28,7 @@ finished, priority no longer matters for it. Numbers are stable identifiers
 | [10](done/10-negative-number-literal.md) | Negative number literals (`-5`) don't parse |
 | [11](done/11-ditch-function-call-syntax-plan.md) | [PLANNING] Retire `name(args)` call syntax; move built-ins to handlers (decided) |
 | [12](done/12-core-handlers-implementation.md) | Implement `to core` handler dispatch; remove `Expression::Call` |
+| [13](done/13-release-workflow.md) | Release workflow: GitHub Releases on tag push (Linux x86_64) |
 
 `cargo test --workspace` and the `.code` suite are fully green.
 
@@ -35,7 +36,6 @@ finished, priority no longer matters for it. Numbers are stable identifiers
 
 | # | Title |
 |---|-------|
-| [13](high/13-release-workflow.md) | Release workflow: GitHub Releases on tag push (Linux x86_64) |
 | [14](high/14-install-script.md) | Install script (`curl \| sh`) |
 
 ## Active — Medium priority
@@ -51,14 +51,16 @@ _(none yet)_
 
 ---
 
-**Distribution roadmap (approved 2026-07-31):** the language has zero
-distribution today — no release binaries, no installer, no published
+**Distribution roadmap (approved 2026-07-31):** the language had zero
+distribution before this — no release binaries, no installer, no published
 packages, no docs site, no playground. Tickets 13–16 are Phase 1 (release
 binaries, installer, `code-native` on crates.io, VS Code Marketplace) of a
 3-phase plan; Phase 2 (docs site, browser playground) and Phase 3 (multi-
-platform binaries, package registry) are planned but not yet ticketed. Two
-Phase 1 items are credential-gated to the repo owner (crates.io token, VS
-Code publisher PAT) — everything else is ready to implement.
+platform binaries, package registry) are planned but not yet ticketed.
+Ticket 13 (release workflow) is done — pushing a `v*` tag now produces a
+GitHub Release with a standalone Linux x86_64 binary. Two remaining Phase 1
+items are credential-gated to the repo owner (crates.io token, VS Code
+publisher PAT).
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).
