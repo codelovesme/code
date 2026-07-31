@@ -151,9 +151,27 @@ follow-up, not required for `to core` to work.
   same malloc+`field_type`-array pattern `compile_object_fields` already uses.
   **No `runtime_native.c` changes were needed** — lower risk than the original
   plan, one fewer file touched.
-- **5. `.wasm` dead ABI slot — not done, deferred**: unaffected by item 4's
-  correction and separable from everything else here; left as a distinct,
-  low-risk future cleanup.
+- **5. `.wasm` dead ABI slot — plan revised, done differently than proposed**:
+  investigation showed the Rust reader **never parsed** offsets 12/16 at all
+  (no `DESC_FNS_PTR`/`DESC_FN_COUNT` constants exist — the reader silently
+  skips straight from `var_count` to `handlers_ptr`), so there was no dead
+  *reading* code to delete. The actual risk was on the *writer* side:
+  `tests/native_modules/test_math_wasm.c` deliberately zero-fills those 8 bytes
+  (`/* fns_ptr (none) */`) to keep `handlers_ptr` at its expected offset 20 —
+  shrinking the descriptor would be a **breaking wire-format change**
+  (renumbering every subsequent offset) for that fixture and any external
+  `.wasm` module built against the current 44-byte layout, for effectively no
+  gain (the field was already dead weight, not a functional problem). Given
+  that, the layout was **not shrunk**. What *was* stale and safe to fix: the
+  doc comments and struct docs on both sides still called the reserved bytes
+  `functions_ptr`/`fn_count` and referenced an unused `CodeExportFn` struct —
+  relabeled as `reserved (must be 0)` in `wasm_module.rs`'s doc comment, its
+  offset-table comment, and `test_math_wasm.c`'s matching comments; the
+  orphaned `CodeExportFn` doc block was deleted outright. Also fixed an
+  unrelated stale reference found in passing (`wasm_module.rs`'s "matches
+  code_abi.h DESC_SIZE" comment — no such constant exists in `code_abi.h`).
+  Zero wire-format change; `.wasm` fixture rebuilt and the native-link tests
+  that exercise this exact descriptor-parsing path still pass.
 - **6. Tests**: `tests/core_handler_length.code`, `tests/core_handler_timestamp.code`,
   `tests/fail_core_handler_unknown.code` (interpreter path, run via `code test`);
   `build_core_handler_length_exe_runs` in `tests/llvm_codegen.rs` (compiled

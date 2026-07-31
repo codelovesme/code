@@ -19,25 +19,24 @@
 //! 0       4     abi_version       (u32)
 //! 4       4     vars_ptr          (u32 — offset to [CodeExportVar])
 //! 8       4     var_count         (u32)
-//! 12      4     functions_ptr     (u32 — offset to [CodeExportFn])
-//! 16      4     fn_count          (u32)
+//! 12      4     reserved          (u32, must be 0)
+//! 16      4     reserved          (u32, must be 0)
 //! 20      4     handlers_ptr      (u32 — offset to [CodeExportHandler])
 //! 24      4     handler_count     (u32)
 //! 28      4     types_ptr         (u32 — offset to [CodeExportType])
 //! 32      4     type_count        (u32)
 //! ```
 //!
+//! Offsets 12/16 were originally a function-export slot; Code has no
+//! function-call concept (see docs/tickets/T11-*.md, T12-*.md), so they are
+//! kept as reserved/zeroed padding rather than reshuffling every subsequent
+//! offset — a wire-format change that could break external `.wasm` modules
+//! built against this layout, for no functional gain.
+//!
 //! CodeExportVar (16 bytes):
 //! ```text
 //! 0   4   name_ptr    (u32)
 //! 4   12  value       (CodeValue)
-//! ```
-//!
-//! CodeExportFn (12 bytes):
-//! ```text
-//! 0   4   name_ptr       (u32)
-//! 4   4   func_idx       (u32 — wasm function table index)
-//! 8   4   param_count    (u32)
 //! ```
 //!
 //! CodeExportHandler (8 bytes):
@@ -134,12 +133,12 @@ const CODE_FIELD_SIZE: u32 = 40;
 const CODE_FIELD_NAME: u32 = 0;
 const CODE_FIELD_VALUE: u32 = 8;
 
-// CodeModuleDesc layout (44 bytes) — matches code_abi.h DESC_SIZE:
+// CodeModuleDesc layout (44 bytes), wasm32 linear-memory offsets:
 //   [0]  abi_version    u32
 //   [4]  vars_ptr       u32
 //   [8]  var_count      u32
-//   [12] fns_ptr        u32  (exported functions — not used by this host)
-//   [16] fn_count       u32
+//   [12] reserved       u32  (must be 0 — see the module doc comment above)
+//   [16] reserved       u32  (must be 0)
 //   [20] handlers_ptr   u32
 //   [24] handler_count  u32
 //   [28] types_ptr      u32
@@ -149,7 +148,7 @@ const CODE_FIELD_VALUE: u32 = 8;
 const DESC_ABI_VERSION: u32 = 0;
 const DESC_VARS_PTR: u32 = 4;
 const DESC_VAR_COUNT: u32 = 8;
-// offsets 12/16 are fns_ptr/fn_count (skipped — host does not call exported fns)
+// Offsets 12/16 are reserved/zeroed padding (see module doc comment).
 const DESC_HANDLERS_PTR: u32 = 20;
 const DESC_HANDLER_COUNT: u32 = 24;
 const DESC_TYPES_PTR: u32 = 28;

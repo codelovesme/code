@@ -229,8 +229,8 @@ void code_handler_point(int32_t particle_ptr, int32_t result_ptr) {
  *   [0]  abi_version    u32
  *   [4]  vars_ptr       u32
  *   [8]  var_count      u32
- *   [12] fns_ptr        u32  (exported functions — unused, set to 0)
- *   [16] fn_count       u32
+ *   [12] reserved       u32  (must be 0 — Code has no function-call concept)
+ *   [16] reserved       u32  (must be 0)
  *   [20] handlers_ptr   u32
  *   [24] handler_count  u32
  *   [28] types_ptr      u32
@@ -309,8 +309,8 @@ int32_t code_module_init_fn(void) {
     write_u32(module_desc + 0,  2);                              /* abi_version */
     write_u32(module_desc + 4,  (uint32_t)(uintptr_t)var_PI_mem); /* vars_ptr */
     write_u32(module_desc + 8,  1);                              /* var_count */
-    write_u32(module_desc + 12, 0);                              /* fns_ptr (none) */
-    write_u32(module_desc + 16, 0);                              /* fn_count */
+    write_u32(module_desc + 12, 0);                              /* reserved, must be 0 */
+    write_u32(module_desc + 16, 0);                              /* reserved, must be 0 */
     write_u32(module_desc + 20, (uint32_t)(uintptr_t)handler_Point); /* handlers_ptr */
     write_u32(module_desc + 24, 1);                              /* handler_count */
     write_u32(module_desc + 28, (uint32_t)(uintptr_t)type_Point); /* types_ptr */

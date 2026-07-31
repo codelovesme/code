@@ -26,6 +26,7 @@ The README's former "Functions" section documented a feature that never
 existed; it has been removed. T11 decided (full retirement, no `name(args)`
 sugar survives): `timestamp`/`length` move to `emit X to core get result`.
 T12 implemented it — `Expression::Call` is fully removed from the language
-(`grep -rn 'Expression::Call' src/` is empty). One small piece remains: the
-dead `.wasm` function-export ABI slot (noted in T12's resolution) is a
-separate, low-risk future cleanup.
+(`grep -rn 'Expression::Call' src/` is empty). The `.wasm` ABI's dead
+function-export slot was investigated too: shrinking it would be a breaking
+wire-format change for no gain (see T12's resolution), so it stays as
+reserved/zeroed padding, honestly relabeled instead of removed.
