@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # Manual dry-run: builds and uploads an Actions artifact but does not
+  # create a GitHub Release (see the `if: startsWith(github.ref, ...)` guard
+  # below), so the packaging can be exercised without cutting a real tag.
+  workflow_dispatch: {}
+
+env:
+  # inkwell links LLVM 17. Same setup as ci.yml.
+  LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build release tarball (Linux x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM 17 + clang + lld
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev clang-17 lld-17
+          echo "/usr/lib/llvm-17/bin" >> "$GITHUB_PATH"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build code + code-lsp (release profile)
+        run: cargo build --workspace --release
+
+      - name: Determine version string
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package tarball
+        run: |
+          set -euo pipefail
+          stage="code-${{ steps.version.outputs.version }}-x86_64-linux"
+          mkdir -p "$stage"
+          cp target/release/code "$stage"/
+          cp target/release/code-lsp "$stage"/
+          cp LICENSE README.md "$stage"/
+          tar -czf "${stage}.tar.gz" "$stage"
+          echo "tarball=${stage}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Sanity check — binary runs standalone
+        run: |
+          set -euo pipefail
+          ./target/release/code --version
+          # Confirm no dynamic LLVM dependency snuck in (inkwell statically
+          # links LLVM by default with this repo's setup) — a shared-lib
+          # dependency here would mean the tarball silently requires LLVM on
+          # the machine that runs it, defeating the point of shipping a
+          # standalone binary.
+          if ldd target/release/code | grep -qi llvm; then
+            echo "::error::code binary dynamically links libLLVM — release would require LLVM on the target machine"
+            exit 1
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.tarball }}
+          path: ${{ env.tarball }}
+
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.tarball }}
+          generate_release_notes: true

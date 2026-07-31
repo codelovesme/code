@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 
-const VERSION: &str = "Code v0.1";
+const VERSION: &str = concat!("Code v", env!("CARGO_PKG_VERSION"));
 
 fn main() {
     // The parser combinator tree requires more stack space than the default.
