@@ -1,8 +1,8 @@
-# T11 [PLANNING] — Retire `name(args)` function-call syntax; move built-ins to handlers
+# T11 [PLANNING — DONE] — Retire `name(args)` function-call syntax; move built-ins to handlers
 
 - **Priority:** High (architectural correctness — the language has no function
   concept, but the interpreter/codegen still carry one)
-- **Type:** Planning only — no implementation in this ticket
+- **Type:** Planning only — decision recorded below; implementation is T12
 - **Area:** `parser.rs`, `ast.rs`, `interpreter.rs`, `codegen.rs`, `wasm_module.rs`
 - **Decision on record:** Code has **no user-defined functions** and no
   function value. Reusable/invocable logic exists only as **handlers**
@@ -104,15 +104,24 @@ here — just the inventory to plan against):
   any specific new built-in — all deferred to follow-up tickets once the
   approach here is chosen.
 
-## Acceptance criteria for THIS ticket
+## Decision (recorded)
 
-- Option A vs. B decided (or a third option chosen).
-- A follow-up implementation ticket filed with the concrete plan: how core
-  handlers get registered, what happens to the dead `.wasm` `fns_ptr`/`fn_count`
-  slot, and the initial built-in list to migrate (`timestamp`, `length` at
-  minimum).
+**Option A — full retirement, no `name(args)` sugar survives.**
+
+Rationale, in the owner's own words: *"fonksiyon mantigimiz yok dilde - eger
+hala buna support veriyorsak bunu planli bir sekilde ditch etmeliyiz"* ("we
+have no function logic in the language — if we still support it, we must
+deliberately/systematically ditch it"). Sugar that still parses as
+`name(args)` — even if it desugars to an emit under the hood — **is** the
+call-shaped syntax being ditched; keeping it would recreate the exact
+doc-vs-reality ambiguity this audit exists to close (README documented
+function-call-shaped syntax as if it invoked real functions). `length(a)`
+becomes `emit Length { value = a } to core get n`.
+
+Concretely: `Expression::Call` is not "reduced to two built-ins" — it is
+**removed**, since (per the current-state inventory above) it has no purpose
+beyond those two hardcoded names. See T12 for the implementation plan.
 
 ## Effort
 
-Planning only here. The follow-up implementation is Medium: touches parser
-(only if Option B), interpreter, codegen, and the `.wasm` ABI descriptor.
+Planning only here — done. Implementation is T12.

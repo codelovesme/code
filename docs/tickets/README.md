@@ -15,13 +15,14 @@ per ticket.
 | [T8](T8-llvm-backend-and-test-isolation.md) | `+` link bug, default-target disagreement, llvm test isolation | High | done |
 | [T9](T9-ast-spans-for-runtime-diagnostics.md) | Located errors via AST spans — `run` + `build`, single- & multi-file (expression-level dropped) | Medium | done |
 | [T10](T10-negative-number-literal.md) | Negative number literals (`-5`) don't parse | Medium | todo |
-| [T11](T11-ditch-function-call-syntax-plan.md) | [PLANNING] Retire `name(args)` call syntax; move built-ins to handlers | High | todo |
+| [T11](T11-ditch-function-call-syntax-plan.md) | [PLANNING] Retire `name(args)` call syntax; move built-ins to handlers | High | decided |
+| [T12](T12-core-handlers-implementation.md) | Implement `to core` handler dispatch; remove `Expression::Call` | High | todo |
 
 `cargo test --workspace` and the `.code` suite are fully green.
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).
 The README's former "Functions" section documented a feature that never
-existed; it has been removed. See T11 for the plan to retire the two
-hardcoded built-ins (`timestamp`, `length`) still riding on leftover
-function-call machinery.
+existed; it has been removed. T11 decided (full retirement, no `name(args)`
+sugar survives): `timestamp`/`length` move to `emit X to core get result`.
+T12 is the concrete implementation plan.
