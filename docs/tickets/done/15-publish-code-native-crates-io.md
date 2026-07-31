@@ -1,4 +1,4 @@
-# 15 [READY — blocked on owner's `cargo publish`] — Publish `code-native` to crates.io
+# 15 [DONE] — Publish `code-native` to crates.io
 
 - **Priority:** Medium
 - **Type:** Distribution (Phase 1 of the distribution roadmap approved 2026-07-31)
@@ -74,10 +74,27 @@ example) for crates.io discoverability, per item 1.
   completely untouched — only `code-native` changed.
 - Full workspace suite green throughout.
 
-**Remaining — needs the owner, credential-gated:**
-```bash
-cargo login          # with your own crates.io API token
-cargo publish -p code-native
+**Published (2026-08-01):** the owner ran `cargo login`, and after re-confirming
+via `cargo publish --dry-run` one more time against the clean committed
+state, explicitly approved the real, non-dry-run publish (this is a
+permanent, public action — crates.io reserves a published version forever,
+even if yanked — so it was confirmed before running, not assumed). Also
+re-checked crate-name availability at this point and considered
+`codelang-native`/`code-lang-native`/`codelovesme-native` as alternatives —
+kept `code-native` (consistency with this repo's own `code`/`code-abi`/
+`code-lsp` naming won out).
+
+`cargo publish -p code-native` succeeded:
 ```
-Everything up to this point is done and verified; this is the one command
-left.
+Uploaded code-native v0.2.0 to registry `crates-io`
+Published code-native v0.2.0 at registry `crates-io`
+```
+Verified live via the crates.io API (with the required `User-Agent` header —
+bare `curl` gets rejected per crates.io's
+[data access policy](https://crates.io/data-access)): name, description,
+keywords, categories, repository all correct, `yanked: false`,
+`default_version: "0.2.0"`. Live at
+[crates.io/crates/code-native](https://crates.io/crates/code-native).
+
+Anyone can now `cargo add code-native` to write a native module for Code
+without cloning this repo.

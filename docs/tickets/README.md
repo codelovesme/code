@@ -30,6 +30,7 @@ finished, priority no longer matters for it. Numbers are stable identifiers
 | [12](done/12-core-handlers-implementation.md) | Implement `to core` handler dispatch; remove `Expression::Call` |
 | [13](done/13-release-workflow.md) | Release workflow: GitHub Releases on tag push (Linux x86_64) |
 | [14](done/14-install-script.md) | Install script (`curl \| sh`) |
+| [15](done/15-publish-code-native-crates-io.md) | Publish `code-native` to crates.io |
 
 `cargo test --workspace` and the `.code` suite are fully green.
 
@@ -41,7 +42,6 @@ _(none right now)_
 
 | # | Title |
 |---|-------|
-| [15](medium/15-publish-code-native-crates-io.md) | Publish `code-native` to crates.io — **ready, `cargo publish` is the owner's one remaining step** |
 | [16](medium/16-vscode-extension-consolidation-and-publish.md) | Consolidate VS Code extension into this repo; publish to Marketplace |
 
 ## Active — Low priority
@@ -56,12 +56,12 @@ packages, no docs site, no playground. Tickets 13–16 are Phase 1 (release
 binaries, installer, `code-native` on crates.io, VS Code Marketplace) of a
 3-phase plan; Phase 2 (docs site, browser playground) and Phase 3 (multi-
 platform binaries, package registry) are planned but not yet ticketed.
-Tickets 13 (release workflow) and 14 (install script) are done — pushing a
-`v*` tag produces a GitHub Release with a standalone Linux x86_64 binary, and
-`curl -sSf .../install.sh | sh` installs it. Ticket 15 is fully prepared and
-verified (`cargo publish --dry-run` succeeds) — `cargo login` + `cargo
-publish` is the one remaining, owner-only step. Ticket 16 (VS Code extension)
-is not started.
+Tickets 13 (release workflow), 14 (install script), and 15 (`code-native` on
+crates.io) are done — pushing a `v*` tag produces a GitHub Release with a
+standalone Linux x86_64 binary, `curl -sSf .../install.sh | sh` installs it,
+and `cargo add code-native` pulls the native-module authoring SDK straight
+from [crates.io](https://crates.io/crates/code-native) — no repo clone
+needed. Ticket 16 (VS Code extension) is not started.
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).
