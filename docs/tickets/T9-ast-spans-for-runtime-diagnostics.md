@@ -1,6 +1,8 @@
 # T9 — Carry source spans on the AST for located runtime/codegen errors
 
-- **Priority:** Medium (interpreter slice done; codegen + multi-file deferred)
+- **Priority:** Done — located errors for `run` + `build`, single- and
+  multi-file. Expression-level granularity dropped as out of scope (high cost,
+  marginal benefit over statement-level).
 - **Type:** Architecture / diagnostics
 - **Area:** `parser.rs`, `ast.rs`, `interpreter.rs`, `codegen.rs`, `diagnostics.rs`
 
@@ -27,10 +29,11 @@
   (spans stay `Range<usize>`, now global). `load_program_with_links` returns
   `(Program, SourceMap)`; `main.rs`'s `Diag` resolves offsets through it.
 
-**Deferred (still open):**
-- **Expression-level granularity:** errors point at the enclosing statement, not
-  the exact sub-expression. This is the last remaining piece and needs spans on
-  `Expression` nodes (parser + both backends' expression handling).
+**Out of scope (dropped):**
+- **Expression-level granularity** (caret on the exact sub-expression rather than
+  the statement) was considered and dropped: it would require spanning every
+  `Expression` node across the parser and both backends' hot paths for only a
+  marginal precision gain over the statement-level location already shipped.
 
 ## Context
 
