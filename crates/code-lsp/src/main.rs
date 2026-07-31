@@ -8,6 +8,8 @@ use tower_lsp::{Client, LanguageServer, LspService, Server};
 use code_lang::format::format_document;
 use code_lang::parser;
 
+mod tokens;
+
 // ---------------------------------------------------------------------------
 // Data types
 // ---------------------------------------------------------------------------
@@ -552,6 +554,22 @@ impl LanguageServer for Backend {
                 document_symbol_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Left(true)),
+                semantic_tokens_provider: Some(
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        SemanticTokensOptions {
+                            legend: SemanticTokensLegend {
+                                token_types: tokens::LEGEND_TYPES
+                                    .iter()
+                                    .map(|s| SemanticTokenType::new(s))
+                                    .collect(),
+                                token_modifiers: vec![],
+                            },
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            range: None,
+                            work_done_progress_options: Default::default(),
+                        },
+                    ),
+                ),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -770,6 +788,39 @@ impl LanguageServer for Backend {
     }
 
     // -- Formatting ----------------------------------------------------------
+
+    // -- Semantic tokens -------------------------------------------------------
+
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        let uri = &params.text_document.uri;
+
+        let docs = self.documents.lock().unwrap();
+        let state = match docs.get(uri) {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
+        let toks = tokens::tokenize(&state.text);
+        let data = tokens::encode_deltas(&toks);
+        let lsp_data: Vec<SemanticToken> = data
+            .chunks_exact(5)
+            .map(|c| SemanticToken {
+                delta_line: c[0],
+                delta_start: c[1],
+                length: c[2],
+                token_type: c[3],
+                token_modifiers_bitset: c[4],
+            })
+            .collect();
+
+        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
+            result_id: None,
+            data: lsp_data,
+        })))
+    }
 
     async fn formatting(
         &self,
