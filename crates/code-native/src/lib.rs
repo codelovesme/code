@@ -47,12 +47,13 @@ use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 // ===========================================================================
-// C-ABI contract — re-exported from the shared `code-abi` crate so the host
-// runtime and this helper crate cannot drift apart. See that crate for the
-// definitions (version, tags, repr(C) structs, Send/Sync impls).
+// C-ABI contract — a synced, drift-guarded vendored copy of `code-abi` (kept
+// unpublished on purpose; see `abi` module doc comment for why this crate
+// can't depend on it directly and still be published to crates.io).
 // ===========================================================================
 
-pub use code_abi::*;
+mod abi;
+pub use abi::*;
 
 // ===========================================================================
 // Value builders

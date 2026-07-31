@@ -5,9 +5,18 @@ edition = "2021"
 description = "Helper crate for writing Code native modules in Rust"
 license = "MIT"
 repository = "https://github.com/codelovesme/code"
+readme = "README.md"
+keywords = ["ffi", "abi", "plugin", "native", "wasm"]
+categories = ["api-bindings", "development-tools::ffi"]
 
 [lib]
 crate-type = ["rlib"]
 
-[dependencies]
+# No runtime dependencies — crates.io requires every dependency of a published
+# crate to itself be resolvable from the registry, and `code-abi` deliberately
+# stays unpublished (internal, single source of truth for the host runtime).
+# `src/abi.rs` is a synced, drift-guarded vendored copy instead — see its doc
+# comment. `code-abi` is still used, but only as a dev-dependency, to power the
+# drift-guard test (dev-dependencies aren't part of what gets published).
+[dev-dependencies]
 code-abi = { path = "../code-abi" }
