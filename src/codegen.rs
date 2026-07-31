@@ -5141,6 +5141,36 @@ impl<'ctx> Codegen<'ctx> {
                 );
                 Ok(result.into())
             }
+            UnaryOp::Negate => {
+                let val = self.compile_expr(operand)?.into_struct_value();
+                let i8_type = self.context.i8_type();
+                let f64_type = self.context.f64_type();
+                let tag = self.builder.build_extract_value(val, 0, "neg_tag")
+                    .unwrap().into_int_value();
+                let tag_number = i8_type.const_int(TAG_NUMBER as u64, false);
+                let is_number = self.builder.build_int_compare(
+                    IntPredicate::EQ, tag, tag_number, "neg_is_num",
+                ).unwrap();
+
+                let ok_bb = self.context.append_basic_block(self.main_fn, "neg_ok");
+                let trap_bb = self.context.append_basic_block(self.main_fn, "neg_trap");
+                self.builder.build_conditional_branch(is_number, ok_bb, trap_bb).unwrap();
+
+                self.builder.position_at_end(trap_bb);
+                self.emit_trap();
+
+                self.builder.position_at_end(ok_bb);
+                let num_val = self.builder.build_extract_value(val, 1, "neg_val")
+                    .unwrap().into_float_value();
+                let negated = self.builder.build_float_sub(
+                    f64_type.const_float(0.0), num_val, "neg_result",
+                ).unwrap();
+
+                let null_ptr = i8_type.ptr_type(AddressSpace::default()).const_null();
+                let bool_val = self.context.bool_type().const_int(0, false);
+                let result = self.build_value(tag_number, negated, null_ptr, bool_val);
+                Ok(result.into())
+            }
         }
     }
 
@@ -5227,6 +5257,7 @@ impl<'ctx> Codegen<'ctx> {
             | Expression::Binary { op: BinaryOp::Or, .. } => Ok("Boolean".to_string()),
             Expression::Binary { .. } | Expression::TypeCheck { .. } => Ok("Boolean".to_string()),
             Expression::Unary { op: UnaryOp::Not, .. } => Ok("Boolean".to_string()),
+            Expression::Unary { op: UnaryOp::Negate, .. } => Ok("Number".to_string()),
             Expression::Identifier(name) => {
                 // Look up the variable's type annotation.
                 self.get_type_annotation(name)

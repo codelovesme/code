@@ -279,13 +279,16 @@ fn build_expression(
                 },
             });
 
-        // Unary: `not expr`
-        let unary = text::keyword("not")
-            .ignore_then(whitespace())
+        // Unary: `not expr`, `-expr` (arithmetic negation, e.g. `-5`)
+        let unary_op = text::keyword("not")
+            .to(UnaryOp::Not)
+            .or(just('-').to(UnaryOp::Negate));
+        let unary = unary_op
+            .then_ignore(whitespace())
             .repeated()
             .then(postfix.clone())
-            .foldr(|_op, operand| Expression::Unary {
-                op: UnaryOp::Not,
+            .foldr(|op, operand| Expression::Unary {
+                op,
                 operand: Box::new(operand),
             });
 

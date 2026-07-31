@@ -160,6 +160,24 @@ fn build_object_exe_runs() {
 }
 
 #[test]
+fn build_negative_literal_exe_runs() {
+    let exe = env!("CARGO_BIN_EXE_code");
+    let status = Command::new(exe)
+        .args(["build", "tests/negative_literal.code", "--target", "exe"])
+        .status()
+        .expect("failed to run code build");
+    assert!(status.success(), "build with unary minus failed");
+
+    let out_path = "target/llvm/negative_literal";
+    assert!(std::path::Path::new(out_path).exists(), "executable not created");
+
+    let run_status = Command::new(out_path)
+        .status()
+        .expect("failed to run compiled executable");
+    assert!(run_status.success(), "negative_literal executable failed");
+}
+
+#[test]
 fn build_core_handler_length_exe_runs() {
     let exe = env!("CARGO_BIN_EXE_code");
     let status = Command::new(exe)

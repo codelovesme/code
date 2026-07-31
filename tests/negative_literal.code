@@ -1,0 +1,25 @@
+-> Test: unary minus / negative number literals.
+x = -5
+assert x ≠ 1
+assert x ≠ 5
+
+-> Precedence: unary minus binds tighter than `*`.
+assert -5 * 2 = -10
+
+-> Existing binary subtraction is unchanged.
+a = 10
+b = 3
+c = a - b
+assert c = 7
+
+-> Mixed: subtracting a negative literal.
+r = a - -5
+assert r = 15
+
+-> Double negation.
+assert - -5 = 5
+
+-> Negative literals inside an array.
+arr = [-1, -2, -3]
+assert arr[0] = -1
+assert arr[2] = -3

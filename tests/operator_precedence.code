@@ -18,3 +18,7 @@ assert e = false
 -> NOT has highest precedence among logical
 f = not false and true
 assert f = true
+
+-> Unary minus binds tighter than `*` (like `not`)
+g = -5 * 2
+assert g = -10

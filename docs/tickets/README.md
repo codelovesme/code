@@ -14,7 +14,7 @@ per ticket.
 | [T7](T7-readme-semantic-mismatches.md) | README documents semantics the impl lacks (reassignment, `${}`) | High | done |
 | [T8](T8-llvm-backend-and-test-isolation.md) | `+` link bug, default-target disagreement, llvm test isolation | High | done |
 | [T9](T9-ast-spans-for-runtime-diagnostics.md) | Located errors via AST spans — `run` + `build`, single- & multi-file (expression-level dropped) | Medium | done |
-| [T10](T10-negative-number-literal.md) | Negative number literals (`-5`) don't parse | Medium | todo |
+| [T10](T10-negative-number-literal.md) | Negative number literals (`-5`) don't parse | Medium | done |
 | [T11](T11-ditch-function-call-syntax-plan.md) | [PLANNING] Retire `name(args)` call syntax; move built-ins to handlers | High | decided |
 | [T12](T12-core-handlers-implementation.md) | Implement `to core` handler dispatch; remove `Expression::Call` | High | done |
 

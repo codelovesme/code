@@ -365,4 +365,6 @@ pub enum BinaryOp {
 #[derive(Debug, Clone)]
 pub enum UnaryOp {
     Not,
+    /// Arithmetic negation: `-expr` (e.g. `-5`).
+    Negate,
 }

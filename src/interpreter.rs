@@ -1244,6 +1244,13 @@ impl Interpreter {
                             val.type_name()
                         )),
                     },
+                    UnaryOp::Negate => match val.as_ref() {
+                        Value::Number(n) => Ok(Value::number(-n)),
+                        _ => Err(format!(
+                            "Operand of '-' must be a Number, found {}",
+                            val.type_name()
+                        )),
+                    },
                 }
             }
             Expression::TypeCheck {
