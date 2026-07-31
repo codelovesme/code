@@ -17,8 +17,21 @@ per ticket.
 | [T10](T10-negative-number-literal.md) | Negative number literals (`-5`) don't parse | Medium | done |
 | [T11](T11-ditch-function-call-syntax-plan.md) | [PLANNING] Retire `name(args)` call syntax; move built-ins to handlers | High | decided |
 | [T12](T12-core-handlers-implementation.md) | Implement `to core` handler dispatch; remove `Expression::Call` | High | done |
+| [T13](T13-release-workflow.md) | Release workflow: GitHub Releases on tag push (Linux x86_64) | High | todo |
+| [T14](T14-install-script.md) | Install script (`curl \| sh`) | High | todo |
+| [T15](T15-publish-code-native-crates-io.md) | Publish `code-native` to crates.io | Medium | todo |
+| [T16](T16-vscode-extension-consolidation-and-publish.md) | Consolidate VS Code extension into this repo; publish to Marketplace | Medium | todo |
 
 `cargo test --workspace` and the `.code` suite are fully green.
+
+**Distribution roadmap (approved 2026-07-31):** the language has zero
+distribution today — no release binaries, no installer, no published
+packages, no docs site, no playground. T13–T16 are Phase 1 (release
+binaries, installer, `code-native` on crates.io, VS Code Marketplace) of a
+3-phase plan; Phase 2 (docs site, browser playground) and Phase 3 (multi-
+platform binaries, package registry) are planned but not yet ticketed. Two
+Phase 1 items are credential-gated to the repo owner (crates.io token, VS
+Code publisher PAT) — everything else is ready to implement.
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).
