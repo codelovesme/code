@@ -79,9 +79,9 @@ fn codegen_error_is_located_in_single_file() {
 }
 
 #[test]
-fn runtime_error_in_linked_program_falls_back_to_plain() {
+fn linked_program_error_in_main_is_located_to_main() {
     let exe = env!("CARGO_BIN_EXE_code");
-    let dir = std::env::temp_dir().join(format!("code_link_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("code_link_main_{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("lib.code"), "greeting = \"hi\"\n").unwrap();
     fs::write(dir.join("main.code"), "link lib\nr = not 5\n").unwrap();
@@ -94,9 +94,32 @@ fn runtime_error_in_linked_program_falls_back_to_plain() {
 
     assert!(!out.status.success());
     let text = String::from_utf8_lossy(&out.stderr);
-    // Multi-file programs fall back to a plain message (no possibly-wrong caret).
-    assert!(text.contains("Runtime error:"), "expected a plain message:\n{text}");
-    assert!(!text.contains("--> "), "must not render a source location:\n{text}");
+    assert!(text.contains("--> "), "linked programs are now located:\n{text}");
+    assert!(text.contains("main.code:2:"), "error is on line 2 of main.code:\n{text}");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn linked_program_error_in_module_points_to_that_module() {
+    let exe = env!("CARGO_BIN_EXE_code");
+    let dir = std::env::temp_dir().join(format!("code_link_mod_{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    // The error lives in the imported module and fires while it is linked in.
+    fs::write(dir.join("lib.code"), "greeting = \"hi\"\nbad = not 5\n").unwrap();
+    fs::write(dir.join("main.code"), "link lib\na = 1\n").unwrap();
+
+    let out = Command::new(exe)
+        .args(["run", "main.code"])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+
+    assert!(!out.status.success());
+    let text = String::from_utf8_lossy(&out.stderr);
+    // Provenance resolves to the module's own file, not main.code.
+    assert!(text.contains("lib.code:2:"), "should point into lib.code:\n{text}");
+    assert!(!text.contains("main.code"), "should not blame main.code:\n{text}");
 
     let _ = fs::remove_dir_all(&dir);
 }

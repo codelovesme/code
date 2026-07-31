@@ -18,14 +18,19 @@
   (`file:line:col` + caret) via `code_lang::diagnostics`, sharing one `Diag`
   reporter in `main.rs`.
 
+**Done (multi-file provenance):**
+- `module_loader` now owns a `SourceMap`: each loaded file is assigned a global
+  char-offset base, and `shift_spans` rebases that file's statement spans into
+  the shared space. A span therefore self-identifies its file, so a runtime or
+  codegen error in a linked module renders against *that* module's source — no
+  single-file restriction, and no `Spanned`/interpreter/codegen type changes
+  (spans stay `Range<usize>`, now global). `load_program_with_links` returns
+  `(Program, SourceMap)`; `main.rs`'s `Diag` resolves offsets through it.
+
 **Deferred (still open):**
-- **Multi-file / linked programs:** a span refers to its *own* file's source,
-  which `run_file` doesn't have, so located rendering is intentionally limited
-  to single-file programs (no top-level `Import`/`NativeImport`); linked
-  programs fall back to a plain message. Full support needs per-span file
-  provenance (carry a file id/source handle on `Spanned`).
-- **Expression-level granularity:** errors currently point at the enclosing
-  statement, not the exact sub-expression.
+- **Expression-level granularity:** errors point at the enclosing statement, not
+  the exact sub-expression. This is the last remaining piece and needs spans on
+  `Expression` nodes (parser + both backends' expression handling).
 
 ## Context
 

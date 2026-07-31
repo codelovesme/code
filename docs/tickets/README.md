@@ -13,7 +13,7 @@ per ticket.
 | [T6](T6-test-suite-fixtures.md) | Restore dangling test fixtures + fix exe output name | High | done |
 | [T7](T7-readme-semantic-mismatches.md) | README documents semantics the impl lacks (reassignment, `${}`) | High | done |
 | [T8](T8-llvm-backend-and-test-isolation.md) | `+` link bug, default-target disagreement, llvm test isolation | High | done |
-| [T9](T9-ast-spans-for-runtime-diagnostics.md) | Located errors via AST spans — `run` + `build`, single-file done; multi-file + expression-level deferred | Medium | partial |
+| [T9](T9-ast-spans-for-runtime-diagnostics.md) | Located errors via AST spans — `run` + `build`, single- & multi-file done; expression-level deferred | Medium | partial |
 
 `cargo test --workspace` and the `.code` suite are fully green. T9 is deferred;
 its interim mitigation (richer runtime error messages) shipped.

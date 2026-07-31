@@ -189,50 +189,33 @@ fn collect_code_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Context for rendering a located diagnostic during `run`/`build`.
+/// Renders located diagnostics for `run`/`build`, resolving a statement's
+/// (global) span back to its source file through the `SourceMap`. Works across
+/// linked modules; falls back to a plain `prefix: message` if a span can't be
+/// resolved.
 struct Diag<'a> {
-    source: &'a str,
-    path: &'a str,
-    /// Located rendering is only safe for single-file programs: a statement from
-    /// a linked module carries a span into *that* file's source, which we don't
-    /// have here. Multi-file programs fall back to a plain `prefix: message`.
-    single_file: bool,
+    map: &'a module_loader::SourceMap,
 }
 
 impl Diag<'_> {
     fn report(&self, prefix: &str, message: &str, span: Option<&ast::Span>) {
-        match (self.single_file, span) {
-            (true, Some(sp)) => eprintln!(
-                "{}",
-                code_lang::diagnostics::render(self.source, self.path, sp.start, sp.end, message)
-            ),
-            _ => eprintln!("{}: {}", prefix, message),
+        match span.and_then(|s| self.map.render(s.start, s.end, message)) {
+            Some(text) => eprintln!("{}", text),
+            None => eprintln!("{}: {}", prefix, message),
         }
     }
 }
 
-/// True when the program links no modules, so every span refers to `path`.
-fn is_single_file(program: &ast::Program) -> bool {
-    !program.statements.iter().any(|s| {
-        matches!(
-            s.node,
-            ast::Statement::Import { .. } | ast::Statement::NativeImport { .. }
-        )
-    })
-}
-
 fn run_file(path: &str) -> i32 {
-    let source = std::fs::read_to_string(path).unwrap_or_default();
-
-    let program = match module_loader::load_program_with_links(Path::new(path)) {
-        Ok(p) => p,
+    let (program, map) = match module_loader::load_program_with_links(Path::new(path)) {
+        Ok(pm) => pm,
         Err(e) => {
             eprintln!("{}", e);
             return 1;
         }
     };
 
-    let diag = Diag { source: &source, path, single_file: is_single_file(&program) };
+    let diag = Diag { map: &map };
 
     let mut interp = Interpreter::new();
     match interp.execute(program) {
@@ -265,17 +248,15 @@ fn parse_target_flag(args: &[String]) -> String {
 /// Parse and compile a single source file to LLVM IR.
 /// Returns 0 on success, 1 on error.
 fn build_file(path: &str, target: &str, release: bool) -> i32 {
-    let source = std::fs::read_to_string(path).unwrap_or_default();
-
-    let program = match module_loader::load_program_with_links(Path::new(path)) {
-        Ok(p) => p,
+    let (program, map) = match module_loader::load_program_with_links(Path::new(path)) {
+        Ok(pm) => pm,
         Err(e) => {
             eprintln!("{}", e);
             return 1;
         }
     };
 
-    let diag = Diag { source: &source, path, single_file: is_single_file(&program) };
+    let diag = Diag { map: &map };
 
     let module_name = Path::new(path)
         .file_stem()
@@ -541,7 +522,7 @@ fn run_tests() -> i32 {
 
 /// Parse and execute a source file, returning Ok or an error message.
 fn execute_file(path: &Path) -> Result<(), String> {
-    let program = module_loader::load_program_with_links(path)?;
+    let (program, _map) = module_loader::load_program_with_links(path)?;
 
     let mut interp = Interpreter::new();
     interp.execute(program)

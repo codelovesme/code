@@ -13,20 +13,92 @@ use crate::parser;
 /// Returns a `Program` where every `Link` has been replaced by an `Import` node.
 /// - `link path` (no alias) produces `Import { alias: None, ... }` (flatten mode).
 /// - `link path as x` produces `Import { alias: Some("x"), ... }` (namespace mode).
-pub fn load_program_with_links(entry: &Path) -> Result<Program, String> {
+pub fn load_program_with_links(entry: &Path) -> Result<(Program, SourceMap), String> {
     let mut loader = ModuleLoader::new();
-    loader.load(entry)
+    let program = loader.load(entry)?;
+    Ok((program, loader.source_map))
+}
+
+/// A registered source file within the [`SourceMap`].
+struct SourceFile {
+    /// Global char offset where this file's spans begin.
+    base: usize,
+    /// Length of `source` in chars.
+    len: usize,
+    path: String,
+    source: String,
+}
+
+/// Maps global char offsets (as carried on statement spans) back to the file and
+/// local offset they came from, so linked multi-file programs can render located
+/// diagnostics against the right source.
+pub struct SourceMap {
+    files: Vec<SourceFile>,
+    next_base: usize,
+}
+
+impl SourceMap {
+    fn new() -> Self {
+        SourceMap { files: Vec::new(), next_base: 0 }
+    }
+
+    /// Register a file and return the global base offset assigned to it.
+    fn add(&mut self, path: String, source: String) -> usize {
+        let base = self.next_base;
+        let len = source.chars().count();
+        // +1 gap so an at-EOF offset of one file can't collide with the next.
+        self.next_base = base + len + 1;
+        self.files.push(SourceFile { base, len, path, source });
+        base
+    }
+
+    /// Render a rustc-style diagnostic for a global char range, or `None` if the
+    /// range doesn't resolve to a registered file.
+    pub fn render(&self, start: usize, end: usize, message: &str) -> Option<String> {
+        let f = self
+            .files
+            .iter()
+            .find(|f| start >= f.base && start <= f.base + f.len)?;
+        let local_start = start - f.base;
+        let local_end = end.saturating_sub(f.base).min(f.len);
+        Some(crate::diagnostics::render(
+            &f.source,
+            &f.path,
+            local_start,
+            local_end,
+            message,
+        ))
+    }
+}
+
+/// Recursively add `base` to every statement span (and nested body spans).
+fn shift_spans(stmts: &mut [Spanned<Statement>], base: usize) {
+    for s in stmts {
+        s.span.start += base;
+        s.span.end += base;
+        match &mut s.node {
+            Statement::Block(body)
+            | Statement::If { body, .. }
+            | Statement::LoopOver { body, .. }
+            | Statement::LoopInfinite { body, .. }
+            | Statement::HandlerDefinition { body, .. } => shift_spans(body, base),
+            _ => {}
+        }
+    }
 }
 
 struct ModuleLoader {
     /// Stack of files currently being loaded (for cycle detection).
     visiting: Vec<PathBuf>,
+    /// Accumulated source files for located diagnostics.
+    source_map: SourceMap,
 }
 
 impl ModuleLoader {
     fn new() -> Self {
         Self {
             visiting: Vec::new(),
+            source_map: SourceMap::new(),
         }
     }
 
@@ -67,7 +139,13 @@ impl ModuleLoader {
             return Err(rendered.join("\n\n"));
         }
 
-        let parsed = parsed.expect("Parser produced no output despite no errors");
+        let mut parsed = parsed.expect("Parser produced no output despite no errors");
+
+        // Register this file in the shared SourceMap and shift its statement
+        // spans by the assigned base, so every span self-identifies its file
+        // (enabling located diagnostics across linked modules).
+        let base = self.source_map.add(canonical.display().to_string(), source);
+        shift_spans(&mut parsed.statements, base);
 
         self.visiting.push(canonical.clone());
 
