@@ -216,7 +216,7 @@ Full operator support with standard precedence:
 | Equality    | `=`, `≠`         | Any           | Boolean     |
 | Logical     | `and`, `or`, `not` | Boolean     | Boolean     |
 
-`=` and `≠` also perform type checking when the right-hand side is a type name (e.g. `Number`, `String`, `Boolean`, `Null`, `Object`, `Array`, `Function`, or a particle class name):
+`=` and `≠` also perform type checking when the right-hand side is a type name (e.g. `Number`, `String`, `Boolean`, `Null`, `Object`, `Array`, or a particle class name):
 
 ```
 assert 42 = Number
@@ -437,16 +437,20 @@ uint32_t code_module_init(void);          // returns offset to CodeModuleDesc in
 int32_t  code_alloc(int32_t size);        // allocator used for arg/result marshalling
 ```
 
-WASM function and handler exports are resolved by index/name:
+WASM handler exports are resolved by index/name:
 
-- Function exports: `code_fn_<idx>` (fallback: exported function name)
 - Handler exports: `code_handler_<idx>` (fallback: `code_handler_<ClassName>`)
 
 Native modules can export:
 - Variables
-- Functions (with fixed parameter counts)
 - Handlers
 - Type declarations
+
+Note: the `.wasm` ABI descriptor still reserves a function-export slot
+(`fns_ptr`/`fn_count`) for backward compatibility, but the host does not read
+it — Code has no function-call concept to dispatch into. See
+[`docs/tickets/T11-ditch-function-call-syntax-plan.md`](docs/tickets/T11-ditch-function-call-syntax-plan.md)
+for the plan to remove this dead slot.
 
 Notes:
 - `.so` is supported for runtime native linking (interpreter + host-native LLVM/exe flows).
@@ -470,55 +474,9 @@ The crate provides:
 
 See `tests/native_modules/test_helper.rs` for a compact helper-based native module example.
 
-### Functions
-
-Functions are first-class values defined with arrow syntax:
-
-```
-add = (a, b) => {
-    return a + b
-}
-
-result = add(3, 4)
-assert result = 7
-```
-
-**Parameter rules** — parameters are bare names:
-
-```
-f = (a, b) => { return b }
-```
-
-**Return types** are not annotated — functions simply return whatever value the body produces:
-
-```
-sum = (a, b) => {
-    return a + b
-}
-```
-
-Functions without an explicit `return` return `Null`.
-
-**Functions as values** — functions can be stored in variables, passed as arguments, and type-checked:
-
-```
-apply = (f, x) => {
-    return f(x)
-}
-
-double = (n) => {
-    return n * 2
-}
-
-assert apply(double, 5) = 10
-assert double = Function
-```
-
-Functions do not capture their defining scope (no closures). They execute with access to only their own parameters and local variables. Attempting to read an outer variable from inside a function is a runtime error. Type definitions from the outer scope are available inside functions, but handler definitions and handler invocations are **not allowed** inside function bodies.
-
 ### Handlers
 
-Particle handlers respond to particle construction events. Unlike functions, handlers **can** read variables from their enclosing scope, but **cannot** mutate them — shadowing outer variables is not allowed:
+Particle handlers respond to particle construction events. Handlers are the language's only unit of reusable, invocable logic — Code has no user-defined functions. Handlers **can** read variables from their enclosing scope, but **cannot** mutate them — shadowing outer variables is not allowed:
 
 ```
 type Ping { }
@@ -605,9 +563,6 @@ Program executed successfully.
 - [x] Comparison operators (`<`, `>`, `≤`, `≥`)
 - [x] Logical operators (`and`, `or`, `not`) with short-circuit evaluation
 - [x] Full operator precedence
-- [x] Functions: first-class definitions
-- [x] Functions: strict no-capture scope isolation (interpreter + LLVM)
-- [x] Function body restrictions: handler def/invoke prohibited inside functions
 - [x] Parenthesized expressions for grouping
 - [x] Parser diagnostics (Phase 1: labels and clearer error messages)
 - [x] LLVM code generation (`ir`, `exe`, `shared`, `static`, `wasm`)
@@ -616,7 +571,7 @@ Program executed successfully.
 - [x] Handler return enforcement: only Particle values allowed
 - [x] Native module ABI linking (`link` to `.so` modules)
 - [x] WASM native module ABI linking (`link` to `.wasm` modules via `wasmi`)
-- [x] Native imports: variables/functions/handlers/types
+- [x] Native imports: variables/handlers/types
 - [x] Rust native helper crate (`crates/code-native`) with macro-first API
 
 ## Roadmap

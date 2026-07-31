@@ -14,6 +14,14 @@ per ticket.
 | [T7](T7-readme-semantic-mismatches.md) | README documents semantics the impl lacks (reassignment, `${}`) | High | done |
 | [T8](T8-llvm-backend-and-test-isolation.md) | `+` link bug, default-target disagreement, llvm test isolation | High | done |
 | [T9](T9-ast-spans-for-runtime-diagnostics.md) | Located errors via AST spans — `run` + `build`, single- & multi-file (expression-level dropped) | Medium | done |
+| [T10](T10-negative-number-literal.md) | Negative number literals (`-5`) don't parse | Medium | todo |
+| [T11](T11-ditch-function-call-syntax-plan.md) | [PLANNING] Retire `name(args)` call syntax; move built-ins to handlers | High | todo |
 
-`cargo test --workspace` and the `.code` suite are fully green. T9 is deferred;
-its interim mitigation (richer runtime error messages) shipped.
+`cargo test --workspace` and the `.code` suite are fully green.
+
+**Design decision on record:** Code has no user-defined functions and no
+function value — reusable logic exists only as handlers (particle dispatch).
+The README's former "Functions" section documented a feature that never
+existed; it has been removed. See T11 for the plan to retire the two
+hardcoded built-ins (`timestamp`, `length`) still riding on leftover
+function-call machinery.
