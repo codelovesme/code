@@ -43,6 +43,19 @@ crates/
     └── src/main.rs
 ```
 
+## Installing
+
+If you just want the `code` binary (not building from source), install the
+latest prebuilt release (Linux x86_64 only for now):
+
+```bash
+curl -sSf https://raw.githubusercontent.com/codelovesme/code/main/install.sh | sh
+```
+
+This installs `code` and `code-lsp` into `~/.local/bin` (override with
+`PREFIX=...`); pin a specific version with `CODE_VERSION=v0.x.y`. For other
+platforms, or to contribute, build from source below.
+
 ## Building
 
 ```bash

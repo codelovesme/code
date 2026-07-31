@@ -29,14 +29,13 @@ finished, priority no longer matters for it. Numbers are stable identifiers
 | [11](done/11-ditch-function-call-syntax-plan.md) | [PLANNING] Retire `name(args)` call syntax; move built-ins to handlers (decided) |
 | [12](done/12-core-handlers-implementation.md) | Implement `to core` handler dispatch; remove `Expression::Call` |
 | [13](done/13-release-workflow.md) | Release workflow: GitHub Releases on tag push (Linux x86_64) |
+| [14](done/14-install-script.md) | Install script (`curl \| sh`) |
 
 `cargo test --workspace` and the `.code` suite are fully green.
 
 ## Active — High priority
 
-| # | Title |
-|---|-------|
-| [14](high/14-install-script.md) | Install script (`curl \| sh`) |
+_(none right now)_
 
 ## Active — Medium priority
 
@@ -57,10 +56,11 @@ packages, no docs site, no playground. Tickets 13–16 are Phase 1 (release
 binaries, installer, `code-native` on crates.io, VS Code Marketplace) of a
 3-phase plan; Phase 2 (docs site, browser playground) and Phase 3 (multi-
 platform binaries, package registry) are planned but not yet ticketed.
-Ticket 13 (release workflow) is done — pushing a `v*` tag now produces a
-GitHub Release with a standalone Linux x86_64 binary. Two remaining Phase 1
-items are credential-gated to the repo owner (crates.io token, VS Code
-publisher PAT).
+Tickets 13 (release workflow) and 14 (install script) are done — pushing a
+`v*` tag produces a GitHub Release with a standalone Linux x86_64 binary, and
+`curl -sSf .../install.sh | sh` installs it. The two remaining Phase 1 items
+are credential-gated to the repo owner (crates.io token, VS Code publisher
+PAT).
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).
