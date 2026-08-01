@@ -43,10 +43,16 @@ _(none right now)_
 | # | Title |
 |---|-------|
 | [16](medium/16-vscode-extension-consolidation-and-publish.md) | Consolidate VS Code extension into this repo; publish to Marketplace |
+| [17](medium/17-split-release-artifact-code-lsp.md) | Split release artifacts: `code` Runtime / `code` SDK / `code-lsp` |
+| [18](medium/18-wasm-capable-core.md) | WASM-capable core: feature-gate LLVM and native-`.so` out of the default build |
+| [20](medium/20-project-website-distribution-channel.md) | Project website: Downloads page, hosted install.sh, playground home |
+| [21](medium/21-native-codegen-memory-never-freed.md) | Native codegen (`code build`) never frees heap allocations — real leak for `shared`/`static` targets |
 
 ## Active — Low priority
 
-_(none yet)_
+| # | Title |
+|---|-------|
+| [19](low/19-browser-playground.md) | Browser playground: run `.code` in the browser via WASM (Phase 2; depends on T18) |
 
 ---
 
@@ -54,14 +60,36 @@ _(none yet)_
 distribution before this — no release binaries, no installer, no published
 packages, no docs site, no playground. Tickets 13–16 are Phase 1 (release
 binaries, installer, `code-native` on crates.io, VS Code Marketplace) of a
-3-phase plan; Phase 2 (docs site, browser playground) and Phase 3 (multi-
-platform binaries, package registry) are planned but not yet ticketed.
-Tickets 13 (release workflow), 14 (install script), and 15 (`code-native` on
-crates.io) are done — pushing a `v*` tag produces a GitHub Release with a
-standalone Linux x86_64 binary, `curl -sSf .../install.sh | sh` installs it,
-and `cargo add code-native` pulls the native-module authoring SDK straight
-from [crates.io](https://crates.io/crates/code-native) — no repo clone
-needed. Ticket 16 (VS Code extension) is not started.
+3-phase plan; Phase 3 (multi-platform binaries, package registry) is planned
+but not yet ticketed. Tickets 13 (release workflow), 14 (install script), and
+15 (`code-native` on crates.io) are done — pushing a `v*` tag produces a
+GitHub Release with a standalone Linux x86_64 binary, `curl -sSf
+.../install.sh | sh` installs it, and `cargo add code-native` pulls the
+native-module authoring SDK straight from
+[crates.io](https://crates.io/crates/code-native) — no repo clone needed.
+Ticket 16 (VS Code extension) is not started. T16 also records two rejected
+alternatives from the 2026-08-01 discussion: a separate repo for the
+extension, and a `code lsp` wrapper subcommand — neither made sense at this
+project's current scale.
+
+T17 refines Phase 1 packaging: `code`/`code-lsp` split by audience (CLI vs.
+editor), plus (absorbed from T18) `code` itself splitting into Runtime/SDK
+tiers by capability — three release tarballs total, `code-runtime-*`,
+`code-sdk-*`, `code-lsp-*`, all still binary-named `code` where applicable
+(the `dotnet` Runtime/SDK model — one command name, capability gated by which
+package you installed). T17 also adds `strip = true` to release builds.
+
+Phase 2 (docs site, browser playground) is now ticketed: T18 (WASM-capable
+core — the enabling refactor; also has standalone value as an LLVM-free
+source build for contributors who don't touch `codegen`), T19 (browser
+playground — visible output via a read-only bindings panel, no language
+change; scope widened to a first-class npm-published embeddable package,
+Pyodide-style, not just our own docs-site's internal implementation detail),
+and T20 (the project website itself: Downloads page, hosted `install.sh`,
+playground home). T20 explicitly does not remove `install.sh` — that's
+gated on a still-undecided, separately-tracked choice of native package
+manager (Homebrew/apt/winget/...) and multi-platform (macOS/Windows) support,
+noted but deferred in T20.
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).

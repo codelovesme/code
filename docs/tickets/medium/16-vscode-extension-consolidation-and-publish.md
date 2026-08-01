@@ -27,6 +27,25 @@ ticket only *adds* the canonical copy here. Cleanup elsewhere is a separate,
 later decision for the owner to make deliberately, not a side effect of this
 migration.
 
+## Alternatives considered and rejected (2026-08-01 discussion)
+
+- **Separate repo for the extension** (clangd/`vscode-clangd` model — LSP in
+  the compiler monorepo, client in its own repo). Rejected for this project's
+  current shape: `code-lsp` depends on `code_lang` via a path dependency
+  (`code_lang = { path = "../.." }`), so the client/server pair here is closer
+  to the rust-analyzer model (LSP + its VS Code extension share one repo,
+  separate from the language's own compiler repo) than to clangd's, whose
+  separation is driven by things this project doesn't have yet: multiple
+  competing clients (Microsoft's `cpptools` vs `vscode-clangd`), a much larger
+  contributor base needing isolation from the core repo, and an independent
+  release cadence. Revisit if any of those actually materialize.
+- **`code lsp` subcommand wrapping `code-lsp`** (so users only ever type
+  `code`, never `code-lsp` directly). Rejected: this ticket's own server-path
+  resolution step already has the extension find/bundle `code-lsp` directly;
+  a human essentially never invokes `code-lsp` by hand, so the wrapper adds
+  surface for a problem nobody has. Cheap to add later (a few lines, fully
+  reversible) if that changes.
+
 ## Proposed change
 
 1. Copy the most current version of `../cdlvsm/code-vscode` into
