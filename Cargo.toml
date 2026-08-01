@@ -19,15 +19,18 @@ name = "code"
 path = "src/main.rs"
 
 [features]
-default = ["llvm"]
+default = ["llvm", "native-so"]
 # The LLVM backend (codegen). Off by default only for lightweight consumers such
 # as `code-lsp` that need the parser but not the compiler.
 llvm = ["dep:inkwell"]
+# Native `.so` module loading (libloading/dlopen). Off for targets with no
+# filesystem/dlopen, e.g. wasm32-unknown-unknown (see T18).
+native-so = ["dep:libloading"]
 
 [dependencies]
 code-abi = { path = "crates/code-abi" }
 chumsky = "0.9"
 anyhow = "1"
 inkwell = { version = "0.4", features = ["llvm17-0"], optional = true }
-libloading = "0.8"
+libloading = { version = "0.8", optional = true }
 wasmi = "1.0"

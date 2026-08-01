@@ -67,3 +67,30 @@ jobs:
 
       - name: Build code-lsp with no LLVM installed
         run: cargo build -p code-lsp
+
+  code-runtime-and-wasm:
+    name: code Runtime (no LLVM) + wasm32 core build
+    runs-on: ubuntu-latest
+    env:
+      # No LLVM installed and the sys path is empty, so any accidental inkwell
+      # dependency in the Runtime/wasm build path would fail here (see T18).
+      LLVM_SYS_170_PREFIX: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Assert the no-default-features build pulls in no LLVM
+        run: |
+          if cargo tree -p code --no-default-features -e normal | grep -Ei 'inkwell|llvm-sys'; then
+            echo "::error::code (--no-default-features) pulled in LLVM (inkwell/llvm-sys); the Runtime tier must build without the llvm feature"
+            exit 1
+          fi
+
+      - name: Build code Runtime (no LLVM, no native-so) with no LLVM installed
+        run: cargo build -p code --no-default-features
+
+      - name: Build code_lang core for wasm32-unknown-unknown
+        run: cargo build --lib -p code --no-default-features --target wasm32-unknown-unknown

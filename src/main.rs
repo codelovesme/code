@@ -1,6 +1,8 @@
 use code_lang::ast;
+#[cfg(feature = "llvm")]
 use code_lang::codegen;
 use code_lang::interpreter::Interpreter;
+#[cfg(feature = "llvm")]
 use code_lang::linker;
 use code_lang::module_loader;
 
@@ -29,14 +31,26 @@ fn run() -> i32 {
 
     match args[1].as_str() {
         "build" => {
-            if args.len() < 3 {
-                eprintln!("Error: missing file argument");
-                eprintln!("Usage: code build <file.code> [--target exe|ir|shared|static|wasm] [--release]");
-                return 1;
+            #[cfg(not(feature = "llvm"))]
+            {
+                eprintln!(
+                    "Error: this build of `code` was compiled without the `llvm` feature, \
+                     so `build` is unavailable. Install the SDK build to compile `.code` \
+                     programs to native/wasm output."
+                );
+                1
             }
-            let target = parse_target_flag(&args);
-            let release = args.iter().any(|a| a == "--release");
-            build_file(&args[2], &target, release)
+            #[cfg(feature = "llvm")]
+            {
+                if args.len() < 3 {
+                    eprintln!("Error: missing file argument");
+                    eprintln!("Usage: code build <file.code> [--target exe|ir|shared|static|wasm] [--release]");
+                    return 1;
+                }
+                let target = parse_target_flag(&args);
+                let release = args.iter().any(|a| a == "--release");
+                build_file(&args[2], &target, release)
+            }
         }
         "run" => {
             if args.len() < 3 {
@@ -231,6 +245,7 @@ fn run_file(path: &str) -> i32 {
 }
 
 /// Parse --target flag from args, defaulting to "exe".
+#[cfg(feature = "llvm")]
 fn parse_target_flag(args: &[String]) -> String {
     for (i, arg) in args.iter().enumerate() {
         if arg == "--target" {
@@ -247,6 +262,7 @@ fn parse_target_flag(args: &[String]) -> String {
 
 /// Parse and compile a single source file to LLVM IR.
 /// Returns 0 on success, 1 on error.
+#[cfg(feature = "llvm")]
 fn build_file(path: &str, target: &str, release: bool) -> i32 {
     let (program, map) = match module_loader::load_program_with_links(Path::new(path)) {
         Ok(pm) => pm,
@@ -282,6 +298,7 @@ fn build_file(path: &str, target: &str, release: bool) -> i32 {
     }
 }
 
+#[cfg(feature = "llvm")]
 fn build_ir(program: &ast::Program, module_name: &str, out_dir: &Path, diag: &Diag) -> i32 {
     let ir = match codegen::emit_llvm_ir(program, module_name) {
         Ok(ir) => ir,
@@ -299,6 +316,7 @@ fn build_ir(program: &ast::Program, module_name: &str, out_dir: &Path, diag: &Di
     0
 }
 
+#[cfg(feature = "llvm")]
 enum OutputKind {
     Executable,
     Shared,
@@ -306,8 +324,10 @@ enum OutputKind {
 }
 
 /// The C runtime bridge source for native module loading in compiled programs.
+#[cfg(feature = "llvm")]
 const RUNTIME_NATIVE_C: &str = include_str!("runtime_native.c");
 
+#[cfg(feature = "llvm")]
 fn build_native(
     program: &ast::Program,
     module_name: &str,
@@ -405,6 +425,7 @@ fn build_native(
 }
 
 /// Compile a C source file to an object file using `cc`.
+#[cfg(feature = "llvm")]
 fn compile_c_runtime(c_path: &Path, o_path: &Path) -> Result<(), String> {
     // -fPIC so the bridge object can be linked into shared libraries as well as
     // executables.
@@ -422,6 +443,7 @@ fn compile_c_runtime(c_path: &Path, o_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "llvm")]
 fn build_wasm(program: &ast::Program, module_name: &str, out_dir: &Path, release: bool, diag: &Diag) -> i32 {
     let obj_path = out_dir.join(format!("{}.wasm.o", module_name));
     if let Err(e) = codegen::emit_wasm_object(program, module_name, &obj_path, release) {

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use chumsky::Parser;
 
 use crate::ast::{ConstraintExpr, HandlerInfo, Program, Spanned, Statement, TypeInfo};
+#[cfg(feature = "native-so")]
 use crate::native_module;
 use crate::wasm_module;
 use crate::parser;
@@ -181,10 +182,22 @@ impl ModuleLoader {
                         }
 
                         let is_wasm = module_ref.ends_with(".wasm");
+
+                        #[cfg(feature = "native-so")]
                         let native_mod = if is_wasm {
                             wasm_module::load_wasm_module(&lib_path)?
                         } else {
                             native_module::load_native_module(&lib_path)?
+                        };
+                        #[cfg(not(feature = "native-so"))]
+                        let native_mod = if is_wasm {
+                            wasm_module::load_wasm_module(&lib_path)?
+                        } else {
+                            return Err(format!(
+                                "Native '.so' module loading is not available in this build \
+                                 (missing the `native-so` feature): '{}'",
+                                module_ref
+                            ));
                         };
 
                         statements.push(Spanned::new(Statement::NativeImport {

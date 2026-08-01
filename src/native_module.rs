@@ -18,13 +18,17 @@
 
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
+#[cfg(feature = "native-so")]
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::fmt;
+#[cfg(feature = "native-so")]
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-use crate::ast::{ConstraintExpr, FieldConstraint, TypeExpr, TypeInfo};
+#[cfg(feature = "native-so")]
+use crate::ast::{ConstraintExpr, FieldConstraint, TypeExpr};
+use crate::ast::TypeInfo;
 use crate::runtime::Value;
 
 // ---------------------------------------------------------------------------
@@ -164,6 +168,7 @@ pub struct NativeModule {
 ///
 /// # Safety
 /// The caller must ensure that all pointers inside `c_value` are valid.
+#[cfg(feature = "native-so")]
 pub unsafe fn code_value_to_value(c_value: &CodeValue) -> Rc<Value> {
     match c_value.tag {
         CODE_TAG_NUMBER => Value::number(c_value.number),
@@ -210,6 +215,7 @@ pub unsafe fn code_value_to_value(c_value: &CodeValue) -> Rc<Value> {
 
 /// Temporary storage that keeps C-compatible data alive for the duration of
 /// a native function call.
+#[cfg(feature = "native-so")]
 pub struct CodeValueBacking {
     pub strings: Vec<CString>,
     pub fields: Vec<Vec<CodeField>>,
@@ -218,6 +224,7 @@ pub struct CodeValueBacking {
     pub children: Vec<CodeValueBacking>,
 }
 
+#[cfg(feature = "native-so")]
 impl CodeValueBacking {
     pub fn new() -> Self {
         CodeValueBacking {
@@ -233,6 +240,7 @@ impl CodeValueBacking {
 ///
 /// The `backing` struct must outlive the returned `CodeValue` so that
 /// all C strings and arrays remain valid.
+#[cfg(feature = "native-so")]
 pub fn value_to_code_value(val: &Value, backing: &mut CodeValueBacking) -> CodeValue {
     match val {
         Value::Number(n) => CodeValue {
@@ -307,6 +315,7 @@ pub fn value_to_code_value(val: &Value, backing: &mut CodeValueBacking) -> CodeV
 /// Load a native module from a shared library (.so).
 ///
 /// The library must export `code_module_abi_version` and `code_module_init`.
+#[cfg(feature = "native-so")]
 pub fn load_native_module(path: &Path) -> Result<NativeModule, String> {
     unsafe {
         let lib = libloading::Library::new(path)
@@ -436,6 +445,7 @@ pub fn load_native_module(path: &Path) -> Result<NativeModule, String> {
 // Helpers
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "native-so")]
 unsafe fn c_str_to_string(ptr: *const c_char) -> String {
     if ptr.is_null() {
         String::new()
@@ -455,6 +465,7 @@ unsafe fn c_str_to_string(ptr: *const c_char) -> String {
 ///
 /// # Safety
 /// All pointers inside `c_value` must be valid.
+#[cfg(feature = "native-so")]
 unsafe fn code_value_to_emitted(c_value: &CodeValue) -> EmittedValue {
     match c_value.tag {
         CODE_TAG_NUMBER => EmittedValue::Number(c_value.number),
@@ -496,6 +507,7 @@ unsafe fn code_value_to_emitted(c_value: &CodeValue) -> EmittedValue {
 /// # Safety
 /// * `context` must have been produced by `Arc::into_raw` on an `EmitQueue`.
 /// * `particle` must be a valid `CodeValue`.
+#[cfg(feature = "native-so")]
 unsafe extern "C" fn host_emit_callback(context: *mut c_void, particle: CodeValue) {
     if context.is_null() {
         return;
