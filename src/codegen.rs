@@ -2276,7 +2276,11 @@ impl<'ctx> Codegen<'ctx> {
                 let val = if runtime_fields.contains(name) {
                     // Load from stored source and do property access.
                     let loaded_src = self.builder.build_load(self.value_type, src_alloca, "pspread_src_ld").unwrap();
-                    self.compile_property_access_from_value(loaded_src.into_struct_value(), name)?
+                    let v = self.compile_property_access_from_value(loaded_src.into_struct_value(), name)?;
+                    // T21: property_access_from_value borrows the child; dup so
+                    // the new particle owns this field independently of source.
+                    self.emit_dup(v.into_struct_value());
+                    v
                 } else {
                     self.compile_expr(expr)?
                 };
@@ -2296,6 +2300,10 @@ impl<'ctx> Codegen<'ctx> {
                 let val_slot = self.builder.build_struct_gep(self.field_type, field_ptr, 1, "pspread_vs").unwrap();
                 self.builder.build_store(val_slot, val).unwrap();
             }
+
+            // T21: the source temp is fully consumed (its used fields were dup'd
+            // into the new particle), so drop it.
+            self.emit_drop(src_val.into_struct_value());
 
             let tag = self.context.i8_type().const_int(TAG_OBJECT as u64, false);
             let num = self.context.f64_type().const_float(count as f64);
