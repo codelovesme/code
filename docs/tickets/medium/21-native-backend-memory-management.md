@@ -14,15 +14,22 @@
   value slots (so scope drops are safe on early-return paths), and the
   reads-dup / stores-transfer / consumers-drop discipline wired through
   Identifier/property/index/equality/type-check reads, if/block/loop bodies
-  (per-iteration), spread, string concat, emit/handler dispatch (particle +
-  fire-and-forget), core handlers, and the native ABI (copy-at-boundary, D2).
-  Verified: **90/97** buildable `.code` fixtures balance to `live=0` (alloc==free
-  via the `CODE_HEAP_REPORT` instrumentation), full `cargo test` + 139-file
-  `.code` suite green, no double-frees. Known-safe residuals (over-retain, never
-  double-free): aggregate concat/merge that bulk-copies children without dup
-  (`array/object + `, spread-particle — need a per-element/field `dup` in the
-  copy loop before dropping operands), module `base`-dispatch, `assert`→Exception
-  control flow, computed object keys, and `__value_to_cstr` transient buffers.
+  (per-iteration), spread (object + particle, with child dup), array/object
+  concat & merge (`+`, with child dup), string concat, emit/handler dispatch
+  (particle + fire-and-forget), core handlers, and the native ABI
+  (copy-at-boundary, D2). Verified: **93/97** buildable `.code` fixtures balance
+  to `live=0` (alloc==free via the `CODE_HEAP_REPORT` instrumentation), including
+  array-of-objects concat and object-merge with nested heap fields (no
+  double-free); full `cargo test` + 139-file `.code` suite green.
+
+  Remaining known-safe residuals (over-retain, never double-free): module
+  `base`-dispatch (`base_target_*`), `assert`→Exception control flow
+  (`exception_type`), computed object keys (`object_computed_key` — the runtime
+  key string is reused as a field *name*, and names are not yet refcount-aware:
+  needs the sentinel/heap distinction extended to names), and `__value_to_cstr`
+  concat/interp transient buffers (uncounted plain-malloc scratch). Also noted:
+  `number + array` prepend has a pre-existing *semantic* bug (intercepted by the
+  number-addition branch), unrelated to memory management.
 
 ---
 
