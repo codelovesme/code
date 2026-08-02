@@ -594,8 +594,9 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(())
             }
             Statement::HandlerInvoke { particle, target } => {
-                // Fire-and-forget: discard return value.
-                self.compile_handler_invoke(particle, target)?;
+                // Fire-and-forget: the return value is discarded, so drop it.
+                let ret = self.compile_handler_invoke(particle, target)?;
+                self.emit_drop(ret.into_struct_value());
                 Ok(())
             }
             Statement::HandlerInvokeAssign { particle, target, result_name } => {
@@ -700,6 +701,7 @@ impl<'ctx> Codegen<'ctx> {
                     self.current_span = Some(inner.span.clone());
                     self.compile_statement(&inner.node)?;
                 }
+                self.emit_current_scope_drops();
                 self.pop_scope();
                 Ok(())
             }
@@ -2945,6 +2947,24 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    /// Drop the innermost scope's owned slots at the live end of a lexical body,
+    /// to be called just before `pop_scope`. No-op if the current block is
+    /// already terminated (the body ended in a `return`/`break`, which do their
+    /// own cleanup), so this never emits instructions after a terminator.
+    fn emit_current_scope_drops(&self) {
+        if self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_terminator())
+            .is_some()
+        {
+            return;
+        }
+        let scope = self.scopes.last().cloned().unwrap_or_default();
+        let borrowed = self.borrowed_slots.last().cloned().unwrap_or_default();
+        self.emit_scope_drops(&scope, &borrowed);
+    }
+
     fn create_entry_alloca(&self, name: &str) -> PointerValue<'ctx> {
         let builder = self.context.create_builder();
         let entry = self.main_fn.get_first_basic_block().unwrap();
@@ -3279,6 +3299,8 @@ impl<'ctx> Codegen<'ctx> {
             { self.current_span = Some(stmt.span.clone()); self.compile_statement(&stmt.node)?; }
         }
 
+        // T21: drop body-local owned values at the end of each iteration.
+        self.emit_current_scope_drops();
         self.pop_scope();
 
         // Restore break context.
@@ -3645,6 +3667,8 @@ impl<'ctx> Codegen<'ctx> {
         };
 
         if invocations.is_empty() && native_handler_ptr.is_none() {
+            // T21: no handler matched — the particle temp is still owned here.
+            self.emit_drop(particle_val);
             return Ok(self.const_null().into());
         }
 
@@ -3823,6 +3847,12 @@ impl<'ctx> Codegen<'ctx> {
             );
         }
 
+        // T21: the particle temp is fully consumed by dispatch (body handlers
+        // borrowed its fields; the native bridge copied it). Drop it here. The
+        // returned value is independently owned (HandlerReturn dup'd it, or the
+        // native result is a fresh headered copy), so it survives.
+        self.emit_drop(particle_val);
+
         Ok(last_ret.unwrap_or_else(|| self.const_null().into()))
     }
 
@@ -3927,6 +3957,8 @@ impl<'ctx> Codegen<'ctx> {
         let cond_val = self.compile_expr(condition)?.into_struct_value();
 
         let bool_val = self.compile_truthy(cond_val);
+        // T21: the condition temp is consumed by the truthy test.
+        self.emit_drop(cond_val);
         let then_block = self.context.append_basic_block(self.main_fn, "if_then");
         let merge_block = self.context.append_basic_block(self.main_fn, "if_merge");
         self.builder.build_conditional_branch(bool_val, then_block, merge_block).unwrap();
@@ -3937,6 +3969,7 @@ impl<'ctx> Codegen<'ctx> {
         for stmt in body {
             { self.current_span = Some(stmt.span.clone()); self.compile_statement(&stmt.node)?; }
         }
+        self.emit_current_scope_drops();
         self.pop_scope();
         if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
             self.builder.build_unconditional_branch(merge_block).unwrap();
@@ -4096,6 +4129,10 @@ impl<'ctx> Codegen<'ctx> {
         // Restore break context.
         self.break_exit_block = prev_break;
 
+        // T21: drop body-local owned values at the end of each iteration (the
+        // loop var is borrowed and skipped). This gives prompt per-iteration
+        // reclamation — the memory-churn case stays flat.
+        self.emit_current_scope_drops();
         self.pop_scope();
 
         // Branch to loop_next if not already terminated (by break).
