@@ -1303,6 +1303,8 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let val = self.compile_expr(expr)?.into_struct_value();
         let result = self.compile_type_expr_check(val, type_expr)?;
+        // T21: the checked value is consumed by the type check (read above).
+        self.emit_drop(val);
 
         let final_result = if negated {
             self.builder.build_not(result, "tc_neg").unwrap()
