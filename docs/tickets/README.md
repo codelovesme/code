@@ -46,7 +46,7 @@ _(none right now)_
 | [17](medium/17-split-release-artifact-code-lsp.md) | Split release artifacts: `code` Runtime / `code` SDK / `code-lsp` |
 | [18](medium/18-wasm-capable-core.md) | WASM-capable core: feature-gate LLVM and native-`.so` out of the default build |
 | [20](medium/20-project-website-distribution-channel.md) | Project website: Downloads page, hosted install.sh, playground home |
-| [21](medium/21-native-codegen-memory-never-freed.md) | Native codegen (`code build`) never frees heap allocations — real leak for `shared`/`static` targets |
+| [21](medium/21-native-backend-memory-management.md) | Native backend automatic memory management: compile-time-elided refcounting (Perceus/Lobster-style) |
 
 ## Active — Low priority
 
@@ -90,6 +90,30 @@ playground home). T20 explicitly does not remove `install.sh` — that's
 gated on a still-undecided, separately-tracked choice of native package
 manager (Homebrew/apt/winget/...) and multi-platform (macOS/Windows) support,
 noted but deferred in T20.
+
+**Foundational runtime work — T21 (native memory management):** the native
+(`code build`) backend currently `malloc`s but never `free`s — a cosmetic
+leak-until-exit for `exe`, but a real unbounded leak for `shared`/`static`
+(linked into a long-lived host) and for the WASM `__code_dispatch` per-event
+re-entry the playground depends on. The interpreter (`code run`) is already
+correct via `Rc<Value>`. T21 makes the native backend reproduce those
+`Rc` semantics with **compile-time-elided reference counting** (the
+Perceus/Koka and Lobster family): a correct `dup`/`drop` refcount baseline,
+then compile-time passes (last-use→move, borrow inference, non-escaping
+stack promotion) that erase ~most of the count traffic — the common case pays
+nothing. Crucially, Code **cannot form reference cycles** (no closures, no
+back-references, immutable payloads), so **no cycle collector is ever needed** —
+the hardest part of general refcounting doesn't apply. Both the naive
+"bare `free`" and an arena/region-per-invocation were evaluated and rejected
+(arena does nothing for `exe`, gives no mid-invocation reclamation, and forces
+an awkward two-region split at the WASM event boundary that refcounting
+dissolves). Phased plan; **Phase 1 (the prompt-free `dup`/`drop` baseline) is
+implemented** — headered `code_alloc`, sentinel-static string literals,
+recursive sentinel-aware `dup`/`drop`, and the reads-dup/stores-transfer/
+consumers-drop discipline. Verified leak-free (alloc==free) on a 13-construct
+stress fixture and a broad sweep, full suite green. Remaining Phase-1 polish
+(inner-scope drops, non-core emit-particle drops) and the Phase 2 elision passes
+are still open.
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).
