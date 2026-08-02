@@ -3,11 +3,11 @@
 - **Priority:** Medium (foundational — a core building block of the language, not a peripheral fix)
 - **Type:** Language runtime / codegen — automatic memory management
 - **Area:** `src/codegen.rs` (primary), `src/runtime_native.c`, `src/native_module.rs` (ABI boundary), new escape/liveness analysis pass (module TBD)
-- **Status:** **Phase 1 implemented** (prompt-free `dup`/`drop` baseline) on
-  branch `t21-native-refcounting`; Phase 2 elision passes are the remaining
-  design below. Supersedes the original "codegen never frees" framing of this
-  ticket (the bare-`free` idea and the arena approach were both evaluated and
-  rejected — see *Rejected alternatives*).
+- **Status:** **Phase 1 complete — zero known leaks.** Landed on
+  `t21-native-refcounting` (merged, PR #1) and `t21-phase1-residuals`. Phase 2
+  elision passes are the remaining design below.  Supersedes the original
+  "codegen never frees" framing of this ticket (the bare-`free` idea and the
+  arena approach were both evaluated and rejected — see *Rejected alternatives*).
 
   **Phase 1 landed (2026-08-02):** headered `code_alloc`, sentinel-static string
   literals, recursive sentinel-aware `code_dup`/`code_drop`, zero-initialised
@@ -15,21 +15,30 @@
   reads-dup / stores-transfer / consumers-drop discipline wired through
   Identifier/property/index/equality/type-check reads, if/block/loop bodies
   (per-iteration), spread (object + particle, with child dup), array/object
-  concat & merge (`+`, with child dup), string concat, emit/handler dispatch
-  (particle + fire-and-forget), core handlers, and the native ABI
-  (copy-at-boundary, D2). Verified: **93/97** buildable `.code` fixtures balance
-  to `live=0` (alloc==free via the `CODE_HEAP_REPORT` instrumentation), including
-  array-of-objects concat and object-merge with nested heap fields (no
-  double-free); full `cargo test` + 139-file `.code` suite green.
+  concat & merge (`+`, with child dup), string concat + interpolation (including
+  `__value_to_cstr`'s own transient buffers, made headered so they're
+  `code_drop`-able instead of leaking), computed object-literal field names
+  (made immortal `strdup` copies, decoupled from the source variable's counted
+  lifecycle), module import/link (`compile_import` now drops non-exported
+  internal locals, not just skips exported ones), `assert`'s pass-through value,
+  emit/handler dispatch (particle + fire-and-forget), core handlers, and the
+  native ABI (copy-at-boundary, D2).
 
-  Remaining known-safe residuals (over-retain, never double-free): module
-  `base`-dispatch (`base_target_*`), `assert`→Exception control flow
-  (`exception_type`), computed object keys (`object_computed_key` — the runtime
-  key string is reused as a field *name*, and names are not yet refcount-aware:
-  needs the sentinel/heap distinction extended to names), and `__value_to_cstr`
-  concat/interp transient buffers (uncounted plain-malloc scratch). Also noted:
-  `number + array` prepend has a pre-existing *semantic* bug (intercepted by the
-  number-addition branch), unrelated to memory management.
+  **Verified: 98/98 buildable `.code` fixtures balance to `live=0`** (alloc==free
+  via the `CODE_HEAP_REPORT` instrumentation) — **all four residuals from the
+  first pass are closed, zero known leaks remain.** Includes array-of-objects
+  concat, object-merge with nested heap fields, and a self-referential computed-key
+  fixture (no double-free in any). Full `cargo test` + `.code` suite green
+  throughout.
+
+  Also fixed in passing (real bugs found while verifying, unrelated to memory):
+  `__value_to_cstr` had no parameter for a Boolean's truth value at all (it
+  lives in the value struct's dedicated 4th field, not `num`), so every
+  `boolean + string` concat/interpolation silently stringified as `"false"`
+  regardless of the actual value; and `compile_add`'s number/array dispatch
+  checked only the left operand's tag before running number addition, so
+  `Number + Array` (e.g. `0 + [1, 2]`) read the array's element-count field as
+  a number instead of falling through to array-prepend.
 
 ---
 

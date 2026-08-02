@@ -187,6 +187,8 @@ struct Codegen<'ctx> {
     /// Break exit block (set when compiling a loop body).
     break_exit_block: Option<inkwell::basic_block::BasicBlock<'ctx>>,
     strlen_fn: FunctionValue<'ctx>,
+    /// T21: plain libc `strdup`, for immortal computed-field-name copies only.
+    strdup_fn: FunctionValue<'ctx>,
     memcpy_fn: FunctionValue<'ctx>,
     /// C time(NULL) — returns current Unix timestamp.
     time_fn: FunctionValue<'ctx>,
@@ -275,6 +277,16 @@ impl<'ctx> Codegen<'ctx> {
         let strlen_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
         let strlen_fn = module.add_function("strlen", strlen_type, None);
 
+        // T21: plain libc `strdup` — used only for computed object-literal
+        // field *names*. Field names are never refcounted anywhere in this
+        // codegen (code_drop's TAG_OBJECT case only walks field values, never
+        // names; literal names are immortal LLVM globals) — so a computed
+        // key's name is made an equally-immortal independent copy here,
+        // decoupled from the source variable's own (counted) lifecycle,
+        // instead of aliasing its live payload pointer.
+        let strdup_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
+        let strdup_fn = module.add_function("strdup", strdup_type, None);
+
         let time_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
         let time_fn = module.add_function("time", time_type, None);
 
@@ -284,10 +296,15 @@ impl<'ctx> Codegen<'ctx> {
         );
         let memcpy_fn = module.add_function("memcpy", memcpy_type, None);
 
-        // __value_to_cstr(tag: i32, num: f64, ptr: i8*) -> i8*
-        // Converts any Code value to its C-string representation.
+        // __value_to_cstr(tag: i32, num: f64, ptr: i8*, boolean: i8) -> i8*
+        // Converts any Code value to its C-string representation. `boolean`
+        // carries the Boolean truth flag (the value struct's dedicated 4th
+        // field, zero-extended i1->i8 like `tag` is i8->i32 elsewhere, to avoid
+        // i1-argument ABI ambiguity) — `num` is always 0.0 for Booleans
+        // (build_boolean never sets it), so it cannot be used to recover
+        // true/false.
         let value_to_cstr_type = i8_ptr_type.fn_type(
-            &[i32_type.into(), f64_type.into(), i8_ptr_type.into()],
+            &[i32_type.into(), f64_type.into(), i8_ptr_type.into(), i8_type.into()],
             false,
         );
         let value_to_cstr_fn = module.add_function("__value_to_cstr", value_to_cstr_type, None);
@@ -361,6 +378,7 @@ impl<'ctx> Codegen<'ctx> {
             handler_exit_block: None,
             break_exit_block: None,
             strlen_fn,
+            strdup_fn,
             memcpy_fn,
             time_fn,
             value_to_cstr_fn,
@@ -777,8 +795,18 @@ impl<'ctx> Codegen<'ctx> {
                 format!("Module declares public name '{}' but it was never defined", name)
             })?;
             pub_ptrs.push((name.clone(), ptr));
+            // T21: this slot's value is about to be moved out below (load+store
+            // into the alias object's field, or flattened into the outer scope)
+            // without a fresh dup — a move, not a copy — so it must not also be
+            // dropped when the module's inner scope exits.
+            self.mark_borrowed(name);
         }
 
+        // T21: drop every non-public (internal-only) module-local. Previously
+        // this scope was popped with no drops at all, silently leaking every
+        // internal binding the module doesn't re-export (e.g. a `to base`
+        // handler-dispatch result used only inside the module).
+        self.emit_current_scope_drops();
         self.pop_scope();
 
         match alias {
@@ -1216,6 +1244,14 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         self.builder.position_at_end(cont_block);
+        // T21: `value` (the dup'd asserted expression) is fully consumed by the
+        // assert check on every path that reaches here — `assert true` and
+        // `assert <non-boolean, non-Exception value>` (the pass-through cases;
+        // the fail paths above already move `value` into the handler return).
+        // No-op for Boolean/inline/static payloads; the real case this closes
+        // is `assert someHeapObject` (truthy, non-Exception) previously leaking
+        // its dup.
+        self.emit_drop(value_struct);
         Ok(())
     }
 
@@ -1935,11 +1971,24 @@ impl<'ctx> Codegen<'ctx> {
                     // Extract string pointer from the key value (must be a string).
                     let key_ptr = self.builder.build_extract_value(key_val, 2, "ckey_ptr")
                         .unwrap().into_pointer_value();
+                    // T21: field names are never refcounted (code_drop's TAG_OBJECT
+                    // case only walks field values; literal names are immortal
+                    // globals) — so make an independent immortal `strdup` copy for
+                    // the name instead of aliasing key_val's live, counted payload
+                    // pointer (which would otherwise leave a dangling name if the
+                    // source variable's own reference is later dropped to zero).
+                    let name_copy = self.builder.build_call(
+                        self.strdup_fn, &[key_ptr.into()], "ckey_name",
+                    ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
+                    // key_val was fully consumed by the copy above — drop it
+                    // (balances the dup from compiling key_expr, e.g. an
+                    // Identifier read).
+                    self.emit_drop(key_val);
                     let val = self.compile_expr(val_expr)?;
                     let name_slot = self.builder.build_struct_gep(
                         self.field_type, field_ptr, 0, "cname_slot",
                     ).unwrap();
-                    self.builder.build_store(name_slot, key_ptr).unwrap();
+                    self.builder.build_store(name_slot, name_copy).unwrap();
                     let val_slot = self.builder.build_struct_gep(
                         self.field_type, field_ptr, 1, "cval_slot",
                     ).unwrap();
@@ -3031,6 +3080,24 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.build_unconditional_branch(hdr).unwrap();
 
         self.builder.position_at_end(end);
+    }
+
+    /// Drop the headered string buffer returned by `__value_to_cstr` (T21:
+    /// backed by `code_alloc`/`code_strdup`, so it carries a normal refcount
+    /// header — count=1, no children). Call only after its bytes have been
+    /// fully copied out (e.g. by `build_strcat_multiple`).
+    fn emit_drop_cstr(&self, ptr: PointerValue<'ctx>) {
+        let i32_type = self.context.i32_type();
+        let f64_type = self.context.f64_type();
+        self.builder.build_call(
+            self.code_drop_fn,
+            &[
+                i32_type.const_int(TAG_STRING as u64, false).into(),
+                f64_type.const_float(0.0).into(),
+                ptr.into(),
+            ],
+            "",
+        ).unwrap();
     }
 
     fn create_entry_alloca(&self, name: &str) -> PointerValue<'ctx> {
@@ -4566,6 +4633,9 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         // Strategy: build each part as a C string, concatenate at runtime.
         let mut string_ptrs: Vec<PointerValue<'ctx>> = Vec::new();
+        // T21: parallel flags — true for __value_to_cstr scratch buffers (must
+        // be freed after concat), false for static literal globals (never freed).
+        let mut is_transient: Vec<bool> = Vec::new();
         let _i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
 
         for part in parts {
@@ -4576,6 +4646,7 @@ impl<'ctx> Codegen<'ctx> {
                     ).unwrap();
                     self.string_count += 1;
                     string_ptrs.push(global.as_pointer_value());
+                    is_transient.push(false);
                 }
                 crate::ast::StringPart::Variable(name) => {
                     let ptr = self.get_var_ptr(name).ok_or_else(|| {
@@ -4593,18 +4664,31 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap().into_float_value();
                     let ptr_val = self.builder.build_extract_value(val, 2, "interp_ptr")
                         .unwrap().into_pointer_value();
+                    let bool_val = self.builder.build_extract_value(val, 3, "interp_bool")
+                        .unwrap().into_int_value();
+                    let bool_i8 = self.builder.build_int_z_extend(
+                        bool_val, self.context.i8_type(), "interp_bool8",
+                    ).unwrap();
                     let str_ptr = self.builder.build_call(
                         self.value_to_cstr_fn,
-                        &[tag_i32.into(), num.into(), ptr_val.into()],
+                        &[tag_i32.into(), num.into(), ptr_val.into(), bool_i8.into()],
                         "interp_cstr",
                     ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
                     string_ptrs.push(str_ptr);
+                    is_transient.push(true);
                 }
             }
         }
 
         // Concatenate all parts using strlen + malloc + memcpy.
         let result_ptr = self.build_strcat_multiple(&string_ptrs)?;
+        // T21: drop every __value_to_cstr scratch buffer now that its bytes are
+        // copied into result_ptr. Static literal globals are left untouched.
+        for (ptr, transient) in string_ptrs.iter().zip(is_transient.iter()) {
+            if *transient {
+                self.emit_drop_cstr(*ptr);
+            }
+        }
 
         let tag = self.context.i8_type().const_int(TAG_STRING as u64, false);
         let num = self.context.f64_type().const_float(0.0);
@@ -4707,12 +4791,18 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap().into_float_value();
         let r_ptr  = self.builder.build_extract_value(right_val, 2, "add_r_ptr")
             .unwrap().into_pointer_value();
+        let r_bool = self.builder.build_extract_value(right_val, 3, "add_r_bool")
+            .unwrap().into_int_value();
+        let r_bool8 = self.builder.build_int_z_extend(r_bool, i8_type, "add_r_bool8").unwrap();
         let r_str  = self.builder.build_call(
             self.value_to_cstr_fn,
-            &[r_tag_i32.into(), r_num.into(), r_ptr.into()],
+            &[r_tag_i32.into(), r_num.into(), r_ptr.into(), r_bool8.into()],
             "add_r_cstr",
         ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
         let concat_ptr = self.build_strcat_multiple(&[l_str, r_str])?;
+        // T21: r_str is __value_to_cstr's headered scratch buffer (count=1) —
+        // its bytes are now copied into concat_ptr, so drop it.
+        self.emit_drop_cstr(r_str);
         let str_result = self.build_value(
             i8_type.const_int(TAG_STRING as u64, false),
             self.context.f64_type().const_float(0.0),
@@ -4748,14 +4838,20 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap().into_float_value();
         let l_ptr2 = self.builder.build_extract_value(left_val, 2, "add_l_ptrv")
             .unwrap().into_pointer_value();
+        let l_bool2 = self.builder.build_extract_value(left_val, 3, "add_l_bool2")
+            .unwrap().into_int_value();
+        let l_bool28 = self.builder.build_int_z_extend(l_bool2, i8_type, "add_l_bool28").unwrap();
         let l_str2 = self.builder.build_call(
             self.value_to_cstr_fn,
-            &[l_tag_i32.into(), l_num.into(), l_ptr2.into()],
+            &[l_tag_i32.into(), l_num.into(), l_ptr2.into(), l_bool28.into()],
             "add_l_cstr2",
         ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
         let r_str2 = self.builder.build_extract_value(right_val, 2, "add_r_str2")
             .unwrap().into_pointer_value();
         let concat_ptr2 = self.build_strcat_multiple(&[l_str2, r_str2])?;
+        // T21: l_str2 is __value_to_cstr's headered scratch buffer; drop it now
+        // that its bytes are copied into concat_ptr2.
+        self.emit_drop_cstr(l_str2);
         let r_str_result = self.build_value(
             i8_type.const_int(TAG_STRING as u64, false),
             self.context.f64_type().const_float(0.0),
@@ -4769,15 +4865,26 @@ impl<'ctx> Codegen<'ctx> {
         let r_str_end = self.builder.get_insert_block().unwrap();
 
         // Neither is string: check for number or array.
+        // T21/bugfix: require BOTH operands to be Number here, not just left —
+        // otherwise `Number + Array` (e.g. `0 + [1, 2]`) matched l_is_num alone
+        // and silently ran number addition against the array's `num` field
+        // (which stores its element count), producing a wrong Number result
+        // instead of falling through to the array-prepend case below.
         self.builder.position_at_end(non_str2_block);
         let l_is_num = self.builder.build_int_compare(
             IntPredicate::EQ, left_tag,
             i8_type.const_int(TAG_NUMBER as u64, false),
             "add_l_is_num",
         ).unwrap();
+        let r_is_num = self.builder.build_int_compare(
+            IntPredicate::EQ, right_tag,
+            i8_type.const_int(TAG_NUMBER as u64, false),
+            "add_r_is_num",
+        ).unwrap();
+        let both_num = self.builder.build_and(l_is_num, r_is_num, "add_both_num").unwrap();
         let num_block = self.context.append_basic_block(self.main_fn, "add_num");
         let arr_check_block = self.context.append_basic_block(self.main_fn, "add_arr_check");
-        self.builder.build_conditional_branch(l_is_num, num_block, arr_check_block).unwrap();
+        self.builder.build_conditional_branch(both_num, num_block, arr_check_block).unwrap();
 
         // Number addition.
         self.builder.position_at_end(num_block);
