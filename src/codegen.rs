@@ -4653,6 +4653,12 @@ impl<'ctx> Codegen<'ctx> {
             concat_ptr,
             self.context.bool_type().const_int(0, false),
         );
+        // T21: string concat copies bytes into a fresh buffer, so both operands
+        // are fully consumed here — drop them (strings have no heap children, so
+        // this is safe; array/object concat below aliases children and is left
+        // to the follow-up that dups copied children first).
+        self.emit_drop(left_val);
+        self.emit_drop(right_val);
         self.builder.build_unconditional_branch(merge_block).unwrap();
         let str_end = self.builder.get_insert_block().unwrap();
 
@@ -4690,6 +4696,9 @@ impl<'ctx> Codegen<'ctx> {
             concat_ptr2,
             self.context.bool_type().const_int(0, false),
         );
+        // T21: same as the left-string branch — bytes copied, operands consumed.
+        self.emit_drop(left_val);
+        self.emit_drop(right_val);
         self.builder.build_unconditional_branch(merge_block).unwrap();
         let r_str_end = self.builder.get_insert_block().unwrap();
 
