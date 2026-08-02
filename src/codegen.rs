@@ -1239,6 +1239,14 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         self.builder.position_at_end(cont_block);
+        // T21: `value` (the dup'd asserted expression) is fully consumed by the
+        // assert check on every path that reaches here — `assert true` and
+        // `assert <non-boolean, non-Exception value>` (the pass-through cases;
+        // the fail paths above already move `value` into the handler return).
+        // No-op for Boolean/inline/static payloads; the real case this closes
+        // is `assert someHeapObject` (truthy, non-Exception) previously leaking
+        // its dup.
+        self.emit_drop(value_struct);
         Ok(())
     }
 
