@@ -1,7 +1,12 @@
 #!/usr/bin/env sh
-# Install the `code` (+ `code-lsp`) prebuilt binaries from GitHub Releases.
+# Install the `code` SDK (compiler + interpreter) from GitHub Releases.
 #
 #   curl -sSf https://raw.githubusercontent.com/codelovesme/code/main/install.sh | sh
+#
+# Installs the SDK tier — the full `code` with `build` (native/wasm codegen).
+# Editors need `code-lsp`, and a smaller interpreter-only `code` Runtime is
+# published as its own release asset; both are separate downloads, not handled
+# by this script (see the release page).
 #
 # Env vars:
 #   CODE_VERSION  pin to a specific release tag (e.g. v0.3.0) instead of latest
@@ -46,7 +51,7 @@ else
 fi
 
 # --- Download + extract ---------------------------------------------------
-asset="code-${tag}-x86_64-linux.tar.gz"
+asset="code-sdk-${tag}-x86_64-linux.tar.gz"
 url="https://github.com/$REPO/releases/download/$tag/$asset"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -55,15 +60,15 @@ echo "Downloading $url..."
 curl -fsSL "$url" -o "$tmp/$asset"
 
 tar -xzf "$tmp/$asset" -C "$tmp"
-stage_dir=$(find "$tmp" -maxdepth 1 -type d -name 'code-*')
+stage_dir=$(find "$tmp" -maxdepth 1 -type d -name 'code-sdk-*')
 if [ -z "$stage_dir" ]; then
-    echo "error: unexpected archive layout — no code-* directory found." >&2
+    echo "error: unexpected archive layout — no code-sdk-* directory found." >&2
     exit 1
 fi
 
 mkdir -p "$BIN_DIR"
-cp "$stage_dir/code" "$stage_dir/code-lsp" "$BIN_DIR/"
-chmod +x "$BIN_DIR/code" "$BIN_DIR/code-lsp"
+cp "$stage_dir/code" "$BIN_DIR/"
+chmod +x "$BIN_DIR/code"
 
 echo ""
 echo "Installed to $BIN_DIR:"

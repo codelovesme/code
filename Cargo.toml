@@ -34,3 +34,9 @@ anyhow = "1"
 inkwell = { version = "0.4", features = ["llvm17-0"], optional = true }
 libloading = { version = "0.8", optional = true }
 wasmi = "1.0"
+
+# Strip symbols from release binaries (workspace-wide: `code` SDK/Runtime and
+# `code-lsp`). Shipped binaries don't need symbols; this shrinks the release
+# artifacts at no behavioral cost (see T17).
+[profile.release]
+strip = true

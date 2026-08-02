@@ -45,27 +45,51 @@ crates/
 
 ## Installing
 
-If you just want the `code` binary (not building from source), install the
-latest prebuilt release (Linux x86_64 only for now):
+Prebuilt releases are Linux x86_64 only for now. Each release publishes three
+independent assets — pick the one that matches what you need:
+
+| Asset | Binary | For |
+|-------|--------|-----|
+| `code-sdk-<tag>-x86_64-linux.tar.gz` | `code` | Compiling `.code` to native/wasm (`code build`) **and** running/formatting. The full toolchain. |
+| `code-runtime-<tag>-x86_64-linux.tar.gz` | `code` | Only running/formatting `.code` (`code run`/`fmt`/`test`). No compiler backend — much smaller, no LLVM. |
+| `code-lsp-<tag>-x86_64-linux.tar.gz` | `code-lsp` | Editor integration (language server). |
+
+Both `code` tiers install a binary named `code`; which capabilities it has
+depends on which package you installed — running `code build` on the Runtime
+tier prints a message pointing you at the SDK (the same one-name, two-packages
+model as `dotnet`'s Runtime vs SDK).
+
+**Quick install (SDK):**
 
 ```bash
 curl -sSf https://raw.githubusercontent.com/codelovesme/code/main/install.sh | sh
 ```
 
-This installs `code` and `code-lsp` into `~/.local/bin` (override with
-`PREFIX=...`); pin a specific version with `CODE_VERSION=v0.x.y`. For other
+This installs the `code` SDK into `~/.local/bin` (override with `PREFIX=...`);
+pin a specific version with `CODE_VERSION=v0.x.y`. For the Runtime tier or
+`code-lsp`, download that asset directly from the
+[releases page](https://github.com/codelovesme/code/releases). For other
 platforms, or to contribute, build from source below.
 
 ## Building
 
 ```bash
-cargo build
+cargo build            # full SDK (needs LLVM 17 — see below)
+```
+
+Only the compiler backend (`code build`) needs LLVM. To build just the
+interpreter/formatter/LSP — e.g. to hack on the language without installing an
+LLVM toolchain — disable the default `llvm` feature:
+
+```bash
+cargo build --no-default-features   # Runtime: run/fmt/test, no LLVM required
 ```
 
 ### LLVM Prerequisites
 
-LLVM 17 is required for the LLVM backend. Ensure `llvm-config` is on `PATH`,
-or set `LLVM_SYS_170_PREFIX` to your LLVM 17 installation root.
+LLVM 17 is required for the LLVM backend (`code build`), i.e. the default
+build. Ensure `llvm-config` is on `PATH`, or set `LLVM_SYS_170_PREFIX` to your
+LLVM 17 installation root. (Not needed for `--no-default-features`.)
 
 For WASM output, install `lld-17` (provides `wasm-ld-17`):
 ```bash

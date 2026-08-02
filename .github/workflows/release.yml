@@ -32,8 +32,28 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build code + code-lsp (release profile)
+      # `code` ships as two capability tiers, both with a binary named `code`
+      # (the dotnet Runtime/SDK model — one command name, capability decided by
+      # which package you installed; see T17/T18):
+      #   - SDK     = default features (llvm + native-so): run/fmt/test + build
+      #   - Runtime = --no-default-features: run/fmt/test only, no LLVM
+      # `code-lsp` is a third, independent artifact for editors.
+
+      - name: Build SDK (code, with LLVM) + code-lsp
         run: cargo build --workspace --release
+
+      - name: Stash SDK + lsp binaries
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp target/release/code dist/code-sdk
+          cp target/release/code-lsp dist/code-lsp
+
+      - name: Build Runtime (code, no LLVM)
+        run: cargo build -p code --release --no-default-features
+
+      - name: Stash Runtime binary
+        run: cp target/release/code dist/code-runtime
 
       - name: Determine version string
         id: version
@@ -44,40 +64,68 @@ jobs:
             echo "version=dev-${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Package tarball
+      - name: Sanity checks — binaries run standalone
         run: |
           set -euo pipefail
-          stage="code-${{ steps.version.outputs.version }}-x86_64-linux"
-          mkdir -p "$stage"
-          cp target/release/code "$stage"/
-          cp target/release/code-lsp "$stage"/
-          cp LICENSE README.md "$stage"/
-          tar -czf "${stage}.tar.gz" "$stage"
-          echo "tarball=${stage}.tar.gz" >> "$GITHUB_ENV"
-
-      - name: Sanity check — binary runs standalone
-        run: |
-          set -euo pipefail
-          ./target/release/code --version
-          # Confirm no dynamic LLVM dependency snuck in (inkwell statically
-          # links LLVM by default with this repo's setup) — a shared-lib
-          # dependency here would mean the tarball silently requires LLVM on
-          # the machine that runs it, defeating the point of shipping a
-          # standalone binary.
-          if ldd target/release/code | grep -qi llvm; then
-            echo "::error::code binary dynamically links libLLVM — release would require LLVM on the target machine"
+          # SDK: runs, and must NOT dynamically link libLLVM. inkwell statically
+          # links LLVM with this repo's setup — a shared-lib dependency here
+          # would mean the tarball silently requires LLVM on the machine that
+          # runs it, defeating the point of shipping a standalone binary.
+          dist/code-sdk --version
+          if ldd dist/code-sdk | grep -qi llvm; then
+            echo "::error::code SDK binary dynamically links libLLVM — release would require LLVM on the target machine"
+            exit 1
+          fi
+          # Runtime: runs, must have NO libLLVM linkage at all, and must refuse
+          # `build` (it has no compiler backend).
+          dist/code-runtime --version
+          if ldd dist/code-runtime | grep -qi llvm; then
+            echo "::error::code Runtime binary links libLLVM — it must be LLVM-free"
+            exit 1
+          fi
+          if dist/code-runtime build nonexistent.code >/dev/null 2>&1; then
+            echo "::error::code Runtime accepted 'build' — it must refuse without the llvm feature"
             exit 1
           fi
 
-      - name: Upload build artifact
+      - name: Package tarballs
+        run: |
+          set -euo pipefail
+          v="${{ steps.version.outputs.version }}"
+
+          # SDK — binary named `code`
+          stage="code-sdk-${v}-x86_64-linux"
+          mkdir -p "$stage"
+          cp dist/code-sdk "$stage/code"
+          cp LICENSE README.md "$stage/"
+          tar -czf "${stage}.tar.gz" "$stage"
+
+          # Runtime — binary named `code`
+          stage="code-runtime-${v}-x86_64-linux"
+          mkdir -p "$stage"
+          cp dist/code-runtime "$stage/code"
+          cp LICENSE README.md "$stage/"
+          tar -czf "${stage}.tar.gz" "$stage"
+
+          # LSP server
+          stage="code-lsp-${v}-x86_64-linux"
+          mkdir -p "$stage"
+          cp dist/code-lsp "$stage/code-lsp"
+          cp LICENSE "$stage/"
+          tar -czf "${stage}.tar.gz" "$stage"
+
+          echo "Built tarballs:"
+          ls -1 ./*.tar.gz
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.tarball }}
-          path: ${{ env.tarball }}
+          name: code-release-${{ steps.version.outputs.version }}
+          path: "*.tar.gz"
 
       - name: Create GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.tarball }}
+          files: "*.tar.gz"
           generate_release_notes: true
