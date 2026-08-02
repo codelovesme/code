@@ -296,10 +296,15 @@ impl<'ctx> Codegen<'ctx> {
         );
         let memcpy_fn = module.add_function("memcpy", memcpy_type, None);
 
-        // __value_to_cstr(tag: i32, num: f64, ptr: i8*) -> i8*
-        // Converts any Code value to its C-string representation.
+        // __value_to_cstr(tag: i32, num: f64, ptr: i8*, boolean: i8) -> i8*
+        // Converts any Code value to its C-string representation. `boolean`
+        // carries the Boolean truth flag (the value struct's dedicated 4th
+        // field, zero-extended i1->i8 like `tag` is i8->i32 elsewhere, to avoid
+        // i1-argument ABI ambiguity) — `num` is always 0.0 for Booleans
+        // (build_boolean never sets it), so it cannot be used to recover
+        // true/false.
         let value_to_cstr_type = i8_ptr_type.fn_type(
-            &[i32_type.into(), f64_type.into(), i8_ptr_type.into()],
+            &[i32_type.into(), f64_type.into(), i8_ptr_type.into(), i8_type.into()],
             false,
         );
         let value_to_cstr_fn = module.add_function("__value_to_cstr", value_to_cstr_type, None);
@@ -4659,9 +4664,14 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap().into_float_value();
                     let ptr_val = self.builder.build_extract_value(val, 2, "interp_ptr")
                         .unwrap().into_pointer_value();
+                    let bool_val = self.builder.build_extract_value(val, 3, "interp_bool")
+                        .unwrap().into_int_value();
+                    let bool_i8 = self.builder.build_int_z_extend(
+                        bool_val, self.context.i8_type(), "interp_bool8",
+                    ).unwrap();
                     let str_ptr = self.builder.build_call(
                         self.value_to_cstr_fn,
-                        &[tag_i32.into(), num.into(), ptr_val.into()],
+                        &[tag_i32.into(), num.into(), ptr_val.into(), bool_i8.into()],
                         "interp_cstr",
                     ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
                     string_ptrs.push(str_ptr);
@@ -4781,9 +4791,12 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap().into_float_value();
         let r_ptr  = self.builder.build_extract_value(right_val, 2, "add_r_ptr")
             .unwrap().into_pointer_value();
+        let r_bool = self.builder.build_extract_value(right_val, 3, "add_r_bool")
+            .unwrap().into_int_value();
+        let r_bool8 = self.builder.build_int_z_extend(r_bool, i8_type, "add_r_bool8").unwrap();
         let r_str  = self.builder.build_call(
             self.value_to_cstr_fn,
-            &[r_tag_i32.into(), r_num.into(), r_ptr.into()],
+            &[r_tag_i32.into(), r_num.into(), r_ptr.into(), r_bool8.into()],
             "add_r_cstr",
         ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
         let concat_ptr = self.build_strcat_multiple(&[l_str, r_str])?;
@@ -4825,9 +4838,12 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap().into_float_value();
         let l_ptr2 = self.builder.build_extract_value(left_val, 2, "add_l_ptrv")
             .unwrap().into_pointer_value();
+        let l_bool2 = self.builder.build_extract_value(left_val, 3, "add_l_bool2")
+            .unwrap().into_int_value();
+        let l_bool28 = self.builder.build_int_z_extend(l_bool2, i8_type, "add_l_bool28").unwrap();
         let l_str2 = self.builder.build_call(
             self.value_to_cstr_fn,
-            &[l_tag_i32.into(), l_num.into(), l_ptr2.into()],
+            &[l_tag_i32.into(), l_num.into(), l_ptr2.into(), l_bool28.into()],
             "add_l_cstr2",
         ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
         let r_str2 = self.builder.build_extract_value(right_val, 2, "add_r_str2")
@@ -4849,15 +4865,26 @@ impl<'ctx> Codegen<'ctx> {
         let r_str_end = self.builder.get_insert_block().unwrap();
 
         // Neither is string: check for number or array.
+        // T21/bugfix: require BOTH operands to be Number here, not just left —
+        // otherwise `Number + Array` (e.g. `0 + [1, 2]`) matched l_is_num alone
+        // and silently ran number addition against the array's `num` field
+        // (which stores its element count), producing a wrong Number result
+        // instead of falling through to the array-prepend case below.
         self.builder.position_at_end(non_str2_block);
         let l_is_num = self.builder.build_int_compare(
             IntPredicate::EQ, left_tag,
             i8_type.const_int(TAG_NUMBER as u64, false),
             "add_l_is_num",
         ).unwrap();
+        let r_is_num = self.builder.build_int_compare(
+            IntPredicate::EQ, right_tag,
+            i8_type.const_int(TAG_NUMBER as u64, false),
+            "add_r_is_num",
+        ).unwrap();
+        let both_num = self.builder.build_and(l_is_num, r_is_num, "add_both_num").unwrap();
         let num_block = self.context.append_basic_block(self.main_fn, "add_num");
         let arr_check_block = self.context.append_basic_block(self.main_fn, "add_arr_check");
-        self.builder.build_conditional_branch(l_is_num, num_block, arr_check_block).unwrap();
+        self.builder.build_conditional_branch(both_num, num_block, arr_check_block).unwrap();
 
         // Number addition.
         self.builder.position_at_end(num_block);
