@@ -3,7 +3,26 @@
 - **Priority:** Medium (foundational — a core building block of the language, not a peripheral fix)
 - **Type:** Language runtime / codegen — automatic memory management
 - **Area:** `src/codegen.rs` (primary), `src/runtime_native.c`, `src/native_module.rs` (ABI boundary), new escape/liveness analysis pass (module TBD)
-- **Status:** Designed, ready to implement. Supersedes the original "codegen never frees" framing of this ticket (the bare-`free` idea and the arena approach were both evaluated and rejected — see *Rejected alternatives*).
+- **Status:** **Phase 1 implemented** (prompt-free `dup`/`drop` baseline) on
+  branch `t21-native-refcounting`; Phase 2 elision passes are the remaining
+  design below. Supersedes the original "codegen never frees" framing of this
+  ticket (the bare-`free` idea and the arena approach were both evaluated and
+  rejected — see *Rejected alternatives*).
+
+  **Phase 1 landed (2026-08-02):** headered `code_alloc`, sentinel-static string
+  literals, recursive sentinel-aware `code_dup`/`code_drop`, zero-initialised
+  value slots (so scope drops are safe on early-return paths), and the
+  reads-dup / stores-transfer / consumers-drop discipline wired through
+  Identifier/property/index/equality/type-check reads, if/block/loop bodies
+  (per-iteration), spread, string concat, emit/handler dispatch (particle +
+  fire-and-forget), core handlers, and the native ABI (copy-at-boundary, D2).
+  Verified: **90/97** buildable `.code` fixtures balance to `live=0` (alloc==free
+  via the `CODE_HEAP_REPORT` instrumentation), full `cargo test` + 139-file
+  `.code` suite green, no double-frees. Known-safe residuals (over-retain, never
+  double-free): aggregate concat/merge that bulk-copies children without dup
+  (`array/object + `, spread-particle — need a per-element/field `dup` in the
+  copy loop before dropping operands), module `base`-dispatch, `assert`→Exception
+  control flow, computed object keys, and `__value_to_cstr` transient buffers.
 
 ---
 
