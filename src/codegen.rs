@@ -187,6 +187,8 @@ struct Codegen<'ctx> {
     /// Break exit block (set when compiling a loop body).
     break_exit_block: Option<inkwell::basic_block::BasicBlock<'ctx>>,
     strlen_fn: FunctionValue<'ctx>,
+    /// T21: plain libc `strdup`, for immortal computed-field-name copies only.
+    strdup_fn: FunctionValue<'ctx>,
     memcpy_fn: FunctionValue<'ctx>,
     /// C time(NULL) — returns current Unix timestamp.
     time_fn: FunctionValue<'ctx>,
@@ -275,6 +277,16 @@ impl<'ctx> Codegen<'ctx> {
         let strlen_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
         let strlen_fn = module.add_function("strlen", strlen_type, None);
 
+        // T21: plain libc `strdup` — used only for computed object-literal
+        // field *names*. Field names are never refcounted anywhere in this
+        // codegen (code_drop's TAG_OBJECT case only walks field values, never
+        // names; literal names are immortal LLVM globals) — so a computed
+        // key's name is made an equally-immortal independent copy here,
+        // decoupled from the source variable's own (counted) lifecycle,
+        // instead of aliasing its live payload pointer.
+        let strdup_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
+        let strdup_fn = module.add_function("strdup", strdup_type, None);
+
         let time_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
         let time_fn = module.add_function("time", time_type, None);
 
@@ -361,6 +373,7 @@ impl<'ctx> Codegen<'ctx> {
             handler_exit_block: None,
             break_exit_block: None,
             strlen_fn,
+            strdup_fn,
             memcpy_fn,
             time_fn,
             value_to_cstr_fn,
@@ -1945,11 +1958,24 @@ impl<'ctx> Codegen<'ctx> {
                     // Extract string pointer from the key value (must be a string).
                     let key_ptr = self.builder.build_extract_value(key_val, 2, "ckey_ptr")
                         .unwrap().into_pointer_value();
+                    // T21: field names are never refcounted (code_drop's TAG_OBJECT
+                    // case only walks field values; literal names are immortal
+                    // globals) — so make an independent immortal `strdup` copy for
+                    // the name instead of aliasing key_val's live, counted payload
+                    // pointer (which would otherwise leave a dangling name if the
+                    // source variable's own reference is later dropped to zero).
+                    let name_copy = self.builder.build_call(
+                        self.strdup_fn, &[key_ptr.into()], "ckey_name",
+                    ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
+                    // key_val was fully consumed by the copy above — drop it
+                    // (balances the dup from compiling key_expr, e.g. an
+                    // Identifier read).
+                    self.emit_drop(key_val);
                     let val = self.compile_expr(val_expr)?;
                     let name_slot = self.builder.build_struct_gep(
                         self.field_type, field_ptr, 0, "cname_slot",
                     ).unwrap();
-                    self.builder.build_store(name_slot, key_ptr).unwrap();
+                    self.builder.build_store(name_slot, name_copy).unwrap();
                     let val_slot = self.builder.build_struct_gep(
                         self.field_type, field_ptr, 1, "cval_slot",
                     ).unwrap();
