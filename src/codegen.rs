@@ -2967,6 +2967,64 @@ impl<'ctx> Codegen<'ctx> {
         self.emit_scope_drops(&scope, &borrowed);
     }
 
+    /// Dup every child of a freshly-built aggregate whose children were
+    /// bulk-copied (aliased) from source operands — array elements (`is_object`
+    /// false) or object field values (`is_object` true). After this the result
+    /// owns independent refs to each child, so the source operands can be
+    /// dropped without double-freeing shared heap children. Emits a runtime
+    /// `for i in 0..count` loop.
+    fn emit_dup_aggregate_children(
+        &self,
+        data_ptr: PointerValue<'ctx>,
+        count: inkwell::values::IntValue<'ctx>,
+        is_object: bool,
+    ) {
+        let i32_type = self.context.i32_type();
+        let entry = self.builder.get_insert_block().unwrap();
+        let hdr = self.context.append_basic_block(self.main_fn, "dupch_hdr");
+        let body = self.context.append_basic_block(self.main_fn, "dupch_body");
+        let end = self.context.append_basic_block(self.main_fn, "dupch_end");
+
+        self.builder.build_unconditional_branch(hdr).unwrap();
+        self.builder.position_at_end(hdr);
+        let i_phi = self.builder.build_phi(i32_type, "dupch_i").unwrap();
+        i_phi.add_incoming(&[(&i32_type.const_int(0, false), entry)]);
+        let i_val = i_phi.as_basic_value().into_int_value();
+        let done = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, i_val, count, "dupch_done")
+            .unwrap();
+        self.builder.build_conditional_branch(done, end, body).unwrap();
+
+        self.builder.position_at_end(body);
+        let child_val = if is_object {
+            let field_ptr = unsafe {
+                self.builder.build_in_bounds_gep(self.field_type, data_ptr, &[i_val], "dupch_fptr")
+            }
+            .unwrap();
+            let vslot = self
+                .builder
+                .build_struct_gep(self.field_type, field_ptr, 1, "dupch_vslot")
+                .unwrap();
+            self.builder.build_load(self.value_type, vslot, "dupch_v").unwrap().into_struct_value()
+        } else {
+            let elem_ptr = unsafe {
+                self.builder.build_in_bounds_gep(self.value_type, data_ptr, &[i_val], "dupch_eptr")
+            }
+            .unwrap();
+            self.builder.build_load(self.value_type, elem_ptr, "dupch_e").unwrap().into_struct_value()
+        };
+        self.emit_dup(child_val);
+        let i_next = self
+            .builder
+            .build_int_add(i_val, i32_type.const_int(1, false), "dupch_inext")
+            .unwrap();
+        i_phi.add_incoming(&[(&i_next, body)]);
+        self.builder.build_unconditional_branch(hdr).unwrap();
+
+        self.builder.position_at_end(end);
+    }
+
     fn create_entry_alloca(&self, name: &str) -> PointerValue<'ctx> {
         let builder = self.context.create_builder();
         let entry = self.main_fn.get_first_basic_block().unwrap();
@@ -4874,6 +4932,13 @@ impl<'ctx> Codegen<'ctx> {
             "cc_copy_r",
         ).unwrap();
 
+        // T21: the elements were bulk-copied (aliased) from both operands. Dup
+        // each so the result owns them, then drop the operands (freeing their
+        // array blocks and decrementing children back to a single owned ref).
+        self.emit_dup_aggregate_children(new_ptr, total, false);
+        self.emit_drop(left);
+        self.emit_drop(right);
+
         let total_f = self.builder.build_unsigned_int_to_float(
             total, self.context.f64_type(), "cc_total_f",
         ).unwrap();
@@ -4931,6 +4996,11 @@ impl<'ctx> Codegen<'ctx> {
         let new_count_f = self.builder.build_unsigned_int_to_float(
             new_count, self.context.f64_type(), "app_nf",
         ).unwrap();
+        // T21: dup all result children (copied elements + appended value), then
+        // drop both operands.
+        self.emit_dup_aggregate_children(new_ptr, new_count, false);
+        self.emit_drop(arr_val);
+        self.emit_drop(elem_val);
         Ok(self.build_value(
             i8_type.const_int(TAG_ARRAY as u64, false),
             new_count_f,
@@ -4985,6 +5055,11 @@ impl<'ctx> Codegen<'ctx> {
         let new_count_f = self.builder.build_unsigned_int_to_float(
             new_count, self.context.f64_type(), "pre_nf",
         ).unwrap();
+        // T21: dup all result children (prepended value + copied elements), then
+        // drop both operands.
+        self.emit_dup_aggregate_children(new_ptr, new_count, false);
+        self.emit_drop(arr_val);
+        self.emit_drop(elem_val);
         Ok(self.build_value(
             i8_type.const_int(TAG_ARRAY as u64, false),
             new_count_f,
@@ -5049,6 +5124,12 @@ impl<'ctx> Codegen<'ctx> {
             &[dest_offset.into(), r_arr.into(), r_bytes.into()],
             "om_copy_r",
         ).unwrap();
+
+        // T21: dup each copied field value (children are aliased from both
+        // operands), then drop the operands.
+        self.emit_dup_aggregate_children(new_ptr, total, true);
+        self.emit_drop(left);
+        self.emit_drop(right);
 
         let total_f = self.builder.build_unsigned_int_to_float(
             total, self.context.f64_type(), "om_total_f",
