@@ -3033,6 +3033,24 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(end);
     }
 
+    /// Drop the headered string buffer returned by `__value_to_cstr` (T21:
+    /// backed by `code_alloc`/`code_strdup`, so it carries a normal refcount
+    /// header — count=1, no children). Call only after its bytes have been
+    /// fully copied out (e.g. by `build_strcat_multiple`).
+    fn emit_drop_cstr(&self, ptr: PointerValue<'ctx>) {
+        let i32_type = self.context.i32_type();
+        let f64_type = self.context.f64_type();
+        self.builder.build_call(
+            self.code_drop_fn,
+            &[
+                i32_type.const_int(TAG_STRING as u64, false).into(),
+                f64_type.const_float(0.0).into(),
+                ptr.into(),
+            ],
+            "",
+        ).unwrap();
+    }
+
     fn create_entry_alloca(&self, name: &str) -> PointerValue<'ctx> {
         let builder = self.context.create_builder();
         let entry = self.main_fn.get_first_basic_block().unwrap();
@@ -4566,6 +4584,9 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         // Strategy: build each part as a C string, concatenate at runtime.
         let mut string_ptrs: Vec<PointerValue<'ctx>> = Vec::new();
+        // T21: parallel flags — true for __value_to_cstr scratch buffers (must
+        // be freed after concat), false for static literal globals (never freed).
+        let mut is_transient: Vec<bool> = Vec::new();
         let _i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
 
         for part in parts {
@@ -4576,6 +4597,7 @@ impl<'ctx> Codegen<'ctx> {
                     ).unwrap();
                     self.string_count += 1;
                     string_ptrs.push(global.as_pointer_value());
+                    is_transient.push(false);
                 }
                 crate::ast::StringPart::Variable(name) => {
                     let ptr = self.get_var_ptr(name).ok_or_else(|| {
@@ -4599,12 +4621,20 @@ impl<'ctx> Codegen<'ctx> {
                         "interp_cstr",
                     ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
                     string_ptrs.push(str_ptr);
+                    is_transient.push(true);
                 }
             }
         }
 
         // Concatenate all parts using strlen + malloc + memcpy.
         let result_ptr = self.build_strcat_multiple(&string_ptrs)?;
+        // T21: drop every __value_to_cstr scratch buffer now that its bytes are
+        // copied into result_ptr. Static literal globals are left untouched.
+        for (ptr, transient) in string_ptrs.iter().zip(is_transient.iter()) {
+            if *transient {
+                self.emit_drop_cstr(*ptr);
+            }
+        }
 
         let tag = self.context.i8_type().const_int(TAG_STRING as u64, false);
         let num = self.context.f64_type().const_float(0.0);
@@ -4713,6 +4743,9 @@ impl<'ctx> Codegen<'ctx> {
             "add_r_cstr",
         ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
         let concat_ptr = self.build_strcat_multiple(&[l_str, r_str])?;
+        // T21: r_str is __value_to_cstr's headered scratch buffer (count=1) —
+        // its bytes are now copied into concat_ptr, so drop it.
+        self.emit_drop_cstr(r_str);
         let str_result = self.build_value(
             i8_type.const_int(TAG_STRING as u64, false),
             self.context.f64_type().const_float(0.0),
@@ -4756,6 +4789,9 @@ impl<'ctx> Codegen<'ctx> {
         let r_str2 = self.builder.build_extract_value(right_val, 2, "add_r_str2")
             .unwrap().into_pointer_value();
         let concat_ptr2 = self.build_strcat_multiple(&[l_str2, r_str2])?;
+        // T21: l_str2 is __value_to_cstr's headered scratch buffer; drop it now
+        // that its bytes are copied into concat_ptr2.
+        self.emit_drop_cstr(l_str2);
         let r_str_result = self.build_value(
             i8_type.const_int(TAG_STRING as u64, false),
             self.context.f64_type().const_float(0.0),

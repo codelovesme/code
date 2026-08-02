@@ -562,31 +562,36 @@ void __native_bridge_set_emit(void* desc, CodeEmitFn emit_fn, void* context) {
 /* ======================================================================== */
 
 /*
- * __value_to_cstr — convert any value to a heap-allocated C string.
+ * __value_to_cstr — convert any value to a C string.
  *   tag: 0=Number, 1=String, 2=Boolean, 3=Object/Array, 4=Null
  *   num: numeric value (valid when tag == 0)
  *   ptr: string pointer  (valid when tag == 1)
+ *
+ * T21: the returned buffer is a headered payload (via code_alloc/code_strdup,
+ * count=1), NOT a plain strdup/malloc — so codegen can release it with the
+ * normal code_drop(TAG_STRING, ...) once its bytes are copied out by a
+ * concat/interpolation, instead of leaking (its previous behaviour) or needing
+ * a separate unheadered-scratch free path.
  */
 char* __value_to_cstr(int32_t tag, double num, const char* ptr) {
     char* buf;
     switch (tag) {
         case TAG_STRING:
-            if (!ptr) return strdup("");
-            return strdup(ptr);
+            return code_strdup(ptr);
         case TAG_NUMBER: {
-            buf = (char*)malloc(64);
-            if (!buf) return strdup("");
+            char tmp[64];
             /* Format as integer when value is whole, otherwise as decimal. */
             if (num == (long long)num) {
-                snprintf(buf, 64, "%lld", (long long)num);
+                snprintf(tmp, sizeof(tmp), "%lld", (long long)num);
             } else {
-                snprintf(buf, 64, "%g", num);
+                snprintf(tmp, sizeof(tmp), "%g", num);
             }
+            buf = code_strdup(tmp);
             return buf;
         }
         case TAG_BOOLEAN:
-            return strdup(num != 0.0 ? "true" : "false");
+            return code_strdup(num != 0.0 ? "true" : "false");
         default:
-            return strdup("Null");
+            return code_strdup("Null");
     }
 }
