@@ -2972,7 +2972,14 @@ impl<'ctx> Codegen<'ctx> {
             Some(inst) => builder.position_before(&inst),
             None => builder.position_at_end(entry),
         }
-        builder.build_alloca(self.value_type, name).unwrap()
+        let alloca = builder.build_alloca(self.value_type, name).unwrap();
+        // T21: zero-initialise the slot (tag 0 = Number) so a slot that is read
+        // or dropped before being assigned — e.g. a variable defined after an
+        // early `return` on a control-flow path that skips it — is a no-op for
+        // code_drop rather than a garbage-header free. Makes scope-exit drops
+        // safe even with early returns.
+        builder.build_store(alloca, self.value_type.const_zero()).unwrap();
+        alloca
     }
 
     fn emit_trap(&self) {
@@ -3791,6 +3798,10 @@ impl<'ctx> Codegen<'ctx> {
                     .last_mut()
                     .expect("No active scope")
                     .insert(field_name.clone(), ptr);
+                // T21: field locals borrow the particle's field payloads (stored
+                // without dup); the particle owns them and is dropped after
+                // dispatch, so never drop these at handler-scope exit.
+                self.mark_borrowed(field_name);
             }
 
             // Compile the handler body.
@@ -3824,6 +3835,11 @@ impl<'ctx> Codegen<'ctx> {
             // Load the return value.
             let ret_val = self.builder.build_load(self.value_type, ret_alloca, "handler_ret_val").unwrap();
 
+            // T21: drop the handler's owned body-locals (field locals are
+            // borrowed and skipped). The return value was dup'd into ret_alloca
+            // by HandlerReturn, so it survives. Safe on early-return paths
+            // because unassigned slots are zero-initialised (Number, no-op drop).
+            self.emit_current_scope_drops();
             self.pop_scope();
             last_ret = Some(ret_val);
         }
