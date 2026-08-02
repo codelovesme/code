@@ -777,8 +777,18 @@ impl<'ctx> Codegen<'ctx> {
                 format!("Module declares public name '{}' but it was never defined", name)
             })?;
             pub_ptrs.push((name.clone(), ptr));
+            // T21: this slot's value is about to be moved out below (load+store
+            // into the alias object's field, or flattened into the outer scope)
+            // without a fresh dup — a move, not a copy — so it must not also be
+            // dropped when the module's inner scope exits.
+            self.mark_borrowed(name);
         }
 
+        // T21: drop every non-public (internal-only) module-local. Previously
+        // this scope was popped with no drops at all, silently leaking every
+        // internal binding the module doesn't re-export (e.g. a `to base`
+        // handler-dispatch result used only inside the module).
+        self.emit_current_scope_drops();
         self.pop_scope();
 
         match alias {
