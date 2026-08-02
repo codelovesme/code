@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 
 use inkwell::builder::Builder;
@@ -161,9 +162,13 @@ struct Codegen<'ctx> {
     value_type: StructType<'ctx>,
     main_fn: FunctionValue<'ctx>,
     scopes: Vec<HashMap<String, PointerValue<'ctx>>>,
+    /// T21: per-scope set of slot names that are *borrowed*, not owned — their
+    /// payload is owned elsewhere, so scope-exit must NOT drop them (loop
+    /// variables, handler parameters).
+    borrowed_slots: Vec<HashSet<String>>,
     strcmp_fn: FunctionValue<'ctx>,
     abort_fn: FunctionValue<'ctx>,
-    malloc_fn: FunctionValue<'ctx>,
+    alloc_fn: FunctionValue<'ctx>,
     field_type: StructType<'ctx>,
     values_equal_fn: FunctionValue<'ctx>,
     string_count: u64,
@@ -187,6 +192,13 @@ struct Codegen<'ctx> {
     time_fn: FunctionValue<'ctx>,
     /// Runtime helper: converts any value (tag, num, ptr) to a C string pointer.
     value_to_cstr_fn: FunctionValue<'ctx>,
+    /// T21 refcount runtime: `code_dup(tag, ptr)` — increment a payload's count.
+    code_dup_fn: FunctionValue<'ctx>,
+    /// T21 refcount runtime: `code_drop(tag, num, ptr)` — decrement; free at zero.
+    code_drop_fn: FunctionValue<'ctx>,
+    /// T21 leak diagnostic: `code_heap_report()` — prints alloc/free balance
+    /// when CODE_HEAP_REPORT is set. Emitted once before `main` returns.
+    code_heap_report_fn: FunctionValue<'ctx>,
     /// Tracks nesting depth inside handler bodies (0 = not in handler).
     in_handler_depth: usize,
     /// Type alias definitions: scope-level -> alias name -> TypeExpr.
@@ -252,8 +264,13 @@ impl<'ctx> Codegen<'ctx> {
         let abort_fn = module.add_function("abort", abort_type, None);
 
         let i64_type = context.i64_type();
-        let malloc_type = i8_ptr_type.fn_type(&[i64_type.into()], false);
-        let malloc_fn = module.add_function("malloc", malloc_type, None);
+        // T21: every value-payload allocation goes through `code_alloc`
+        // (malloc + an 8-byte refcount header, count=1), defined in
+        // runtime_native.c. Same i64 -> i8* signature as malloc; the header is
+        // placed before the returned pointer so all GEPs and C string interop
+        // are unaffected.
+        let alloc_type = i8_ptr_type.fn_type(&[i64_type.into()], false);
+        let alloc_fn = module.add_function("code_alloc", alloc_type, None);
 
         let strlen_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
         let strlen_fn = module.add_function("strlen", strlen_type, None);
@@ -274,6 +291,26 @@ impl<'ctx> Codegen<'ctx> {
             false,
         );
         let value_to_cstr_fn = module.add_function("__value_to_cstr", value_to_cstr_type, None);
+
+        // T21 refcount runtime (defined in runtime_native.c):
+        //   void code_dup(i32 tag, i8* ptr)
+        //   void code_drop(i32 tag, f64 num, i8* ptr)
+        //   void code_heap_report(void)
+        // dup/drop take decomposed scalars (tag, [num,] ptr) — same convention
+        // as __value_to_cstr — to avoid struct-by-value ABI questions.
+        let code_dup_type = context.void_type().fn_type(
+            &[i32_type.into(), i8_ptr_type.into()],
+            false,
+        );
+        let code_dup_fn = module.add_function("code_dup", code_dup_type, None);
+        let code_drop_type = context.void_type().fn_type(
+            &[i32_type.into(), f64_type.into(), i8_ptr_type.into()],
+            false,
+        );
+        let code_drop_fn = module.add_function("code_drop", code_drop_type, None);
+        let code_heap_report_type = context.void_type().fn_type(&[], false);
+        let code_heap_report_fn =
+            module.add_function("code_heap_report", code_heap_report_type, None);
 
         let field_type = context.struct_type(
             &[i8_ptr_type.into(), value_type.into()],
@@ -306,9 +343,13 @@ impl<'ctx> Codegen<'ctx> {
             value_type,
             main_fn,
             scopes: vec![HashMap::new()],
+            borrowed_slots: vec![HashSet::new()],
             strcmp_fn,
             abort_fn,
-            malloc_fn,
+            alloc_fn,
+            code_dup_fn,
+            code_drop_fn,
+            code_heap_report_fn,
             field_type,
             values_equal_fn,
             string_count: 0,
@@ -352,6 +393,19 @@ impl<'ctx> Codegen<'ctx> {
         // drain loop so emissions from background threads are processed.
         if self.has_native_emissions {
             self.compile_native_drain_loop()?;
+        }
+
+        // T21: drop every owned slot in the global scope, then emit the
+        // leak-diagnostic report, just before main returns (the report
+        // self-gates on the CODE_HEAP_REPORT env var). WASM has no C runtime
+        // linked, so skip both there.
+        if !matches!(self.target, BuildTarget::Wasm) {
+            let global = self.scopes[0].clone();
+            let borrowed = self.borrowed_slots[0].clone();
+            self.emit_scope_drops(&global, &borrowed);
+            self.builder
+                .build_call(self.code_heap_report_fn, &[], "heap_report")
+                .unwrap();
         }
 
         let i32_type = self.context.i32_type();
@@ -540,8 +594,9 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(())
             }
             Statement::HandlerInvoke { particle, target } => {
-                // Fire-and-forget: discard return value.
-                self.compile_handler_invoke(particle, target)?;
+                // Fire-and-forget: the return value is discarded, so drop it.
+                let ret = self.compile_handler_invoke(particle, target)?;
+                self.emit_drop(ret.into_struct_value());
                 Ok(())
             }
             Statement::HandlerInvokeAssign { particle, target, result_name } => {
@@ -646,6 +701,7 @@ impl<'ctx> Codegen<'ctx> {
                     self.current_span = Some(inner.span.clone());
                     self.compile_statement(&inner.node)?;
                 }
+                self.emit_current_scope_drops();
                 self.pop_scope();
                 Ok(())
             }
@@ -737,7 +793,7 @@ impl<'ctx> Codegen<'ctx> {
                     field_size, count_val, "mod_obj_size",
                 ).unwrap();
                 let raw_ptr = self.builder.build_call(
-                    self.malloc_fn, &[total_size.into()], "mod_obj_mem",
+                    self.alloc_fn, &[total_size.into()], "mod_obj_mem",
                 ).unwrap()
                     .try_as_basic_value().left()
                     .ok_or_else(|| "malloc returned no value".to_string())?
@@ -946,7 +1002,7 @@ impl<'ctx> Codegen<'ctx> {
                     field_size, count_val, "nmod_obj_size",
                 ).unwrap();
                 let raw_ptr = self.builder.build_call(
-                    self.malloc_fn, &[total_size.into()], "nmod_obj_mem",
+                    self.alloc_fn, &[total_size.into()], "nmod_obj_mem",
                 ).unwrap()
                     .try_as_basic_value().left()
                     .ok_or_else(|| "malloc returned no value".to_string())?
@@ -1173,9 +1229,15 @@ impl<'ctx> Codegen<'ctx> {
                 let ptr = self
                     .get_var_ptr(name)
                     .ok_or_else(|| format!("Undefined variable '{}'", name))?;
-                Ok(self
+                let val = self
                     .builder
-                    .build_load(self.value_type, ptr, "load_var").unwrap())
+                    .build_load(self.value_type, ptr, "load_var")
+                    .unwrap()
+                    .into_struct_value();
+                // T21: a read produces an owned temporary (reads dup, stores
+                // transfer). No-op for inline/static payloads.
+                self.emit_dup(val);
+                Ok(val.into())
             }
             Expression::Object { spread: None, fields } => self.compile_object_fields(fields),
             Expression::Object { spread: Some(source), fields } => self.compile_spread_object_fields(source, fields),
@@ -1215,6 +1277,10 @@ impl<'ctx> Codegen<'ctx> {
                         let left_val = self.compile_expr(left)?.into_struct_value();
                         let right_val = self.compile_expr(right)?.into_struct_value();
                         let result = self.build_compare(op.clone(), left_val, right_val)?;
+                        // T21: equality consumes its operands; values are read by
+                        // build_compare above, so drop the temps now.
+                        self.emit_drop(left_val);
+                        self.emit_drop(right_val);
                         Ok(result.into())
                     }
                 }
@@ -1237,6 +1303,8 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let val = self.compile_expr(expr)?.into_struct_value();
         let result = self.compile_type_expr_check(val, type_expr)?;
+        // T21: the checked value is consumed by the type check (read above).
+        self.emit_drop(val);
 
         let final_result = if negated {
             self.builder.build_not(result, "tc_neg").unwrap()
@@ -1834,7 +1902,7 @@ impl<'ctx> Codegen<'ctx> {
         let count_val = i64_type.const_int(total as u64, false);
         let total_size = self.builder.build_int_mul(field_size, count_val, "cobj_size").unwrap();
         let raw_ptr = self.builder.build_call(
-            self.malloc_fn, &[total_size.into()], "cobj_mem",
+            self.alloc_fn, &[total_size.into()], "cobj_mem",
         ).unwrap()
             .try_as_basic_value().left()
             .ok_or_else(|| "malloc returned no value".to_string())?
@@ -1897,7 +1965,7 @@ impl<'ctx> Codegen<'ctx> {
             field_size, count_val, "obj_size",
         ).unwrap();
         let raw_ptr = self.builder.build_call(
-            self.malloc_fn, &[total_size.into()], "obj_mem",
+            self.alloc_fn, &[total_size.into()], "obj_mem",
         ).unwrap()
             .try_as_basic_value().left()
             .ok_or_else(|| "malloc returned no value".to_string())?
@@ -1979,7 +2047,7 @@ impl<'ctx> Codegen<'ctx> {
         let field_size = self.field_type.size_of().unwrap();
         let total_size = self.builder.build_int_mul(field_size, max_count_64, "spread_alloc").unwrap();
         let out_arr = self.builder.build_call(
-            self.malloc_fn, &[total_size.into()], "spread_mem",
+            self.alloc_fn, &[total_size.into()], "spread_mem",
         ).unwrap()
             .try_as_basic_value().left()
             .ok_or_else(|| "malloc returned no value".to_string())?
@@ -2060,9 +2128,11 @@ impl<'ctx> Codegen<'ctx> {
         // Copy name.
         let dst_name_slot = self.builder.build_struct_gep(self.field_type, dst_field_ptr, 0, "spread_dn").unwrap();
         self.builder.build_store(dst_name_slot, src_name).unwrap();
-        // Copy value.
+        // Copy value. T21: the new object co-owns this child payload, so dup
+        // it — then the source temp can be safely dropped after the spread.
         let src_val_slot = self.builder.build_struct_gep(self.field_type, src_field_ptr, 1, "spread_sv").unwrap();
         let src_val_loaded = self.builder.build_load(self.value_type, src_val_slot, "spread_sval").unwrap();
+        self.emit_dup(src_val_loaded.into_struct_value());
         let dst_val_slot = self.builder.build_struct_gep(self.field_type, dst_field_ptr, 1, "spread_dv").unwrap();
         self.builder.build_store(dst_val_slot, src_val_loaded).unwrap();
         // Increment write index.
@@ -2101,6 +2171,10 @@ impl<'ctx> Codegen<'ctx> {
         let final_count_f = self.builder.build_unsigned_int_to_float(
             final_count, self.context.f64_type(), "spread_count_f64",
         ).unwrap();
+        // T21: the source temp is fully consumed — every copied field was dup'd
+        // into the new object, so drop the source now.
+        self.emit_drop(src_val);
+
         let tag = i8_type.const_int(TAG_OBJECT as u64, false);
         let bool_val = self.context.bool_type().const_int(0, false);
         Ok(self.build_value(tag, final_count_f, out_arr, bool_val).into())
@@ -2191,7 +2265,7 @@ impl<'ctx> Codegen<'ctx> {
             let count_val = i64_type.const_int(count as u64, false);
             let total_size = self.builder.build_int_mul(field_size, count_val, "pspread_size").unwrap();
             let raw_ptr = self.builder.build_call(
-                self.malloc_fn, &[total_size.into()], "pspread_mem",
+                self.alloc_fn, &[total_size.into()], "pspread_mem",
             ).unwrap()
                 .try_as_basic_value().left()
                 .ok_or_else(|| "malloc returned no value".to_string())?
@@ -2202,7 +2276,11 @@ impl<'ctx> Codegen<'ctx> {
                 let val = if runtime_fields.contains(name) {
                     // Load from stored source and do property access.
                     let loaded_src = self.builder.build_load(self.value_type, src_alloca, "pspread_src_ld").unwrap();
-                    self.compile_property_access_from_value(loaded_src.into_struct_value(), name)?
+                    let v = self.compile_property_access_from_value(loaded_src.into_struct_value(), name)?;
+                    // T21: property_access_from_value borrows the child; dup so
+                    // the new particle owns this field independently of source.
+                    self.emit_dup(v.into_struct_value());
+                    v
                 } else {
                     self.compile_expr(expr)?
                 };
@@ -2222,6 +2300,10 @@ impl<'ctx> Codegen<'ctx> {
                 let val_slot = self.builder.build_struct_gep(self.field_type, field_ptr, 1, "pspread_vs").unwrap();
                 self.builder.build_store(val_slot, val).unwrap();
             }
+
+            // T21: the source temp is fully consumed (its used fields were dup'd
+            // into the new particle), so drop it.
+            self.emit_drop(src_val.into_struct_value());
 
             let tag = self.context.i8_type().const_int(TAG_OBJECT as u64, false);
             let num = self.context.f64_type().const_float(count as f64);
@@ -2434,7 +2516,13 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(prop_continue);
         let phi = self.builder.build_phi(self.value_type, "prop_result").unwrap();
         phi.add_incoming(&[(&loaded_val, prop_found), (&null_val, prop_not_found), (&null_for_non_obj, prop_not_obj)]);
-        Ok(phi.as_basic_value())
+        let result = phi.as_basic_value().into_struct_value();
+        // T21: dup the extracted child (owned temp), then drop the receiver
+        // temp. dup-before-drop so the child survives even if dropping the
+        // receiver takes its object's refcount to zero.
+        self.emit_dup(result);
+        self.emit_drop(recv_val);
+        Ok(result.into())
     }
 
     /// Like compile_property_access but takes an already-compiled value instead
@@ -2743,14 +2831,51 @@ impl<'ctx> Codegen<'ctx> {
         self.build_value(tag, num, str_ptr, bool_val)
     }
 
+    /// Emit a string literal as a static, sentinel-headered global constant and
+    /// return a pointer to its bytes (null-terminated). The 8 bytes immediately
+    /// before the returned pointer hold `RC_SENTINEL` (u64::MAX), so
+    /// `code_dup`/`code_drop` treat the payload as static — never counted, never
+    /// freed — with no "is this a global?" branch (T21 §6.1). Layout:
+    /// `{ i64 sentinel, [len+1 x i8] bytes }`; returned ptr = `&g.bytes[0]`, so
+    /// `ptr - 8` is the sentinel word. Any string that can flow into a value's
+    /// `ptr` field (and thus reach `code_drop`) MUST come from here rather than
+    /// `build_global_string_ptr`, or drop would read a garbage header.
+    fn build_static_string_ptr(&mut self, s: &str, name: &str) -> PointerValue<'ctx> {
+        let i32_type = self.context.i32_type();
+        let i64_type = self.context.i64_type();
+
+        let arr_const = self.context.const_string(s.as_bytes(), true); // [len+1 x i8], null-terminated
+        let arr_type = arr_const.get_type();
+        let sentinel = i64_type.const_int(u64::MAX, false);
+        let struct_type = self.context.struct_type(&[i64_type.into(), arr_type.into()], false);
+        let init = self.context.const_struct(&[sentinel.into(), arr_const.into()], false);
+
+        let global = self.module.add_global(struct_type, None, name);
+        global.set_initializer(&init);
+        global.set_constant(true);
+        global.set_linkage(inkwell::module::Linkage::Private);
+
+        let zero = i32_type.const_int(0, false);
+        let one = i32_type.const_int(1, false);
+        unsafe {
+            self.builder.build_in_bounds_gep(
+                struct_type,
+                global.as_pointer_value(),
+                &[zero, one, zero],
+                "static_str",
+            )
+        }
+        .unwrap()
+    }
+
     fn const_string(&mut self, s: &str) -> StructValue<'ctx> {
         let name = format!("str_{}", self.string_count);
         self.string_count += 1;
-        let global = self.builder.build_global_string_ptr(s, &name).unwrap();
+        let data_ptr = self.build_static_string_ptr(s, &name);
         let tag = self.context.i8_type().const_int(TAG_STRING as u64, false);
         let num = self.context.f64_type().const_float(0.0);
         let bool_val = self.context.bool_type().const_int(0, false);
-        self.build_value(tag, num, global.as_pointer_value(), bool_val)
+        self.build_value(tag, num, data_ptr, bool_val)
     }
 
     fn const_null(&self) -> StructValue<'ctx> {
@@ -2787,6 +2912,127 @@ impl<'ctx> Codegen<'ctx> {
         value
     }
 
+    // ---- T21 refcount emission helpers -------------------------------------
+
+    /// Emit `code_dup(tag, ptr)` for `val`. No-op at runtime for inline
+    /// (number/bool/null) and sentinel-static payloads. Used to turn a borrowed
+    /// read into an owned temporary (Model 1: reads dup, stores transfer).
+    fn emit_dup(&self, val: StructValue<'ctx>) {
+        let i32_type = self.context.i32_type();
+        let tag = self.builder.build_extract_value(val, 0, "dup_tag").unwrap().into_int_value();
+        let tag32 = self.builder.build_int_z_extend(tag, i32_type, "dup_tag32").unwrap();
+        let ptr = self.builder.build_extract_value(val, 2, "dup_ptr").unwrap().into_pointer_value();
+        self.builder.build_call(self.code_dup_fn, &[tag32.into(), ptr.into()], "").unwrap();
+    }
+
+    /// Emit `code_drop(tag, num, ptr)` for `val`. Decrements the payload's
+    /// refcount and, at zero, recursively drops children and frees the block.
+    fn emit_drop(&self, val: StructValue<'ctx>) {
+        let i32_type = self.context.i32_type();
+        let tag = self.builder.build_extract_value(val, 0, "drop_tag").unwrap().into_int_value();
+        let tag32 = self.builder.build_int_z_extend(tag, i32_type, "drop_tag32").unwrap();
+        let num = self.builder.build_extract_value(val, 1, "drop_num").unwrap().into_float_value();
+        let ptr = self.builder.build_extract_value(val, 2, "drop_ptr").unwrap().into_pointer_value();
+        self.builder.build_call(self.code_drop_fn, &[tag32.into(), num.into(), ptr.into()], "").unwrap();
+    }
+
+    /// Drop every owned slot in the given scope map (load the slot's value and
+    /// `code_drop` it). `borrowed` names are skipped — they hold references
+    /// owned elsewhere (loop variables, handler parameters).
+    fn emit_scope_drops(
+        &self,
+        scope: &HashMap<String, PointerValue<'ctx>>,
+        borrowed: &std::collections::HashSet<String>,
+    ) {
+        for (name, ptr) in scope {
+            if borrowed.contains(name) {
+                continue;
+            }
+            let val = self
+                .builder
+                .build_load(self.value_type, *ptr, "drop_slot")
+                .unwrap()
+                .into_struct_value();
+            self.emit_drop(val);
+        }
+    }
+
+    /// Drop the innermost scope's owned slots at the live end of a lexical body,
+    /// to be called just before `pop_scope`. No-op if the current block is
+    /// already terminated (the body ended in a `return`/`break`, which do their
+    /// own cleanup), so this never emits instructions after a terminator.
+    fn emit_current_scope_drops(&self) {
+        if self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_terminator())
+            .is_some()
+        {
+            return;
+        }
+        let scope = self.scopes.last().cloned().unwrap_or_default();
+        let borrowed = self.borrowed_slots.last().cloned().unwrap_or_default();
+        self.emit_scope_drops(&scope, &borrowed);
+    }
+
+    /// Dup every child of a freshly-built aggregate whose children were
+    /// bulk-copied (aliased) from source operands — array elements (`is_object`
+    /// false) or object field values (`is_object` true). After this the result
+    /// owns independent refs to each child, so the source operands can be
+    /// dropped without double-freeing shared heap children. Emits a runtime
+    /// `for i in 0..count` loop.
+    fn emit_dup_aggregate_children(
+        &self,
+        data_ptr: PointerValue<'ctx>,
+        count: inkwell::values::IntValue<'ctx>,
+        is_object: bool,
+    ) {
+        let i32_type = self.context.i32_type();
+        let entry = self.builder.get_insert_block().unwrap();
+        let hdr = self.context.append_basic_block(self.main_fn, "dupch_hdr");
+        let body = self.context.append_basic_block(self.main_fn, "dupch_body");
+        let end = self.context.append_basic_block(self.main_fn, "dupch_end");
+
+        self.builder.build_unconditional_branch(hdr).unwrap();
+        self.builder.position_at_end(hdr);
+        let i_phi = self.builder.build_phi(i32_type, "dupch_i").unwrap();
+        i_phi.add_incoming(&[(&i32_type.const_int(0, false), entry)]);
+        let i_val = i_phi.as_basic_value().into_int_value();
+        let done = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, i_val, count, "dupch_done")
+            .unwrap();
+        self.builder.build_conditional_branch(done, end, body).unwrap();
+
+        self.builder.position_at_end(body);
+        let child_val = if is_object {
+            let field_ptr = unsafe {
+                self.builder.build_in_bounds_gep(self.field_type, data_ptr, &[i_val], "dupch_fptr")
+            }
+            .unwrap();
+            let vslot = self
+                .builder
+                .build_struct_gep(self.field_type, field_ptr, 1, "dupch_vslot")
+                .unwrap();
+            self.builder.build_load(self.value_type, vslot, "dupch_v").unwrap().into_struct_value()
+        } else {
+            let elem_ptr = unsafe {
+                self.builder.build_in_bounds_gep(self.value_type, data_ptr, &[i_val], "dupch_eptr")
+            }
+            .unwrap();
+            self.builder.build_load(self.value_type, elem_ptr, "dupch_e").unwrap().into_struct_value()
+        };
+        self.emit_dup(child_val);
+        let i_next = self
+            .builder
+            .build_int_add(i_val, i32_type.const_int(1, false), "dupch_inext")
+            .unwrap();
+        i_phi.add_incoming(&[(&i_next, body)]);
+        self.builder.build_unconditional_branch(hdr).unwrap();
+
+        self.builder.position_at_end(end);
+    }
+
     fn create_entry_alloca(&self, name: &str) -> PointerValue<'ctx> {
         let builder = self.context.create_builder();
         let entry = self.main_fn.get_first_basic_block().unwrap();
@@ -2794,7 +3040,14 @@ impl<'ctx> Codegen<'ctx> {
             Some(inst) => builder.position_before(&inst),
             None => builder.position_at_end(entry),
         }
-        builder.build_alloca(self.value_type, name).unwrap()
+        let alloca = builder.build_alloca(self.value_type, name).unwrap();
+        // T21: zero-initialise the slot (tag 0 = Number) so a slot that is read
+        // or dropped before being assigned — e.g. a variable defined after an
+        // early `return` on a control-flow path that skips it — is a no-op for
+        // code_drop rather than a garbage-header free. Makes scope-exit drops
+        // safe even with early returns.
+        builder.build_store(alloca, self.value_type.const_zero()).unwrap();
+        alloca
     }
 
     fn emit_trap(&self) {
@@ -2804,6 +3057,7 @@ impl<'ctx> Codegen<'ctx> {
 
     fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
+        self.borrowed_slots.push(HashSet::new());
         self.type_annotations.push(HashMap::new());
         self.type_registry.push(HashMap::new());
         self.handler_registry.push(HashMap::new());
@@ -2813,11 +3067,19 @@ impl<'ctx> Codegen<'ctx> {
 
     fn pop_scope(&mut self) {
         self.scopes.pop();
+        self.borrowed_slots.pop();
         self.type_annotations.pop();
         self.type_registry.pop();
         self.handler_registry.pop();
         self.type_alias_registry.pop();
         self.native_handler_ptrs.pop();
+    }
+
+    /// Mark a slot in the current scope as borrowed (not dropped at scope exit).
+    fn mark_borrowed(&mut self, name: &str) {
+        if let Some(set) = self.borrowed_slots.last_mut() {
+            set.insert(name.to_string());
+        }
     }
 
     fn current_scope_has(&self, name: &str) -> bool {
@@ -3075,7 +3337,7 @@ impl<'ctx> Codegen<'ctx> {
                 "linf_alloc",
             ).unwrap();
             let dst_ptr = self.builder.build_call(
-                self.malloc_fn, &[total_size.into()], "linf_mem",
+                self.alloc_fn, &[total_size.into()], "linf_mem",
             ).unwrap()
                 .try_as_basic_value().left()
                 .ok_or_else(|| "malloc returned no value".to_string())?
@@ -3112,6 +3374,8 @@ impl<'ctx> Codegen<'ctx> {
             { self.current_span = Some(stmt.span.clone()); self.compile_statement(&stmt.node)?; }
         }
 
+        // T21: drop body-local owned values at the end of each iteration.
+        self.emit_current_scope_drops();
         self.pop_scope();
 
         // Restore break context.
@@ -3478,6 +3742,8 @@ impl<'ctx> Codegen<'ctx> {
         };
 
         if invocations.is_empty() && native_handler_ptr.is_none() {
+            // T21: no handler matched — the particle temp is still owned here.
+            self.emit_drop(particle_val);
             return Ok(self.const_null().into());
         }
 
@@ -3600,6 +3866,10 @@ impl<'ctx> Codegen<'ctx> {
                     .last_mut()
                     .expect("No active scope")
                     .insert(field_name.clone(), ptr);
+                // T21: field locals borrow the particle's field payloads (stored
+                // without dup); the particle owns them and is dropped after
+                // dispatch, so never drop these at handler-scope exit.
+                self.mark_borrowed(field_name);
             }
 
             // Compile the handler body.
@@ -3633,6 +3903,11 @@ impl<'ctx> Codegen<'ctx> {
             // Load the return value.
             let ret_val = self.builder.build_load(self.value_type, ret_alloca, "handler_ret_val").unwrap();
 
+            // T21: drop the handler's owned body-locals (field locals are
+            // borrowed and skipped). The return value was dup'd into ret_alloca
+            // by HandlerReturn, so it survives. Safe on early-return paths
+            // because unassigned slots are zero-initialised (Number, no-op drop).
+            self.emit_current_scope_drops();
             self.pop_scope();
             last_ret = Some(ret_val);
         }
@@ -3655,6 +3930,12 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap(),
             );
         }
+
+        // T21: the particle temp is fully consumed by dispatch (body handlers
+        // borrowed its fields; the native bridge copied it). Drop it here. The
+        // returned value is independently owned (HandlerReturn dup'd it, or the
+        // native result is a fresh headered copy), so it survives.
+        self.emit_drop(particle_val);
 
         Ok(last_ret.unwrap_or_else(|| self.const_null().into()))
     }
@@ -3760,6 +4041,8 @@ impl<'ctx> Codegen<'ctx> {
         let cond_val = self.compile_expr(condition)?.into_struct_value();
 
         let bool_val = self.compile_truthy(cond_val);
+        // T21: the condition temp is consumed by the truthy test.
+        self.emit_drop(cond_val);
         let then_block = self.context.append_basic_block(self.main_fn, "if_then");
         let merge_block = self.context.append_basic_block(self.main_fn, "if_merge");
         self.builder.build_conditional_branch(bool_val, then_block, merge_block).unwrap();
@@ -3770,6 +4053,7 @@ impl<'ctx> Codegen<'ctx> {
         for stmt in body {
             { self.current_span = Some(stmt.span.clone()); self.compile_statement(&stmt.node)?; }
         }
+        self.emit_current_scope_drops();
         self.pop_scope();
         if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
             self.builder.build_unconditional_branch(merge_block).unwrap();
@@ -3842,7 +4126,7 @@ impl<'ctx> Codegen<'ctx> {
             let count_64 = self.builder.build_int_z_extend(count, i64_type, "lc_count64").unwrap();
             let total_size = self.builder.build_int_mul(elem_size, count_64, "lc_alloc").unwrap();
             let dst_ptr = self.builder.build_call(
-                self.malloc_fn, &[total_size.into()], "lc_mem",
+                self.alloc_fn, &[total_size.into()], "lc_mem",
             ).unwrap()
                 .try_as_basic_value().left()
                 .ok_or_else(|| "malloc returned no value".to_string())?
@@ -3895,6 +4179,9 @@ impl<'ctx> Codegen<'ctx> {
             .last_mut()
             .expect("No active scope")
             .insert(variable.to_string(), var_ptr);
+        // T21: the loop var borrows each element (stored without dup; the array
+        // owns them) — never drop it at scope exit.
+        self.mark_borrowed(variable);
 
         // Bind index variable if present.
         if let Some(idx_name) = index {
@@ -3926,6 +4213,10 @@ impl<'ctx> Codegen<'ctx> {
         // Restore break context.
         self.break_exit_block = prev_break;
 
+        // T21: drop body-local owned values at the end of each iteration (the
+        // loop var is borrowed and skipped). This gives prompt per-iteration
+        // reclamation — the memory-churn case stays flat.
+        self.emit_current_scope_drops();
         self.pop_scope();
 
         // Branch to loop_next if not already terminated (by break).
@@ -3943,6 +4234,12 @@ impl<'ctx> Codegen<'ctx> {
 
         // End: build result if `get` is present.
         self.builder.position_at_end(loop_end);
+
+        // T21: the iterable was an owned temp (dup'd read or fresh literal);
+        // the loop is done reading elements, so drop it here. The loop var
+        // borrowed its elements (never dup'd), so nothing dangles — it is out
+        // of scope past loop_end.
+        self.emit_drop(iter_val);
 
         if let (Some(result_name), Some((yield_count_alloca, dst_ptr, prev_arr, prev_count))) = (result, yield_allocas) {
             self.yield_arr_ptr = prev_arr;
@@ -3986,7 +4283,7 @@ impl<'ctx> Codegen<'ctx> {
             elem_size, count_val, "arr_size",
         ).unwrap();
         let raw_ptr = self.builder.build_call(
-            self.malloc_fn, &[total_size.into()], "arr_mem",
+            self.alloc_fn, &[total_size.into()], "arr_mem",
         ).unwrap()
             .try_as_basic_value().left()
             .ok_or_else(|| "malloc returned no value".to_string())?
@@ -4083,8 +4380,14 @@ impl<'ctx> Codegen<'ctx> {
             (&elem_val, ok_end),
             (&null_val, oob_end),
         ]);
-
-        Ok(phi.as_basic_value())
+        let result = phi.as_basic_value().into_struct_value();
+        // T21: dup the extracted element (owned temp), then drop the receiver
+        // (array) and index temps. dup-before-drop so the element survives even
+        // if dropping the array takes its refcount to zero.
+        self.emit_dup(result);
+        self.emit_drop(recv_val);
+        self.emit_drop(idx_val);
+        Ok(result.into())
     }
 
     /// Compile a function call: `callee(args)`.
@@ -4107,7 +4410,7 @@ impl<'ctx> Codegen<'ctx> {
             field_size, i64_type.const_int(2, false), "core_res_size",
         ).unwrap();
         let raw_ptr = self.builder.build_call(
-            self.malloc_fn, &[total_size.into()], "core_res_mem",
+            self.alloc_fn, &[total_size.into()], "core_res_mem",
         ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
 
         // Field 0: `_class = "<ClassName>Result"`.
@@ -4115,13 +4418,15 @@ impl<'ctx> Codegen<'ctx> {
             "_class", &format!("core_fn_{}", self.string_count),
         ).unwrap();
         self.string_count += 1;
-        let class_str_global = self.builder.build_global_string_ptr(
+        // Sentinel-headered: this string is a field VALUE (dropped when the
+        // result object is dropped), so it must carry a static RC header (T21).
+        let class_str_ptr = self.build_static_string_ptr(
             &format!("{}Result", class_name), &format!("core_cls_{}", self.string_count),
-        ).unwrap();
+        );
         self.string_count += 1;
         let class_val = self.build_value(
             i8_type.const_int(TAG_STRING as u64, false), f64_type.const_float(0.0),
-            class_str_global.as_pointer_value(), bool_false,
+            class_str_ptr, bool_false,
         );
         let field0_ptr = unsafe { self.builder.build_in_bounds_gep(
             self.field_type, raw_ptr, &[i32_type.const_int(0, false)], "core_field0",
@@ -4242,6 +4547,9 @@ impl<'ctx> Codegen<'ctx> {
                     (&zero, else_bb),
                 ]);
                 let result_f64 = len_phi.as_basic_value().into_float_value();
+                // T21: the value operand is fully consumed (its length was read
+                // in every branch), so drop the temp here.
+                self.emit_drop(val);
                 let result_tag = i8_type.const_int(TAG_NUMBER as u64, false);
                 let null_ptr = i8_ptr_type.const_null();
                 let value = self.build_value(result_tag, result_f64, null_ptr, bool_val);
@@ -4327,7 +4635,7 @@ impl<'ctx> Codegen<'ctx> {
 
         // Malloc the result buffer.
         let result_ptr = self.builder.build_call(
-            self.malloc_fn, &[total_len.into()], "strcat_buf",
+            self.alloc_fn, &[total_len.into()], "strcat_buf",
         ).unwrap()
             .try_as_basic_value().left()
             .ok_or_else(|| "malloc returned no value".to_string())?
@@ -4411,6 +4719,12 @@ impl<'ctx> Codegen<'ctx> {
             concat_ptr,
             self.context.bool_type().const_int(0, false),
         );
+        // T21: string concat copies bytes into a fresh buffer, so both operands
+        // are fully consumed here — drop them (strings have no heap children, so
+        // this is safe; array/object concat below aliases children and is left
+        // to the follow-up that dups copied children first).
+        self.emit_drop(left_val);
+        self.emit_drop(right_val);
         self.builder.build_unconditional_branch(merge_block).unwrap();
         let str_end = self.builder.get_insert_block().unwrap();
 
@@ -4448,6 +4762,9 @@ impl<'ctx> Codegen<'ctx> {
             concat_ptr2,
             self.context.bool_type().const_int(0, false),
         );
+        // T21: same as the left-string branch — bytes copied, operands consumed.
+        self.emit_drop(left_val);
+        self.emit_drop(right_val);
         self.builder.build_unconditional_branch(merge_block).unwrap();
         let r_str_end = self.builder.get_insert_block().unwrap();
 
@@ -4593,7 +4910,7 @@ impl<'ctx> Codegen<'ctx> {
         let total_i64 = self.builder.build_int_z_extend(total, i64_type, "cc_total_i64").unwrap();
         let alloc_size = self.builder.build_int_mul(elem_size, total_i64, "cc_alloc").unwrap();
         let new_ptr = self.builder.build_call(
-            self.malloc_fn, &[alloc_size.into()], "cc_mem",
+            self.alloc_fn, &[alloc_size.into()], "cc_mem",
         ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
 
         // Copy left elements.
@@ -4622,6 +4939,13 @@ impl<'ctx> Codegen<'ctx> {
             &[dest_offset.into(), r_arr.into(), r_bytes.into()],
             "cc_copy_r",
         ).unwrap();
+
+        // T21: the elements were bulk-copied (aliased) from both operands. Dup
+        // each so the result owns them, then drop the operands (freeing their
+        // array blocks and decrementing children back to a single owned ref).
+        self.emit_dup_aggregate_children(new_ptr, total, false);
+        self.emit_drop(left);
+        self.emit_drop(right);
 
         let total_f = self.builder.build_unsigned_int_to_float(
             total, self.context.f64_type(), "cc_total_f",
@@ -4656,7 +4980,7 @@ impl<'ctx> Codegen<'ctx> {
         let nc_i64 = self.builder.build_int_z_extend(new_count, i64_type, "app_nc64").unwrap();
         let alloc_size = self.builder.build_int_mul(elem_size, nc_i64, "app_alloc").unwrap();
         let new_ptr = self.builder.build_call(
-            self.malloc_fn, &[alloc_size.into()], "app_mem",
+            self.alloc_fn, &[alloc_size.into()], "app_mem",
         ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
 
         // Copy existing elements.
@@ -4680,6 +5004,11 @@ impl<'ctx> Codegen<'ctx> {
         let new_count_f = self.builder.build_unsigned_int_to_float(
             new_count, self.context.f64_type(), "app_nf",
         ).unwrap();
+        // T21: dup all result children (copied elements + appended value), then
+        // drop both operands.
+        self.emit_dup_aggregate_children(new_ptr, new_count, false);
+        self.emit_drop(arr_val);
+        self.emit_drop(elem_val);
         Ok(self.build_value(
             i8_type.const_int(TAG_ARRAY as u64, false),
             new_count_f,
@@ -4710,7 +5039,7 @@ impl<'ctx> Codegen<'ctx> {
         let nc_i64 = self.builder.build_int_z_extend(new_count, i64_type, "pre_nc64").unwrap();
         let alloc_size = self.builder.build_int_mul(elem_size, nc_i64, "pre_alloc").unwrap();
         let new_ptr = self.builder.build_call(
-            self.malloc_fn, &[alloc_size.into()], "pre_mem",
+            self.alloc_fn, &[alloc_size.into()], "pre_mem",
         ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
 
         // Store the new element at position 0.
@@ -4734,6 +5063,11 @@ impl<'ctx> Codegen<'ctx> {
         let new_count_f = self.builder.build_unsigned_int_to_float(
             new_count, self.context.f64_type(), "pre_nf",
         ).unwrap();
+        // T21: dup all result children (prepended value + copied elements), then
+        // drop both operands.
+        self.emit_dup_aggregate_children(new_ptr, new_count, false);
+        self.emit_drop(arr_val);
+        self.emit_drop(elem_val);
         Ok(self.build_value(
             i8_type.const_int(TAG_ARRAY as u64, false),
             new_count_f,
@@ -4769,7 +5103,7 @@ impl<'ctx> Codegen<'ctx> {
         let total_i64 = self.builder.build_int_z_extend(total, i64_type, "om_total64").unwrap();
         let alloc_size = self.builder.build_int_mul(field_size, total_i64, "om_alloc").unwrap();
         let new_ptr = self.builder.build_call(
-            self.malloc_fn, &[alloc_size.into()], "om_mem",
+            self.alloc_fn, &[alloc_size.into()], "om_mem",
         ).unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
 
         // Copy left fields.
@@ -4798,6 +5132,12 @@ impl<'ctx> Codegen<'ctx> {
             &[dest_offset.into(), r_arr.into(), r_bytes.into()],
             "om_copy_r",
         ).unwrap();
+
+        // T21: dup each copied field value (children are aliased from both
+        // operands), then drop the operands.
+        self.emit_dup_aggregate_children(new_ptr, total, true);
+        self.emit_drop(left);
+        self.emit_drop(right);
 
         let total_f = self.builder.build_unsigned_int_to_float(
             total, self.context.f64_type(), "om_total_f",

@@ -138,7 +138,7 @@ fn build_object_ir() {
 
     let ir = fs::read_to_string("target/llvm/object_basic.ll")
         .expect("missing IR output");
-    assert!(ir.contains("@malloc"), "IR should call malloc for object allocation");
+    assert!(ir.contains("@code_alloc"), "IR should call code_alloc (malloc + refcount header) for object allocation");
 }
 
 #[test]

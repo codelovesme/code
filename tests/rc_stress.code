@@ -1,0 +1,57 @@
+-> RC stress fixture (T21): exercises the §4 aliasing cases so the refcount
+-> discipline is checked end to end. Runs under both the interpreter (code test)
+-> and the native backend (built to exe with CODE_HEAP_REPORT for leak checks).
+
+-> objects + property access (aliasing via extraction)
+person = { name = "Ada", age = 36 }
+assert person.name = "Ada"
+n = person.name
+assert n = "Ada"
+
+-> arrays + index access
+nums = [1, 2, 3, 4, 5]
+assert nums[0] = 1
+assert nums[4] = 5
+
+-> nested aggregates (recursive ownership)
+tree = { left = { v = 1 }, right = { v = 2 }, items = [10, 20, 30] }
+assert tree.left.v = 1
+assert tree.right.v = 2
+assert tree.items[2] = 30
+
+-> dynamic string payloads: concat + interpolation
+who = "world"
+greeting = "hello " + who
+assert greeting = "hello world"
+msg = "greeting is: $greeting"
+assert msg = "greeting is: hello world"
+
+-> spread (co-owning child payloads, plus a string field)
+origin = { x = 1, y = 2, z = 3 }
+merged = { ...origin, y = 99, w = "extra" }
+assert merged.x = 1
+assert merged.y = 99
+assert merged.z = 3
+assert merged.w = "extra"
+
+-> loop over (borrow elements) + yield (collect into new array)
+data = [100, 200, 300]
+loop d over data get doubled {
+    yield d + d
+}
+assert doubled[0] = 200
+assert doubled[2] = 600
+
+-> per-iteration allocation inside the loop body (the memory-churn case)
+loop k over [1, 2, 3] get objs {
+    yield { val = k, label = "item" }
+}
+assert objs[0].val = 1
+assert objs[2].val = 3
+assert objs[2].label = "item"
+
+-> loop over string elements (aliasing string payloads)
+names = ["red", "blue", "green"]
+loop nm over names {
+    assert nm = "red" or nm = "blue" or nm = "green"
+}

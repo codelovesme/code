@@ -97,6 +97,109 @@ typedef struct {
 #define TAG_ARRAY   5
 
 /* ======================================================================== */
+/* Reference-counting runtime (T21 Phase 1)                                 */
+/*                                                                          */
+/* Every heap value payload (string / object field-array / array element-  */
+/* array) is allocated with an 8-byte refcount header immediately BEFORE    */
+/* the pointer stored in a value's `ptr` field. The payload pointer is what */
+/* flows through compiled code and the ABI, so C string interop is          */
+/* unaffected (nobody reads the 8 bytes before the pointer).                */
+/*                                                                          */
+/* Static payloads (string literals, emitted by codegen as globals with a   */
+/* leading header) carry the RC_SENTINEL count so dup/drop are no-ops on    */
+/* them without any "is this global?" branch — see T21 §6.1.                */
+/* ======================================================================== */
+
+#define RC_HEADER_SIZE ((size_t)8)
+#define RC_SENTINEL    ((uint64_t)0xFFFFFFFFFFFFFFFFULL)
+
+/* Leak accounting — reported at program exit only when CODE_HEAP_REPORT is
+ * set in the environment, so normal runs stay silent. */
+static uint64_t __code_alloc_count = 0;
+static uint64_t __code_free_count  = 0;
+
+/* Allocate a heap value payload of `payload_size` bytes with a refcount
+ * header initialised to 1. Returns the payload pointer (header is at
+ * payload - RC_HEADER_SIZE). */
+void* code_alloc(uint64_t payload_size) {
+    unsigned char* block = (unsigned char*)malloc(RC_HEADER_SIZE + (size_t)payload_size);
+    if (!block) return NULL;
+    *(uint64_t*)block = 1;
+    __code_alloc_count++;
+    return block + RC_HEADER_SIZE;
+}
+
+/* Copy a C string into a fresh headered payload block (count=1), so it can be
+ * dropped like any other Code string value. Used at the native-ABI boundary:
+ * native modules hand back raw `const char*` with no RC header, so we copy them
+ * into Code-owned blocks (T21 D2 copy-at-boundary). */
+static char* code_strdup(const char* s) {
+    if (!s) s = "";
+    size_t n = strlen(s) + 1;
+    char* p = (char*)code_alloc((uint64_t)n);
+    if (p) memcpy(p, s, n);
+    return p;
+}
+
+/* Free a headered payload block (payload pointer, not the raw block). */
+static void code_free_block(void* payload) {
+    if (!payload) return;
+    free((unsigned char*)payload - RC_HEADER_SIZE);
+    __code_free_count++;
+}
+
+/* Returns 1 if this value kind owns a heap payload (string/object/array). */
+static int code_is_heap(int32_t tag) {
+    return tag == TAG_STRING || tag == TAG_OBJECT || tag == TAG_ARRAY;
+}
+
+/* Increment the refcount of a value's payload (no-op for inline/static). */
+void code_dup(int32_t tag, void* ptr) {
+    if (!code_is_heap(tag) || !ptr) return;
+    uint64_t* h = (uint64_t*)((unsigned char*)ptr - RC_HEADER_SIZE);
+    if (*h == RC_SENTINEL) return;
+    (*h)++;
+}
+
+/* Decrement the refcount of a value's payload; at zero, recursively drop
+ * children (object field values / array elements) and free the block.
+ * `num` carries the field/element count for aggregates. */
+void code_drop(int32_t tag, double num, void* ptr) {
+    if (!code_is_heap(tag) || !ptr) return;
+    uint64_t* h = (uint64_t*)((unsigned char*)ptr - RC_HEADER_SIZE);
+    if (*h == RC_SENTINEL) return;
+    if (--(*h) != 0) return;
+
+    if (tag == TAG_OBJECT) {
+        CField* fields = (CField*)ptr;
+        uint32_t n = (uint32_t)num;
+        for (uint32_t i = 0; i < n; i++) {
+            CVal* fv = &fields[i].value;
+            code_drop((int32_t)fv->tag, fv->num, fv->ptr);
+        }
+    } else if (tag == TAG_ARRAY) {
+        CVal* elems = (CVal*)ptr;
+        uint32_t n = (uint32_t)num;
+        for (uint32_t i = 0; i < n; i++) {
+            code_drop((int32_t)elems[i].tag, elems[i].num, elems[i].ptr);
+        }
+    }
+    /* strings have no children */
+    code_free_block(ptr);
+}
+
+/* Print the heap alloc/free balance to stderr when CODE_HEAP_REPORT is set.
+ * Emitted as a call at the end of main() by codegen. */
+void code_heap_report(void) {
+    if (getenv("CODE_HEAP_REPORT")) {
+        fprintf(stderr, "CODE_HEAP allocs=%llu frees=%llu live=%lld\n",
+                (unsigned long long)__code_alloc_count,
+                (unsigned long long)__code_free_count,
+                (long long)((int64_t)__code_alloc_count - (int64_t)__code_free_count));
+    }
+}
+
+/* ======================================================================== */
 /* Forward declarations                                                     */
 /* ======================================================================== */
 
@@ -230,14 +333,17 @@ static CVal codevalue_to_cval(const CodeValue* ev) {
         cv.num = ev->number;
         break;
     case TAG_STRING:
-        cv.ptr = (void*)ev->string;
+        /* T21: copy the native string into a headered, droppable block. */
+        cv.ptr = code_strdup(ev->string);
         break;
     case TAG_BOOLEAN:
         cv.boolean = ev->boolean;
         break;
     case TAG_OBJECT: {
         uint32_t count = ev->field_count;
-        CField* cfields = (CField*)malloc(count * sizeof(CField));
+        /* T21: headered payload — native-emitted values are copied into fresh
+         * Code-owned refcounted blocks (D2 copy-at-poll), droppable later. */
+        CField* cfields = (CField*)code_alloc((uint64_t)count * sizeof(CField));
         for (uint32_t i = 0; i < count; i++) {
             cfields[i].name  = ev->fields[i].name;
             cfields[i].value = codevalue_to_cval(&ev->fields[i].value);
@@ -248,7 +354,7 @@ static CVal codevalue_to_cval(const CodeValue* ev) {
     }
     case TAG_ARRAY: {
         uint32_t count = ev->element_count;
-        CVal* celems = (CVal*)malloc(count * sizeof(CVal));
+        CVal* celems = (CVal*)code_alloc((uint64_t)count * sizeof(CVal));
         for (uint32_t i = 0; i < count; i++) {
             celems[i] = codevalue_to_cval(&ev->elements[i]);
         }
