@@ -37,7 +37,7 @@ rustc --edition 2021 --crate-type cdylib \
 echo "== building test_math_wasm.c -> test_math.wasm =="
 WASM_LD=""
 for candidate in wasm-ld wasm-ld-17 wasm-ld-18 wasm-ld-19; do
-    if command -v "$candidate" >/dev/null 2>&1; then WASM_LD="$candidate"; break; fi
+    if resolved="$(command -v "$candidate" 2>/dev/null)"; then WASM_LD="$resolved"; break; fi
     for p in /usr/lib/llvm-*/bin/"$candidate"; do
         [[ -x "$p" ]] && { WASM_LD="$p"; break 2; }
     done
