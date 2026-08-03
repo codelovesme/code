@@ -34,11 +34,11 @@ jobs:
       - name: Build workspace
         run: cargo build --workspace
 
-      - name: Cargo unit tests
-        run: cargo test --workspace
-
       - name: Build native-module test fixtures
         run: ./tests/native_modules/build.sh debug
+
+      - name: Cargo unit tests
+        run: cargo test --workspace
 
       - name: Language suite (.code tests)
         run: ./target/debug/code test
