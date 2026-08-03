@@ -7,6 +7,20 @@
   `src/interpreter.rs`
 - **Depends on:** T18 (WASM-capable core — the interpreter/parser/formatter
   must compile to `wasm32-unknown-unknown` with LLVM and native-`.so` off).
+  **T18 landed** (`27777de`, CI-verified — the "code Runtime (no LLVM) +
+  wasm32 core build" job is green on `main`), so this ticket is unblocked.
+
+**Progress (2026-08-03), branch `t19-foundation-resolver-bindings`:** the two
+purely-additive Rust-side pieces from "Proposed change" items 1–2 are done —
+the `ModuleResolver` trait (`src/module_loader.rs`, `FilesystemResolver`
+reproduces today's CLI behavior byte-for-byte, verified against exact error
+text) and `Interpreter::bindings()`/`Environment::bindings()` (read-only
+top-level-scope dump, tested). Full regression green on all three build
+configs (default, `--no-default-features`, `wasm32-unknown-unknown`).
+**Not started:** item 3 (`crates/code-wasm` bridge crate), item 4 (web UI), or
+npm publishing — publishing in particular claims a public package name and
+should get an explicit go-ahead before it happens, not bundled into a
+foundation-only slice.
 
 ## Problem
 
