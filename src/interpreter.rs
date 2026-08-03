@@ -195,6 +195,15 @@ impl Interpreter {
         self.current_span.clone()
     }
 
+    /// Every top-level binding after `execute()` has run: `(name,
+    /// resolved_value)`, `None` if not narrowed to a single value. Read-only
+    /// observation — this is a constraint language with no core I/O, so a
+    /// program's visible result is its final bindings. For host UIs (e.g. a
+    /// playground, T19) to render what a program produced.
+    pub fn bindings(&self) -> Vec<(String, Option<Rc<crate::runtime::Value>>)> {
+        self.env.bindings()
+    }
+
     /// Execute a single statement.
     fn exec_statement(&mut self, stmt: Statement) -> Result<(), String> {
         match stmt {
