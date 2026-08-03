@@ -40,6 +40,53 @@
   `Number + Array` (e.g. `0 + [1, 2]`) read the array's element-count field as
   a number instead of falling through to array-prepend.
 
+  **Phase 2, first slice landed (2026-08-03) — borrow inference for direct
+  Identifier reads (§7.2), branch `t21-phase2-borrow-inference`.** A prior
+  attempt at §7.3 non-escaping stack promotion was **shelved after design
+  review surfaced real hazards**: (a) a sentinel-header child-ownership trap —
+  `code_drop`'s sentinel short-circuit skips walking children entirely, so a
+  stack-promoted object with a real heap child (e.g. a dynamic string field)
+  would leak that child forever, exactly the failure mode this ticket exists
+  to eliminate; fixable, but only via a new stack/count-hybrid header flag,
+  real design surface; (b) a *dynamic*-size `alloca` (object/array sizes are
+  runtime values) placed inside a loop bumps the stack pointer every
+  iteration — not hoisted like a fixed-size alloca — trading a bounded heap
+  leak for unbounded stack growth / overflow, worse than the problem being
+  solved; (c) handler bodies are inlined at their `emit` call site sharing the
+  *same scope chain* (not isolated), so a handler defined elsewhere in the
+  file can read an outer top-level variable by name — meaning a
+  single-statement-list escape walker isn't sound without also scanning every
+  handler body (and it was unverified whether `compile_import`'s scope is
+  actually isolated from the linking file). None of these are fatal to stack
+  promotion long-term, but doing it *safely* needs materially more design work
+  than initially scoped — deferred; see the note in §7.3 below.
+
+  Landed instead: `compile_expr_borrowed` — like `compile_expr`, but reads a
+  direct `Expression::Identifier` **without** `emit_dup` (the variable's own
+  slot retains ownership) instead of the usual dup-on-read. Sound with **zero**
+  escape analysis because it only replaces sites that already dup-then-drop
+  the *same* value transiently and unconditionally, with nothing else able to
+  touch it in between (single-threaded, no interleaving within one
+  expression's compilation) — the dup and its matching drop are a provable
+  no-op pair, elided together. Wired into the 4 sites verified safe (never
+  retain the operand along any path): `compile_type_check`, the generic Binary
+  `_ =>` arm (Equal/NotEqual operands), `compile_property_access`'s receiver,
+  `compile_index_access`'s receiver + index. **Explicitly excluded:**
+  `compile_assert` (its Exception-return path *moves* the checked value into
+  the handler's return slot without a fresh dup, relying on the read's own dup
+  to cover that transfer — borrowing there would return an unowned alias, a
+  latent use-after-free once the source variable's slot is later dropped) and
+  `compile_relational` (operands are constrained to Number, no heap payload,
+  nothing to elide).
+
+  Verified: 98/98 leak-free unchanged, full suite green. Measured on
+  `tests/rc_stress.code`: `code_dup` calls 60→38 (−37%), `code_drop` calls
+  137→115 (−16%) in the generated IR. Nested property/index chains correctly
+  do **not** elide beyond the innermost Identifier receiver (e.g.
+  `tree.left.v` — only `tree.left`'s own receiver read is a direct Identifier);
+  the same variable read at several independent borrow-eligible sites balances
+  correctly with no double-free or under-count.
+
 ---
 
 ## 0. Resolved design decisions (owner, 2026-08-02)
@@ -320,13 +367,26 @@ the §6 baseline — implementable and shippable independently, each measurable.
    (comparisons, type checks, field reads that don't escape, the particle
    argument of an inlined handler that doesn't store it) is **borrowed** — no
    `dup`/`drop` at all. Directly mirrors Perceus borrow inference / Lobster
-   ownership specialization.
+   ownership specialization. **First slice landed 2026-08-03** (§0 amendment
+   above, branch `t21-phase2-borrow-inference`): direct-Identifier reads at 4
+   verified-safe transient-consumer sites, sound with zero escape analysis
+   since it only cancels an already-adjacent dup/drop pair. `-37%` dup / `-16%`
+   drop calls measured on the stress fixture. Wider borrow inference (e.g.
+   the inlined-handler-particle-argument case named above) is still open.
 3. **Non-escaping stack promotion.** An object/array/dynamic-string whose payload
    provably never escapes its lexical scope (never stored into an outer slot,
    returned, yielded, or passed to a store) can be **`alloca`'d instead of
    `malloc`'d** and needs no refcount at all — freed for free at function exit.
    Given how many aggregates are transient temporaries, this is expected to be a
-   large win and also lowers peak memory even for `exe`.
+   large win and also lowers peak memory even for `exe`. **Attempted and
+   shelved 2026-08-03** (§0 amendment above): needs a stack/count-hybrid header
+   flag (plain sentinel reuse silently leaks heap children), loop bodies must
+   be excluded or bracketed with `stacksave`/`stackrestore` (a *dynamic*-size
+   alloca inside a loop is not hoisted — it grows the stack every iteration),
+   and the escape analysis must account for handler bodies reading outer
+   variables by name (they're inlined at the call site sharing the same scope
+   chain, not isolated) plus verifying whether `compile_import` truly isolates
+   linked-module scope. Real, buildable work — just more than a first slice.
 4. **Drop specialization / reuse (optional, later — the Perceus "FBIP" tier).**
    When an owned aggregate is dismantled at its last use to build a same-shaped
    one (e.g. spread `{ ...src, extra=… }` where `src` is last-use), reuse
