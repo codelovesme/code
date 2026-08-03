@@ -1255,6 +1255,40 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
+    /// T21 Phase 2: like `compile_expr`, but for a direct `Identifier` reads
+    /// the variable's value WITHOUT `emit_dup` — the read is a borrow, not an
+    /// owned temp. Returns `(value, needs_drop)`: `needs_drop` is `false` only
+    /// for the direct-Identifier case (the variable's own slot retains
+    /// ownership; callers must NOT drop the returned value), `true` for every
+    /// other expression kind (behaves exactly like `compile_expr`, an owned
+    /// temp the caller is responsible for dropping as before).
+    ///
+    /// SAFETY: only call this where the value is used *transiently* — read,
+    /// then immediately and unconditionally discarded, on every path, with
+    /// nothing else storing/returning/moving it in between (so eliding the
+    /// dup and its matching drop is a no-op pair by construction, regardless
+    /// of how many other references to the variable exist elsewhere). Do NOT
+    /// use this where any path might instead move the value onward (e.g.
+    /// `compile_assert`'s Exception-return path stores its checked value into
+    /// the handler's return slot without a fresh dup, relying on the read's
+    /// own dup to cover that — borrowing there would return a reference with
+    /// no owned refcount, a use-after-free once the source variable's slot is
+    /// later dropped).
+    fn compile_expr_borrowed(&mut self, expr: &Expression) -> Result<(BasicValueEnum<'ctx>, bool), String> {
+        if let Expression::Identifier(name) = expr {
+            let ptr = self
+                .get_var_ptr(name)
+                .ok_or_else(|| format!("Undefined variable '{}'", name))?;
+            let val = self
+                .builder
+                .build_load(self.value_type, ptr, "load_var_borrowed")
+                .unwrap();
+            Ok((val, false))
+        } else {
+            Ok((self.compile_expr(expr)?, true))
+        }
+    }
+
     fn compile_expr(&mut self, expr: &Expression) -> Result<BasicValueEnum<'ctx>, String> {
         match expr {
             Expression::Number(n) => Ok(self.const_number(*n).into()),
@@ -1310,13 +1344,20 @@ impl<'ctx> Codegen<'ctx> {
                         self.compile_logical_or(left, right)
                     }
                     _ => {
-                        let left_val = self.compile_expr(left)?.into_struct_value();
-                        let right_val = self.compile_expr(right)?.into_struct_value();
+                        let (left_raw, left_needs_drop) = self.compile_expr_borrowed(left)?;
+                        let (right_raw, right_needs_drop) = self.compile_expr_borrowed(right)?;
+                        let left_val = left_raw.into_struct_value();
+                        let right_val = right_raw.into_struct_value();
                         let result = self.build_compare(op.clone(), left_val, right_val)?;
-                        // T21: equality consumes its operands; values are read by
-                        // build_compare above, so drop the temps now.
-                        self.emit_drop(left_val);
-                        self.emit_drop(right_val);
+                        // T21 Phase 2: equality consumes its operands transiently
+                        // and unconditionally (read by build_compare above) — only
+                        // drop each operand if it wasn't a borrowed Identifier read.
+                        if left_needs_drop {
+                            self.emit_drop(left_val);
+                        }
+                        if right_needs_drop {
+                            self.emit_drop(right_val);
+                        }
                         Ok(result.into())
                     }
                 }
@@ -1337,10 +1378,15 @@ impl<'ctx> Codegen<'ctx> {
         type_expr: &TypeExpr,
         negated: bool,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let val = self.compile_expr(expr)?.into_struct_value();
+        let (val_raw, needs_drop) = self.compile_expr_borrowed(expr)?;
+        let val = val_raw.into_struct_value();
         let result = self.compile_type_expr_check(val, type_expr)?;
-        // T21: the checked value is consumed by the type check (read above).
-        self.emit_drop(val);
+        // T21 Phase 2: the checked value is consumed by the type check (read
+        // above), transiently and unconditionally — only drop it if it wasn't
+        // a borrowed Identifier read (whose own slot retains ownership).
+        if needs_drop {
+            self.emit_drop(val);
+        }
 
         let final_result = if negated {
             self.builder.build_not(result, "tc_neg").unwrap()
@@ -2464,7 +2510,8 @@ impl<'ctx> Codegen<'ctx> {
         receiver: &Expression,
         field: &str,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let recv_val = self.compile_expr(receiver)?.into_struct_value();
+        let (recv_raw, recv_needs_drop) = self.compile_expr_borrowed(receiver)?;
+        let recv_val = recv_raw.into_struct_value();
         let tag = self.builder.build_extract_value(recv_val, 0, "recv_tag")
             .unwrap().into_int_value();
         let i8_type = self.context.i8_type();
@@ -2570,7 +2617,11 @@ impl<'ctx> Codegen<'ctx> {
         // temp. dup-before-drop so the child survives even if dropping the
         // receiver takes its object's refcount to zero.
         self.emit_dup(result);
-        self.emit_drop(recv_val);
+        // T21 Phase 2: only drop the receiver if it wasn't a borrowed
+        // Identifier read (whose own slot retains ownership).
+        if recv_needs_drop {
+            self.emit_drop(recv_val);
+        }
         Ok(result.into())
     }
 
@@ -4378,8 +4429,10 @@ impl<'ctx> Codegen<'ctx> {
         receiver: &Expression,
         index: &Expression,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let recv_val = self.compile_expr(receiver)?.into_struct_value();
-        let idx_val = self.compile_expr(index)?.into_struct_value();
+        let (recv_raw, recv_needs_drop) = self.compile_expr_borrowed(receiver)?;
+        let (idx_raw, idx_needs_drop) = self.compile_expr_borrowed(index)?;
+        let recv_val = recv_raw.into_struct_value();
+        let idx_val = idx_raw.into_struct_value();
 
         // Check receiver is an array.
         let recv_tag = self.builder.build_extract_value(recv_val, 0, "idx_recv_tag")
@@ -4452,8 +4505,14 @@ impl<'ctx> Codegen<'ctx> {
         // (array) and index temps. dup-before-drop so the element survives even
         // if dropping the array takes its refcount to zero.
         self.emit_dup(result);
-        self.emit_drop(recv_val);
-        self.emit_drop(idx_val);
+        // T21 Phase 2: only drop each operand if it wasn't a borrowed
+        // Identifier read (whose own slot retains ownership).
+        if recv_needs_drop {
+            self.emit_drop(recv_val);
+        }
+        if idx_needs_drop {
+            self.emit_drop(idx_val);
+        }
         Ok(result.into())
     }
 
