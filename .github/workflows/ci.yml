@@ -94,3 +94,20 @@ jobs:
 
       - name: Build code_lang core for wasm32-unknown-unknown
         run: cargo build --lib -p code --no-default-features --target wasm32-unknown-unknown
+
+      - name: Build code-wasm bridge crate for wasm32-unknown-unknown
+        # Release only — a debug build crashes rust-lld (SIGSEGV) at this
+        # crate's size; see the crate README (T19). The larger link-time
+        # stack size (needed for the parser's recursion depth — see
+        # .cargo/config.toml) is picked up automatically, target-scoped.
+        run: cargo build -p code-wasm --target wasm32-unknown-unknown --release
+
+      - name: Functional smoke test code-wasm in node
+        # A build-only check would miss real runtime bugs here (a wasm stack
+        # overflow was one; see smoke-test/run.js) — actually run the module.
+        run: |
+          WASM_BINDGEN_VERSION=$(cargo pkgid wasm-bindgen | sed 's/.*@//')
+          cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
+          wasm-bindgen --target nodejs --out-dir target/wasm-bindgen-out \
+            target/wasm32-unknown-unknown/release/code_wasm.wasm
+          node crates/code-wasm/smoke-test/run.js target/wasm-bindgen-out/code_wasm.js

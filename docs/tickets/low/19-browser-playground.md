@@ -10,17 +10,38 @@
   **T18 landed** (`27777de`, CI-verified — the "code Runtime (no LLVM) +
   wasm32 core build" job is green on `main`), so this ticket is unblocked.
 
-**Progress (2026-08-03), branch `t19-foundation-resolver-bindings`:** the two
-purely-additive Rust-side pieces from "Proposed change" items 1–2 are done —
-the `ModuleResolver` trait (`src/module_loader.rs`, `FilesystemResolver`
-reproduces today's CLI behavior byte-for-byte, verified against exact error
-text) and `Interpreter::bindings()`/`Environment::bindings()` (read-only
-top-level-scope dump, tested). Full regression green on all three build
-configs (default, `--no-default-features`, `wasm32-unknown-unknown`).
-**Not started:** item 3 (`crates/code-wasm` bridge crate), item 4 (web UI), or
-npm publishing — publishing in particular claims a public package name and
-should get an explicit go-ahead before it happens, not bundled into a
-foundation-only slice.
+**Progress (2026-08-03):**
+
+- Items 1–2 (foundation): the `ModuleResolver` trait (`src/module_loader.rs`,
+  `FilesystemResolver` reproduces today's CLI behavior byte-for-byte, verified
+  against exact error text) and `Interpreter::bindings()`/
+  `Environment::bindings()` (read-only top-level-scope dump, tested).
+- Item 3 (`crates/code-wasm` bridge crate): **done for v1 scope** (single
+  snippet, no `link`). Exposes `run_source(src: &str) -> JsValue` returning
+  `{ ok, bindings, diagnostics }`. Verified with a real, checked-in functional
+  smoke test (`crates/code-wasm/smoke-test/run.js`) run under Node against the
+  actual compiled `.wasm` — not just a build-only check — wired into CI.
+
+  Two non-obvious toolchain issues found and fixed along the way (see the
+  crate README for full detail): (a) a debug build of this crate crashes
+  `rust-lld` with SIGSEGV at link time (reproduced identically with a
+  separate system `wasm-ld`, so not one linker build's bug) — must always
+  build `--release`; (b) `run_source` crashed at **runtime** with `memory
+  access out of bounds` (a wasm stack overflow) on essentially any real
+  program — the parser's `chumsky` recursion needs ~16MB of stack, which the
+  CLI gets via a spawned thread (`src/main.rs`) but wasm32 has no OS threads
+  for that trick, so the module's stack is now sized at link time instead
+  (`.cargo/config.toml`, `-zstack-size`, scoped to `wasm32-unknown-unknown`
+  only). Neither issue was visible at compile time — only found by actually
+  running the module, which is why the smoke test (not just a build check)
+  is load-bearing and runs in CI on every push.
+
+**Not started:** item 4 (web UI), or npm publishing — publishing in
+particular claims a public package name and should get an explicit go-ahead
+before it happens, not bundled into this landing. Also not done: wiring the
+`ModuleResolver`/in-memory source map into `code-wasm` for `link` support
+(the trait exists but `run_source` doesn't use it yet — v1 is single-snippet
+only, matching the ticket's "Out of scope (v1)" section).
 
 ## Problem
 
