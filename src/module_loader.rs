@@ -10,13 +10,70 @@ use crate::native_module;
 use crate::wasm_module;
 use crate::parser;
 
-/// Load a source program, recursively resolving all `link` statements.
-/// Returns a `Program` where every `Link` has been replaced by an `Import` node.
+/// Abstracts where `.code` module SOURCE text comes from, so the loader can
+/// run against a real filesystem (CLI) or an in-memory source map (e.g. a
+/// browser/WASM host with no filesystem) without duplicating cycle detection,
+/// span-shifting, or parsing logic. Only source (`.code`) modules go through
+/// this — native `.so`/`.wasm` module loading is unaffected (already
+/// filesystem-only and feature-gated; out of scope for non-filesystem hosts,
+/// see T19).
+pub trait ModuleResolver {
+    /// Resolve the entry module. Returns `(identity, source)`.
+    /// `identity` is an opaque, resolver-defined string that uniquely
+    /// identifies this module — used for cycle detection and as the
+    /// diagnostics file name. The filesystem resolver uses the canonicalized
+    /// path.
+    fn resolve_entry(&self, entry: &str) -> Result<(String, String), String>;
+
+    /// Resolve `module_ref` as linked from the module with identity
+    /// `from_identity`. Returns `(identity, source)`.
+    fn resolve(&self, from_identity: &str, module_ref: &str) -> Result<(String, String), String>;
+}
+
+/// The CLI's resolver: reads `.code` modules from the real filesystem.
+/// Search order for a bare module reference: the importing file's directory,
+/// then the current working directory, then `CODE_PATH` (colon-separated).
+pub struct FilesystemResolver;
+
+impl ModuleResolver for FilesystemResolver {
+    fn resolve_entry(&self, entry: &str) -> Result<(String, String), String> {
+        let path = Path::new(entry);
+        let canonical = fs::canonicalize(path)
+            .map_err(|e| format!("Error resolving '{}': {}", path.display(), e))?;
+        let source = fs::read_to_string(&canonical)
+            .map_err(|e| format!("Error reading '{}': {}", canonical.display(), e))?;
+        Ok((canonical.display().to_string(), source))
+    }
+
+    fn resolve(&self, from_identity: &str, module_ref: &str) -> Result<(String, String), String> {
+        let module_path = resolve_source_module_path(Path::new(from_identity), module_ref)?;
+        let canonical = fs::canonicalize(&module_path)
+            .map_err(|e| format!("Error resolving '{}': {}", module_path.display(), e))?;
+        let source = fs::read_to_string(&canonical)
+            .map_err(|e| format!("Error reading '{}': {}", canonical.display(), e))?;
+        Ok((canonical.display().to_string(), source))
+    }
+}
+
+/// Load a source program from the real filesystem, recursively resolving all
+/// `link` statements. Returns a `Program` where every `Link` has been
+/// replaced by an `Import` node.
 /// - `link path` (no alias) produces `Import { alias: None, ... }` (flatten mode).
 /// - `link path as x` produces `Import { alias: Some("x"), ... }` (namespace mode).
 pub fn load_program_with_links(entry: &Path) -> Result<(Program, SourceMap), String> {
-    let mut loader = ModuleLoader::new();
-    let program = loader.load(entry)?;
+    load_program_with_resolver(&entry.display().to_string(), &FilesystemResolver)
+}
+
+/// Load a source program using a custom [`ModuleResolver`] — e.g. an
+/// in-memory source map for a host with no filesystem (a browser/WASM
+/// playground). Same semantics as [`load_program_with_links`], generalized
+/// over where module source text comes from.
+pub fn load_program_with_resolver(
+    entry: &str,
+    resolver: &dyn ModuleResolver,
+) -> Result<(Program, SourceMap), String> {
+    let mut loader = ModuleLoader::new(resolver);
+    let program = loader.load_entry(entry)?;
     Ok((program, loader.source_map))
 }
 
@@ -88,42 +145,39 @@ fn shift_spans(stmts: &mut [Spanned<Statement>], base: usize) {
     }
 }
 
-struct ModuleLoader {
-    /// Stack of files currently being loaded (for cycle detection).
-    visiting: Vec<PathBuf>,
+struct ModuleLoader<'a> {
+    resolver: &'a dyn ModuleResolver,
+    /// Stack of module identities currently being loaded (for cycle detection).
+    visiting: Vec<String>,
     /// Accumulated source files for located diagnostics.
     source_map: SourceMap,
 }
 
-impl ModuleLoader {
-    fn new() -> Self {
+impl<'a> ModuleLoader<'a> {
+    fn new(resolver: &'a dyn ModuleResolver) -> Self {
         Self {
+            resolver,
             visiting: Vec::new(),
             source_map: SourceMap::new(),
         }
     }
 
-    fn load(&mut self, path: &Path) -> Result<Program, String> {
-        let canonical = fs::canonicalize(path)
-            .map_err(|e| format!("Error resolving '{}': {}", path.display(), e))?;
+    fn load_entry(&mut self, entry: &str) -> Result<Program, String> {
+        let (identity, source) = self.resolver.resolve_entry(entry)?;
+        self.load(identity, source)
+    }
 
+    fn load(&mut self, identity: String, source: String) -> Result<Program, String> {
         // Circular dependency check
-        if let Some(idx) = self.visiting.iter().position(|p| p == &canonical) {
-            let mut chain: Vec<String> = self.visiting[idx..]
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect();
-            chain.push(canonical.display().to_string());
+        if let Some(idx) = self.visiting.iter().position(|p| p == &identity) {
+            let mut chain: Vec<String> = self.visiting[idx..].to_vec();
+            chain.push(identity.clone());
             return Err(format!("Circular link detected: {}", chain.join(" -> ")));
         }
-
-        let source = fs::read_to_string(&canonical)
-            .map_err(|e| format!("Error reading '{}': {}", canonical.display(), e))?;
 
         let (parsed, parse_errors) = parser::parser().parse_recovery(source.as_str());
 
         if !parse_errors.is_empty() {
-            let file = canonical.display().to_string();
             let rendered: Vec<String> = parse_errors
                 .iter()
                 .map(|err| {
@@ -134,7 +188,7 @@ impl ModuleLoader {
                         _ => format!("{}", err),
                     };
                     let span = err.span();
-                    crate::diagnostics::render(&source, &file, span.start, span.end, &detail)
+                    crate::diagnostics::render(&source, &identity, span.start, span.end, &detail)
                 })
                 .collect();
             return Err(rendered.join("\n\n"));
@@ -145,13 +199,16 @@ impl ModuleLoader {
         // Register this file in the shared SourceMap and shift its statement
         // spans by the assigned base, so every span self-identifies its file
         // (enabling located diagnostics across linked modules).
-        let base = self.source_map.add(canonical.display().to_string(), source);
+        let base = self.source_map.add(identity.clone(), source);
         shift_spans(&mut parsed.statements, base);
 
-        self.visiting.push(canonical.clone());
+        self.visiting.push(identity.clone());
 
-        // Track which modules are linked in this file (duplicate detection).
-        let mut linked_in_file: HashSet<PathBuf> = HashSet::new();
+        // Track which references are linked in this file (duplicate detection).
+        // Shared between native and source refs — both dedupe by their own
+        // resolved identity/canonical-path string, which never collide across
+        // kinds since they're always distinct paths.
+        let mut linked_in_file: HashSet<String> = HashSet::new();
 
         let mut statements = Vec::new();
         for stmt in parsed.statements {
@@ -160,6 +217,9 @@ impl ModuleLoader {
                 Statement::Link { module_ref, alias } => {
                     if is_native_extension(&module_ref) {
                         // --- Native module (.so / .a / .wasm) ---
+                        // Unaffected by the resolver abstraction: always
+                        // filesystem-based (already feature-gated), out of
+                        // scope for non-filesystem hosts (T19).
 
                         // Static libraries cannot be loaded at runtime.
                         if module_ref.ends_with(".a") {
@@ -170,11 +230,13 @@ impl ModuleLoader {
                             ));
                         }
 
-                        let lib_path = self.resolve_native_module(&canonical, &module_ref)?;
+                        let current_file = Path::new(&identity);
+                        let lib_path = resolve_native_module_path(current_file, &module_ref)?;
                         let lib_canonical = fs::canonicalize(&lib_path)
                             .map_err(|e| format!("Error resolving '{}': {}", lib_path.display(), e))?;
+                        let lib_identity = lib_canonical.display().to_string();
 
-                        if !linked_in_file.insert(lib_canonical.clone()) {
+                        if !linked_in_file.insert(lib_identity) {
                             return Err(format!(
                                 "Module '{}' is linked more than once in the same file",
                                 module_ref
@@ -217,12 +279,13 @@ impl ModuleLoader {
                         }, span));
                     } else {
                         // --- Source module (.code) ---
-                        let module_path = self.resolve_module(&canonical, &module_ref)?;
-                        let module_canonical = fs::canonicalize(&module_path)
-                            .map_err(|e| format!("Error resolving '{}': {}", module_path.display(), e))?;
+                        // Duplicate link check within the same file. We need the
+                        // resolved identity up front, so resolve once here and
+                        // reuse it for load_linked below (avoids re-resolving).
+                        let (module_identity, module_source) =
+                            self.resolver.resolve(&identity, &module_ref)?;
 
-                        // Duplicate link check within the same file.
-                        if !linked_in_file.insert(module_canonical.clone()) {
+                        if !linked_in_file.insert(module_identity.clone()) {
                             return Err(format!(
                                 "Module '{}' is linked more than once in the same file",
                                 module_ref
@@ -230,7 +293,7 @@ impl ModuleLoader {
                         }
 
                         // Recursively load the linked module.
-                        let module_program = self.load(&module_path)?;
+                        let module_program = self.load(module_identity, module_source)?;
 
                         // Collect public names (all top-level definitions minus private ones).
                         let (body, public_names, public_types, public_handlers) = collect_public_names(module_program.statements);
@@ -252,94 +315,94 @@ impl ModuleLoader {
 
         Ok(Program { statements })
     }
+}
 
-    /// Resolve a module name to a file path.
-    /// Search order: directory of the importing file, then cwd, then CODE_PATH.
-    fn resolve_module(&self, current_file: &Path, module_name: &str) -> Result<PathBuf, String> {
-        // If extension is explicit, require `.code`.
-        // Otherwise, resolve to `<module>.code`.
-        let file_name = if module_name.ends_with(".code") {
-            module_name.to_string()
-        } else if Path::new(module_name)
-            .extension()
-            .is_some_and(|ext| ext != "code")
-        {
-            return Err(format!(
-                "Linked module '{}' uses unsupported extension. Use '.code'",
-                module_name
-            ));
-        } else {
-            format!("{}.code", module_name)
-        };
+/// Resolve a `.code` module name to a file path.
+/// Search order: directory of the importing file, then cwd, then CODE_PATH.
+fn resolve_source_module_path(current_file: &Path, module_name: &str) -> Result<PathBuf, String> {
+    // If extension is explicit, require `.code`.
+    // Otherwise, resolve to `<module>.code`.
+    let file_name = if module_name.ends_with(".code") {
+        module_name.to_string()
+    } else if Path::new(module_name)
+        .extension()
+        .is_some_and(|ext| ext != "code")
+    {
+        return Err(format!(
+            "Linked module '{}' uses unsupported extension. Use '.code'",
+            module_name
+        ));
+    } else {
+        format!("{}.code", module_name)
+    };
 
-        let mut candidates = Vec::new();
+    let mut candidates = Vec::new();
 
-        // 1. Relative to the importing file's directory
-        if let Some(parent) = current_file.parent() {
-            candidates.push(parent.join(&file_name));
-        }
-
-        // 2. Relative to the current working directory
-        if let Ok(cwd) = std::env::current_dir() {
-            candidates.push(cwd.join(&file_name));
-        }
-
-        // 3. CODE_PATH directories
-        let search_paths = std::env::var("CODE_PATH").ok();
-        if let Some(paths) = search_paths {
-            for base in paths.split(':').filter(|s| !s.is_empty()) {
-                candidates.push(Path::new(base).join(&file_name));
-            }
-        }
-
-        for candidate in &candidates {
-            if candidate.is_file() {
-                return Ok(candidate.clone());
-            }
-        }
-
-        Err(format!(
-            "Linked module '{}' not found (looked for '{}')",
-            module_name,
-            file_name
-        ))
+    // 1. Relative to the importing file's directory
+    if let Some(parent) = current_file.parent() {
+        candidates.push(parent.join(&file_name));
     }
 
-    /// Resolve a native module path (.so / .a).
-    /// The module_ref is used as-is (with its extension).
-    /// Search order: directory of the importing file, then cwd, then CODE_PATH.
-    fn resolve_native_module(&self, current_file: &Path, module_ref: &str) -> Result<PathBuf, String> {
-        let mut candidates = Vec::new();
-
-        // 1. Relative to the importing file's directory
-        if let Some(parent) = current_file.parent() {
-            candidates.push(parent.join(module_ref));
-        }
-
-        // 2. Relative to the current working directory
-        if let Ok(cwd) = std::env::current_dir() {
-            candidates.push(cwd.join(module_ref));
-        }
-
-        // 3. CODE_PATH directories
-        let search_paths = std::env::var("CODE_PATH").ok();
-        if let Some(paths) = search_paths {
-            for base in paths.split(':').filter(|s| !s.is_empty()) {
-                candidates.push(Path::new(base).join(module_ref));
-            }
-        }
-
-        for candidate in &candidates {
-            if candidate.is_file() {
-                return Ok(candidate.clone());
-            }
-        }
-
-        Err(format!(
-            "Native module '{}' not found",
-            module_ref
-        ))
+    // 2. Relative to the current working directory
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join(&file_name));
     }
+
+    // 3. CODE_PATH directories
+    let search_paths = std::env::var("CODE_PATH").ok();
+    if let Some(paths) = search_paths {
+        for base in paths.split(':').filter(|s| !s.is_empty()) {
+            candidates.push(Path::new(base).join(&file_name));
+        }
+    }
+
+    for candidate in &candidates {
+        if candidate.is_file() {
+            return Ok(candidate.clone());
+        }
+    }
+
+    Err(format!(
+        "Linked module '{}' not found (looked for '{}')",
+        module_name,
+        file_name
+    ))
+}
+
+/// Resolve a native module path (.so / .a).
+/// The module_ref is used as-is (with its extension).
+/// Search order: directory of the importing file, then cwd, then CODE_PATH.
+fn resolve_native_module_path(current_file: &Path, module_ref: &str) -> Result<PathBuf, String> {
+    let mut candidates = Vec::new();
+
+    // 1. Relative to the importing file's directory
+    if let Some(parent) = current_file.parent() {
+        candidates.push(parent.join(module_ref));
+    }
+
+    // 2. Relative to the current working directory
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join(module_ref));
+    }
+
+    // 3. CODE_PATH directories
+    let search_paths = std::env::var("CODE_PATH").ok();
+    if let Some(paths) = search_paths {
+        for base in paths.split(':').filter(|s| !s.is_empty()) {
+            candidates.push(Path::new(base).join(module_ref));
+        }
+    }
+
+    for candidate in &candidates {
+        if candidate.is_file() {
+            return Ok(candidate.clone());
+        }
+    }
+
+    Err(format!(
+        "Native module '{}' not found",
+        module_ref
+    ))
 }
 
 /// Check whether a module reference points to a native library by extension.

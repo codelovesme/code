@@ -180,6 +180,19 @@ impl Environment {
         None
     }
 
+    /// Every top-level (global scope) binding as `(name, resolved_value)` —
+    /// `None` if the variable's constraint domain wasn't narrowed to a single
+    /// value (e.g. `a in Z, a > 5` with no exact value). Read-only, pure
+    /// observation of the environment after a program has run — for host UIs
+    /// (e.g. a playground, T19) to render a program's result; adds no
+    /// language surface.
+    pub fn bindings(&self) -> Vec<(String, Option<Rc<Value>>)> {
+        self.scopes[0]
+            .iter()
+            .map(|(name, var)| (name.clone(), var.domain.is_singleton()))
+            .collect()
+    }
+
     /// Look up a variable's domain.
     pub fn get_domain(&self, name: &str) -> Option<&Domain> {
         for scope in self.scopes.iter().rev() {
