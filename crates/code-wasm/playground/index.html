@@ -224,7 +224,8 @@ const EXAMPLES = {
 a = 5
 b > 3
 b < 10
-b = 7
+-> b was never pinned to one value — the result panel shows its domain.
+-> But we can still prove things about it: every value in (3, 10) is > 3.
 assert a = 5
 assert b > 3`,
   'Handlers (no functions)': `-> Code has no user-defined functions — handlers
@@ -312,7 +313,10 @@ function renderResult(src, res) {
     let html = '<table class="bindings"><thead><tr><th>name</th><th>value</th></tr></thead><tbody>';
     for (const b of res.bindings) {
       if (b.value === undefined || b.value === null) {
-        html += `<tr><td>${escapeHtml(b.name)}</td><td class="unresolved">unresolved</td></tr>`;
+        // Unresolved: show what the variable could still be (its domain),
+        // not just the bare word "unresolved".
+        const domain = b.domain ? escapeHtml(b.domain) : 'unresolved';
+        html += `<tr><td>${escapeHtml(b.name)}</td><td class="unresolved">${domain}</td></tr>`;
       } else {
         html += `<tr><td>${escapeHtml(b.name)}</td><td>${escapeHtml(b.value)} <span class="kind-tag">${escapeHtml(b.kind ?? '')}</span></td></tr>`;
       }

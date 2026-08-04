@@ -193,6 +193,26 @@ impl Environment {
             .collect()
     }
 
+    /// Like [`bindings`](Self::bindings), but also returns a human-readable
+    /// description of each unresolved binding's domain (e.g. `"3 < _ < 10"` or
+    /// `"possible values: {0, 1}"`). The description is only meaningful when
+    /// the resolved value is `None`; for resolved bindings it still returns the
+    /// domain's description (always the value itself) but callers typically
+    /// show the value instead. Lets a host UI show *what a variable could
+    /// still be* rather than a bare "unresolved".
+    pub fn bindings_detailed(&self) -> Vec<(String, Option<Rc<Value>>, String)> {
+        self.scopes[0]
+            .iter()
+            .map(|(name, var)| {
+                (
+                    name.clone(),
+                    var.domain.is_singleton(),
+                    var.domain.describe(),
+                )
+            })
+            .collect()
+    }
+
     /// Look up a variable's domain.
     pub fn get_domain(&self, name: &str) -> Option<&Domain> {
         for scope in self.scopes.iter().rev() {

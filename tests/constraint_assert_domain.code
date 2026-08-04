@@ -1,0 +1,17 @@
+-> A comparison against an unresolved-but-constrained variable is decided by
+-> its domain when the domain settles it — no need to pin the variable first.
+b > 3
+b < 10
+
+-> Provably true for every value in (3, 10):
+assert b > 3
+assert b < 10
+assert b ≥ 3
+assert 3 < b
+
+-> Integer domain narrows to {4..9}, so the tightest bounds are provable too.
+c ∈ Z
+c > 3
+c < 10
+assert c ≥ 4
+assert c ≤ 9

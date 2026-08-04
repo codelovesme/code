@@ -204,6 +204,16 @@ impl Interpreter {
         self.env.bindings()
     }
 
+    /// Like [`bindings`](Self::bindings) but pairs each binding with a
+    /// description of its domain, so a host UI can show an unresolved
+    /// variable's possible values instead of a bare "unresolved". See
+    /// [`Environment::bindings_detailed`](crate::environment::Environment::bindings_detailed).
+    pub fn bindings_detailed(
+        &self,
+    ) -> Vec<(String, Option<Rc<crate::runtime::Value>>, String)> {
+        self.env.bindings_detailed()
+    }
+
     /// Execute a single statement.
     fn exec_statement(&mut self, stmt: Statement) -> Result<(), String> {
         match stmt {
@@ -1260,6 +1270,18 @@ impl Interpreter {
                         }
                     }
                     _ => {
+                        // A comparison against an unresolved-but-constrained
+                        // variable can still be decided by its domain: `b > 3`
+                        // when b ∈ (3, 10) is provably true for every possible
+                        // value of b, so `assert b > 3` should hold without
+                        // ever pinning b. Only decides when the domain settles
+                        // it either way; a partial overlap falls through to the
+                        // normal (unresolved-variable) path unchanged.
+                        if let Some(result) =
+                            self.try_domain_comparison(&left, &op, &right)?
+                        {
+                            return Ok(result);
+                        }
                         let left_val = self.eval_expr(*left)?;
                         let right_val = self.eval_expr(*right)?;
                         self.eval_binary(op, &left_val, &right_val)
@@ -1296,6 +1318,79 @@ impl Interpreter {
                 let result = if negated { !matches } else { matches };
                 Ok(Value::boolean(result))
             }
+        }
+    }
+
+    /// Try to decide a comparison (`>`, `<`, `≥`, `≤`, `=`, `≠`) where exactly
+    /// one operand is an unresolved-but-constrained variable and the other is a
+    /// concrete number, using the variable's domain rather than forcing it to a
+    /// single value. Returns `Ok(Some(bool))` only when the domain *proves* the
+    /// comparison true or false for every possible value; `Ok(None)` when this
+    /// pattern doesn't apply or the domain leaves it genuinely undecided (the
+    /// caller then falls back to normal evaluation, which surfaces the usual
+    /// "does not have a definite value yet" error).
+    fn try_domain_comparison(
+        &mut self,
+        left: &Expression,
+        op: &BinaryOp,
+        right: &Expression,
+    ) -> Result<Option<Rc<Value>>, String> {
+        if !matches!(
+            op,
+            BinaryOp::Greater
+                | BinaryOp::Less
+                | BinaryOp::GreaterEqual
+                | BinaryOp::LessEqual
+                | BinaryOp::Equal
+                | BinaryOp::NotEqual
+        ) {
+            return Ok(None);
+        }
+
+        // Find the unresolved-constrained variable and the concrete number,
+        // whichever side each is on. Returns (name, number, effective op with
+        // the variable conceptually on the left).
+        let resolved = if let Some((name, n)) = self.unresolved_var_vs_number(left, right) {
+            Some((name, n, op.clone()))
+        } else if let Some((name, n)) = self.unresolved_var_vs_number(right, left) {
+            Some((name, n, flip_comparison(op)))
+        } else {
+            None
+        };
+
+        let Some((var_name, number, eff_op)) = resolved else {
+            return Ok(None);
+        };
+        let Some(domain) = self.env.get_domain(&var_name).cloned() else {
+            return Ok(None);
+        };
+        Ok(decide_domain_comparison(&domain, &eff_op, number).map(Value::boolean))
+    }
+
+    /// If `var_expr` is an identifier for a variable that exists but is not yet
+    /// resolved to a single value, and `num_expr` evaluates cleanly to a
+    /// number, return their pair. Any other shape (resolved var, undefined
+    /// name, non-number other side) yields `None` so the caller can fall
+    /// through to normal evaluation.
+    fn unresolved_var_vs_number(
+        &mut self,
+        var_expr: &Expression,
+        num_expr: &Expression,
+    ) -> Option<(String, f64)> {
+        let Expression::Identifier(name) = var_expr else {
+            return None;
+        };
+        // Must be constrained-but-unresolved: no single value, but a domain
+        // does exist. A resolved variable takes the normal fast path.
+        if self.env.get(name).is_some() || self.env.get_domain(name).is_none() {
+            return None;
+        }
+        match self.eval_expr(num_expr.clone()) {
+            Ok(v) => match v.as_ref() {
+                Value::Number(n) => Some((name.clone(), *n)),
+                _ => None,
+            },
+            Err(_) => None,
         }
     }
 
@@ -1408,5 +1503,100 @@ impl Interpreter {
             },
             BinaryOp::And | BinaryOp::Or => unreachable!(),
         }
+    }
+}
+
+/// Mirror a comparison operator so the variable can be treated as the left
+/// operand (`3 < b` becomes `b > 3`). Equality/inequality are symmetric.
+fn flip_comparison(op: &BinaryOp) -> BinaryOp {
+    match op {
+        BinaryOp::Greater => BinaryOp::Less,
+        BinaryOp::Less => BinaryOp::Greater,
+        BinaryOp::GreaterEqual => BinaryOp::LessEqual,
+        BinaryOp::LessEqual => BinaryOp::GreaterEqual,
+        BinaryOp::Equal => BinaryOp::Equal,
+        BinaryOp::NotEqual => BinaryOp::NotEqual,
+        other => other.clone(),
+    }
+}
+
+/// Decide `variable <op> n` from the variable's domain alone.
+/// `Some(true)`  — every value the domain still allows satisfies it.
+/// `Some(false)` — no value the domain allows satisfies it.
+/// `None`        — the domain allows both satisfying and violating values, so
+///                 the comparison genuinely depends on which value is chosen.
+fn decide_domain_comparison(domain: &Domain, op: &BinaryOp, n: f64) -> Option<bool> {
+    match op {
+        BinaryOp::Equal => {
+            // Provably equal only if the domain has collapsed to exactly {n};
+            // provably not-equal if n isn't even a possible value; otherwise
+            // undecided.
+            if let Some(v) = domain.is_singleton() {
+                if let Value::Number(m) = v.as_ref() {
+                    return Some(*m == n);
+                }
+            }
+            let n_possible = !domain
+                .clone()
+                .intersect(Domain::Exact(Value::number(n)))
+                .is_empty_domain();
+            if n_possible {
+                None
+            } else {
+                Some(false)
+            }
+        }
+        BinaryOp::NotEqual => decide_domain_comparison(domain, &BinaryOp::Equal, n).map(|b| !b),
+        _ => {
+            let (satisfying, violating) = comparison_ranges(op, n)?;
+            let none_violate = domain.clone().intersect(violating).is_empty_domain();
+            let none_satisfy = domain.clone().intersect(satisfying).is_empty_domain();
+            match (none_satisfy, none_violate) {
+                (false, true) => Some(true),  // all allowed values satisfy it
+                (true, false) => Some(false), // no allowed value satisfies it
+                _ => None,                    // mixed (or empty) — undecided
+            }
+        }
+    }
+}
+
+/// For an inequality `variable <op> n`, build (domain-of-values-that-satisfy,
+/// domain-of-values-that-violate) as real ranges. Only the four ordering
+/// operators are handled; `=`/`≠` are decided separately.
+fn comparison_ranges(op: &BinaryOp, n: f64) -> Option<(Domain, Domain)> {
+    let above_excl = Domain::RealRange {
+        min: Some(n),
+        max: None,
+        min_inclusive: false,
+        max_inclusive: false,
+    };
+    let above_incl = Domain::RealRange {
+        min: Some(n),
+        max: None,
+        min_inclusive: true,
+        max_inclusive: false,
+    };
+    let below_excl = Domain::RealRange {
+        min: None,
+        max: Some(n),
+        min_inclusive: false,
+        max_inclusive: false,
+    };
+    let below_incl = Domain::RealRange {
+        min: None,
+        max: Some(n),
+        min_inclusive: false,
+        max_inclusive: true,
+    };
+    match op {
+        // b > n: satisfy = (n, ∞), violate = (-∞, n]
+        BinaryOp::Greater => Some((above_excl, below_incl)),
+        // b < n: satisfy = (-∞, n), violate = [n, ∞)
+        BinaryOp::Less => Some((below_excl, above_incl)),
+        // b ≥ n: satisfy = [n, ∞), violate = (-∞, n)
+        BinaryOp::GreaterEqual => Some((above_incl, below_excl)),
+        // b ≤ n: satisfy = (-∞, n], violate = (n, ∞)
+        BinaryOp::LessEqual => Some((below_incl, above_excl)),
+        _ => None,
     }
 }

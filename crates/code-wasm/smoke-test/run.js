@@ -52,11 +52,21 @@ check(
   },
 );
 
-// A range-constrained-but-never-pinned variable has no resolved value.
+// A range-constrained-but-never-pinned variable has no resolved value, but
+// reports what it could still be (its domain) for the result panel to show.
 check(
   'unresolved domain',
   run_source('a > 5\na < 12\n'),
-  { ok: true, bindings: [{ name: 'a' }], diagnostics: [] },
+  { ok: true, bindings: [{ name: 'a', domain: '5 < _ < 12' }], diagnostics: [] },
+);
+
+// A comparison against an unresolved variable is decided by its domain: every
+// value in (3, 10) satisfies `b > 3`, so the assert holds without pinning b,
+// and b is still reported as an unresolved domain.
+check(
+  'domain-entailed assert',
+  run_source('b > 3\nb < 10\nassert b > 3\n'),
+  { ok: true, bindings: [{ name: 'b', domain: '3 < _ < 10' }], diagnostics: [] },
 );
 
 // A parse error is reported, located.

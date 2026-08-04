@@ -34,6 +34,10 @@ pub struct BindingOut {
     /// Code type name (Number/String/Boolean/Object/Array/Null), or `null`
     /// alongside an unresolved `value`.
     pub kind: Option<String>,
+    /// For an unresolved binding (`value` is `null`), a human-readable
+    /// description of what the variable could still be — e.g. `"3 < _ < 10"`
+    /// or `"possible values: {0, 1}"`. `null` for resolved bindings.
+    pub domain: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -100,11 +104,14 @@ fn run_source_inner(src: &str) -> RunResult {
     match interp.execute(program) {
         Ok(()) => {
             let bindings = interp
-                .bindings()
+                .bindings_detailed()
                 .into_iter()
-                .map(|(name, value)| BindingOut {
+                .map(|(name, value, domain)| BindingOut {
                     value: value.as_deref().map(|v| v.to_string()),
                     kind: value.as_deref().map(|v| v.type_name().to_string()),
+                    // Only surface the domain for unresolved bindings — for a
+                    // resolved one the value already says everything.
+                    domain: if value.is_none() { Some(domain) } else { None },
                     name,
                 })
                 .collect();

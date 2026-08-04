@@ -1,0 +1,6 @@
+-> When the domain proves a comparison FALSE for every possible value, the
+-> assertion fails outright (not an "unresolved" error) — b is bounded below
+-> 10, so `b > 20` can never hold.
+b > 3
+b < 10
+assert b > 20
