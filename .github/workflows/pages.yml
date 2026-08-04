@@ -91,6 +91,23 @@ jobs:
           cp crates/code-wasm/playground/favicon-32.png dist/playground/favicon-32.png
           cp crates/code-wasm/playground/favicon-180.png dist/playground/favicon-180.png
           cp -r crates/code-wasm/playground/pkg dist/playground/pkg
+
+          # Cache-bust the wasm bundle. Browsers cache pkg/code_wasm_bg.wasm by
+          # URL, so a redeploy that reuses the same path keeps serving returning
+          # visitors the stale wasm — this bit us: an interpreter fix was live
+          # but already-cached clients kept running the old build. Rename the
+          # bundle dir to a content hash and repoint the import; the generated
+          # glue resolves the .wasm relative to its own URL, so hashing the dir
+          # busts both files at once. The HTML entry point is only short-cached
+          # by Pages, so it picks up the new hash quickly, after which the
+          # hashed bundle can be cached indefinitely.
+          WASM_HASH=$(sha256sum dist/playground/pkg/code_wasm_bg.wasm | cut -c1-12)
+          mv dist/playground/pkg "dist/playground/pkg-${WASM_HASH}"
+          sed -i "s|\./pkg/code_wasm\.js|./pkg-${WASM_HASH}/code_wasm.js|" dist/playground/index.html
+          if grep -q "'./pkg/code_wasm.js'" dist/playground/index.html; then
+            echo "::error::playground import was not rewritten to the hashed bundle path"
+            exit 1
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
