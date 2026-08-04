@@ -48,6 +48,7 @@ _(none right now)_
 | [20](medium/20-project-website-distribution-channel.md) | Project website: Downloads page, hosted install.sh, playground home |
 | [22](medium/22-language-documentation-site.md) | Language documentation site: guide, tutorials, examples, reference (content, depends on T20) |
 | [21](medium/21-native-backend-memory-management.md) | Native backend automatic memory management: compile-time-elided refcounting (Perceus/Lobster-style) |
+| [23](medium/23-set-domain-and-possibility-enumeration.md) | First-class Set domain: `⦃…⦄` literals, domain-borrowing `∈`, `loop <var> {}` possibility enumeration |
 
 ## Active — Low priority
 
@@ -115,6 +116,21 @@ consumers-drop discipline. Verified leak-free (alloc==free) on a 13-construct
 stress fixture and a broad sweep, full suite green. Remaining Phase-1 polish
 (inner-scope drops, non-core emit-particle drops) and the Phase 2 elision passes
 are still open.
+
+**T23 (Set domain and possibility enumeration):** a corpus audit while
+answering "is Code really constraint-based?" (30 real apps, 15,521 lines)
+found progressive domain narrowing is real but never actually used in
+practice — everyone just writes `=`. That investigation surfaced two real
+bugs (fixed directly on `main`, no ticket: `f1795c9` — a narrowed variable's
+`=` pin didn't check prior constraints; `63fe8e3` — `Z/N/R` domains lost
+their integer/natural/real distinction, and `∈`/`in` disagreed on them) and
+then a longer design conversation about making narrowing into something
+worth reaching for: a `⦃…⦄` set literal producing a genuine resolved
+`Value::Set` via `=`, `∈` narrowing a scalar to one of a set's elements
+(domain-borrowing: `a ∈ A`), and a new `loop a { }` form that enumerates a
+scalar's own finite domain in place without resolving it. Interpreter-only
+(native codegen never implemented narrowing beyond `Equals`/`IsType` either).
+Not started.
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).
