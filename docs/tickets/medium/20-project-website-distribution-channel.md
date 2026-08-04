@@ -3,7 +3,12 @@
 - **Priority:** Medium
 - **Type:** Distribution (Phase 2 of the distribution roadmap — "docs site")
 - **Area:** new website (not yet built), `install.sh` hosting, `README.md`
-- **Depends on:** T17 (release artifacts to link to), T19 (playground to host)
+- **Depends on:** T17 (release artifacts to link to — **T17 done**, `release.yml`
+  already produces `code-runtime`/`code-sdk`/`code-lsp` tarballs), T19
+  (playground to host)
+- **See also:** T22 (language documentation — guide/tutorials/examples/
+  reference) is the site's *content*, tracked separately from this ticket's
+  site plumbing; T22 depends on this ticket for a site to host it on.
 
 ## Problem
 

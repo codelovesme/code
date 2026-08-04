@@ -46,6 +46,7 @@ _(none right now)_
 | [17](medium/17-split-release-artifact-code-lsp.md) | Split release artifacts: `code` Runtime / `code` SDK / `code-lsp` |
 | [18](medium/18-wasm-capable-core.md) | WASM-capable core: feature-gate LLVM and native-`.so` out of the default build |
 | [20](medium/20-project-website-distribution-channel.md) | Project website: Downloads page, hosted install.sh, playground home |
+| [22](medium/22-language-documentation-site.md) | Language documentation site: guide, tutorials, examples, reference (content, depends on T20) |
 | [21](medium/21-native-backend-memory-management.md) | Native backend automatic memory management: compile-time-elided refcounting (Perceus/Lobster-style) |
 
 ## Active — Low priority
