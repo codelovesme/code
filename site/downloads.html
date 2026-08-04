@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Downloads — Code</title>
 <meta name="description" content="Download the Code programming language: SDK, Runtime, or code-lsp for editors. Linux x86_64 prebuilt binaries.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230f8b8f%22/><text x=%2250%22 y=%2270%22 font-size=%2260%22 font-family=%22ui-monospace,monospace%22 font-weight=%22700%22 fill=%22%23f5fbfb%22 text-anchor=%22middle%22>&#8712;</text></svg>">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="favicon-180.png">
 <style>
   :root {
     color-scheme: light dark;
@@ -23,8 +24,9 @@
   body { margin: 0; font-family: var(--sans); background: var(--paper); color: var(--ink); line-height: 1.55; }
   a { color: var(--accent); }
   nav { display: flex; align-items: center; gap: 1.5rem; padding: 1.1rem 1.5rem; border-bottom: 1px solid var(--line); }
-  nav .word { font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }
-  nav .word .dot { color: var(--accent); font-weight: 400; margin-left: 0.1em; }
+  nav .brand { display: flex; align-items: center; gap: 0.55rem; text-decoration: none; }
+  nav .brand img { height: 28px; width: auto; display: block; }
+  nav .word { font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; color: var(--ink); }
   nav .links { margin-left: auto; display: flex; gap: 1.25rem; font-size: 0.9rem; }
   nav .links a { text-decoration: none; color: var(--ink); }
   nav .links a:hover { color: var(--accent); }
@@ -86,7 +88,10 @@
 </head>
 <body>
   <nav>
-    <span class="word">Code<span class="dot">∈</span></span>
+    <a class="brand" href="./">
+      <img src="favicon-180.png" alt="" width="28" height="28">
+      <span class="word">Code</span>
+    </a>
     <span class="links">
       <a href="playground/">Playground</a>
       <a href="downloads.html">Downloads</a>

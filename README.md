@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="" width="140">
+</p>
+
 # Code Programming Language
 
 A minimal programming language implementation in Rust, with both an interpreter and an LLVM backend.

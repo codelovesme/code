@@ -48,6 +48,8 @@ jobs:
           mkdir -p dist
 
           cp site/index.html dist/index.html
+          cp site/favicon-32.png dist/favicon-32.png
+          cp site/favicon-180.png dist/favicon-180.png
           cp install.sh dist/install.sh
 
           # Latest release's real asset URLs — asset filenames include the
@@ -79,6 +81,8 @@ jobs:
 
           mkdir -p dist/playground
           cp crates/code-wasm/playground/index.html dist/playground/index.html
+          cp crates/code-wasm/playground/favicon-32.png dist/playground/favicon-32.png
+          cp crates/code-wasm/playground/favicon-180.png dist/playground/favicon-180.png
           cp -r crates/code-wasm/playground/pkg dist/playground/pkg
         env:
           GH_TOKEN: ${{ github.token }}
