@@ -36,12 +36,31 @@
   running the module, which is why the smoke test (not just a build check)
   is load-bearing and runs in CI on every push.
 
-**Not started:** item 4 (web UI), or npm publishing — publishing in
-particular claims a public package name and should get an explicit go-ahead
-before it happens, not bundled into this landing. Also not done: wiring the
-`ModuleResolver`/in-memory source map into `code-wasm` for `link` support
-(the trait exists but `run_source` doesn't use it yet — v1 is single-snippet
-only, matching the ticket's "Out of scope (v1)" section).
+- Item 4 (minimal web UI): **done for v1.** `crates/code-wasm/playground/` —
+  a two-pane source/result workspace (editor + bindings table / located
+  diagnostics, rustc-style caret rendering matching `src/diagnostics.rs`), a
+  handful of example snippets, light/dark theming. `build.sh` produces the
+  browser glue into a gitignored `pkg/` (same not-committed-binaries
+  convention as `tests/native_modules/build.sh`). Verified with a real
+  headless-Chromium (Playwright) test exercising the actual page — not just
+  the underlying WASM API — across three example snippets (constraints,
+  handler dispatch, a parse error), confirming zero console/page errors and
+  correct rendered output. Also spot-checked visually (light + dark
+  screenshots).
+
+  Palette/type choices deliberately grounded in the subject rather than a
+  generic dev-tool default — see the design rationale comment at the top of
+  `index.html`'s `<style>` block.
+
+**Not done:** npm publishing (claims a public package name, separate
+explicit go-ahead, not bundled here), and wiring the `ModuleResolver`/
+in-memory source map into `code-wasm` for `link` support (the trait exists
+but `run_source` doesn't use it yet — v1 is single-snippet only, matching
+the ticket's "Out of scope (v1)" section). A demo build is published as a
+private Claude Artifact (self-contained, wasm embedded inline, no server) for
+convenience — this is a throwaway demo, **not** a substitute for `crates/
+code-wasm/playground/` (the repo files are the real, lasting deliverable and
+what T20's eventual site will actually use).
 
 ## Problem
 

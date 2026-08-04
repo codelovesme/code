@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code — playground</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230f8b8f%22/><text x=%2250%22 y=%2270%22 font-size=%2260%22 font-family=%22ui-monospace,monospace%22 font-weight=%22700%22 fill=%22%23f5fbfb%22 text-anchor=%22middle%22>&#8712;</text></svg>">
+<style>
+  /*
+    Palette grounded in the subject: Code is a *constraint* language — its
+    own syntax reasons in set/relation terms (`a ∈ Z`, `b ≤ 10`), not
+    generic "dev tool purple". Warm, hue-biased neutrals (not flat gray);
+    a precise teal accent; semantic colors (ok/err) kept distinct from the
+    accent so brand and state never get confused.
+  */
+  :root {
+    color-scheme: light dark;
+    --ink: #1c1a1e;
+    --paper: #faf8f6;
+    --panel: #f1efec;
+    --line: #e2dfda;
+    --muted: #6f6a63;
+    --accent: #0f8b8f;
+    --accent-ink: #f5fbfb;
+    --ok: #3d7a4e;
+    --err: #b5451f;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #f1eee9;
+      --paper: #18171a;
+      --panel: #201f23;
+      --line: #35333a;
+      --muted: #948e88;
+      --accent: #4fc7c2;
+      --accent-ink: #0e2323;
+      --ok: #7fd196;
+      --err: #ff8a63;
+    }
+  }
+  /* The viewer's own theme toggle wins over the OS preference either way. */
+  :root[data-theme="dark"] {
+    --ink: #f1eee9; --paper: #18171a; --panel: #201f23; --line: #35333a;
+    --muted: #948e88; --accent: #4fc7c2; --accent-ink: #0e2323;
+    --ok: #7fd196; --err: #ff8a63;
+  }
+  :root[data-theme="light"] {
+    --ink: #1c1a1e; --paper: #faf8f6; --panel: #f1efec; --line: #e2dfda;
+    --muted: #6f6a63; --accent: #0f8b8f; --accent-ink: #f5fbfb;
+    --ok: #3d7a4e; --err: #b5451f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 0.85rem 1.1rem;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: baseline;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+    background: var(--panel);
+  }
+  header h1 {
+    font-size: 1.05rem;
+    margin: 0;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  header h1 .dot { color: var(--accent); margin-left: 0.1em; font-weight: 400; }
+  header .sub {
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  header .spacer { flex: 1; }
+  select, button {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+  }
+  select:focus-visible, button:focus-visible, #editor:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  button.run {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: transparent;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.run:active { transform: translateY(1px); }
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 0;
+  }
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+  }
+  .pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+  }
+  .pane + .pane { border-left: 1px solid var(--line); }
+  @media (max-width: 760px) {
+    .pane + .pane { border-left: none; border-top: 1px solid var(--line); }
+  }
+  .pane-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    padding: 0.6rem 1rem 0.4rem;
+  }
+  #editor {
+    flex: 1;
+    resize: none;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--ink);
+    font: 0.9rem/1.55 var(--mono);
+    padding: 0 1rem 1rem;
+    tab-size: 4;
+  }
+  #result {
+    flex: 1;
+    overflow: auto;
+    padding: 0 1rem 1rem;
+    background: var(--panel);
+  }
+  table.bindings {
+    width: 100%;
+    border-collapse: collapse;
+    font: 0.85rem/1.4 var(--mono);
+  }
+  table.bindings th, table.bindings td {
+    text-align: left;
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+  table.bindings th {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    font-family: var(--sans);
+  }
+  .kind-tag {
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+  .unresolved {
+    color: var(--muted);
+    font-style: italic;
+  }
+  .diag {
+    font: 0.85rem/1.55 var(--mono);
+    white-space: pre;
+    color: var(--err);
+    margin: 0.8rem 0 1rem;
+  }
+  .diag .msg {
+    font-family: var(--sans);
+    white-space: normal;
+    margin-bottom: 0.4rem;
+    font-weight: 600;
+  }
+  .pane-label.ok { color: var(--ok); }
+  .pane-label.err { color: var(--err); }
+  .empty {
+    color: var(--muted);
+    font-size: 0.85rem;
+    padding-top: 0.6rem;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Code<span class="dot">∈</span></h1>
+    <span class="sub">playground — runs entirely in your browser via WASM, no install</span>
+    <span class="spacer"></span>
+    <select id="examples"></select>
+    <button class="run" id="run">Run ▸ (⌘/Ctrl+Enter)</button>
+  </header>
+  <main>
+    <div class="pane">
+      <div class="pane-label">Source</div>
+      <textarea id="editor" spellcheck="false"></textarea>
+    </div>
+    <div class="pane">
+      <div class="pane-label" id="status-label">Result</div>
+      <div id="result"><div class="empty">Run a program to see its bindings here.</div></div>
+    </div>
+  </main>
+
+<script type="module">
+import init, { run_source } from './pkg/code_wasm.js';
+
+const EXAMPLES = {
+  'Constraints': `-> Variables are constrained, not assigned imperatively.
+a = 5
+b > 3
+b < 10
+b = 7
+assert a = 5
+assert b > 3`,
+  'Handlers (no functions)': `-> Code has no user-defined functions — handlers
+-> (particle dispatch) are the only unit of reusable logic.
+type Ping { value ∈ Number }
+
+Ping => {
+    return Ping { value = value + 10 }
+}
+
+emit Ping { value = 1 } to this get result
+assert result.value = 11`,
+  'Objects & arrays': `person = { name = "Ada", age = 36 }
+nums = [1, 2, 3, 4, 5]
+assert person.name = "Ada"
+assert nums[4] = 5`,
+  'A parse error': `a = = 5`,
+};
+
+const editor = document.getElementById('editor');
+const result = document.getElementById('result');
+const statusLabel = document.getElementById('status-label');
+const runBtn = document.getElementById('run');
+const examplesSelect = document.getElementById('examples');
+
+for (const name of Object.keys(EXAMPLES)) {
+  const opt = document.createElement('option');
+  opt.value = name;
+  opt.textContent = name;
+  examplesSelect.appendChild(opt);
+}
+examplesSelect.addEventListener('change', () => {
+  editor.value = EXAMPLES[examplesSelect.value];
+});
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[c]);
+}
+
+// Render a rustc-style caret block for a diagnostic, matching the CLI's own
+// src/diagnostics.rs rendering (line + source text + caret underline).
+// start/end are CHAR offsets (Unicode scalar values, matching Rust's `char`)
+// — Array.from() splits by code point, unlike raw string indexing which
+// splits by UTF-16 code unit, so this stays aligned with multi-byte
+// operators like ∈/≤.
+function renderDiagnostic(src, diag) {
+  const chars = Array.from(src);
+  let html = `<div class="diag"><div class="msg">${escapeHtml(diag.message)}</div>`;
+  if (diag.start !== undefined && diag.start !== null) {
+    const start = Math.min(diag.start, chars.length);
+    const end = Math.max(start, Math.min(diag.end ?? start, chars.length));
+    let lineStart = 0, lineNo = 1;
+    for (let i = 0; i < start; i++) {
+      if (chars[i] === '\n') { lineStart = i + 1; lineNo++; }
+    }
+    let lineEnd = chars.indexOf('\n', lineStart);
+    if (lineEnd === -1) lineEnd = chars.length;
+    const lineText = chars.slice(lineStart, lineEnd).join('');
+    const col = start - lineStart;
+    const caretLen = Math.max(1, Math.min(end, lineEnd) - start);
+    const gutter = String(lineNo);
+    const pad = ' '.repeat(gutter.length);
+    html += escapeHtml(
+      ` --> line ${lineNo}:${col + 1}\n` +
+      `${pad} |\n` +
+      `${gutter} | ${lineText}\n` +
+      `${pad} | ${' '.repeat(col)}${'^'.repeat(caretLen)}`
+    );
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderResult(src, res) {
+  statusLabel.classList.toggle('ok', res.ok);
+  statusLabel.classList.toggle('err', !res.ok);
+  if (res.ok) {
+    statusLabel.textContent = 'Result — ok';
+    if (res.bindings.length === 0) {
+      result.innerHTML = '<div class="empty">Program ran successfully — no top-level bindings.</div>';
+      return;
+    }
+    let html = '<table class="bindings"><thead><tr><th>name</th><th>value</th></tr></thead><tbody>';
+    for (const b of res.bindings) {
+      if (b.value === undefined || b.value === null) {
+        html += `<tr><td>${escapeHtml(b.name)}</td><td class="unresolved">unresolved</td></tr>`;
+      } else {
+        html += `<tr><td>${escapeHtml(b.name)}</td><td>${escapeHtml(b.value)} <span class="kind-tag">${escapeHtml(b.kind ?? '')}</span></td></tr>`;
+      }
+    }
+    html += '</tbody></table>';
+    result.innerHTML = html;
+  } else {
+    statusLabel.textContent = 'Result — error';
+    result.innerHTML = res.diagnostics.map((d) => renderDiagnostic(src, d)).join('');
+  }
+}
+
+let ready = false;
+async function run() {
+  if (!ready) return;
+  const src = editor.value;
+  try {
+    const res = run_source(src);
+    renderResult(src, res);
+  } catch (e) {
+    result.innerHTML = `<div class="diag"><div class="msg">Internal error: ${escapeHtml(String(e))}</div></div>`;
+  }
+}
+
+runBtn.addEventListener('click', run);
+editor.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); run(); }
+});
+
+init().then(() => {
+  ready = true;
+  examplesSelect.value = 'Constraints';
+  editor.value = EXAMPLES['Constraints'];
+  run();
+}).catch((e) => {
+  result.innerHTML = `<div class="diag"><div class="msg">Failed to load the WASM module: ${escapeHtml(String(e))}</div></div>`;
+});
+</script>
+</body>
+</html>

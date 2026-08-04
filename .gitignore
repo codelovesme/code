@@ -7,6 +7,10 @@
 tests/native_modules/*.so
 tests/native_modules/*.wasm
 
+# code-wasm playground glue — built on demand by
+# crates/code-wasm/playground/build.sh, never committed (compiled artifacts).
+crates/code-wasm/playground/pkg/
+
 # Editor / OS
 .DS_Store
 *.swp
