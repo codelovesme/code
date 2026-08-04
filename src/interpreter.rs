@@ -572,8 +572,12 @@ impl Interpreter {
                     }
                     self.env.assign(variable, val)?;
                 } else if self.env.exists_in_any_scope(variable) {
-                    // Variable has domain constraints but no exact value — pin it
-                    self.env.assign(variable, val)?;
+                    // Variable has domain constraints but no exact value — pin it.
+                    // Goes through apply_constraint (not assign) so the pinned value
+                    // is intersected against any prior narrowing (b > 3; b < 10; b = 15
+                    // must be a contradiction, not a silent override).
+                    self.env
+                        .apply_constraint(variable, Domain::Exact(val))?;
                 } else {
                     self.env.define(variable.to_string(), val);
                 }
