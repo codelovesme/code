@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "code"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chumsky",
@@ -125,7 +125,7 @@ version = "0.2.0"
 
 [[package]]
 name = "code-lsp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "code",
  "serde_json",

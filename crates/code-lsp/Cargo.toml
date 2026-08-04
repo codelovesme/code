@@ -1,6 +1,6 @@
 [package]
 name = "code-lsp"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Language Server Protocol implementation for the Code language"
 license = "GPL-3.0"
