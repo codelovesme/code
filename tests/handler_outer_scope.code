@@ -1,0 +1,12 @@
+-> Handler CAN read outer scope (closure-like)
+type Ping { value ∈ Number }
+type Result { total ∈ Number }
+
+outer = 42
+
+Ping => {
+    return Result{ total = value + outer }
+}
+
+emit Ping { value = 10 } to this get result
+assert result.total = 52

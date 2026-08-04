@@ -1,0 +1,3 @@
+link modules/shared_values
+assert greeting="hello"
+assert n=42

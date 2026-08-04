@@ -1,0 +1,5 @@
+-> Link with .code suffix should work the same as without
+link modules/shared_values.code
+
+assert n = 42
+assert greeting = "hello"

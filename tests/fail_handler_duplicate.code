@@ -1,0 +1,8 @@
+-> Duplicate handler for the same class should fail
+Dup => {
+    x = 1
+}
+
+Dup => {
+    x = 2
+}

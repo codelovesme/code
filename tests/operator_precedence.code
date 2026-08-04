@@ -1,0 +1,24 @@
+-> Operator precedence: * before +, and before ||, comparison before logic
+a = 2 + 3 * 4
+assert a = 14
+
+b = 10 - 4 / 2
+assert b = 8
+
+-> Comparison returns boolean, can use with logic
+c = 3 < 5 and 10 > 2
+assert c = true
+
+d = 1 > 2 or 3 < 4
+assert d = true
+
+e = 1 > 2 and 3 < 4
+assert e = false
+
+-> NOT has highest precedence among logical
+f = not false and true
+assert f = true
+
+-> Unary minus binds tighter than `*` (like `not`)
+g = -5 * 2
+assert g = -10

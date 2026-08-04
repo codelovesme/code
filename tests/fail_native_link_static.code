@@ -1,0 +1,2 @@
+-> Test: linking a static library (.a) should fail at runtime.
+link native_modules/libtest_math.a

@@ -1,0 +1,3 @@
+-> Contradictory constraints: a > 10 and a < 5 cannot both hold.
+a > 10
+a < 5

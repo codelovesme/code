@@ -1,0 +1,10 @@
+# wasm32-unknown-unknown needs a larger linear-memory stack than the linker's
+# default reserves. The parser (chumsky combinator recursion) needs ~16MB —
+# the CLI already works around this by spawning a thread with a 16MB stack
+# (src/main.rs); wasm32 has no OS threads to do the same trick, so the stack
+# has to be sized at link time instead. Without this, `code-wasm`
+# (crates/code-wasm) crashes at runtime with "memory access out of bounds" —
+# a wasm stack overflow — on essentially any real program, verified via a
+# node smoke test (T19).
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=-zstack-size=16777216"]

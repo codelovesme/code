@@ -1,0 +1,6 @@
+-> Nucleus organelle: handles cell lifecycle
+link ../particles/lifecycle
+
+EuglenaHasBeenBorn => {
+    return EuglenaHasBeenBorn { cell_name = cell_name }
+}

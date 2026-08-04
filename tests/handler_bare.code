@@ -1,0 +1,9 @@
+-> Handler-only definition: no type declaration, dynamic field access
+type Pong { ok ∈ Number }
+
+Ping => {
+    return Pong{ ok = 1 }
+}
+
+emit Ping{count = 42} to this get result
+assert result.ok = 1

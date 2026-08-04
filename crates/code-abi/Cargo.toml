@@ -1,0 +1,12 @@
+[package]
+name = "code-abi"
+version = "0.2.0"
+edition = "2021"
+description = "Shared C-ABI contract (version, tags, repr(C) structs) for Code native modules"
+license = "MIT"
+repository = "https://github.com/codelovesme/code"
+publish = false
+
+[lib]
+name = "code_abi"
+path = "src/lib.rs"

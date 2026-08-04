@@ -1,0 +1,12 @@
+-> Type checking with is operator
+assert 42 ∈ Number
+assert "hello" ∈ String
+b = 42 = 42
+assert b ∈ Boolean
+
+type Point { x ∈ Number, y ∈ Number }
+p = Point { x = 1, y = 2 }
+assert p ∈ Point
+assert p ∈ Object
+assert p ∉ Number
+assert p ∉ String

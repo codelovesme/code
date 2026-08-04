@@ -1,0 +1,18 @@
+-> `not` keyword as unary boolean negation
+t = true
+f = false
+
+-> `not` flips true to false
+if not t {
+    assert 1 = 2
+}
+
+-> `not` flips false to true
+if not f {
+    assert 1 = 1
+}
+
+-> double negation
+if not not t {
+    assert 1 = 1
+}

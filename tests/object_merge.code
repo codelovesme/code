@@ -1,0 +1,16 @@
+-> Object merge via + operator
+
+-> Merge two objects
+a = { x = 1, y = 2 }
+b = { z = 3 }
+merged = a + b
+assert merged.x = 1
+assert merged.y = 2
+assert merged.z = 3
+
+-> Merge overlapping keys (second object wins)
+left = { name = "old", x = 1 }
+right = { name = "new", y = 2 }
+combined = left + right
+assert combined.x = 1
+assert combined.y = 2

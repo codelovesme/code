@@ -1,0 +1,47 @@
+-> Yield collects values from a loop with get
+
+-> Basic yield: filter via loop + yield
+nums = [1, 2, 3, 4, 5]
+loop x over nums get big {
+    if x > 3 {
+        yield x
+    }
+}
+assert big[0] = 4
+assert big[1] = 5
+
+-> Yield all elements (identity map)
+items = [10, 20, 30]
+loop item over items get copy {
+    yield item
+}
+assert copy[0] = 10
+assert copy[1] = 20
+assert copy[2] = 30
+
+-> Yield with transformation
+loop x over nums get doubled {
+    yield x * 2
+}
+assert doubled[0] = 2
+assert doubled[1] = 4
+assert doubled[2] = 6
+assert doubled[3] = 8
+assert doubled[4] = 10
+
+-> Yield nothing produces empty array
+loop x over nums get empty {
+    if x > 100 {
+        yield x
+    }
+}
+assert empty = []
+
+-> Yield with break (early exit)
+loop x over nums get first_big {
+    if x > 3 {
+        yield x
+        break
+    }
+}
+assert first_big[0] = 4

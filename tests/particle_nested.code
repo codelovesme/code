@@ -1,0 +1,9 @@
+-> Test particle with nested properties
+p = Request {
+    method = "GET",
+    data = { x = 1, y = 2 }
+}
+assert p._class = "Request"
+assert p.method = "GET"
+assert p.data.x = 1
+assert p.data.y = 2

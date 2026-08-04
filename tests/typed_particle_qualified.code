@@ -1,0 +1,8 @@
+-> Module-qualified typed particle constructor
+link modules/typed_module as mod1
+
+-> Valid: all fields match the type definition
+p = mod1.Log { message = "Hello World", level = "Info" }
+assert p._class = "Log"
+assert p.message = "Hello World"
+assert p.level = "Info"

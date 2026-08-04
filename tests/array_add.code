@@ -1,0 +1,13 @@
+-> Array + Array concatenation
+a = [1, 2]
+b = [3, 4]
+c = a + b
+assert c = [1, 2, 3, 4]
+
+-> Array + value appends
+d = [1, 2] + 3
+assert d = [1, 2, 3]
+
+-> Value + array prepends
+e = 0 + [1, 2]
+assert e = [0, 1, 2]

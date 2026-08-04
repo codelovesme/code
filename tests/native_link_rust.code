@@ -1,0 +1,22 @@
+-> Test: link a Rust native module (.so built from Rust source).
+link native_modules/libtest_strings.so as strings
+
+-> Test exported variables
+assert strings.VERSION = "1.0.0"
+assert strings.MAX_LEN = 1024
+
+-> Test type declaration + handler
+msg = strings.Message { text = "important", urgent = true }
+assert msg.text = "important"
+assert msg.urgent = true
+
+-> Dispatch to handler — urgent=true should uppercase the text
+emit msg to strings get result
+assert result.text = "IMPORTANT"
+assert result.processed = true
+
+-> Test handler with non-urgent message
+msg2 = strings.Message { text = "casual", urgent = false }
+emit msg2 to strings get result2
+assert result2.text = "casual"
+assert result2.processed = true

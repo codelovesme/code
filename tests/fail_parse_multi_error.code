@@ -1,0 +1,6 @@
+-> Multiple parse errors: recovery should report all of them
+x = 1
+@@@ first bad line
+y = 2
+$$$ second bad line
+z = 3

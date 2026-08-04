@@ -1,0 +1,16 @@
+-> Null literal and comparisons
+x = Null
+assert x = Null
+assert x ∉ Number
+assert x ∉ String
+assert x ∉ Boolean
+assert x ∉ Object
+
+-> Null equality
+y = Null
+assert x = y
+assert x = Null
+
+-> Null inequality with other types
+assert Null ≠ 42
+assert Null ≠ "hello"

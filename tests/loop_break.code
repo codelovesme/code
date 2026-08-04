@@ -1,0 +1,9 @@
+-> Break exits a loop early
+nums = [1, 2, 3, 4, 5]
+loop n over nums get before_three {
+    if n < 3 {
+        yield n
+    }
+}
+assert before_three[0] = 1
+assert before_three[1] = 2

@@ -1,0 +1,11 @@
+-> Basic single-assignment variable definitions
+a = 1
+assert a = 1
+
+-> A distinct literal assignment
+b = 4
+assert b = 4
+
+-> Assignment from an arithmetic expression
+c = b * 2
+assert c = 8

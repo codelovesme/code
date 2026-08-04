@@ -1,0 +1,8 @@
+link native_modules/test_math.wasm as math
+
+assert math.PI > 3.14
+
+-> Test type declaration + handler
+p = math.Point { x = 2, y = 3 }
+emit p to math get result
+assert result.sum = 5

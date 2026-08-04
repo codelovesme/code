@@ -1,0 +1,2 @@
+-> Break outside a loop should fail
+break

@@ -1,0 +1,16 @@
+-> Optional fields with ?: syntax
+type Config { name ∈ String, description ∈ String ∪ Null }
+
+-> Create with optional field omitted - gets Null
+c1 = Config { name = "test" }
+assert c1.name = "test"
+assert c1.description = Null
+
+-> Create with optional field provided
+c2 = Config { name = "test", description = "A description" }
+assert c2.description = "A description"
+assert c2.description ≠ Null
+
+-> Optional field can be explicitly set to Null
+c3 = Config { name = "test", description = Null }
+assert c3.description = Null

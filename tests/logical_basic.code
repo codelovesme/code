@@ -1,0 +1,36 @@
+-> Logical operators: and, or, not
+a = true
+b = false
+
+r1 = a and a
+assert r1 = true
+
+r2 = a and b
+assert r2 = false
+
+r3 = b and a
+assert r3 = false
+
+r4 = b and b
+assert r4 = false
+
+r5 = a or a
+assert r5 = true
+
+r6 = a or b
+assert r6 = true
+
+r7 = b or a
+assert r7 = true
+
+r8 = b or b
+assert r8 = false
+
+r9 = not b
+assert r9 = true
+
+r10 = not a
+assert r10 = false
+
+r11 = not not a
+assert r11 = true

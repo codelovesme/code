@@ -1,0 +1,8 @@
+-> Handler returning a string should fail (only Particles allowed)
+type Ping { }
+
+Ping{} => {
+    return "hello"
+}
+
+emit Ping{} to this

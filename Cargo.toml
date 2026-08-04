@@ -1,0 +1,42 @@
+[workspace]
+members = ["crates/code-abi", "crates/code-native", "crates/code-lsp", "crates/code-wasm"]
+
+[package]
+name = "code"
+version = "0.3.0"
+edition = "2021"
+description = "The Code programming language — interpreter and LLVM compiler"
+license = "GPL-3.0"
+readme = "README.md"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+name = "code_lang"
+path = "src/lib.rs"
+
+[[bin]]
+name = "code"
+path = "src/main.rs"
+
+[features]
+default = ["llvm", "native-so"]
+# The LLVM backend (codegen). Off by default only for lightweight consumers such
+# as `code-lsp` that need the parser but not the compiler.
+llvm = ["dep:inkwell"]
+# Native `.so` module loading (libloading/dlopen). Off for targets with no
+# filesystem/dlopen, e.g. wasm32-unknown-unknown (see T18).
+native-so = ["dep:libloading"]
+
+[dependencies]
+code-abi = { path = "crates/code-abi" }
+chumsky = "0.9"
+anyhow = "1"
+inkwell = { version = "0.4", features = ["llvm17-0"], optional = true }
+libloading = { version = "0.8", optional = true }
+wasmi = "1.0"
+
+# Strip symbols from release binaries (workspace-wide: `code` SDK/Runtime and
+# `code-lsp`). Shipped binaries don't need symbols; this shrinks the release
+# artifacts at no behavioral cost (see T17).
+[profile.release]
+strip = true

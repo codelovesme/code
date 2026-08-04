@@ -1,0 +1,6 @@
+
+a = "Code"
+assert a = "Code"
+
+b = "Me"
+assert b = "Me"

@@ -1,0 +1,7 @@
+-> Dynamic fallback: use Log without importing the type, so no validation
+link modules/typed_module as mod1
+
+-> Log is NOT defined locally, so this is dynamic (no type checking)
+p = Log { message = "Hello World", level = 12 }
+assert p._class = "Log"
+assert p.level = 12

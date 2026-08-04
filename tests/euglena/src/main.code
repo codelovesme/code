@@ -1,0 +1,3 @@
+-> Main euglena module: imports nucleus and logger
+link organelles/nucleus
+link organelles/logger

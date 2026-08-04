@@ -1,0 +1,2 @@
+emit Ping { value = 1 } to base get tmp
+result = tmp

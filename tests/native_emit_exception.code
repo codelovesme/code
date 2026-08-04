@@ -1,0 +1,13 @@
+-> Test: native module emission — FireException handler emits an Exception particle.
+link native_modules/libtest_helper.so as helper
+
+-> Define local handler for emitted Exception particles.
+Exception { source ∈ String, message ∈ String } => {
+    assert source = "test_helper"
+    assert message = "something went wrong"
+    return Exception { source = source, message = message }
+}
+
+-> Invoking FireException handler emits an Exception particle.
+req = helper.FireException { message = "something went wrong" }
+emit req to helper get _

@@ -1,0 +1,8 @@
+-> Handler returning a number should fail (only Particles allowed)
+type Ping { }
+
+Ping{} => {
+    return 42
+}
+
+emit Ping{} to this

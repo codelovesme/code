@@ -1,0 +1,6 @@
+-> Typed variable declarations
+c = "Hello"
+assert c = "Hello"
+
+n = 42
+assert n = 42

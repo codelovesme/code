@@ -1,0 +1,3 @@
+-> Test accessing _created property
+p = Timer { name = "test" }
+assert p._created = 0

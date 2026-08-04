@@ -1,0 +1,15 @@
+-> Test: native module emission — FireLog handler emits a Log particle received by a handler.
+link native_modules/libtest_helper.so as helper
+
+-> Define local handler for emitted Log particles.
+-> The native module emits Log{source, level, message} with _class = "Log".
+Log { source ∈ String, level ∈ String, message ∈ String } => {
+    assert source = "test_helper"
+    assert level = "Info"
+    assert message = "hello from native"
+    return Log { source = source, level = level, message = message }
+}
+
+-> Invoking FireLog handler should emit a Log particle which our handler catches.
+req = helper.FireLog { message = "hello from native" }
+emit req to helper get _

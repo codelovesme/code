@@ -1,0 +1,2 @@
+-> Dispatching an unrecognized class to `core` is a runtime error.
+emit Foo {} to core get x

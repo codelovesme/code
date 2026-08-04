@@ -1,0 +1,5 @@
+-> Basic particle creation with predefined properties
+p = Log { message = "Hello World", level = "Info" }
+assert p._class = "Log"
+assert p.message = "Hello World"
+assert p.level = "Info"

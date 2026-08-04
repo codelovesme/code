@@ -1,0 +1,6 @@
+a = 5
+assert a ∈ Number
+assert a ∈ Number or a ∈ String
+assert a ∈ String or a ∈ Number
+assert a ∉ Boolean
+assert a ∉ String

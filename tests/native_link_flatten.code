@@ -1,0 +1,10 @@
+-> Test: link a native .so module without alias (flatten mode).
+link native_modules/libtest_math.so
+
+-> Test exported variable available directly
+assert PI > 3.14
+assert PI < 3.15
+
+-> Dispatch to the native handler with particle literal (flatten means dispatch to 'this')
+emit Point { x = 10, y = 20 } to this get result
+assert result.sum = 30

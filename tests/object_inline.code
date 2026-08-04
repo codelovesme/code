@@ -1,0 +1,2 @@
+-> Object literal defined inline in expressions
+assert { x = 10 }.x = 10

@@ -1,0 +1,3 @@
+-> Reassignment is not allowed: variables are single-assignment
+a = 1
+a = 2

@@ -1,0 +1,6 @@
+Ping => {
+    return Ping { value = value + 20 }
+}
+
+link base_shared as sharedB
+b_out = sharedB.result

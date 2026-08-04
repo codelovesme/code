@@ -1,0 +1,4 @@
+a = "Code"
+assert a = "Code"
+assert a ≠ "Other"
+assert a = "Code" or a = "Other"

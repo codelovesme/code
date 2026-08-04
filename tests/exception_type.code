@@ -1,0 +1,19 @@
+-> Exception is a predefined global type
+e = Exception { message = "Error occurred" }
+assert e ∈ Exception
+assert e.message = "Error occurred"
+assert e.innerException = Null
+
+-> Exception with inner exception
+inner = Exception { message = "Root cause" }
+outer = Exception { message = "Wrapper", innerException = inner }
+assert outer.innerException ∈ Exception
+assert outer.innerException ≠ Null
+assert outer.innerException.message = "Root cause"
+
+-> Assert passes on non-exception values
+type Foo { x ∈ Number }
+result = Foo { x = 42 }
+assert result
+assert "hello"
+assert 123

@@ -1,0 +1,10 @@
+-> `base` target: dispatch to the module that linked this module
+
+type Ping { value ∈ Number }
+
+Ping => {
+    return Ping { value = value + 10 }
+}
+
+link modules/base_child_single
+assert base_result.value = 11

@@ -1,0 +1,11 @@
+-> Typed assignments from property access and index access
+user = { age = 30, name = "Ana" }
+a = user.age
+n = user.name
+
+arr = [10, 20, 30]
+v = arr[1]
+
+assert a = 30
+assert n = "Ana"
+assert v = 20

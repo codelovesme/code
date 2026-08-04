@@ -1,0 +1,12 @@
+-> Domain constraints = Z (integers), R (reals), N (naturals).
+x in Z
+x = 42
+assert x = 42
+
+y in R
+y = 3
+assert y = 3
+
+z in N
+z = 7
+assert z = 7

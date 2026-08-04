@@ -1,0 +1,40 @@
+-> Spread operator in particle literals
+type Person { name ∈ String, age ∈ Number, city ∈ String }
+
+-> Spread copies all fields into new particle
+p1 = Person { name = "Alice", age = 30, city = "NYC" }
+p2 = Person { ...p1 }
+assert p2._class = "Person"
+assert p2.name = "Alice"
+assert p2.age = 30
+assert p2.city = "NYC"
+
+-> Spread with override
+p3 = Person { ...p1, city = "LA" }
+assert p3.name = "Alice"
+assert p3.age = 30
+assert p3.city = "LA"
+
+-> Spread with multiple overrides
+p4 = Person { ...p1, name = "Bob", age = 25 }
+assert p4.name = "Bob"
+assert p4.age = 25
+assert p4.city = "NYC"
+
+-> Spread with optional fields
+type Config { name ∈ String, debug ∈ Boolean ∪ Null, verbose ∈ Boolean ∪ Null }
+c1 = Config { name = "app", debug = true, verbose = false }
+c2 = Config { ...c1, debug = false }
+assert c2.name = "app"
+assert c2.debug = false
+assert c2.verbose = false
+
+-> Spread from particle with optional field omitted
+c3 = Config { name = "base" }
+c4 = Config { ...c3, debug = true }
+assert c4.name = "base"
+assert c4.debug = true
+assert c4.verbose = Null
+
+-> Original particle not mutated
+assert p1.city = "NYC"

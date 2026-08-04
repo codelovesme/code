@@ -1,0 +1,11 @@
+-> Basic array literal and type check
+a = [1, 2, 3]
+assert a ∈ Array
+
+-> Array with mixed types
+b = [1, "hello", true]
+assert b ∈ Array
+
+-> Empty array
+c = []
+assert c ∈ Array

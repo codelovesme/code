@@ -1,0 +1,8 @@
+-> Handler returning a plain object (not a Particle) should fail
+type Ping { }
+
+Ping{} => {
+    return { x = 1 }
+}
+
+emit Ping{} to this

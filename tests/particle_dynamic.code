@@ -1,0 +1,5 @@
+-> Dynamic (untyped) particle: no type in scope, so no validation
+p = Log { message = "Hello World", level = 12 }
+assert p._class = "Log"
+assert p.message = "Hello World"
+assert p.level = 12

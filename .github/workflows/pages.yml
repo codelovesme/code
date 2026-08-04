@@ -1,0 +1,91 @@
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "crates/code-wasm/**"
+      - "install.sh"
+      - ".github/workflows/pages.yml"
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+env:
+  LLVM_SYS_170_PREFIX: ""
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build code-wasm + generate browser glue
+        run: bash crates/code-wasm/playground/build.sh
+
+      - name: Assemble site
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist
+
+          cp site/index.html dist/index.html
+          cp install.sh dist/install.sh
+
+          # Latest release's real asset URLs — asset filenames include the
+          # version (code-sdk-v0.3.0-x86_64-linux.tar.gz), so a hardcoded
+          # Downloads page would go stale every release. Fetch the actual
+          # current asset URLs at build time instead; the page auto-updates
+          # whenever this workflow reruns (push to main, or `release:
+          # published` — see the `on:` triggers above).
+          RELEASE_JSON=$(gh api repos/${{ github.repository }}/releases/latest)
+          VERSION=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+          SDK_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | startswith("code-sdk-")) | .browser_download_url')
+          RUNTIME_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | startswith("code-runtime-")) | .browser_download_url')
+          LSP_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | startswith("code-lsp-")) | .browser_download_url')
+
+          for name in VERSION SDK_URL RUNTIME_URL LSP_URL; do
+            val="${!name}"
+            if [[ -z "$val" || "$val" == "null" ]]; then
+              echo "::error::Could not resolve $name from the latest release — aborting so the Downloads page never ships a broken link."
+              exit 1
+            fi
+          done
+
+          sed \
+            -e "s|__VERSION__|${VERSION}|g" \
+            -e "s|__SDK_URL__|${SDK_URL}|g" \
+            -e "s|__RUNTIME_URL__|${RUNTIME_URL}|g" \
+            -e "s|__LSP_URL__|${LSP_URL}|g" \
+            site/downloads.html > dist/downloads.html
+
+          mkdir -p dist/playground
+          cp crates/code-wasm/playground/index.html dist/playground/index.html
+          cp -r crates/code-wasm/playground/pkg dist/playground/pkg
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

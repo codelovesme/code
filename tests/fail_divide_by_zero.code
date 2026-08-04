@@ -1,0 +1,2 @@
+-> Division by zero should fail
+x = 10 / 0

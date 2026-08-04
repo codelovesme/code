@@ -1,0 +1,17 @@
+-> Computed object keys using [expr] = value
+
+-> Basic computed key
+key = "name"
+obj = { [key] = "Alice" }
+assert obj.name = "Alice"
+
+-> Computed key from concatenation
+prefix = "user"
+k2 = prefix + "_id"
+obj2 = { [k2] = 42 }
+
+-> Mix of static and computed fields
+label = "color"
+thing = { size = 10, [label] = "red" }
+assert thing.size = 10
+assert thing.color = "red"

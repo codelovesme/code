@@ -1,0 +1,25 @@
+-> Test: particle creation and field access
+link euglena/src/particles/lifecycle
+link euglena/src/particles/common
+
+-> Lifecycle particles
+born = EuglenaHasBeenBorn { cell_name = "test-cell" }
+assert born._class = "EuglenaHasBeenBorn"
+assert born.cell_name = "test-cell"
+
+die = EuglenaWillDie { cell_name = "test-cell" }
+assert die._class = "EuglenaWillDie"
+assert die.reason = Null
+
+-> Common particles
+log = Log { message = "hello", level = "Info" }
+assert log._class = "Log"
+assert log.message = "hello"
+assert log.level = "Info"
+
+exc = Exception { source = "parser", message = "bad token" }
+assert exc._class = "Exception"
+
+ack = ACK { source = "logger" }
+assert ack._class = "ACK"
+assert ack.source = "logger"

@@ -1,0 +1,10 @@
+-> Test: Rust native console module built with code-native helper crate.
+link native_modules/console.so as console
+
+entry = console.Log { message = "hello from native", level = "Info" }
+
+emit entry to console get result
+
+assert result._class = "Log"
+assert result.message = "hello from native"
+assert result.level = "Info"

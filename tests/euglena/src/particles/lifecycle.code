@@ -1,0 +1,3 @@
+-> Lifecycle particle type definitions
+type EuglenaHasBeenBorn { cell_name ∈ String }
+type EuglenaWillDie { cell_name ∈ String, reason ∈ String ∪ Null }
