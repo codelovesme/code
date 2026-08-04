@@ -1,0 +1,5 @@
+-> Your first Code program. There's no print statement — a program's
+-> visible result is its final top-level bindings, which is exactly what
+-> the playground's result panel shows you.
+greeting = "Hello, Code"
+year = 2026

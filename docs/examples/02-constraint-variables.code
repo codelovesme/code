@@ -1,0 +1,16 @@
+-> Variables hold a domain (a set of possible values), not a single slot
+-> you overwrite. Constraints narrow that domain as you add them.
+x ∈ Z
+x > 10
+x < 12
+
+-> Three clues were enough to pin x to a single integer — nobody ever
+-> wrote `x = 11`. This is real narrowing: the domain {integers} ∩ (10, 12)
+-> has exactly one member.
+assert x = 11
+
+-> `=` is just a constraint too — narrowing a domain down to exactly one
+-> value. It behaves identically whether you reach one value in a single
+-> step or several.
+y = 5
+assert y = 5

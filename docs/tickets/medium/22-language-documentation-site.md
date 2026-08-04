@@ -109,3 +109,29 @@ exemption.
 Large — real content-authoring work, the biggest ticket in the backlog by
 writing effort, not engineering complexity. Ship phase by phase; Phase 1
 alone is a substantial improvement over the status quo (nothing).
+
+## Progress
+
+**Phase 1 — Getting Started + core Language Guide: implemented (2026-08-05).**
+- `site/guide.html` — a single-page guide with a sticky section TOC,
+  matching the existing site design system (teal accent, warm neutrals,
+  light/dark). Eight sections: getting started, constraint variables,
+  single assignment, types, handlers (no functions), loops, modules, no
+  core I/O. Nav link added to `index.html` and `downloads.html`.
+- **The non-negotiable ("every example runs, verified in CI") is satisfied
+  structurally, not by promise.** The eight concepts are backed by eight
+  real programs in `docs/examples/*.code` (plus one linked module,
+  `modules/handler-module.code`). `docs/examples/run.sh` executes every one
+  via `code run` and is wired into CI (`ci.yml`, "Documentation examples run
+  clean" step). The guide's code blocks are **not** hand-copied — the
+  template ships `__EXAMPLE__<slug>__` placeholders and
+  `site/inject-examples.py` substitutes the exact (HTML-escaped) file
+  contents at Pages-assembly time (same pattern `downloads.html` uses for
+  version strings). The script fails the deploy on any missing file or
+  unfilled placeholder, so the published page literally cannot show a
+  snippet that differs from what CI ran. Verified end-to-end locally: all 8
+  examples pass, injection fills all 9 blocks, and the rendered page was
+  checked in real headless Chromium (light + dark, no console errors, no
+  horizontal overflow, all blocks non-empty).
+
+Phases 2–4 (tutorials, examples gallery, reference) remain open.

@@ -1,0 +1,7 @@
+-> The interpreter never writes to stdout — there is no print or console
+-> handler. A program's visible result is its final top-level bindings,
+-> and nothing else. The three bindings below ARE this program's output.
+subtotal = 42
+tax = subtotal * 0.08
+total = subtotal + tax
+assert total = 45.36

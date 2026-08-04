@@ -43,6 +43,9 @@ jobs:
       - name: Language suite (.code tests)
         run: ./target/debug/code test
 
+      - name: Documentation examples run clean
+        run: ./docs/examples/run.sh ./target/debug/code
+
       - name: Formatting check
         run: ./target/debug/code fmt . --check
 

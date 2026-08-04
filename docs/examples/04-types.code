@@ -1,0 +1,13 @@
+-> `type` declares a reusable schema: field names paired with constraints.
+-> Constructing a value validates it against that schema.
+type Point { x ∈ Number, y ∈ Number }
+origin = Point { x = 0, y = 0 }
+assert origin.x = 0
+
+-> Union types: a value satisfying *either* side.
+id = 42
+assert id ∈ Number ∪ String
+
+-> Intersection types: a value satisfying *both* sides.
+n = 7
+assert n ∈ Number ∩ Number

@@ -1,0 +1,26 @@
+-> There is no `name(args)` call syntax anywhere in the grammar — Code has
+-> no user-defined functions. Reusable logic is a handler: a particle type
+-> paired with a response, invoked with `emit ... to ... get ...`.
+type Celsius { degrees ∈ Number }
+type Classification { degrees ∈ Number, label ∈ String }
+
+Celsius => {
+    if degrees < 0 {
+        return Classification { degrees = degrees, label = "freezing" }
+    }
+    if degrees ≥ 0 and degrees < 25 {
+        return Classification { degrees = degrees, label = "mild" }
+    }
+    if degrees ≥ 25 {
+        return Classification { degrees = degrees, label = "hot" }
+    }
+}
+
+-> `to this` dispatches to a handler defined in the current program.
+emit Celsius { degrees = -5 } to this get cold
+emit Celsius { degrees = 18 } to this get mild
+emit Celsius { degrees = 30 } to this get hot
+
+assert cold.label = "freezing"
+assert mild.label = "mild"
+assert hot.label = "hot"

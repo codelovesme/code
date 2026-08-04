@@ -1,0 +1,10 @@
+-> Each name is bound once at top level. This isn't a convention — it's
+-> checked. Writing `a = 1` again after `a` already has a value is an
+-> error ("variables are single-assignment"), never a silent overwrite.
+a = 1
+b = a + 1
+assert b = 2
+
+-> Because names never change out from under you, `b` above is settled the
+-> moment it's written. Reassignment is allowed in exactly one place — the
+-> inside of a handler body — covered in 05-handlers.

@@ -46,7 +46,7 @@ _(none right now)_
 | [17](medium/17-split-release-artifact-code-lsp.md) | Split release artifacts: `code` Runtime / `code` SDK / `code-lsp` |
 | [18](medium/18-wasm-capable-core.md) | WASM-capable core: feature-gate LLVM and native-`.so` out of the default build |
 | [20](medium/20-project-website-distribution-channel.md) | Project website: Downloads page, hosted install.sh, playground home |
-| [22](medium/22-language-documentation-site.md) | Language documentation site: guide, tutorials, examples, reference (content, depends on T20) |
+| [22](medium/22-language-documentation-site.md) | Language documentation site: guide, tutorials, examples, reference (Phase 1 guide done; content, depends on T20) |
 | [21](medium/21-native-backend-memory-management.md) | Native backend automatic memory management: compile-time-elided refcounting (Perceus/Lobster-style) |
 | [23](medium/23-set-domain-and-possibility-enumeration.md) | First-class Set domain: `⦃…⦄` literals, domain-borrowing `∈`, `loop <var> {}` possibility enumeration |
 | [24](medium/24-native-backend-constraint-narrowing.md) | Native backend constraint narrowing: silent-miscompile hole closed (Phase 1 done), full parity undecided (Phase 2) |

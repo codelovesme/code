@@ -1,0 +1,14 @@
+-> `loop <var> over <array> get <result>` is the only iteration form —
+-> no `while`, no counters, no recursion. A loop runs exactly as many times
+-> as the array is long, known before it starts, so a program's total work
+-> is always statically bounded.
+prices = [12, 45, 8, 99, 3, 61]
+
+loop p over prices get affordable {
+    if p < 50 {
+        yield p
+    }
+}
+
+-> `yield` collects values into the named result — here, a filtered array.
+assert affordable = [12, 45, 8, 3]

@@ -1,0 +1,8 @@
+-> A module is just a .code file. This one defines a handler for Event;
+-> another file can `link` it and dispatch to it. See 07-modules.
+type Event { name ∈ String }
+type EventAck { ok ∈ Number }
+
+Event => {
+    return EventAck { ok = 1 }
+}

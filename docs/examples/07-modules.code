@@ -1,0 +1,7 @@
+-> `link <path> as <alias>` pulls in another module's handlers. Dispatch
+-> across a link works exactly like dispatch within one file — the handler
+-> lives in modules/handler-module.code, next to this file.
+link modules/handler-module as hmod
+
+emit Event { name = "click" } to hmod get ack
+assert ack.ok = 1

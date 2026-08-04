@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      - "docs/examples/**"
       - "crates/code-wasm/**"
       - "install.sh"
       - ".github/workflows/pages.yml"
@@ -51,6 +52,12 @@ jobs:
           cp site/favicon-32.png dist/favicon-32.png
           cp site/favicon-180.png dist/favicon-180.png
           cp install.sh dist/install.sh
+
+          # Guide page: inject the CI-verified docs/examples/*.code files into
+          # the template's placeholders so the published code blocks are the
+          # exact programs CI runs — they can't silently drift (see T22). The
+          # script fails loudly on a missing file or unfilled placeholder.
+          python3 site/inject-examples.py site/guide.html docs/examples dist/guide.html
 
           # Latest release's real asset URLs — asset filenames include the
           # version (code-sdk-v0.3.0-x86_64-linux.tar.gz), so a hardcoded
