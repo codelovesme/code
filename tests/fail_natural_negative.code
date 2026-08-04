@@ -1,0 +1,4 @@
+-> Natural numbers (N) are non-negative integers — pinning a negative value
+-> must be rejected.
+a ∈ N
+a = -5

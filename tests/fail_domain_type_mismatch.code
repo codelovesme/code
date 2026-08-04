@@ -1,0 +1,3 @@
+-> `a in Z` restricts a to whole numbers; a non-integer pin must be rejected.
+a in Z
+a = 1.5

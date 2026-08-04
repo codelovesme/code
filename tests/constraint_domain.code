@@ -10,3 +10,21 @@ assert y = 3
 z in N
 z = 7
 assert z = 7
+
+-> Range narrowing on an integer domain collapses to the unique integer
+-> satisfying all constraints — same result as pinning it directly.
+a in Z
+a < 2
+a > 0
+assert a = 1
+
+-> `∈ Z/R/N` and `in Z/R/N` are the same operator, just different notation.
+c ∈ Z
+c < 2
+c > 0
+assert c = 1
+
+-> Naturals exclude negatives.
+n ∈ N
+n < 1
+assert n = 0

@@ -1,0 +1,5 @@
+-> `=` pins a variable to an exact value. That pin must be checked against
+-> any domain narrowing already applied — not silently override it.
+b > 3
+b < 10
+b = 15

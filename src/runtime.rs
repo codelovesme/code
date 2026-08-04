@@ -121,6 +121,77 @@ impl Domain {
             // Exact + TypeDomain: keep the exact if it matches (loose check)
             (Domain::Exact(_), Domain::TypeDomain(_)) => self,
             (Domain::TypeDomain(_), Domain::Exact(_)) => other,
+            // Exact + IntegerRange: check the exact value is a whole number in range
+            (Domain::Exact(v), Domain::IntegerRange { min, max }) => {
+                if let Value::Number(n) = v.as_ref() {
+                    if integer_range_contains(*n, min, max) {
+                        self
+                    } else {
+                        Domain::Empty
+                    }
+                } else {
+                    Domain::Empty
+                }
+            }
+            (Domain::IntegerRange { min, max }, Domain::Exact(v)) => {
+                if let Value::Number(n) = v.as_ref() {
+                    if integer_range_contains(*n, min, max) {
+                        other
+                    } else {
+                        Domain::Empty
+                    }
+                } else {
+                    Domain::Empty
+                }
+            }
+            // IntegerRange + IntegerRange: tighter bounds
+            (
+                Domain::IntegerRange { min: min1, max: max1 },
+                Domain::IntegerRange { min: min2, max: max2 },
+            ) => {
+                let new_min = merge_int_lower(min1, min2);
+                let new_max = merge_int_upper(max1, max2);
+                if let (Some(lo), Some(hi)) = (new_min, new_max) {
+                    if lo > hi {
+                        return Domain::Empty;
+                    }
+                }
+                Domain::IntegerRange { min: new_min, max: new_max }
+            }
+            // IntegerRange + RealRange: e.g. `a in Z` combined with `a < 2, a > 0` —
+            // convert the real bounds to the tightest integer bounds they imply,
+            // then merge. This is what lets `a in Z; a < 2; a > 0` resolve to {1}
+            // instead of getting stuck as an unresolved intersection.
+            (
+                Domain::IntegerRange { min, max },
+                Domain::RealRange { min: rmin, max: rmax, min_inclusive, max_inclusive },
+            ) => {
+                let (conv_min, conv_max) =
+                    real_bounds_to_integer_bounds(rmin, *min_inclusive, rmax, *max_inclusive);
+                let new_min = merge_int_lower(min, &conv_min);
+                let new_max = merge_int_upper(max, &conv_max);
+                if let (Some(lo), Some(hi)) = (new_min, new_max) {
+                    if lo > hi {
+                        return Domain::Empty;
+                    }
+                }
+                Domain::IntegerRange { min: new_min, max: new_max }
+            }
+            (
+                Domain::RealRange { min: rmin, max: rmax, min_inclusive, max_inclusive },
+                Domain::IntegerRange { min, max },
+            ) => {
+                let (conv_min, conv_max) =
+                    real_bounds_to_integer_bounds(rmin, *min_inclusive, rmax, *max_inclusive);
+                let new_min = merge_int_lower(min, &conv_min);
+                let new_max = merge_int_upper(max, &conv_max);
+                if let (Some(lo), Some(hi)) = (new_min, new_max) {
+                    if lo > hi {
+                        return Domain::Empty;
+                    }
+                }
+                Domain::IntegerRange { min: new_min, max: new_max }
+            }
             _ => {
                 // General case: wrap in Intersection
                 let mut parts = Vec::new();
@@ -133,6 +204,48 @@ impl Domain {
                     other => parts.push(other),
                 }
                 Domain::Intersection(parts)
+            }
+        }
+    }
+
+    /// Describe this domain in human terms for a diagnostic — used when a
+    /// variable exists but hasn't narrowed to a single value yet. Lists the
+    /// possible values when the domain is small and finite, otherwise
+    /// describes the constraint itself.
+    pub fn describe(&self) -> String {
+        const MAX_LISTED: i64 = 20;
+        match self {
+            Domain::Exact(v) => format!("{}", v),
+            Domain::Any => "unconstrained".to_string(),
+            Domain::Empty => "contradictory — no possible values".to_string(),
+            Domain::ValueSet(vs) => {
+                let items: Vec<String> = vs.iter().map(|v| format!("{}", v)).collect();
+                format!("possible values: {{{}}}", items.join(", "))
+            }
+            Domain::IntegerRange { min, max } => match (min, max) {
+                (Some(lo), Some(hi)) if hi - lo <= MAX_LISTED => {
+                    let items: Vec<String> = (*lo..=*hi).map(|n| n.to_string()).collect();
+                    format!("possible values: {{{}}}", items.join(", "))
+                }
+                (Some(lo), Some(hi)) => format!("{} ≤ _ ≤ {} (integers)", lo, hi),
+                (Some(lo), None) => format!("_ ≥ {} (integers)", lo),
+                (None, Some(hi)) => format!("_ ≤ {} (integers)", hi),
+                (None, None) => "any integer".to_string(),
+            },
+            Domain::RealRange { min, max, min_inclusive, max_inclusive } => {
+                let lo_op = if *min_inclusive { "≤" } else { "<" };
+                let hi_op = if *max_inclusive { "≤" } else { "<" };
+                match (min, max) {
+                    (Some(lo), Some(hi)) => format!("{} {} _ {} {}", lo, lo_op, hi_op, hi),
+                    (Some(lo), None) => format!("_ {} {}", if *min_inclusive { "≥" } else { ">" }, lo),
+                    (None, Some(hi)) => format!("_ {} {}", hi_op, hi),
+                    (None, None) => "any number".to_string(),
+                }
+            }
+            Domain::TypeDomain(t) => format!("must be of type {}", t),
+            Domain::Intersection(parts) => {
+                let items: Vec<String> = parts.iter().map(|p| p.describe()).collect();
+                items.join(" and ")
             }
         }
     }
@@ -183,6 +296,57 @@ fn merge_upper_bound(a: &Option<f64>, ai: bool, b: &Option<f64>, bi: bool) -> (O
             else { (Some(*va), ai && bi) }
         }
     }
+}
+
+/// Check whether a number is a whole number falling within an integer range.
+fn integer_range_contains(n: f64, min: &Option<i64>, max: &Option<i64>) -> bool {
+    if n.fract() != 0.0 {
+        return false;
+    }
+    let n_i = n as i64;
+    if let Some(lo) = min {
+        if n_i < *lo { return false; }
+    }
+    if let Some(hi) = max {
+        if n_i > *hi { return false; }
+    }
+    true
+}
+
+/// Pick the tighter (larger) of two optional integer lower bounds.
+fn merge_int_lower(a: &Option<i64>, b: &Option<i64>) -> Option<i64> {
+    match (a, b) {
+        (None, None) => None,
+        (Some(v), None) | (None, Some(v)) => Some(*v),
+        (Some(va), Some(vb)) => Some((*va).max(*vb)),
+    }
+}
+
+/// Pick the tighter (smaller) of two optional integer upper bounds.
+fn merge_int_upper(a: &Option<i64>, b: &Option<i64>) -> Option<i64> {
+    match (a, b) {
+        (None, None) => None,
+        (Some(v), None) | (None, Some(v)) => Some(*v),
+        (Some(va), Some(vb)) => Some((*va).min(*vb)),
+    }
+}
+
+/// Convert real-valued bounds (from `<`/`>`/`≤`/`≥` constraints) into the
+/// tightest integer bounds they imply — e.g. `a < 2` (exclusive real upper
+/// bound 2) implies the integer upper bound is 1.
+fn real_bounds_to_integer_bounds(
+    min: &Option<f64>,
+    min_inclusive: bool,
+    max: &Option<f64>,
+    max_inclusive: bool,
+) -> (Option<i64>, Option<i64>) {
+    let lo = min.map(|v| {
+        if min_inclusive { v.ceil() as i64 } else { v.floor() as i64 + 1 }
+    });
+    let hi = max.map(|v| {
+        if max_inclusive { v.floor() as i64 } else { v.ceil() as i64 - 1 }
+    });
+    (lo, hi)
 }
 
 /// Runtime value representation for Code.

@@ -538,11 +538,16 @@ fn constraint_rhs(
         _ => Err(Simple::custom(span, "Expected domain Z, R, or N")),
     });
 
-    // Type membership: `∈ TypeExpr` → IsType constraint
+    // Type membership: `∈ TypeExpr` → IsType constraint. `∈ Z|R|N` is the
+    // numeric-domain form (same as `in Z|R|N`), tried first so it doesn't
+    // fall through to IsType against a nonexistent "Z"/"R"/"N" particle type.
     just('∈')
         .ignore_then(whitespace())
-        .ignore_then(type_expr_parser())
-        .map(ConstraintExpr::IsType)
+        .ignore_then(
+            domain_keyword
+                .clone()
+                .or(type_expr_parser().map(ConstraintExpr::IsType)),
+        )
     .or(
         just('=')
             .ignore_then(whitespace())

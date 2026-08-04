@@ -674,12 +674,25 @@ impl Interpreter {
                 }
             }
             ConstraintExpr::Domain(kind) => {
-                let type_name = match kind {
-                    crate::ast::DomainKind::Integer | crate::ast::DomainKind::Natural => "Number",
-                    crate::ast::DomainKind::Real => "Number",
+                // Z/N/R must preserve "must be a whole number" (Z, N) vs "any
+                // real" (R) — collapsing all three to a generic Number type
+                // domain would silently accept e.g. 0.5 for `a in Z` and would
+                // never let range narrowing (`a < 2; a > 0`) collapse to a
+                // single integer.
+                let domain = match kind {
+                    crate::ast::DomainKind::Integer => {
+                        Domain::IntegerRange { min: None, max: None }
+                    }
+                    crate::ast::DomainKind::Natural => {
+                        Domain::IntegerRange { min: Some(0), max: None }
+                    }
+                    crate::ast::DomainKind::Real => Domain::RealRange {
+                        min: None,
+                        max: None,
+                        min_inclusive: false,
+                        max_inclusive: false,
+                    },
                 };
-                let domain =
-                    Domain::TypeDomain(TypeExpr::Named(type_name.to_string()));
                 self.env.apply_constraint(variable, domain)?;
             }
             ConstraintExpr::IsType(type_expr) => {
@@ -928,10 +941,16 @@ impl Interpreter {
             Expression::String(s) => Ok(Value::string(s)),
             Expression::Boolean(b) => Ok(Value::boolean(b)),
             Expression::Null => Ok(Value::null()),
-            Expression::Identifier(name) => self
-                .env
-                .get(&name)
-                .ok_or_else(|| format!("Undefined variable '{}'", name)),
+            Expression::Identifier(name) => self.env.get(&name).ok_or_else(|| {
+                match self.env.get_domain(&name) {
+                    Some(domain) => format!(
+                        "'{}' does not have a definite value yet — {}",
+                        name,
+                        domain.describe()
+                    ),
+                    None => format!("Undefined variable '{}'", name),
+                }
+            }),
             Expression::Object { spread, fields } => {
                 let mut map = HashMap::new();
                 if let Some(source_expr) = spread {
