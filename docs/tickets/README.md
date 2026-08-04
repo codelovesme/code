@@ -49,6 +49,8 @@ _(none right now)_
 | [22](medium/22-language-documentation-site.md) | Language documentation site: guide, tutorials, examples, reference (content, depends on T20) |
 | [21](medium/21-native-backend-memory-management.md) | Native backend automatic memory management: compile-time-elided refcounting (Perceus/Lobster-style) |
 | [23](medium/23-set-domain-and-possibility-enumeration.md) | First-class Set domain: `⦃…⦄` literals, domain-borrowing `∈`, `loop <var> {}` possibility enumeration |
+| [24](medium/24-native-backend-constraint-narrowing.md) | Native backend constraint narrowing: silent-miscompile hole closed (Phase 1 done), full parity undecided (Phase 2) |
+| [25](medium/25-partially-resolved-objects.md) | Objects with unresolved (constrained-only) fields — depends on T23 |
 
 ## Active — Low priority
 
@@ -131,6 +133,31 @@ worth reaching for: a `⦃…⦄` set literal producing a genuine resolved
 scalar's own finite domain in place without resolving it. Interpreter-only
 (native codegen never implemented narrowing beyond `Equals`/`IsType` either).
 Not started.
+
+**T24 (native backend constraint narrowing):** the owner's "interpreter and
+compiler must never be able to diverge" principle, applied — and it found a
+real one. `code build` used to silently accept every constraint form beyond
+`Equals`/`IsType` (range narrowing, `∈`/`in Z/N/R`, set membership),
+producing a binary whose behavior *silently contradicted* `code run` on the
+identical source (`a > 3; a < 10; a = 15`: interpreter correctly rejects it
+as a contradiction, native used to compile and run it to completion,
+ignoring the narrowing entirely). Phase 1 — reject instead of silently
+miscompiling — is done (`a59eb95`), two regression tests added. Phase 2 —
+whether to actually implement narrowing in the native backend at all — is
+open, and is likely to get revisited once T23 gives the feature real users.
+Single-assignment/reassignment enforcement was checked and *does* already
+match between the two backends — this was specifically the narrowing family.
+
+**T25 (partially-resolved objects):** a natural follow-on question from T23
+— can an object have a field that's only constrained (`{ k = 2, L ∈ Z }`),
+not yet a concrete value? Verified: no, `Value::Object` requires every field
+to already be a resolved `Value`, and the object-literal grammar only
+accepts `name = expr` fields. Kept as its own ticket rather than folded into
+T23 because it's a deeper mechanism (partial resolution *inside* a
+structured value, not just a bare scalar) that touches field access,
+structural type-checking, spread/construction, and host-boundary
+serialization — none of which T23 needs to answer for scalars alone. Not
+started; depends on T23 landing first.
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).

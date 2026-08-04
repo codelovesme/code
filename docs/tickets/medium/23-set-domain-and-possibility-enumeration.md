@@ -116,7 +116,13 @@ together with `Value::Set` since both touch the same `intersect()` code.
 - **Native/LLVM codegen.** Constraint narrowing beyond `Equals`/`IsType` was
   never implemented in `codegen.rs` (confirmed: `grep -n
   "ConstraintExpr::" src/codegen.rs` only matches those two) — this ticket
-  stays interpreter-only, consistent with that existing split.
+  stays interpreter-only, consistent with that existing split. Note: this
+  used to mean `code build` would *silently* compile a binary that behaves
+  differently from `code run` on the same source; that soundness hole is
+  now closed (`a59eb95`, see [T24](24-native-backend-constraint-narrowing.md))
+  by making the native backend reject unsupported narrowing outright rather
+  than ignore it. T24 also tracks the (separate, larger, not-yet-decided)
+  question of whether to eventually implement it natively instead.
 - **Removing `in`.** Current split: `in` stays the operator for array-value
   membership (`a in someArrayVariable`, `Value::Array` source); `∈` covers
   type/domain membership and now set-value membership (`Value::Set`
