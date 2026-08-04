@@ -25,6 +25,26 @@ fn build_rejects_shadowing() {
     assert!(!status.success());
 }
 
+// Range/set/domain narrowing has no codegen implementation — `code build` must
+// reject it rather than silently compiling a binary whose behavior diverges
+// from `code run` on the same source (see T24). Covers both the `<`/`>` range
+// form and the `in Z/N/R` numeric-domain form.
+#[test]
+fn build_rejects_unsupported_narrowing() {
+    let exe = env!("CARGO_BIN_EXE_code");
+    let status = Command::new(exe)
+        .args(["build", "tests/fail_pin_contradicts_narrowing.code"])
+        .status()
+        .expect("failed to run code build");
+    assert!(!status.success());
+
+    let status = Command::new(exe)
+        .args(["build", "tests/fail_domain_type_mismatch.code"])
+        .status()
+        .expect("failed to run code build");
+    assert!(!status.success());
+}
+
 #[test]
 fn build_native_executable() {
     let exe = env!("CARGO_BIN_EXE_code");

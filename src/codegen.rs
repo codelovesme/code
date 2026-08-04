@@ -593,10 +593,24 @@ impl<'ctx> Codegen<'ctx> {
                         self.set_type_annotation(variable.clone(), type_expr.clone());
                         Ok(())
                     }
-                    _ => {
-                        // Other constraint forms (LessThan, GreaterThan, etc.) are not
-                        // directly representable in compiled output yet; silently accept.
-                        Ok(())
+                    other => {
+                        // Range/set/domain narrowing (LessThan, GreaterThan, MemberOf,
+                        // Domain(Z/N/R), NotEquals, ...) has no codegen implementation —
+                        // the interpreter enforces these (intersect + contradiction
+                        // detection) but the native backend has nothing to lower them
+                        // to. Silently accepting used to compile a binary whose behavior
+                        // silently diverges from `code run` on the same source (e.g.
+                        // `a > 3; a < 10; a = 15` interprets as a contradiction but used
+                        // to compile and run to completion, ignoring the narrowing
+                        // entirely). Reject instead of miscompiling — see T24.
+                        Err(format!(
+                            "'{}' uses a constraint form not supported by the native \
+                             backend yet ({}) — this compiles differently than `code run` \
+                             would interpret it, so it's rejected rather than silently \
+                             ignored. Use `code run` for constraint narrowing beyond `=` \
+                             and type checks.",
+                            variable, other
+                        ))
                     }
                 }
             }
