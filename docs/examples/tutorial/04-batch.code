@@ -1,9 +1,9 @@
 -> Tutorial step 4 — the finished pipeline: process a whole batch through
--> the same linked module, via the only iteration form the language has —
--> `loop <var> over <array> get <result>`, bounded by the array's length.
--> There's no print anywhere in this file. The `results` array IS the
--> pipeline's answer — the same "no core I/O" idea from the guide, now
--> doing real work across two files instead of one paragraph.
+-> the same linked module, via `loop <var> over <array> get <result>`,
+-> bounded by the array's length. There's no print anywhere in this file.
+-> The `results` array IS the pipeline's answer — the same "no core I/O"
+-> idea from the guide, now doing real work across two files instead of
+-> one paragraph.
 link validate-basic as validate
 
 orders = [

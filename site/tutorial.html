@@ -145,7 +145,7 @@
 
       <section id="step-4">
         <h2><span class="n">04</span> Process a whole batch</h2>
-        <p>The only iteration form in Code is <code>loop &lt;var&gt; over &lt;array&gt; get &lt;result&gt;</code> — bounded by the array's length, always. Each order in the batch gets emitted to the linked <code>validate</code> module in turn, and <code>yield</code> collects every response into <code>results</code>. This is the finished pipeline.</p>
+        <p><code>loop &lt;var&gt; over &lt;array&gt; get &lt;result&gt;</code> — bounded by the array's length, always — is the form for this: each order in the batch gets emitted to the linked <code>validate</code> module in turn, and <code>yield</code> collects every response into <code>results</code>. This is the finished pipeline.</p>
         <div class="filename">tutorial/04-batch.code (links the same validate-basic.code from step 3)</div>
         <pre class="code"><code>__EXAMPLE__tutorial_04_batch__</code></pre>
         <div class="result"><div class="label">Result</div><code>results</code> holds three responses — two validated orders with computed totals, one rejected order with a reason — in the order the batch was submitted. Nothing was printed anywhere in this file; <code>results</code> <em>is</em> the pipeline's output, the same idea the guide's <a href="guide.html#no-io">no-core-I/O</a> section introduced, now doing real work.</div>

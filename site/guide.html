@@ -131,7 +131,7 @@
 
       <section id="single-assignment">
         <h2><span class="n">03</span> Single assignment</h2>
-        <p>At the top level, each name is bound once. This is checked, not just encouraged — a second <code>a = …</code> is an error, never a silent overwrite. Combined with no recursion and only bounded loops (§06), it's what lets a program's total work be known before it runs.</p>
+        <p>At the top level, each name is bound once. This is checked, not just encouraged — a second <code>a = …</code> is an error, never a silent overwrite. There are no user-defined functions to recurse through either — reusable logic is handler dispatch (§05), not a call stack.</p>
         <pre class="code"><code>__EXAMPLE__03_single_assignment__</code></pre>
         <div class="callout">There is exactly one place reassignment is allowed: inside a handler body, as local bookkeeping while it computes its response. Everywhere else, a name means one thing for the whole program.</div>
       </section>
@@ -151,9 +151,9 @@
 
       <section id="loops">
         <h2><span class="n">06</span> Loops</h2>
-        <p>There's one loop form: <code>loop &lt;var&gt; over &lt;array&gt; get &lt;result&gt;</code>. No <code>while</code>, no counters, no recursion. A loop runs exactly as many times as the array is long — a count known before it starts — and <code>yield</code> collects values into the named result.</p>
+        <p>There's no <code>while</code> and no C-style counter — every loop is spelled <code>loop</code>. The form below, <code>loop &lt;var&gt; over &lt;array&gt; get &lt;result&gt;</code>, runs exactly as many times as the array is long — a count known before it starts — and <code>yield</code> collects values into the named result.</p>
         <pre class="code"><code>__EXAMPLE__06_loops__</code></pre>
-        <div class="callout">The absence of unbounded looping isn't a missing feature — it's the guarantee. Every program's total work is statically bounded because there's no construct that can run an unknown number of times.</div>
+        <div class="callout"><strong>Two other forms exist.</strong> <code>loop &lt;var&gt; get &lt;result&gt; { }</code> (no <code>over</code>) enumerates a variable's own domain instead of an array — every value it could still be — and requires that domain to be finite. <code>loop get &lt;result&gt; { }</code>, with no variable at all, has no built-in bound: it runs until an explicit <code>break</code>, the same way <code>while true { … break … }</code> would elsewhere. It's the one place a Code program's total work isn't known in advance — reach for it only when the other two don't fit.</div>
       </section>
 
       <section id="modules">
