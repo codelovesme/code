@@ -1,0 +1,26 @@
+-> The same domain-materialization `∪`/`∩` get (see
+-> set_op_domain_materialize.code) applies to Schema and Union domains too,
+-> not just scalar number ranges — a variable's domain can be "any kind".
+
+-> Schema domain: p ∈ K where K's only field has a finite domain — p's
+-> domain enumerates as the Cartesian product of its fields (here, one
+-> field, two values).
+K = { x ∈ {1, 2} }
+p ∈ K
+extra = { "z" }
+c = extra ∪ p
+assert c = { "z", { x = 1 }, { x = 2 } }
+
+-> Union domain: s ∈ Status, where Status mixes a bare value and a schema.
+-> Enumerating concatenates each alternative's own finite candidates.
+Status = {"Success"} ∪ { code ∈ {1, 2} }
+s ∈ Status
+d = extra ∪ s
+assert d = { "z", "Success", { code = 1 }, { code = 2 } }
+
+-> The same finite_candidates() engine backs `loop <var> { }` (T26 Phase
+-> 1) — a Schema domain is now loopable too, for free.
+loop p get pts {
+    yield p
+}
+assert pts = [{ x = 1 }, { x = 2 }]

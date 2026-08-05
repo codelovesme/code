@@ -1,0 +1,9 @@
+-> `∪`/`∩` materialize an unresolved-but-FINITE domain into a Set (see
+-> set_op_domain_materialize.code). An unbounded domain still can't be
+-> enumerated — must be rejected, not hang trying, same as
+-> fail_loop_unbounded_domain.code for the `loop <var> { }` form that
+-> shares this same underlying finite_candidates() engine.
+a = {5}
+b ∈ Z
+b > 3
+c = a ∪ b

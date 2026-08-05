@@ -34,6 +34,7 @@ finished, priority no longer matters for it. Numbers are stable identifiers
 | [23](done/23-set-domain-and-possibility-enumeration.md) | First-class Set domain (superseded by T26 — see 26) |
 | [25](done/25-partially-resolved-objects.md) | Objects with unresolved (constrained-only) fields (superseded by T26 — see 26) |
 | [26](done/26-unified-set-based-semantics.md) | Unified set-based semantics: variables are constraint sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪`, discriminated unions, flow-sensitive narrowing (supersedes T23, T25) |
+| [27](done/27-set-op-domain-materialization.md) | `∪`/`∩` materialize an unresolved-but-finite domain (scalar range, Schema, or Union) into a Set instead of demanding resolution first |
 
 `cargo test --workspace` and the `.code` suite are fully green.
 

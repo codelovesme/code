@@ -382,12 +382,18 @@ impl Domain {
 
     /// Enumerate this domain's members, for `loop <var> { }` (T26) —
     /// enumerating a variable's own domain in place. Only finite domains can
-    /// be enumerated: a `ValueSet`, a bounded `IntegerRange`, or an already-
-    /// resolved `Exact` (a trivial one-candidate loop). An unbounded
-    /// `IntegerRange` and *any* `RealRange` are rejected — even a bounded
-    /// real range has infinitely many values (uncountably many between any
-    /// two reals) — which would break the language's "total work is always
-    /// statically bounded" guarantee (no `while`/counters/recursion either).
+    /// be enumerated: a `ValueSet`, a bounded `IntegerRange`, an already-
+    /// resolved `Exact` (a trivial one-candidate loop), a `Union` whose
+    /// every member is itself finite, a `Schema` whose every field is
+    /// itself finite (enumerated as the Cartesian product of its fields —
+    /// the canonical minimal objects with exactly those fields, even though
+    /// the schema's structural membership is open-ended), or an
+    /// `Intersection` where at least one part is finite (the rest are used
+    /// as filters). An unbounded `IntegerRange` and *any* `RealRange` are
+    /// rejected — even a bounded real range has infinitely many values
+    /// (uncountably many between any two reals) — as is a bare `TypeDomain`
+    /// naming a builtin (`Number`, `String`, …), which is unbounded by
+    /// definition.
     pub fn finite_candidates(&self) -> Result<Vec<Rc<Value>>, String> {
         match self {
             Domain::Exact(v) => Ok(vec![Rc::clone(v)]),
@@ -395,9 +401,70 @@ impl Domain {
             Domain::IntegerRange { min: Some(lo), max: Some(hi) } => {
                 Ok((*lo..=*hi).map(|n| Value::number(n as f64)).collect())
             }
+            Domain::Union(parts) => {
+                let mut out = Vec::new();
+                for part in parts {
+                    out.extend(part.finite_candidates()?);
+                }
+                Ok(out)
+            }
+            Domain::Schema(fields) => {
+                // Cartesian product over each field's own finite candidates,
+                // sorted by name first for deterministic output order (the
+                // schema is a HashMap, so iteration order alone isn't
+                // stable). One Object per combination.
+                let mut names: Vec<&String> = fields.keys().collect();
+                names.sort();
+                let mut combos: Vec<HashMap<String, Rc<Value>>> = vec![HashMap::new()];
+                for name in names {
+                    let field_candidates = fields[name]
+                        .finite_candidates()
+                        .map_err(|e| format!("field '{}' of this schema: {}", name, e))?;
+                    let mut next = Vec::with_capacity(combos.len() * field_candidates.len());
+                    for partial in &combos {
+                        for candidate in &field_candidates {
+                            let mut m = partial.clone();
+                            m.insert(name.clone(), Rc::clone(candidate));
+                            next.push(m);
+                        }
+                    }
+                    combos = next;
+                }
+                Ok(combos.into_iter().map(Value::object).collect())
+            }
+            Domain::Intersection(parts) => {
+                // Enumerate from whichever part is finite on its own, then
+                // keep only the candidates that also satisfy every other
+                // part — same containment check the Union+Exact narrowing
+                // arm above uses (intersect against a singleton, see if
+                // anything survives).
+                let base = parts.iter().enumerate().find_map(|(i, p)| {
+                    p.finite_candidates().ok().map(|c| (i, c))
+                });
+                let Some((base_idx, candidates)) = base else {
+                    return Err(format!(
+                        "cannot enumerate {} — none of its combined constraints is finite \
+                         on its own",
+                        self.describe()
+                    ));
+                };
+                Ok(candidates
+                    .into_iter()
+                    .filter(|v| {
+                        parts.iter().enumerate().all(|(i, p)| {
+                            i == base_idx
+                                || !p
+                                    .clone()
+                                    .intersect(Domain::Exact(Rc::clone(v)))
+                                    .is_empty_domain()
+                        })
+                    })
+                    .collect())
+            }
             _ => Err(format!(
-                "cannot loop over an infinite or unbounded domain ({}) — only a finite \
-                 set of possible values (or a bounded integer range) can be enumerated",
+                "cannot enumerate an infinite or unbounded domain ({}) — only a finite \
+                 set of possible values (or a bounded integer range, or a finite union/\
+                 schema/intersection built from those) can be enumerated",
                 self.describe()
             )),
         }

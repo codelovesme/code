@@ -1,0 +1,43 @@
+-> A scalar's finite-but-unresolved domain already denotes a set of
+-> possible values. `∪`/`∩` see it that way instead of demanding the
+-> scalar be pinned first — an unresolved-but-finite domain and an
+-> explicit Set literal both count as the same kind of thing here.
+a = {5}
+b ∈ Z
+b > 3
+b < 6
+-> b's domain is {4, 5}; neither `b` itself nor `a` is touched by this.
+c = a ∪ b
+assert c = {4, 5}
+
+-> Both sides can be unresolved-but-finite at once.
+p ∈ Z
+p > 0
+p < 3
+q ∈ Z
+q > 3
+q < 6
+assert (p ∪ q) = {1, 2, 4, 5}
+
+-> ∩ narrows to the actual overlap between two ranges.
+x ∈ Z
+x > 0
+x < 6
+y ∈ Z
+y > 3
+y < 8
+assert (x ∩ y) = {4, 5}
+
+-> A `ValueSet` domain (from `∈ {..}`, not just a range) works the same way.
+v ∈ { 1, 2, 3 }
+assert (v ∪ {4}) = {1, 2, 3, 4}
+
+-> Materializing a domain never resolves the variable itself — it's still
+-> usable unpinned afterward, same as `loop <var> { }` (T26 Phase 1).
+n ∈ Z
+n > 10
+n < 13
+also = n ∪ {99}
+assert also = {11, 12, 99}
+n = 11
+assert n = 11

@@ -1465,8 +1465,21 @@ impl Interpreter {
                         {
                             return Ok(result);
                         }
-                        let left_val = self.eval_expr(*left)?;
-                        let right_val = self.eval_expr(*right)?;
+                        // `∪`/`∩` operate on possibility spaces, and an
+                        // unresolved-but-finite domain already is one — so
+                        // a bare identifier operand that isn't resolved yet
+                        // gets its domain materialized into a Set instead
+                        // of erroring, same spirit as the domain comparison
+                        // above. Every other operator evaluates normally
+                        // (an unresolved `b` in `a + b` should still error).
+                        let (left_val, right_val) = if matches!(op, BinaryOp::Union | BinaryOp::Intersect) {
+                            (
+                                self.eval_set_operand(*left)?,
+                                self.eval_set_operand(*right)?,
+                            )
+                        } else {
+                            (self.eval_expr(*left)?, self.eval_expr(*right)?)
+                        };
                         self.eval_binary(op, &left_val, &right_val)
                     }
                 }
@@ -1533,6 +1546,36 @@ impl Interpreter {
                 }
             },
         )
+    }
+
+    /// Evaluate one operand of `∪`/`∩`. A bare identifier that isn't
+    /// resolved to a value yet, but whose domain is finite, is materialized
+    /// as a `Value::Set` of that domain's candidates rather than raising the
+    /// usual "does not have a definite value yet" error — `b ∈ Z; b > 3;
+    /// b < 6` already denotes the set `{4, 5}` in every sense but the
+    /// language's internal representation, and `∪`/`∩` are exactly the
+    /// operators that should see it that way. Anything else (already
+    /// resolved, not a bare identifier, or a domain that isn't finite —
+    /// `RealRange`, an unbounded `IntegerRange`, a bare `String`/`Number`
+    /// `TypeDomain`, …) falls through to ordinary evaluation, whose error
+    /// message is still the right one if it fails.
+    fn eval_set_operand(&mut self, expr: Expression) -> Result<Rc<Value>, String> {
+        if let Expression::Identifier(name) = &expr {
+            if self.env.get(name).is_none() {
+                if let Some(domain) = self.env.get_domain(name) {
+                    let domain = domain.clone();
+                    return match domain.finite_candidates() {
+                        Ok(candidates) => Ok(Value::set(candidates)),
+                        Err(e) => Err(format!(
+                            "'{}' does not have a definite value, and its domain can't be \
+                             used as a set here: {}",
+                            name, e
+                        )),
+                    };
+                }
+            }
+        }
+        self.eval_expr(expr)
     }
 
     /// Try to decide a comparison (`>`, `<`, `≥`, `≤`, `=`, `≠`) where exactly
