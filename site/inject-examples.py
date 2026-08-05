@@ -18,10 +18,12 @@ import sys
 
 def slug_to_relpath(slug: str) -> str:
     # Placeholders spell paths with `_`; example files use `-` and a `/`
-    # only for the modules subdir. `01_getting_started` -> `01-getting-
-    # started.code`; `modules_handler_module` -> `modules/handler-module.code`.
-    if slug.startswith("modules_"):
-        return "modules/" + slug[len("modules_") :].replace("_", "-") + ".code"
+    # only for a subdirectory prefix. `01_getting_started` -> `01-getting-
+    # started.code`; `modules_handler_module` -> `modules/handler-module.code`;
+    # `tutorial_01_types` -> `tutorial/01-types.code`.
+    for prefix, subdir in (("modules_", "modules/"), ("tutorial_", "tutorial/")):
+        if slug.startswith(prefix):
+            return subdir + slug[len(prefix) :].replace("_", "-") + ".code"
     return slug.replace("_", "-") + ".code"
 
 

@@ -1,0 +1,7 @@
+-> Tutorial step 1: an order for a small shop. A type names the set of
+-> objects satisfying these field constraints.
+type Order { item ∈ String, quantity ∈ Number, unit_price ∈ Number }
+
+first = Order { item = "Coffee", quantity = 3, unit_price = 4.5 }
+assert first.item = "Coffee"
+assert first.quantity = 3

@@ -1,0 +1,24 @@
+-> Tutorial step 4 — the finished pipeline: process a whole batch through
+-> the same linked module, via the only iteration form the language has —
+-> `loop <var> over <array> get <result>`, bounded by the array's length.
+-> There's no print anywhere in this file. The `results` array IS the
+-> pipeline's answer — the same "no core I/O" idea from the guide, now
+-> doing real work across two files instead of one paragraph.
+link validate-basic as validate
+
+orders = [
+Order { item = "Coffee", quantity = 3, unit_price = 4.5 },
+Order { item = "Tea", quantity = 0, unit_price = 2.0 },
+Order { item = "Sugar", quantity = 5, unit_price = 1.2 }
+]
+
+loop o over orders get results {
+    emit o to validate get r
+    yield r
+}
+
+emit Length { value = results } to core get n
+assert n.value = 3
+assert results[0].total = 13.5
+assert results[1].reason = "quantity must be positive"
+assert results[2].total = 6

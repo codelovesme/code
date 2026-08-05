@@ -8,7 +8,9 @@
 #
 # Usage: docs/examples/run.sh [path-to-code-binary]
 #   Defaults to ./target/debug/code. Handler-less files (the linked module
-#   in modules/) are skipped as entry points — they're exercised via 07.
+#   in modules/, and tutorial/validate-basic.code) are skipped as entry
+#   points — they're exercised via the files that link them (07-modules.code;
+#   tutorial/03-modules.code and tutorial/04-batch.code).
 set -euo pipefail
 
 code_bin="${1:-./target/debug/code}"
@@ -20,9 +22,8 @@ if [[ ! -x "$code_bin" ]]; then
 fi
 
 fail=0
-# Top-level examples only — modules/ holds linked dependencies, not entry
-# points (07-modules.code links and drives them).
-for f in "$here"/[0-9]*.code; do
+run_one() {
+  local f="$1"
   if "$code_bin" run "$f" >/dev/null 2>&1; then
     echo "PASS  ${f#"$here"/}"
   else
@@ -30,6 +31,18 @@ for f in "$here"/[0-9]*.code; do
     "$code_bin" run "$f" 2>&1 | sed 's/^/      /' || true
     fail=1
   fi
+}
+
+# Guide examples: top-level numbered files only — modules/ holds linked
+# dependencies, not entry points (07-modules.code links and drives it).
+for f in "$here"/[0-9]*.code; do
+  run_one "$f"
+done
+
+# Tutorial examples: same convention, one directory over — numbered entry
+# points only, validate-basic.code is a linked dependency, not an entry.
+for f in "$here"/tutorial/[0-9]*.code; do
+  run_one "$f"
 done
 
 exit "$fail"

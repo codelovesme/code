@@ -1,0 +1,24 @@
+-> Tutorial step 2: a handler that validates one order — accept if the
+-> quantity is positive, reject otherwise. No functions anywhere; this
+-> `Order => { ... }` block is a handler, invoked with `emit`.
+type Order { item ∈ String, quantity ∈ Number, unit_price ∈ Number }
+type ValidatedOrder { item ∈ String, quantity ∈ Number, unit_price ∈ Number, total ∈ Number }
+type RejectedOrder { item ∈ String, reason ∈ String }
+
+Order => {
+    if quantity > 0 {
+        return ValidatedOrder {
+            item = item, quantity = quantity, unit_price = unit_price,
+            total = quantity * unit_price
+        }
+    }
+    if quantity ≤ 0 {
+        return RejectedOrder { item = item, reason = "quantity must be positive" }
+    }
+}
+
+emit Order { item = "Coffee", quantity = 3, unit_price = 4.5 } to this get good
+emit Order { item = "Broken", quantity = 0, unit_price = 1.0 } to this get bad
+
+assert good.total = 13.5
+assert bad.reason = "quantity must be positive"

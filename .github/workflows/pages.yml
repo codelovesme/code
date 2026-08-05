@@ -59,6 +59,11 @@ jobs:
           # script fails loudly on a missing file or unfilled placeholder.
           python3 site/inject-examples.py site/guide.html docs/examples dist/guide.html
 
+          # Tutorial page: same injection mechanism, same guarantee — the
+          # walkthrough's code blocks are the exact tutorial/*.code files
+          # CI runs (see T22 Phase 2).
+          python3 site/inject-examples.py site/tutorial.html docs/examples dist/tutorial.html
+
           # Latest release's real asset URLs — asset filenames include the
           # version (code-sdk-v0.3.0-x86_64-linux.tar.gz), so a hardcoded
           # Downloads page would go stale every release. Fetch the actual

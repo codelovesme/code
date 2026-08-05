@@ -1,0 +1,7 @@
+-> Tutorial step 3: `link` pulls in validate-basic.code, aliased to
+-> `validate`. Dispatching to it (`to validate`) works exactly like
+-> dispatching to a handler defined in this file (`to this`, step 2).
+link validate-basic as validate
+
+emit Order { item = "Coffee", quantity = 3, unit_price = 4.5 } to validate get good
+assert good.total = 13.5
