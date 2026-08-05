@@ -400,7 +400,23 @@ fn build_expression(
                 None => left,
             });
 
-        // Membership: `∈ Type`, `∉ Type` — type membership check
+        // Membership: `∈`/`∉` — the right side is tried as a type-shaped
+        // name/literal first (`x ∈ Number`, `x ∈ "Success"`), and only
+        // falls back to a bare identifier (`x ∈ c`) when that fails — a
+        // lowercase name, for instance, can never be `type_expr_parser()`-
+        // shaped (T27 follow-up: a variable holding a Set/Schema/Union is
+        // exactly as valid a right side as a type name, since T26 already
+        // treats types as sets). Deliberately NOT `expression.clone()` here
+        // — `membership` sits inside `expr`, which is reused dozens of
+        // times through the grammar; embedding the full recursive
+        // expression parser a second time at this depth stack-overflows
+        // (see the T26 Phase 1 postmortem for the same class of bug). A
+        // bare identifier covers the actual need (`1 ∈ c`); anything more
+        // exotic (`1 ∈ (a ∪ b)`) needs a named intermediate.
+        enum MembershipRhs {
+            Type(TypeExpr),
+            Expr(Expression),
+        }
         let membership = relational
             .clone()
             .then(
@@ -410,13 +426,22 @@ fn build_expression(
                             .or(just('∉').to(true)),
                     )
                     .then_ignore(whitespace())
-                    .then(type_expr_parser())
+                    .then(
+                        type_expr_parser()
+                            .map(MembershipRhs::Type)
+                            .or(identifier().map(Expression::Identifier).map(MembershipRhs::Expr)),
+                    )
                     .or_not(),
             )
             .map(|(left, suffix)| match suffix {
-                Some((negated, type_expr)) => Expression::TypeCheck {
+                Some((negated, MembershipRhs::Type(type_expr))) => Expression::TypeCheck {
                     expr: Box::new(left),
                     type_expr,
+                    negated,
+                },
+                Some((negated, MembershipRhs::Expr(container))) => Expression::MemberOf {
+                    expr: Box::new(left),
+                    container: Box::new(container),
                     negated,
                 },
                 None => left,

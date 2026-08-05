@@ -1,0 +1,35 @@
+-> `∈`/`∉` as a boolean expression (e.g. inside `assert`) used to require
+-> a syntactically type-shaped right side (a name starting uppercase, or
+-> a quoted literal) — `1 ∈ c` where `c` is a lowercase variable holding a
+-> Set failed to even parse. But T26 already treats types as sets, so a
+-> variable holding a Set/Schema/Union is exactly as valid a right side as
+-> a type name (T27 follow-up). This tests the general-expression form;
+-> the type-name form (`x ∈ Number`) is unaffected, see is_union_check.code
+-> and friends.
+p ∈ Z
+p > 0
+p < 3
+q ∈ Z
+q > 3
+q < 6
+c = p ∪ q
+assert 1 ∈ c
+assert 4 ∈ c
+assert 3 ∉ c
+
+-> Membership against a Schema value (an object satisfying its fields).
+k = { x ∈ {1, 2} }
+assert { x = 1 } ∈ k
+assert { x = 3 } ∉ k
+
+-> Membership against a Union value (matches at least one alternative).
+Status = {"Success"} ∪ { code ∈ {1, 2} }
+assert "Success" ∈ Status
+assert { code = 1 } ∈ Status
+assert { code = 9 } ∉ Status
+
+-> The capitalized/type-name form still works exactly as before — this
+-> isn't a new code path replacing the old one, just a fallback added
+-> alongside it.
+assert 5 ∈ Number
+assert "x" ∉ Number

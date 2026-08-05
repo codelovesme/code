@@ -350,10 +350,22 @@ pub enum Expression {
         op: BinaryOp,
         right: Box<Expression>,
     },
-    /// Type check: `expr == TypeExpr` or `expr != TypeExpr`.
+    /// Type check: `expr ∈ TypeExpr` or `expr ∉ TypeExpr` — the right side
+    /// is syntactically type-shaped (a name starting uppercase, or a
+    /// quoted literal).
     TypeCheck {
         expr: Box<Expression>,
         type_expr: TypeExpr,
+        negated: bool,
+    },
+    /// Membership: `expr ∈ container` or `expr ∉ container` where the
+    /// right side is a general expression rather than type-shaped syntax
+    /// (T27 follow-up) — e.g. `1 ∈ c` where `c` is a lowercase variable
+    /// holding a Set/Schema/Union value. `container` must evaluate to one
+    /// of those; anything else is a runtime error, same as `∪`/`∩`.
+    MemberOf {
+        expr: Box<Expression>,
+        container: Box<Expression>,
         negated: bool,
     },
 

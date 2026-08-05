@@ -868,6 +868,24 @@ impl Interpreter {
     ) -> bool {
         match type_expr {
             TypeExpr::Named(name) => {
+                // A capitalized name here might be a variable holding a
+                // Set/Schema/Union value (T26/T27) instead of a genuine
+                // type name — same precedent as the constraint-narrowing
+                // IsType arm (constraint_narrowing_domain). `1 ∈ C` where
+                // `C = {1, 2}` should check real membership against C's
+                // value, not `_class == "C"`. A declared `type C {...}`
+                // name is never also a bound variable, so this can't
+                // misfire against one.
+                if let Some(bound) = self.env.get(name) {
+                    if let Some(parts) = crate::runtime::value_to_union_members(&bound) {
+                        let candidate = Rc::new(val.clone());
+                        return parts.iter().any(|d| {
+                            !d.clone()
+                                .intersect(Domain::Exact(Rc::clone(&candidate)))
+                                .is_empty_domain()
+                        });
+                    }
+                }
                 match name.as_str() {
                     "Number" => matches!(val, Value::Number(_)),
                     "String" => matches!(val, Value::String(_)),
@@ -1513,6 +1531,28 @@ impl Interpreter {
                     self.value_matches_type_expr(&val, &type_expr, &mut Vec::new());
                 let result = if negated { !matches } else { matches };
                 Ok(Value::boolean(result))
+            }
+            Expression::MemberOf {
+                expr,
+                container,
+                negated,
+            } => {
+                let val = self.eval_expr(*expr)?;
+                let container_val = self.eval_expr(*container)?;
+                let parts = crate::runtime::value_to_union_members(&container_val)
+                    .ok_or_else(|| {
+                        format!(
+                            "Cannot use '∈' with {} — the right side must be a Set, \
+                             Schema, or Union value",
+                            container_val.type_name()
+                        )
+                    })?;
+                let matches = parts.iter().any(|d| {
+                    !d.clone()
+                        .intersect(Domain::Exact(Rc::clone(&val)))
+                        .is_empty_domain()
+                });
+                Ok(Value::boolean(if negated { !matches } else { matches }))
             }
         }
     }

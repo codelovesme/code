@@ -1397,6 +1397,12 @@ impl<'ctx> Codegen<'ctx> {
                  native backend yet — this is interpreter-only for now (T26). Use `code run`."
                     .to_string(),
             ),
+            Expression::MemberOf { .. } => Err(
+                "'∈'/'∉' against a general expression (as opposed to a type name) is not \
+                 supported by the native backend yet — this is interpreter-only for now \
+                 (T27). Use `code run`."
+                    .to_string(),
+            ),
         }
     }
 
@@ -5843,7 +5849,9 @@ impl<'ctx> Codegen<'ctx> {
             | Expression::Binary { op: BinaryOp::GreaterEqual, .. }
             | Expression::Binary { op: BinaryOp::And, .. }
             | Expression::Binary { op: BinaryOp::Or, .. } => Ok("Boolean".to_string()),
-            Expression::Binary { .. } | Expression::TypeCheck { .. } => Ok("Boolean".to_string()),
+            Expression::Binary { .. } | Expression::TypeCheck { .. } | Expression::MemberOf { .. } => {
+                Ok("Boolean".to_string())
+            }
             Expression::Unary { op: UnaryOp::Not, .. } => Ok("Boolean".to_string()),
             Expression::Unary { op: UnaryOp::Negate, .. } => Ok("Number".to_string()),
             Expression::Identifier(name) => {
