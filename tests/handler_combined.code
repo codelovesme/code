@@ -1,9 +1,10 @@
--> Combined handler definition: type + handler in one statement
--> Log{message ∈ String, level ∈ String} => { body }
+-> Particle type + handler as two statements (the combined `ClassName{...}
+-> => {}` sugar was removed alongside `type` — see T30).
 
-type Ack { ok ∈ Number }
+Log = Particle ∩ { _class ∈ "Log", message ∈ String, level ∈ String }
+Ack = Particle ∩ { _class ∈ "Ack", ok ∈ Number }
 
-Log{message ∈ String, level ∈ String} => {
+Log => {
     assert message = "hello"
     assert level = "info"
     return Ack{ ok = 1 }

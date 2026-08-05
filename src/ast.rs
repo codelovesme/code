@@ -159,11 +159,6 @@ pub enum Statement {
         constraint: ConstraintExpr,
         private: bool,
     },
-    /// `type Name { field: Type, ... }` — declares a particle type with field constraints.
-    TypeDeclaration {
-        name: String,
-        fields: Vec<FieldConstraint>,
-    },
     Assert(Expression),
     Block(Vec<Spanned<Statement>>),
     /// `if <expr> { ... }` — conditional block (condition must be Boolean).
@@ -201,12 +196,9 @@ pub enum Statement {
     },
     /// `break` — exit the nearest enclosing loop.
     Break,
-    /// Handler definition: `ClassName{field:Type,...} => { body }` (combined)
-    /// or `ClassName => { body }` (split/bare).
+    /// Handler definition: `ClassName => { body }`.
     HandlerDefinition {
         class_name: String,
-        /// If this is a combined definition, the inline field constraints.
-        inline_type: Option<Vec<FieldConstraint>>,
         body: Vec<Spanned<Statement>>,
     },
     /// Handler invocation: `emit expr to this`, `emit expr to base`, or `emit expr to moduleAlias`.

@@ -1,5 +1,5 @@
--> Optional fields with ?: syntax
-type Config { name ∈ String, description ∈ String ∪ Null }
+-> Optional fields (field ∈ Type ∪ Null) — omitted or explicit Null both allowed
+Config = Particle ∩ { _class ∈ "Config", name ∈ String, description ∈ String ∪ Null }
 
 -> Create with optional field omitted - gets Null
 c1 = Config { name = "test" }

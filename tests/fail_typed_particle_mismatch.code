@@ -1,3 +1,3 @@
 -> Type mismatch on typed particle field: level should be String, got Number
-type Log { message ∈ String, level ∈ String }
+Log = Particle ∩ { _class ∈ "Log", message ∈ String, level ∈ String }
 p = Log { message = "Hello World", level = 12 }

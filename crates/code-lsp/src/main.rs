@@ -84,24 +84,6 @@ fn analyse(text: &str) -> DocumentState {
             continue;
         }
 
-        // Type declaration: `type Name { ... }` or `type Name = ...`
-        if trimmed.starts_with("type ") {
-            if let Some(name) = extract_after_keyword(trimmed, "type") {
-                let col = line.find(&name).unwrap_or(0) as u32;
-                let detail = trimmed.to_string();
-                let is_alias = trimmed[5 + name.len()..].trim_start().starts_with('=');
-                symbols.push(SymbolEntry {
-                    name: name.clone(),
-                    kind: if is_alias { SymbolKind::TYPE_PARAMETER } else { SymbolKind::STRUCT },
-                    line: line_num,
-                    col,
-                    end_col: col + name.len() as u32,
-                    detail,
-                });
-            }
-            continue;
-        }
-
         // Link statement: `link path [as alias]`
         if trimmed.starts_with("link ") {
             let rest = &trimmed[5..];
@@ -208,21 +190,6 @@ fn analyse(text: &str) -> DocumentState {
     }
 }
 
-/// Extract the name after a keyword like `type` — next word starting with uppercase.
-fn extract_after_keyword(trimmed: &str, keyword: &str) -> Option<String> {
-    let rest = trimmed[keyword.len()..].trim_start();
-    let name: String = rest
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-        .collect();
-    if name.is_empty()
-        || !name.chars().next().map_or(false, |c| c.is_ascii_uppercase())
-    {
-        return None;
-    }
-    Some(name)
-}
-
 /// Check if a trimmed line looks like a handler definition.
 fn is_handler_def(trimmed: &str) -> bool {
     let first = trimmed.chars().next().unwrap_or(' ');
@@ -317,7 +284,6 @@ const KEYWORDS: &[(&str, CompletionItemKind)] = &[
     ("assert", CompletionItemKind::KEYWORD),
     ("link", CompletionItemKind::KEYWORD),
     ("as", CompletionItemKind::KEYWORD),
-    ("type", CompletionItemKind::KEYWORD),
     ("private", CompletionItemKind::KEYWORD),
     ("is", CompletionItemKind::KEYWORD),
     ("not", CompletionItemKind::KEYWORD),
@@ -332,24 +298,14 @@ const KEYWORDS: &[(&str, CompletionItemKind)] = &[
 fn snippet_completions() -> Vec<CompletionItem> {
     vec![
         make_snippet(
-            "type",
-            "Type Declaration",
-            "type ${1:Name} {\n    ${2:field}:${3:Type}\n}",
-        ),
-        make_snippet(
-            "type alias",
-            "Type Alias",
-            "type ${1:Name} = ${2:Type}",
+            "particle",
+            "Particle Type Declaration",
+            "${1:Name} = Particle ∩ { _class ∈ \"${1:Name}\", ${2:field} ∈ ${3:Type} }",
         ),
         make_snippet(
             "handler",
             "Handler Definition",
             "${1:ClassName} => {\n    $0\n}",
-        ),
-        make_snippet(
-            "handler (combined)",
-            "Combined Handler Definition",
-            "${1:ClassName}{${2:field}:${3:Type}} => {\n    $0\n}",
         ),
         make_snippet(
             "if",

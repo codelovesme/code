@@ -1,5 +1,5 @@
 -> Spread operator in particle literals
-type Person { name ∈ String, age ∈ Number, city ∈ String }
+Person = Particle ∩ { _class ∈ "Person", name ∈ String, age ∈ Number, city ∈ String }
 
 -> Spread copies all fields into new particle
 p1 = Person { name = "Alice", age = 30, city = "NYC" }
@@ -22,7 +22,7 @@ assert p4.age = 25
 assert p4.city = "NYC"
 
 -> Spread with optional fields
-type Config { name ∈ String, debug ∈ Boolean ∪ Null, verbose ∈ Boolean ∪ Null }
+Config = Particle ∩ { _class ∈ "Config", name ∈ String, debug ∈ Boolean ∪ Null, verbose ∈ Boolean ∪ Null }
 c1 = Config { name = "app", debug = true, verbose = false }
 c2 = Config { ...c1, debug = false }
 assert c2.name = "app"

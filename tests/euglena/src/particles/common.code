@@ -1,4 +1,7 @@
--> Common particle type definitions
-type Log { message ∈ String, level ∈ String }
-type Exception { source ∈ String, message ∈ String }
-type ACK { source ∈ String }
+-> Common particle type definitions.
+-> `LogException` is euglena's own logging particle — deliberately not
+-> named `Exception`, since that name is now the language's built-in
+-> exception type (T30) and has a different shape (message/innerException).
+Log = Particle ∩ { _class ∈ "Log", message ∈ String, level ∈ String }
+LogException = Particle ∩ { _class ∈ "LogException", source ∈ String, message ∈ String }
+ACK = Particle ∩ { _class ∈ "ACK", source ∈ String }

@@ -1,10 +1,10 @@
--> Logger organelle: handles Log and Exception particles
+-> Logger organelle: handles Log and LogException particles
 link ../particles/common
 
 Log => {
     return ACK { source = "logger" }
 }
 
-Exception => {
+LogException => {
     return ACK { source = "logger" }
 }

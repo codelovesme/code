@@ -1,8 +1,8 @@
 -> Handler return: handler returns a value via return
-type Ping { }
-type ACK { }
+Ping = Particle ∩ { _class ∈ "Ping" }
+ACK = Particle ∩ { _class ∈ "ACK" }
 
-Ping{} => {
+Ping => {
     return ACK{}
 }
 

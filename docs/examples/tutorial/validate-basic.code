@@ -1,9 +1,9 @@
 -> Tutorial step 3's module: the exact same handler from step 2, now
 -> living in its own file. Nothing about the handler changed — only where
 -> it lives.
-type Order { item ∈ String, quantity ∈ Number, unit_price ∈ Number }
-type ValidatedOrder { item ∈ String, quantity ∈ Number, unit_price ∈ Number, total ∈ Number }
-type RejectedOrder { item ∈ String, reason ∈ String }
+Order = Particle ∩ { _class ∈ "Order", item ∈ String, quantity ∈ Number, unit_price ∈ Number }
+ValidatedOrder = Particle ∩ { _class ∈ "ValidatedOrder", item ∈ String, quantity ∈ Number, unit_price ∈ Number, total ∈ Number }
+RejectedOrder = Particle ∩ { _class ∈ "RejectedOrder", item ∈ String, reason ∈ String }
 
 Order => {
     if quantity > 0 {

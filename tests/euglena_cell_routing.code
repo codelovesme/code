@@ -1,4 +1,4 @@
--> Test: cell routes Log and Exception particles
+-> Test: cell routes Log and LogException particles
 link euglena/src/main
 
 -> Boot first
@@ -9,7 +9,7 @@ emit Log { message = "routed msg", level = "Warn" } to this get log_ack
 assert log_ack._class = "ACK"
 assert log_ack.source = "logger"
 
--> Send an Exception
-emit Exception { source = "test-src", message = "err detail" } to this get exc_ack
+-> Send a LogException
+emit LogException { source = "test-src", message = "err detail" } to this get exc_ack
 assert exc_ack._class = "ACK"
 assert exc_ack.source = "logger"

@@ -1,6 +1,6 @@
 -> Transformer organelle: handles TransformRequest particles
-type TransformRequest { input ∈ String, operation ∈ String }
-type TransformResult { input ∈ String, operation ∈ String }
+TransformRequest = Particle ∩ { _class ∈ "TransformRequest", input ∈ String, operation ∈ String }
+TransformResult = Particle ∩ { _class ∈ "TransformResult", input ∈ String, operation ∈ String }
 
 TransformRequest => {
     return TransformResult { input = input, operation = operation }

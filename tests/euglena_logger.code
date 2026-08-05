@@ -1,4 +1,4 @@
--> Test: logger handles Log and Exception particles
+-> Test: logger handles Log and LogException particles
 link euglena/src/organelles/logger
 
 -> Send a Log locally
@@ -6,7 +6,7 @@ emit Log { message = "test msg", level = "Debug" } to this get ack
 assert ack._class = "ACK"
 assert ack.source = "logger"
 
--> Send an Exception
-emit Exception { source = "unit-test", message = "oops" } to this get ack2
+-> Send a LogException
+emit LogException { source = "unit-test", message = "oops" } to this get ack2
 assert ack2._class = "ACK"
 assert ack2.source = "logger"

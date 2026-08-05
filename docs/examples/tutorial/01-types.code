@@ -1,6 +1,8 @@
--> Tutorial step 1: an order for a small shop. A type names the set of
--> objects satisfying these field constraints.
-type Order { item ∈ String, quantity ∈ Number, unit_price ∈ Number }
+-> Tutorial step 1: an order for a small shop. `Particle` is the
+-> predefined base every particle type builds on (`_class`/`_created`);
+-> `∩` merges it with the field constraints that name this particular set
+-> of objects.
+Order = Particle ∩ { _class ∈ "Order", item ∈ String, quantity ∈ Number, unit_price ∈ Number }
 
 first = Order { item = "Coffee", quantity = 3, unit_price = 4.5 }
 assert first.item = "Coffee"

@@ -1,8 +1,8 @@
 -> There is no `name(args)` call syntax anywhere in the grammar — Code has
 -> no user-defined functions. Reusable logic is a handler: a particle type
 -> paired with a response, invoked with `emit ... to ... get ...`.
-type Celsius { degrees ∈ Number }
-type Classification { degrees ∈ Number, label ∈ String }
+Celsius = Particle ∩ { _class ∈ "Celsius", degrees ∈ Number }
+Classification = Particle ∩ { _class ∈ "Classification", degrees ∈ Number, label ∈ String }
 
 Celsius => {
     if degrees < 0 {

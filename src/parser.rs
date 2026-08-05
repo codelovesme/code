@@ -1,7 +1,7 @@
 use chumsky::prelude::*;
 
 use crate::ast::{
-    BinaryOp, ConstraintExpr, DomainKind, Expression, FieldConstraint,
+    BinaryOp, ConstraintExpr, DomainKind, Expression,
     HandlerTarget, ObjectField, Program, Spanned, Statement, StringPart, TypeExpr, UnaryOp,
 };
 
@@ -81,7 +81,7 @@ fn string_literal() -> impl Parser<char, Expression, Error = Simple<char>> + Clo
 fn identifier() -> impl Parser<char, String, Error = Simple<char>> + Clone {
     text::ident().try_map(|s: String, span| {
         match s.as_str() {
-            "if" | "loop" | "over" | "break" | "assert" | "link" | "as" | "type" | "private"
+            "if" | "loop" | "over" | "break" | "assert" | "link" | "as" | "private"
             | "is" | "not" | "this" | "base" | "true" | "false" | "return"
             | "in" | "with" | "yield" | "fold" | "by" | "and" | "or" | "get"
             | "emit" | "to" => {
@@ -668,48 +668,6 @@ fn statement() -> impl Parser<char, Spanned<Statement>, Error = Simple<char>> + 
     recursive(|stmt| {
         let expression = build_expression(stmt.clone());
 
-        // Type field in particle definitions: `name ∈ Type` or `name ∈ Type | Null`
-        let type_field = identifier()
-            .then_ignore(whitespace())
-            .then_ignore(just('∈'))
-            .then_ignore(whitespace())
-            .then(type_expr_parser())
-            .map(|(name, tn)| {
-                let optional = match &tn {
-                    TypeExpr::Union(parts) => parts.iter().any(|t| matches!(t, TypeExpr::Named(n) if n == "Null")),
-                    TypeExpr::Named(n) => n == "Null",
-                    _ => false,
-                };
-                FieldConstraint {
-                    name,
-                    constraints: vec![ConstraintExpr::IsType(tn)],
-                    optional,
-                }
-            });
-
-        // Type declaration: `type Name { field: Type, field?: Type }`
-        let type_decl = text::keyword("type")
-            .ignore_then(whitespace())
-            .ignore_then(class_name())
-            .then_ignore(whitespace())
-            .then(
-                just('{')
-                    .ignore_then(any_whitespace())
-                    .ignore_then(
-                        type_field
-                            .clone()
-                            .separated_by(
-                                any_whitespace()
-                                    .ignore_then(just(','))
-                                    .ignore_then(any_whitespace()),
-                            )
-                            .allow_trailing(),
-                    )
-                    .then_ignore(any_whitespace())
-                    .then_ignore(just('}')),
-            )
-            .map(|(name, fields)| Statement::TypeDeclaration { name, fields });
-
         // Constraint statement: `ident == expr`, `ident < expr`, etc.
         let constraint_stmt = identifier()
             .then_ignore(whitespace())
@@ -852,53 +810,7 @@ fn statement() -> impl Parser<char, Spanned<Statement>, Error = Simple<char>> + 
             .then_ignore(any_whitespace())
             .then_ignore(just('}'));
 
-        // Combined handler definition: `ClassName{field ∈ Type,...} => { body }`
-        let handler_type_field = identifier()
-            .then_ignore(whitespace())
-            .then_ignore(just('∈'))
-            .then_ignore(whitespace())
-            .then(type_expr_parser())
-            .map(|(name, tn)| {
-                let optional = match &tn {
-                    TypeExpr::Union(parts) => parts.iter().any(|t| matches!(t, TypeExpr::Named(n) if n == "Null")),
-                    TypeExpr::Named(n) => n == "Null",
-                    _ => false,
-                };
-                FieldConstraint {
-                    name,
-                    constraints: vec![ConstraintExpr::IsType(tn)],
-                    optional,
-                }
-            });
-
-        let combined_handler_def = class_name()
-            .then_ignore(whitespace())
-            .then(
-                just('{')
-                    .ignore_then(any_whitespace())
-                    .ignore_then(
-                        handler_type_field
-                            .separated_by(
-                                any_whitespace()
-                                    .ignore_then(just(','))
-                                    .ignore_then(any_whitespace()),
-                            )
-                            .allow_trailing(),
-                    )
-                    .then_ignore(any_whitespace())
-                    .then_ignore(just('}')),
-            )
-            .then_ignore(whitespace())
-            .then_ignore(just("=>"))
-            .then_ignore(any_whitespace())
-            .then(handler_body.clone())
-            .map(|((cname, fields), body)| Statement::HandlerDefinition {
-                class_name: cname,
-                inline_type: Some(fields),
-                body,
-            });
-
-        // Bare handler definition: `ClassName => { body }`
+        // Handler definition: `ClassName => { body }`
         let bare_handler_def = class_name()
             .then_ignore(whitespace())
             .then_ignore(just("=>"))
@@ -906,7 +818,6 @@ fn statement() -> impl Parser<char, Spanned<Statement>, Error = Simple<char>> + 
             .then(handler_body)
             .map(|(cname, body)| Statement::HandlerDefinition {
                 class_name: cname,
-                inline_type: None,
                 body,
             });
 
@@ -969,7 +880,6 @@ fn statement() -> impl Parser<char, Spanned<Statement>, Error = Simple<char>> + 
 
         assert_stmt
             .or(handler_return)
-            .or(type_decl)
             .or(link_stmt)
             .or(private_constraint)
             .or(yield_stmt)
@@ -978,7 +888,6 @@ fn statement() -> impl Parser<char, Spanned<Statement>, Error = Simple<char>> + 
             .or(loop_infinite_stmt)
             .or(loop_stmt)
             .or(loop_domain_stmt)
-            .or(combined_handler_def)
             .or(bare_handler_def)
             .or(emit_stmt)
             .or(constraint_stmt)

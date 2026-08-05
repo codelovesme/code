@@ -131,30 +131,45 @@ impl Domain {
                     max_inclusive: new_mxi,
                 }
             }
-            // Exact + TypeDomain(Named(builtin)): actually check the value
-            // matches — found while building T26 Phase 2's object-schema
-            // satisfaction check, which depends on this: `m ∈ Number` must
-            // genuinely reject `m = {1,2}` (a Set), not pass it through
-            // unconditionally. Custom `type X {...}` names still pass
-            // through loose (`None` case) — checking those needs an
-            // Interpreter's type registry, which this free function doesn't
-            // have; that stays the pre-existing behavior.
-            (Domain::Exact(v), Domain::TypeDomain(TypeExpr::Named(name))) => {
-                match value_matches_builtin_type_name(v, name) {
+            // Exact + TypeDomain: actually check the value matches — found
+            // while building T26 Phase 2's object-schema satisfaction
+            // check, which depends on this: `m ∈ Number` must genuinely
+            // reject `m = {1,2}` (a Set), not pass it through
+            // unconditionally. `value_matches_type_expr_shallow` handles
+            // every TypeExpr shape except a *non-builtin* `Named` (a
+            // custom particle-type name — now a bound Schema variable,
+            // T30 — checking that needs an Interpreter's environment,
+            // which this free function doesn't have); that one case still
+            // passes through loose, same as before. Originally this arm
+            // only handled a bare `Named`; T30 particle validation depends
+            // on `Literal`/`Union` being precise too (`_class ∈ "Log"`,
+            // `level ∈ "Error" ∪ "Info"` must actually reject a mismatch,
+            // not silently accept anything).
+            (Domain::Exact(v), Domain::TypeDomain(te)) => {
+                match value_matches_type_expr_shallow(v, te) {
                     Some(false) => Domain::Empty,
                     _ => self,
                 }
             }
-            (Domain::TypeDomain(TypeExpr::Named(name)), Domain::Exact(v)) => {
-                match value_matches_builtin_type_name(v, name) {
+            (Domain::TypeDomain(te), Domain::Exact(v)) => {
+                match value_matches_type_expr_shallow(v, te) {
                     Some(false) => Domain::Empty,
                     _ => other,
                 }
             }
-            // Exact + TypeDomain (any other TypeExpr shape — Union,
-            // Intersection, Literal): unchanged loose pass-through.
-            (Domain::Exact(_), Domain::TypeDomain(_)) => self,
-            (Domain::TypeDomain(_), Domain::Exact(_)) => other,
+            // TypeDomain + TypeDomain: fold into one TypeExpr::Intersection
+            // rather than falling through to the generic `Domain::
+            // Intersection` wrap below — staying inside `TypeDomain` means
+            // a later `Exact` check against the merged domain still goes
+            // through the precise `value_matches_type_expr_shallow` arm
+            // above instead of the opaque wrap-and-hope fallback. This is
+            // exactly what `merge_schemas` exercises: `Particle`'s
+            // `_class ∈ String` merged with a declarer's `_class ∈ "Log"`
+            // must actually narrow to "Log", not silently stay "any
+            // String" (T30).
+            (Domain::TypeDomain(a), Domain::TypeDomain(b)) => {
+                Domain::TypeDomain(TypeExpr::Intersection(vec![a.clone(), b.clone()]))
+            }
             // Exact + IntegerRange: check the exact value is a whole number in range
             (Domain::Exact(v), Domain::IntegerRange { min, max }) => {
                 if let Value::Number(n) = v.as_ref() {
@@ -619,6 +634,42 @@ fn value_matches_builtin_type_name(val: &Value, name: &str) -> Option<bool> {
     }
 }
 
+/// Check a value against a `TypeExpr` shape without needing an
+/// interpreter's environment — everything except a *non-builtin* `Named`
+/// (a custom particle-type name, now a bound Schema variable — resolving
+/// that needs env access, done at the interpreter level instead) can be
+/// decided here. `None` means "can't tell without env access," which
+/// callers treat as a loose pass, same as an unresolvable `Named` always
+/// has.
+fn value_matches_type_expr_shallow(val: &Value, te: &TypeExpr) -> Option<bool> {
+    match te {
+        TypeExpr::Named(name) => value_matches_builtin_type_name(val, name),
+        TypeExpr::Literal(s) => Some(matches!(val, Value::String(v) if v == s)),
+        TypeExpr::Union(parts) => {
+            let mut saw_unknown = false;
+            for p in parts {
+                match value_matches_type_expr_shallow(val, p) {
+                    Some(true) => return Some(true),
+                    Some(false) => {}
+                    None => saw_unknown = true,
+                }
+            }
+            if saw_unknown { None } else { Some(false) }
+        }
+        TypeExpr::Intersection(parts) => {
+            let mut saw_unknown = false;
+            for p in parts {
+                match value_matches_type_expr_shallow(val, p) {
+                    Some(false) => return Some(false),
+                    Some(true) => {}
+                    None => saw_unknown = true,
+                }
+            }
+            if saw_unknown { None } else { Some(true) }
+        }
+    }
+}
+
 /// Does this concrete object satisfy every field constraint a schema names?
 /// Open/structural (T26 Decision 3): a missing field fails, but the object
 /// may have *extra* fields beyond what the schema constrains.
@@ -627,10 +678,13 @@ fn object_satisfies_schema(
     schema: &HashMap<String, Domain>,
 ) -> bool {
     schema.iter().all(|(name, domain)| {
-        obj_fields
-            .get(name)
-            .map(|v| !domain.clone().intersect(Domain::Exact(Rc::clone(v))).is_empty_domain())
-            .unwrap_or(false)
+        // A field the object simply doesn't have is treated as Null, not
+        // an automatic failure — same as how particle construction
+        // backfills a genuinely-omitted optional field to Null (T30). A
+        // required field's domain never accepts Null, so this only changes
+        // the outcome for fields that were actually optional.
+        let v = obj_fields.get(name).cloned().unwrap_or_else(Value::null);
+        !domain.clone().intersect(Domain::Exact(v)).is_empty_domain()
     })
 }
 

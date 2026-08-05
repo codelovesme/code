@@ -614,14 +614,7 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
             }
-            Statement::TypeDeclaration { name, fields } => {
-                self.define_type(name.clone(), fields.clone());
-                Ok(())
-            }
-            Statement::HandlerDefinition { class_name, inline_type, body } => {
-                if let Some(fields) = inline_type {
-                    self.define_type(class_name.clone(), fields.clone());
-                }
+            Statement::HandlerDefinition { class_name, body } => {
                 self.define_handler(class_name.clone(), body.clone());
                 Ok(())
             }

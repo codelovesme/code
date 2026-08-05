@@ -1,5 +1,5 @@
 -> Handler-only definition: no type declaration, dynamic field access
-type Pong { ok ∈ Number }
+Pong = Particle ∩ { _class ∈ "Pong", ok ∈ Number }
 
 Ping => {
     return Pong{ ok = 1 }

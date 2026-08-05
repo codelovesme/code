@@ -1,6 +1,8 @@
--> `type` declares a reusable schema: field names paired with constraints.
+-> A particle type is just a named schema, built from the predefined
+-> `Particle` base (`_class`/`_created`) and `∩` (schema merge) — no
+-> separate `type` keyword. `_class` is pinned explicitly to the name.
 -> Constructing a value validates it against that schema.
-type Point { x ∈ Number, y ∈ Number }
+Point = Particle ∩ { _class ∈ "Point", x ∈ Number, y ∈ Number }
 origin = Point { x = 0, y = 0 }
 assert origin.x = 0
 

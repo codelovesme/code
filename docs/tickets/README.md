@@ -37,6 +37,7 @@ finished, priority no longer matters for it. Numbers are stable identifiers
 | [27](done/27-set-op-domain-materialization.md) | `∪`/`∩` materialize an unresolved-but-finite domain (scalar range, Schema, or Union) into a Set instead of demanding resolution first |
 | [28](done/28-member-of-general-expression.md) | `∈`/`∉` as a boolean expression accepts a general right side (a bound Set/Schema/Union variable), not just type-shaped syntax |
 | [29](done/29-member-of-universal-singleton.md) | `∈`'s right side is never rejected: any value denotes the singleton set containing itself, not just Set/Schema/Union |
+| [30](done/30-remove-type-keyword.md) | Remove `type`: particle types are plain `∩`-merged Schema variables built on a predefined `Particle` base |
 
 `cargo test --workspace` and the `.code` suite are fully green.
 

@@ -1,9 +1,9 @@
 -> Persistence organelle: handles Save and Load particles
 link ../particles/common
 
-type Save { key ∈ String, value ∈ String }
-type Load { key ∈ String }
-type LoadResult { key ∈ String, found ∈ Boolean, value ∈ String }
+Save = Particle ∩ { _class ∈ "Save", key ∈ String, value ∈ String }
+Load = Particle ∩ { _class ∈ "Load", key ∈ String }
+LoadResult = Particle ∩ { _class ∈ "LoadResult", key ∈ String, found ∈ Boolean, value ∈ String }
 
 Save => {
     return ACK { source = "persistence" }

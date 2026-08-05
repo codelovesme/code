@@ -1,8 +1,8 @@
 -> Assert on Exception inside handler returns Exception to caller
 
-type Check { value ∈ Number }
+Check = Particle ∩ { _class ∈ "Check", value ∈ Number }
 
-Check{value ∈ Number} => {
+Check => {
     response = Exception { message = "Something failed" }
     assert response
     return Check { value = 0 }
@@ -14,9 +14,9 @@ assert result.message = "Something failed"
 
 -> Assert false inside handler returns Exception to caller
 
-type Run { }
+Run = Particle ∩ { _class ∈ "Run" }
 
-Run{} => {
+Run => {
     assert false
     return Run {}
 }
@@ -27,10 +27,10 @@ assert result2.message = "Assertion failed"
 
 -> Assert true inside handler continues normally
 
-type Greet { name ∈ String }
-type Greeting { text ∈ String }
+Greet = Particle ∩ { _class ∈ "Greet", name ∈ String }
+Greeting = Particle ∩ { _class ∈ "Greeting", text ∈ String }
 
-Greet{name ∈ String} => {
+Greet => {
     assert true
     return Greeting { text = "Hello" }
 }
@@ -41,10 +41,10 @@ assert result3.text = "Hello"
 
 -> Assert on non-exception value inside handler continues normally
 
-type Compute { x ∈ Number }
-type Answer { value ∈ Number }
+Compute = Particle ∩ { _class ∈ "Compute", x ∈ Number }
+Answer = Particle ∩ { _class ∈ "Answer", value ∈ Number }
 
-Compute{x ∈ Number} => {
+Compute => {
     assert x
     return Answer { value = x * 2 }
 }

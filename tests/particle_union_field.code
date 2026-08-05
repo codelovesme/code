@@ -1,5 +1,6 @@
 
-type User {
+User = Particle ∩ {
+    _class ∈ "User",
     name ∈ String,
     status ∈ "active" ∪ "inactive" ∪ "pending"
 }

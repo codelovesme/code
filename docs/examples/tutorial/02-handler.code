@@ -1,9 +1,9 @@
 -> Tutorial step 2: a handler that validates one order — accept if the
 -> quantity is positive, reject otherwise. No functions anywhere; this
 -> `Order => { ... }` block is a handler, invoked with `emit`.
-type Order { item ∈ String, quantity ∈ Number, unit_price ∈ Number }
-type ValidatedOrder { item ∈ String, quantity ∈ Number, unit_price ∈ Number, total ∈ Number }
-type RejectedOrder { item ∈ String, reason ∈ String }
+Order = Particle ∩ { _class ∈ "Order", item ∈ String, quantity ∈ Number, unit_price ∈ Number }
+ValidatedOrder = Particle ∩ { _class ∈ "ValidatedOrder", item ∈ String, quantity ∈ Number, unit_price ∈ Number, total ∈ Number }
+RejectedOrder = Particle ∩ { _class ∈ "RejectedOrder", item ∈ String, reason ∈ String }
 
 Order => {
     if quantity > 0 {

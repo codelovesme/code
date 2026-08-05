@@ -1,6 +1,6 @@
 -> Split handler definition: type declared separately, handler declared later
-type Alert { text ∈ String }
-type Ack { ok ∈ Number }
+Alert = Particle ∩ { _class ∈ "Alert", text ∈ String }
+Ack = Particle ∩ { _class ∈ "Ack", ok ∈ Number }
 
 Alert => {
     assert text = "fire"

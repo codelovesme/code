@@ -1,7 +1,7 @@
 -> Handler default return: handlers without return return Null
-type Ping { }
+Ping = Particle ∩ { _class ∈ "Ping" }
 
-Ping{} => {
+Ping => {
     -> no return statement
     x = 42
 }

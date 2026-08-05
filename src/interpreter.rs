@@ -3,8 +3,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use crate::ast::{
-    BinaryOp, ConstraintExpr, Expression, HandlerTarget, ObjectField, Program, Spanned, Statement,
-    TypeExpr, UnaryOp,
+    BinaryOp, ConstraintExpr, Expression, FieldConstraint, HandlerTarget, ObjectField, Program,
+    Spanned, Statement, TypeExpr, UnaryOp,
 };
 use crate::environment::Environment;
 use crate::native_module::EmitQueue;
@@ -84,9 +84,21 @@ pub struct Interpreter {
     current_span: Option<crate::ast::Span>,
 }
 
+/// Predefines `Particle` (the base schema every constructed object satisfies
+/// — `_class`/`_created` are always interpreter-injected) and `Exception`
+/// (the built-in exception type, self-referential via `innerException`) as
+/// ordinary bound Schema variables. Executed once per `Interpreter::new()`
+/// through the normal statement path — this replaces what used to be a
+/// hand-registered `type_registry` entry, now that particle types are
+/// plain `∩`-merged Schema values instead of a separate `type` keyword.
+const BOOTSTRAP_SOURCE: &str = "\
+Particle = { _class ∈ String, _created ∈ Number }
+Exception = Particle ∩ { _class ∈ \"Exception\", message ∈ String, innerException ∈ Exception ∪ Null }
+";
+
 impl Interpreter {
     pub fn new() -> Self {
-        Interpreter {
+        let mut interp = Interpreter {
             env: Environment::new(),
             handler_return_value: None,
             in_handler_depth: 0,
@@ -96,7 +108,24 @@ impl Interpreter {
             keep_alive: false,
             yield_stack: Vec::new(),
             current_span: None,
+        };
+        let (program, errors) = crate::parser::parse_source(BOOTSTRAP_SOURCE);
+        assert!(errors.is_empty(), "bootstrap source failed to parse: {:?}", errors);
+        for stmt in program.expect("bootstrap source produced no program").statements {
+            interp.current_span = Some(stmt.span.clone());
+            // Every bootstrap statement is a top-level `Name = ...` binding
+            // — record the name before exec_statement consumes the node,
+            // so bindings()/bindings_detailed() (the playground result
+            // panel, T19) can exclude it from what looks like the user's
+            // own program output.
+            if let Statement::Constraint { variable, .. } = &stmt.node {
+                interp.env.mark_builtin(variable.clone());
+            }
+            interp
+                .exec_statement(stmt.node)
+                .expect("bootstrap source failed to execute");
         }
+        interp
     }
 
     /// Execute an entire program.
@@ -290,17 +319,7 @@ impl Interpreter {
             } => {
                 self.exec_constraint(&variable, constraint)?;
             }
-            Statement::TypeDeclaration { name, fields } => {
-                self.env.define_type(name, fields);
-            }
-            Statement::HandlerDefinition {
-                class_name,
-                inline_type,
-                body,
-            } => {
-                if let Some(fields) = inline_type {
-                    self.env.define_type(class_name.clone(), fields);
-                }
+            Statement::HandlerDefinition { class_name, body } => {
                 self.env.define_handler(class_name, body)?;
             }
             Statement::HandlerInvoke { particle, target } => {
@@ -367,12 +386,25 @@ impl Interpreter {
                             map.insert(name.clone(), val);
                         }
                         self.env.pop_scope();
+                        // A module-level `Log = Particle ∩ {...}` is an
+                        // ordinary Schema-valued export (no more separate
+                        // `type` registry) — also bind it at the flat
+                        // qualified key `alias.Log` so `m.Log { ... }`
+                        // particle construction can find and validate
+                        // against it, the same as `public_types` does for
+                        // native/wasm-imported types below.
+                        for (name, val) in &map {
+                            if matches!(val.as_ref(), Value::Schema(_)) {
+                                self.env
+                                    .define(format!("{}.{}", alias_name, name), Rc::clone(val));
+                            }
+                        }
                         let module_val = Value::object(map);
                         self.env.define(alias_name.clone(), module_val);
                         for t in &public_types {
-                            self.env.define_type(
+                            self.env.define(
                                 format!("{}.{}", alias_name, t.name),
-                                t.fields.clone(),
+                                Value::schema(field_constraints_to_schema(&t.fields)),
                             );
                         }
                         for h in &public_handlers {
@@ -404,7 +436,10 @@ impl Interpreter {
                             self.env.define(name, val);
                         }
                         for t in &public_types {
-                            self.env.define_type(t.name.clone(), t.fields.clone());
+                            self.env.define(
+                                t.name.clone(),
+                                Value::schema(field_constraints_to_schema(&t.fields)),
+                            );
                         }
                         for h in &public_handlers {
                             self.env
@@ -434,9 +469,9 @@ impl Interpreter {
                         let module_val = Value::object(map);
                         self.env.define(alias_name.clone(), module_val);
                         for t in &types {
-                            self.env.define_type(
+                            self.env.define(
                                 format!("{}.{}", alias_name, t.name),
-                                t.fields.clone(),
+                                Value::schema(field_constraints_to_schema(&t.fields)),
                             );
                         }
                         for h in &handlers {
@@ -457,7 +492,10 @@ impl Interpreter {
                             self.env.define(name.clone(), Rc::clone(val));
                         }
                         for t in &types {
-                            self.env.define_type(t.name.clone(), t.fields.clone());
+                            self.env.define(
+                                t.name.clone(),
+                                Value::schema(field_constraints_to_schema(&t.fields)),
+                            );
                         }
                         for h in &handlers {
                             self.env
@@ -473,6 +511,7 @@ impl Interpreter {
                     Value::Boolean(false) => {
                         let mut fields = HashMap::new();
                         fields.insert("_class".to_string(), Value::string("Exception"));
+                        fields.insert("_created".to_string(), Value::number(0.0));
                         fields
                             .insert("message".to_string(), Value::string("Assertion failed"));
                         fields.insert("innerException".to_string(), Value::null());
@@ -1171,7 +1210,20 @@ impl Interpreter {
                     None => class_name.clone(),
                 };
 
-                let type_def = self.env.get_type(&type_key).cloned();
+                // A particle "type" is just a bound variable holding a
+                // Value::Schema now (no more separate type_registry) —
+                // e.g. `Log = Particle ∩ { _class ∈ "Log", ... }`. If
+                // type_key isn't bound to a Schema (undeclared, or bound
+                // to something else entirely), construction stays
+                // unvalidated — same fallback as always existed for any
+                // undeclared class name.
+                let type_def: Option<HashMap<String, Domain>> = match self.env.get(&type_key) {
+                    Some(v) => match v.as_ref() {
+                        Value::Schema(fields) => Some(fields.clone()),
+                        _ => None,
+                    },
+                    None => None,
+                };
 
                 let mut spread_map: HashMap<String, Rc<Value>> = HashMap::new();
                 if let Some(source_expr) = spread {
@@ -1218,19 +1270,25 @@ impl Interpreter {
                             ObjectField::Computed(_, _) => None,
                             ObjectField::Constrained(..) => unreachable!("rejected above"),
                         }).collect();
-                    for fc in schema_fields {
-                        if !fc.optional
-                            && !provided.contains(fc.name.as_str())
-                            && !spread_map.contains_key(&fc.name)
+                    for (name, domain) in schema_fields {
+                        // _class/_created are always interpreter-injected,
+                        // never user-supplied literal fields — even though
+                        // Particle's base schema declares them.
+                        if name == "_class" || name == "_created" {
+                            continue;
+                        }
+                        if !domain_permits_missing(domain)
+                            && !provided.contains(name.as_str())
+                            && !spread_map.contains_key(name)
                         {
                             return Err(format!(
                                 "Missing field '{}' for type '{}'",
-                                fc.name, type_key
+                                name, type_key
                             ));
                         }
                     }
                     let schema_names: std::collections::HashSet<&str> =
-                        schema_fields.iter().map(|fc| fc.name.as_str()).collect();
+                        schema_fields.keys().map(|n| n.as_str()).collect();
                     for f in &fields {
                         if let ObjectField::Static(pf_name, _) = f {
                             if !schema_names.contains(pf_name.as_str()) {
@@ -1254,21 +1312,17 @@ impl Interpreter {
                         match field {
                             ObjectField::Static(name, expr) => {
                                 let val = self.eval_expr(expr)?;
-                                if let Some(fc) = schema_fields.iter().find(|fc| fc.name == name) {
-                                    let expected_type = fc.primary_type();
-                                    let ok_null = fc.optional && matches!(val.as_ref(), Value::Null);
-                                    if !ok_null
-                                        && !self.value_matches_type_expr(
-                                            &val,
-                                            &expected_type,
-                                            &mut Vec::new(),
-                                        )
+                                if let Some(domain) = schema_fields.get(&name) {
+                                    if domain
+                                        .clone()
+                                        .intersect(Domain::Exact(Rc::clone(&val)))
+                                        .is_empty_domain()
                                     {
                                         return Err(format!(
-                                            "Type mismatch for field '{}' of '{}': expected {}, got {}",
+                                            "Type mismatch for field '{}' of '{}': {}, got {}",
                                             name,
                                             type_key,
-                                            expected_type,
+                                            domain.describe(),
                                             val.type_name()
                                         ));
                                     }
@@ -1292,9 +1346,9 @@ impl Interpreter {
                         }
                     }
 
-                    for fc in schema_fields {
-                        if fc.optional && !map.contains_key(&fc.name) {
-                            map.insert(fc.name.clone(), Value::null());
+                    for (name, domain) in schema_fields {
+                        if domain_permits_missing(domain) && !map.contains_key(name) {
+                            map.insert(name.clone(), Value::null());
                         }
                     }
 
@@ -1833,6 +1887,43 @@ impl Interpreter {
             },
             BinaryOp::And | BinaryOp::Or => unreachable!(),
         }
+    }
+}
+
+/// Convert a native/wasm-ABI-derived field list into a Schema's field-
+/// domain map. Only needed at the module-import boundary now — an
+/// in-source particle type is just an ordinary `∩`-merged Schema
+/// expression (no conversion needed, it's already a `Value::Schema`) —
+/// but a linked native/wasm module's exported types arrive as
+/// `FieldConstraint`s straight off the FFI ABI (`native_module.rs`,
+/// `wasm_module.rs`) and need converting into the same `Domain`
+/// representation to be usable as a qualified `module.ClassName { ... }`
+/// constructor target. `primary_type()` already carries the full
+/// `Type ∪ Null` shape for an optional field, so no separate optional
+/// handling is needed here — `domain_permits_missing` picks it up later.
+fn field_constraints_to_schema(fields: &[FieldConstraint]) -> HashMap<String, Domain> {
+    fields
+        .iter()
+        .map(|fc| (fc.name.clone(), Domain::TypeDomain(fc.primary_type())))
+        .collect()
+}
+
+/// Whether a particle field's declared domain permits the field to be
+/// omitted (the old `field ∈ Type | Null` / `∈ Type ∪ Null` idiom).
+/// Deliberately narrow rather than a generic "does this domain admit
+/// Null" probe via `intersect` — `Domain::intersect` has an intentionally
+/// loose pass-through for `TypeDomain` wrapping a `Union`/`Literal`/
+/// `Intersection` (anything other than a bare `Named`), so a generic
+/// probe would misclassify e.g. `level ∈ "Error" ∪ "Info"` as optional.
+/// This mirrors exactly the rule the old parser-time sniff used, just
+/// applied to the field's `Domain` at construction time instead.
+fn domain_permits_missing(domain: &Domain) -> bool {
+    match domain {
+        Domain::TypeDomain(TypeExpr::Named(n)) if n == "Null" => true,
+        Domain::TypeDomain(TypeExpr::Union(parts)) => {
+            parts.iter().any(|t| matches!(t, TypeExpr::Named(n) if n == "Null"))
+        }
+        _ => false,
     }
 }
 

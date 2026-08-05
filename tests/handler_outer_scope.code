@@ -1,6 +1,6 @@
 -> Handler CAN read outer scope (closure-like)
-type Ping { value ∈ Number }
-type Result { total ∈ Number }
+Ping = Particle ∩ { _class ∈ "Ping", value ∈ Number }
+Result = Particle ∩ { _class ∈ "Result", total ∈ Number }
 
 outer = 42
 

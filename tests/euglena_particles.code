@@ -17,8 +17,8 @@ assert log._class = "Log"
 assert log.message = "hello"
 assert log.level = "Info"
 
-exc = Exception { source = "parser", message = "bad token" }
-assert exc._class = "Exception"
+exc = LogException { source = "parser", message = "bad token" }
+assert exc._class = "LogException"
 
 ack = ACK { source = "logger" }
 assert ack._class = "ACK"

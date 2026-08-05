@@ -1,5 +1,5 @@
--> Type declaration and typed particle constructor
-type Log { message ∈ String, level ∈ String }
+-> Particle type declaration and typed particle constructor
+Log = Particle ∩ { _class ∈ "Log", message ∈ String, level ∈ String }
 
 p = Log { message = "Hello World", level = "Info" }
 assert p._class = "Log"

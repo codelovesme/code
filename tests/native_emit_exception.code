@@ -1,11 +1,16 @@
 -> Test: native module emission — FireException handler emits an Exception particle.
 link native_modules/libtest_helper.so as helper
 
--> Define local handler for emitted Exception particles.
-Exception { source ∈ String, message ∈ String } => {
+-> Define local handler for emitted Exception particles. No local schema
+-> declaration needed — handler dispatch is purely _class-based (T30).
+-> The native module's own "Exception" type (source/message — deliberately
+-> not the language's built-in Exception, a different shape) is already
+-> registered at the qualified `helper.Exception`, used below for the
+-> return.
+Exception => {
     assert source = "test_helper"
     assert message = "something went wrong"
-    return Exception { source = source, message = message }
+    return helper.Exception { source = source, message = message }
 }
 
 -> Invoking FireException handler emits an Exception particle.

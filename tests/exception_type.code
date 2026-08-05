@@ -12,7 +12,7 @@ assert outer.innerException ≠ Null
 assert outer.innerException.message = "Root cause"
 
 -> Assert passes on non-exception values
-type Foo { x ∈ Number }
+Foo = Particle ∩ { _class ∈ "Foo", x ∈ Number }
 result = Foo { x = 42 }
 assert result
 assert "hello"

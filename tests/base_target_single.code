@@ -1,6 +1,6 @@
 -> `base` target: dispatch to the module that linked this module
 
-type Ping { value ∈ Number }
+Ping = Particle ∩ { _class ∈ "Ping", value ∈ Number }
 
 Ping => {
     return Ping { value = value + 10 }

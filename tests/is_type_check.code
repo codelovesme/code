@@ -4,7 +4,7 @@ assert "hello" ∈ String
 b = 42 = 42
 assert b ∈ Boolean
 
-type Point { x ∈ Number, y ∈ Number }
+Point = Particle ∩ { _class ∈ "Point", x ∈ Number, y ∈ Number }
 p = Point { x = 1, y = 2 }
 assert p ∈ Point
 assert p ∈ Object

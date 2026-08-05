@@ -1,7 +1,7 @@
 -> Handler returning a plain object (not a Particle) should fail
-type Ping { }
+Ping = Particle ∩ { _class ∈ "Ping" }
 
-Ping{} => {
+Ping => {
     return { x = 1 }
 }
 

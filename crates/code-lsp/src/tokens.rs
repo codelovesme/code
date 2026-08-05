@@ -43,7 +43,7 @@ pub struct Token {
 }
 
 const KEYWORDS: &[&str] = &[
-    "if", "loop", "over", "break", "return", "assert", "link", "as", "type",
+    "if", "loop", "over", "break", "return", "assert", "link", "as",
     "private", "is", "not", "and", "or", "in", "emit", "to", "get", "this",
     "base",
 ];

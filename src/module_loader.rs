@@ -450,10 +450,6 @@ fn collect_public_names(
                     span,
                 ));
             }
-            Statement::TypeDeclaration { name, fields } => {
-                pub_types.push(TypeInfo { name: name.clone(), fields: fields.clone() });
-                body.push(Spanned::new(Statement::TypeDeclaration { name, fields }, span));
-            }
             Statement::Import {
                 alias,
                 body: import_body,
@@ -479,17 +475,13 @@ fn collect_public_names(
                     span,
                 ));
             }
-            Statement::HandlerDefinition { class_name, inline_type, body: handler_body } => {
+            Statement::HandlerDefinition { class_name, body: handler_body } => {
                 pub_handlers.push(HandlerInfo {
                     class_name: class_name.clone(),
                     body: handler_body.clone(),
                 });
-                // Propagate inline handler types so they survive scope pop in compile_import.
-                if let Some(ref fields) = inline_type {
-                    pub_types.push(TypeInfo { name: class_name.clone(), fields: fields.clone() });
-                }
                 body.push(Spanned::new(
-                    Statement::HandlerDefinition { class_name, inline_type, body: handler_body },
+                    Statement::HandlerDefinition { class_name, body: handler_body },
                     span,
                 ));
             }

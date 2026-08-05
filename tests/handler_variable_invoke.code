@@ -1,6 +1,6 @@
 -> Handler invocation using a variable (not a literal)
-type Msg { content ∈ String }
-type Echo { text ∈ String }
+Msg = Particle ∩ { _class ∈ "Msg", content ∈ String }
+Echo = Particle ∩ { _class ∈ "Echo", text ∈ String }
 
 Msg => {
     return Echo{ text = content }

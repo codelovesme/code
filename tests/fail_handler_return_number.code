@@ -1,7 +1,7 @@
 -> Handler returning a number should fail (only Particles allowed)
-type Ping { }
+Ping = Particle ∩ { _class ∈ "Ping" }
 
-Ping{} => {
+Ping => {
     return 42
 }
 

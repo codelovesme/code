@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::ast::{ConstraintExpr, FieldConstraint, Spanned, Statement, TypeExpr};
+use crate::ast::{Spanned, Statement};
 use crate::native_module::NativeFnPtr;
 use crate::runtime::{Domain, Value};
 
@@ -20,51 +20,42 @@ pub struct ConstrainedVar {
 /// When a variable's value is needed, the domain must resolve to a singleton.
 pub struct Environment {
     scopes: Vec<HashMap<String, ConstrainedVar>>,
-    /// Type definitions (particle schemas): name -> field constraints.
-    type_registry: Vec<HashMap<String, Vec<FieldConstraint>>>,
     /// Handler definitions: class_name -> handler body (statements).
     handler_registry: Vec<HashMap<String, Vec<Spanned<Statement>>>>,
     /// Native handler definitions: class_name -> native function wrapper.
     native_handler_registry: Vec<HashMap<String, NativeFnPtr>>,
+    /// Top-level names bound by the interpreter's own bootstrap (`Particle`,
+    /// `Exception` — see `Interpreter::new()`), excluded from `bindings()`
+    /// so a host UI's result panel shows only what the user's own program
+    /// bound, not the built-ins every program silently starts with.
+    builtin_names: HashSet<String>,
 }
 
 impl Environment {
-    /// Create a new environment with an empty global scope.
-    /// Pre-registers the built-in `Exception` type.
+    /// Create a new environment with an empty global scope. The built-in
+    /// `Particle`/`Exception` schemas are bound separately, by the
+    /// interpreter executing a bootstrap source string — see
+    /// `Interpreter::new()` — rather than pre-registered here, now that
+    /// particle types are plain Schema variables (no more `type` keyword).
     pub fn new() -> Self {
-        let mut env = Environment {
+        Environment {
             scopes: vec![HashMap::new()],
-            type_registry: vec![HashMap::new()],
             handler_registry: vec![HashMap::new()],
             native_handler_registry: vec![HashMap::new()],
-        };
-        // Register built-in Exception type.
-        env.define_type(
-            "Exception".to_string(),
-            vec![
-                FieldConstraint {
-                    name: "message".to_string(),
-                    constraints: vec![ConstraintExpr::IsType(TypeExpr::Named(
-                        "String".to_string(),
-                    ))],
-                    optional: false,
-                },
-                FieldConstraint {
-                    name: "innerException".to_string(),
-                    constraints: vec![ConstraintExpr::IsType(TypeExpr::Named(
-                        "Exception".to_string(),
-                    ))],
-                    optional: true,
-                },
-            ],
-        );
-        env
+            builtin_names: HashSet::new(),
+        }
+    }
+
+    /// Mark a top-level name as interpreter-bootstrapped rather than
+    /// user-defined — see `Interpreter::new()`. `bindings()` excludes
+    /// these.
+    pub fn mark_builtin(&mut self, name: String) {
+        self.builtin_names.insert(name);
     }
 
     /// Push a new (empty) scope frame onto the stack.
     pub fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
-        self.type_registry.push(HashMap::new());
         self.handler_registry.push(HashMap::new());
         self.native_handler_registry.push(HashMap::new());
     }
@@ -75,7 +66,6 @@ impl Environment {
             panic!("Cannot pop the global scope");
         }
         self.scopes.pop();
-        self.type_registry.pop();
         self.handler_registry.pop();
         self.native_handler_registry.pop();
     }
@@ -189,6 +179,7 @@ impl Environment {
     pub fn bindings(&self) -> Vec<(String, Option<Rc<Value>>)> {
         self.scopes[0]
             .iter()
+            .filter(|(name, _)| !self.builtin_names.contains(*name))
             .map(|(name, var)| (name.clone(), var.domain.is_singleton()))
             .collect()
     }
@@ -203,6 +194,7 @@ impl Environment {
     pub fn bindings_detailed(&self) -> Vec<(String, Option<Rc<Value>>, String)> {
         self.scopes[0]
             .iter()
+            .filter(|(name, _)| !self.builtin_names.contains(*name))
             .map(|(name, var)| {
                 (
                     name.clone(),
@@ -244,28 +236,6 @@ impl Environment {
                 return;
             }
         }
-    }
-
-    // -----------------------------------------------------------------------
-    // Type registry
-    // -----------------------------------------------------------------------
-
-    /// Register a type definition in the current scope.
-    pub fn define_type(&mut self, name: String, fields: Vec<FieldConstraint>) {
-        self.type_registry
-            .last_mut()
-            .expect("No active scope")
-            .insert(name, fields);
-    }
-
-    /// Look up a type definition, searching from innermost scope outward.
-    pub fn get_type(&self, name: &str) -> Option<&Vec<FieldConstraint>> {
-        for scope in self.type_registry.iter().rev() {
-            if let Some(fields) = scope.get(name) {
-                return Some(fields);
-            }
-        }
-        None
     }
 
     // -----------------------------------------------------------------------
@@ -366,46 +336,4 @@ impl Environment {
             .collect()
     }
 
-    /// Save the current scope stack, replacing it with a fresh isolated scope.
-    /// Type definitions are cloned into the fresh scope.
-    pub fn save_and_isolate_scopes(
-        &mut self,
-    ) -> (
-        Vec<HashMap<String, ConstrainedVar>>,
-        Vec<HashMap<String, Vec<FieldConstraint>>>,
-        Vec<HashMap<String, Vec<Spanned<Statement>>>>,
-        Vec<HashMap<String, NativeFnPtr>>,
-    ) {
-        // Collect all types from all scopes into one map.
-        let mut merged_types = HashMap::new();
-        for scope in &self.type_registry {
-            for (k, v) in scope {
-                merged_types.insert(k.clone(), v.clone());
-            }
-        }
-
-        let saved_scopes = std::mem::replace(&mut self.scopes, vec![HashMap::new()]);
-        let saved_types = std::mem::replace(&mut self.type_registry, vec![merged_types]);
-        let saved_handlers = std::mem::replace(&mut self.handler_registry, vec![HashMap::new()]);
-        let saved_native_handlers =
-            std::mem::replace(&mut self.native_handler_registry, vec![HashMap::new()]);
-
-        (saved_scopes, saved_types, saved_handlers, saved_native_handlers)
-    }
-
-    /// Restore a previously saved scope stack.
-    pub fn restore_scopes(
-        &mut self,
-        saved: (
-            Vec<HashMap<String, ConstrainedVar>>,
-            Vec<HashMap<String, Vec<FieldConstraint>>>,
-            Vec<HashMap<String, Vec<Spanned<Statement>>>>,
-            Vec<HashMap<String, NativeFnPtr>>,
-        ),
-    ) {
-        self.scopes = saved.0;
-        self.type_registry = saved.1;
-        self.handler_registry = saved.2;
-        self.native_handler_registry = saved.3;
-    }
 }
