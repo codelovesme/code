@@ -7,6 +7,10 @@ on:
       - "site/**"
       - "docs/examples/**"
       - "crates/code-wasm/**"
+      - "src/**"
+      - "crates/code-abi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - "install.sh"
       - ".github/workflows/pages.yml"
   release:
