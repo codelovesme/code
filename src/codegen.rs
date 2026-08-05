@@ -785,6 +785,11 @@ impl<'ctx> Codegen<'ctx> {
                     Err("Yield requires a loop with 'get'".to_string())
                 }
             }
+            Statement::LoopDomain { variable, .. } => Err(format!(
+                "'loop {}' (enumerating a variable's own domain) is not supported by \
+                 the native backend yet — it's interpreter-only for now (T26). Use `code run`.",
+                variable
+            )),
         }
     }
 
@@ -1357,6 +1362,11 @@ impl<'ctx> Codegen<'ctx> {
                     BinaryOp::Or => {
                         self.compile_logical_or(left, right)
                     }
+                    BinaryOp::Intersect | BinaryOp::Union => {
+                        Err("Set operators ('∩'/'∪') are not supported by the native \
+                             backend yet — interpreter-only for now (T26). Use `code run`."
+                            .to_string())
+                    }
                     _ => {
                         let (left_raw, left_needs_drop) = self.compile_expr_borrowed(left)?;
                         let (right_raw, right_needs_drop) = self.compile_expr_borrowed(right)?;
@@ -1382,6 +1392,11 @@ impl<'ctx> Codegen<'ctx> {
             Expression::TypeCheck { expr, type_expr, negated } => {
                 self.compile_type_check(expr, type_expr, *negated)
             }
+            Expression::SetLiteral(_) => Err(
+                "Set literals ('{ ... }' with bare elements) are not supported by the \
+                 native backend yet — this is interpreter-only for now (T26). Use `code run`."
+                    .to_string(),
+            ),
         }
     }
 
@@ -5788,6 +5803,9 @@ impl<'ctx> Codegen<'ctx> {
             }
             Expression::PropertyAccess(_, _) | Expression::IndexAccess { .. } => {
                 Err("Cannot infer type of non-literal expression at compile time".to_string())
+            }
+            Expression::SetLiteral(_) => {
+                Err("Set literals are not supported by the native backend yet (T26)".to_string())
             }
         }
     }

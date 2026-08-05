@@ -126,7 +126,11 @@ impl EmittedValue {
                     .collect();
                 EmittedValue::Object(entries)
             }
-            Value::Array(elements) => {
+            Value::Array(elements) | Value::Set(elements) => {
+                // Sets flatten to an array crossing this boundary — the
+                // native-module ABI has no Set tag yet (T26 is
+                // interpreter-only for Phase 1); a deduplicated element
+                // list is already a valid (if lossy-of-"setness") Array.
                 EmittedValue::Array(elements.iter().map(|e| EmittedValue::from_value(e)).collect())
             }
             Value::Null => EmittedValue::Null,
@@ -287,7 +291,11 @@ pub fn value_to_code_value(val: &Value, backing: &mut CodeValueBacking) -> CodeV
                 ..CodeValue::null()
             }
         }
-        Value::Array(elements) => {
+        // Sets flatten to an array crossing this boundary — the native-module
+        // ABI has no Set tag yet (T26 is interpreter-only for Phase 1); a
+        // deduplicated element list is already a valid (if lossy-of-
+        // "setness") Array.
+        Value::Array(elements) | Value::Set(elements) => {
             let mut child = CodeValueBacking::new();
             let mut code_elements: Vec<CodeValue> = Vec::new();
             for elem in elements {

@@ -1,0 +1,9 @@
+-> T26: `loop a { }` must NOT resolve the outer `a` — visiting every
+-> possibility isn't the same as picking one (agreed explicitly with the
+-> owner, not a default). After the loop, `a` is exactly as unresolved as
+-> before it, so using it in an operation still fails.
+a ∈ { 1, 2, 3 }
+loop a get doubled {
+    yield a * 2
+}
+b = a + 1

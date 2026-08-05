@@ -1,0 +1,7 @@
+-> T26: pinning a set-narrowed variable to a value outside the set must be a
+-> contradiction, not a silent override — this was a real gap (ValueSet had
+-> no intersect() arms against Exact/other domains) caught while building
+-> Phase 1 and fixed alongside it.
+ml = { 1, 2 }
+x ∈ ml
+x = 5

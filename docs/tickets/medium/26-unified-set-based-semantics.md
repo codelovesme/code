@@ -3,7 +3,7 @@
 - **Priority:** Medium (foundational / large — a language-model redesign, not a feature)
 - **Type:** Language design / core semantics
 - **Supersedes:** [T23](23-set-domain-and-possibility-enumeration.md) (set literals + `loop`), [T25](25-partially-resolved-objects.md) (objects with unresolved fields) — both fold into this unified model.
-- **Status:** Design locked (2026-08-05). All three core decisions resolved — see below. Implementation starting; tracked phase by phase in "Implementation plan".
+- **Status:** Design locked (2026-08-05), all three core decisions resolved. **Phase 1 (value-sets) implemented and shipped (2026-08-05)** — see "Implementation plan" for what landed and two real bugs/infra issues caught and fixed along the way. Phase 2 (object-schemas) not started.
 
 ## The model
 
@@ -102,9 +102,18 @@ numeric domains — uniformly:
   every field constraint happens to be `=`.
 - **Nested sets:** `rt = { 1, 2, { k, lm } }` — an element that is itself a
   set. Works because sets are first-class values (Decision 1).
-- Mixing bare elements and `name ∈/=` entries in one literal is a parse error
-  — forces discriminated unions to use an explicit tag field instead of a
-  malformed mixed literal.
+- **Correction (found during Phase 1 implementation):** mixing bare elements
+  and `name = …` in one `{ }` is *not* a parse error, and doesn't need to be
+  — there's no real ambiguity to guard against. `=` already exists as an
+  expression-level equality operator (used e.g. inside `if x = y`), so
+  `{ 1, name = "Ada" }` simply parses as a two-element set: the number `1`
+  and the boolean result of `name = "Ada"` (a genuine equality-comparison
+  expression, evaluated like any other set element — it only errors at
+  runtime if `name` isn't a bound variable, same as any other expression
+  would). Object-literal fields (`name = expr`) are a wholly separate
+  grammar production, tried first and either fully consuming the `{ … }` or
+  failing outright — there's no partial/ambiguous overlap with set-literal
+  parsing to resolve.
 
 ## Decisions (all resolved 2026-08-05)
 
@@ -170,6 +179,55 @@ examples, wasm smoke test, `fmt --check`) before and after every phase.
    `loop x over y get result`.
 7. `∩`/`∪` for value-sets (`{1,2} ∪ {3}`, `{1,2,3} ∩ {2,3,4}`).
 8. Tests in `tests/` + new `docs/examples/*.code`, wired into existing CI.
+
+**Phase 1: implemented (2026-08-05).** All 8 items above shipped. Notes on
+what changed from the plan, and two real problems hit and fixed along the
+way:
+
+- The `{ }` disambiguation (item 3) turned out to need no lookahead trickery:
+  `object_literal` is tried first and either fully matches or fails outright
+  (object fields require `name = expr`, which a bare set element like `1`
+  can never start with), so `.or(set_literal)` backtracks cleanly. The
+  predicted "riskiest" part wasn't risky in practice.
+- **Correction to item 3's "mixing is a parse error" framing** — see the
+  note added to the Literals section above. Not a parse error; `=` already
+  being a valid expression-level equality operator means a stray
+  `name = expr` inside `{ }` just parses as a boolean set element, no
+  ambiguity to guard against.
+- **Real bug caught and fixed in the same pass:** `Domain::intersect()` had
+  no arms for `ValueSet` against `Exact`/`ValueSet`/`RealRange`/
+  `IntegerRange` — exactly the gap flagged back in T23. Concretely,
+  `x ∈ {1,2}; x = 5` (5 not a member) silently succeeded instead of
+  contradicting, because the mismatch fell into the generic `Intersection`
+  wrapper, which never re-checks membership. Added the missing arms
+  (`runtime.rs`) so set-narrowing actually intersects like every other
+  domain kind — `x ∈ {1,2,3}; x > 1` now correctly narrows toward `{2,3}`
+  and can fully resolve, and an out-of-set pin is now a real contradiction.
+- **Real infra problem hit and fixed: adding `∩`/`∪` as two brand-new parser
+  precedence tiers caused a stack overflow parsing *any* input, even
+  trivial programs**, despite the CLI's existing 16MB parser thread
+  (`main.rs`). This parser combinator (`chumsky`) encodes the whole grammar
+  in the type system; the recursive `expr` in `build_expression` is already
+  reused dozens of times (object fields, particle fields, conditions, loop
+  bodies, ...), and two new wrapping tiers compounded far worse than
+  linearly. Root-caused and fixed by folding `∩` into the existing
+  `multiplicative` tier and `∪` into `additive` as extra operator
+  alternatives (same precedence, zero new tiers) instead of adding new
+  `.then().foldl()` layers — verified this removes the overflow entirely,
+  same 16MB stack. A related, separately-triggered problem surfaced first
+  during the same work: the *added* tiers (before being folded away) also
+  blew a `rust-lld` debug-info relocation limit (`R_X86_64_32 out of
+  range`) linking the final `code` binary (which statically embeds LLVM) —
+  fixed regardless, and now a documented workspace default, by setting
+  `[profile.dev] debug = "line-tables-only"` in the root `Cargo.toml` (no
+  effect on program behavior, keeps backtraces working, just drops full
+  per-type DWARF info that isn't needed for this project's debugging so
+  far).
+- Verified: full regression sweep green (workspace build, `cargo test`
+  workspace, 152/152 `.code` fixtures — 8 new — `docs/examples/run.sh`, and
+  the wasm smoke test against the real compiled `.wasm`, including two new
+  smoke-test cases for the unresolved-domain and domain-entailed-assert
+  bindings shape).
 
 **Phase 2 — object-schemas.** `Value::Object` gains field-constraint
 (not-yet-resolved-field) representation — T25's mechanism, now framed as

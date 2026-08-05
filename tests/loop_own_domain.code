@@ -1,0 +1,33 @@
+-> T26 Phase 1: `loop <var> { }` (no `over`) enumerates a scalar variable's
+-> own finite domain in place — a is never resolved by this, before or after.
+a ∈ { 1, 2, 3 }
+loop a get doubled {
+    yield a * 2
+}
+assert doubled = [2, 4, 6]
+
+-> A bounded integer domain (from range narrowing on `Z`) is finite and
+-> loopable the same way.
+n ∈ Z
+n > 0
+n < 4
+loop n get squares {
+    yield n * n
+}
+assert squares = [1, 4, 9]
+
+-> An already-resolved scalar loops trivially, once.
+r = 5
+loop r get once {
+    yield r * 10
+}
+assert once = [50]
+
+-> `loop x over <a Set value>` works exactly like looping over an Array —
+-> a resolved Set is a concrete finite collection, not a possibility space.
+s = { 7, 8, 9 }
+loop item over s get tripled {
+    yield item * 3
+}
+emit Length { value = tripled } to core get n
+assert n.value = 3

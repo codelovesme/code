@@ -1,0 +1,31 @@
+-> T26 Phase 1: `{ }` with bare elements is a set literal, distinct from an
+-> object literal (`{ name = expr }`). `=` pins a variable to the set as a
+-> concrete resolved VALUE — the variable IS the set, not one of its elements.
+p = { 1, 2, 3 }
+assert p ∈ Set
+
+-> Duplicates are removed — {1,1,2,2,2,3} and {1,2,3} are the same set.
+q = { 1, 1, 2, 2, 2, 3 }
+r = { 1, 2, 3 }
+assert q = r
+
+-> An empty `{}` is an empty OBJECT, never an empty set (no empty-set
+-> literal exists — Null already covers "no value").
+empty = {}
+assert empty ∈ Object
+
+-> Object literals (`name = expr` fields) are completely unaffected.
+o = { name = "Ada", age = 36 }
+assert o.name = "Ada"
+
+-> `{ a }` (single bare identifier) is a one-element set containing a's
+-> value, never shorthand for an object field.
+a = 5
+single = { a }
+assert single ∈ Set
+
+-> Sets can nest — an element can itself be a set (this is why sets must be
+-> first-class values, not just an internal narrowing representation).
+inner = { 1, 2 }
+nested = { 1, 2, inner }
+assert nested ∈ Set

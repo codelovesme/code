@@ -1,0 +1,15 @@
+-> T26 Phase 1: `∩`/`∪` are universal set operators (not type-expression-only
+-> syntax) when both operands are Set values.
+a = { 1, 2, 3 }
+b = { 2, 3, 4 }
+
+u = a ∪ b
+assert u = { 1, 2, 3, 4 }
+
+i = a ∩ b
+assert i = { 2, 3 }
+
+-> `∩` binds tighter than `∪`, mirroring the existing type-level precedence
+-> and `*`/`+`. { 1 } ∪ { 2, 3 } ∩ { 3, 4 } groups as { 1 } ∪ ({2,3} ∩ {3,4}).
+c = { 1 } ∪ { 2, 3 } ∩ { 3, 4 }
+assert c = { 1, 3 }

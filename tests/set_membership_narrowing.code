@@ -1,0 +1,41 @@
+-> T26 Phase 1: `x ∈ S` narrows a *scalar*'s domain to S's elements — x stays
+-> unresolved (possibly-many) until narrowed further to a single value.
+-> `=` is the singleton case of the same rule: `x = v ≡ x ∈ { v }`.
+
+-> Narrowing directly against a set literal.
+x ∈ { 1, 2 }
+x = 2
+assert x = 2
+
+-> Narrowing against a named set variable (the general-expression fallback —
+-> `∈` isn't limited to bare type names; a lowercase identifier holding a Set
+-> value works exactly like a set literal would).
+ml = { 1, 2, 3 }
+y ∈ ml
+y = 2
+assert y = 2
+
+-> Narrowing further with a second `∈` (or `>`/`<`) intersects — a value not
+-> in the original set is provably impossible, same as any other constraint
+-> chain. `z ∈ {1,2,3}; z ∈ {2,3,4}` can only be 2 or 3.
+z ∈ { 1, 2, 3 }
+z ∈ { 2, 3, 4 }
+assert z ≠ 1
+assert z ≠ 4
+
+-> A ValueSet combined with a range constraint narrows further, using the
+-> same intersection machinery as everything else — {1,2,3} ∩ (x > 1) is
+-> {2,3}, entailing x < 4 without ever resolving x to one value.
+w ∈ { 1, 2, 3 }
+w > 1
+assert w < 4
+
+-> ...and can fully resolve when the intersection lands on one value.
+v ∈ { 1, 2, 3 }
+v > 2
+assert v = 3
+
+-> The legacy `in [array]` form (pre-T26) still works unchanged.
+leg in [10, 20, 30]
+leg = 20
+assert leg = 20

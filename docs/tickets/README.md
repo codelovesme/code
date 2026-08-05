@@ -51,7 +51,7 @@ _(none right now)_
 | [23](medium/23-set-domain-and-possibility-enumeration.md) | First-class Set domain: `⦃…⦄` literals, domain-borrowing `∈`, `loop <var> {}` (superseded by T26) |
 | [24](medium/24-native-backend-constraint-narrowing.md) | Native backend constraint narrowing: silent-miscompile hole closed (Phase 1 done), full parity undecided (Phase 2) |
 | [25](medium/25-partially-resolved-objects.md) | Objects with unresolved (constrained-only) fields (superseded by T26) |
-| [26](medium/26-unified-set-based-semantics.md) | Unified set-based semantics: variables are constraint sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪` (supersedes T23, T25; 3 open decisions) |
+| [26](medium/26-unified-set-based-semantics.md) | Unified set-based semantics: variables are constraint sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪` (supersedes T23, T25; Phase 1 shipped, Phase 2 open) |
 
 ## Active — Low priority
 
@@ -174,11 +174,23 @@ literals go back to `{ }` (not `⦃…⦄`), and sets become first-class *values
 (forced by nested sets like `{1, 2, {k, lm}}`). Much of this session's
 shipped work (domain intersection, singleton=resolved, `=` via intersect,
 `Z/N/R` domains, domain-entailed `assert b > 3`, `loop` over a finite
-domain) turns out to be this model's primitives already. Three core
-decisions remain open in the ticket (sets-as-values, `{ }` set/object
-disambiguation, open-vs-closed schemas), each with a recommendation. Large —
-a language-model redesign, phaseable; not implementation-ready until the
-three decisions are made.
+domain) turns out to be this model's primitives already. All three core
+decisions (sets-as-values, `{ }` set/object disambiguation, open-vs-closed
+schemas) were resolved the same day.
+
+**Phase 1 (value-sets) shipped 2026-08-05**: `{ }` set literals as a genuine
+`Value::Set`, uniform `=`/`∈` narrowing, `loop <var> { }` enumerating a
+scalar's own finite domain, and universal `∩`/`∪` for set values. Caught and
+fixed two real problems along the way: `Domain::intersect()` was missing
+`ValueSet` arms entirely (the exact gap T23 had flagged — `x ∈ {1,2}; x = 5`
+silently succeeded instead of contradicting), and adding `∩`/`∪` as new
+parser precedence tiers blew the interpreter's 16MB parse-stack on *any*
+input (fixed by folding them into the existing `*`/`+` tiers instead of
+adding new ones — this parser's recursive `expr` is reused too many places
+for new wrapping layers to be free). Also had to drop workspace dev builds
+to `debug = "line-tables-only"` (`Cargo.toml`) after the pre-fold tiers hit
+a separate `rust-lld` debug-info relocation limit linking the LLVM-embedding
+`code` binary. Phase 2 (object-schemas) not started.
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).

@@ -1,0 +1,8 @@
+-> T26: `loop <var> { }` requires a FINITE domain. An unbounded range has
+-> infinitely many candidates — looping over it would break the language's
+-> "total work is always statically bounded" guarantee (the same reason
+-> there's no while/counter-loop/recursion). Must be rejected, not hang.
+x > 0
+loop x {
+    assert x > 0
+}

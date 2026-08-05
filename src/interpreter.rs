@@ -214,6 +214,56 @@ impl Interpreter {
         self.env.bindings_detailed()
     }
 
+    /// Shared body for `loop <var> over <expr> [, <index>]` and
+    /// `loop <var> { }` (T26, no `over` — enumerates `variable`'s own
+    /// domain): run `body` once per element, with `variable` bound to that
+    /// element as a fresh, block-scoped shadow (the caller's binding of
+    /// `variable`, if any, is untouched once the loop returns — this is what
+    /// lets `loop a { }` enumerate an unresolved `a`'s possibilities without
+    /// ever resolving `a` itself). Collects `yield`ed values into `result`
+    /// when present, exactly like the `over` form.
+    fn run_loop_over_elements(
+        &mut self,
+        elements: Vec<Rc<Value>>,
+        variable: &str,
+        index: Option<&str>,
+        result: Option<String>,
+        body: Vec<Spanned<Statement>>,
+    ) -> Result<(), String> {
+        if result.is_some() {
+            self.yield_stack.push(Vec::new());
+        }
+        self.in_loop_depth += 1;
+        for (i, element) in elements.into_iter().enumerate() {
+            self.env.push_scope();
+            self.env.define(variable.to_string(), element);
+            if let Some(idx_name) = index {
+                self.env.define(idx_name.to_string(), Value::number(i as f64));
+            }
+            for stmt in body.clone() {
+                self.current_span = Some(stmt.span.clone());
+                self.exec_statement(stmt.node)?;
+                if self.handler_return_value.is_some() || self.break_signal {
+                    break;
+                }
+            }
+            self.env.pop_scope();
+            if self.break_signal {
+                self.break_signal = false;
+                break;
+            }
+            if self.handler_return_value.is_some() {
+                break;
+            }
+        }
+        self.in_loop_depth -= 1;
+        if let Some(name) = result {
+            let collected = self.yield_stack.pop().unwrap_or_default();
+            self.env.define(name, Value::array(collected));
+        }
+        Ok(())
+    }
+
     /// Execute a single statement.
     fn exec_statement(&mut self, stmt: Statement) -> Result<(), String> {
         match stmt {
@@ -472,46 +522,28 @@ impl Interpreter {
                 body,
             } => {
                 let iter_val = self.eval_expr(iterable)?;
-                match iter_val.as_ref() {
-                    Value::Array(elements) => {
-                        if result.is_some() {
-                            self.yield_stack.push(Vec::new());
-                        }
-                        self.in_loop_depth += 1;
-                        for (i, element) in elements.clone().into_iter().enumerate() {
-                            self.env.push_scope();
-                            self.env.define(variable.clone(), element);
-                            if let Some(ref idx_name) = index {
-                                self.env.define(idx_name.clone(), Value::number(i as f64));
-                            }
-                            for stmt in body.clone() {
-                                { self.current_span = Some(stmt.span.clone()); self.exec_statement(stmt.node)?; }
-                                if self.handler_return_value.is_some() || self.break_signal {
-                                    break;
-                                }
-                            }
-                            self.env.pop_scope();
-                            if self.break_signal {
-                                self.break_signal = false;
-                                break;
-                            }
-                            if self.handler_return_value.is_some() {
-                                break;
-                            }
-                        }
-                        self.in_loop_depth -= 1;
-                        if let Some(ref name) = result {
-                            let collected = self.yield_stack.pop().unwrap_or_default();
-                            self.env.define(name.clone(), Value::array(collected));
-                        }
-                    }
+                let elements = match iter_val.as_ref() {
+                    // A Set (T26) is loopable exactly like an Array — it's
+                    // already a concrete, finite collection, not a
+                    // possibility space.
+                    Value::Array(elements) | Value::Set(elements) => elements.clone(),
                     _ => {
                         return Err(format!(
-                            "Loop requires an Array value to iterate over, found {}",
+                            "Loop requires an Array or Set value to iterate over, found {}",
                             iter_val.type_name()
                         ))
                     }
-                }
+                };
+                self.run_loop_over_elements(elements, &variable, index.as_deref(), result, body)?;
+            }
+            Statement::LoopDomain { variable, result, body } => {
+                let domain = self
+                    .env
+                    .get_domain(&variable)
+                    .cloned()
+                    .ok_or_else(|| format!("Undefined variable '{}'", variable))?;
+                let elements = domain.finite_candidates()?;
+                self.run_loop_over_elements(elements, &variable, None, result, body)?;
             }
             Statement::LoopInfinite { result, body } => {
                 if result.is_some() {
@@ -671,13 +703,16 @@ impl Interpreter {
             ConstraintExpr::MemberOf(expr) => {
                 let val = self.eval_expr(expr)?;
                 match val.as_ref() {
-                    Value::Array(elements) => {
+                    // Array (legacy `in [1,2,3]` convenience) and Set
+                    // (T26 — `∈ {1,2,3}` / `∈ someSetVar`) both narrow the
+                    // same way: their elements become the candidate domain.
+                    Value::Array(elements) | Value::Set(elements) => {
                         let domain = Domain::ValueSet(elements.clone());
                         self.env.apply_constraint(variable, domain)?;
                     }
                     _ => {
                         return Err(format!(
-                            "Constraint 'in' requires an Array, got {}",
+                            "Constraint '∈'/'in' requires a Set or Array, got {}",
                             val.type_name()
                         ))
                     }
@@ -761,6 +796,7 @@ impl Interpreter {
                     "Boolean" => matches!(val, Value::Boolean(_)),
                     "Object" => matches!(val, Value::Object(_)),
                     "Array" => matches!(val, Value::Array(_)),
+                    "Set" => matches!(val, Value::Set(_)),
                     "Null" => matches!(val, Value::Null),
                     "Any" => true,
                     _ => {
@@ -1172,6 +1208,13 @@ impl Interpreter {
                 }
                 Ok(Value::array(vals))
             }
+            Expression::SetLiteral(elements) => {
+                let mut vals = Vec::new();
+                for elem in elements {
+                    vals.push(self.eval_expr(elem)?);
+                }
+                Ok(Value::set(vals))
+            }
             Expression::IndexAccess { receiver, index } => {
                 let recv_val = self.eval_expr(*receiver)?;
                 let idx_val = self.eval_expr(*index)?;
@@ -1497,6 +1540,33 @@ impl Interpreter {
                 (Value::Number(a), Value::Number(b)) => Ok(Value::boolean(a >= b)),
                 _ => Err(format!(
                     "Cannot use '≥' with {} and {}",
+                    left.type_name(),
+                    right.type_name()
+                )),
+            },
+            BinaryOp::Intersect => match (left, right) {
+                (Value::Set(a), Value::Set(b)) => {
+                    let kept: Vec<Rc<Value>> = a
+                        .iter()
+                        .filter(|av| b.iter().any(|bv| values_equal(av, bv)))
+                        .cloned()
+                        .collect();
+                    Ok(Value::set(kept))
+                }
+                _ => Err(format!(
+                    "Cannot use '∩' with {} and {} — both sides must be Sets",
+                    left.type_name(),
+                    right.type_name()
+                )),
+            },
+            BinaryOp::Union => match (left, right) {
+                (Value::Set(a), Value::Set(b)) => {
+                    let mut merged = a.clone();
+                    merged.extend(b.iter().cloned());
+                    Ok(Value::set(merged))
+                }
+                _ => Err(format!(
+                    "Cannot use '∪' with {} and {} — both sides must be Sets",
                     left.type_name(),
                     right.type_name()
                 )),

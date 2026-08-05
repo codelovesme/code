@@ -603,7 +603,11 @@ fn write_value_to_mem(
                 .copy_from_slice(&count.to_le_bytes());
             write_raw(store, instance, off, &buf)?;
         }
-        Value::Array(elems) => {
+        // Sets flatten to an array crossing this boundary — the wasm-module
+        // ABI has no Set tag yet (T26 is interpreter-only for Phase 1); a
+        // deduplicated element list is already a valid (if lossy-of-
+        // "setness") Array.
+        Value::Array(elems) | Value::Set(elems) => {
             let count = elems.len() as u32;
             let arr_off = if count > 0 {
                 alloc_in_wasm(store, instance, count * CODE_VAL_SIZE)?

@@ -229,6 +229,31 @@ fn build_expression(
             .then_ignore(just(']'))
             .map(Expression::ArrayLiteral);
 
+        // Set literal: `{ expr, expr, ... }` — bare elements, at least one.
+        // An empty `{}` is an empty object (Decision 2, T26), never an empty
+        // set, so this requires `.at_least(1)` — that's also what lets `{}`
+        // keep parsing as `object_literal` unambiguously. Object fields
+        // (`name = expr`) are never valid bare expressions on their own (a
+        // standalone `name = expr` is a Statement, not an Expression), so a
+        // set literal and an object literal can never both match the same
+        // input — `object_literal` is tried first and either succeeds or
+        // fails outright, then `set_literal` is tried from the same start.
+        let set_literal = just('{')
+            .ignore_then(any_whitespace())
+            .ignore_then(
+                expr.clone()
+                    .separated_by(
+                        any_whitespace()
+                            .ignore_then(just(','))
+                            .ignore_then(any_whitespace()),
+                    )
+                    .at_least(1)
+                    .allow_trailing(),
+            )
+            .then_ignore(any_whitespace())
+            .then_ignore(just('}'))
+            .map(Expression::SetLiteral);
+
         // Boolean literals
         let bool_literal = text::keyword("true")
             .to(Expression::Boolean(true))
@@ -252,6 +277,7 @@ fn build_expression(
             .or(array_literal)
             .or(grouped)
             .or(object_literal)
+            .or(set_literal)
             .or(identifier().map(Expression::Identifier))
             .labelled("expression");
 
@@ -292,12 +318,25 @@ fn build_expression(
                 operand: Box::new(operand),
             });
 
-        // Multiplicative: `*`, `/`
+        // Multiplicative: `*`, `/`, and set intersection `∩` (T26 — binds at
+        // the same tier as `*`/`/` rather than as its own precedence layer,
+        // which matters: this parser is already deeply nested (many
+        // precedence tiers, all built from one recursive `expr`, reused
+        // dozens of times for object fields, particle fields, conditions,
+        // etc.), and adding brand-new wrapping tiers for `∩`/`∪` blew the
+        // 16MB parser stack on *any* input, even trivial ones — folding the
+        // new operators into existing tiers as extra alternatives avoids
+        // that entirely (verified: same 16MB stack, no overflow). `Value::Set`
+        // operands only, checked at eval time.
         let multiplicative = unary
             .clone()
             .then(
                 whitespace()
-                    .ignore_then(just('*').to(BinaryOp::Mul).or(just('/').to(BinaryOp::Div)))
+                    .ignore_then(
+                        just('*').to(BinaryOp::Mul)
+                            .or(just('/').to(BinaryOp::Div))
+                            .or(just('∩').to(BinaryOp::Intersect)),
+                    )
                     .then_ignore(whitespace())
                     .then(unary.clone())
                     .repeated(),
@@ -308,12 +347,17 @@ fn build_expression(
                 right: Box::new(right),
             });
 
-        // Additive: `+`, `-`
+        // Additive: `+`, `-`, and set union `∪` (T26 — same tier as `+`/`-`,
+        // folded in for the same reason as `∩` above).
         let additive = multiplicative
             .clone()
             .then(
                 whitespace()
-                    .ignore_then(just('+').to(BinaryOp::Add).or(just('-').to(BinaryOp::Sub)))
+                    .ignore_then(
+                        just('+').to(BinaryOp::Add)
+                            .or(just('-').to(BinaryOp::Sub))
+                            .or(just('∪').to(BinaryOp::Union)),
+                    )
                     .then_ignore(whitespace())
                     .then(multiplicative.clone())
                     .repeated(),
@@ -541,12 +585,18 @@ fn constraint_rhs(
     // Type membership: `∈ TypeExpr` → IsType constraint. `∈ Z|R|N` is the
     // numeric-domain form (same as `in Z|R|N`), tried first so it doesn't
     // fall through to IsType against a nonexistent "Z"/"R"/"N" particle type.
+    // Falls back to MemberOf (T26) for anything that isn't a bare
+    // capitalized type name — a set literal, a lowercase variable holding a
+    // set, a member/index expression, etc. `type_name()` requires an
+    // uppercase first letter, so this never conflicts with a real type name:
+    // `∈ ABC` is always IsType, `∈ ml` or `∈ {1,2}` always falls through here.
     just('∈')
         .ignore_then(whitespace())
         .ignore_then(
             domain_keyword
                 .clone()
-                .or(type_expr_parser().map(ConstraintExpr::IsType)),
+                .or(type_expr_parser().map(ConstraintExpr::IsType))
+                .or(expression.clone().map(ConstraintExpr::MemberOf)),
         )
     .or(
         just('=')
@@ -709,6 +759,34 @@ fn statement() -> impl Parser<char, Spanned<Statement>, Error = Simple<char>> + 
                 body,
             });
 
+        // Loop over a variable's own domain (T26): `loop <var> [get <result>] { ... }`
+        // — no `over`. Tried after loop_stmt (which requires `over`) so a
+        // stray `over` keyword still routes there; this form is what's left
+        // when `loop <ident>` is directly followed by `get`/`{` instead.
+        let loop_domain_stmt = text::keyword("loop")
+            .ignore_then(whitespace())
+            .ignore_then(identifier())
+            .then_ignore(whitespace())
+            .then(
+                text::keyword("get")
+                    .ignore_then(whitespace())
+                    .ignore_then(identifier())
+                    .or_not(),
+            )
+            .then_ignore(any_whitespace())
+            .then(
+                just('{')
+                    .ignore_then(any_whitespace())
+                    .ignore_then(stmt.clone().separated_by(line_sep()).allow_trailing())
+                    .then_ignore(any_whitespace())
+                    .then_ignore(just('}')),
+            )
+            .map(|((variable, result), body)| Statement::LoopDomain {
+                variable,
+                result,
+                body,
+            });
+
         // Infinite loop
         let loop_infinite_stmt = text::keyword("loop")
             .ignore_then(whitespace())
@@ -867,6 +945,7 @@ fn statement() -> impl Parser<char, Spanned<Statement>, Error = Simple<char>> + 
             .or(if_stmt)
             .or(loop_infinite_stmt)
             .or(loop_stmt)
+            .or(loop_domain_stmt)
             .or(combined_handler_def)
             .or(bare_handler_def)
             .or(emit_stmt)

@@ -179,6 +179,19 @@ pub enum Statement {
         result: Option<String>,
         body: Vec<Spanned<Statement>>,
     },
+    /// `loop <var> [get <result>] { ... }` (no `over`) — enumerate a
+    /// constrained-but-unresolved variable's own finite domain in place
+    /// (T26). Requires the domain to be finite (a `ValueSet` or a bounded
+    /// `IntegerRange`) — an unbounded or `RealRange` domain is rejected at
+    /// runtime to preserve the "total work is statically bounded" guarantee.
+    /// The loop body sees `variable` as a block-scoped shadow bound to one
+    /// candidate per iteration; the outer `variable` is never resolved by
+    /// this loop.
+    LoopDomain {
+        variable: String,
+        result: Option<String>,
+        body: Vec<Spanned<Statement>>,
+    },
     /// `yield <expr>` — yield a value to the enclosing loop with `get`.
     Yield(Expression),
     /// `loop [get <result>] { ... }` — infinite loop (use `break` to exit).
@@ -311,6 +324,10 @@ pub enum Expression {
     PropertyAccess(Box<Expression>, String),
     /// Array literal: `[expr, expr, ...]`
     ArrayLiteral(Vec<Expression>),
+    /// Set literal: `{ expr, expr, ... }` — bare elements, at least one
+    /// (an empty `{}` is an empty object, not an empty set — see T26).
+    /// Unlike an array, a set's elements are unordered and deduplicated.
+    SetLiteral(Vec<Expression>),
     /// Array/string index access: `expr[expr]`
     IndexAccess {
         receiver: Box<Expression>,
@@ -359,6 +376,10 @@ pub enum BinaryOp {
     GreaterEqual,
     And,
     Or,
+    /// `∩` — set intersection (T26; `Value::Set` operands only).
+    Intersect,
+    /// `∪` — set union (T26; `Value::Set` operands only).
+    Union,
 }
 
 /// Unary operators.

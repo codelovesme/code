@@ -40,3 +40,16 @@ wasmi = "1.0"
 # artifacts at no behavioral cost (see T17).
 [profile.release]
 strip = true
+
+# Full (level 2) debug info on a workspace that statically links LLVM plus a
+# deeply nested chumsky parser combinator (many precedence tiers, each one
+# more generic-type nesting) can push the final `code` binary's DWARF debug
+# sections past the 4GB ceiling for R_X86_64_32 relocations, and rust-lld
+# fails outright ("relocation ... out of range", "too many errors emitted") —
+# hit for real after adding two more parser tiers (T26's `∩`/`∪` set
+# operators). Reduced to line-tables-only: still enough for backtraces/
+# `RUST_BACKTRACE=1` and `#[track_caller]` spans, just not full per-variable
+# type debug info. No effect on program behavior, dev-only (release already
+# strips symbols entirely).
+[profile.dev]
+debug = "line-tables-only"

@@ -192,6 +192,51 @@ impl Domain {
                 }
                 Domain::IntegerRange { min: new_min, max: new_max }
             }
+            // Exact + ValueSet: check the exact value is one of the set's members.
+            (Domain::Exact(v), Domain::ValueSet(items)) => {
+                if items.iter().any(|it| values_equal(it, v)) {
+                    self
+                } else {
+                    Domain::Empty
+                }
+            }
+            (Domain::ValueSet(items), Domain::Exact(v)) => {
+                if items.iter().any(|it| values_equal(it, v)) {
+                    other
+                } else {
+                    Domain::Empty
+                }
+            }
+            // ValueSet + ValueSet: keep only members present in both.
+            (Domain::ValueSet(a), Domain::ValueSet(b)) => {
+                let kept: Vec<Rc<Value>> = a
+                    .iter()
+                    .filter(|av| b.iter().any(|bv| values_equal(av, bv)))
+                    .cloned()
+                    .collect();
+                if kept.is_empty() {
+                    Domain::Empty
+                } else {
+                    Domain::ValueSet(kept)
+                }
+            }
+            // ValueSet + RealRange/IntegerRange: keep only numeric members
+            // that satisfy the range — e.g. `x ∈ {1,2,3}; x > 1` collapses to
+            // {2,3} instead of getting stuck as an unresolved intersection.
+            (
+                Domain::ValueSet(items),
+                Domain::RealRange { min, max, min_inclusive, max_inclusive },
+            ) => value_set_intersect_real_range(items, min, max, *min_inclusive, *max_inclusive),
+            (
+                Domain::RealRange { min, max, min_inclusive, max_inclusive },
+                Domain::ValueSet(items),
+            ) => value_set_intersect_real_range(items, min, max, *min_inclusive, *max_inclusive),
+            (Domain::ValueSet(items), Domain::IntegerRange { min, max }) => {
+                value_set_intersect_integer_range(items, min, max)
+            }
+            (Domain::IntegerRange { min, max }, Domain::ValueSet(items)) => {
+                value_set_intersect_integer_range(items, min, max)
+            }
             _ => {
                 // General case: wrap in Intersection
                 let mut parts = Vec::new();
@@ -247,6 +292,29 @@ impl Domain {
                 let items: Vec<String> = parts.iter().map(|p| p.describe()).collect();
                 items.join(" and ")
             }
+        }
+    }
+
+    /// Enumerate this domain's members, for `loop <var> { }` (T26) —
+    /// enumerating a variable's own domain in place. Only finite domains can
+    /// be enumerated: a `ValueSet`, a bounded `IntegerRange`, or an already-
+    /// resolved `Exact` (a trivial one-candidate loop). An unbounded
+    /// `IntegerRange` and *any* `RealRange` are rejected — even a bounded
+    /// real range has infinitely many values (uncountably many between any
+    /// two reals) — which would break the language's "total work is always
+    /// statically bounded" guarantee (no `while`/counters/recursion either).
+    pub fn finite_candidates(&self) -> Result<Vec<Rc<Value>>, String> {
+        match self {
+            Domain::Exact(v) => Ok(vec![Rc::clone(v)]),
+            Domain::ValueSet(items) => Ok(items.clone()),
+            Domain::IntegerRange { min: Some(lo), max: Some(hi) } => {
+                Ok((*lo..=*hi).map(|n| Value::number(n as f64)).collect())
+            }
+            _ => Err(format!(
+                "cannot loop over an infinite or unbounded domain ({}) — only a finite \
+                 set of possible values (or a bounded integer range) can be enumerated",
+                self.describe()
+            )),
         }
     }
 }
@@ -331,6 +399,52 @@ fn merge_int_upper(a: &Option<i64>, b: &Option<i64>) -> Option<i64> {
     }
 }
 
+/// Filter a value-set down to the numeric members satisfying a real range,
+/// producing the narrower domain (or `Empty` if nothing survives).
+fn value_set_intersect_real_range(
+    items: &[Rc<Value>],
+    min: &Option<f64>,
+    max: &Option<f64>,
+    min_inclusive: bool,
+    max_inclusive: bool,
+) -> Domain {
+    let kept: Vec<Rc<Value>> = items
+        .iter()
+        .filter(|v| match v.as_ref() {
+            Value::Number(n) => real_range_contains(*n, min, max, min_inclusive, max_inclusive),
+            _ => false,
+        })
+        .cloned()
+        .collect();
+    if kept.is_empty() {
+        Domain::Empty
+    } else {
+        Domain::ValueSet(kept)
+    }
+}
+
+/// Filter a value-set down to the whole-number members within an integer
+/// range, producing the narrower domain (or `Empty` if nothing survives).
+fn value_set_intersect_integer_range(
+    items: &[Rc<Value>],
+    min: &Option<i64>,
+    max: &Option<i64>,
+) -> Domain {
+    let kept: Vec<Rc<Value>> = items
+        .iter()
+        .filter(|v| match v.as_ref() {
+            Value::Number(n) => integer_range_contains(*n, min, max),
+            _ => false,
+        })
+        .cloned()
+        .collect();
+    if kept.is_empty() {
+        Domain::Empty
+    } else {
+        Domain::ValueSet(kept)
+    }
+}
+
 /// Convert real-valued bounds (from `<`/`>`/`≤`/`≥` constraints) into the
 /// tightest integer bounds they imply — e.g. `a < 2` (exclusive real upper
 /// bound 2) implies the integer upper bound is 1.
@@ -359,6 +473,11 @@ pub enum Value {
     Boolean(bool),
     Object(HashMap<String, Rc<Value>>),
     Array(Vec<Rc<Value>>),
+    /// A set: unordered, deduplicated (via `values_equal`). Unlike `Array`
+    /// (an ordered "values list" that allows duplicates), a set element
+    /// never repeats — see T26. Element order here is insertion order after
+    /// dedup, kept only for deterministic `Display`/iteration, not meaning.
+    Set(Vec<Rc<Value>>),
     Null,
 }
 
@@ -388,6 +507,18 @@ impl Value {
         Rc::new(Value::Array(elements))
     }
 
+    /// Create a heap-allocated Set value, deduplicating elements by deep
+    /// equality (first occurrence wins, order otherwise preserved).
+    pub fn set(elements: Vec<Rc<Value>>) -> Rc<Value> {
+        let mut deduped: Vec<Rc<Value>> = Vec::with_capacity(elements.len());
+        for el in elements {
+            if !deduped.iter().any(|existing| values_equal(existing, &el)) {
+                deduped.push(el);
+            }
+        }
+        Rc::new(Value::Set(deduped))
+    }
+
     /// Create a heap-allocated Null value.
     pub fn null() -> Rc<Value> {
         Rc::new(Value::Null)
@@ -401,6 +532,7 @@ impl Value {
             Value::Boolean(_) => "Boolean",
             Value::Object(_) => "Object",
             Value::Array(_) => "Array",
+            Value::Set(_) => "Set",
             Value::Null => "Null",
         }
     }
@@ -432,6 +564,16 @@ impl fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            Value::Set(elements) => {
+                write!(f, "{{")?;
+                for (i, v) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", v)?;
+                }
+                write!(f, "}}")
+            }
             Value::Null => write!(f, "Null"),
         }
     }
@@ -459,6 +601,16 @@ pub fn values_equal(left: &Value, right: &Value) -> bool {
                     .map(|bv| values_equal(v, bv))
                     .unwrap_or(false)
             })
+        }
+        (Value::Set(a), Value::Set(b)) => {
+            // Both sides are already deduplicated (Value::set()'s invariant),
+            // so same length + every element of a found in b is sufficient —
+            // no need for order or a bijection search.
+            if a.len() != b.len() {
+                return false;
+            }
+            a.iter()
+                .all(|av| b.iter().any(|bv| values_equal(av, bv)))
         }
         _ => false,
     }

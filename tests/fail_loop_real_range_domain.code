@@ -1,0 +1,9 @@
+-> T26: even a BOUNDED real-number range must be rejected for `loop` —
+-> unlike an integer range, it has infinitely many values between any two
+-> reals (uncountable), not just "a lot". Only ValueSet and bounded
+-> IntegerRange are enumerable.
+y > 0
+y < 1
+loop y {
+    assert y > 0
+}
