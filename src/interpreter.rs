@@ -59,6 +59,16 @@ fn dispatch_core_handler(class_name: &str, particle: &Value) -> Result<Rc<Value>
     }
 }
 
+/// Outcome of deciding an `if <var> ∈/∉ TypeName` condition from the
+/// variable's domain (T26 Phase 3b), rather than forcing resolution.
+enum IfDomainOutcome {
+    AlwaysTrue,
+    AlwaysFalse,
+    /// Genuinely mixed — run the block with `<var>` shadowed to this
+    /// narrowed domain, block-scoped (same rule as `loop <var> { }`).
+    Narrowed(String, Domain),
+}
+
 /// Tree-walking interpreter for Code.
 /// Executes a parsed AST using constraint-based variable semantics.
 pub struct Interpreter {
@@ -493,6 +503,46 @@ impl Interpreter {
                 result?;
             }
             Statement::If { condition, body } => {
+                // T26 Phase 3b: flow-sensitive narrowing, block-scoped only
+                // (same rule as `loop <var> { }` in Phase 1 — the outer
+                // variable is never touched). `if s ∈ Object { ... }` on an
+                // unresolved (Union-domain) `s` doesn't force resolution the
+                // way every other operation on an unresolved variable does
+                // — it decides from the domain, and when genuinely mixed,
+                // runs the block with a *shadowed*, narrowed `s` valid only
+                // inside it. Only applies to a bare `<var> ∈/∉ TypeName`
+                // condition; anything else (including a resolved variable)
+                // falls through to ordinary evaluation below, unchanged.
+                if let Some(outcome) = self.try_if_condition_from_domain(&condition) {
+                    match outcome {
+                        IfDomainOutcome::AlwaysTrue => {
+                            self.env.push_scope();
+                            for stmt in body {
+                                self.current_span = Some(stmt.span.clone());
+                                self.exec_statement(stmt.node)?;
+                                if self.handler_return_value.is_some() || self.break_signal {
+                                    break;
+                                }
+                            }
+                            self.env.pop_scope();
+                        }
+                        IfDomainOutcome::AlwaysFalse => {}
+                        IfDomainOutcome::Narrowed(name, domain) => {
+                            self.env.push_scope();
+                            self.env.define_with_domain(name, domain);
+                            for stmt in body {
+                                self.current_span = Some(stmt.span.clone());
+                                self.exec_statement(stmt.node)?;
+                                if self.handler_return_value.is_some() || self.break_signal {
+                                    break;
+                                }
+                            }
+                            self.env.pop_scope();
+                        }
+                    }
+                    return Ok(());
+                }
+
                 let cond_val = self.eval_expr(condition)?;
                 match cond_val.as_ref() {
                     Value::Boolean(true) => {
@@ -1452,6 +1502,37 @@ impl Interpreter {
                 Ok(Value::boolean(result))
             }
         }
+    }
+
+    /// Try to decide an `if` condition of the exact shape `<var> ∈/∉
+    /// TypeName` from `<var>`'s domain, without requiring it to be resolved
+    /// (T26 Phase 3b). `None` if the condition isn't this shape, or `<var>`
+    /// is already resolved (ordinary evaluation handles that fine) or
+    /// undeclared — the caller falls through to normal evaluation in every
+    /// `None` case.
+    fn try_if_condition_from_domain(&mut self, condition: &Expression) -> Option<IfDomainOutcome> {
+        let Expression::TypeCheck { expr, type_expr, negated } = condition else {
+            return None;
+        };
+        let Expression::Identifier(name) = expr.as_ref() else {
+            return None;
+        };
+        let TypeExpr::Named(type_name) = type_expr else {
+            return None;
+        };
+        if self.env.get(name).is_some() {
+            return None;
+        }
+        let domain = self.env.get_domain(name)?.clone();
+        Some(
+            match crate::runtime::split_domain_by_type_name(&domain, type_name, *negated) {
+                crate::runtime::DomainSplit::AlwaysTrue => IfDomainOutcome::AlwaysTrue,
+                crate::runtime::DomainSplit::AlwaysFalse => IfDomainOutcome::AlwaysFalse,
+                crate::runtime::DomainSplit::Narrowed(d) => {
+                    IfDomainOutcome::Narrowed(name.clone(), d)
+                }
+            },
+        )
     }
 
     /// Try to decide a comparison (`>`, `<`, `≥`, `≤`, `=`, `≠`) where exactly

@@ -606,6 +606,103 @@ pub(crate) fn value_to_union_members(v: &Value) -> Option<Vec<Domain>> {
     }
 }
 
+/// Outcome of testing an unresolved variable's domain against a type check
+/// for `if`-narrowing (T26 Phase 3b): decided either way, or genuinely
+/// mixed — in which case `Narrowed` carries the domain to use *inside* the
+/// `if`-true branch (block-scoped; the outer variable is untouched, same
+/// rule as `loop <var> { }` in Phase 1).
+pub(crate) enum DomainSplit {
+    AlwaysTrue,
+    AlwaysFalse,
+    Narrowed(Domain),
+}
+
+/// Split one domain "alternative" (a `Union` member, or a whole non-Union
+/// domain treated as a single alternative) into the part that satisfies a
+/// built-in type name and the part that doesn't. `None` on a side means
+/// nothing in this alternative falls there. Conservative for domain kinds
+/// with no clear split (custom `type X {...}` names, `Any`, `Intersection`):
+/// treated as fully matching, so narrowing just skips them rather than
+/// risking an incorrect split.
+fn partition_domain_member(m: &Domain, type_name: &str) -> (Option<Domain>, Option<Domain>) {
+    match m {
+        Domain::Exact(v) => match value_matches_builtin_type_name(v, type_name) {
+            Some(true) => (Some(m.clone()), None),
+            Some(false) => (None, Some(m.clone())),
+            None => (Some(m.clone()), None),
+        },
+        Domain::ValueSet(items) => {
+            let (matching, non_matching): (Vec<Rc<Value>>, Vec<Rc<Value>>) = items
+                .iter()
+                .cloned()
+                .partition(|v| value_matches_builtin_type_name(v, type_name) != Some(false));
+            (
+                (!matching.is_empty()).then(|| Domain::ValueSet(matching)),
+                (!non_matching.is_empty()).then(|| Domain::ValueSet(non_matching)),
+            )
+        }
+        Domain::Schema(_) => match type_name {
+            "Object" | "Any" => (Some(m.clone()), None),
+            _ => (None, Some(m.clone())),
+        },
+        Domain::IntegerRange { .. } | Domain::RealRange { .. } => match type_name {
+            "Number" | "Any" => (Some(m.clone()), None),
+            _ => (None, Some(m.clone())),
+        },
+        Domain::TypeDomain(TypeExpr::Named(n)) if n == type_name => (Some(m.clone()), None),
+        // Everything else (Any, Intersection, non-matching/custom TypeDomain
+        // names, a stray nested Union) — can't safely disprove, so treat as
+        // fully matching (no narrowing lost on the true side, and it's
+        // simply not excluded on the false side either).
+        _ => (Some(m.clone()), Some(m.clone())),
+    }
+}
+
+/// Decide `variable ∈/∉ type_name` from the variable's domain, and (for the
+/// mixed case) the domain to use inside the matching `if`-branch. Handles a
+/// `Domain::Union` by evaluating per-alternative and recombining; any other
+/// domain is treated as a single alternative.
+pub(crate) fn split_domain_by_type_name(
+    domain: &Domain,
+    type_name: &str,
+    negated: bool,
+) -> DomainSplit {
+    let members: Vec<Domain> = match domain {
+        Domain::Union(parts) => parts.clone(),
+        other => vec![other.clone()],
+    };
+    let mut kept: Vec<Domain> = Vec::new();
+    let mut all_kept = true;
+    let mut none_kept = true;
+    for m in &members {
+        let (matching, non_matching) = partition_domain_member(m, type_name);
+        let (side, other_empty) = if negated {
+            (non_matching, matching.is_none())
+        } else {
+            (matching, non_matching.is_none())
+        };
+        match side {
+            Some(d) => {
+                none_kept = false;
+                if !other_empty {
+                    all_kept = false;
+                }
+                kept.push(d);
+            }
+            None => all_kept = false,
+        }
+    }
+    if all_kept {
+        DomainSplit::AlwaysTrue
+    } else if none_kept {
+        DomainSplit::AlwaysFalse
+    } else if kept.len() == 1 {
+        DomainSplit::Narrowed(kept.into_iter().next().unwrap())
+    } else {
+        DomainSplit::Narrowed(Domain::Union(kept))
+    }
+}
+
 /// Convert real-valued bounds (from `<`/`>`/`≤`/`≥` constraints) into the
 /// tightest integer bounds they imply — e.g. `a < 2` (exclusive real upper
 /// bound 2) implies the integer upper bound is 1.

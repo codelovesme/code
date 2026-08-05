@@ -31,6 +31,9 @@ finished, priority no longer matters for it. Numbers are stable identifiers
 | [13](done/13-release-workflow.md) | Release workflow: GitHub Releases on tag push (Linux x86_64) |
 | [14](done/14-install-script.md) | Install script (`curl \| sh`) |
 | [15](done/15-publish-code-native-crates-io.md) | Publish `code-native` to crates.io |
+| [23](done/23-set-domain-and-possibility-enumeration.md) | First-class Set domain (superseded by T26 — see 26) |
+| [25](done/25-partially-resolved-objects.md) | Objects with unresolved (constrained-only) fields (superseded by T26 — see 26) |
+| [26](done/26-unified-set-based-semantics.md) | Unified set-based semantics: variables are constraint sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪`, discriminated unions, flow-sensitive narrowing (supersedes T23, T25) |
 
 `cargo test --workspace` and the `.code` suite are fully green.
 
@@ -48,10 +51,7 @@ _(none right now)_
 | [20](medium/20-project-website-distribution-channel.md) | Project website: Downloads page, hosted install.sh, playground home |
 | [22](medium/22-language-documentation-site.md) | Language documentation site: guide, tutorials, examples, reference (Phase 1 guide done; content, depends on T20) |
 | [21](medium/21-native-backend-memory-management.md) | Native backend automatic memory management: compile-time-elided refcounting (Perceus/Lobster-style) |
-| [23](medium/23-set-domain-and-possibility-enumeration.md) | First-class Set domain: `⦃…⦄` literals, domain-borrowing `∈`, `loop <var> {}` (superseded by T26) |
 | [24](medium/24-native-backend-constraint-narrowing.md) | Native backend constraint narrowing: silent-miscompile hole closed (Phase 1 done), full parity undecided (Phase 2) |
-| [25](medium/25-partially-resolved-objects.md) | Objects with unresolved (constrained-only) fields (superseded by T26) |
-| [26](medium/26-unified-set-based-semantics.md) | Unified set-based semantics: variables are constraint sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪` (supersedes T23, T25; Phases 1–3a shipped, 3b flow-narrowing open) |
 
 ## Active — Low priority
 
@@ -226,9 +226,29 @@ ordinary `s ∈ Object` / `s ∈ String` check. Native codegen already rejected
 `∪` entirely since Phase 1 (blanket, not operand-specific), so no codegen
 work was needed here. 3 new tests, full sweep green (161/161 fixtures).
 Flow-sensitive narrowing (narrowing a variable's domain inside an `if`
-branch automatically) split off as Phase 3b — a genuinely separate
-mechanism (tied to `if` execution, not the intersection system), not
-started.
+branch automatically) split off as Phase 3b, below.
+
+**Phase 3b (flow-sensitive narrowing) shipped 2026-08-05 — T26 complete.**
+Scope decision (owner): block-scoped only, no memory across separate `if`
+statements — full TypeScript-style flow analysis (where a later `if` would
+"remember" an earlier one ruled out a branch) was explicitly rejected as a
+much bigger, separate mechanism nothing yet needs. `if <var> ∈/∉ TypeName`
+on an *unresolved* variable now decides from its domain instead of forcing
+resolution, and when genuinely mixed, runs the block with `<var>` shadowed
+to the narrowed domain — the same block-scope-shadow pattern `loop <var>
+{ }` already used in Phase 1, just triggered by `if` instead of `loop`. A
+nice emergent behavior, not a special case: when narrowing collapses to
+exactly one value, the shadowed variable is already a resolved singleton
+the instant the block is entered (falls out of the existing one-element-
+`ValueSet` rule for free). Verified with the full matrix: a value from the
+*excluded* alternative still contradicts inside the narrowed block (proves
+real narrowing, not a label); negation narrows to the complement; already-
+decided conditions skip narrowing; the outer variable is provably untouched
+after the block. No codegen work needed (same reason as 3a — the program
+already fails to compile earlier, at the union/schema-establishing
+statement). 2 new tests, full sweep green (163/163 fixtures). This closes
+every phase of T26's plan; moved to `done/` alongside T23 and T25 (both now
+superseded by it).
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).

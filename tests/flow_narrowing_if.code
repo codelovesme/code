@@ -1,0 +1,42 @@
+-> T26 Phase 3b: `if <var> ∈/∉ TypeName` on an unresolved variable decides
+-> from its domain instead of forcing resolution, and — when genuinely
+-> mixed — runs the block with `<var>` shadowed to the narrowed domain.
+-> Block-scoped only, same rule as `loop <var> { }`: the outer variable is
+-> never touched by this.
+Status = { "Success" } ∪ { tag = "Error", code ∈ Number }
+
+-> Mixed case: entering the Object branch narrows s down to just the
+-> Schema alternative, so a matching object resolves cleanly inside it.
+s ∈ Status
+if s ∈ Object {
+    s = { tag = "Error", code = 500 }
+    assert s.code = 500
+}
+
+-> Negation: entering the ∉ Object branch narrows down to just the
+-> {"Success"} alternative — a single-element domain, so it's already
+-> resolved the moment the block is entered, no `=` needed.
+u ∈ Status
+if u ∉ Object {
+    assert u = "Success"
+}
+
+-> Already-decided cases don't need narrowing at all.
+v ∈ { "a", "b", "c" }
+if v ∈ String {
+    assert true
+}
+if v ∈ Number {
+    assert false -> unreachable: this branch must never run
+}
+
+-> The outer variable is never resolved by entering a narrowed branch —
+-> only the block-scoped shadow is. If the Object-branch narrowing above
+-> had leaked into the outer w, resolving it to the *other* (String)
+-> alternative afterward would now be impossible. It isn't.
+w ∈ Status
+if w ∈ Object {
+    w = { tag = "Error", code = 1 }
+}
+w = "Success"
+assert w = "Success"

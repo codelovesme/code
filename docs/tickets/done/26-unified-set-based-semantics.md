@@ -3,7 +3,7 @@
 - **Priority:** Medium (foundational / large — a language-model redesign, not a feature)
 - **Type:** Language design / core semantics
 - **Supersedes:** [T23](23-set-domain-and-possibility-enumeration.md) (set literals + `loop`), [T25](25-partially-resolved-objects.md) (objects with unresolved fields) — both fold into this unified model.
-- **Status:** Design locked (2026-08-05), all three core decisions resolved. **Phases 1 (value-sets), 2 (object-schemas), and 3a (discriminated unions) all implemented and shipped (2026-08-05)** — see "Implementation plan" for what landed and real bugs/infra issues caught and fixed along the way in each. Phase 3b (flow-sensitive narrowing) not started — split off as its own design pass.
+- **Status:** Design locked (2026-08-05), all three core decisions resolved. **All phases (1: value-sets, 2: object-schemas, 3a: discriminated unions, 3b: flow-sensitive narrowing) implemented and shipped (2026-08-05)** — see "Implementation plan" for what landed and real bugs/infra issues caught and fixed along the way in each. Ticket complete.
 
 ## The model
 
@@ -362,8 +362,65 @@ narrowing needs its own design pass.
   unresolved rather than wrong) rather than a dedicated arm. No motivating
   example needed one; add if one ever does.
 
-**Phase 3b — flow-sensitive narrowing (not started).** Narrowing a
-variable's domain inside an `if` branch that tests set/schema/union
-membership — a genuinely separate mechanism from 3a (block-scoped, tied to
-`Statement::If`'s execution, not the constraint/intersection system at
-all). Deserves its own design pass, not bundled into 3a's shipped scope.
+**Phase 3b — flow-sensitive narrowing: implemented (2026-08-05).**
+
+**Scope decision (owner, 2026-08-05):** block-scoped only, no cross-
+statement memory. `if s ∈ Object { ... }` narrows `s` *inside that block
+only*; a later, separate `if s ∈ String { ... }` doesn't know the first
+branch ruled out Object — it re-decides from `s`'s original (unnarrowed)
+domain independently. Full TypeScript-style flow analysis (narrowing that
+persists across sequential `if`/`if not` pairs) was explicitly rejected as
+a much larger, separate mechanism not worth building without a concrete
+need for it.
+
+**Mechanism:** `Statement::If` intercepts the specific condition shape
+`<var> ∈/∉ TypeName` before falling through to ordinary evaluation (mirrors
+how `assert`'s domain-entailed comparisons already intercept `Binary`
+conditions in Phase-1-era work). For an *unresolved* `<var>`, decides from
+its domain via a new `split_domain_by_type_name` (runtime.rs): `AlwaysTrue`
+runs the block unchanged, `AlwaysFalse` skips it, and the mixed case runs
+the block with `<var>` **shadowed** to the narrowed domain via
+`env.define_with_domain` inside a pushed scope — exactly `loop <var> { }`'s
+existing block-scope-shadow pattern (Phase 1), just triggered by `if`
+instead of `loop`. A resolved `<var>` (or any other condition shape) falls
+straight through to the pre-existing evaluation path, untouched.
+
+**Splitting a domain by type name** (`partition_domain_member`) handles the
+cases that actually arise from Sets/Schemas/Unions: a `ValueSet` partitions
+its elements by actual value type; a `Schema` is wholly Object-shaped or
+wholly not; ranges are wholly Number-shaped or not; a `Union`'s members are
+each partitioned and recombined. Anything without a clear split (a custom
+`type X {...}` name, `Any`, `Intersection`) is conservatively treated as
+fully matching — narrowing is skipped there rather than risking an
+incorrect split; no motivating example needed tighter handling.
+
+**A pleasant emergent behavior, not a special case:** when narrowing
+happens to collapse to exactly one possible value (e.g. `if s ∉ Object`
+narrows a two-branch union down to a one-element `ValueSet`), the shadowed
+`s` is *already* a resolved singleton the instant the block is entered —
+`is_singleton()`'s existing one-element-`ValueSet` rule handles this for
+free. Verified directly: inside such a block, `s` is usable immediately, no
+`=` needed, and *writing* `s = "Success"` there correctly hits the ordinary
+single-assignment-reassignment error (same as `a = 1; a = 1` anywhere else)
+rather than needing special-casing.
+
+**Verified with the full matrix:** mixed-domain narrowing lets a matching
+value resolve inside the block; a value from the *excluded* alternative
+still contradicts (proves real narrowing, not just a label — `fail_flow_
+narrowing_excluded_branch.code`); negation (`∉`) narrows to the
+complementary alternative; already-decided conditions (`AlwaysTrue`/
+`AlwaysFalse`) skip narrowing entirely; the outer variable is provably
+untouched after the block (resolving it to the *other*, would-be-excluded
+alternative afterward still works, since nothing leaked).
+
+No codegen changes needed — a program reaching this pattern already fails
+to compile earlier, at the `∪`/Schema-establishing statement (T24/3a's
+existing blanket rejection), before the native backend would ever see the
+`if`. 2 new tests. Full regression sweep green: workspace build, `cargo
+test`, 163/163 `.code` fixtures (2 new), `docs/examples/run.sh`, wasm smoke
+test against the real compiled `.wasm`, `fmt --check`.
+
+This closes T26's phased plan (1, 2, 3a, 3b) — every decision the owner and
+I worked through across this whole design conversation is now implemented
+and verified, from the original "a variable is always a set of possible
+values" thesis through discriminated unions and flow narrowing.

@@ -1,0 +1,9 @@
+-> T26 Phase 3b: inside `if s ∈ Object { ... }`, s is genuinely narrowed to
+-> just the Object-shaped alternative(s) — a value from the excluded
+-> (String) alternative must still contradict, proving this is real
+-> narrowing and not just a label on the branch.
+Status = { "Success" } ∪ { tag = "Error", code ∈ Number }
+s ∈ Status
+if s ∈ Object {
+    s = "Success"
+}
