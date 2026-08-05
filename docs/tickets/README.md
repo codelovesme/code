@@ -48,9 +48,10 @@ _(none right now)_
 | [20](medium/20-project-website-distribution-channel.md) | Project website: Downloads page, hosted install.sh, playground home |
 | [22](medium/22-language-documentation-site.md) | Language documentation site: guide, tutorials, examples, reference (Phase 1 guide done; content, depends on T20) |
 | [21](medium/21-native-backend-memory-management.md) | Native backend automatic memory management: compile-time-elided refcounting (Perceus/Lobster-style) |
-| [23](medium/23-set-domain-and-possibility-enumeration.md) | First-class Set domain: `⦃…⦄` literals, domain-borrowing `∈`, `loop <var> {}` possibility enumeration |
+| [23](medium/23-set-domain-and-possibility-enumeration.md) | First-class Set domain: `⦃…⦄` literals, domain-borrowing `∈`, `loop <var> {}` (superseded by T26) |
 | [24](medium/24-native-backend-constraint-narrowing.md) | Native backend constraint narrowing: silent-miscompile hole closed (Phase 1 done), full parity undecided (Phase 2) |
-| [25](medium/25-partially-resolved-objects.md) | Objects with unresolved (constrained-only) fields — depends on T23 |
+| [25](medium/25-partially-resolved-objects.md) | Objects with unresolved (constrained-only) fields (superseded by T26) |
+| [26](medium/26-unified-set-based-semantics.md) | Unified set-based semantics: variables are constraint sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪` (supersedes T23, T25; 3 open decisions) |
 
 ## Active — Low priority
 
@@ -158,6 +159,26 @@ structured value, not just a bare scalar) that touches field access,
 structural type-checking, spread/construction, and host-boundary
 serialization — none of which T23 needs to answer for scalars alone. Not
 started; depends on T23 landing first.
+
+**T26 (unified set-based semantics) — supersedes T23 and T25.** The design
+conversation that produced T23/T25 kept going until it reached a single
+unifying thesis: there is no "type" vs "value" — a variable *always* holds a
+set of possible values (its domain), and a singleton set just reads as a
+plain value. From that, everything collapses into set theory: `x = v` is
+`domain(x) = {v}`, `x ∈ S` is `domain(x) ⊆ S` (so `=` is the singleton case
+of `∈`); a `type` is a named set and construction yields a member (`abc ∈
+ABC`, materialized as the `_class` tag — verified today); `∩`/`∪` stop being
+type-only syntax and become universal set operators where `∩` *is*
+inheritance and `∪` *is* union types. T26 also reverses two T23 leans: set
+literals go back to `{ }` (not `⦃…⦄`), and sets become first-class *values*
+(forced by nested sets like `{1, 2, {k, lm}}`). Much of this session's
+shipped work (domain intersection, singleton=resolved, `=` via intersect,
+`Z/N/R` domains, domain-entailed `assert b > 3`, `loop` over a finite
+domain) turns out to be this model's primitives already. Three core
+decisions remain open in the ticket (sets-as-values, `{ }` set/object
+disambiguation, open-vs-closed schemas), each with a recommendation. Large —
+a language-model redesign, phaseable; not implementation-ready until the
+three decisions are made.
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).

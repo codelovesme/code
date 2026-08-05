@@ -3,6 +3,12 @@
 - **Priority:** Medium
 - **Type:** Language design / core semantics (interpreter only, see "Out of scope")
 - **Area:** `src/parser.rs`, `src/ast.rs`, `src/runtime.rs`, `src/interpreter.rs`, `src/environment.rs`
+- **Superseded by:** [T26](26-unified-set-based-semantics.md). The design conversation
+  continued past this ticket into a full unified model (variables *are* constraint
+  sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪`). Notably T26 reverses two
+  choices here: set-literal notation went from `⦃…⦄` back to `{ }`, and sets became
+  first-class *values* (not "only domains"). This ticket's `loop`-over-domain and
+  domain-borrowing `∈` ideas survive inside T26. Read T26, not this, for the current plan.
 
 ## Context
 

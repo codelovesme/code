@@ -4,6 +4,11 @@
 - **Type:** Language design / core semantics
 - **Area:** `src/runtime.rs` (`Value::Object` representation), `src/parser.rs` (object-literal grammar), `src/interpreter.rs` (field access, construction)
 - **Depends on:** [T23](23-set-domain-and-possibility-enumeration.md) (same "a variable can be constrained but not resolved" model, applied one level deeper)
+- **Superseded by:** [T26](26-unified-set-based-semantics.md). Partially-resolved objects
+  are just T26's object-schemas (`{ k = 2, L ∈ Z }` = the set of objects with those
+  field constraints); this ticket's gap is answered there. The open questions it raised
+  (field access on an unresolved field, structural type-checking, host-boundary
+  serialization) become T26's DECISION 3 (open vs closed schemas) and its phasing. Read T26.
 
 ## The gap
 
