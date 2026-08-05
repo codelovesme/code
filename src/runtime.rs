@@ -673,6 +673,25 @@ pub(crate) fn value_to_union_members(v: &Value) -> Option<Vec<Domain>> {
     }
 }
 
+/// Express *any* value as the domain it denotes for `∈`'s right side
+/// (T26 follow-up): a `Set`/`Array`'s elements are the candidates (the
+/// same "legacy convenience" `in [1, 2, 3]` always had — checking against
+/// the elements, not against the array as one opaque value), a `Schema`
+/// checks structural satisfaction, a `Union` checks any alternative — and
+/// anything else (a plain `Number`, `Object`, …) denotes the singleton
+/// set containing just itself, so `x ∈ y` means `x = y`. Unlike
+/// `value_to_union_members`, this never fails: "everything is a set"
+/// (T26) applies uniformly to `∈`'s container, not only to the three
+/// possibility-space kinds `∪`/`∩` require.
+pub(crate) fn value_as_membership_domain(container: &Value) -> Domain {
+    match container {
+        Value::Array(items) | Value::Set(items) => Domain::ValueSet(items.clone()),
+        Value::Schema(fields) => Domain::Schema(fields.clone()),
+        Value::Union(parts) => Domain::Union(parts.clone()),
+        other => Domain::Exact(Rc::new(other.clone())),
+    }
+}
+
 /// Outcome of testing an unresolved variable's domain against a type check
 /// for `if`-narrowing (T26 Phase 3b): decided either way, or genuinely
 /// mixed — in which case `Narrowed` carries the domain to use *inside* the

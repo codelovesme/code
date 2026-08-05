@@ -755,27 +755,15 @@ impl Interpreter {
                 Ok(Domain::Any)
             }
             ConstraintExpr::MemberOf(expr) => {
+                // Array (legacy `in [1,2,3]` convenience), Set, Schema, and
+                // Union each narrow structurally (T26). Any other value —
+                // a plain Number, Object, … — denotes the singleton set
+                // containing just itself, so `x ∈ y` narrows x to exactly
+                // y (T26 follow-up: "everything is a set" applies to every
+                // value on ∈'s right side, not only the possibility-space
+                // kinds).
                 let val = self.eval_expr(expr)?;
-                match val.as_ref() {
-                    // Array (legacy `in [1,2,3]` convenience) and Set
-                    // (T26 — `∈ {1,2,3}` / `∈ someSetVar`) both narrow the
-                    // same way: their elements become the candidate domain.
-                    Value::Array(elements) | Value::Set(elements) => {
-                        Ok(Domain::ValueSet(elements.clone()))
-                    }
-                    // Value::Schema (T26 Phase 2) — `mm ∈ K` where K is an
-                    // object-schema value: mm must be an object satisfying
-                    // K's field constraints (structural, not enumerated).
-                    Value::Schema(fields) => Ok(Domain::Schema(fields.clone())),
-                    // Value::Union (T26 Phase 3) — `s ∈ Status` where Status
-                    // is a discriminated union: s must satisfy at least one
-                    // alternative.
-                    Value::Union(parts) => Ok(Domain::Union(parts.clone())),
-                    _ => Err(format!(
-                        "Constraint '∈'/'in' requires a Set, Array, Schema, or Union, got {}",
-                        val.type_name()
-                    )),
-                }
+                Ok(crate::runtime::value_as_membership_domain(&val))
             }
             ConstraintExpr::Domain(kind) => {
                 // Z/N/R must preserve "must be a whole number" (Z, N) vs "any
@@ -868,23 +856,20 @@ impl Interpreter {
     ) -> bool {
         match type_expr {
             TypeExpr::Named(name) => {
-                // A capitalized name here might be a variable holding a
-                // Set/Schema/Union value (T26/T27) instead of a genuine
-                // type name — same precedent as the constraint-narrowing
-                // IsType arm (constraint_narrowing_domain). `1 ∈ C` where
-                // `C = {1, 2}` should check real membership against C's
-                // value, not `_class == "C"`. A declared `type C {...}`
-                // name is never also a bound variable, so this can't
-                // misfire against one.
+                // A capitalized name here might be a variable holding any
+                // value (T26/T27/T28) instead of a genuine type name —
+                // same precedent as the constraint-narrowing IsType arm
+                // (constraint_narrowing_domain). `1 ∈ C` where `C = {1, 2}`
+                // checks real membership against C's value (or, if C is a
+                // plain scalar, equality — "everything is a set"), not
+                // `_class == "C"`. A declared `type C {...}` name is never
+                // also a bound variable, so this can't misfire against one.
                 if let Some(bound) = self.env.get(name) {
-                    if let Some(parts) = crate::runtime::value_to_union_members(&bound) {
-                        let candidate = Rc::new(val.clone());
-                        return parts.iter().any(|d| {
-                            !d.clone()
-                                .intersect(Domain::Exact(Rc::clone(&candidate)))
-                                .is_empty_domain()
-                        });
-                    }
+                    let domain = crate::runtime::value_as_membership_domain(&bound);
+                    let candidate = Rc::new(val.clone());
+                    return !domain
+                        .intersect(Domain::Exact(candidate))
+                        .is_empty_domain();
                 }
                 match name.as_str() {
                     "Number" => matches!(val, Value::Number(_)),
@@ -1539,19 +1524,10 @@ impl Interpreter {
             } => {
                 let val = self.eval_expr(*expr)?;
                 let container_val = self.eval_expr(*container)?;
-                let parts = crate::runtime::value_to_union_members(&container_val)
-                    .ok_or_else(|| {
-                        format!(
-                            "Cannot use '∈' with {} — the right side must be a Set, \
-                             Schema, or Union value",
-                            container_val.type_name()
-                        )
-                    })?;
-                let matches = parts.iter().any(|d| {
-                    !d.clone()
-                        .intersect(Domain::Exact(Rc::clone(&val)))
-                        .is_empty_domain()
-                });
+                let domain = crate::runtime::value_as_membership_domain(&container_val);
+                let matches = !domain
+                    .intersect(Domain::Exact(Rc::clone(&val)))
+                    .is_empty_domain();
                 Ok(Value::boolean(if negated { !matches } else { matches }))
             }
         }

@@ -1,0 +1,5 @@
+-> A plain scalar on ∈'s right side denotes the singleton set containing
+-> just itself (see member_of_singleton_scalar.code) — so membership
+-> against a different value must still fail, not silently pass.
+n = 5
+assert 6 ∈ n

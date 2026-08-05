@@ -1,5 +1,0 @@
--> `expr ∈ container` requires `container` to actually be a possibility
--> space (Set/Schema/Union) — a plain Number isn't one. Must be a clear
--> runtime error, not a silent `false`.
-n = 5
-assert 1 ∈ n

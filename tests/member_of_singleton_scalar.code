@@ -1,0 +1,14 @@
+-> `expr ∈ container` used to require `container` to be a Set/Schema/
+-> Union, erroring on anything else. But T26 already treats every value
+-> as a set — a plain scalar like `n = 5` denotes the singleton set {5},
+-> so `∈` against it means equality, not an error (T26 follow-up).
+n = 5
+assert 5 ∈ n
+assert 1 ∉ n
+
+-> Same rule for the statement-level narrowing form: `p ∈ { k = 1 }` (an
+-> object literal with every field `=`, so it resolves as a plain Object,
+-> not a Schema — see set_literal_and_value.code) narrows p to exactly
+-> that object, the same as `p = { k = 1 }` would.
+p ∈ { k = 1 }
+assert p.k = 1

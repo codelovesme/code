@@ -1,6 +1,9 @@
 # 28 — `∈`/`∉` as a boolean expression accepts a general right side
 
-Status: Implemented and shipped (2026-08-05).
+Status: Implemented and shipped (2026-08-05). The "container must be a
+Set/Schema/Union or it's an error" rule described below was itself
+superseded the same day — see [29](29-member-of-universal-singleton.md):
+any value is now valid on `∈`'s right side.
 
 ## The gap
 
@@ -47,7 +50,8 @@ converts the container to its union-of-domains form via the existing
 uses), and checks membership via `Domain::intersect(Exact(val))` against
 each alternative — reusing the core engine again rather than writing new
 containment logic. A container that isn't a Set/Schema/Union (a plain
-Number, say) is a clear runtime error, not a silent `false`.
+Number, say) is a clear runtime error, not a silent `false` — **as
+originally shipped; see T29, this specific rule didn't survive the day.**
 
 `value_matches_type_expr`'s `TypeExpr::Named` arm got the same treatment
 for the *parses-as-a-type-name* path: a capitalized name that turns out
@@ -67,9 +71,8 @@ only for now, `code run` required.
 ## Verification
 
 New fixtures: `tests/member_of_value_expr.code` (Set/Schema/Union
-containers, both `∈` and `∉`, the existing type-name form unaffected),
-`tests/fail_member_of_non_set_container.code` (non-set container errors
-cleanly). Full regression sweep — workspace build, `cargo test
+containers, both `∈` and `∉`, the existing type-name form unaffected).
+Full regression sweep — workspace build, `cargo test
 --workspace`, the `.code` suite (168/168), `docs/examples/run.sh`, wasm
 rebuild + smoke test (including the exact `1 ∈ c` scenario against the
 actual compiled wasm, not just the native interpreter), `code fmt
