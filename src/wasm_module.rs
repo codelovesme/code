@@ -629,7 +629,7 @@ fn write_value_to_mem(
         // A Schema is a structural predicate (open, potentially infinite
         // membership) — nothing meaningful to serialize across this
         // boundary, unlike Set. Written as Null (T26 Phase 2).
-        Value::Schema(_) | Value::Null => {
+        Value::Schema(_) | Value::Union(_) | Value::Null => {
             let mut buf = [0u8; CODE_VAL_SIZE as usize];
             buf[CODE_VAL_TAG as usize] = TAG_NULL;
             write_raw(store, instance, off, &buf)?;

@@ -1,0 +1,7 @@
+-> T26 Phase 3: matching a union alternative's *shape* isn't enough — the
+-> Schema branch's own field constraints still apply. `code` must be
+-> ∈ Number; a String there fails the Error branch too, so the whole union
+-> is unsatisfied.
+Status = { "Success" } ∪ { tag = "Error", code ∈ Number }
+s ∈ Status
+s = { tag = "Error", code = "not a number" }

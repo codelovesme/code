@@ -51,7 +51,7 @@ _(none right now)_
 | [23](medium/23-set-domain-and-possibility-enumeration.md) | First-class Set domain: `⦃…⦄` literals, domain-borrowing `∈`, `loop <var> {}` (superseded by T26) |
 | [24](medium/24-native-backend-constraint-narrowing.md) | Native backend constraint narrowing: silent-miscompile hole closed (Phase 1 done), full parity undecided (Phase 2) |
 | [25](medium/25-partially-resolved-objects.md) | Objects with unresolved (constrained-only) fields (superseded by T26) |
-| [26](medium/26-unified-set-based-semantics.md) | Unified set-based semantics: variables are constraint sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪` (supersedes T23, T25; Phase 1 + 2 shipped, Phase 3 open) |
+| [26](medium/26-unified-set-based-semantics.md) | Unified set-based semantics: variables are constraint sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪` (supersedes T23, T25; Phases 1–3a shipped, 3b flow-narrowing open) |
 
 ## Active — Low priority
 
@@ -212,6 +212,23 @@ deliberately deferred limitation: `KK = String` (aliasing a builtin type
 name) doesn't work — `String` alone isn't yet a first-class value; writing
 the schema with the literal name directly does. 6 new tests, full sweep
 green (158/158 fixtures).
+
+**Phase 3a (discriminated unions) shipped 2026-08-05.** New `Value::Union`/
+`Domain::Union`, exactly parallel to Set (Phase 1) and Schema (Phase 2).
+`∪` generalized: `Set ∪ Set` keeps its flat-merge fast path; anything
+touching a `Schema` (open/predicate membership, can't collapse to a flat
+Set) produces a `Union` instead — `Status = {"Success"} ∪ {tag = "Error",
+code ∈ Number}`. `s ∈ Status; s = v` resolves if v satisfies *any*
+alternative (each still enforcing its own constraints — a Schema branch's
+field types still apply) and contradicts if it matches none. Discriminating
+which branch a resolved value took needed no new mechanism — it's just an
+ordinary `s ∈ Object` / `s ∈ String` check. Native codegen already rejected
+`∪` entirely since Phase 1 (blanket, not operand-specific), so no codegen
+work was needed here. 3 new tests, full sweep green (161/161 fixtures).
+Flow-sensitive narrowing (narrowing a variable's domain inside an `if`
+branch automatically) split off as Phase 3b — a genuinely separate
+mechanism (tied to `if` execution, not the intersection system), not
+started.
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).

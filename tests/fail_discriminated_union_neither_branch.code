@@ -1,0 +1,5 @@
+-> T26 Phase 3: pinning a union-narrowed variable to a value satisfying
+-> NEITHER alternative must contradict, not silently resolve.
+Status = { "Success" } ∪ { tag = "Error", code ∈ Number }
+s ∈ Status
+s = "Pending"

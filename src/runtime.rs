@@ -36,6 +36,12 @@ pub enum Domain {
     /// object with both A's and B's fields, not just objects with *only*
     /// those fields).
     Schema(HashMap<String, Domain>),
+    /// Discriminated union (T26 Phase 3): variable must satisfy *at least
+    /// one* of these domains — e.g. `s ∈ Status` where `Status = {"Success"}
+    /// ∪ {tag = "Error", code ∈ Number}` means s is either the string
+    /// "Success" or an object matching the error schema. Members are
+    /// pre-flattened (a `Union` never directly contains another `Union`).
+    Union(Vec<Domain>),
     /// Intersection of multiple domains.
     Intersection(Vec<Domain>),
     /// Empty domain — unsatisfiable (contradictory constraints).
@@ -287,6 +293,22 @@ impl Domain {
                 Some(merged) => Domain::Schema(merged),
                 None => Domain::Empty,
             },
+            // Union + Exact: resolves if the pinned value satisfies *any*
+            // alternative (discriminated union — T26 Phase 3), e.g.
+            // `s ∈ Status; s = "Success"` or `s = {tag="Error", code=1}`.
+            // Empty only if it matches none of them.
+            (Domain::Union(parts), Domain::Exact(v)) => {
+                let matches_any = parts.iter().any(|p| {
+                    !p.clone().intersect(Domain::Exact(Rc::clone(v))).is_empty_domain()
+                });
+                if matches_any { other } else { Domain::Empty }
+            }
+            (Domain::Exact(v), Domain::Union(parts)) => {
+                let matches_any = parts.iter().any(|p| {
+                    !p.clone().intersect(Domain::Exact(Rc::clone(v))).is_empty_domain()
+                });
+                if matches_any { self } else { Domain::Empty }
+            }
             _ => {
                 // General case: wrap in Intersection
                 let mut parts = Vec::new();
@@ -346,6 +368,10 @@ impl Domain {
                     .map(|k| format!("{} ∈ ({})", k, fields[k].describe()))
                     .collect();
                 format!("must be an object with {{ {} }}", items.join(", "))
+            }
+            Domain::Union(parts) => {
+                let items: Vec<String> = parts.iter().map(|p| p.describe()).collect();
+                format!("must be one of: ({})", items.join(") or ("))
             }
             Domain::Intersection(parts) => {
                 let items: Vec<String> = parts.iter().map(|p| p.describe()).collect();
@@ -519,6 +545,7 @@ fn value_matches_builtin_type_name(val: &Value, name: &str) -> Option<bool> {
         "Array" => Some(matches!(val, Value::Array(_))),
         "Set" => Some(matches!(val, Value::Set(_))),
         "Schema" => Some(matches!(val, Value::Schema(_))),
+        "Union" => Some(matches!(val, Value::Union(_))),
         "Null" => Some(matches!(val, Value::Null)),
         "Any" => Some(true),
         _ => None,
@@ -565,6 +592,20 @@ pub(crate) fn merge_schemas(
     Some(a)
 }
 
+/// Express a `Set`/`Schema`/`Union` value as a flat list of `Domain`
+/// alternatives, for building `∪` (T26 Phase 3): a `Set`'s elements become
+/// one `ValueSet` member, a `Schema` becomes one `Schema` member, and a
+/// `Union` is already such a list (flattened in, never nested). `None` for
+/// any other value kind — `∪` requires both sides to be one of these three.
+pub(crate) fn value_to_union_members(v: &Value) -> Option<Vec<Domain>> {
+    match v {
+        Value::Set(items) => Some(vec![Domain::ValueSet(items.clone())]),
+        Value::Schema(fields) => Some(vec![Domain::Schema(fields.clone())]),
+        Value::Union(parts) => Some(parts.clone()),
+        _ => None,
+    }
+}
+
 /// Convert real-valued bounds (from `<`/`>`/`≤`/`≥` constraints) into the
 /// tightest integer bounds they imply — e.g. `a < 2` (exclusive real upper
 /// bound 2) implies the integer upper bound is 1.
@@ -607,6 +648,12 @@ pub enum Value {
     /// narrows `abc`'s domain to "objects satisfying K" — see
     /// `Domain::Schema`.
     Schema(HashMap<String, Domain>),
+    /// Discriminated union (T26 Phase 3): `Status = {"Success"} ∪ {tag =
+    /// "Error", code ∈ Number}` binds Status to *this* union — one
+    /// well-defined value, resolved the same way a `Set`/`Schema` is,
+    /// even though what it describes is "one of several alternative
+    /// shapes." Members are pre-flattened Domains (see `Domain::Union`).
+    Union(Vec<Domain>),
     Null,
 }
 
@@ -668,6 +715,7 @@ impl Value {
             Value::Array(_) => "Array",
             Value::Set(_) => "Set",
             Value::Schema(_) => "Schema",
+            Value::Union(_) => "Union",
             Value::Null => "Null",
         }
     }
@@ -720,6 +768,10 @@ impl fmt::Display for Value {
                     write!(f, "{} ∈ ({})", k, fields[*k].describe())?;
                 }
                 write!(f, "}}")
+            }
+            Value::Union(parts) => {
+                let items: Vec<String> = parts.iter().map(|p| p.describe()).collect();
+                write!(f, "({})", items.join(") ∪ ("))
             }
             Value::Null => write!(f, "Null"),
         }

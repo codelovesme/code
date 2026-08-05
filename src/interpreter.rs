@@ -717,8 +717,12 @@ impl Interpreter {
                     // object-schema value: mm must be an object satisfying
                     // K's field constraints (structural, not enumerated).
                     Value::Schema(fields) => Ok(Domain::Schema(fields.clone())),
+                    // Value::Union (T26 Phase 3) — `s ∈ Status` where Status
+                    // is a discriminated union: s must satisfy at least one
+                    // alternative.
+                    Value::Union(parts) => Ok(Domain::Union(parts.clone())),
                     _ => Err(format!(
-                        "Constraint '∈'/'in' requires a Set, Array, or Schema, got {}",
+                        "Constraint '∈'/'in' requires a Set, Array, Schema, or Union, got {}",
                         val.type_name()
                     )),
                 }
@@ -762,6 +766,7 @@ impl Interpreter {
                         match val.as_ref() {
                             Value::Set(elements) => return Ok(Domain::ValueSet(elements.clone())),
                             Value::Schema(fields) => return Ok(Domain::Schema(fields.clone())),
+                            Value::Union(parts) => return Ok(Domain::Union(parts.clone())),
                             _ => {}
                         }
                     }
@@ -821,6 +826,7 @@ impl Interpreter {
                     "Array" => matches!(val, Value::Array(_)),
                     "Set" => matches!(val, Value::Set(_)),
                     "Schema" => matches!(val, Value::Schema(_)),
+                    "Union" => matches!(val, Value::Union(_)),
                     "Null" => matches!(val, Value::Null),
                     "Any" => true,
                     _ => {
@@ -1657,16 +1663,33 @@ impl Interpreter {
                 )),
             },
             BinaryOp::Union => match (left, right) {
+                // Set ∪ Set stays a flat Set — the common case, and no need
+                // for discrimination machinery when both sides are already
+                // enumerated the same way.
                 (Value::Set(a), Value::Set(b)) => {
                     let mut merged = a.clone();
                     merged.extend(b.iter().cloned());
                     Ok(Value::set(merged))
                 }
-                _ => Err(format!(
-                    "Cannot use '∪' with {} and {} — both sides must be Sets",
-                    left.type_name(),
-                    right.type_name()
-                )),
+                // Anything involving a Schema (or an existing Union) can't
+                // collapse to one flat Set — a Schema's membership is open/
+                // predicate-based, not an enumerated list. Produces a
+                // discriminated Union instead (T26 Phase 3): `Status =
+                // {"Success"} ∪ {tag = "Error", code ∈ Number}`.
+                _ => match (
+                    crate::runtime::value_to_union_members(left),
+                    crate::runtime::value_to_union_members(right),
+                ) {
+                    (Some(mut a), Some(b)) => {
+                        a.extend(b);
+                        Ok(Rc::new(Value::Union(a)))
+                    }
+                    _ => Err(format!(
+                        "Cannot use '∪' with {} and {} — both sides must be Sets, Schemas, or Unions",
+                        left.type_name(),
+                        right.type_name()
+                    )),
+                },
             },
             BinaryOp::And | BinaryOp::Or => unreachable!(),
         }

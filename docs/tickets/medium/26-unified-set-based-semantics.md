@@ -3,7 +3,7 @@
 - **Priority:** Medium (foundational / large — a language-model redesign, not a feature)
 - **Type:** Language design / core semantics
 - **Supersedes:** [T23](23-set-domain-and-possibility-enumeration.md) (set literals + `loop`), [T25](25-partially-resolved-objects.md) (objects with unresolved fields) — both fold into this unified model.
-- **Status:** Design locked (2026-08-05), all three core decisions resolved. **Phase 1 (value-sets) and Phase 2 (object-schemas) both implemented and shipped (2026-08-05)** — see "Implementation plan" for what landed and real bugs/infra issues caught and fixed along the way in each. Phase 3 (discriminated unions + flow narrowing) not started.
+- **Status:** Design locked (2026-08-05), all three core decisions resolved. **Phases 1 (value-sets), 2 (object-schemas), and 3a (discriminated unions) all implemented and shipped (2026-08-05)** — see "Implementation plan" for what landed and real bugs/infra issues caught and fixed along the way in each. Phase 3b (flow-sensitive narrowing) not started — split off as its own design pass.
 
 ## The model
 
@@ -320,11 +320,50 @@ green: workspace build, `cargo test`, 158/158 `.code` fixtures (6 new),
 `docs/examples/run.sh`, wasm smoke test against the real compiled `.wasm`,
 `fmt --check`.
 
-**Phase 3 — discriminated unions + flow-sensitive narrowing (not started).**
-Heterogeneous `∪` for schemas (`Status = {"Success"} ∪ {tag = "Error", code
-∈ Number}`), and narrowing a variable's domain inside an `if` branch that
-tests set/schema membership.
+**Phase 3a — discriminated unions: implemented (2026-08-05).** Split from
+flow-sensitive narrowing (3b, below) — large enough on its own, and
+narrowing needs its own design pass.
 
-**Phase 3 — discriminated unions + flow-sensitive narrowing.** Heterogeneous
-`∪` (`Status = {"Success"} ∪ {tag = "Error", code ∈ Number}`), and narrowing
-a variable's domain inside an `if` branch that tests set membership.
+- New `Value::Union(Vec<Domain>)` / `Domain::Union(Vec<Domain>)`, exactly
+  parallel to Phase 1's `Set` and Phase 2's `Schema` — `Status = {"Success"}
+  ∪ {tag = "Error", code ∈ Number}` binds Status to *this* union, one
+  well-defined resolved value, even though what it describes is "one of
+  several alternative shapes."
+- `∪` generalized: `Set ∪ Set` keeps its Phase 1 fast path (flat merged
+  Set — no discrimination machinery needed when both sides already
+  enumerate the same way). Anything involving a `Schema` (which can't
+  collapse to a flat Set — open/predicate membership) or an existing
+  `Union` (flattened in, never nested) produces a `Value::Union` instead.
+- `s ∈ Status` narrows the scalar `s` to `Domain::Union` (via the same
+  `MemberOf` path Set/Schema already use, plus the same bound-uppercase-
+  variable fallback in the `IsType` conversion that Phase 2 needed for
+  `mm ∈ K`). `s = v` resolves if `v` satisfies *any* alternative
+  (`intersect()`'s `(Union, Exact)` arm — non-empty against at least one
+  member) and contradicts only if it matches none — reusing whatever
+  intersection logic each alternative already has (a Schema member still
+  enforces its own field constraints; verified `code ∈ Number` still
+  rejects a String even inside the union's Error branch).
+- **Discrimination needs no new mechanism.** Once `s` resolves, asking
+  which alternative it took is just an ordinary membership/type check
+  (`if s ∈ Object { ... }` vs. `if s ∈ String { ... }`) — verified directly,
+  works with zero Union-specific code.
+- Native codegen already rejected `∪` entirely since Phase 1
+  (`BinaryOp::Intersect | BinaryOp::Union => Err(...)`, blanket, not
+  operand-specific) — so heterogeneous unions are already cleanly rejected
+  with no additional codegen work.
+- 3 new `tests/*.code` fixtures (union creation + both branches resolving +
+  discrimination; refuted-neither-branch; refuted-matches-shape-but-fails-
+  a-field-constraint). Full regression sweep green: workspace build,
+  `cargo test`, 161/161 `.code` fixtures (3 new), `docs/examples/run.sh`,
+  wasm smoke test against the real compiled `.wasm`, `fmt --check`.
+- Not attempted / explicitly out of scope for 3a: `Union ∩ Union`,
+  `ValueSet`/`Schema` combined with an existing `Union` via `∩` — these
+  fall into the pre-existing generic `Intersection` wrapper (stuck
+  unresolved rather than wrong) rather than a dedicated arm. No motivating
+  example needed one; add if one ever does.
+
+**Phase 3b — flow-sensitive narrowing (not started).** Narrowing a
+variable's domain inside an `if` branch that tests set/schema/union
+membership — a genuinely separate mechanism from 3a (block-scoped, tied to
+`Statement::If`'s execution, not the constraint/intersection system at
+all). Deserves its own design pass, not bundled into 3a's shipped scope.

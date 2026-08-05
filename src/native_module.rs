@@ -138,7 +138,9 @@ impl EmittedValue {
             // this boundary, unlike Set which is a concrete finite list.
             // Represented as Null rather than added ABI complexity for a
             // case that shouldn't arise in practice (T26 Phase 2).
-            Value::Schema(_) => EmittedValue::Null,
+            // A discriminated union is likewise a structural descriptor, not
+            // a concrete value — Null across this boundary (T26 Phase 3).
+            Value::Schema(_) | Value::Union(_) => EmittedValue::Null,
             Value::Null => EmittedValue::Null,
         }
     }
@@ -321,7 +323,9 @@ pub fn value_to_code_value(val: &Value, backing: &mut CodeValueBacking) -> CodeV
         // A Schema is a structural predicate (open, potentially infinite
         // membership) — nothing meaningful to serialize across the C ABI,
         // unlike Set. Represented as Null (T26 Phase 2).
-        Value::Schema(_) => CodeValue::null(),
+        // A discriminated union is likewise a structural descriptor, not a
+        // concrete value — nothing to serialize (T26 Phase 3).
+        Value::Schema(_) | Value::Union(_) => CodeValue::null(),
         Value::Null => CodeValue::null(),
     }
 }

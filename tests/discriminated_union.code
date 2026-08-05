@@ -1,0 +1,26 @@
+-> T26 Phase 3: `∪` between a Set and a Schema (or any combination involving
+-> a Schema) can't collapse to a flat Set — a Schema's membership is open/
+-> predicate-based. Produces a Value::Union: a discriminated union, resolved
+-> the same way Set/Schema are (Status itself is one well-defined value).
+Status = { "Success" } ∪ { tag = "Error", code ∈ Number }
+assert Status ∈ Union
+
+-> Narrowing `s ∈ Status` and resolving to the Set-shaped alternative.
+s ∈ Status
+s = "Success"
+assert s = "Success"
+
+-> A fresh variable resolving to the Schema-shaped alternative instead.
+e ∈ Status
+e = { tag = "Error", code = 500 }
+assert e.tag = "Error"
+assert e.code = 500
+
+-> Once resolved, discriminating which alternative a value took is just
+-> ordinary membership/type checks — no new mechanism needed.
+if e ∈ Object {
+    assert e.tag = "Error"
+}
+if e ∈ String {
+    assert false
+}
