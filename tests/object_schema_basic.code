@@ -1,0 +1,21 @@
+-> T26 Phase 2: an object literal with a constrained (`∈`) field is a
+-> Value::Schema — the set of objects satisfying those field domains — not
+-> a resolved Object. `mm ∈ K` narrows mm structurally (open/at-least, not
+-> exact); `mm = {...}` resolves it if the object satisfies K's fields.
+K = { k ∈ String, m ∈ Number }
+mm ∈ K
+mm = { k = "dfdfdf", m = 3 }
+assert mm.k = "dfdfdf"
+assert mm.m = 3
+
+-> T25's original mixed-field gap: a literal can mix `=` (exact) and `∈`
+-> (constrained) fields — the whole literal becomes a schema.
+a = { k = 2, L ∈ Z }
+assert a ∈ Schema
+
+-> Applying the same schema twice is idempotent (still open, not a
+-> contradiction) and later resolves normally.
+nn ∈ K
+nn ∈ K
+nn = { k = "a", m = 1 }
+assert nn.m = 1

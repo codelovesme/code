@@ -1986,6 +1986,21 @@ impl<'ctx> Codegen<'ctx> {
 
     /// Compile an object literal from ObjectField variants (static or computed).
     fn compile_object_fields(&mut self, fields: &[ObjectField]) -> Result<BasicValueEnum<'ctx>, String> {
+        // T26 Phase 2 object-schemas (`name ∈ expr` fields, producing a
+        // Value::Schema rather than a resolved Object) are interpreter-only
+        // — reject cleanly rather than miscompile, same as T24.
+        if let Some(name) = fields.iter().find_map(|f| match f {
+            ObjectField::Constrained(n, _) => Some(n.as_str()),
+            _ => None,
+        }) {
+            return Err(format!(
+                "'{}' uses a constraint ('∈' or similar) inside an object literal — \
+                 object-schemas are not supported by the native backend yet (T26 Phase 2). \
+                 Use `code run`.",
+                name
+            ));
+        }
+
         // Separate into static and computed fields.
         let mut static_fields: Vec<(&str, &Expression)> = Vec::new();
         let mut computed_fields: Vec<(&Expression, &Expression)> = Vec::new();
@@ -1993,6 +2008,7 @@ impl<'ctx> Codegen<'ctx> {
             match f {
                 ObjectField::Static(name, expr) => static_fields.push((name.as_str(), expr)),
                 ObjectField::Computed(key, val) => computed_fields.push((key, val)),
+                ObjectField::Constrained(..) => unreachable!("rejected above"),
             }
         }
 
@@ -2069,6 +2085,7 @@ impl<'ctx> Codegen<'ctx> {
                     ).unwrap();
                     self.builder.build_store(val_slot, val).unwrap();
                 }
+                ObjectField::Constrained(..) => unreachable!("rejected above"),
             }
         }
 
@@ -2130,10 +2147,25 @@ impl<'ctx> Codegen<'ctx> {
         source: &Expression,
         fields: &[ObjectField],
     ) -> Result<BasicValueEnum<'ctx>, String> {
+        // T26 Phase 2 object-schemas are interpreter-only (see
+        // compile_object_fields above) — also unsupported combined with
+        // spread, which the interpreter rejects outright too.
+        if let Some(name) = fields.iter().find_map(|f| match f {
+            ObjectField::Constrained(n, _) => Some(n.as_str()),
+            _ => None,
+        }) {
+            return Err(format!(
+                "'{}' uses a constraint ('∈' or similar) inside an object literal — \
+                 object-schemas are not supported by the native backend yet (T26 Phase 2). \
+                 Use `code run`.",
+                name
+            ));
+        }
         // Extract static fields as tuples for the existing spread object implementation.
         let tuples: Vec<(String, Expression)> = fields.iter().filter_map(|f| match f {
             ObjectField::Static(n, e) => Some((n.clone(), e.clone())),
             ObjectField::Computed(_, _) => None,
+            ObjectField::Constrained(..) => unreachable!("rejected above"),
         }).collect();
         self.compile_spread_object(source, &tuples)
     }
@@ -2459,10 +2491,26 @@ impl<'ctx> Codegen<'ctx> {
             None => class_name.to_string(),
         };
 
+        // T26 Phase 2 object-schemas (`name ∈ expr`) describe a set of
+        // objects, not one instance — they don't fit a particle
+        // *constructor*, which always produces one concrete, typed value
+        // (mirrors the interpreter's rejection for the same reason).
+        if let Some(name) = fields.iter().find_map(|f| match f {
+            ObjectField::Constrained(n, _) => Some(n.as_str()),
+            _ => None,
+        }) {
+            return Err(format!(
+                "'{}' field of '{}' uses a constraint ('∈' or similar) — particle \
+                 construction needs a concrete value ('='), not a schema.",
+                name, type_key
+            ));
+        }
+
         // Convert ObjectField to tuples for internal use (only static fields for validation)
         let static_fields: Vec<(String, Expression)> = fields.iter().filter_map(|f| match f {
             ObjectField::Static(n, e) => Some((n.clone(), e.clone())),
             ObjectField::Computed(_, _) => None,
+            ObjectField::Constrained(..) => unreachable!("rejected above"),
         }).collect();
 
         // If spread is used, delegate to compile_spread_particle.
@@ -4107,7 +4155,12 @@ impl<'ctx> Codegen<'ctx> {
         if let Expression::Particle { fields, .. } = expr {
             let mut names: Vec<String> = fields.iter().filter_map(|f| match f {
                 ObjectField::Static(n, _) => Some(n.clone()),
-                ObjectField::Computed(_, _) => None,
+                // Constrained (T26 Phase 2) fields never reach here in a
+                // valid compile — compile_particle rejects them earlier —
+                // but this is a best-effort compile-time introspection
+                // helper (returns Vec<String>, not Result), so just skip
+                // rather than needing to thread an error through it.
+                ObjectField::Computed(_, _) | ObjectField::Constrained(..) => None,
             }).collect();
             // Also include optional fields from the schema that aren't in the expression.
             if let Some(schema) = self.get_type_def(type_key) {

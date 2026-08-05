@@ -26,9 +26,21 @@ const { run_source } = require(require('path').resolve(process.cwd(), modulePath
 
 let failures = 0;
 
+// `bindings` is backed by a HashMap (top-level scope) — iteration order was
+// never guaranteed and does shift across builds (seen directly: identical
+// source, same two bindings, order flipped between two compiles with no
+// change to the relevant code). Sort by name before comparing so the check
+// asserts on content, not on an implementation detail nothing promises.
+function normalize(result) {
+  if (result && Array.isArray(result.bindings)) {
+    return { ...result, bindings: [...result.bindings].sort((a, b) => a.name.localeCompare(b.name)) };
+  }
+  return result;
+}
+
 function check(label, actual, expected) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
+  const a = JSON.stringify(normalize(actual));
+  const e = JSON.stringify(normalize(expected));
   if (a !== e) {
     failures++;
     console.error(`FAIL ${label}\n  expected: ${e}\n  actual:   ${a}`);

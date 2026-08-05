@@ -133,6 +133,12 @@ impl EmittedValue {
                 // list is already a valid (if lossy-of-"setness") Array.
                 EmittedValue::Array(elements.iter().map(|e| EmittedValue::from_value(e)).collect())
             }
+            // A Schema is a structural predicate (open, potentially infinite
+            // membership) — there's nothing meaningful to serialize across
+            // this boundary, unlike Set which is a concrete finite list.
+            // Represented as Null rather than added ABI complexity for a
+            // case that shouldn't arise in practice (T26 Phase 2).
+            Value::Schema(_) => EmittedValue::Null,
             Value::Null => EmittedValue::Null,
         }
     }
@@ -312,6 +318,10 @@ pub fn value_to_code_value(val: &Value, backing: &mut CodeValueBacking) -> CodeV
                 ..CodeValue::null()
             }
         }
+        // A Schema is a structural predicate (open, potentially infinite
+        // membership) — nothing meaningful to serialize across the C ABI,
+        // unlike Set. Represented as Null (T26 Phase 2).
+        Value::Schema(_) => CodeValue::null(),
         Value::Null => CodeValue::null(),
     }
 }

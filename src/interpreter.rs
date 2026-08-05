@@ -624,81 +624,85 @@ impl Interpreter {
                     self.env.define(variable.to_string(), val);
                 }
             }
+            other => {
+                let domain = self.constraint_narrowing_domain(other)?;
+                self.env.apply_constraint(variable, domain)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Compute the `Domain` a non-`Equals` constraint narrows to, without
+    /// applying it to any variable. Shared by top-level constraint
+    /// statements (`exec_constraint`, via `apply_constraint`) and object-
+    /// schema field constraints (T26 Phase 2 — `{ k ∈ KK, m ∈ Number }`),
+    /// which need the same "what does `∈ X` mean as a Domain" logic but
+    /// store the result per-field instead of applying it to a named
+    /// variable. `Equals` is handled by the caller — it also depends on
+    /// whether the target already has a value (single-assignment vs. pin),
+    /// which doesn't apply to a fresh schema field.
+    fn constraint_narrowing_domain(
+        &mut self,
+        constraint: ConstraintExpr,
+    ) -> Result<Domain, String> {
+        match constraint {
+            ConstraintExpr::Equals(expr) => {
+                let val = self.eval_expr(expr)?;
+                Ok(Domain::Exact(val))
+            }
             ConstraintExpr::LessThan(expr) => {
                 let val = self.eval_expr(expr)?;
                 match val.as_ref() {
-                    Value::Number(n) => {
-                        let domain = Domain::RealRange {
-                            min: None,
-                            max: Some(*n),
-                            min_inclusive: false,
-                            max_inclusive: false,
-                        };
-                        self.env.apply_constraint(variable, domain)?;
-                    }
-                    _ => return Err(format!("Cannot use '<' constraint with {}", val.type_name())),
+                    Value::Number(n) => Ok(Domain::RealRange {
+                        min: None,
+                        max: Some(*n),
+                        min_inclusive: false,
+                        max_inclusive: false,
+                    }),
+                    _ => Err(format!("Cannot use '<' constraint with {}", val.type_name())),
                 }
             }
             ConstraintExpr::GreaterThan(expr) => {
                 let val = self.eval_expr(expr)?;
                 match val.as_ref() {
-                    Value::Number(n) => {
-                        let domain = Domain::RealRange {
-                            min: Some(*n),
-                            max: None,
-                            min_inclusive: false,
-                            max_inclusive: false,
-                        };
-                        self.env.apply_constraint(variable, domain)?;
-                    }
-                    _ => return Err(format!("Cannot use '>' constraint with {}", val.type_name())),
+                    Value::Number(n) => Ok(Domain::RealRange {
+                        min: Some(*n),
+                        max: None,
+                        min_inclusive: false,
+                        max_inclusive: false,
+                    }),
+                    _ => Err(format!("Cannot use '>' constraint with {}", val.type_name())),
                 }
             }
             ConstraintExpr::LessEqual(expr) => {
                 let val = self.eval_expr(expr)?;
                 match val.as_ref() {
-                    Value::Number(n) => {
-                        let domain = Domain::RealRange {
-                            min: None,
-                            max: Some(*n),
-                            min_inclusive: false,
-                            max_inclusive: true,
-                        };
-                        self.env.apply_constraint(variable, domain)?;
-                    }
-                    _ => {
-                        return Err(format!(
-                            "Cannot use '≤' constraint with {}",
-                            val.type_name()
-                        ))
-                    }
+                    Value::Number(n) => Ok(Domain::RealRange {
+                        min: None,
+                        max: Some(*n),
+                        min_inclusive: false,
+                        max_inclusive: true,
+                    }),
+                    _ => Err(format!("Cannot use '≤' constraint with {}", val.type_name())),
                 }
             }
             ConstraintExpr::GreaterEqual(expr) => {
                 let val = self.eval_expr(expr)?;
                 match val.as_ref() {
-                    Value::Number(n) => {
-                        let domain = Domain::RealRange {
-                            min: Some(*n),
-                            max: None,
-                            min_inclusive: true,
-                            max_inclusive: false,
-                        };
-                        self.env.apply_constraint(variable, domain)?;
-                    }
-                    _ => {
-                        return Err(format!(
-                            "Cannot use '≥' constraint with {}",
-                            val.type_name()
-                        ))
-                    }
+                    Value::Number(n) => Ok(Domain::RealRange {
+                        min: Some(*n),
+                        max: None,
+                        min_inclusive: true,
+                        max_inclusive: false,
+                    }),
+                    _ => Err(format!("Cannot use '≥' constraint with {}", val.type_name())),
                 }
             }
             ConstraintExpr::NotEquals(expr) => {
-                // Store as domain information (not yet used for resolution)
+                // Tracked but not narrowed to a specific domain (unchanged
+                // pre-existing limitation, not part of T26's scope).
                 let _val = self.eval_expr(expr)?;
-                // For now, != constraints are tracked but don't narrow to a specific domain
-                // They will be validated at resolution time
+                Ok(Domain::Any)
             }
             ConstraintExpr::MemberOf(expr) => {
                 let val = self.eval_expr(expr)?;
@@ -707,15 +711,16 @@ impl Interpreter {
                     // (T26 — `∈ {1,2,3}` / `∈ someSetVar`) both narrow the
                     // same way: their elements become the candidate domain.
                     Value::Array(elements) | Value::Set(elements) => {
-                        let domain = Domain::ValueSet(elements.clone());
-                        self.env.apply_constraint(variable, domain)?;
+                        Ok(Domain::ValueSet(elements.clone()))
                     }
-                    _ => {
-                        return Err(format!(
-                            "Constraint '∈'/'in' requires a Set or Array, got {}",
-                            val.type_name()
-                        ))
-                    }
+                    // Value::Schema (T26 Phase 2) — `mm ∈ K` where K is an
+                    // object-schema value: mm must be an object satisfying
+                    // K's field constraints (structural, not enumerated).
+                    Value::Schema(fields) => Ok(Domain::Schema(fields.clone())),
+                    _ => Err(format!(
+                        "Constraint '∈'/'in' requires a Set, Array, or Schema, got {}",
+                        val.type_name()
+                    )),
                 }
             }
             ConstraintExpr::Domain(kind) => {
@@ -724,7 +729,7 @@ impl Interpreter {
                 // domain would silently accept e.g. 0.5 for `a in Z` and would
                 // never let range narrowing (`a < 2; a > 0`) collapse to a
                 // single integer.
-                let domain = match kind {
+                Ok(match kind {
                     crate::ast::DomainKind::Integer => {
                         Domain::IntegerRange { min: None, max: None }
                     }
@@ -737,15 +742,33 @@ impl Interpreter {
                         min_inclusive: false,
                         max_inclusive: false,
                     },
-                };
-                self.env.apply_constraint(variable, domain)?;
+                })
             }
             ConstraintExpr::IsType(type_expr) => {
-                let domain = Domain::TypeDomain(type_expr);
-                self.env.apply_constraint(variable, domain)?;
+                // `∈`'s grammar tries a bare capitalized name as a type
+                // name before falling back to MemberOf (Phase 1), so
+                // `mm ∈ K` where K is a variable holding a Set or Schema
+                // value (T26 Phase 2 — `K = { k ∈ String, m ∈ Number }`)
+                // parses as IsType(Named("K")), not MemberOf. Check for
+                // that case here and narrow structurally against K's
+                // actual elements/fields, the same as MemberOf would —
+                // otherwise `mm ∈ K` would silently mean "mm._class is
+                // 'K'" (never true for a plain object) instead of "mm
+                // satisfies K's schema". Ordinary declared `type K {...}`
+                // names are unaffected: a name can't simultaneously be a
+                // bound variable, so this can never misfire against one.
+                if let TypeExpr::Named(name) = &type_expr {
+                    if let Some(val) = self.env.get(name) {
+                        match val.as_ref() {
+                            Value::Set(elements) => return Ok(Domain::ValueSet(elements.clone())),
+                            Value::Schema(fields) => return Ok(Domain::Schema(fields.clone())),
+                            _ => {}
+                        }
+                    }
+                }
+                Ok(Domain::TypeDomain(type_expr))
             }
         }
-        Ok(())
     }
 
     /// Execute statements inside a block.
@@ -797,6 +820,7 @@ impl Interpreter {
                     "Object" => matches!(val, Value::Object(_)),
                     "Array" => matches!(val, Value::Array(_)),
                     "Set" => matches!(val, Value::Set(_)),
+                    "Schema" => matches!(val, Value::Schema(_)),
                     "Null" => matches!(val, Value::Null),
                     "Any" => true,
                     _ => {
@@ -998,6 +1022,42 @@ impl Interpreter {
                 }
             }),
             Expression::Object { spread, fields } => {
+                // T26 Phase 2: a literal with any `name ∈ expr` (or other
+                // non-`=`) field is an object-*schema* — the set of objects
+                // satisfying these per-field domains — not a resolved
+                // Object. `{ name = "Ada" }` (every field `=`) keeps its
+                // exact pre-T26 meaning, unchanged below.
+                if fields.iter().any(|f| matches!(f, ObjectField::Constrained(..))) {
+                    if spread.is_some() {
+                        return Err(
+                            "Cannot spread into an object-schema (a literal with a \
+                             constrained '∈' field) — spread needs a fully resolved source"
+                                .to_string(),
+                        );
+                    }
+                    let mut schema = HashMap::new();
+                    for field in fields {
+                        match field {
+                            ObjectField::Static(name, expr) => {
+                                let val = self.eval_expr(expr)?;
+                                schema.insert(name, Domain::Exact(val));
+                            }
+                            ObjectField::Constrained(name, constraint) => {
+                                let domain = self.constraint_narrowing_domain(constraint)?;
+                                schema.insert(name, domain);
+                            }
+                            ObjectField::Computed(..) => {
+                                return Err(
+                                    "Computed keys are not supported in an object-schema \
+                                     (a literal with a constrained '∈' field)"
+                                        .to_string(),
+                                )
+                            }
+                        }
+                    }
+                    return Ok(Value::schema(schema));
+                }
+
                 let mut map = HashMap::new();
                 if let Some(source_expr) = spread {
                     let source_val = self.eval_expr(*source_expr)?;
@@ -1033,6 +1093,9 @@ impl Interpreter {
                             };
                             let val = self.eval_expr(val_expr)?;
                             map.insert(key_str, val);
+                        }
+                        ObjectField::Constrained(..) => {
+                            unreachable!("filtered out by the has-constrained check above")
                         }
                     }
                 }
@@ -1071,11 +1134,30 @@ impl Interpreter {
                     }
                 }
 
+                // T26 Phase 2 schema fields (`name ∈ expr`) describe a set of
+                // objects, not one instance — they don't fit a particle
+                // *constructor*, which always produces one concrete, typed
+                // value. Reject up front so every match below can stay
+                // exactly as it was (no schema-vs-object branching needed
+                // here, unlike plain Expression::Object literals).
+                if let Some(name) = fields.iter().find_map(|f| match f {
+                    ObjectField::Constrained(n, _) => Some(n.as_str()),
+                    _ => None,
+                }) {
+                    return Err(format!(
+                        "'{}' field of '{}' uses a constraint ('∈' or similar) — particle \
+                         construction needs a concrete value ('='), not a schema. Use a plain \
+                         object literal (no type name) for a schema.",
+                        name, type_key
+                    ));
+                }
+
                 if let Some(ref schema_fields) = type_def {
                     let provided: std::collections::HashSet<String> =
                         fields.iter().filter_map(|f| match f {
                             ObjectField::Static(n, _) => Some(n.clone()),
                             ObjectField::Computed(_, _) => None,
+                            ObjectField::Constrained(..) => unreachable!("rejected above"),
                         }).collect();
                     for fc in schema_fields {
                         if !fc.optional
@@ -1147,6 +1229,7 @@ impl Interpreter {
                                 let val = self.eval_expr(val_expr)?;
                                 map.insert(key_str, val);
                             }
+                            ObjectField::Constrained(..) => unreachable!("rejected above"),
                         }
                     }
 
@@ -1183,6 +1266,7 @@ impl Interpreter {
                                 let val = self.eval_expr(val_expr)?;
                                 map.insert(key_str, val);
                             }
+                            ObjectField::Constrained(..) => unreachable!("rejected above"),
                         }
                     }
                     Ok(Value::object(map))
@@ -1553,8 +1637,21 @@ impl Interpreter {
                         .collect();
                     Ok(Value::set(kept))
                 }
+                // Schema ∩ Schema (T26 Phase 2) — object-schema inheritance:
+                // `C = A ∩ B` is the set of objects satisfying both A's and
+                // B's field constraints.
+                (Value::Schema(a), Value::Schema(b)) => {
+                    match crate::runtime::merge_schemas(a.clone(), b.clone()) {
+                        Some(merged) => Ok(Value::schema(merged)),
+                        None => Err(
+                            "Cannot use '∩': the two schemas have contradictory constraints \
+                             for a shared field"
+                                .to_string(),
+                        ),
+                    }
+                }
                 _ => Err(format!(
-                    "Cannot use '∩' with {} and {} — both sides must be Sets",
+                    "Cannot use '∩' with {} and {} — both sides must be Sets or Schemas",
                     left.type_name(),
                     right.type_name()
                 )),

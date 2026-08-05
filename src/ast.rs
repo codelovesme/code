@@ -297,6 +297,11 @@ pub enum ObjectField {
     Static(String, Expression),
     /// Computed field: `[key_expr] = expr`
     Computed(Expression, Expression),
+    /// Constrained field: `name ∈ expr` / `name < expr` / etc. (T26 Phase
+    /// 2) — anything other than `=`. Makes the enclosing literal an
+    /// object-*schema* (`Value::Schema`) rather than a resolved `Object`,
+    /// since a non-`=` field constraint doesn't pin the field to one value.
+    Constrained(String, ConstraintExpr),
 }
 
 /// An expression node.

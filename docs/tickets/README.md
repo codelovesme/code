@@ -51,7 +51,7 @@ _(none right now)_
 | [23](medium/23-set-domain-and-possibility-enumeration.md) | First-class Set domain: `⦃…⦄` literals, domain-borrowing `∈`, `loop <var> {}` (superseded by T26) |
 | [24](medium/24-native-backend-constraint-narrowing.md) | Native backend constraint narrowing: silent-miscompile hole closed (Phase 1 done), full parity undecided (Phase 2) |
 | [25](medium/25-partially-resolved-objects.md) | Objects with unresolved (constrained-only) fields (superseded by T26) |
-| [26](medium/26-unified-set-based-semantics.md) | Unified set-based semantics: variables are constraint sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪` (supersedes T23, T25; Phase 1 shipped, Phase 2 open) |
+| [26](medium/26-unified-set-based-semantics.md) | Unified set-based semantics: variables are constraint sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪` (supersedes T23, T25; Phase 1 + 2 shipped, Phase 3 open) |
 
 ## Active — Low priority
 
@@ -190,7 +190,28 @@ adding new ones — this parser's recursive `expr` is reused too many places
 for new wrapping layers to be free). Also had to drop workspace dev builds
 to `debug = "line-tables-only"` (`Cargo.toml`) after the pre-fold tiers hit
 a separate `rust-lld` debug-info relocation limit linking the LLVM-embedding
-`code` binary. Phase 2 (object-schemas) not started.
+`code` binary.
+
+**Phase 2 (object-schemas) shipped 2026-08-05**, simpler than T25 originally
+scoped: resolution stays per-*variable* (a new `Value::Schema`/
+`Domain::Schema`, exactly parallel to Phase 1's Set), not per-*field* —
+`Value::Object` itself is untouched. `mm ∈ K; mm = {...}` resolves or
+contradicts by checking the object against K's field domains (open —
+Decision 3, extra fields are fine); `∩` on two schemas merges field
+constraints, which *is* inheritance. This made all four of T25's open
+questions (field access, type-checking, spread, host-boundary) answer
+themselves — each already routes through the ordinary "unresolved variable"
+error path, no per-field tracking needed. Caught two real bugs doing it:
+`Exact ∩ TypeDomain` never actually checked built-in type names (`m ∈
+Number; m = "x"` was accepted anywhere, not just in a schema — now fixed
+everywhere), and `∈`'s bare-capitalized-name-means-type-name rule from
+Phase 1 was swallowing the schema variable itself (`mm ∈ K` parsed as "check
+_class == 'K'", never reaching Schema logic) — fixed by checking for a bound
+Set/Schema variable before falling back to type-name matching. One
+deliberately deferred limitation: `KK = String` (aliasing a builtin type
+name) doesn't work — `String` alone isn't yet a first-class value; writing
+the schema with the literal name directly does. 6 new tests, full sweep
+green (158/158 fixtures).
 
 **Design decision on record:** Code has no user-defined functions and no
 function value — reusable logic exists only as handlers (particle dispatch).

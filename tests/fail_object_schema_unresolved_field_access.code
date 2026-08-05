@@ -1,0 +1,7 @@
+-> T26 Phase 2: a schema-narrowed variable that hasn't been pinned to a
+-> concrete object yet is unresolved — field access on it behaves like any
+-> other operation on an unresolved variable (the ordinary "does not have a
+-> definite value yet" diagnostic), not a crash or a silent Null.
+K = { k ∈ String, m ∈ Number }
+mm ∈ K
+b = mm.k

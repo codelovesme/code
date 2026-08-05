@@ -3,7 +3,7 @@
 - **Priority:** Medium (foundational / large — a language-model redesign, not a feature)
 - **Type:** Language design / core semantics
 - **Supersedes:** [T23](23-set-domain-and-possibility-enumeration.md) (set literals + `loop`), [T25](25-partially-resolved-objects.md) (objects with unresolved fields) — both fold into this unified model.
-- **Status:** Design locked (2026-08-05), all three core decisions resolved. **Phase 1 (value-sets) implemented and shipped (2026-08-05)** — see "Implementation plan" for what landed and two real bugs/infra issues caught and fixed along the way. Phase 2 (object-schemas) not started.
+- **Status:** Design locked (2026-08-05), all three core decisions resolved. **Phase 1 (value-sets) and Phase 2 (object-schemas) both implemented and shipped (2026-08-05)** — see "Implementation plan" for what landed and real bugs/infra issues caught and fixed along the way in each. Phase 3 (discriminated unions + flow narrowing) not started.
 
 ## The model
 
@@ -229,12 +229,101 @@ way:
   smoke-test cases for the unresolved-domain and domain-entailed-assert
   bindings shape).
 
-**Phase 2 — object-schemas.** `Value::Object` gains field-constraint
-(not-yet-resolved-field) representation — T25's mechanism, now framed as
-"object literal, open schema." `∩`/`∪` extended to schemas (inheritance /
-union). Field access, construction, spread, and host-boundary serialization
-all need explicit rules for an unresolved field. Larger surface than Phase
-1; starts only once Phase 1 is merged and stable.
+**Phase 2 — object-schemas: implemented (2026-08-05).** The design as
+planned turned out to be simpler than T25 originally anticipated — see
+below — and only `∩` (not `∪`) was in scope, matching the Decision-3
+motivation.
+
+**The key simplification: resolution stays per-*variable*, not per-*field*.**
+T25 imagined `Value::Object` itself needing to represent a field with a
+domain but no value (`HashMap<String, Either<Domain, Value>>`). That turned
+out to be unnecessary. Instead:
+- `Value::Object` is **completely unchanged** — still `HashMap<String,
+  Rc<Value>>`, every field always resolved. Zero regression risk to any
+  existing object code.
+- New `Value::Schema(HashMap<String, Domain>)`: a resolved value in its own
+  right — `K = { k ∈ String, m ∈ Number }` binds K to *this* schema (one
+  well-defined value), even though the set of objects it describes is
+  open-ended. Exactly parallel to `Value::Set` (Phase 1) — "resolved" just
+  means the variable's *own* domain is a singleton, independent of whether
+  what it holds is itself finite.
+- New `Domain::Schema(HashMap<String, Domain>)`: narrows an *unresolved*
+  scalar (`mm ∈ K`) to "must be an object satisfying K's fields" —
+  structural, open (Decision 3: extra fields beyond what's named are fine).
+- `mm = {...}` intersects `Domain::Schema` with `Domain::Exact(the object)`:
+  checks every schema field against the object (open — missing named fields
+  fail, extra unnamed ones don't), resolving on match, contradicting
+  otherwise. `∩` on two schemas merges their field constraints (union of
+  names, intersect where both define a field) — this **is** inheritance.
+- This answers all four of T25's open questions for free, because none of
+  them can arise: field access, spread, and host-boundary calls all require
+  evaluating their receiver/argument first, which already fails with the
+  ordinary "does not have a definite value yet" diagnostic for an
+  unresolved (Schema-domain) variable — no new per-field logic needed.
+
+**Grammar:** object-literal fields now accept `name ∈ expr` (or any
+constraint operator) alongside `name = expr`, by routing the field's RHS
+through the *same* `constraint_rhs` parser already used for top-level
+`variable <op> expr` statements — a field constraint literally is a
+constraint statement, just scoped to a field name. A literal with zero
+constrained fields still produces a plain `Object` exactly as before
+(`ObjectField::Static`, unchanged); one or more constrained fields makes it
+a `Schema`. `T25`'s original gap (`{ k = 2, L ∈ Z }`) now parses and works.
+
+**Two real bugs caught and fixed, surfaced by making schema-satisfaction
+checking real:**
+- `Domain::intersect()`'s `(Exact, TypeDomain)` arms passed through
+  *unconditionally* for built-in type names — `m ∈ Number` never actually
+  checked the pinned value was a `Number`. Invisible before Phase 2 (nothing
+  exercised this path meaningfully); Phase 2's schema-satisfaction check
+  depends on it being real, so it's fixed for every domain kind, not just
+  schemas — `m ∈ Number; m = "x"` is now correctly a contradiction anywhere,
+  not just inside a schema field. Custom `type X {...}` names are unchanged
+  (still loose — checking those needs an Interpreter's type registry a pure
+  `Domain::intersect()` doesn't have).
+- `∈`'s Phase-1 grammar tries a bare capitalized identifier as a type name
+  *before* falling back to a general expression — so `mm ∈ K` (K, the
+  schema variable, capitalized in the worked example) parsed as
+  `IsType(Named("K"))`, never reaching the new Schema-membership logic at
+  all, and silently meant "mm._class is 'K'" (never true) instead of "mm
+  satisfies K". Fixed at the `IsType` conversion step: if the name resolves
+  to a bound variable holding a `Set` or `Schema` value, narrow against it
+  structurally, the same as `MemberOf` would; only falls back to ordinary
+  `_class`-based type-domain checking otherwise. A declared `type K {...}`
+  can't collide with this — a name can't be both a bound variable and a
+  declared type simultaneously.
+
+**Known, deliberately deferred limitation:** `KK = String` (aliasing a
+built-in type name to a variable, then using `k ∈ KK`) does not work — bare
+`String`/`Number`/etc. aren't expressions today (`String` alone evaluates as
+an undefined-variable lookup). The owner's worked example used this as a
+minor illustrative aside, not the core mechanism; writing the schema with
+the literal type name directly (`k ∈ String`) works fully. Making built-in
+type names into genuine first-class values is a separate, smaller follow-up
+if it's ever needed.
+
+Native codegen rejects object-schemas cleanly (particle construction and
+plain object literals both), consistent with T24 — same "no possibility of
+silent divergence" bar as Phase 1.
+
+Also fixed in passing: the code-wasm smoke test asserted an exact
+`bindings` array order, which is backed by a `HashMap` and was never
+actually guaranteed — confirmed by two consecutive wasm rebuilds (Phase 1
+vs. Phase 2, no change to the relevant code) producing different but
+internally-consistent orderings. Comparison is now order-independent
+(sorted by name) rather than chasing the ordering itself.
+
+6 new `tests/*.code` fixtures (basic schema resolution + the T25 mixed-field
+case, the refuted-field case, missing-required-field, `∩`-inheritance
+success/failure, unresolved-schema field access). Full regression sweep
+green: workspace build, `cargo test`, 158/158 `.code` fixtures (6 new),
+`docs/examples/run.sh`, wasm smoke test against the real compiled `.wasm`,
+`fmt --check`.
+
+**Phase 3 — discriminated unions + flow-sensitive narrowing (not started).**
+Heterogeneous `∪` for schemas (`Status = {"Success"} ∪ {tag = "Error", code
+∈ Number}`), and narrowing a variable's domain inside an `if` branch that
+tests set/schema membership.
 
 **Phase 3 — discriminated unions + flow-sensitive narrowing.** Heterogeneous
 `∪` (`Status = {"Success"} ∪ {tag = "Error", code ∈ Number}`), and narrowing

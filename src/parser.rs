@@ -119,13 +119,20 @@ fn build_expression(
     _stmt: impl Parser<char, Spanned<Statement>, Error = Simple<char>> + Clone + 'static,
 ) -> impl Parser<char, Expression, Error = Simple<char>> + Clone {
     recursive(move |expr| {
-        // Object field: `name = expr` or computed `[expr] = expr`
+        // Object field: `name = expr` (resolved) or `name ∈ expr` / `name <
+        // expr` / etc. (T26 Phase 2 — constrained, makes the enclosing
+        // literal a Value::Schema instead of a resolved Object) or computed
+        // `[expr] = expr`. Reuses the same constraint_rhs already used for
+        // top-level `variable <op> expr` statements — a field constraint
+        // *is* a constraint statement, just scoped to a field name instead
+        // of the environment.
         let object_field = identifier()
             .then_ignore(whitespace())
-            .then_ignore(just('='))
-            .then_ignore(whitespace())
-            .then(expr.clone())
-            .map(|(name, value)| ObjectField::Static(name, value))
+            .then(constraint_rhs(expr.clone()))
+            .map(|(name, constraint)| match constraint {
+                ConstraintExpr::Equals(value) => ObjectField::Static(name, value),
+                other => ObjectField::Constrained(name, other),
+            })
             .or(
                 just('[')
                     .ignore_then(any_whitespace())

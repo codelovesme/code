@@ -1,0 +1,7 @@
+-> T26 Phase 2: `C = A ∩ B` requires satisfying BOTH — an object with only
+-> A's field is not a member of C.
+A = { x ∈ Number }
+B = { y ∈ String }
+C = A ∩ B
+obj ∈ C
+obj = { x = 1 }

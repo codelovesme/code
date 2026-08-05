@@ -1,0 +1,6 @@
+-> T26 Phase 2: pinning a schema-narrowed variable to an object whose field
+-> doesn't satisfy the schema's constraint must contradict, not silently
+-> resolve. m must be ∈ Number; {1,2} is a Set, not a member of Number.
+K = { k ∈ String, m ∈ Number }
+mm ∈ K
+mm = { k = "x", m = { 1, 2 } }

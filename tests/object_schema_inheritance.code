@@ -1,0 +1,18 @@
+-> T26 Phase 2, Decision 3: `∩` on two schemas is inheritance — the set of
+-> objects satisfying BOTH. Only possible because schemas are open
+-> (structural) — a closed reading would make A ∩ B empty whenever A and B
+-> name different fields.
+A = { x ∈ Number }
+B = { y ∈ String }
+C = A ∩ B
+
+obj ∈ C
+obj = { x = 1, y = "hi" }
+assert obj.x = 1
+assert obj.y = "hi"
+
+-> An object satisfying only one half of the intersection doesn't qualify —
+-> see fail_object_schema_missing_field.code / the ∩-specific case below.
+another ∈ C
+another = { x = 5, y = "ok", z = true }
+assert another.z = true

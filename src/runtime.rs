@@ -29,6 +29,13 @@ pub enum Domain {
     ValueSet(Vec<Rc<Value>>),
     /// A type domain: variable must be of this type.
     TypeDomain(TypeExpr),
+    /// Structural object-schema membership (T26 Phase 2): variable must be
+    /// an object satisfying every named field's domain. Open/structural —
+    /// extra fields beyond the ones listed are allowed (this is what lets
+    /// `∩` work as inheritance: `A ∩ B` is genuinely satisfiable by an
+    /// object with both A's and B's fields, not just objects with *only*
+    /// those fields).
+    Schema(HashMap<String, Domain>),
     /// Intersection of multiple domains.
     Intersection(Vec<Domain>),
     /// Empty domain — unsatisfiable (contradictory constraints).
@@ -118,7 +125,28 @@ impl Domain {
                     max_inclusive: new_mxi,
                 }
             }
-            // Exact + TypeDomain: keep the exact if it matches (loose check)
+            // Exact + TypeDomain(Named(builtin)): actually check the value
+            // matches — found while building T26 Phase 2's object-schema
+            // satisfaction check, which depends on this: `m ∈ Number` must
+            // genuinely reject `m = {1,2}` (a Set), not pass it through
+            // unconditionally. Custom `type X {...}` names still pass
+            // through loose (`None` case) — checking those needs an
+            // Interpreter's type registry, which this free function doesn't
+            // have; that stays the pre-existing behavior.
+            (Domain::Exact(v), Domain::TypeDomain(TypeExpr::Named(name))) => {
+                match value_matches_builtin_type_name(v, name) {
+                    Some(false) => Domain::Empty,
+                    _ => self,
+                }
+            }
+            (Domain::TypeDomain(TypeExpr::Named(name)), Domain::Exact(v)) => {
+                match value_matches_builtin_type_name(v, name) {
+                    Some(false) => Domain::Empty,
+                    _ => other,
+                }
+            }
+            // Exact + TypeDomain (any other TypeExpr shape — Union,
+            // Intersection, Literal): unchanged loose pass-through.
             (Domain::Exact(_), Domain::TypeDomain(_)) => self,
             (Domain::TypeDomain(_), Domain::Exact(_)) => other,
             // Exact + IntegerRange: check the exact value is a whole number in range
@@ -237,6 +265,28 @@ impl Domain {
             (Domain::IntegerRange { min, max }, Domain::ValueSet(items)) => {
                 value_set_intersect_integer_range(items, min, max)
             }
+            // Schema + Exact: does this concrete object satisfy every field
+            // constraint the schema names? (Open/structural — extra fields
+            // on the object beyond what the schema constrains are fine, per
+            // T26 Decision 3.) This is what lets `mm ∈ K; mm = {...}`
+            // resolve when the object matches, and contradict when it
+            // doesn't — same mechanism as every other domain kind.
+            (Domain::Schema(schema), Domain::Exact(v)) => match v.as_ref() {
+                Value::Object(obj_fields) if object_satisfies_schema(obj_fields, schema) => other,
+                _ => Domain::Empty,
+            },
+            (Domain::Exact(v), Domain::Schema(schema)) => match v.as_ref() {
+                Value::Object(obj_fields) if object_satisfies_schema(obj_fields, schema) => self,
+                _ => Domain::Empty,
+            },
+            // Schema + Schema: merge field constraints (union of field
+            // names; intersect the domain for any field both name). This is
+            // `∩`-as-inheritance's underlying mechanism (T26 Decision 3) —
+            // `mm ∈ K1; mm ∈ K2` must satisfy both.
+            (Domain::Schema(a), Domain::Schema(b)) => match merge_schemas(a.clone(), b.clone()) {
+                Some(merged) => Domain::Schema(merged),
+                None => Domain::Empty,
+            },
             _ => {
                 // General case: wrap in Intersection
                 let mut parts = Vec::new();
@@ -288,6 +338,15 @@ impl Domain {
                 }
             }
             Domain::TypeDomain(t) => format!("must be of type {}", t),
+            Domain::Schema(fields) => {
+                let mut names: Vec<&String> = fields.keys().collect();
+                names.sort();
+                let items: Vec<String> = names
+                    .into_iter()
+                    .map(|k| format!("{} ∈ ({})", k, fields[k].describe()))
+                    .collect();
+                format!("must be an object with {{ {} }}", items.join(", "))
+            }
             Domain::Intersection(parts) => {
                 let items: Vec<String> = parts.iter().map(|p| p.describe()).collect();
                 items.join(" and ")
@@ -445,6 +504,67 @@ fn value_set_intersect_integer_range(
     }
 }
 
+/// Best-effort check of whether a value matches a *built-in* type name
+/// (Number/String/Boolean/Object/Array/Set/Schema/Null/Any). `None` means
+/// `name` isn't a recognized built-in — likely a custom `type X {...}` name,
+/// which needs an Interpreter's type registry (structural `_class`
+/// matching) that this free function doesn't have access to; callers treat
+/// `None` as "can't rule it out" and pass the value through.
+fn value_matches_builtin_type_name(val: &Value, name: &str) -> Option<bool> {
+    match name {
+        "Number" => Some(matches!(val, Value::Number(_))),
+        "String" => Some(matches!(val, Value::String(_))),
+        "Boolean" => Some(matches!(val, Value::Boolean(_))),
+        "Object" => Some(matches!(val, Value::Object(_))),
+        "Array" => Some(matches!(val, Value::Array(_))),
+        "Set" => Some(matches!(val, Value::Set(_))),
+        "Schema" => Some(matches!(val, Value::Schema(_))),
+        "Null" => Some(matches!(val, Value::Null)),
+        "Any" => Some(true),
+        _ => None,
+    }
+}
+
+/// Does this concrete object satisfy every field constraint a schema names?
+/// Open/structural (T26 Decision 3): a missing field fails, but the object
+/// may have *extra* fields beyond what the schema constrains.
+fn object_satisfies_schema(
+    obj_fields: &HashMap<String, Rc<Value>>,
+    schema: &HashMap<String, Domain>,
+) -> bool {
+    schema.iter().all(|(name, domain)| {
+        obj_fields
+            .get(name)
+            .map(|v| !domain.clone().intersect(Domain::Exact(Rc::clone(v))).is_empty_domain())
+            .unwrap_or(false)
+    })
+}
+
+/// Merge two schemas' field constraints: union of field names, intersecting
+/// the domain for any field both name. `None` if intersecting any shared
+/// field's domain is contradictory (T26 Decision 3 — this is `∩`'s
+/// underlying mechanism for object-schema inheritance).
+pub(crate) fn merge_schemas(
+    mut a: HashMap<String, Domain>,
+    b: HashMap<String, Domain>,
+) -> Option<HashMap<String, Domain>> {
+    for (k, bd) in b {
+        match a.remove(&k) {
+            Some(ad) => {
+                let merged = ad.intersect(bd);
+                if merged.is_empty_domain() {
+                    return None;
+                }
+                a.insert(k, merged);
+            }
+            None => {
+                a.insert(k, bd);
+            }
+        }
+    }
+    Some(a)
+}
+
 /// Convert real-valued bounds (from `<`/`>`/`≤`/`≥` constraints) into the
 /// tightest integer bounds they imply — e.g. `a < 2` (exclusive real upper
 /// bound 2) implies the integer upper bound is 1.
@@ -478,6 +598,15 @@ pub enum Value {
     /// never repeats — see T26. Element order here is insertion order after
     /// dedup, kept only for deterministic `Display`/iteration, not meaning.
     Set(Vec<Rc<Value>>),
+    /// An object-schema, resolved as a value in its own right (T26 Phase
+    /// 2): `K = { k ∈ KK, m ∈ Number }` binds K to *this* schema — one
+    /// well-defined value — even though the set of objects K describes is
+    /// open-ended (potentially infinite, since e.g. `Number` has infinitely
+    /// many members). Distinct from `Object`: a `Schema`'s fields are
+    /// per-field `Domain`s (constraints), not resolved values. `abc ∈ K`
+    /// narrows `abc`'s domain to "objects satisfying K" — see
+    /// `Domain::Schema`.
+    Schema(HashMap<String, Domain>),
     Null,
 }
 
@@ -519,6 +648,11 @@ impl Value {
         Rc::new(Value::Set(deduped))
     }
 
+    /// Create a heap-allocated Schema value (T26 Phase 2).
+    pub fn schema(fields: HashMap<String, Domain>) -> Rc<Value> {
+        Rc::new(Value::Schema(fields))
+    }
+
     /// Create a heap-allocated Null value.
     pub fn null() -> Rc<Value> {
         Rc::new(Value::Null)
@@ -533,6 +667,7 @@ impl Value {
             Value::Object(_) => "Object",
             Value::Array(_) => "Array",
             Value::Set(_) => "Set",
+            Value::Schema(_) => "Schema",
             Value::Null => "Null",
         }
     }
@@ -571,6 +706,18 @@ impl fmt::Display for Value {
                         write!(f, ", ")?;
                     }
                     write!(f, "{}", v)?;
+                }
+                write!(f, "}}")
+            }
+            Value::Schema(fields) => {
+                let mut names: Vec<&String> = fields.keys().collect();
+                names.sort();
+                write!(f, "{{")?;
+                for (i, k) in names.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{} ∈ ({})", k, fields[*k].describe())?;
                 }
                 write!(f, "}}")
             }
