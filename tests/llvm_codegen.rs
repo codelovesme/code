@@ -25,10 +25,14 @@ fn build_rejects_shadowing() {
     assert!(!status.success());
 }
 
-// Range/set/domain narrowing has no codegen implementation — `code build` must
-// reject it rather than silently compiling a binary whose behavior diverges
-// from `code run` on the same source (see T24). Covers both the `<`/`>` range
-// form and the `in Z/N/R` numeric-domain form.
+// Range/set/domain narrowing had no codegen implementation at all until T24
+// Phase 2 — `code build` must still reject a program whose behavior would
+// otherwise diverge from `code run` on the same source, whether that's
+// because the narrowing genuinely contradicts (Phase 2 now proves this at
+// compile time — see `build_rejects_contradictory_constant_range` for the
+// precise message) or because it depends on something codegen still can't
+// verify (a non-constant operand, or `∈`/MemberOf, which has no compile-time
+// or runtime Set/Schema representation on the native side).
 #[test]
 fn build_rejects_unsupported_narrowing() {
     let exe = env!("CARGO_BIN_EXE_code");
@@ -43,6 +47,57 @@ fn build_rejects_unsupported_narrowing() {
         .status()
         .expect("failed to run code build");
     assert!(!status.success());
+}
+
+// T24 Phase 2: a range/domain constraint whose every operand is a compile-
+// time constant is checked for contradiction at compile time instead of
+// being rejected outright — `code build` now proves the same thing `code
+// run` would detect at runtime, with the identical error message.
+#[test]
+fn build_rejects_contradictory_constant_range() {
+    let exe = env!("CARGO_BIN_EXE_code");
+    let output = Command::new(exe)
+        .args(["build", "tests/fail_pin_contradicts_narrowing.code"])
+        .output()
+        .expect("failed to run code build");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Contradictory constraints for 'b': domain is empty"),
+        "expected a contradiction error, got: {stderr}"
+    );
+
+    let output = Command::new(exe)
+        .args(["build", "tests/fail_domain_type_mismatch.code"])
+        .output()
+        .expect("failed to run code build");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Contradictory constraints for 'a': domain is empty"),
+        "expected a contradiction error, got: {stderr}"
+    );
+}
+
+// T24 Phase 2: constant-driven range narrowing that's actually *consistent*
+// compiles and runs correctly, not just rejected — a real capability, not
+// only a stricter rejection.
+#[test]
+fn build_supports_consistent_constant_range() {
+    let exe = env!("CARGO_BIN_EXE_code");
+    let status = Command::new(exe)
+        .args(["build", "tests/native_const_range_ok.code", "--target", "exe"])
+        .status()
+        .expect("failed to run code build");
+    assert!(status.success());
+
+    let out_path = "target/llvm/native_const_range_ok";
+    assert!(std::path::Path::new(out_path).exists(), "executable not created");
+
+    let run_status = Command::new(out_path)
+        .status()
+        .expect("failed to run compiled executable");
+    assert!(run_status.success(), "compiled executable returned error");
 }
 
 #[test]

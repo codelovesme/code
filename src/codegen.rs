@@ -15,7 +15,7 @@ use inkwell::FloatPredicate;
 use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
-use crate::ast::{BinaryOp, ConstraintExpr, Expression, FieldConstraint, HandlerTarget, ObjectField, Program, Spanned, Statement, TypeExpr, TypeInfo, UnaryOp};
+use crate::ast::{BinaryOp, ConstraintExpr, DomainKind, Expression, FieldConstraint, HandlerTarget, ObjectField, Program, Spanned, Statement, TypeExpr, TypeInfo, UnaryOp};
 
 const TAG_NUMBER: u8 = 0;
 const TAG_STRING: u8 = 1;
@@ -155,6 +155,172 @@ fn host_target_machine(release: bool) -> Result<TargetMachine, String> {
         .ok_or_else(|| "Failed to create target machine".to_string())
 }
 
+/// If `expr` is a compile-time numeric constant (a bare literal, or a
+/// literal negated by unary `-`), its value — otherwise `None`. The only
+/// shapes T24 Phase 2's range narrowing can verify without a runtime domain
+/// representation.
+fn const_fold_number(expr: &Expression) -> Option<f64> {
+    match expr {
+        Expression::Number(n) => Some(*n),
+        Expression::Unary { op: crate::ast::UnaryOp::Negate, operand } => {
+            const_fold_number(operand).map(|n| -n)
+        }
+        _ => None,
+    }
+}
+
+/// Merge two lower bounds, keeping the tighter one (mirrors
+/// `runtime::merge_lower_bound`, duplicated here since this is compile-time-
+/// only bookkeeping with no reason to depend on the interpreter's Domain).
+fn merge_lower(cur: Option<f64>, cur_incl: bool, n: f64, n_incl: bool) -> (Option<f64>, bool) {
+    match cur {
+        None => (Some(n), n_incl),
+        Some(c) if n > c => (Some(n), n_incl),
+        Some(c) if n < c => (Some(c), cur_incl),
+        Some(c) => (Some(c), cur_incl && n_incl),
+    }
+}
+
+/// Merge two upper bounds, keeping the tighter one.
+fn merge_upper(cur: Option<f64>, cur_incl: bool, n: f64, n_incl: bool) -> (Option<f64>, bool) {
+    match cur {
+        None => (Some(n), n_incl),
+        Some(c) if n < c => (Some(n), n_incl),
+        Some(c) if n > c => (Some(c), cur_incl),
+        Some(c) => (Some(c), cur_incl && n_incl),
+    }
+}
+
+/// Compile-time-only accumulated range for one variable's constant-driven
+/// narrowing constraints (T24 Phase 2) — a much smaller, compile-time-only
+/// cousin of the interpreter's `Domain::IntegerRange`/`RealRange`. Exists
+/// purely to catch contradictions the way `code run` would (`b > 3; b < 10;
+/// b = 15` must fail to compile, not silently drop the narrowing — see
+/// T24). There's no runtime representation: a narrowing constraint whose
+/// right side isn't a compile-time constant, or that targets a variable
+/// already pinned to a non-constant expression, still falls back to
+/// outright rejection rather than being silently accepted unchecked.
+#[derive(Clone, Debug, Default)]
+struct ConstRange {
+    /// `Some(true)` after `∈ Z`/`∈ N` (integer-only), `Some(false)` after
+    /// `∈ R`, `None` if never constrained to a numeric-kind domain.
+    integer_only: Option<bool>,
+    min: Option<f64>,
+    min_inclusive: bool,
+    max: Option<f64>,
+    max_inclusive: bool,
+    /// Set once an `=` constraint pins this variable to a constant.
+    pinned: Option<f64>,
+}
+
+impl ConstRange {
+    fn contradiction(var: &str) -> String {
+        format!("Contradictory constraints for '{}': domain is empty", var)
+    }
+
+    /// Would `n` satisfy every bound/integer-ness constraint accumulated so
+    /// far? Doesn't check `pinned` — an already-pinned value
+    /// is checked separately, at the one call site that needs to tell "a
+    /// fresh narrowing constraint contradicts the range" apart from "a
+    /// second, different pin was applied" for its error wording.
+    fn admits_ignoring_pin(&self, n: f64) -> bool {
+        if let Some(lo) = self.min {
+            if self.min_inclusive {
+                if n < lo {
+                    return false;
+                }
+            } else if n <= lo {
+                return false;
+            }
+        }
+        if let Some(hi) = self.max {
+            if self.max_inclusive {
+                if n > hi {
+                    return false;
+                }
+            } else if n >= hi {
+                return false;
+            }
+        }
+        if self.integer_only == Some(true) && n.fract() != 0.0 {
+            return false;
+        }
+        true
+    }
+
+    /// After a bounds update: is the accumulated range still satisfiable?
+    /// Checks plain min/max emptiness, that an integer-only range still
+    /// contains at least one integer (`a ∈ Z; a > 3; a < 4` has none), and
+    /// that any existing pin still fits.
+    fn check_empty(&self, var: &str) -> Result<(), String> {
+        if let (Some(lo), Some(hi)) = (self.min, self.max) {
+            let empty = lo > hi || (lo == hi && !(self.min_inclusive && self.max_inclusive));
+            if empty {
+                return Err(Self::contradiction(var));
+            }
+            if self.integer_only == Some(true) {
+                let smallest = if self.min_inclusive { lo.ceil() } else { lo.floor() + 1.0 };
+                let largest = if self.max_inclusive { hi.floor() } else { hi.ceil() - 1.0 };
+                if smallest > largest {
+                    return Err(Self::contradiction(var));
+                }
+            }
+        }
+        if let Some(p) = self.pinned {
+            if !self.admits_ignoring_pin(p) {
+                return Err(Self::contradiction(var));
+            }
+        }
+        Ok(())
+    }
+
+    fn narrow_greater(&mut self, n: f64, inclusive: bool, var: &str) -> Result<(), String> {
+        let (m, mi) = merge_lower(self.min, self.min_inclusive, n, inclusive);
+        self.min = m;
+        self.min_inclusive = mi;
+        self.check_empty(var)
+    }
+
+    fn narrow_less(&mut self, n: f64, inclusive: bool, var: &str) -> Result<(), String> {
+        let (m, mi) = merge_upper(self.max, self.max_inclusive, n, inclusive);
+        self.max = m;
+        self.max_inclusive = mi;
+        self.check_empty(var)
+    }
+
+    fn narrow_domain_kind(&mut self, kind: &DomainKind, var: &str) -> Result<(), String> {
+        match kind {
+            DomainKind::Integer => {
+                self.integer_only = Some(true);
+            }
+            DomainKind::Natural => {
+                self.integer_only = Some(true);
+                let (m, mi) = merge_lower(self.min, self.min_inclusive, 0.0, true);
+                self.min = m;
+                self.min_inclusive = mi;
+            }
+            DomainKind::Real => {
+                if self.integer_only.is_none() {
+                    self.integer_only = Some(false);
+                }
+            }
+        }
+        self.check_empty(var)
+    }
+
+    /// Pin this variable to a constant, checking it against every bound
+    /// accumulated so far (and any earlier pin — single-assignment already
+    /// rejects a literal second `=`, but this path is also reached by a
+    /// range constraint arriving *after* the pin, which re-validates here).
+    fn narrow_equals(&mut self, n: f64, var: &str) -> Result<(), String> {
+        if !self.admits_ignoring_pin(n) {
+            return Err(Self::contradiction(var));
+        }
+        self.pinned = Some(n);
+        Ok(())
+    }
+}
+
 struct Codegen<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
@@ -174,6 +340,11 @@ struct Codegen<'ctx> {
     string_count: u64,
     /// Type annotations: scope-level -> name -> TypeExpr.
     type_annotations: Vec<HashMap<String, TypeExpr>>,
+    /// Compile-time-only range accumulator: scope-level -> name -> accumulated
+    /// bounds (T24 Phase 2). Range/domain constraints whose right side is a
+    /// constant literal are checked for contradiction at compile time instead
+    /// of being rejected outright — see `ConstRange`.
+    pending_ranges: Vec<HashMap<String, ConstRange>>,
     /// Type definitions (particle schemas): scope-level -> name -> fields (name, TypeExpr, optional).
     type_registry: Vec<HashMap<String, Vec<(String, TypeExpr, bool)>>>,
     /// Handler definitions: scope-level -> class_name -> handler body.
@@ -371,6 +542,7 @@ impl<'ctx> Codegen<'ctx> {
             values_equal_fn,
             string_count: 0,
             type_annotations: vec![HashMap::new()],
+            pending_ranges: vec![HashMap::new()],
             type_registry: vec![initial_types],
             handler_registry: vec![HashMap::new()],
             current_span: None,
@@ -562,6 +734,30 @@ impl<'ctx> Codegen<'ctx> {
             Statement::Constraint { variable, constraint, private: _ } => {
                 match constraint {
                     ConstraintExpr::Equals(value) => {
+                        // A pending range (T24 Phase 2 — b > 3; b < 10; b = 15
+                        // must still be caught as a contradiction) is checked
+                        // against a constant pin before anything else. A
+                        // non-constant pin can't be verified against it at
+                        // compile time — reject rather than silently drop the
+                        // narrowing, same reasoning as the fallback rejection
+                        // below.
+                        if self.get_pending_range(variable).is_some() {
+                            match const_fold_number(value) {
+                                Some(n) => {
+                                    let var = variable.clone();
+                                    self.with_pending_range(variable, |r| r.narrow_equals(n, &var))?;
+                                }
+                                None => {
+                                    return Err(format!(
+                                        "'{}' was narrowed by a range/domain constraint \
+                                         earlier, and the native backend can only verify \
+                                         that against a constant pin — this one isn't. Use \
+                                         `code run` for this.",
+                                        variable
+                                    ));
+                                }
+                            }
+                        }
                         // Exact constraint → compile like old assignment
                         if self.exists_in_any_scope(variable) {
                             if let Some(ann) = self.get_type_annotation(variable) {
@@ -593,24 +789,34 @@ impl<'ctx> Codegen<'ctx> {
                         self.set_type_annotation(variable.clone(), type_expr.clone());
                         Ok(())
                     }
+                    ConstraintExpr::NotEquals(expr) => {
+                        // Matches the interpreter exactly: `≠` is evaluated
+                        // (for validation/side effects) but never actually
+                        // narrows the domain — `constraint_narrowing_domain`
+                        // returns `Domain::Any` unconditionally, a pre-
+                        // existing, documented limitation, not something T24
+                        // should "fix" by making codegen *stricter* than
+                        // `code run` (that's a divergence too, just the safe
+                        // direction — but parity means matching, not
+                        // guessing which side is more correct).
+                        let val = self.compile_expr(expr)?;
+                        self.emit_drop(val.into_struct_value());
+                        Ok(())
+                    }
+                    ConstraintExpr::LessThan(_)
+                    | ConstraintExpr::GreaterThan(_)
+                    | ConstraintExpr::LessEqual(_)
+                    | ConstraintExpr::GreaterEqual(_)
+                    | ConstraintExpr::Domain(_) => {
+                        self.apply_const_narrowing(variable, constraint)
+                    }
                     other => {
-                        // Range/set/domain narrowing (LessThan, GreaterThan, MemberOf,
-                        // Domain(Z/N/R), NotEquals, ...) has no codegen implementation —
-                        // the interpreter enforces these (intersect + contradiction
-                        // detection) but the native backend has nothing to lower them
-                        // to. Silently accepting used to compile a binary whose behavior
-                        // silently diverges from `code run` on the same source (e.g.
-                        // `a > 3; a < 10; a = 15` interprets as a contradiction but used
-                        // to compile and run to completion, ignoring the narrowing
-                        // entirely). Reject instead of miscompiling — see T24.
-                        Err(format!(
-                            "'{}' uses a constraint form not supported by the native \
-                             backend yet ({}) — this compiles differently than `code run` \
-                             would interpret it, so it's rejected rather than silently \
-                             ignored. Use `code run` for constraint narrowing beyond `=` \
-                             and type checks.",
-                            variable, other
-                        ))
+                        // MemberOf (`∈ {..}` / `∈ <set var>`) has no codegen
+                        // implementation — there's no compile-time or runtime
+                        // Set/Schema representation on the native side to
+                        // check membership against. Reject instead of
+                        // miscompiling — see T24.
+                        Err(self.narrowing_rejection_message(variable, other))
                     }
                 }
             }
@@ -3253,6 +3459,7 @@ impl<'ctx> Codegen<'ctx> {
         self.scopes.push(HashMap::new());
         self.borrowed_slots.push(HashSet::new());
         self.type_annotations.push(HashMap::new());
+        self.pending_ranges.push(HashMap::new());
         self.type_registry.push(HashMap::new());
         self.handler_registry.push(HashMap::new());
         self.type_alias_registry.push(HashMap::new());
@@ -3263,6 +3470,7 @@ impl<'ctx> Codegen<'ctx> {
         self.scopes.pop();
         self.borrowed_slots.pop();
         self.type_annotations.pop();
+        self.pending_ranges.pop();
         self.type_registry.pop();
         self.handler_registry.pop();
         self.type_alias_registry.pop();
@@ -3304,6 +3512,96 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
         None
+    }
+
+    fn get_pending_range(&self, name: &str) -> Option<&ConstRange> {
+        for scope in self.pending_ranges.iter().rev() {
+            if let Some(r) = scope.get(name) {
+                return Some(r);
+            }
+        }
+        None
+    }
+
+    /// Apply `f` to `name`'s accumulated range, updating it in whichever
+    /// scope already holds an entry (so narrowing an outer-scope variable
+    /// from an inner scope updates the real accumulator, not a shadow copy
+    /// that would silently diverge from it) — or creating a fresh entry in
+    /// the current scope if this is the first narrowing constraint seen for
+    /// `name`.
+    fn with_pending_range<F>(&mut self, name: &str, f: F) -> Result<(), String>
+    where
+        F: FnOnce(&mut ConstRange) -> Result<(), String>,
+    {
+        for scope in self.pending_ranges.iter_mut().rev() {
+            if let Some(r) = scope.get_mut(name) {
+                return f(r);
+            }
+        }
+        let mut r = ConstRange::default();
+        let result = f(&mut r);
+        self.pending_ranges
+            .last_mut()
+            .expect("No active scope")
+            .insert(name.to_string(), r);
+        result
+    }
+
+    fn narrowing_rejection_message(&self, variable: &str, constraint: &ConstraintExpr) -> String {
+        format!(
+            "'{}' uses a constraint form not supported by the native \
+             backend yet ({}) — this compiles differently than `code run` \
+             would interpret it, so it's rejected rather than silently \
+             ignored. Use `code run` for constraint narrowing beyond `=`, \
+             type checks, and constant ranges.",
+            variable, constraint
+        )
+    }
+
+    /// Apply a range/domain narrowing constraint (T24 Phase 2) by folding
+    /// its operand into a compile-time constant and updating `variable`'s
+    /// accumulated `ConstRange`, catching a contradiction the way `code
+    /// run` would. Falls back to the same outright rejection every
+    /// unsupported constraint form gets when the operand isn't a constant,
+    /// or when `variable` was already pinned to a non-constant expression
+    /// (no compile-time value exists to check the new constraint against —
+    /// silently accepting it would reintroduce exactly the divergence T24
+    /// Phase 1 closed).
+    fn apply_const_narrowing(
+        &mut self,
+        variable: &str,
+        constraint: &ConstraintExpr,
+    ) -> Result<(), String> {
+        if self.exists_in_any_scope(variable)
+            && self.get_pending_range(variable).and_then(|r| r.pinned).is_none()
+        {
+            return Err(self.narrowing_rejection_message(variable, constraint));
+        }
+        let var = variable.to_string();
+        let reject = || self.narrowing_rejection_message(variable, constraint);
+        match constraint {
+            ConstraintExpr::LessThan(e) => {
+                let Some(n) = const_fold_number(e) else { return Err(reject()) };
+                self.with_pending_range(variable, |r| r.narrow_less(n, false, &var))
+            }
+            ConstraintExpr::GreaterThan(e) => {
+                let Some(n) = const_fold_number(e) else { return Err(reject()) };
+                self.with_pending_range(variable, |r| r.narrow_greater(n, false, &var))
+            }
+            ConstraintExpr::LessEqual(e) => {
+                let Some(n) = const_fold_number(e) else { return Err(reject()) };
+                self.with_pending_range(variable, |r| r.narrow_less(n, true, &var))
+            }
+            ConstraintExpr::GreaterEqual(e) => {
+                let Some(n) = const_fold_number(e) else { return Err(reject()) };
+                self.with_pending_range(variable, |r| r.narrow_greater(n, true, &var))
+            }
+            ConstraintExpr::Domain(kind) => {
+                let kind = kind.clone();
+                self.with_pending_range(variable, |r| r.narrow_domain_kind(&kind, &var))
+            }
+            _ => unreachable!("apply_const_narrowing only called for range/domain forms"),
+        }
     }
 
     fn define_type(&mut self, name: String, fields: Vec<FieldConstraint>) {

@@ -32,6 +32,7 @@ finished, priority no longer matters for it. Numbers are stable identifiers
 | [14](done/14-install-script.md) | Install script (`curl \| sh`) |
 | [15](done/15-publish-code-native-crates-io.md) | Publish `code-native` to crates.io |
 | [23](done/23-set-domain-and-possibility-enumeration.md) | First-class Set domain (superseded by T26 — see 26) |
+| [24](done/24-native-backend-constraint-narrowing.md) | Native backend: `code build` silently diverging from `code run` on range/domain narrowing (Phase 1, soundness hole closed) + compile-time-constant range narrowing actually implemented (Phase 2) |
 | [25](done/25-partially-resolved-objects.md) | Objects with unresolved (constrained-only) fields (superseded by T26 — see 26) |
 | [26](done/26-unified-set-based-semantics.md) | Unified set-based semantics: variables are constraint sets, types = sets, `=`/`∈` = `⊆`, universal `∩`/`∪`, discriminated unions, flow-sensitive narrowing (supersedes T23, T25) |
 | [27](done/27-set-op-domain-materialization.md) | `∪`/`∩` materialize an unresolved-but-finite domain (scalar range, Schema, or Union) into a Set instead of demanding resolution first |
@@ -53,9 +54,8 @@ _(none right now)_
 | [17](medium/17-split-release-artifact-code-lsp.md) | Split release artifacts: `code` Runtime / `code` SDK / `code-lsp` |
 | [18](medium/18-wasm-capable-core.md) | WASM-capable core: feature-gate LLVM and native-`.so` out of the default build |
 | [20](medium/20-project-website-distribution-channel.md) | Project website: Downloads page, hosted install.sh, playground home |
-| [22](medium/22-language-documentation-site.md) | Language documentation site: guide, tutorials, examples, reference (Phase 1 guide done; content, depends on T20) |
+| [22](medium/22-language-documentation-site.md) | Language documentation site: guide, tutorials, examples, reference (Phases 1, 2, 4 done — guide, tutorial, reference; Phase 3 examples gallery needs T19) |
 | [21](medium/21-native-backend-memory-management.md) | Native backend automatic memory management: compile-time-elided refcounting (Perceus/Lobster-style) |
-| [24](medium/24-native-backend-constraint-narrowing.md) | Native backend constraint narrowing: silent-miscompile hole closed (Phase 1 done), full parity undecided (Phase 2) |
 
 ## Active — Low priority
 

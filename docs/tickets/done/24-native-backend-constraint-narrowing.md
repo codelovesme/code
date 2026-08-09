@@ -2,7 +2,11 @@
 
 - **Priority:** Medium
 - **Type:** Correctness / interpreter-codegen parity
-- **Area:** `src/codegen.rs`, `src/runtime.rs` (LLVM-side domain representation, if pursued)
+- **Area:** `src/codegen.rs`
+- **Status:** Done (2026-08-09) — both phases shipped. Full runtime
+  `Domain` lowering remains explicitly out of scope unless a real
+  consumer shows up (see Phase 2's writeup for why); not tracked as a
+  follow-up ticket.
 
 ## What happened
 
@@ -105,6 +109,68 @@ essentially unused). Two shapes to choose between when picked back up:
 
 Either way, this ticket's Phase 1 fix means the choice is no longer urgent —
 the worst case (silent divergence) is already closed off.
+
+## Phase 2 — implemented (2026-08-09): scoped to compile-time constants
+
+Chose neither of the two shapes above exactly. Full `Domain` lowering into
+LLVM IR is real, substantial work for a construct the corpus audit found
+"essentially unused" — not justified without an actual consumer. But
+"scoped to what T26 introduced" (Set/Schema `∈`) would mean giving the
+native side a first-class Set/Schema *value* representation, which is its
+own large undertaking or the reason `∪`/`∩`/`SetLiteral`/`LoopDomain` are
+all already cleanly rejected by codegen (T26+) — not something this
+ticket should absorb either.
+
+Instead: **range/domain narrowing (`<`, `>`, `≤`, `≥`, `∈ Z/N/R`) is
+verified entirely at compile time when every operand is a constant
+literal** — no runtime `Domain` representation at all, nothing added to
+the compiled binary. `b > 3; b < 10; b = 15` now fails to compile with
+the exact same message `code run` produces (`Contradictory constraints
+for 'b': domain is empty`), instead of the Phase 1 blanket "not
+supported." A *consistent* constant range (`b > 10; b < 20; b = 15`)
+now compiles and runs correctly, holding `15` — real support, not just a
+stricter rejection.
+
+Mechanism: `ConstRange` (`src/codegen.rs`), a small compile-time-only
+accumulator — deliberately not reusing `runtime::Domain`, since this has
+no runtime representation to share and duplicating the ~10-line
+lower/upper-bound-merge logic keeps codegen decoupled from the
+interpreter's domain machinery. Scoped identically to `type_annotations`
+(`Vec<HashMap<String, ConstRange>>`, pushed/popped with every scope).
+Every accumulated bound is checked for a still-satisfiable range
+(including "does an integer-only range still contain an integer" —
+`a ∈ Z; a > 3; a < 4` has none) on every update, and again against a
+constant `=` pin whenever one is applied, in either order.
+
+Anything not provably constant still falls back to the Phase 1
+rejection, unchanged — a non-constant operand, or a range constraint
+against a variable already pinned to a non-constant expression (no
+compile-time value exists to check the new constraint against; silently
+accepting it would reintroduce the exact divergence this ticket exists
+to close).
+
+**Found and fixed along the way, not part of the plan going in:** `≠`
+turned out to be a documented-but-easy-to-miss special case —
+`constraint_narrowing_domain`'s `NotEquals` arm evaluates its operand
+but always returns `Domain::Any`, an intentional, pre-existing,
+out-of-T26-scope limitation (real exclusion narrowing was never
+implemented). A first pass at this ticket gave codegen *real* `≠`
+exclusion — stricter than the interpreter, and therefore a new
+divergence in the opposite direction (`code build` rejecting `c ≠ 5;
+c = 5` while `code run` silently accepts it). Caught by testing the
+rejection path, not just the acceptance path. Fixed by making codegen's
+`≠` handling match the interpreter exactly: compile and discard the
+operand, no narrowing effect — parity means matching current behavior,
+not guessing which side is "more correct." Worth a separate ticket if
+the interpreter's `≠` gap itself is ever picked up.
+
+Regression coverage: `build_rejects_contradictory_constant_range` (the
+same two Phase-1 fixtures, now asserting on the precise contradiction
+message rather than just "fails somehow"), `build_supports_consistent_
+constant_range` (`tests/native_const_range_ok.code` — a consistent
+`</>`/`=` range, a consistent `∈ N`/`</=` range, and a `≠`-then-`=`
+parity case — compiles, links, and runs to completion). Full regression
+sweep green throughout.
 
 ## Explicitly out of scope
 

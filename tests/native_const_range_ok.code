@@ -1,0 +1,15 @@
+-> T24 Phase 2: constant-driven range narrowing that's actually
+-> consistent compiles (and runs) natively, not just rejected outright.
+b > 10
+b < 20
+b = 15
+assert b = 15
+
+n in N
+n < 5
+n = 3
+assert n = 3
+
+c ≠ 5
+c = 5
+assert c = 5
