@@ -1,0 +1,8 @@
+-> Reference: core handlers — built into the interpreter, dispatched via
+-> `to core`. `Length { value }` returns the length of an Array/String/
+-> Set/Object; `Timestamp {}` returns the current Unix timestamp.
+emit Length { value = [1, 2, 3] } to core get len
+assert len.value = 3
+
+emit Timestamp {} to core get now
+assert now.value > 0

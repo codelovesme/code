@@ -1,0 +1,16 @@
+-> Reference: particle types — built from the predefined `Particle` base
+-> (`_class`/`_created`) merged with field constraints via `∩`, `_class`
+-> pinned explicitly. Construction validates fields; `...` spreads an
+-> existing particle's fields; `∪ Null` marks a field optional.
+Point = Particle ∩ { _class ∈ "Point", x ∈ Number, y ∈ Number }
+p = Point { x = 1, y = 2 }
+assert p._class = "Point"
+assert p.x = 1
+
+q = Point { ...p, y = 9 }
+assert q.x = 1
+assert q.y = 9
+
+Labeled = Particle ∩ { _class ∈ "Labeled", x ∈ Number, y ∈ Number, label ∈ String ∪ Null }
+r = Labeled { x = 0, y = 0 }
+assert r.label = Null

@@ -1,0 +1,9 @@
+-> Reference: modules — `link <path> [as <alias>]` brings a file's public
+-> bindings and handlers into scope. With an alias, they're reached as
+-> `alias.name`/`emit ... to alias`; without one, they're flattened into
+-> the current scope directly (see the Modules guide section).
+link module-helper as m
+assert m.double = 42
+
+emit Square { side = 4 } to m get sq
+assert sq.area = 16

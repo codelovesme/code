@@ -1,0 +1,24 @@
+-> Reference: constraint operators — =, <, >, ≤, ≥, ≠. Each narrows a
+-> variable's domain; `=` narrows it all the way to one value in a
+-> single step. A comparison against an unresolved variable is decided
+-> from its domain when the domain settles it either way (see `b`, `e`).
+a = 5
+assert a = 5
+
+b > 10
+b < 20
+assert b > 5
+
+c ∈ Z
+c > 0
+c < 4
+loop c get whole_numbers { yield c }
+assert whole_numbers = [1, 2, 3]
+
+d ≠ 5
+d = 6
+assert d = 6
+
+e ≥ 3
+e ≤ 10
+assert e ≥ 3

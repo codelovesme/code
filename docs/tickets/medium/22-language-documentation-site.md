@@ -134,4 +134,36 @@ alone is a substantial improvement over the status quo (nothing).
   checked in real headless Chromium (light + dark, no console errors, no
   horizontal overflow, all blocks non-empty).
 
-Phases 2–4 (tutorials, examples gallery, reference) remain open.
+**Phase 2 — Step-by-step tutorial: implemented (2026-08-05).**
+- `site/tutorial.html` — a 4-step walkthrough (type → handler →
+  module split → batch via `loop`) building one thing end-to-end (an
+  order-validation pipeline), narrated separately from the Guide's
+  per-concept structure. Same design system, same nav.
+- Same non-negotiable, same mechanism: `docs/examples/tutorial/*.code`
+  are real files run by `docs/examples/run.sh` in CI;
+  `site/inject-examples.py` extended with a `tutorial_` slug prefix so
+  the tutorial page's code blocks are injected the same way the guide's
+  are — can't drift from what CI runs.
+- Nav link added across all site pages.
+
+**Phase 4 — Reference: implemented (2026-08-09).**
+- `site/reference.html` — full syntax reference by category, not
+  narrative: values & literals, constraint operators, domains,
+  set operators, particle types, handlers & dispatch, loops, modules,
+  core handlers, and the CLI (`run`/`build`/`fmt`/`test`). Same design
+  system, same nav, new compact `table.forms`/`.cli-cmd` components for
+  quick-lookup syntax tables and command listings.
+- Same non-negotiable, same mechanism: 10 real files under
+  `docs/examples/reference/*.code`, run by `docs/examples/run.sh`
+  (extended for the directory) in CI; `site/inject-examples.py`
+  extended with a `reference_` slug prefix. The CLI section is
+  hand-written prose (shell usage, not `.code` examples) — verified
+  manually against `code`'s actual `--help` output and `main.rs`'s
+  argument handling while writing it (notably: `code test` takes no
+  path argument, always scans `tests/` relative to the cwd — a detail
+  easy to get wrong by copying the pattern used everywhere else in this
+  session, `code test tests/`, which silently ignores the extra arg).
+- Nav link added across all site pages.
+
+Phase 3 (examples gallery) remains open — needs T19 (npm-published
+`code-wasm`) first, not yet done.

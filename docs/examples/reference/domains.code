@@ -1,0 +1,27 @@
+-> Reference: domains — `Z` (integers), `N` (naturals, ≥ 0), `R` (reals),
+-> a Set as a domain (`∈ {..}`/`∈ <set variable>`), and a builtin type
+-> name (`∈ String`).
+whole ∈ Z
+whole > -5
+whole < 5
+loop whole get integers { yield whole }
+assert integers = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
+
+nat ∈ N
+nat < 3
+loop nat get naturals { yield nat }
+assert naturals = [0, 1, 2]
+
+real ∈ R
+real > 0
+real < 1
+assert real > 0
+
+candidates = {1, 2, 3}
+pick ∈ candidates
+pick = 2
+assert pick ∈ candidates
+
+s ∈ String
+s = "hello"
+assert s = "hello"

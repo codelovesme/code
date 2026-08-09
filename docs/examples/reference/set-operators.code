@@ -1,0 +1,20 @@
+-> Reference: `∪` (union) and `∩` (intersection) — on Set values, on
+-> unresolved-but-finite scalar domains (materialized into a Set), and
+-> on Schema values (∩ merges field constraints).
+a = {1, 2, 3}
+b = {2, 3, 4}
+assert (a ∪ b) = {1, 2, 3, 4}
+assert (a ∩ b) = {2, 3}
+
+p ∈ Z
+p > 0
+p < 3
+q ∈ Z
+q > 2
+q < 5
+assert (p ∪ q) = {1, 2, 3, 4}
+
+k = { x ∈ Number }
+j = { y ∈ String }
+merged = k ∩ j
+assert { x = 1, y = "z" } ∈ merged

@@ -1,0 +1,14 @@
+-> Reference: handlers — `ClassName => { body }` defines a handler; the
+-> particle's fields are in scope by name inside the body. `emit <particle>
+-> to <target> get <result>` dispatches — targets are `this` (current
+-> module), `base` (the module that linked this one), `core` (built-in
+-> handlers), or a linked module's alias.
+Ping = Particle ∩ { _class ∈ "Ping", value ∈ Number }
+Pong = Particle ∩ { _class ∈ "Pong", value ∈ Number }
+
+Ping => {
+    return Pong { value = value + 1 }
+}
+
+emit Ping { value = 10 } to this get result
+assert result.value = 11

@@ -1,0 +1,5 @@
+double = 21 * 2
+Square = Particle ∩ { _class ∈ "Square", side ∈ Number, area ∈ Number }
+Square => {
+    return Square { side = side, area = side * side }
+}

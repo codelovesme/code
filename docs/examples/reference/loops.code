@@ -1,0 +1,28 @@
+-> Reference: the three loop forms. `loop <var> over <array> get
+-> <result>` is bounded by the array's length. `loop <var> get <result>
+-> { }` (no `over`) enumerates a variable's own finite domain instead.
+-> `loop get <result> { }` (no variable) has no built-in bound — it runs
+-> until an explicit `break`. `yield` collects values into the result in
+-> any of them.
+prices = [12, 45, 8, 99, 3]
+loop p over prices get affordable {
+    if p < 50 {
+        yield p
+    }
+}
+assert affordable = [12, 45, 8, 3]
+
+n ∈ { 1, 2, 3 }
+loop n get doubled {
+    yield n * 2
+}
+assert doubled = [2, 4, 6]
+
+should_stop = true
+loop get done {
+    if should_stop {
+        break
+    }
+    yield 1
+}
+assert done = []

@@ -8,9 +8,10 @@
 #
 # Usage: docs/examples/run.sh [path-to-code-binary]
 #   Defaults to ./target/debug/code. Handler-less files (the linked module
-#   in modules/, and tutorial/validate-basic.code) are skipped as entry
-#   points — they're exercised via the files that link them (07-modules.code;
-#   tutorial/03-modules.code and tutorial/04-batch.code).
+#   in modules/, tutorial/validate-basic.code, and reference/module-helper.code)
+#   are skipped as entry points — they're exercised via the files that link
+#   them (07-modules.code; tutorial/03-modules.code and 04-batch.code;
+#   reference/modules.code).
 set -euo pipefail
 
 code_bin="${1:-./target/debug/code}"
@@ -42,6 +43,14 @@ done
 # Tutorial examples: same convention, one directory over — numbered entry
 # points only, validate-basic.code is a linked dependency, not an entry.
 for f in "$here"/tutorial/[0-9]*.code; do
+  run_one "$f"
+done
+
+# Reference examples: independent topics, not sequential steps, so no
+# numbered-prefix convention — every file is an entry point except the
+# one linked dependency.
+for f in "$here"/reference/*.code; do
+  [[ "$(basename "$f")" == "module-helper.code" ]] && continue
   run_one "$f"
 done
 

@@ -68,6 +68,11 @@ jobs:
           # CI runs (see T22 Phase 2).
           python3 site/inject-examples.py site/tutorial.html docs/examples dist/tutorial.html
 
+          # Reference page: same injection mechanism, same guarantee — every
+          # syntax-form snippet is a real docs/examples/reference/*.code
+          # file CI runs (see T22 Phase 4).
+          python3 site/inject-examples.py site/reference.html docs/examples dist/reference.html
+
           # Latest release's real asset URLs — asset filenames include the
           # version (code-sdk-v0.3.0-x86_64-linux.tar.gz), so a hardcoded
           # Downloads page would go stale every release. Fetch the actual
