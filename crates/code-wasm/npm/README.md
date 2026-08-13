@@ -115,19 +115,53 @@ constraint-solver's final variable assignment would be.
 
 ## Releasing (maintainers)
 
+Published via **npm Trusted Publishing (OIDC)** from GitHub Actions
+(`.github/workflows/publish-npm-wasm.yml`) — no `NPM_TOKEN` stored
+anywhere. The workflow exchanges a short-lived GitHub OIDC token for a
+short-lived npm publish credential at publish time; there's no
+long-lived secret to leak or rotate.
+
+**One-time setup, done once by an owner of the `codelovesme` npm org
+(can't be done from CI — this is npmjs.com account configuration):**
+
+1. On [npmjs.com](https://www.npmjs.com), open (or create, unpublished —
+   npm supports configuring a trusted publisher before the first
+   publish) the `@codelovesme/code-wasm` package.
+2. **Settings → Trusted Publisher → GitHub Actions**, and set:
+   - Organization or user: `codelovesme`
+   - Repository: `code`
+   - Workflow filename: `publish-npm-wasm.yml`
+   - Environment name: leave blank (the workflow doesn't use one)
+3. Once a real publish has gone through this way, go back to
+   **Settings → Publishing access** and turn on **"Require two-factor
+   authentication and disallow tokens"** — this is what actually closes
+   the door on a stolen classic token being used to publish, which is
+   the whole point of doing this over a token in the first place.
+
+**Every release after that** is just:
+
+```bash
+git tag code-wasm-v0.2.0   # whatever the new version is — no `v` prefix elsewhere
+git push origin code-wasm-v0.2.0
+```
+
+The workflow sets `package.json`'s version from the tag itself (one
+source of truth for what's being published, rather than trusting a
+hand-edited `package.json` matches), builds, smoke-tests the actual
+packaged artifact, and publishes with `--provenance`. Bump the version
+deliberately — this JS API is a public contract the moment it's
+published (see the T19 ticket in the main repo).
+
+`workflow_dispatch` (the "Run workflow" button in the Actions tab) does
+everything except the actual publish — a real dry run against the exact
+package that would ship, not a separate code path. To test locally
+before tagging:
+
 ```bash
 bash build.sh                # builds dist/ from the current Rust source
 npm pack --dry-run           # sanity-check the tarball contents
 node smoke-test.mjs          # run the actual packaged artifact, not just build it
-npm version <patch|minor|major>
-npm publish                  # requires being logged in as an owner of the
-                              # @codelovesme npm org — `npm login` first
 ```
-
-Bump the version deliberately, not automatically — this JS API is a
-public contract the moment it's published (see the T19 ticket in the
-main repo). CI builds and smoke-tests this package on every push but
-never publishes it; that step is always manual.
 
 ## License
 

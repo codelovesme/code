@@ -67,11 +67,23 @@ resolved bindings, particle construction/dispatch, and a parse error
 against the packaged artifact. Wired into CI (`ci.yml`) so this stays
 verified on every push, not just today.
 
-**Still not done:** the actual `npm publish` — that needs real npm
-credentials for the `codelovesme` org, which this environment doesn't
-have and shouldn't be given; it's a manual step for whoever holds those
-credentials (see `crates/code-wasm/npm/README.md`'s "Releasing"
-section). Also still open: wiring this repo's own `playground/` to
+**Progress (2026-08-13) — publishing via Trusted Publishing, not a
+token:** `.github/workflows/publish-npm-wasm.yml` publishes on a
+`code-wasm-v*` tag using npm's OIDC Trusted Publishing — no `NPM_TOKEN`
+in GitHub Secrets, nothing long-lived to leak or rotate. Sets
+`package.json`'s version from the tag itself, builds, re-runs the same
+`npm pack --dry-run` + `smoke-test.mjs` verification against the exact
+artifact about to ship, then `npm publish --provenance`.
+`workflow_dispatch` runs everything except the actual publish, as a real
+dry run (mirrors `release.yml`'s existing dry-run pattern for the CLI).
+
+**Still not done:** the one-time npm-side trusted-publisher
+configuration — that's npmjs.com account settings for the `codelovesme`
+org, which only whoever holds that login can do; this environment has
+no npm credentials and shouldn't be given any (the entire point of
+Trusted Publishing is that CI never needs one). See
+`crates/code-wasm/npm/README.md`'s "Releasing" section for the exact
+steps. Also still open: wiring this repo's own `playground/` to
 consume the *published* package instead of its own local build (the
 ticket's "dogfood the public contract" acceptance criterion) — deferred
 until the package is actually live, and wiring the `ModuleResolver`/
