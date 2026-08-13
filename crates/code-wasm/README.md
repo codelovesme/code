@@ -6,10 +6,9 @@ This crate is the interpreter bridge; there are two build outputs from it:
 
 - `playground/` — this repo's own docs-site playground (a full page,
   not published anywhere else).
-- `npm/` — the published `@codelovesme/code-wasm` package, for any
-  third party to embed in their own site or tool. See `npm/README.md`
-  for the public-facing usage docs and `npm/build.sh` to build it
-  locally.
+- `npm/` — the published `code-wasm` package, for any third party to
+  embed in their own site or tool. See `npm/README.md` for the
+  public-facing usage docs and `npm/build.sh` to build it locally.
 
 Both build the *same* underlying `--target web` wasm-bindgen output —
 the playground is meant to eventually consume the published package

@@ -52,9 +52,12 @@
   generic dev-tool default — see the design rationale comment at the top of
   `index.html`'s `<style>` block.
 
-**Progress (2026-08-13) — npm packaging:** the explicit go-ahead landed
-(package name confirmed: `@codelovesme/code-wasm`, scoped to match the
-`codelovesme` GitHub org). `crates/code-wasm/npm/` has a real
+**Progress (2026-08-13) — npm packaging:** the explicit go-ahead landed.
+Package name confirmed as unscoped `code-wasm` (originally set up as
+`@codelovesme/code-wasm`, then switched — a scoped package needs either
+an npm org matching the scope or that scope to already be the
+publisher's personal username, and unscoped sidesteps that decision
+entirely for a first release). `crates/code-wasm/npm/` has a real
 `package.json`, a third-party-facing `README.md` (bundler, no-bundler,
 and Node usage, each verified — the Node example specifically, since
 `--target web`'s default init doesn't work under plain Node; caught by
@@ -78,10 +81,10 @@ artifact about to ship, then `npm publish --provenance`.
 dry run (mirrors `release.yml`'s existing dry-run pattern for the CLI).
 
 **Still not done:** the one-time npm-side trusted-publisher
-configuration — that's npmjs.com account settings for the `codelovesme`
-org, which only whoever holds that login can do; this environment has
-no npm credentials and shouldn't be given any (the entire point of
-Trusted Publishing is that CI never needs one). See
+configuration — that's npmjs.com account settings, which only whoever
+holds that login can do; this environment has no npm credentials and
+shouldn't be given any (the entire point of Trusted Publishing is that
+CI never needs one). See
 `crates/code-wasm/npm/README.md`'s "Releasing" section for the exact
 steps. Also still open: wiring this repo's own `playground/` to
 consume the *published* package instead of its own local build (the

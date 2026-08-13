@@ -1,5 +1,5 @@
 {
-  "name": "@codelovesme/code-wasm",
+  "name": "code-wasm",
   "version": "0.1.0",
   "description": "Run Code — a constraint-based programming language with no user-defined functions and no core I/O — in any browser or JS host. A small WASM bridge, zero JS dependencies.",
   "type": "module",
@@ -27,8 +27,5 @@
     "interpreter",
     "playground",
     "language"
-  ],
-  "publishConfig": {
-    "access": "public"
-  }
+  ]
 }

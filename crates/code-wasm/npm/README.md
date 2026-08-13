@@ -1,4 +1,4 @@
-# @codelovesme/code-wasm
+# code-wasm
 
 Run [Code](https://codelovesme.github.io/code/) — a constraint-based
 programming language with no user-defined functions and no core I/O — in
@@ -13,7 +13,7 @@ Learn the language: [guide](https://codelovesme.github.io/code/guide.html) ·
 ## Install
 
 ```
-npm install @codelovesme/code-wasm
+npm install code-wasm
 ```
 
 ## Usage
@@ -25,7 +25,7 @@ itself, only on `init()`.
 ### In a bundler (Vite, webpack 5, Rollup, …)
 
 ```js
-import init, { run_source } from "@codelovesme/code-wasm";
+import init, { run_source } from "code-wasm";
 
 await init();
 
@@ -51,7 +51,7 @@ console.log(result);
 
 ```html
 <script type="module">
-  import init, { run_source } from "https://esm.sh/@codelovesme/code-wasm";
+  import init, { run_source } from "https://esm.sh/code-wasm";
   await init();
   console.log(run_source("x = 1 + 1\nassert x = 2\n"));
 </script>
@@ -67,9 +67,9 @@ plain Node. Pass the bytes directly instead, resolved with
 
 ```js
 import { readFileSync } from "node:fs";
-import init, { run_source } from "@codelovesme/code-wasm";
+import init, { run_source } from "code-wasm";
 
-const wasmUrl = import.meta.resolve("@codelovesme/code-wasm/dist/code_wasm_bg.wasm");
+const wasmUrl = import.meta.resolve("code-wasm/dist/code_wasm_bg.wasm");
 await init({ module_or_path: readFileSync(new URL(wasmUrl)) });
 
 console.log(run_source("a = 1\n"));
@@ -121,24 +121,34 @@ anywhere. The workflow exchanges a short-lived GitHub OIDC token for a
 short-lived npm publish credential at publish time; there's no
 long-lived secret to leak or rotate.
 
-**One-time setup, done once by an owner of the `codelovesme` npm org
-(can't be done from CI — this is npmjs.com account configuration):**
+**One-time setup (can't be done from CI — this is npmjs.com account
+configuration, done once by whoever's publishing this the first time):**
 
-1. On [npmjs.com](https://www.npmjs.com), open (or create, unpublished —
-   npm supports configuring a trusted publisher before the first
-   publish) the `@codelovesme/code-wasm` package.
-2. **Settings → Trusted Publisher → GitHub Actions**, and set:
-   - Organization or user: `codelovesme`
-   - Repository: `code`
-   - Workflow filename: `publish-npm-wasm.yml`
-   - Environment name: leave blank (the workflow doesn't use one)
-3. Once a real publish has gone through this way, go back to
-   **Settings → Publishing access** and turn on **"Require two-factor
-   authentication and disallow tokens"** — this is what actually closes
-   the door on a stolen classic token being used to publish, which is
-   the whole point of doing this over a token in the first place.
+Option A — pre-configure before the package exists at all: npm's
+**Staged Packages** feature (account menu → Staged Packages) lets you
+register a trusted publisher for a package name that's never been
+published yet, so the very first publish is already OIDC-only.
 
-**Every release after that** is just:
+Option B — if that's not available: publish once manually to claim the
+name (`npm login && npm publish` from this directory, after `bash
+build.sh`), then configure trusted publishing on the now-existing
+package's own **Settings → Trusted Publisher** page for every release
+after that.
+
+Either way, the trusted-publisher configuration itself is:
+
+- Organization or user: your npm username
+- Repository: `codelovesme/code`
+- Workflow filename: `publish-npm-wasm.yml`
+- Environment name: leave blank (the workflow doesn't use one)
+
+Once a real publish has gone through via trusted publishing, go back to
+**Settings → Publishing access** and turn on **"Require two-factor
+authentication and disallow tokens"** — this is what actually closes the
+door on a stolen classic token being used to publish, which is the whole
+point of doing this over a token in the first place.
+
+**Every release after the one-time setup** is just:
 
 ```bash
 git tag code-wasm-v0.2.0   # whatever the new version is — no `v` prefix elsewhere
