@@ -114,3 +114,15 @@ jobs:
           wasm-bindgen --target nodejs --out-dir target/wasm-bindgen-out \
             target/wasm32-unknown-unknown/release/code_wasm.wasm
           node crates/code-wasm/smoke-test/run.js target/wasm-bindgen-out/code_wasm.js
+
+      - name: Build + smoke test the npm package artifact (T19)
+        # The published package uses --target web (same build the docs-site
+        # playground consumes), not --target nodejs like the check above —
+        # a separate build, so it needs its own smoke test against the exact
+        # bytes that would actually get published. `npm pack --dry-run`
+        # catches a missing `files` entry before it ships broken.
+        run: |
+          bash crates/code-wasm/npm/build.sh
+          cd crates/code-wasm/npm
+          npm pack --dry-run
+          node smoke-test.mjs

@@ -52,15 +52,37 @@
   generic dev-tool default — see the design rationale comment at the top of
   `index.html`'s `<style>` block.
 
-**Not done:** npm publishing (claims a public package name, separate
-explicit go-ahead, not bundled here), and wiring the `ModuleResolver`/
-in-memory source map into `code-wasm` for `link` support (the trait exists
-but `run_source` doesn't use it yet — v1 is single-snippet only, matching
-the ticket's "Out of scope (v1)" section). A demo build is published as a
-private Claude Artifact (self-contained, wasm embedded inline, no server) for
-convenience — this is a throwaway demo, **not** a substitute for `crates/
-code-wasm/playground/` (the repo files are the real, lasting deliverable and
-what T20's eventual site will actually use).
+**Progress (2026-08-13) — npm packaging:** the explicit go-ahead landed
+(package name confirmed: `@codelovesme/code-wasm`, scoped to match the
+`codelovesme` GitHub org). `crates/code-wasm/npm/` has a real
+`package.json`, a third-party-facing `README.md` (bundler, no-bundler,
+and Node usage, each verified — the Node example specifically, since
+`--target web`'s default init doesn't work under plain Node; caught by
+actually running it, not just writing the doc), and `build.sh` producing
+the exact `--target web` glue the playground already uses. Verified with
+a full round-trip, not just a build check: `npm pack` → install the real
+`.tgz` into a fresh project (not a symlink) → run the documented Node
+usage example against it, plus a dedicated `smoke-test.mjs` exercising
+resolved bindings, particle construction/dispatch, and a parse error
+against the packaged artifact. Wired into CI (`ci.yml`) so this stays
+verified on every push, not just today.
+
+**Still not done:** the actual `npm publish` — that needs real npm
+credentials for the `codelovesme` org, which this environment doesn't
+have and shouldn't be given; it's a manual step for whoever holds those
+credentials (see `crates/code-wasm/npm/README.md`'s "Releasing"
+section). Also still open: wiring this repo's own `playground/` to
+consume the *published* package instead of its own local build (the
+ticket's "dogfood the public contract" acceptance criterion) — deferred
+until the package is actually live, and wiring the `ModuleResolver`/
+in-memory source map into `code-wasm` for `link` support (the trait
+exists but `run_source` doesn't use it yet — v1 is single-snippet only,
+matching the ticket's "Out of scope (v1)" section). A demo build is
+published as a private Claude Artifact (self-contained, wasm embedded
+inline, no server) for convenience — this is a throwaway demo, **not** a
+substitute for `crates/code-wasm/playground/` (the repo files are the
+real, lasting deliverable and what T20's eventual site will actually
+use).
 
 ## Problem
 

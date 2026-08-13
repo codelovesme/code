@@ -1,0 +1,34 @@
+{
+  "name": "@codelovesme/code-wasm",
+  "version": "0.1.0",
+  "description": "Run Code — a constraint-based programming language with no user-defined functions and no core I/O — in any browser or JS host. A small WASM bridge, zero JS dependencies.",
+  "type": "module",
+  "main": "dist/code_wasm.js",
+  "module": "dist/code_wasm.js",
+  "types": "dist/code_wasm.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "dist/code_wasm.js"
+  ],
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codelovesme/code.git",
+    "directory": "crates/code-wasm"
+  },
+  "homepage": "https://codelovesme.github.io/code/",
+  "bugs": "https://github.com/codelovesme/code/issues",
+  "keywords": [
+    "wasm",
+    "webassembly",
+    "constraint-programming",
+    "interpreter",
+    "playground",
+    "language"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

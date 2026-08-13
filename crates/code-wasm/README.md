@@ -2,8 +2,19 @@
 
 WASM bridge for running a `.code` snippet in a browser or other JS host —
 [T19](../../docs/tickets/low/19-browser-playground.md) (browser playground).
-Not yet published; not yet wired into any web UI. This is the interpreter
-bridge only.
+This crate is the interpreter bridge; there are two build outputs from it:
+
+- `playground/` — this repo's own docs-site playground (a full page,
+  not published anywhere else).
+- `npm/` — the published `@codelovesme/code-wasm` package, for any
+  third party to embed in their own site or tool. See `npm/README.md`
+  for the public-facing usage docs and `npm/build.sh` to build it
+  locally.
+
+Both build the *same* underlying `--target web` wasm-bindgen output —
+the playground is meant to eventually consume the published package
+like any other embedder would (dogfooding the public contract), not a
+separate internal-only build path.
 
 ## Scope (v1)
 
@@ -74,10 +85,18 @@ node crates/code-wasm/smoke-test/run.js target/wasm-bindgen-out/code_wasm.js
 
 ## Not done yet
 
-- `crates/code-wasm` isn't published as an npm package. Publishing claims a
-  real, public package name — that's a deliberate separate step, not bundled
-  into this bridge landing.
-- No web UI (editor pane + result pane) — see T19's "Proposed change" item 4.
+- The `npm/` package is built, smoke-tested (against the actual packaged
+  artifact, including a real `npm pack` + install round-trip — not just a
+  build check), and CI-verified on every push, but **not yet actually
+  published to the npm registry** — that's a real `npm publish`, run from
+  outside CI by whoever holds publish rights for the `codelovesme` npm
+  org. See `npm/README.md`'s "Releasing" section.
+- This repo's own `playground/` doesn't yet consume the published package
+  (still builds its own copy via `playground/build.sh`) — deferred until
+  the package is actually live on npm, so nothing points at a package
+  that doesn't exist yet.
+- No web UI beyond the existing `playground/` — see T19's "Proposed
+  change" item 4 (done for v1).
 - No module linking (`link` statements) — see "Scope" above; deferred to a
   later T19 slice per the ticket (in-memory `ModuleResolver`, already added
   in `src/module_loader.rs`, not yet wired up here).

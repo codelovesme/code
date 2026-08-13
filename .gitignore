@@ -11,6 +11,10 @@ tests/native_modules/*.wasm
 # crates/code-wasm/playground/build.sh, never committed (compiled artifacts).
 crates/code-wasm/playground/pkg/
 
+# code-wasm npm package glue — built on demand by crates/code-wasm/npm/build.sh,
+# never committed (compiled artifacts) — see T19.
+crates/code-wasm/npm/dist/
+
 # Editor / OS
 .DS_Store
 *.swp
