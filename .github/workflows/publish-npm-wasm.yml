@@ -35,12 +35,18 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
 
-      # Trusted Publishing needs npm CLI 11.5.1+ and Node 22.14.0+.
+      # Trusted Publishing needs npm CLI 11.5.1+ and Node 22.14.0+. Node 24
+      # (not just the documented 22.14 floor) because npm's own engine
+      # requirement has already moved past what 22.14.0 satisfies once —
+      # `npm@latest` drifted to a major version needing Node ^22.22.2 or
+      # ^24.15.0, breaking a run pinned to the bare minimum. Pin npm to
+      # major 11 (still gets 11.x patches) instead of `@latest`, so a
+      # future npm major bump can't silently break this again the same way.
       - uses: actions/setup-node@v4
         with:
-          node-version: "22.14"
+          node-version: "24"
       - name: Ensure npm CLI is new enough for Trusted Publishing
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
 
       - name: Build the npm package artifact
         run: bash crates/code-wasm/npm/build.sh
