@@ -84,10 +84,11 @@ node crates/code-wasm/smoke-test/run.js target/wasm-bindgen-out/code_wasm.js
 
 ## Not done yet
 
-- `code-wasm@0.1.0` is [published on npm](https://www.npmjs.com/package/code-wasm).
-  Trusted Publishing (OIDC, no stored token) is set up for every release
-  after this one — see `npm/README.md`'s "Releasing" section for the
-  tag-triggered flow.
+- `code-wasm` is [published on npm](https://www.npmjs.com/package/code-wasm).
+  Trusted Publishing (OIDC, no stored token) is confirmed working —
+  `0.1.1` published entirely through CI via a `code-wasm-v*` tag, no
+  human npm login involved in that publish at all. See `npm/README.md`'s
+  "Releasing" section for the tag-triggered flow.
 - This repo's own `playground/` doesn't yet consume the published package
   (still builds its own copy via `playground/build.sh`) — the ticket's
   "dogfood the public contract" criterion, now unblocked since the

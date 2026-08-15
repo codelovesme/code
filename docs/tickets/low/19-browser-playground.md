@@ -89,17 +89,32 @@ turned on). Verified for real after publishing, not just assumed: fresh
 registry (not a local tarball), then ran a full particle-construction +
 handler-dispatch program through it end to end.
 
-**Still not done:** the npm-side trusted-publisher configuration for
-*future* releases (Settings → Trusted Publisher → GitHub Actions, repo
-`codelovesme/code`, workflow `publish-npm-wasm.yml`) and then Settings →
-Publishing access → "Require two-factor authentication and disallow
-tokens" — both npmjs.com account actions only whoever holds that login
-can do; this environment has no standing npm credentials (the manual
-publish above used a live, one-time session) and shouldn't be given
-any (the entire point of Trusted Publishing is that CI never needs
-one). See `crates/code-wasm/npm/README.md`'s "Releasing" section for
-the exact steps — every release after `0.1.0` should go through the tag-
-triggered workflow, not another manual publish. Also still open: wiring
+**Trusted Publishing confirmed working end to end (2026-08-15):**
+`code-wasm@0.1.1` published via `code-wasm-v0.1.1` tag → CI → OIDC, zero
+tokens. `npm view code-wasm` shows the proof directly: `published ...
+by GitHub Actions <npm-oidc-no-reply@github.com>` — the maintainer of
+record for that release is the OIDC identity itself, not a human login.
+Also confirms `--provenance` works correctly (a signed provenance
+statement was published to Sigstore's transparency log as part of the
+publish).
+
+One real bug found and fixed getting here: the first `workflow_dispatch`
+dry run failed — `npm install -g npm@latest` resolved to npm 12.0.2,
+which requires a newer Node than the 22.14 pinned (the *documented*
+Trusted Publishing minimum, but not what an unpinned `@latest` actually
+needs once it moves past that). Fixed by bumping to Node 24 and pinning
+npm to major 11 instead of `@latest`, so a future npm major bump can't
+silently break this the same way again — caught by actually running the
+dry run before trusting it, not by reading the workflow and assuming it
+was right.
+
+Since a real trusted publish has now gone through, the last npm-account
+hardening step from the original ask is safe to do:
+Settings → Publishing access → "Require two-factor authentication and
+disallow tokens" — only whoever holds that login can flip it; this
+environment has no standing npm credentials and shouldn't be given any
+(the entire point of Trusted Publishing is that CI never needs one).
+Also still open: wiring
 this repo's own `playground/` to consume the *published* package
 instead of its own local build (the ticket's "dogfood the public
 contract" acceptance criterion — now unblocked, since the package is
