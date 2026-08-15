@@ -80,19 +80,33 @@ artifact about to ship, then `npm publish --provenance`.
 `workflow_dispatch` runs everything except the actual publish, as a real
 dry run (mirrors `release.yml`'s existing dry-run pattern for the CLI).
 
-**Still not done:** the one-time npm-side trusted-publisher
-configuration — that's npmjs.com account settings, which only whoever
-holds that login can do; this environment has no npm credentials and
-shouldn't be given any (the entire point of Trusted Publishing is that
-CI never needs one). See
-`crates/code-wasm/npm/README.md`'s "Releasing" section for the exact
-steps. Also still open: wiring this repo's own `playground/` to
-consume the *published* package instead of its own local build (the
-ticket's "dogfood the public contract" acceptance criterion) — deferred
-until the package is actually live, and wiring the `ModuleResolver`/
-in-memory source map into `code-wasm` for `link` support (the trait
-exists but `run_source` doesn't use it yet — v1 is single-snippet only,
-matching the ticket's "Out of scope (v1)" section). A demo build is
+**Published (2026-08-15): `code-wasm@0.1.0` is live on the npm
+registry.** First release was a one-time manual `npm publish` (required
+enabling 2FA on the publishing account first — npm now mandates it
+registry-wide; the initial attempt failed with a 403 until that was
+turned on). Verified for real after publishing, not just assumed: fresh
+`npm install code-wasm` into a brand-new project from the actual
+registry (not a local tarball), then ran a full particle-construction +
+handler-dispatch program through it end to end.
+
+**Still not done:** the npm-side trusted-publisher configuration for
+*future* releases (Settings → Trusted Publisher → GitHub Actions, repo
+`codelovesme/code`, workflow `publish-npm-wasm.yml`) and then Settings →
+Publishing access → "Require two-factor authentication and disallow
+tokens" — both npmjs.com account actions only whoever holds that login
+can do; this environment has no standing npm credentials (the manual
+publish above used a live, one-time session) and shouldn't be given
+any (the entire point of Trusted Publishing is that CI never needs
+one). See `crates/code-wasm/npm/README.md`'s "Releasing" section for
+the exact steps — every release after `0.1.0` should go through the tag-
+triggered workflow, not another manual publish. Also still open: wiring
+this repo's own `playground/` to consume the *published* package
+instead of its own local build (the ticket's "dogfood the public
+contract" acceptance criterion — now unblocked, since the package is
+live), and wiring the `ModuleResolver`/in-memory source map into
+`code-wasm` for `link` support (the trait exists but `run_source`
+doesn't use it yet — v1 is single-snippet only, matching the ticket's
+"Out of scope (v1)" section). A demo build is
 published as a private Claude Artifact (self-contained, wasm embedded
 inline, no server) for convenience — this is a throwaway demo, **not** a
 substitute for `crates/code-wasm/playground/` (the repo files are the

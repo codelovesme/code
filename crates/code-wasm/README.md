@@ -84,16 +84,14 @@ node crates/code-wasm/smoke-test/run.js target/wasm-bindgen-out/code_wasm.js
 
 ## Not done yet
 
-- The `npm/` package is built, smoke-tested (against the actual packaged
-  artifact, including a real `npm pack` + install round-trip — not just a
-  build check), and CI-verified on every push, but **not yet actually
-  published to the npm registry** — that's a real `npm publish`, run from
-  outside CI by whoever holds publish rights for the `codelovesme` npm
-  org. See `npm/README.md`'s "Releasing" section.
+- `code-wasm@0.1.0` is [published on npm](https://www.npmjs.com/package/code-wasm).
+  Trusted Publishing (OIDC, no stored token) is set up for every release
+  after this one — see `npm/README.md`'s "Releasing" section for the
+  tag-triggered flow.
 - This repo's own `playground/` doesn't yet consume the published package
-  (still builds its own copy via `playground/build.sh`) — deferred until
-  the package is actually live on npm, so nothing points at a package
-  that doesn't exist yet.
+  (still builds its own copy via `playground/build.sh`) — the ticket's
+  "dogfood the public contract" criterion, now unblocked since the
+  package is live, just not done yet.
 - No web UI beyond the existing `playground/` — see T19's "Proposed
   change" item 4 (done for v1).
 - No module linking (`link` statements) — see "Scope" above; deferred to a
