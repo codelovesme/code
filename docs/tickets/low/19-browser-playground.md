@@ -136,10 +136,18 @@ runs, served the result, and loaded it in headless Chromium to confirm
 the playground actually executes a program via the npm-sourced wasm
 (not just that the files exist).
 
-Still open: wiring the `ModuleResolver`/in-memory source map into
-`code-wasm` for `link` support (the trait exists but `run_source`
-doesn't use it yet — v1 is single-snippet only, matching the ticket's
-"Out of scope (v1)" section). A demo build is
+**Decided (2026-08-16): `link` support in `code-wasm` is out of scope,
+not just deferred — possibly permanently.** Single-file source in,
+`{ ok, bindings, diagnostics }` out is enough for what this bridge is
+for. The `ModuleResolver` trait already in `src/module_loader.rs` and
+`FilesystemResolver` (the CLI's implementation) are untouched and
+unaffected by this — they're general-purpose, used for more than just
+`code-wasm`, and this decision doesn't ask for any changes there. It
+only means nobody should go build the in-memory-resolver / multi-file
+JS API this ticket originally sketched (§ "Proposed change" item 1's
+v2/browser-host row, and the `link`-related "Out of scope (v1)" bullet
+below) unless a real, specific need shows up later — not a TODO to
+revisit by default. A demo build is
 published as a private Claude Artifact (self-contained, wasm embedded
 inline, no server) for convenience — this is a throwaway demo, **not** a
 substitute for `crates/code-wasm/playground/` (the repo files are the
@@ -205,14 +213,19 @@ did it go?" intuition — the variable simply appears in the panel.
    source text)" behind a trait; keep cycle detection / SourceMap / parsing in
    the loader. Host implementations:
    - CLI: filesystem (current behavior, moved behind the trait).
-   - Playground v1: an in-memory map the JS side populates (single-file or a
+   - ~~Playground v1: an in-memory map the JS side populates (single-file or a
      small virtual FS). Keeps everything **synchronous** — no async threading
-     through the interpreter.
-   - (v2, deferred) remote `link` via URL: the host pre-fetches the whole link
-     graph with async `fetch()`, fills the in-memory map, then runs the
+     through the interpreter.~~ **Decided against (2026-08-16) — not just
+     deferred, see the "Decided" note further down: single-file
+     source in / `{ ok, bindings, diagnostics }` out is enough for what
+     `code-wasm` is for.**
+   - ~~(v2, deferred) remote `link` via URL: the host pre-fetches the whole
+     link graph with async `fetch()`, fills the in-memory map, then runs the
      still-synchronous interpreter. URL is a host-layer detail, never baked
-     into the sync core. (Bonus: the trait also makes the loader unit-testable
-     with in-memory modules instead of temp files.)
+     into the sync core.~~ Same decision — never built.
+   - The trait itself shipped anyway and stays — it's what makes
+     `module_loader` unit-testable with in-memory modules instead of temp
+     files, independent of whether `code-wasm` ever uses it.
 2. **Read-only bindings accessor** on `Interpreter` — e.g. `bindings() ->
    Vec<(String, /* value or domain */)>` dumping the top-level scope after
    `execute()`. `env`/`Environment.scopes` are private today with only
@@ -228,11 +241,14 @@ did it go?" intuition — the variable simply appears in the panel.
    outcomes + located parse/runtime errors). Can live under the Phase 2 docs
    site.
 
-## Out of scope (v1)
+## Out of scope
 
 - Native module linking (`.so` via `libloading`, `.wasm` via `wasmi`) — no
   filesystem / `dlopen` in browser; single/in-memory source only.
-- Remote `link` via URL — deferred to v2 (async pre-fetch, above).
+- **Any `link` support at all — in-memory or remote-URL — decided against
+  (2026-08-16), not deferred to a "v2" that's presumed to eventually
+  happen.** `run_source` stays single-snippet only. Revisit only if a
+  real, specific need shows up later.
 - Any core I/O / `print` — visible output is the bindings panel, not a print
   stream (see design decisions).
 

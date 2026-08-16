@@ -23,11 +23,12 @@ the live playground reflects the last `code-wasm-v*` release, not
 bump the pinned version in `pages.yml` as part of cutting a new release
 (see `npm/README.md`'s "Releasing" section).
 
-## Scope (v1)
+## Scope
 
-- A single, self-contained snippet — no `link` support (no filesystem in a
-  browser; module linking via an in-memory source map is a later slice of
-  T19).
+- A single, self-contained snippet — no `link` support, decided against
+  (not just deferred, see the T19 ticket's 2026-08-16 note) rather than
+  a "later slice." `run_source` stays single-snippet in, `{ ok, bindings,
+  diagnostics }` out.
 - One export: `run_source(src: &str) -> JsValue`, returning
   `{ ok, bindings, diagnostics }`:
   - `bindings`: the program's final top-level variable bindings (this is a
@@ -94,6 +95,7 @@ node crates/code-wasm/smoke-test/run.js target/wasm-bindgen-out/code_wasm.js
 
 - No web UI beyond the existing `playground/` — see T19's "Proposed
   change" item 4 (done for v1).
-- No module linking (`link` statements) — see "Scope" above; deferred to a
-  later T19 slice per the ticket (in-memory `ModuleResolver`, already added
-  in `src/module_loader.rs`, not yet wired up here).
+- No module linking (`link` statements) — see "Scope" above; decided
+  against per the ticket, not deferred. `ModuleResolver` (`src/module_loader.rs`)
+  stays as-is for the CLI's own use; it just isn't wired into this bridge,
+  and isn't planned to be.

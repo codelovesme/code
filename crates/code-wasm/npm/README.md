@@ -105,11 +105,13 @@ observable result is its final top-level variable bindings (plus any
 is: the entire visible output of the program, the same thing a
 constraint-solver's final variable assignment would be.
 
-## Scope (v1)
+## Scope
 
-- A single, self-contained snippet — no `link` (module import) support yet.
-  No filesystem access in a browser; module linking via an in-memory
-  source map is a planned follow-up, not yet wired into this bridge.
+- A single, self-contained snippet — no `link` (module import) support.
+  This is decided, not deferred: single-snippet source in, bindings out
+  is enough for what this bridge is for (see the
+  [source ticket](https://github.com/codelovesme/code/blob/main/docs/tickets/low/19-browser-playground.md)'s
+  2026-08-16 note).
 - No native (`.so`) module linking — native code has no meaning in a wasm
   sandbox.
 
