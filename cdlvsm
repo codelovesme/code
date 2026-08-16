@@ -1,0 +1,234 @@
+#!/usr/bin/env sh
+# cdlvsm — installer/package manager for first-party codelovesme CLI tools.
+#
+# Right now this manages one real package, `code` (this repo's language
+# toolchain). `euglena` is named in the design (see the ticket below) but
+# isn't published anywhere yet, so `cdlvsm install euglena` errors clearly
+# instead of pretending to install something that doesn't exist.
+#
+#   curl -sSf https://codelovesme.github.io/code/cdlvsm | sh -s -- install code
+#
+# Usage:
+#   cdlvsm install <package> [--runtime] [--link]
+#   cdlvsm list
+#   cdlvsm uninstall <package>
+#
+# `install` puts the package under $PREFIX/share/cdlvsm/packages/<pkg>/<version>/
+# and always creates a `cdlvsm-<pkg>` shim in $PREFIX/bin. It does NOT also
+# create a bare `<pkg>` command (e.g. plain `code`) unless you pass --link —
+# `code` collides with VS Code's own `code` CLI on Linux, so a same-named
+# shim is opt-in, never the default (see docs/tickets/medium/32-...).
+#
+# Env vars:
+#   PREFIX               install root (default: $HOME/.local)
+#   CDLVSM_CODE_VERSION   pin `code`'s version instead of latest (e.g. v0.3.0)
+set -eu
+
+REPO="codelovesme/code"
+PREFIX="${PREFIX:-$HOME/.local}"
+BIN_DIR="$PREFIX/bin"
+PKG_ROOT="$PREFIX/share/cdlvsm/packages"
+
+need() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "error: '$1' is required but not found on PATH." >&2
+        exit 1
+    fi
+}
+
+usage() {
+    cat <<'EOF'
+Usage:
+  cdlvsm install <package> [--runtime] [--link]
+  cdlvsm list
+  cdlvsm uninstall <package>
+
+Packages:
+  code      the Code language toolchain (SDK tier by default; --runtime for
+            the smaller LLVM-free interpreter-only build)
+  euglena   not published yet
+
+Flags:
+  --runtime   install code's Runtime tier instead of the default SDK tier
+  --link      also create a bare `code` command in $PREFIX/bin, in addition
+              to the always-created `cdlvsm-code` shim (opt-in: `code`
+              collides with VS Code's own `code` CLI on Linux)
+EOF
+}
+
+install_code() {
+    tier="sdk"
+    link=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --runtime) tier="runtime" ;;
+            --sdk) tier="sdk" ;;
+            --link) link=1 ;;
+            *) echo "error: unknown flag '$1' for 'cdlvsm install code'" >&2; exit 1 ;;
+        esac
+        shift
+    done
+
+    need curl
+    need tar
+
+    os="$(uname -s)"
+    arch="$(uname -m)"
+    if [ "$os" != "Linux" ] || [ "$arch" != "x86_64" ]; then
+        echo "error: prebuilt binaries are only available for Linux x86_64 (detected: $os $arch)." >&2
+        echo "Build from source instead — see: https://github.com/$REPO#building" >&2
+        exit 1
+    fi
+
+    if [ -n "${CDLVSM_CODE_VERSION:-}" ]; then
+        tag="$CDLVSM_CODE_VERSION"
+    else
+        echo "Fetching latest release info..."
+        tag=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+            | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
+        if [ -z "$tag" ]; then
+            echo "error: could not determine the latest release version." >&2
+            exit 1
+        fi
+    fi
+
+    asset="code-${tier}-${tag}-x86_64-linux.tar.gz"
+    url="https://github.com/$REPO/releases/download/$tag/$asset"
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    echo "Downloading $url..."
+    curl -fsSL "$url" -o "$tmp/$asset"
+
+    tar -xzf "$tmp/$asset" -C "$tmp"
+    stage_dir=$(find "$tmp" -maxdepth 1 -type d -name "code-${tier}-*")
+    if [ -z "$stage_dir" ]; then
+        echo "error: unexpected archive layout — no code-${tier}-* directory found." >&2
+        exit 1
+    fi
+
+    dest="$PKG_ROOT/code/$tag"
+    rm -rf "$dest"
+    mkdir -p "$dest"
+    cp "$stage_dir/code" "$dest/code"
+    chmod +x "$dest/code"
+    ln -sfn "$tag" "$PKG_ROOT/code/current"
+
+    mkdir -p "$BIN_DIR"
+    ln -sf "$PKG_ROOT/code/current/code" "$BIN_DIR/cdlvsm-code"
+    if [ "$link" -eq 1 ]; then
+        ln -sf "$PKG_ROOT/code/current/code" "$BIN_DIR/code"
+    fi
+
+    echo ""
+    echo "Installed code ($tier) $tag -> $dest"
+    echo "Shim: $BIN_DIR/cdlvsm-code"
+    [ "$link" -eq 1 ] && echo "Linked: $BIN_DIR/code"
+    "$BIN_DIR/cdlvsm-code" --version
+
+    case ":$PATH:" in
+        *":$BIN_DIR:"*) ;;
+        *)
+            echo ""
+            echo "Note: $BIN_DIR is not on your PATH. Add this to your shell profile:"
+            echo "  export PATH=\"$BIN_DIR:\$PATH\""
+            ;;
+    esac
+}
+
+install_euglena() {
+    echo "error: 'euglena' is not published yet — there's nothing to install." >&2
+    echo "See docs/tickets/medium/32-parent-cli-cdlvsm-package-manager.md for status." >&2
+    exit 1
+}
+
+do_list() {
+    if [ ! -d "$PKG_ROOT" ] || [ -z "$(ls -A "$PKG_ROOT" 2>/dev/null)" ]; then
+        echo "No cdlvsm-managed packages installed."
+        return 0
+    fi
+    for pkg_dir in "$PKG_ROOT"/*/; do
+        pkg=$(basename "$pkg_dir")
+        if [ -L "${pkg_dir}current" ]; then
+            version=$(readlink "${pkg_dir}current")
+            echo "$pkg  $version  (shim: $BIN_DIR/cdlvsm-$pkg)"
+        fi
+    done
+}
+
+do_uninstall() {
+    pkg="${1:-}"
+    if [ -z "$pkg" ]; then
+        echo "error: missing package name" >&2
+        usage
+        exit 1
+    fi
+    pkg_dir="$PKG_ROOT/$pkg"
+    if [ ! -d "$pkg_dir" ]; then
+        echo "error: '$pkg' is not installed via cdlvsm." >&2
+        exit 1
+    fi
+
+    # Only remove shims that actually point back into this package's own
+    # directory — never a same-named binary cdlvsm didn't create itself
+    # (e.g. VS Code's own `code` on the user's PATH).
+    for name in "cdlvsm-$pkg" "$pkg"; do
+        candidate="$BIN_DIR/$name"
+        if [ -L "$candidate" ]; then
+            target=$(readlink "$candidate")
+            case "$target" in
+                "$pkg_dir"/*) rm -f "$candidate" ;;
+            esac
+        fi
+    done
+
+    rm -rf "$pkg_dir"
+    echo "Uninstalled $pkg."
+}
+
+cmd="${1:-}"
+if [ -z "$cmd" ]; then
+    usage
+    exit 1
+fi
+shift
+
+case "$cmd" in
+    -h|--help|help)
+        usage
+        exit 0
+        ;;
+    -v|--version)
+        echo "cdlvsm (codelovesme/code package manager)"
+        exit 0
+        ;;
+    install)
+        pkg="${1:-}"
+        if [ -z "$pkg" ]; then
+            echo "error: missing package name" >&2
+            usage
+            exit 1
+        fi
+        shift
+        case "$pkg" in
+            code) install_code "$@" ;;
+            euglena) install_euglena ;;
+            *)
+                echo "error: unknown package '$pkg'" >&2
+                usage
+                exit 1
+                ;;
+        esac
+        ;;
+    list)
+        do_list
+        ;;
+    uninstall)
+        do_uninstall "${1:-}"
+        ;;
+    *)
+        echo "error: unknown command '$cmd'" >&2
+        usage
+        exit 1
+        ;;
+esac

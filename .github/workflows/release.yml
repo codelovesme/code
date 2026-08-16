@@ -35,8 +35,8 @@ jobs:
       # `code` ships as two capability tiers, both with a binary named `code`
       # (the dotnet Runtime/SDK model — one command name, capability decided by
       # which package you installed; see T17/T18):
-      #   - SDK     = default features (llvm + native-so): run/fmt/test + build
-      #   - Runtime = --no-default-features: run/fmt/test only, no LLVM
+      #   - SDK     = default features (llvm + native-so): run/format/test + build
+      #   - Runtime = --no-default-features: run/format/test only, no LLVM
       # `code-lsp` is a third, independent artifact for editors.
 
       - name: Build SDK (code, with LLVM) + code-lsp

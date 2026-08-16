@@ -111,14 +111,14 @@
       <div class="tier">
         <div class="who">
           <h3>SDK</h3>
-          <p>Full <code>code</code> — <code>run</code>, <code>fmt</code>, <code>test</code>, and <code>build</code> (native + WASM codegen). Start here if you're not sure.</p>
+          <p>Full <code>code</code> — <code>run</code>, <code>format</code>, <code>test</code>, and <code>build</code> (native + WASM codegen). Start here if you're not sure.</p>
         </div>
         <a class="btn" href="__SDK_URL__">Download SDK</a>
       </div>
       <div class="tier">
         <div class="who">
           <h3>Runtime</h3>
-          <p><code>run</code>/<code>fmt</code>/<code>test</code> only, no LLVM — smaller download for running programs without compiling them.</p>
+          <p><code>run</code>/<code>format</code>/<code>test</code> only, no LLVM — smaller download for running programs without compiling them.</p>
         </div>
         <a class="btn" href="__RUNTIME_URL__">Download Runtime</a>
       </div>
@@ -132,9 +132,10 @@
     </div>
     <p class="platform-note">Linux x86_64 only, for now.</p>
 
-    <h2>Or install the SDK with one command</h2>
-    <pre class="install">curl -sSf https://codelovesme.github.io/code/install.sh | sh</pre>
-    <p class="install-note">Installs to <code>$HOME/.local/bin</code> by default. Set <code>CODE_VERSION</code> to pin a specific release, or <code>PREFIX</code> to change the install root — see the script for details.</p>
+    <h2>Or install with one command</h2>
+    <pre class="install">curl -sSf https://codelovesme.github.io/code/cdlvsm | sh -s -- install code</pre>
+    <p class="install-note"><code>cdlvsm</code> is the package manager for codelovesme CLI tools. Installs to <code>$HOME/.local/bin</code> by default as a <code>cdlvsm-code</code> shim; pass <code>--link</code> to also get a bare <code>code</code> command, or <code>--runtime</code> for the smaller LLVM-free tier. Set <code>CDLVSM_CODE_VERSION</code> to pin a release, or <code>PREFIX</code> to change the install root.</p>
+    <p class="install-note">Prefer a single plain <code>code</code> binary with no package manager involved? <code>curl -sSf https://codelovesme.github.io/code/install.sh | sh</code> installs just the SDK directly.</p>
   </main>
 
   <footer>

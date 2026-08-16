@@ -63,15 +63,48 @@ depends on which package you installed — running `code build` on the Runtime
 tier prints a message pointing you at the SDK (the same one-name, two-packages
 model as `dotnet`'s Runtime vs SDK).
 
-**Quick install (SDK):**
+**Quick install (recommended):**
+
+```bash
+curl -sSf https://codelovesme.github.io/code/cdlvsm | sh -s -- install code
+```
+
+`cdlvsm` is the package manager for first-party codelovesme CLI tools
+(currently just `code`; more are planned under the same namespace, see
+[T32](docs/tickets/done/32-parent-cli-cdlvsm-package-manager.md)). It
+installs a `cdlvsm-code` shim in `~/.local/bin` and, deliberately, does
+**not** also create a bare `code` command — `code` collides with VS Code's
+own CLI of the same name on Linux, so that's opt-in via `--link`, not the
+default:
+
+```bash
+curl -sSf https://codelovesme.github.io/code/cdlvsm | sh -s -- install code --link
+```
+
+Other things `cdlvsm` can do:
+
+```bash
+cdlvsm install code --runtime   # the smaller, LLVM-free interpreter-only tier
+cdlvsm list                     # what's installed
+cdlvsm uninstall code
+```
+
+Override the install root with `PREFIX=...`; pin a version with
+`CDLVSM_CODE_VERSION=v0.x.y`.
+
+**Direct install (SDK only, no package manager):**
 
 ```bash
 curl -sSf https://codelovesme.github.io/code/install.sh | sh
 ```
 
-This installs the `code` SDK into `~/.local/bin` (override with `PREFIX=...`);
-pin a specific version with `CODE_VERSION=v0.x.y`. For the Runtime tier or
-`code-lsp`, or a browsable list of every release asset, see the
+This installs the `code` SDK straight into `~/.local/bin` as plain `code`
+(override root with `PREFIX=...`, pin a version with `CODE_VERSION=v0.x.y`) —
+simpler than `cdlvsm` if you only ever want this one thing and don't care
+about the shim-vs-bare-command distinction above.
+
+For the Runtime tier or `code-lsp` outside of `cdlvsm`, or a browsable list
+of every release asset, see the
 [Downloads page](https://codelovesme.github.io/code/downloads.html) or the
 [releases page](https://github.com/codelovesme/code/releases) directly. Want
 to try the language before installing anything? There's a

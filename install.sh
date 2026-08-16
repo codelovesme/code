@@ -1,12 +1,17 @@
 #!/usr/bin/env sh
-# Install the `code` SDK (compiler + interpreter) from GitHub Releases.
+# Direct installer for the `code` SDK (compiler + interpreter) from GitHub
+# Releases — a single package, a plain `code` binary in $PREFIX/bin, nothing
+# else. For the broader codelovesme CLI namespace (Runtime tier, `--link`
+# control over whether a bare `code` command gets created, future packages
+# like `euglena`), see `cdlvsm` instead — this script is the direct/legacy
+# path, kept because it's simple and some setups just want exactly this.
 #
 #   curl -sSf https://raw.githubusercontent.com/codelovesme/code/main/install.sh | sh
 #
 # Installs the SDK tier — the full `code` with `build` (native/wasm codegen).
 # Editors need `code-lsp`, and a smaller interpreter-only `code` Runtime is
 # published as its own release asset; both are separate downloads, not handled
-# by this script (see the release page).
+# by this script (see the release page, or `cdlvsm install code --runtime`).
 #
 # Env vars:
 #   CODE_VERSION  pin to a specific release tag (e.g. v0.3.0) instead of latest
