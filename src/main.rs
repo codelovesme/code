@@ -63,14 +63,14 @@ fn run() -> i32 {
         "test" => {
             run_tests()
         }
-        "fmt" => {
+        "format" => {
             if args.len() < 3 {
                 eprintln!("Error: missing file argument");
-                eprintln!("Usage: code fmt <file.code> [--check]");
+                eprintln!("Usage: code format <file.code> [--check]");
                 return 1;
             }
             let check = args.iter().any(|a| a == "--check");
-            fmt_file(&args[2], check)
+            format_file(&args[2], check)
         }
         "--version" | "-v" => {
             println!("{}", VERSION);
@@ -90,7 +90,7 @@ fn print_usage() {
     println!("Usage:");
     println!("  code build <file.code> [--target <type>] [--release]    Compile a .code file");
     println!("  code run <file.code>                        Interpret a .code file");
-    println!("  code fmt <path> [--check]                   Format a .code file or directory");
+    println!("  code format <path> [--check]                Format a .code file or directory");
     println!("  code test                                   Run all tests in tests/");
     println!("  code --version                              Print version");
     println!();
@@ -107,7 +107,7 @@ fn print_usage() {
 /// A directory is walked recursively for `.code` files. Returns 0 when
 /// everything is (or was made) well-formatted; with `--check`, returns 1 if any
 /// file would change. Uses a 4-space indent.
-fn fmt_file(path: &str, check: bool) -> i32 {
+fn format_file(path: &str, check: bool) -> i32 {
     let root = Path::new(path);
 
     let files: Vec<PathBuf> = if root.is_dir() {
@@ -126,7 +126,7 @@ fn fmt_file(path: &str, check: bool) -> i32 {
 
     let mut changed = 0usize;
     for file in &files {
-        match fmt_one(file, check) {
+        match format_one(file, check) {
             Ok(true) => changed += 1,
             Ok(false) => {}
             Err(()) => return 1,
@@ -136,7 +136,7 @@ fn fmt_file(path: &str, check: bool) -> i32 {
     if check {
         if changed > 0 {
             eprintln!(
-                "{} of {} file(s) not formatted (run `code fmt {}`)",
+                "{} of {} file(s) not formatted (run `code format {}`)",
                 changed,
                 files.len(),
                 path,
@@ -154,7 +154,7 @@ fn fmt_file(path: &str, check: bool) -> i32 {
 
 /// Format a single file. Returns `Ok(true)` if it changed (or would with
 /// `--check`), `Ok(false)` if already formatted, `Err(())` on an I/O error.
-fn fmt_one(file: &Path, check: bool) -> Result<bool, ()> {
+fn format_one(file: &Path, check: bool) -> Result<bool, ()> {
     let src = match fs::read_to_string(file) {
         Ok(s) => s,
         Err(e) => {

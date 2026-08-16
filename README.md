@@ -55,7 +55,7 @@ independent assets — pick the one that matches what you need:
 | Asset | Binary | For |
 |-------|--------|-----|
 | `code-sdk-<tag>-x86_64-linux.tar.gz` | `code` | Compiling `.code` to native/wasm (`code build`) **and** running/formatting. The full toolchain. |
-| `code-runtime-<tag>-x86_64-linux.tar.gz` | `code` | Only running/formatting `.code` (`code run`/`fmt`/`test`). No compiler backend — much smaller, no LLVM. |
+| `code-runtime-<tag>-x86_64-linux.tar.gz` | `code` | Only running/formatting `.code` (`code run`/`format`/`test`). No compiler backend — much smaller, no LLVM. |
 | `code-lsp-<tag>-x86_64-linux.tar.gz` | `code-lsp` | Editor integration (language server). |
 
 Both `code` tiers install a binary named `code`; which capabilities it has
@@ -90,7 +90,7 @@ interpreter/formatter/LSP — e.g. to hack on the language without installing an
 LLVM toolchain — disable the default `llvm` feature:
 
 ```bash
-cargo build --no-default-features   # Runtime: run/fmt/test, no LLVM required
+cargo build --no-default-features   # Runtime: run/format/test, no LLVM required
 ```
 
 ### LLVM Prerequisites
@@ -150,13 +150,13 @@ Re-indent a `.code` file or directory in place (4-space indentation, driven by
 `{`/`}` nesting):
 
 ```bash
-code fmt hello_world.code   # rewrite one file
-code fmt tests              # rewrite every .code file under a directory
-code fmt . --check          # exit non-zero if anything isn't formatted (for CI)
+code format hello_world.code   # rewrite one file
+code format tests              # rewrite every .code file under a directory
+code format . --check          # exit non-zero if anything isn't formatted (for CI)
 ```
 
 The same formatter powers the language server's "Format Document" action, and CI
-runs `code fmt . --check` to keep the tree canonical.
+runs `code format . --check` to keep the tree canonical.
 
 ## Language Syntax
 

@@ -69,7 +69,7 @@ reader can edit and re-run them in place, not just read static code blocks.
 
 **Phase 4 — Reference.** Full constraint/type syntax reference, the
 built-in core handlers (`Timestamp`, `Length` — see T12), and the CLI
-(`code run`/`build`/`fmt`/`test`).
+(`code run`/`build`/`format`/`test`).
 
 ## Non-negotiable: every example must actually run, verified in CI
 
@@ -150,7 +150,7 @@ alone is a substantial improvement over the status quo (nothing).
 - `site/reference.html` — full syntax reference by category, not
   narrative: values & literals, constraint operators, domains,
   set operators, particle types, handlers & dispatch, loops, modules,
-  core handlers, and the CLI (`run`/`build`/`fmt`/`test`). Same design
+  core handlers, and the CLI (`run`/`build`/`format`/`test`). Same design
   system, same nav, new compact `table.forms`/`.cli-cmd` components for
   quick-lookup syntax tables and command listings.
 - Same non-negotiable, same mechanism: 10 real files under

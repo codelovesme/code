@@ -33,13 +33,13 @@ deferred; see "Out of scope" below.)
 - **Contributor friction:** someone hacking on the interpreter / parser /
   formatter / LSP is forced to install LLVM 17 just to `cargo build`, even
   though none of those touch `codegen`. `--no-default-features` should give
-  them a working `run`/`fmt`/`test` build with no LLVM.
+  them a working `run`/`format`/`test` build with no LLVM.
 - **A real "just run `.code`" persona, not a niche size optimization.**
   Someone who only ever does `code run x.code` (never `code build`) is the
   same shape of user as a Python user running a script — they shouldn't need
   a toolchain that embeds a compiler backend they'll never touch. Measured in
   a throwaway probe crate (`code_lang` linked with `--no-default-features`,
-  same `run`/`fmt` code paths as `src/main.rs` minus `codegen`): **4.5M
+  same `run`/`format` code paths as `src/main.rs` minus `codegen`): **4.5M
   stripped on disk, ~1.6M gzip-compressed** — vs. today's full `code` at 42M
   stripped / ~22-25M compressed. Almost all of that difference is LLVM
   (39.7M of the full binary's 42M stripped text is LLVM's statically-linked
@@ -55,7 +55,7 @@ installed the Runtime or the SDK; what differs is whether `dotnet build`
 works). Concretely:
 
 - **"Runtime" package** — `code_lang` built `--no-default-features` (this
-  ticket's build). Binary is named `code`. Has `run`/`fmt`/`test`; `code
+  ticket's build). Binary is named `code`. Has `run`/`format`/`test`; `code
   build` prints the "compiled without `llvm`, install the SDK" error from
   the Proposed change below.
 - **"SDK" package** — `code_lang` built with the `llvm` feature (today's
@@ -98,7 +98,7 @@ in T17 (which absorbed this split).
 ## Acceptance criteria
 
 - `cargo build -p code --no-default-features` compiles and produces a `code`
-  that runs `run`/`fmt`/`test`, and prints a clear error for `build`.
+  that runs `run`/`format`/`test`, and prints a clear error for `build`.
 - `cargo build -p code` (default, with LLVM) is byte-for-byte unchanged in
   behavior.
 - `code_lang` (lib, `--no-default-features`, `native-so` off) compiles for

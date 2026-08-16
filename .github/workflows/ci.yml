@@ -47,7 +47,7 @@ jobs:
         run: ./docs/examples/run.sh ./target/debug/code
 
       - name: Formatting check
-        run: ./target/debug/code fmt . --check
+        run: ./target/debug/code format . --check
 
   lsp-no-llvm:
     name: code-lsp builds without LLVM

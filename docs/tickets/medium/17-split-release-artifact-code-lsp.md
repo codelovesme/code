@@ -24,7 +24,7 @@ unconditionally (`install.sh:65` — `cp "$stage_dir/code" "$stage_dir/code-lsp"
 
 This forces every consumer to download both binaries regardless of which one
 they actually need:
-- A CLI-only user (`code build`/`run`/`fmt`/`test`, no editor integration)
+- A CLI-only user (`code build`/`run`/`format`/`test`, no editor integration)
   downloads `code-lsp` weight they'll never execute.
 - An editor-only consumer (T16's VS Code extension, or a Neovim/Helix/Emacs
   user configuring the language server manually) has no way to fetch
@@ -48,7 +48,7 @@ that asset directly — no bundling, no combined download.
 Runtime/SDK model; see T18's "Naming decision"):
 
 - **`code-runtime-<version>-x86_64-linux.tar.gz`** — `code` built
-  `--no-default-features` (T18). Has `run`/`fmt`/`test`; `code build` prints
+  `--no-default-features` (T18). Has `run`/`format`/`test`; `code build` prints
   T18's "install the SDK" error. Measured ~4.5M stripped / ~1.6M compressed.
 - **`code-sdk-<version>-x86_64-linux.tar.gz`** — `code` built with `llvm`
   (today's default, unchanged). Everything, including `build`. ~42M stripped

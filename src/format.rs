@@ -2,7 +2,7 @@
 //!
 //! A lightweight, brace-driven re-indenter: it trims each line and re-applies
 //! indentation from `{`/`}` nesting depth, ignoring braces inside strings and
-//! `->` comments. Shared by the `code fmt` CLI command and the language server
+//! `->` comments. Shared by the `code format` CLI command and the language server
 //! so both produce identical output.
 
 /// Re-indent `text` using `indent_size` spaces per nesting level.
