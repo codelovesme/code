@@ -162,6 +162,12 @@ packaged artifact, and publishes with `--provenance`. Bump the version
 deliberately — this JS API is a public contract the moment it's
 published (see the T19 ticket in the main repo).
 
+**After the publish succeeds**, bump `PLAYGROUND_CODE_WASM_VERSION` in
+`.github/workflows/pages.yml` to match and push that — the docs-site
+playground consumes this exact pinned version via `npm install`
+(dogfooding the published package, not a local build), so it won't pick
+up a new release on its own.
+
 `workflow_dispatch` (the "Run workflow" button in the Actions tab) does
 everything except the actual publish — a real dry run against the exact
 package that would ship, not a separate code path. To test locally

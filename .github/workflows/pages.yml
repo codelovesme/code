@@ -4,21 +4,20 @@ on:
   push:
     branches: [main]
     paths:
+      # Note: no src/**, crates/code-abi/**, Cargo.toml/.lock here — this
+      # workflow no longer builds code-wasm from source at all (it npm-
+      # installs the published package, see the "Install code-wasm from
+      # npm" step below), so a Rust-only change has nothing left for this
+      # workflow to do. crates/code-wasm/** stays because playground/
+      # index.html and its favicons are still copied straight from here.
       - "site/**"
       - "docs/examples/**"
       - "crates/code-wasm/**"
-      - "src/**"
-      - "crates/code-abi/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
       - "install.sh"
       - ".github/workflows/pages.yml"
   release:
     types: [published]
   workflow_dispatch: {}
-
-env:
-  LLVM_SYS_170_PREFIX: ""
 
 permissions:
   contents: read
@@ -38,13 +37,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
         with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
+          node-version: "22"
 
-      - name: Build code-wasm + generate browser glue
-        run: bash crates/code-wasm/playground/build.sh
+      # Dogfoods the *published* npm package instead of building code-wasm
+      # locally from source (T19's "consume the published package like any
+      # other third-party embedder would" acceptance criterion) — this is
+      # the only place in the site build that ever needed a Rust toolchain,
+      # so removing the local build also drops that setup entirely.
+      #
+      # Trade-off, deliberately accepted: the playground now reflects
+      # whatever was true at the last `code-wasm-v*` release, not `main`'s
+      # HEAD — it can lag behind a language change that hasn't been
+      # published to npm yet. Bump PLAYGROUND_CODE_WASM_VERSION as part of
+      # cutting a new code-wasm release (see crates/code-wasm/npm/README.md
+      # "Releasing") to keep it current; nothing else does this
+      # automatically.
+      - name: Install code-wasm from npm
+        env:
+          PLAYGROUND_CODE_WASM_VERSION: "0.1.1"
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/code-wasm-install
+          cd /tmp/code-wasm-install
+          npm init -y >/dev/null
+          npm install "code-wasm@${PLAYGROUND_CODE_WASM_VERSION}"
 
       - name: Assemble site
         run: |
@@ -104,7 +122,7 @@ jobs:
           cp crates/code-wasm/playground/index.html dist/playground/index.html
           cp crates/code-wasm/playground/favicon-32.png dist/playground/favicon-32.png
           cp crates/code-wasm/playground/favicon-180.png dist/playground/favicon-180.png
-          cp -r crates/code-wasm/playground/pkg dist/playground/pkg
+          cp -r /tmp/code-wasm-install/node_modules/code-wasm/dist dist/playground/pkg
 
           # Cache-bust the wasm bundle. Browsers cache pkg/code_wasm_bg.wasm by
           # URL, so a redeploy that reuses the same path keeps serving returning

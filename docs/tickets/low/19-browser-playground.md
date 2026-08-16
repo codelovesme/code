@@ -114,11 +114,29 @@ Settings → Publishing access → "Require two-factor authentication and
 disallow tokens" — only whoever holds that login can flip it; this
 environment has no standing npm credentials and shouldn't be given any
 (the entire point of Trusted Publishing is that CI never needs one).
-Also still open: wiring
-this repo's own `playground/` to consume the *published* package
-instead of its own local build (the ticket's "dogfood the public
-contract" acceptance criterion — now unblocked, since the package is
-live), and wiring the `ModuleResolver`/in-memory source map into
+
+**"Dogfood the public contract" acceptance criterion: done (2026-08-16).**
+`pages.yml`'s playground build no longer builds `code-wasm` from source
+at all (dropped the Rust toolchain setup entirely — it was the only
+thing in this workflow that needed one) — it `npm install`s the
+published package at a pinned version and serves those files directly,
+same as any third-party embedder would get. Deliberate trade-off,
+decided explicitly rather than defaulted into: the live playground now
+reflects the last `code-wasm-v*` release, not `main`'s HEAD, so it can
+lag behind a language change that hasn't been published yet — the
+alternative (unifying the two build scripts so the playground always
+builds fresh from source) would have kept it current but wouldn't have
+actually verified the *published artifact* works, which is the whole
+point of this criterion. Bumping the pinned version is now an explicit
+step in `npm/README.md`'s "Releasing" section, so it doesn't get
+forgotten on a future release. Verified locally end to end before
+pushing — not just read the workflow and assumed it was right: ran the
+exact `npm install` + copy + cache-busting-rename sequence pages.yml
+runs, served the result, and loaded it in headless Chromium to confirm
+the playground actually executes a program via the npm-sourced wasm
+(not just that the files exist).
+
+Still open: wiring the `ModuleResolver`/in-memory source map into
 `code-wasm` for `link` support (the trait exists but `run_source`
 doesn't use it yet — v1 is single-snippet only, matching the ticket's
 "Out of scope (v1)" section). A demo build is

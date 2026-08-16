@@ -5,15 +5,23 @@ WASM bridge for running a `.code` snippet in a browser or other JS host —
 This crate is the interpreter bridge; there are two build outputs from it:
 
 - `playground/` — this repo's own docs-site playground (a full page,
-  not published anywhere else).
+  not published anywhere else). `playground/build.sh` here is a *local
+  dev* convenience only (build fresh from whatever's checked out, to
+  iterate on the playground UI without waiting on an npm release) — the
+  live site does **not** use it.
 - `npm/` — the published `code-wasm` package, for any third party to
   embed in their own site or tool. See `npm/README.md` for the
   public-facing usage docs and `npm/build.sh` to build it locally.
 
-Both build the *same* underlying `--target web` wasm-bindgen output —
-the playground is meant to eventually consume the published package
-like any other embedder would (dogfooding the public contract), not a
-separate internal-only build path.
+The deployed docs-site playground genuinely consumes the *published*
+`code-wasm` package (`.github/workflows/pages.yml` does `npm install
+code-wasm@<pinned-version>` and serves those files directly) rather than
+building its own copy from source — dogfooding the public contract, not
+a separate internal-only build path (see T19). Deliberate trade-off:
+the live playground reflects the last `code-wasm-v*` release, not
+`main`'s HEAD, so it can lag behind an unreleased language change —
+bump the pinned version in `pages.yml` as part of cutting a new release
+(see `npm/README.md`'s "Releasing" section).
 
 ## Scope (v1)
 
@@ -84,15 +92,6 @@ node crates/code-wasm/smoke-test/run.js target/wasm-bindgen-out/code_wasm.js
 
 ## Not done yet
 
-- `code-wasm` is [published on npm](https://www.npmjs.com/package/code-wasm).
-  Trusted Publishing (OIDC, no stored token) is confirmed working —
-  `0.1.1` published entirely through CI via a `code-wasm-v*` tag, no
-  human npm login involved in that publish at all. See `npm/README.md`'s
-  "Releasing" section for the tag-triggered flow.
-- This repo's own `playground/` doesn't yet consume the published package
-  (still builds its own copy via `playground/build.sh`) — the ticket's
-  "dogfood the public contract" criterion, now unblocked since the
-  package is live, just not done yet.
 - No web UI beyond the existing `playground/` — see T19's "Proposed
   change" item 4 (done for v1).
 - No module linking (`link` statements) — see "Scope" above; deferred to a

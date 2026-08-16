@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Local-dev convenience only — builds code-wasm fresh from whatever's
+# checked out, so you can iterate on the playground UI without waiting on
+# an npm release. The LIVE site does NOT use this: .github/workflows/
+# pages.yml npm-installs the published `code-wasm` package instead,
+# dogfooding the public contract (see ../README.md and T19).
+#
 # Builds code-wasm for wasm32 (release — a debug build crashes rust-lld at
 # this crate's size; see ../README.md) and runs wasm-bindgen to produce
 # browser-loadable glue into ./pkg (gitignored build output — same
