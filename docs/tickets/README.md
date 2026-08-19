@@ -39,6 +39,9 @@ finished, priority no longer matters for it. Numbers are stable identifiers
 | [28](done/28-member-of-general-expression.md) | `∈`/`∉` as a boolean expression accepts a general right side (a bound Set/Schema/Union variable), not just type-shaped syntax |
 | [29](done/29-member-of-universal-singleton.md) | `∈`'s right side is never rejected: any value denotes the singleton set containing itself, not just Set/Schema/Union |
 | [30](done/30-remove-type-keyword.md) | Remove `type`: particle types are plain `∩`-merged Schema variables built on a predefined `Particle` base |
+| [31](done/31-rename-fmt-to-format.md) | Rename `code fmt` → `code format` (no alias kept) |
+| [32](done/32-parent-cli-cdlvsm-package-manager.md) | `cdlvsm` package-manager CLI for `code`/`euglena` (superseded by T33 — see 33) |
+| [33](done/33-extract-cdlvsm-to-own-repo.md) | Extract `cdlvsm` to its own repo as a real Rust CLI + dispatcher (supersedes T32) |
 
 `cargo test --workspace` and the `.code` suite are fully green.
 

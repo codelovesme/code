@@ -1,10 +1,12 @@
 #!/usr/bin/env sh
 # Direct installer for the `code` SDK (compiler + interpreter) from GitHub
 # Releases — a single package, a plain `code` binary in $PREFIX/bin, nothing
-# else. For the broader codelovesme CLI namespace (Runtime tier, `--link`
-# control over whether a bare `code` command gets created, future packages
-# like `euglena`), see `cdlvsm` instead — this script is the direct/legacy
-# path, kept because it's simple and some setups just want exactly this.
+# else. For the broader codelovesme CLI namespace (Runtime tier, control over
+# whether a bare `code` command gets created, future packages like `euglena`),
+# use `cdlvsm` instead — the package manager at
+# https://github.com/codelovesme/cdlvsm-cli (`cdlvsm install code`). This
+# script is the direct path, kept because it's simple and some setups just
+# want exactly this.
 #
 #   curl -sSf https://raw.githubusercontent.com/codelovesme/code/main/install.sh | sh
 #

@@ -133,8 +133,9 @@
     <p class="platform-note">Linux x86_64 only, for now.</p>
 
     <h2>Or install with one command</h2>
-    <pre class="install">curl -sSf https://codelovesme.github.io/code/cdlvsm | sh -s -- install code</pre>
-    <p class="install-note"><code>cdlvsm</code> is the package manager for codelovesme CLI tools. Installs to <code>$HOME/.local/bin</code> by default as a <code>cdlvsm-code</code> shim; pass <code>--link</code> to also get a bare <code>code</code> command, or <code>--runtime</code> for the smaller LLVM-free tier. Set <code>CDLVSM_CODE_VERSION</code> to pin a release, or <code>PREFIX</code> to change the install root.</p>
+    <pre class="install">curl -sSf https://raw.githubusercontent.com/codelovesme/cdlvsm-cli/main/install.sh | sh
+cdlvsm install code</pre>
+    <p class="install-note"><a href="https://github.com/codelovesme/cdlvsm-cli"><code>cdlvsm</code></a> is the package manager for codelovesme CLI tools. Installs to <code>$HOME/.local/bin</code> by default as a <code>cdlvsm-code</code> shim; pass <code>--link</code> to also get a bare <code>code</code> command, or <code>--runtime</code> for the smaller LLVM-free tier. Set <code>CDLVSM_CODE_VERSION</code> to pin a release, or <code>PREFIX</code> to change the install root.</p>
     <p class="install-note">Prefer a single plain <code>code</code> binary with no package manager involved? <code>curl -sSf https://codelovesme.github.io/code/install.sh | sh</code> installs just the SDK directly.</p>
   </main>
 

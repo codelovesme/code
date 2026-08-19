@@ -1,6 +1,12 @@
 # 32 — Parent CLI namespace: `cdlvsm` with installable `code` / `euglena` packages
 
-Status: Implemented and shipped (2026-08-16).
+Status: Implemented and shipped (2026-08-16), then **superseded by
+[T33](33-extract-cdlvsm-to-own-repo.md) (2026-08-19)** — the in-repo
+POSIX-`sh` `cdlvsm` this ticket delivered was extracted to its own repo
+([`codelovesme/cdlvsm-cli`](https://github.com/codelovesme/cdlvsm-cli)) and
+rewritten in Rust with dispatch (`cdlvsm code run …`) once it needed to
+serve more than one tool. The shell script described below no longer exists
+in this repo.
 
 ## Scoping decisions made before implementation
 

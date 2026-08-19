@@ -14,7 +14,6 @@ on:
       - "docs/examples/**"
       - "crates/code-wasm/**"
       - "install.sh"
-      - "cdlvsm"
       - ".github/workflows/pages.yml"
   release:
     types: [published]
@@ -75,7 +74,6 @@ jobs:
           cp site/favicon-32.png dist/favicon-32.png
           cp site/favicon-180.png dist/favicon-180.png
           cp install.sh dist/install.sh
-          cp cdlvsm dist/cdlvsm
 
           # Guide page: inject the CI-verified docs/examples/*.code files into
           # the template's placeholders so the published code blocks are the

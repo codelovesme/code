@@ -1,4 +1,4 @@
-# 33 — [PLANNING] Extract `cdlvsm` to its own repo as a real Rust CLI
+# 33 — Extract `cdlvsm` to its own repo as a real Rust CLI
 
 - **Priority:** Medium
 - **Type:** Distribution / Ecosystem Architecture
@@ -6,9 +6,18 @@
   `README.md`, `.github/workflows/pages.yml`, `site/downloads.html`,
   `docs/tickets/done/32-...` in this repo
 
-Status: **Planned, not started.** Full design below — this ticket exists so
-the plan survives across machines/sessions; nothing has been implemented
-yet (no new repo created, no code-repo files touched).
+Status: **Implemented and shipped (2026-08-19).**
+[`codelovesme/cdlvsm-cli`](https://github.com/codelovesme/cdlvsm-cli) exists
+(public), released **v0.1.0**, and the whole loop is verified end-to-end
+against real GitHub releases: `curl install.sh | sh` bootstraps `cdlvsm`,
+then `cdlvsm install code` / `cdlvsm code run <file>` / `cdlvsm list` /
+`cdlvsm uninstall code` all work. The design details in that repo's own
+`docs/tickets/done/1-cdlvsm-package-manager-cli.md` supersede this ticket's
+plan where they differ (e.g. the Rust module layout that actually shipped:
+`main.rs` dispatch + `package.rs`/`download.rs`/`paths.rs`/`error.rs`). The
+plan-time design below is kept for provenance. The old shell-script `cdlvsm`
+has been removed from this repo, with every reference repointed at the new
+repo.
 
 ## Problem
 

@@ -66,30 +66,31 @@ model as `dotnet`'s Runtime vs SDK).
 **Quick install (recommended):**
 
 ```bash
-curl -sSf https://codelovesme.github.io/code/cdlvsm | sh -s -- install code
+curl -sSf https://raw.githubusercontent.com/codelovesme/cdlvsm-cli/main/install.sh | sh
+cdlvsm install code
 ```
 
-`cdlvsm` is the package manager for first-party codelovesme CLI tools
-(currently just `code`; more are planned under the same namespace, see
-[T32](docs/tickets/done/32-parent-cli-cdlvsm-package-manager.md)). It
-installs a `cdlvsm-code` shim in `~/.local/bin` and, deliberately, does
-**not** also create a bare `code` command — `code` collides with VS Code's
-own CLI of the same name on Linux, so that's opt-in via `--link`, not the
-default:
+[`cdlvsm`](https://github.com/codelovesme/cdlvsm-cli) is the package manager
+for first-party codelovesme CLI tools. It installs `code` under a versioned
+directory and creates a `cdlvsm-code` shim in `~/.local/bin`; it
+deliberately does **not** also create a bare `code` command — `code`
+collides with VS Code's own CLI of the same name on Linux, so that's opt-in
+via `--link`, not the default:
 
 ```bash
-curl -sSf https://codelovesme.github.io/code/cdlvsm | sh -s -- install code --link
+cdlvsm install code --link
 ```
 
 Other things `cdlvsm` can do:
 
 ```bash
 cdlvsm install code --runtime   # the smaller, LLVM-free interpreter-only tier
+cdlvsm code run hello.code      # run the installed code binary directly
 cdlvsm list                     # what's installed
 cdlvsm uninstall code
 ```
 
-Override the install root with `PREFIX=...`; pin a version with
+Override the install root with `PREFIX=...`; pin `code`'s version with
 `CDLVSM_CODE_VERSION=v0.x.y`.
 
 **Direct install (SDK only, no package manager):**
