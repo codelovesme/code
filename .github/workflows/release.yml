@@ -32,6 +32,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
+      # Single source of truth for the shipped version is the git tag: stamp
+      # the `code` package version from it before building so the binaries'
+      # `--version` matches the release, rather than trusting a hand-edited
+      # Cargo.toml. The `[package]` version is the first `version = ` line in
+      # the root Cargo.toml (the `[workspace]` section above it has none).
+      # v0.4.1 -> 0.4.1.
+      - name: Stamp version from tag
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          v="${{ github.ref_name }}"
+          v="${v#v}"
+          sed -i "0,/^version = \".*\"/s//version = \"$v\"/" Cargo.toml
+          grep -m1 '^version = ' Cargo.toml
+
       # `code` ships as two capability tiers, both with a binary named `code`
       # (the dotnet Runtime/SDK model — one command name, capability decided by
       # which package you installed; see T17/T18):

@@ -3,7 +3,7 @@ members = ["crates/code-abi", "crates/code-native", "crates/code-lsp", "crates/c
 
 [package]
 name = "code"
-version = "0.3.0"
+version = "0.4.1"
 edition = "2021"
 description = "The Code programming language — interpreter and LLVM compiler"
 license = "GPL-3.0"
