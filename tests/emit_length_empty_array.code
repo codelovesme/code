@@ -1,0 +1,2 @@
+emit Length { "value": [] } to core get n
+assert n = 0

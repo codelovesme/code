@@ -329,6 +329,59 @@ void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
     code_null(out);
 }
 
+/* `emit <particle> to core [get <name>]`. `class_name` is read from the
+ * particle's own "_class" field at runtime, never resolved to a fixed call
+ * at compile time — even when the particle is a literal `ClassName { ... }`
+ * right at the call site, because it can just as easily be a value that was
+ * built earlier, stored, and passed around (see memory `new-code-particle`
+ * for why particles carry `_class` with them at all). Must match
+ * interpreter.rs's `dispatch_core` exactly — same handler set, same
+ * operand-type rules.
+ *
+ * A future handler that returns *part of* its input (rather than a fresh
+ * Number/Str/Array/Object, as `Length` always does) would need to
+ * `code_retain` that piece before it can safely end up in `out` — nothing
+ * here does that today, so this is a note for whoever adds the next one,
+ * not a currently-exercised path. */
+static const CodeValue *find_field(const CodeValue *obj, const char *key) {
+    for (long long i = 0; i < obj->len; i++) {
+        if (strcmp(obj->keys[i], key) == 0) {
+            return slot_at(obj->items, i);
+        }
+    }
+    return NULL;
+}
+
+void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
+    if (particle->tag != CODE_OBJECT) {
+        code_runtime_error("emit requires a particle (an object with a \"_class\" field)");
+    }
+    const CodeValue *class_val = find_field(particle, "_class");
+    if (!class_val || class_val->tag != CODE_STR) {
+        code_runtime_error("emit requires a particle (an object with a \"_class\" field)");
+    }
+
+    if (strcmp(class_val->str, "Length") == 0) {
+        const CodeValue *value = find_field(particle, "value");
+        if (!value) {
+            code_runtime_error("Length { \"value\": ... } requires a 'value' field");
+        }
+        if (value->tag == CODE_ARRAY) {
+            code_number(out, (double)value->len);
+            return;
+        }
+        if (value->tag == CODE_STR) {
+            code_number(out, (double)strlen(value->str));
+            return;
+        }
+        code_runtime_error("Length requires an array or string 'value'");
+    }
+
+    char msg[96];
+    snprintf(msg, sizeof msg, "unknown core handler '%s'", class_val->str);
+    code_runtime_error(msg);
+}
+
 /* `loop x over <expr>` support. Two calls instead of one combined "iterate"
  * entry point because the loop's control flow lives in the generated IR, not
  * here: codegen emits the counter, the bounds check and the back-edge itself

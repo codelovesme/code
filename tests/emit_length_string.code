@@ -1,0 +1,6 @@
+-- `Length` also accepts a string, counting its bytes.
+emit Length { "value": "hello world" } to core get n
+assert n = 11
+
+emit Length { "value": "" } to core get empty
+assert empty = 0

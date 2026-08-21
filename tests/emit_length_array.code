@@ -1,0 +1,5 @@
+-- `emit <particle> to core [get <name>]` invokes a compiled-in handler,
+-- chosen at runtime by the particle's own "_class" field. `Length` counts
+-- an array's elements.
+emit Length { "value": [1, 2, 3, 4] } to core get n
+assert n = 4

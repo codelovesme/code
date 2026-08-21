@@ -105,6 +105,30 @@ pub enum Stmt {
         body: Vec<Stmt>,
         exports: Vec<String>,
     },
+    /// `emit <particle> to core [get <name>]` — invokes a compiled-in "core"
+    /// handler. Which one is chosen at **runtime**, by reading the
+    /// particle's own `"_class"` field — never resolved at parse or compile
+    /// time, even when `particle` is a literal `ClassName { ... }` written
+    /// right here, so a particle built earlier, stored, and passed around
+    /// dispatches exactly the same way a literal one does (see memory
+    /// `new-code-particle`: that's the reason particles carry `_class` with
+    /// them in the first place). Consistent with every other operand-type
+    /// rule in this language: always a runtime check, never special-cased
+    /// for the literal case (see ast.rs's `BinOp` doc comment).
+    ///
+    /// `core` is the only valid target today — not a special-cased
+    /// identifier but its own reserved word, so `let core = ...` is
+    /// rejected rather than silently shadowing it. Linking a native module
+    /// as a target is future work (see
+    /// `docs/todo/native-module-linking.md`).
+    ///
+    /// `get <name>` always **declares** a new binding, shadowing like
+    /// `let` — never a reassignment, the same rule `Stmt::Import`'s alias
+    /// follows. Omitting it runs the handler and discards the result.
+    Emit {
+        particle: Expr,
+        result: Option<String>,
+    },
     /// `break` — exits the innermost enclosing `Loop` immediately, skipping
     /// the rest of that iteration's body. `break` outside any loop is a
     /// *parse* error rather than a later check, so the interpreter and the

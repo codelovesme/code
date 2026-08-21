@@ -226,6 +226,14 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             }
             Ok(Flow::Normal)
         }
+        Stmt::Emit { particle, result } => {
+            let value = eval(particle, env)?;
+            let output = dispatch_core(&value)?;
+            if let Some(name) = result {
+                env.declare(name.clone(), output);
+            }
+            Ok(Flow::Normal)
+        }
         Stmt::Break => Ok(Flow::Break),
     }
 }
@@ -318,6 +326,37 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
             let r = eval(rhs, env)?;
             apply_binop(*op, l, r)
         }
+    }
+}
+
+/// Runs the compiled-in "core" handler named by `particle`'s own `"_class"`
+/// field. Must match `runtime.c`'s `code_core_dispatch` exactly — same
+/// handler set, same operand-type rules, same error wording where it's worth
+/// keeping in sync.
+fn dispatch_core(particle: &Value) -> Result<Value, String> {
+    let Value::Object(fields) = particle else {
+        return Err(format!(
+            "emit requires a particle (an object with a \"_class\" field), found a {}",
+            type_name(particle)
+        ));
+    };
+    let class = match fields.iter().find(|(k, _)| k == "_class") {
+        Some((_, Value::Str(class))) => class,
+        _ => {
+            return Err("emit requires a particle (an object with a \"_class\" field)".to_string())
+        }
+    };
+    match class.as_ref() {
+        "Length" => match fields.iter().find(|(k, _)| k == "value") {
+            Some((_, Value::Array(items))) => Ok(Value::Number(items.len() as f64)),
+            Some((_, Value::Str(s))) => Ok(Value::Number(s.len() as f64)),
+            Some((_, v)) => Err(format!(
+                "Length requires an array or string 'value', found a {}",
+                type_name(v)
+            )),
+            None => Err("Length { \"value\": ... } requires a 'value' field".to_string()),
+        },
+        other => Err(format!("unknown core handler '{other}'")),
     }
 }
 

@@ -45,6 +45,15 @@ pub enum Token {
     Link,
     As,
     Export,
+    Emit,
+    To,
+    /// The only valid `emit` target today. A reserved word (not just a
+    /// special-cased identifier) specifically so `let core = ...` is
+    /// rejected at parse time rather than silently shadowing it.
+    Core,
+    /// `get` — binds an `emit`'s result to a name. Always declares a fresh
+    /// binding, shadowing like `let` — never a reassignment.
+    Get,
     /// Statement separator — a newline or `;`. Blank lines never produce one
     /// (see `tokenize`: consecutive separators are collapsed).
     Newline,
@@ -189,6 +198,10 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 "link" => Token::Link,
                 "as" => Token::As,
                 "export" => Token::Export,
+                "emit" => Token::Emit,
+                "to" => Token::To,
+                "core" => Token::Core,
+                "get" => Token::Get,
                 _ => Token::Ident(text),
             };
             tokens.push(tok);

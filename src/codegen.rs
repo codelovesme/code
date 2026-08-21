@@ -117,6 +117,12 @@ fn verify_stmts(stmts: &[Stmt], scopes: &mut Vec<HashSet<String>>) -> Result<(),
                 scopes.pop();
                 result?;
             }
+            Stmt::Emit { particle, result } => {
+                verify_expr(particle, scopes)?;
+                if let Some(name) = result {
+                    scopes.last_mut().unwrap().insert(name.clone());
+                }
+            }
             // Nothing to check — the parser already rejected any `break`
             // that isn't inside a loop.
             Stmt::Break => {}
@@ -245,6 +251,11 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
+    let fn_core_dispatch = module.add_function(
+        "code_core_dispatch",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_check_leaks = module.add_function("code_check_leaks", void_ty.fn_type(&[], false), None);
     let fn_dump = module.add_function(
         "code_dump_bindings",
@@ -339,6 +350,7 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_iter_len,
         fn_iter_at,
         fn_release,
+        fn_core_dispatch,
         env: vec![HashMap::new()],
         order: Vec::new(),
         loop_exits: Vec::new(),
@@ -431,6 +443,7 @@ struct Gen<'a> {
     fn_iter_len: FunctionValue<'a>,
     fn_iter_at: FunctionValue<'a>,
     fn_release: FunctionValue<'a>,
+    fn_core_dispatch: FunctionValue<'a>,
     /// Scope stack, innermost last — mirrors `interpreter::Environment`
     /// (see memory `new-code-if-scoping`). Each name maps to a *permanent*
     /// slot, allocated once on its first assignment and never reallocated:
@@ -573,6 +586,7 @@ impl<'a> Gen<'a> {
                 iterable,
                 body,
             } => self.gen_loop(var, index.as_deref(), iterable, body),
+            Stmt::Emit { particle, result } => self.gen_emit(particle, result.as_deref()),
             Stmt::Break => self.gen_break(),
         }
     }
@@ -795,6 +809,33 @@ impl<'a> Gen<'a> {
                     self.bind(&name, slot);
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// `emit particle to core [get name]`. The handler call always writes
+    /// into a temp slot first, exactly like every other `gen_expr` call —
+    /// only *if* `get name` is present does that result get copied into a
+    /// fresh permanent slot and bound, the same two-step `gen_let` already
+    /// uses. Without `get`, the temp slot is simply never bound to
+    /// anything; `emit_cleanup`'s end-of-program sweep still releases it
+    /// like any other slot.
+    fn gen_emit(&mut self, particle: &Expr, result: Option<&str>) -> Result<(), String> {
+        let particle_ptr = self.gen_expr(particle)?;
+        let temp = self.alloc_slot("emit_result")?;
+        self.builder
+            .build_call(
+                self.fn_core_dispatch,
+                &[temp.into(), particle_ptr.into()],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
+        if let Some(name) = result {
+            let permanent = self.alloc_slot("var")?;
+            self.builder
+                .build_call(self.fn_copy, &[permanent.into(), temp.into()], "")
+                .map_err(|e| e.to_string())?;
+            self.bind(name, permanent);
         }
         Ok(())
     }

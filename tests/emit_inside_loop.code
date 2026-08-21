@@ -1,0 +1,9 @@
+-- `emit` is an ordinary statement, usable anywhere a statement is —
+-- including inside a loop body, unlike `link`/`export` which are
+-- module-structure declarations confined to the top level.
+let lengths = []
+loop word over ["a", "bb", "ccc"] {
+    emit Length { "value": word } to core get n
+    lengths = lengths + [n]
+}
+assert lengths = [1, 2, 3]

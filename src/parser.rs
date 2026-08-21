@@ -127,6 +127,39 @@ impl<'a> Parser<'a> {
             });
         }
 
+        if matches!(self.peek(), Token::Emit) {
+            self.advance();
+            let particle = self.expr()?;
+            match self.advance() {
+                Token::To => {}
+                other => {
+                    return Err(format!(
+                        "expected 'to' after emit's argument, found {other:?}"
+                    ))
+                }
+            }
+            match self.advance() {
+                Token::Core => {}
+                other => {
+                    return Err(format!(
+                        "expected 'core' after 'to' — no other emit target exists yet, \
+                         found {other:?}"
+                    ))
+                }
+            }
+            let result = if matches!(self.peek(), Token::Get) {
+                self.advance();
+                match self.advance() {
+                    Token::Ident(name) => Some(name),
+                    other => return Err(format!("expected a name after 'get', found {other:?}")),
+                }
+            } else {
+                None
+            };
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::Emit { particle, result });
+        }
+
         if matches!(self.peek(), Token::Break) {
             self.advance();
             if self.loop_depth == 0 {

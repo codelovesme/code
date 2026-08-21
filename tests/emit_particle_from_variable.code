@@ -1,0 +1,7 @@
+-- The whole reason particles carry their own "_class": dispatch works on a
+-- particle that was built earlier, stored, and passed around — not just on
+-- one written inline at the emit site.
+let p = Length { "value": [1, 2, 3, 4, 5] }
+let stored = [p]
+emit stored[0] to core get n
+assert n = 5
