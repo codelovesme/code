@@ -53,6 +53,12 @@ fn verify_stmts(stmts: &[Stmt], scopes: &mut Vec<HashSet<String>>) -> Result<(),
                 scopes.pop();
                 result?;
             }
+            Stmt::Block(body) => {
+                scopes.push(HashSet::new());
+                let result = verify_stmts(body, scopes);
+                scopes.pop();
+                result?;
+            }
         }
     }
     Ok(())
@@ -403,7 +409,19 @@ impl<'a> Gen<'a> {
                 Ok(())
             }
             Stmt::If { condition, body } => self.gen_if(condition, body),
+            Stmt::Block(body) => self.gen_block(body),
         }
+    }
+
+    /// Unconditional version of `gen_if`'s scope handling, minus the
+    /// condition/branch — always runs, so needs no basic blocks at all.
+    fn gen_block(&mut self, body: &[Stmt]) -> Result<(), String> {
+        self.env.push(HashMap::new());
+        for stmt in body {
+            self.gen_stmt(stmt)?;
+        }
+        self.env.pop();
+        Ok(())
     }
 
     /// See `env`'s doc comment for why this always copies rather than ever

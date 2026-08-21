@@ -103,6 +103,12 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
             Value::Bool(false) => Ok(()),
             v => Err(format!("if requires a boolean, found a {}", type_name(&v))),
         },
+        Stmt::Block(body) => {
+            env.push_scope();
+            let result = body.iter().try_for_each(|s| exec(s, env));
+            env.pop_scope();
+            result
+        }
     }
 }
 

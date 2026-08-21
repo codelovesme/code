@@ -24,6 +24,11 @@ pub enum Stmt {
     /// assigning a name that doesn't exist anywhere outer creates a new
     /// binding local to `body`, invisible once it ends.
     If { condition: Expr, body: Vec<Stmt> },
+    /// A bare `{ body }` — unconditionally runs `body` in a new scope
+    /// (same scoping rule as `If`'s `body`, minus the condition: always
+    /// executes). Lets a user open a scope on demand, e.g. to shadow a
+    /// throwaway local without it ever being reachable outside.
+    Block(Vec<Stmt>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

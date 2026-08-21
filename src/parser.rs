@@ -56,12 +56,21 @@ impl<'a> Parser<'a> {
             return Ok(Stmt::If { condition, body });
         }
 
+        // A bare block: unambiguous at statement-start, since object
+        // literals only ever appear in expression position (the right-hand
+        // side of `=`, an array element, ...), never here.
+        if matches!(self.peek(), Token::LBrace) {
+            let body = self.block()?;
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::Block(body));
+        }
+
         // Otherwise the only statement form is `name = expr`.
         let name = match self.advance() {
             Token::Ident(name) => name,
             other => {
                 return Err(format!(
-                    "expected a variable name, 'assert', or 'if', found {other:?}"
+                    "expected a variable name, 'assert', 'if', or '{{', found {other:?}"
                 ))
             }
         };
