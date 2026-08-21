@@ -80,12 +80,14 @@ fn verify_stmts(
                 }
             }
             Stmt::ImportNative { alias, .. } => {
-                // A separate namespace from `scopes`, matching
-                // `interpreter::Environment::native_modules`: nothing in
-                // this language can bind a handler as an ordinary `Value`,
-                // so the alias is only ever reachable via `emit ... to
-                // <alias>`.
+                // The alias serves two roles, so it is recorded in both
+                // namespaces: in `natives` (a separate namespace from
+                // `scopes`, matching `interpreter::Environment::native_modules`)
+                // so `emit ... to <alias>` can dispatch to the module, and in
+                // `scopes` so `alias.name` — the module's exported variables,
+                // bound as an object — resolves as an ordinary field access.
                 natives.insert(alias.clone());
+                scopes.last_mut().unwrap().insert(alias.clone());
             }
             Stmt::Assign { name, value } => {
                 verify_expr(value, scopes)?;
@@ -293,6 +295,11 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         ),
         None,
     );
+    let fn_native_vars_object = module.add_function(
+        "code_native_vars_object",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_native_close = module.add_function(
         "code_native_close",
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
@@ -395,6 +402,7 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_core_dispatch,
         fn_native_open,
         fn_native_dispatch,
+        fn_native_vars_object,
         fn_native_close,
         env: vec![HashMap::new()],
         order: Vec::new(),
@@ -492,6 +500,7 @@ struct Gen<'a> {
     fn_core_dispatch: FunctionValue<'a>,
     fn_native_open: FunctionValue<'a>,
     fn_native_dispatch: FunctionValue<'a>,
+    fn_native_vars_object: FunctionValue<'a>,
     fn_native_close: FunctionValue<'a>,
     /// Scope stack, innermost last — mirrors `interpreter::Environment`
     /// (see memory `new-code-if-scoping`). Each name maps to a *permanent*
@@ -893,6 +902,22 @@ impl<'a> Gen<'a> {
             .expect("code_native_open returns i8*, not void")
             .into_pointer_value();
         self.native_handles.insert(alias.to_string(), handle);
+        // The module's exported variables (constants) become an object bound
+        // under `alias`, so `alias.name` is ordinary field access — the same
+        // binding `gen_import`'s alias uses. The object is built at *runtime*
+        // (the module is dlopen'd at runtime, so its variables are only known
+        // then), by `code_native_vars_object` reading the module's optional
+        // `code_module_vars` export and deep-copying each value out. A module
+        // with no such export yields an empty object.
+        let permanent = self.alloc_slot("module")?;
+        self.builder
+            .build_call(
+                self.fn_native_vars_object,
+                &[handle.into(), permanent.into()],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
+        self.bind(alias, permanent);
         Ok(())
     }
 

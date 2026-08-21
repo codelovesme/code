@@ -18,6 +18,13 @@
  *      itself (its constructors/refcounting are exactly what a handler
  *      needs to build a result) — see `tests/native_modules/` for an
  *      example.
+ *   5. *Optionally* export `const CodeVarList *code_module_vars(void)`,
+ *      returning the module's exported values (constants) — see
+ *      `CodeVarList` below. A module that does not export it simply has no
+ *      exported variables; `link "x.so" as x` then binds `x` to an empty
+ *      object. This is optional (not a required symbol) so that a Phase 1
+ *      module — handlers only — keeps working unchanged, and so the ABI
+ *      version does not have to bump for it.
  *
  * Why a module needs its own `code_release`, not the host's: values never
  * cross this boundary by shared ownership. Whatever a module allocates for
@@ -72,5 +79,23 @@ typedef struct CodeValue {
 } CodeValue;
 
 #define CODE_VALUE_SLOT_SIZE 80
+
+/* A module's exported variables (constants) — what `code_module_vars`
+ * returns. `names` and `values` are parallel arrays of `count` entries:
+ * `values[i]` is the value exported under `names[i]`. `values` is strided at
+ * `CODE_VALUE_SLOT_SIZE` bytes (address it through a `slot_at`-style helper,
+ * never `[]`), exactly like a `CodeValue`'s own `items` buffer.
+ *
+ * The module owns all of this memory — the names, the value buffer, and
+ * everything the values point into — and it must stay valid for the module's
+ * whole lifetime (the host reads it once at `link` time and deep-copies each
+ * value out, the same way it treats a `code_module_dispatch` result). The
+ * host never frees any of it; it only ever calls the module's own
+ * `code_release` on a *copy* it made. */
+typedef struct CodeVarList {
+    long long count;
+    const char **names;
+    CodeValue *values; /* CODE_VALUE_SLOT_SIZE stride, `count` slots */
+} CodeVarList;
 
 #endif

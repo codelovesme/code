@@ -423,6 +423,12 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
 typedef struct {
     void (*dispatch)(CodeValue *out, const CodeValue *particle);
     void (*release)(CodeValue *v);
+    /* Optional: the module's exported variables (constants). NULL when the
+     * module doesn't export `code_module_vars` (a Phase 1, handlers-only
+     * module) — in which case `code_native_vars_object` binds an empty
+     * object. Unlike the two required symbols above, a missing one is not an
+     * error. */
+    const CodeVarList *(*vars)(void);
 } NativeHandle;
 
 void *code_native_open(const char *path) {
@@ -459,6 +465,8 @@ void *code_native_open(const char *path) {
                  "native module '%s' missing 'code_module_dispatch' or 'code_release'", path);
         code_runtime_error(msg);
     }
+    /* Optional — a module without it simply has no exported variables. */
+    nh->vars = (const CodeVarList *(*)(void))dlsym(handle, "code_module_vars");
     return nh;
 }
 
@@ -551,6 +559,51 @@ void code_native_dispatch(void *handle, CodeValue *out, const CodeValue *particl
     nh->dispatch(&result, particle);
     code_native_copy_in(out, &result);
     nh->release(&result);
+}
+
+/* `link "x.so" as x` — build the object of the module's exported variables
+ * (constants), bound under `alias` so `alias.name` is ordinary field access.
+ * Reads the module's optional `code_module_vars` export and deep-copies each
+ * value out (the same boundary rule as `code_native_dispatch`), then calls
+ * the module's own `code_release` on each. A module with no such export
+ * yields an empty object. The key *strings* are borrowed from the module
+ * (like every object's keys in this runtime — `code_object` copies the
+ * pointers, never the characters); that is safe because the module owns them
+ * for its whole lifetime and `code_native_close` never `dlclose`s it, so they
+ * outlive the object. `handle` is whatever `code_native_open` returned. */
+void code_native_vars_object(void *handle, CodeValue *out) {
+    NativeHandle *nh = (NativeHandle *)handle;
+    const CodeVarList *list = nh->vars ? nh->vars() : NULL;
+    long long count = list ? list->count : 0;
+    if (count < 0) {
+        code_runtime_error("native module reports a negative variable count");
+    }
+    const char **keys = NULL;
+    void *values = NULL;
+    if (count > 0) {
+        keys = (const char **)malloc((size_t)count * sizeof(const char *));
+        // Zero-initialized (calloc, not malloc): each code_native_copy_in
+        // below may write a result via a constructor that calls
+        // code_release(out) first (see code_str_owned) — that reads
+        // out->heap, which has to start real rather than garbage.
+        values = calloc((size_t)count, CODE_VALUE_SLOT_SIZE);
+        for (long long i = 0; i < count; i++) {
+            keys[i] = list->names[i];
+            code_native_copy_in(slot_at(values, i), slot_at(list->values, i));
+        }
+    }
+    code_object(out, keys, values, count);
+    // code_object retained each scratch value into the fresh object block;
+    // drop the scratch copies now (and the module's own copies are the
+    // module's to keep — we never release its name strings, only the values
+    // we copied out of its buffer).
+    if (count > 0) {
+        for (long long i = 0; i < count; i++) {
+            code_release(slot_at(values, i));
+        }
+        free(values);
+    }
+    free(keys);
 }
 
 /* `loop x over <expr>` support. Two calls instead of one combined "iterate"

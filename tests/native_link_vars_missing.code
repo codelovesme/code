@@ -1,0 +1,6 @@
+-- Reading a variable the module doesn't export is `null`, not an error —
+-- the same permissive rule as every other invalid field access in this
+-- language (a missing field on an object is `null`, never a failure).
+link "native_modules/test_math.so" as m
+assert m.doesnotexist = null
+assert m.answer = 42

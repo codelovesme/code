@@ -5,9 +5,18 @@
 via dlopen/dlsym in both (never `cc`-time static linking — see
 `runtime.c`'s "Native modules" section and `src/native.rs`). See
 `code_abi.h` for the ABI a module implements, and
-`tests/native_modules/test_math.c` for a working example. What's below is
-what Phase 1 deliberately left out, updated in place rather than rewritten,
-since most of the original reasoning still holds.
+`tests/native_modules/test_math.c` for a working example.
+
+**Phase 2 shipped 2026-08-21: exported variables.** A module may now also
+export *values* via an optional `code_module_vars()` (see `code_abi.h`'s
+`CodeVarList`); the `link` alias binds to an object of those values, so
+`x.someConst` works in both modes alongside `emit ... to x`. The alias is
+therefore dual-purpose — a field-access target *and* an `emit` target — and
+a module that exports no vars still works as an `emit`-only target (the
+export is optional, not required). See `tests/native_link_vars*.code` and
+`test_math.c`'s `code_module_vars`. What's below is what's still open,
+updated in place rather than rewritten, since most of the original reasoning
+still holds.
 
 `link` today resolves `.code` and native `.so` modules. The owner wants it to
 also link `.a`/`.wasm` modules and modules compiled by languages other than
@@ -99,18 +108,13 @@ caught before any module code runs).
   unlike two `.so` handles); `.wasm` needs a wasm runtime embedded in the
   interpreter (and, for `code build`, in the emitted binary too) — nothing
   towards either exists yet.
-- **Exported variables / types.** Phase 1 is handlers only — a native
-  module contributes nothing but an `emit` target, no `x.someConst`. Adding
-  it means `Stmt::ImportNative` growing a `vars: Vec<String>` alongside
-  `alias`/`path`, populated from a second required export
-  (`code_module_vars()` returning name/value pairs) — `Stmt::Import`'s
-  "produce pairs, then bind" split was kept general specifically so this
-  slots in without changing the binding half.
 - **`code build --lib`.** `code build` still only emits a `main`-having
   executable. A program *written in `code`* can't itself become a linkable
   native module yet — moot today anyway, since a `code`-authored module
   would only ever export values (no functions to export as handlers), and
-  Phase 1 doesn't support exported variables either (see above).
+  there's no `code`-side syntax to *declare* a module's exported vars yet
+  (Phase 2 reads them from a native module's `code_module_vars`, it doesn't
+  let a `code` program define one).
 - **A published `code-native`-equivalent crate/header bundle.** Today
   writing a module means hand-`#include`-ing `runtime.c` (see
   `tests/native_modules/test_math.c`'s doc comment) — fine for a test
