@@ -3,16 +3,32 @@ pub mod ast;
 pub mod codegen;
 pub mod interpreter;
 pub mod lexer;
+pub mod loader;
 pub mod parser;
 pub mod value;
 
-use interpreter::Environment;
+use std::path::Path;
 
-/// Lex, parse, and run a full source string — the one entry point every
-/// caller (CLI, tests, and eventually anything else) should go through.
+use interpreter::Environment;
+use loader::{FilesystemResolver, NoModules};
+
+/// Run a program from a file. The path is not just a convenience: `link`
+/// resolves relative to the file doing the linking, so a program that links
+/// anything can only be run through an entry point that knows where it lives.
+pub fn run_file(path: &Path) -> Result<Environment, String> {
+    let program = loader::load(&path.display().to_string(), &FilesystemResolver)?;
+    interpreter::run(&program)
+}
+
+/// Run a program from source text alone, with no module story — `link` in it
+/// is refused rather than resolved. This is what a host without a filesystem
+/// uses (`crates/code-wasm`, and so the playground).
 pub fn run_source(src: &str) -> Result<Environment, String> {
-    let tokens = lexer::tokenize(src)?;
-    let program = parser::parse(&tokens)?;
+    let resolver = NoModules {
+        entry_identity: "<source>".to_string(),
+        entry_text: src.to_string(),
+    };
+    let program = loader::load("<source>", &resolver)?;
     interpreter::run(&program)
 }
 
@@ -31,19 +47,22 @@ mod compile {
     use std::path::Path;
     use std::process::Command;
 
-    use crate::{ast::Program, codegen, lexer, parser};
+    use crate::ast::Program;
+    use crate::codegen;
+    use crate::loader::{self, FilesystemResolver};
 
     /// Runtime support functions (`code_number`, `code_array`, ...) that
     /// every compiled program links against — embedded so `code build`
     /// works regardless of the current directory or install location.
     const RUNTIME_C: &str = include_str!("runtime.c");
 
-    /// Lex, parse, and compile a full source string into a standalone
-    /// executable at `exe_path`, via LLVM object codegen (see `codegen.rs`)
-    /// linked against the embedded C runtime through the system `cc`.
-    pub fn compile_source(src: &str, exe_path: &Path) -> Result<(), String> {
-        let tokens = lexer::tokenize(src)?;
-        let program: Program = parser::parse(&tokens)?;
+    /// Compile a program from a file into a standalone executable at
+    /// `exe_path`, via LLVM object codegen (see `codegen.rs`) linked against
+    /// the embedded C runtime through the system `cc`. Takes a path for the
+    /// same reason `run_file` does — `link` resolves relative to it.
+    pub fn compile_file(source_path: &Path, exe_path: &Path) -> Result<(), String> {
+        let program: Program =
+            loader::load(&source_path.display().to_string(), &FilesystemResolver)?;
 
         let obj_path = exe_path.with_extension("o");
         codegen::compile_to_object(&program, &obj_path)?;
@@ -71,4 +90,4 @@ mod compile {
 }
 
 #[cfg(feature = "llvm")]
-pub use compile::compile_source;
+pub use compile::compile_file;

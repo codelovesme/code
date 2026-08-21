@@ -1,0 +1,5 @@
+-- `link` is a module-structure declaration, valid only at the top level.
+let ready = true
+if ready {
+    link "modules/shared_values"
+}

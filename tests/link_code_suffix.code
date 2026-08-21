@@ -1,0 +1,4 @@
+-- The `.code` extension is optional and means the same thing.
+link "modules/shared_values.code" as m
+
+assert m.n = 42

@@ -1,5 +1,8 @@
+// `Path` is needed by `run` too now that it resolves modules; only `build`'s
+// output path is LLVM-gated.
+use std::path::Path;
 #[cfg(feature = "llvm")]
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 /// `run` interprets; `build` compiles (LLVM, see codegen.rs) and links a
@@ -53,15 +56,10 @@ fn default_output_path(input: &str) -> PathBuf {
 }
 
 fn run_file(path: &str) -> ExitCode {
-    let src = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error reading '{path}': {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    match code::run_source(&src) {
+    // The path, not the text: `link` resolves relative to the file doing the
+    // linking, so reading the source here and passing a string would lose the
+    // only thing module resolution has to work from.
+    match code::run_file(Path::new(path)) {
         // There's no print/output construct in the language yet (an open
         // design question, not decided either way) — dump the final
         // bindings so a run is actually observable in the meantime.
@@ -78,15 +76,7 @@ fn run_file(path: &str) -> ExitCode {
 
 #[cfg(feature = "llvm")]
 fn build_file(path: &str, out: &Path) -> ExitCode {
-    let src = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error reading '{path}': {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    match code::compile_source(&src, out) {
+    match code::compile_file(Path::new(path), out) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");

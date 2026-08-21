@@ -36,11 +36,15 @@ fn code_fixtures_run_as_expected() {
             continue;
         }
         let name = path.file_name().unwrap().to_string_lossy().to_string();
-        let src = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {name}: {e}"));
         let should_fail = name.starts_with("fail_");
 
-        check_interpret(&name, &src, should_fail, &mut failures);
-        check_compile(&name, &src, should_fail, &tmp_dir, &mut failures);
+        // Both modes take the fixture's *path*, not its text: `link`
+        // resolves relative to the linking file, so `tests/modules/*.code`
+        // is only reachable from a caller that knows where the fixture is.
+        // Those module files live in a subdirectory and so are never picked
+        // up as fixtures in their own right by the glob above.
+        check_interpret(&name, &path, should_fail, &mut failures);
+        check_compile(&name, &path, should_fail, &tmp_dir, &mut failures);
         checked += 1;
     }
 
@@ -48,8 +52,8 @@ fn code_fixtures_run_as_expected() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-fn check_interpret(name: &str, src: &str, should_fail: bool, failures: &mut Vec<String>) {
-    match (should_fail, code::run_source(src)) {
+fn check_interpret(name: &str, path: &Path, should_fail: bool, failures: &mut Vec<String>) {
+    match (should_fail, code::run_file(path)) {
         (false, Err(e)) => failures.push(format!(
             "{name}: interpret: expected to run, but errored: {e}"
         )),
@@ -60,7 +64,7 @@ fn check_interpret(name: &str, src: &str, should_fail: bool, failures: &mut Vec<
 
 fn check_compile(
     name: &str,
-    src: &str,
+    path: &Path,
     should_fail: bool,
     tmp_dir: &Path,
     failures: &mut Vec<String>,
@@ -68,7 +72,7 @@ fn check_compile(
     let stem = name.trim_end_matches(".code");
     let exe_path: PathBuf = tmp_dir.join(stem);
 
-    match code::compile_source(src, &exe_path) {
+    match code::compile_file(path, &exe_path) {
         Err(e) => {
             // A compile-time failure (parse error, undefined variable) is a
             // valid way for a fail_*.code fixture to fail — nothing further
@@ -108,7 +112,7 @@ fn check_compile(
                 ));
             } else {
                 let compiled_stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                let interpreted_stdout = code::run_source(src)
+                let interpreted_stdout = code::run_file(path)
                     .map(|env| code::format_bindings(&env))
                     .unwrap_or_default();
                 if compiled_stdout != interpreted_stdout {

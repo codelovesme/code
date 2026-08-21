@@ -1,0 +1,6 @@
+-- Same for `export`: a name declared inside a block is block-local, so
+-- exporting it could never mean anything.
+let ready = true
+if ready {
+    export let x = 1
+}

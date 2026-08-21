@@ -1,0 +1,5 @@
+-- Bare `link` flattens a module's exports into this scope.
+link "modules/shared_values"
+
+assert greeting = "hello"
+assert n = 42

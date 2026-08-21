@@ -11,6 +11,12 @@ lines of `a = a + a`, and exist to prove things about the *native* backend
 — stack growth, teardown depth — which is exactly what a wasm playground
 cannot demonstrate.
 
+Fixtures that `link` are held back too, by content rather than by name:
+the playground runs through `crates/code-wasm`, which has no filesystem and
+so deliberately supports no modules at all. Testing the source is what makes
+this precise — it holds back exactly the examples that would fail to run,
+and stays right no matter what the fixtures are called.
+
 Usage: build.py <repo-root> <dist-dir>
 """
 import json
@@ -30,7 +36,12 @@ def main() -> None:
             continue
         if name.startswith("stress_"):
             continue
-        examples[name] = path.read_text()
+        source = path.read_text()
+        # `link` is top-level only, so a line starting with it is the whole
+        # of the syntax to look for.
+        if any(line.startswith("link ") for line in source.splitlines()):
+            continue
+        examples[name] = source
 
     # Escaping "</" guards against a fixture ever containing a "</script>"
     # substring, which would otherwise close the embedding <script> tag

@@ -1,0 +1,2 @@
+link "cycle_a"
+export let b = 2

@@ -14,7 +14,17 @@ pub enum Stmt {
     /// same-named outer binding for the rest of that scope — even
     /// re-`let`-ing the same name in the same scope is fine, it just
     /// rebinds. This is what makes `Assign` below unambiguous.
-    Let { name: String, value: Expr },
+    Let {
+        name: String,
+        value: Expr,
+        /// `export let name = ...` — this name is part of what a linking
+        /// file sees. **Private is the default**, the opposite of the old
+        /// language's public-by-default-with-`private`. Only meaningful at
+        /// a module's top level, which is the only place the parser allows
+        /// `export` at all: a name declared inside a block is block-local,
+        /// so exporting it could never mean anything.
+        exported: bool,
+    },
     /// `name = expr` (no `let`) — reassignment only. Searches the scope
     /// chain outward for an existing binding of `name` and updates it in
     /// place; an error if `name` isn't bound anywhere (interpreter and
@@ -61,6 +71,39 @@ pub enum Stmt {
         index: Option<String>,
         iterable: Expr,
         body: Vec<Stmt>,
+    },
+    /// `link "path"` / `link "path" as alias` — brings another module's
+    /// exports into this file. Top-level only, like `export`.
+    ///
+    /// **Never reaches the interpreter or codegen**: `loader.rs` resolves
+    /// every `Link` into an `Import` before either backend sees the program,
+    /// which is what lets one implementation of module resolution — path
+    /// lookup, recursion, cycle detection — serve both output modes.
+    ///
+    /// The path is a quoted string rather than a bare `a/b` path, matching
+    /// how object keys must also be quoted. It also keeps working when the
+    /// target is a native module, whose names carry extensions (`.so`,
+    /// `.wasm`) that a bare-path lexer rule would have to special-case.
+    Link { path: String, alias: Option<String> },
+    /// A resolved `Link`, produced only by `loader.rs`.
+    ///
+    /// Runs `body` in its own scope, then binds the names in `exports`:
+    /// with an alias, gathered into an object (so `alias.name` is ordinary
+    /// field access, needing no new lookup rule); without one, defined in
+    /// the enclosing scope, where a collision is an error rather than
+    /// silent shadowing across a module boundary.
+    ///
+    /// `exports` lists only this module's own `export let`s. A module that
+    /// links another does not re-export it — linking is not exporting.
+    ///
+    /// Deliberately shaped as "produce name/value pairs, then bind them":
+    /// running `body` is one way to produce them, and reading a native
+    /// module's descriptor would be another, reusing the binding half
+    /// unchanged.
+    Import {
+        alias: Option<String>,
+        body: Vec<Stmt>,
+        exports: Vec<String>,
     },
     /// `break` — exits the innermost enclosing `Loop` immediately, skipping
     /// the rest of that iteration's body. `break` outside any loop is a

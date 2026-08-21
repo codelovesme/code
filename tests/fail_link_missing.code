@@ -1,0 +1,2 @@
+-- A module that isn't there is a load-time error, in both output modes.
+link "modules/does_not_exist"

@@ -41,11 +41,38 @@ fn verify_defined(program: &Program) -> Result<(), String> {
 fn verify_stmts(stmts: &[Stmt], scopes: &mut Vec<HashSet<String>>) -> Result<(), String> {
     for stmt in stmts {
         match stmt {
-            Stmt::Let { name, value } => {
+            Stmt::Let { name, value, .. } => {
                 verify_expr(value, scopes)?;
                 // Always binds in the current scope, even if `name` is
                 // already defined here or further out — shadowing.
                 scopes.last_mut().unwrap().insert(name.clone());
+            }
+            Stmt::Link { path, .. } => {
+                return Err(format!(
+                    "internal error: link \"{path}\" reached codegen unresolved"
+                ))
+            }
+            Stmt::Import {
+                alias,
+                body,
+                exports,
+            } => {
+                scopes.push(HashSet::new());
+                let result = verify_stmts(body, scopes);
+                scopes.pop();
+                result?;
+                // The module's own scope is gone; only what it exported is
+                // reachable from here.
+                match alias {
+                    Some(alias) => {
+                        scopes.last_mut().unwrap().insert(alias.clone());
+                    }
+                    None => {
+                        for name in exports {
+                            scopes.last_mut().unwrap().insert(name.clone());
+                        }
+                    }
+                }
             }
             Stmt::Assign { name, value } => {
                 verify_expr(value, scopes)?;
@@ -521,7 +548,15 @@ impl<'a> Gen<'a> {
 
     fn gen_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
         match stmt {
-            Stmt::Let { name, value } => self.gen_let(name, value),
+            Stmt::Let { name, value, .. } => self.gen_let(name, value),
+            Stmt::Link { path, .. } => Err(format!(
+                "internal error: link \"{path}\" reached codegen unresolved"
+            )),
+            Stmt::Import {
+                alias,
+                body,
+                exports,
+            } => self.gen_import(alias.as_deref(), body, exports),
             Stmt::Assign { name, value } => self.gen_reassign(name, value),
             Stmt::Assert(expr) => {
                 let ptr = self.gen_expr(expr)?;
@@ -697,6 +732,81 @@ impl<'a> Gen<'a> {
         }
         self.env.pop();
         Ok(())
+    }
+
+    /// A resolved `link`. The module's body runs in its own scope, and only
+    /// what it exported survives that scope closing.
+    ///
+    /// Nothing here is module-specific machinery: the alias case builds an
+    /// ordinary object out of the exported names — literally by handing
+    /// `gen_expr` an `Expr::Object`, so `alias.name` is the same field access
+    /// as any other — and the flatten case re-registers the module's *own*
+    /// slots under the enclosing scope. Slots live in `main`'s entry block
+    /// (see `alloc_slot`), so they stay valid long after the scope that
+    /// introduced them is gone.
+    fn gen_import(
+        &mut self,
+        alias: Option<&str>,
+        body: &[Stmt],
+        exports: &[String],
+    ) -> Result<(), String> {
+        self.env.push(HashMap::new());
+        for stmt in body {
+            self.gen_stmt(stmt)?;
+        }
+
+        // Both of these have to happen while the module's scope is still on
+        // the stack — that is the only place its names resolve.
+        let object = match alias {
+            Some(_) => {
+                let fields = exports
+                    .iter()
+                    .map(|name| (name.clone(), Expr::Ident(name.clone())))
+                    .collect();
+                Some(self.gen_expr(&Expr::Object(fields))?)
+            }
+            None => None,
+        };
+        let mut pairs = Vec::with_capacity(exports.len());
+        for name in exports {
+            let slot = self
+                .lookup(name)
+                .ok_or_else(|| format!("module exports '{name}' but never defines it"))?;
+            pairs.push((name.clone(), slot));
+        }
+        self.env.pop();
+
+        match (alias, object) {
+            (Some(alias), Some(object)) => {
+                let permanent = self.alloc_slot("module")?;
+                self.builder
+                    .build_call(self.fn_copy, &[permanent.into(), object.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.bind(alias, permanent);
+            }
+            _ => {
+                for (name, slot) in pairs {
+                    if self.lookup(&name).is_some() {
+                        return Err(format!(
+                            "linking would redefine '{name}' — rename it, or use \
+                             'link ... as <name>' to keep the module's names apart"
+                        ));
+                    }
+                    self.bind(&name, slot);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Registers `slot` under `name` in the current scope, recording it for
+    /// the bindings dump if that scope is the outermost one — the same rule
+    /// `interpreter::Environment::declare` follows.
+    fn bind(&mut self, name: &str, slot: PointerValue<'a>) {
+        if self.env.len() == 1 && !self.env[0].contains_key(name) {
+            self.order.push(name.to_string());
+        }
+        self.env.last_mut().unwrap().insert(name.to_string(), slot);
     }
 
     /// `let name = value` — always allocates a brand new permanent slot in

@@ -6,6 +6,7 @@ pub fn parse(tokens: &[Token]) -> Result<Program, String> {
         tokens,
         pos: 0,
         loop_depth: 0,
+        block_depth: 0,
     };
     p.program()
 }
@@ -19,6 +20,12 @@ struct Parser<'a> {
     /// both output modes reject it identically for free (the interpreter has
     /// no equivalent of codegen's `verify_defined` pass to hook into).
     loop_depth: usize,
+    /// How many `{ }` bodies enclose the statement being parsed. `link` and
+    /// `export` are module-structure declarations and are rejected anywhere
+    /// but zero: a name declared inside a block is block-local, so exporting
+    /// it could never mean anything, and confining `link` to the top level
+    /// means `loader.rs` only has to scan one flat statement list.
+    block_depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -134,6 +141,49 @@ impl<'a> Parser<'a> {
             return Ok(Stmt::Block(body));
         }
 
+        if matches!(self.peek(), Token::Link) {
+            self.advance();
+            if self.block_depth > 0 {
+                return Err("'link' is only allowed at the top level of a file".to_string());
+            }
+            let path = match self.advance() {
+                Token::Str(path) => path,
+                other => {
+                    return Err(format!(
+                        "expected a quoted module path after 'link', found {other:?}"
+                    ))
+                }
+            };
+            let alias = if matches!(self.peek(), Token::As) {
+                self.advance();
+                match self.advance() {
+                    Token::Ident(name) => Some(name),
+                    other => return Err(format!("expected a name after 'as', found {other:?}")),
+                }
+            } else {
+                None
+            };
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::Link { path, alias });
+        }
+
+        let exported = if matches!(self.peek(), Token::Export) {
+            self.advance();
+            if self.block_depth > 0 {
+                return Err("'export' is only allowed at the top level of a file".to_string());
+            }
+            if !matches!(self.peek(), Token::Let) {
+                return Err(format!(
+                    "'export' must be followed by 'let' — it marks a declaration, and \
+                     'let' is the only way to declare a name (found {:?})",
+                    self.peek()
+                ));
+            }
+            true
+        } else {
+            false
+        };
+
         if matches!(self.peek(), Token::Let) {
             self.advance();
             let name = match self.advance() {
@@ -150,7 +200,11 @@ impl<'a> Parser<'a> {
             }
             let value = self.expr()?;
             self.expect_end_of_statement()?;
-            return Ok(Stmt::Let { name, value });
+            return Ok(Stmt::Let {
+                name,
+                value,
+                exported,
+            });
         }
 
         // Otherwise the only statement form is `name = expr` (reassignment
@@ -182,10 +236,18 @@ impl<'a> Parser<'a> {
         }
         self.skip_newlines();
         let mut statements = Vec::new();
+        self.block_depth += 1;
         while !matches!(self.peek(), Token::RBrace) {
-            statements.push(self.statement()?);
+            match self.statement() {
+                Ok(stmt) => statements.push(stmt),
+                Err(e) => {
+                    self.block_depth -= 1;
+                    return Err(e);
+                }
+            }
             self.skip_newlines();
         }
+        self.block_depth -= 1;
         self.advance(); // '}'
         Ok(statements)
     }

@@ -42,6 +42,9 @@ pub enum Token {
     Loop,
     Over,
     Break,
+    Link,
+    As,
+    Export,
     /// Statement separator — a newline or `;`. Blank lines never produce one
     /// (see `tokenize`: consecutive separators are collapsed).
     Newline,
@@ -183,6 +186,9 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 "loop" => Token::Loop,
                 "over" => Token::Over,
                 "break" => Token::Break,
+                "link" => Token::Link,
+                "as" => Token::As,
+                "export" => Token::Export,
                 _ => Token::Ident(text),
             };
             tokens.push(tok);

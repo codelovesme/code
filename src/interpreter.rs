@@ -123,9 +123,55 @@ fn exec_body(body: &[Stmt], env: &mut Environment) -> Result<Flow, String> {
 
 fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
     match stmt {
-        Stmt::Let { name, value } => {
+        // `exported` is a module-boundary marker consumed by `loader.rs`; a
+        // declaration behaves identically either way.
+        Stmt::Let { name, value, .. } => {
             let v = eval(value, env)?;
             env.declare(name.clone(), v);
+            Ok(Flow::Normal)
+        }
+        Stmt::Link { path, .. } => Err(format!(
+            "internal error: link \"{path}\" reached the interpreter unresolved"
+        )),
+        Stmt::Import {
+            alias,
+            body,
+            exports,
+        } => {
+            // Produce the exported name/value pairs, then bind them. The two
+            // halves are kept separate because a native module would supply
+            // the pairs from a descriptor instead of from a body, and reuse
+            // the binding half unchanged (see `ast::Stmt::Import`).
+            env.push_scope();
+            let result = exec_body(body, env);
+            let pairs = result.and_then(|_| {
+                exports
+                    .iter()
+                    .map(|name| {
+                        env.get(name)
+                            .cloned()
+                            .map(|value| (name.clone(), value))
+                            .ok_or_else(|| format!("module exports '{name}' but never defines it"))
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            });
+            env.pop_scope();
+            let pairs = pairs?;
+
+            match alias {
+                Some(alias) => env.declare(alias.clone(), Value::Object(Rc::new(pairs))),
+                None => {
+                    for (name, value) in pairs {
+                        if env.get(&name).is_some() {
+                            return Err(format!(
+                                "linking would redefine '{name}' — rename it, or use \
+                                 'link ... as <name>' to keep the module's names apart"
+                            ));
+                        }
+                        env.declare(name, value);
+                    }
+                }
+            }
             Ok(Flow::Normal)
         }
         Stmt::Assign { name, value } => {
