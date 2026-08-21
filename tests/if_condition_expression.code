@@ -3,4 +3,4 @@ let b = 10
 if a < b and b < 100 {
     a = a + 1
 }
-assert a == 6
+assert a = 6

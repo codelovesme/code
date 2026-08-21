@@ -6,13 +6,13 @@ let saved = []
 let seen = []
 loop x over [1, 2, 3] {
     let pair = [x, x * 10]
-    if x == 1 {
+    if x = 1 {
         saved = pair
     }
     seen = seen + [pair]
 }
-assert saved == [1, 10]
-assert seen == [[1, 10], [2, 20], [3, 30]]
+assert saved = [1, 10]
+assert seen = [[1, 10], [2, 20], [3, 30]]
 
 -- Same thing one level deeper: the escaping value is nested inside another
 -- value that also escapes.
@@ -21,5 +21,5 @@ loop x over ["a", "b"] {
     let inner = { "k": x }
     boxes = boxes + [{ "wrapped": inner }]
 }
-assert boxes[0].wrapped.k == "a"
-assert boxes[1].wrapped.k == "b"
+assert boxes[0].wrapped.k = "a"
+assert boxes[1].wrapped.k = "b"

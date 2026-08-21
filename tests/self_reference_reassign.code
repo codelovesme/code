@@ -3,20 +3,20 @@
 -- built, so it can't be discarded before the right-hand side is done with it.
 let x = [1, 2]
 x = x
-assert x == [1, 2]
+assert x = [1, 2]
 
 x = x + x
-assert x == [1, 2, 1, 2]
+assert x = [1, 2, 1, 2]
 
 let s = "ab"
 s = s + s
-assert s == "abab"
+assert s = "abab"
 
 -- Reading the old value out of the binding being overwritten.
 let arr = [10, 20]
 arr = [arr[1], arr[0]]
-assert arr == [20, 10]
+assert arr = [20, 10]
 
 let obj = { "v": [1] }
 obj = { "v": obj.v + [2] }
-assert obj.v == [1, 2]
+assert obj.v = [1, 2]

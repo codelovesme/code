@@ -4,4 +4,4 @@ if true {
         x = 99
     }
 }
-assert x == 99
+assert x = 99

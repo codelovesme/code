@@ -7,8 +7,8 @@ loop x over xs {
     xs = []
     seen = seen + [x]
 }
-assert seen == [1, 2, 3]
-assert xs == []
+assert seen = [1, 2, 3]
+assert xs = []
 
 -- Growing it mid-loop doesn't extend the iteration either.
 let ys = [1, 2]
@@ -17,5 +17,5 @@ loop y over ys {
     ys = ys + [99]
     count = count + 1
 }
-assert count == 2
-assert ys == [1, 2, 99, 99]
+assert count = 2
+assert ys = [1, 2, 99, 99]

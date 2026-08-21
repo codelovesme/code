@@ -4,4 +4,4 @@ let x = 0
         x = 99
     }
 }
-assert x == 99
+assert x = 99

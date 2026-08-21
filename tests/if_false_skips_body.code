@@ -2,4 +2,4 @@ let ran = false
 if false {
     ran = true
 }
-assert ran == false
+assert ran = false

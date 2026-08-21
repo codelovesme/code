@@ -3,7 +3,7 @@ let total = []
 loop x over [1, 2] + [3] {
     total = total + [x]
 }
-assert total == [1, 2, 3]
+assert total = [1, 2, 3]
 
 -- Including a field access that yields an array.
 let data = { "xs": [7, 8] }
@@ -11,4 +11,4 @@ let got = []
 loop x over data.xs {
     got = got + [x]
 }
-assert got == [7, 8]
+assert got = [7, 8]

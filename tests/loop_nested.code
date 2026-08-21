@@ -5,4 +5,4 @@ loop a over [1, 2] {
         pairs = pairs + [a + b]
     }
 }
-assert pairs == [11, 21, 12, 22]
+assert pairs = [11, 21, 12, 22]

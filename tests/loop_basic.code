@@ -6,7 +6,7 @@ let doubled = []
 loop item over items {
     doubled = doubled + [item * 2]
 }
-assert doubled == [20, 40, 60]
+assert doubled = [20, 40, 60]
 
 -- The body sees the element itself, whatever kind it is.
 let names = ["ada", "grace"]
@@ -14,4 +14,4 @@ let joined = ""
 loop name over names {
     joined = joined + name
 }
-assert joined == "adagrace"
+assert joined = "adagrace"

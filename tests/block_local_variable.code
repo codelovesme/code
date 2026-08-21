@@ -3,5 +3,5 @@
 -- fail_block_local_leak.code for the "gone afterward" half)
 {
     let y = 5
-    assert y == 5
+    assert y = 5
 }

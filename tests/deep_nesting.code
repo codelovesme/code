@@ -31,7 +31,7 @@
     loop x over big {
         deep = [[[[[[[[deep]]]]]]]]
     }
-    assert deep == deep
+    assert deep = deep
 }
 let survived = true
 assert survived

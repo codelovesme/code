@@ -6,6 +6,11 @@ pub enum Token {
     True,
     False,
     Null,
+    /// `=` — both the assignment separator in a `let`/reassignment statement
+    /// *and* the equality operator inside an expression. Not ambiguous: a
+    /// statement's `[let] IDENT =` prefix is consumed before expression
+    /// parsing ever starts, and no statement begins with a bare expression,
+    /// so every `=` the expression grammar sees is an equality.
     Equals,
     LBracket,
     RBracket,
@@ -20,11 +25,13 @@ pub enum Token {
     Minus,
     Star,
     Slash,
-    EqEq,
+    /// `≠`
     NotEq,
     Lt,
     Gt,
+    /// `≤`
     Le,
+    /// `≥`
     Ge,
     And,
     Or,
@@ -73,24 +80,11 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             continue;
         }
 
-        // Two-character operators — each falls back to a one-character
-        // token (or an error, for a bare `!`) when the second `=` isn't
-        // there.
-        let two_char = match (c, chars.get(i + 1)) {
-            ('=', Some('=')) => Some((Token::EqEq, 2)),
-            ('!', Some('=')) => Some((Token::NotEq, 2)),
-            ('<', Some('=')) => Some((Token::Le, 2)),
-            ('>', Some('=')) => Some((Token::Ge, 2)),
-            ('=', _) => Some((Token::Equals, 1)),
-            ('<', _) => Some((Token::Lt, 1)),
-            ('>', _) => Some((Token::Gt, 1)),
-            _ => None,
-        };
-        if let Some((tok, len)) = two_char {
-            tokens.push(tok);
-            last_was_separator = false;
-            i += len;
-            continue;
+        // `!` used to begin `!=`. Now that inequality is `≠` it has no
+        // meaning at all, and a bare `!` is overwhelmingly likely to be
+        // someone reaching for the operator that moved.
+        if c == '!' {
+            return Err("unexpected character '!' (inequality is '≠')".to_string());
         }
 
         if let Some(tok) = match c {
@@ -107,6 +101,14 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             '-' => Some(Token::Minus),
             '*' => Some(Token::Star),
             '/' => Some(Token::Slash),
+            // Every comparison operator is exactly one character — there
+            // are no multi-character operators in the language at all.
+            '=' => Some(Token::Equals),
+            '<' => Some(Token::Lt),
+            '>' => Some(Token::Gt),
+            '≠' => Some(Token::NotEq),
+            '≤' => Some(Token::Le),
+            '≥' => Some(Token::Ge),
             _ => None,
         } {
             tokens.push(tok);

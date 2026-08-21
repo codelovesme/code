@@ -198,13 +198,14 @@ impl<'a> Parser<'a> {
     }
 
     // Precedence, loosest to tightest binding: `or` < `and` < `not` <
-    // comparison (`== != < > <= >=`) < `+ -` < `* /` < unary `-` < postfix
+    // comparison (`= ≠ < > ≤ ≥`) < `+ -` < `* /` < unary `-` < postfix
     // (`.field` / `[index]`) < primary. Standard recursive-descent
     // precedence climbing, one method per tier. Comparison is the one
     // non-looping tier: it matches at most one operator, so a chain like
     // `1 < 2 < 3` is a parse error ("expected end of statement") rather than
-    // grouping as `(1 < 2) < 3` — unlike the old language, where ordering
-    // and equality were separate tiers and `a < b = c` was legal.
+    // grouping as `(1 < 2) < 3`. The old language wrote its comparisons the
+    // same way but split them across two tiers, which made `a < b = c`
+    // legal there; here it is not.
     fn expr(&mut self) -> Result<Expr, String> {
         self.or_expr()
     }
@@ -241,7 +242,10 @@ impl<'a> Parser<'a> {
     fn comparison(&mut self) -> Result<Expr, String> {
         let e = self.additive()?;
         let op = match self.peek() {
-            Token::EqEq => BinOp::Eq,
+            // The same `=` that separates a name from its value in a
+            // statement. See `lexer::Token::Equals` for why the two uses
+            // can't collide.
+            Token::Equals => BinOp::Eq,
             Token::NotEq => BinOp::Ne,
             Token::Lt => BinOp::Lt,
             Token::Gt => BinOp::Gt,
@@ -349,6 +353,17 @@ impl<'a> Parser<'a> {
                 Token::False => Ok(Expr::Bool(false)),
                 Token::Null => Ok(Expr::Null),
                 Token::Ident(name) => Ok(Expr::Ident(name)),
+                // A stray `=` where a value belongs is what `==`, `<=` and
+                // `>=` all decay into now that each comparison operator is
+                // a single character — the first character is consumed as
+                // its own operator and the `=` is left stranded here. Worth
+                // naming explicitly: every program written before the
+                // operators changed hits exactly this.
+                Token::Equals => Err(
+                    "expected an expression, found '='. The comparison operators are \
+                     '=' '≠' '<' '>' '≤' '≥' — '==', '<=' and '>=' are not operators"
+                        .to_string(),
+                ),
                 other => Err(format!("expected an expression, found {other:?}")),
             },
         }

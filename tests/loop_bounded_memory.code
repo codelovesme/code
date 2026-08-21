@@ -25,4 +25,4 @@ loop x over a {
     let t = [x, x, x, x, x, x, x, x]
     n = n + x + x + x + x + x + x + x + x + t[0]
 }
-assert n == 147456
+assert n = 147456

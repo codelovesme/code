@@ -322,10 +322,6 @@ fn apply_binop(op: BinOp, l: Value, r: Value) -> Result<Value, String> {
         (BinOp::Gt, Number(a), Number(b)) => Some(Bool(a > b)),
         (BinOp::Le, Number(a), Number(b)) => Some(Bool(a <= b)),
         (BinOp::Ge, Number(a), Number(b)) => Some(Bool(a >= b)),
-        (BinOp::Lt, Str(a), Str(b)) => Some(Bool(a < b)),
-        (BinOp::Gt, Str(a), Str(b)) => Some(Bool(a > b)),
-        (BinOp::Le, Str(a), Str(b)) => Some(Bool(a <= b)),
-        (BinOp::Ge, Str(a), Str(b)) => Some(Bool(a >= b)),
         _ => None,
     };
     result.ok_or_else(|| {

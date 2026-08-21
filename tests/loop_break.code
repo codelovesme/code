@@ -8,20 +8,20 @@ loop n over nums {
     }
     taken = taken + [n]
 }
-assert taken == [1, 2, 3]
+assert taken = [1, 2, 3]
 
 -- `break` reaches out through any number of `if`/bare-block bodies — it
 -- exits the enclosing *loop*, not the enclosing block.
 let hit = []
 loop n over nums {
     {
-        if n == 2 {
+        if n = 2 {
             break
         }
         hit = hit + [n]
     }
 }
-assert hit == [1]
+assert hit = [1]
 
 -- Breaking before the accumulator is touched leaves it empty: the
 -- statements after `break` never run at all.
@@ -30,4 +30,4 @@ loop n over nums {
     break
     none = none + [n]
 }
-assert none == []
+assert none = []

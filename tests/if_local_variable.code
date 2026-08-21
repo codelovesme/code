@@ -3,5 +3,5 @@
 -- fail_if_local_leak.code for the "gone afterward" half)
 if true {
     let y = 5
-    assert y == 5
+    assert y = 5
 }

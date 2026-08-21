@@ -101,13 +101,12 @@ pub enum Expr {
 ///   (including mixed kinds, e.g. `Number+Str`) is a runtime type error.
 ///   `Div` by zero is also a runtime error, not `Infinity` — the value
 ///   model is JSON, which has no way to represent that.
-/// - `Eq`/`Ne`: well-defined for *any* two values, including mismatched
-///   kinds (`1 == "1"` is simply `false`, never an error) — deep structural
-///   equality.
-/// - `Lt`/`Gt`/`Le`/`Ge`: `Number` or `Str` (lexicographic) only, both
-///   operands must be the same of those two kinds — everything else
-///   (`Bool`/`Null`/`Array`/`Object`, or mismatched kinds) is a runtime
-///   type error; there is no natural order for them.
+/// - `Eq` (`=`) / `Ne` (`≠`): well-defined for *any* two values, including
+///   mismatched kinds (`1 = "1"` is simply `false`, never an error) — deep
+///   structural equality.
+/// - `Lt` (`<`) / `Gt` (`>`) / `Le` (`≤`) / `Ge` (`≥`): `Number` only.
+///   Everything else — strings included, so no lexicographic ordering —
+///   is a runtime type error.
 /// - `And`/`Or`: `Bool` only, short-circuiting.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinOp {

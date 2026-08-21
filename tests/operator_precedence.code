@@ -4,4 +4,4 @@ let a = 2 + 3 * 4
 let b = 2 * 3 + 4
 let c = 10 - 2 - 3
 let d = 20 / 2 / 2
-let e = 1 + 2 == 3
+let e = 1 + 2 = 3

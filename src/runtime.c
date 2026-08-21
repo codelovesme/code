@@ -434,19 +434,16 @@ void code_div(CodeValue *out, const CodeValue *a, const CodeValue *b) {
     code_runtime_error("cannot apply '/' to these values");
 }
 
-/* -1/0/1 for orderable pairs (Number-Number, Str-Str); aborts for anything
- * else. codegen.rs turns the result into `<`/`>`/`<=`/`>=` with a plain
- * LLVM icmp against 0 — one runtime function instead of four. */
+/* -1/0/1 for two Numbers; aborts for anything else, strings included —
+ * ordering is Number-only (see ast.rs's BinOp doc comment). codegen.rs turns
+ * the result into `<`/`>`/`≤`/`≥` with a plain LLVM icmp against 0 — one
+ * runtime function instead of four. */
 long long code_compare(const CodeValue *a, const CodeValue *b) {
     if (a->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
         if (a->number < b->number) {
             return -1;
         }
         return a->number > b->number ? 1 : 0;
-    }
-    if (a->tag == CODE_STR && b->tag == CODE_STR) {
-        int c = strcmp(a->str, b->str);
-        return c < 0 ? -1 : (c > 0 ? 1 : 0);
     }
     code_runtime_error("cannot order these values");
 }
