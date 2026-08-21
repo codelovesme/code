@@ -1,0 +1,4 @@
+-- Particle fields reuse the exact same field-parsing code as a plain object
+-- literal, so every one of its error rules — like rejecting a trailing
+-- comma — applies here too.
+let log = Log { "message": "hi", }

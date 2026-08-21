@@ -1,6 +1,10 @@
 use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
 use crate::lexer::Token;
 
+fn starts_uppercase(name: &str) -> bool {
+    name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+}
+
 pub fn parse(tokens: &[Token]) -> Result<Program, String> {
     let mut p = Parser {
         tokens,
@@ -414,6 +418,23 @@ impl<'a> Parser<'a> {
                 Token::True => Ok(Expr::Bool(true)),
                 Token::False => Ok(Expr::Bool(false)),
                 Token::Null => Ok(Expr::Null),
+                // `ClassName { fields }` — particle construction. Pure sugar,
+                // resolved entirely here: it desugars into the exact same
+                // `Expr::Object` a plain `{ ... }` literal would produce,
+                // with a `"_class"` field holding the name prepended. No new
+                // AST node, no new Value kind — see memory
+                // `new-code-particle`. The only rule is lexical: an
+                // uppercase-first name immediately followed by `{` is a
+                // particle; anything else (no `{` next, or a lowercase
+                // name) is an ordinary identifier, exactly as before this
+                // was added.
+                Token::Ident(name)
+                    if starts_uppercase(&name) && matches!(self.peek(), Token::LBrace) =>
+                {
+                    let mut fields = self.object_fields()?;
+                    fields.insert(0, ("_class".to_string(), Expr::Str(name)));
+                    Ok(Expr::Object(fields))
+                }
                 Token::Ident(name) => Ok(Expr::Ident(name)),
                 // A stray `=` where a value belongs is what `==`, `<=` and
                 // `>=` all decay into now that each comparison operator is
@@ -452,12 +473,21 @@ impl<'a> Parser<'a> {
     }
 
     fn object(&mut self) -> Result<Expr, String> {
+        Ok(Expr::Object(self.object_fields()?))
+    }
+
+    /// `{ "key": expr, ... }`'s body, from just after the `{` — shared by
+    /// `object()` and particle construction (see `primary`'s `Token::Ident`
+    /// case), which is why particle fields accept exactly the same syntax
+    /// and reject exactly the same malformed input (trailing comma, a bare
+    /// identifier as a key, ...) as a plain object literal does.
+    fn object_fields(&mut self) -> Result<Vec<(String, Expr)>, String> {
         self.advance(); // '{'
         self.skip_newlines();
         let mut fields = Vec::new();
         if matches!(self.peek(), Token::RBrace) {
             self.advance();
-            return Ok(Expr::Object(fields));
+            return Ok(fields);
         }
         loop {
             let key = match self.advance() {
@@ -478,6 +508,6 @@ impl<'a> Parser<'a> {
                 other => return Err(format!("expected ',' or '}}' in object, found {other:?}")),
             }
         }
-        Ok(Expr::Object(fields))
+        Ok(fields)
     }
 }

@@ -1,0 +1,7 @@
+-- An uppercase-first name is only ever treated as a particle constructor
+-- when a `{` immediately follows it. Otherwise it's an ordinary binding.
+let X = 5
+assert X = 5
+
+let Y = X + 1
+assert Y = 6
