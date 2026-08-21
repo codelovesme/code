@@ -1,0 +1,7 @@
+-- no parens/grouping yet, so these pin down precedence and
+-- left-associativity purely structurally
+a = 2 + 3 * 4
+b = 2 * 3 + 4
+c = 10 - 2 - 3
+d = 20 / 2 / 2
+e = 1 + 2 == 3

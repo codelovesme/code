@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Program, Stmt};
+use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
 use crate::lexer::Token;
 
 pub fn parse(tokens: &[Token]) -> Result<Program, String> {
@@ -58,10 +58,100 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Assign { name, value })
     }
 
+    // Precedence, loosest to tightest binding: `or` < `and` < `not` <
+    // comparison (`== != < > <= >=`, non-chaining — `1 < 2 < 3` parses as
+    // `(1 < 2) < 3`, not specially handled) < `+ -` < `* /` < unary `-` <
+    // postfix (`.field` / `[index]`) < primary. Standard recursive-descent
+    // precedence climbing, one method per tier.
     fn expr(&mut self) -> Result<Expr, String> {
-        // No operators yet — an expression is a primary (literal,
-        // identifier, or JSON array/object literal) followed by any number
-        // of `.field` / `[index]` postfix accesses.
+        self.or_expr()
+    }
+
+    fn or_expr(&mut self) -> Result<Expr, String> {
+        let mut e = self.and_expr()?;
+        while matches!(self.peek(), Token::Or) {
+            self.advance();
+            let rhs = self.and_expr()?;
+            e = Expr::Binary(Box::new(e), BinOp::Or, Box::new(rhs));
+        }
+        Ok(e)
+    }
+
+    fn and_expr(&mut self) -> Result<Expr, String> {
+        let mut e = self.not_expr()?;
+        while matches!(self.peek(), Token::And) {
+            self.advance();
+            let rhs = self.not_expr()?;
+            e = Expr::Binary(Box::new(e), BinOp::And, Box::new(rhs));
+        }
+        Ok(e)
+    }
+
+    fn not_expr(&mut self) -> Result<Expr, String> {
+        if matches!(self.peek(), Token::Not) {
+            self.advance();
+            let e = self.not_expr()?;
+            return Ok(Expr::Unary(UnOp::Not, Box::new(e)));
+        }
+        self.comparison()
+    }
+
+    fn comparison(&mut self) -> Result<Expr, String> {
+        let e = self.additive()?;
+        let op = match self.peek() {
+            Token::EqEq => BinOp::Eq,
+            Token::NotEq => BinOp::Ne,
+            Token::Lt => BinOp::Lt,
+            Token::Gt => BinOp::Gt,
+            Token::Le => BinOp::Le,
+            Token::Ge => BinOp::Ge,
+            _ => return Ok(e),
+        };
+        self.advance();
+        let rhs = self.additive()?;
+        Ok(Expr::Binary(Box::new(e), op, Box::new(rhs)))
+    }
+
+    fn additive(&mut self) -> Result<Expr, String> {
+        let mut e = self.multiplicative()?;
+        loop {
+            let op = match self.peek() {
+                Token::Plus => BinOp::Add,
+                Token::Minus => BinOp::Sub,
+                _ => break,
+            };
+            self.advance();
+            let rhs = self.multiplicative()?;
+            e = Expr::Binary(Box::new(e), op, Box::new(rhs));
+        }
+        Ok(e)
+    }
+
+    fn multiplicative(&mut self) -> Result<Expr, String> {
+        let mut e = self.unary()?;
+        loop {
+            let op = match self.peek() {
+                Token::Star => BinOp::Mul,
+                Token::Slash => BinOp::Div,
+                _ => break,
+            };
+            self.advance();
+            let rhs = self.unary()?;
+            e = Expr::Binary(Box::new(e), op, Box::new(rhs));
+        }
+        Ok(e)
+    }
+
+    fn unary(&mut self) -> Result<Expr, String> {
+        if matches!(self.peek(), Token::Minus) {
+            self.advance();
+            let e = self.unary()?;
+            return Ok(Expr::Unary(UnOp::Neg, Box::new(e)));
+        }
+        self.postfix()
+    }
+
+    fn postfix(&mut self) -> Result<Expr, String> {
         let mut e = self.primary()?;
         loop {
             match self.peek() {

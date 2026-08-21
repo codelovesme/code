@@ -1,0 +1,6 @@
+a = true and false
+b = true or false
+c = not true
+-- no parens/grouping yet — precedence alone must resolve this correctly:
+-- 'and' binds tighter than 'or', so this is (true and true) or false
+d = true and true or false

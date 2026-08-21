@@ -1,0 +1,5 @@
+-- index access composes with the new operators: the index itself can be
+-- any expression, not just a literal
+nums = [10, 20, 30, 40]
+i = 1
+picked = nums[i + 1]

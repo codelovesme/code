@@ -7,11 +7,12 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::{IntType, PointerType};
-use inkwell::values::{FunctionValue, PointerValue};
+use inkwell::values::{FunctionValue, IntValue, PointerValue};
 use inkwell::AddressSpace;
+use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
-use crate::ast::{Expr, Program, Stmt};
+use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
 
 /// Byte size of one runtime `CodeValue` slot (`src/runtime.c`; currently 56
 /// bytes on x86_64, this leaves headroom). Codegen never inspects the
@@ -54,6 +55,11 @@ fn verify_expr(expr: &Expr, defined: &HashSet<String>) -> Result<(), String> {
         Expr::Index(arr, index) => {
             verify_expr(arr, defined)?;
             verify_expr(index, defined)
+        }
+        Expr::Unary(_, e) => verify_expr(e, defined),
+        Expr::Binary(lhs, _, rhs) => {
+            verify_expr(lhs, defined)?;
+            verify_expr(rhs, defined)
         }
     }
 }
@@ -140,13 +146,48 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         ),
         None,
     );
+    let arith_ty = void_ty.fn_type(
+        &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+        false,
+    );
+    let fn_add = module.add_function("code_add", arith_ty, None);
+    let fn_sub = module.add_function("code_sub", arith_ty, None);
+    let fn_mul = module.add_function("code_mul", arith_ty, None);
+    let fn_div = module.add_function("code_div", arith_ty, None);
+    let fn_compare = module.add_function(
+        "code_compare",
+        i64_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_neg = module.add_function(
+        "code_neg",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_not = module.add_function(
+        "code_not",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_bool_value = module.add_function(
+        "code_bool_value",
+        i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_values_equal = module.add_function(
+        "code_values_equal",
+        i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
 
     let main_fn = module.add_function("main", i32_ty.fn_type(&[], false), None);
     let entry = context.append_basic_block(main_fn, "entry");
     builder.position_at_end(entry);
 
     let mut gen = Gen {
+        context: &context,
         builder: &builder,
+        main_fn,
         i8_ty,
         i32_ty,
         i64_ty,
@@ -161,6 +202,15 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_copy,
         fn_field,
         fn_index,
+        fn_add,
+        fn_sub,
+        fn_mul,
+        fn_div,
+        fn_compare,
+        fn_neg,
+        fn_not,
+        fn_bool_value,
+        fn_values_equal,
         env: HashMap::new(),
         order: Vec::new(),
     };
@@ -204,7 +254,12 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
 /// so a single implicit lifetime tying everything to `context`/`module`/
 /// `builder`'s scope is enough — no separate `'ctx` parameter needed.
 struct Gen<'a> {
+    /// Needed to create new basic blocks for `and`/`or` short-circuiting —
+    /// the one place this codegen needs actual control flow, not just
+    /// straight-line calls (see `gen_and_or`).
+    context: &'a Context,
     builder: &'a Builder<'a>,
+    main_fn: FunctionValue<'a>,
     i8_ty: inkwell::types::IntType<'a>,
     i32_ty: IntType<'a>,
     i64_ty: IntType<'a>,
@@ -219,6 +274,15 @@ struct Gen<'a> {
     fn_copy: FunctionValue<'a>,
     fn_field: FunctionValue<'a>,
     fn_index: FunctionValue<'a>,
+    fn_add: FunctionValue<'a>,
+    fn_sub: FunctionValue<'a>,
+    fn_mul: FunctionValue<'a>,
+    fn_div: FunctionValue<'a>,
+    fn_compare: FunctionValue<'a>,
+    fn_neg: FunctionValue<'a>,
+    fn_not: FunctionValue<'a>,
+    fn_bool_value: FunctionValue<'a>,
+    fn_values_equal: FunctionValue<'a>,
     /// name -> pointer to that name's current (most-recently-assigned)
     /// `CodeValue` slot. Reassigning a name just rebinds this pointer to a
     /// freshly generated slot — nothing is freed, matching the interpreter's
@@ -430,7 +494,222 @@ impl<'a> Gen<'a> {
                     .map_err(|e| e.to_string())?;
                 Ok(out)
             }
+            Expr::Unary(op, e) => {
+                let ptr = self.gen_expr(e)?;
+                let fn_val = match op {
+                    UnOp::Neg => self.fn_neg,
+                    UnOp::Not => self.fn_not,
+                };
+                let out = self.alloc_slot("unary")?;
+                self.builder
+                    .build_call(fn_val, &[out.into(), ptr.into()], "")
+                    .map_err(|e| e.to_string())?;
+                Ok(out)
+            }
+            // `and`/`or` need actual branches to short-circuit (the right
+            // side must not even be evaluated when the left side already
+            // decided the result) — every other operator here is a
+            // straight-line runtime call.
+            Expr::Binary(lhs, BinOp::And, rhs) => self.gen_and_or(lhs, rhs, true),
+            Expr::Binary(lhs, BinOp::Or, rhs) => self.gen_and_or(lhs, rhs, false),
+            Expr::Binary(lhs, BinOp::Eq, rhs) => self.gen_equality(lhs, rhs, false),
+            Expr::Binary(lhs, BinOp::Ne, rhs) => self.gen_equality(lhs, rhs, true),
+            Expr::Binary(lhs, op @ (BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge), rhs) => {
+                self.gen_compare(lhs, *op, rhs)
+            }
+            Expr::Binary(lhs, op, rhs) => {
+                let lhs_ptr = self.gen_expr(lhs)?;
+                let rhs_ptr = self.gen_expr(rhs)?;
+                let fn_val = match op {
+                    BinOp::Add => self.fn_add,
+                    BinOp::Sub => self.fn_sub,
+                    BinOp::Mul => self.fn_mul,
+                    BinOp::Div => self.fn_div,
+                    BinOp::Eq | BinOp::Ne | BinOp::And | BinOp::Or => unreachable!("handled above"),
+                    BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => unreachable!("handled above"),
+                };
+                let out = self.alloc_slot("binop")?;
+                self.builder
+                    .build_call(fn_val, &[out.into(), lhs_ptr.into(), rhs_ptr.into()], "")
+                    .map_err(|e| e.to_string())?;
+                Ok(out)
+            }
         }
+    }
+
+    /// `is_and`: `true` for `and` (short-circuits on `false`), `false` for
+    /// `or` (short-circuits on `true`). Both need a real branch — the right
+    /// side is only evaluated when the left side didn't already decide the
+    /// result — so this builds two new basic blocks in `main` and merges
+    /// through a stack slot rather than a PHI node (simpler to get right
+    /// than threading `BasicBlock` predecessors through inkwell's API).
+    fn gen_and_or(
+        &mut self,
+        lhs: &Expr,
+        rhs: &Expr,
+        is_and: bool,
+    ) -> Result<PointerValue<'a>, String> {
+        let op_name = if is_and { "and" } else { "or" };
+        let result_slot = self
+            .builder
+            .build_alloca(self.i32_ty, "logic_result")
+            .map_err(|e| e.to_string())?;
+
+        let lhs_ptr = self.gen_expr(lhs)?;
+        let lhs_bool = self.call_bool_value(lhs_ptr, op_name)?;
+        let short_circuits = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                lhs_bool,
+                self.i32_ty.const_int(if is_and { 0 } else { 1 }, false),
+                "short_circuits",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let short_bb = self.context.append_basic_block(self.main_fn, "logic_short");
+        let rhs_bb = self.context.append_basic_block(self.main_fn, "logic_rhs");
+        let merge_bb = self.context.append_basic_block(self.main_fn, "logic_merge");
+        self.builder
+            .build_conditional_branch(short_circuits, short_bb, rhs_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(short_bb);
+        self.builder
+            .build_store(result_slot, lhs_bool)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(merge_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(rhs_bb);
+        let rhs_ptr = self.gen_expr(rhs)?;
+        let rhs_bool = self.call_bool_value(rhs_ptr, op_name)?;
+        self.builder
+            .build_store(result_slot, rhs_bool)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(merge_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(merge_bb);
+        let final_bool = self
+            .builder
+            .build_load(self.i32_ty, result_slot, "logic_final")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let out = self.alloc_slot("logic")?;
+        self.builder
+            .build_call(self.fn_bool, &[out.into(), final_bool.into()], "")
+            .map_err(|e| e.to_string())?;
+        Ok(out)
+    }
+
+    fn call_bool_value(
+        &self,
+        ptr: PointerValue<'a>,
+        op_name: &str,
+    ) -> Result<IntValue<'a>, String> {
+        let op_name_ptr = self.global_str(op_name, "opname")?;
+        Ok(self
+            .builder
+            .build_call(self.fn_bool_value, &[ptr.into(), op_name_ptr.into()], "")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .left()
+            .expect("code_bool_value returns i32, not void")
+            .into_int_value())
+    }
+
+    /// `negate`: `false` for `==`, `true` for `!=` — both go through
+    /// `code_values_equal` (well-defined for any two values, including
+    /// mismatched kinds) and just flip the bit for `!=`.
+    fn gen_equality(
+        &mut self,
+        lhs: &Expr,
+        rhs: &Expr,
+        negate: bool,
+    ) -> Result<PointerValue<'a>, String> {
+        let lhs_ptr = self.gen_expr(lhs)?;
+        let rhs_ptr = self.gen_expr(rhs)?;
+        let equal = self
+            .builder
+            .build_call(self.fn_values_equal, &[lhs_ptr.into(), rhs_ptr.into()], "")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .left()
+            .expect("code_values_equal returns i32, not void")
+            .into_int_value();
+        let result = if negate {
+            self.builder
+                .build_int_compare(
+                    IntPredicate::EQ,
+                    equal,
+                    self.i32_ty.const_int(0, false),
+                    "ne_result",
+                )
+                .map_err(|e| e.to_string())?
+        } else {
+            self.builder
+                .build_int_compare(
+                    IntPredicate::NE,
+                    equal,
+                    self.i32_ty.const_int(0, false),
+                    "eq_result",
+                )
+                .map_err(|e| e.to_string())?
+        };
+        let as_i32 = self
+            .builder
+            .build_int_z_extend(result, self.i32_ty, "eq_as_i32")
+            .map_err(|e| e.to_string())?;
+        let out = self.alloc_slot("eq")?;
+        self.builder
+            .build_call(self.fn_bool, &[out.into(), as_i32.into()], "")
+            .map_err(|e| e.to_string())?;
+        Ok(out)
+    }
+
+    /// `<`/`>`/`<=`/`>=` all go through one `code_compare` runtime call
+    /// (returns -1/0/1, or aborts for unorderable operands) and then just
+    /// `icmp` the result against 0 — see `runtime.c`'s `code_compare`.
+    fn gen_compare(
+        &mut self,
+        lhs: &Expr,
+        op: BinOp,
+        rhs: &Expr,
+    ) -> Result<PointerValue<'a>, String> {
+        let lhs_ptr = self.gen_expr(lhs)?;
+        let rhs_ptr = self.gen_expr(rhs)?;
+        let cmp = self
+            .builder
+            .build_call(self.fn_compare, &[lhs_ptr.into(), rhs_ptr.into()], "")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .left()
+            .expect("code_compare returns i64, not void")
+            .into_int_value();
+        let zero = self.i64_ty.const_int(0, true);
+        let predicate = match op {
+            BinOp::Lt => IntPredicate::SLT,
+            BinOp::Gt => IntPredicate::SGT,
+            BinOp::Le => IntPredicate::SLE,
+            BinOp::Ge => IntPredicate::SGE,
+            _ => unreachable!("gen_compare only called for ordering operators"),
+        };
+        let result = self
+            .builder
+            .build_int_compare(predicate, cmp, zero, "cmp_result")
+            .map_err(|e| e.to_string())?;
+        let as_i32 = self
+            .builder
+            .build_int_z_extend(result, self.i32_ty, "cmp_as_i32")
+            .map_err(|e| e.to_string())?;
+        let out = self.alloc_slot("cmp")?;
+        self.builder
+            .build_call(self.fn_bool, &[out.into(), as_i32.into()], "")
+            .map_err(|e| e.to_string())?;
+        Ok(out)
     }
 
     fn emit_dump(&mut self, fn_dump: FunctionValue<'a>) -> Result<(), String> {

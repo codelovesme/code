@@ -35,4 +35,44 @@ pub enum Expr {
     /// `expr[index]` — same read-only scope as `Field`. `index` is itself
     /// an expression, not restricted to a literal.
     Index(Box<Expr>, Box<Expr>),
+    Binary(Box<Expr>, BinOp, Box<Expr>),
+    Unary(UnOp, Box<Expr>),
+}
+
+/// Operand type rules (decided 2026-08-21, do not re-propose alternatives):
+/// - `Add`/`Sub`/`Mul`/`Div`: `Number` only, except `Add` which also
+///   concatenates `Str+Str` and `Array+Array` — any other type pairing
+///   (including mixed kinds, e.g. `Number+Str`) is a runtime type error.
+///   `Div` by zero is also a runtime error, not `Infinity` — the value
+///   model is JSON, which has no way to represent that.
+/// - `Eq`/`Ne`: well-defined for *any* two values, including mismatched
+///   kinds (`1 == "1"` is simply `false`, never an error) — deep structural
+///   equality.
+/// - `Lt`/`Gt`/`Le`/`Ge`: `Number` or `Str` (lexicographic) only, both
+///   operands must be the same of those two kinds — everything else
+///   (`Bool`/`Null`/`Array`/`Object`, or mismatched kinds) is a runtime
+///   type error; there is no natural order for them.
+/// - `And`/`Or`: `Bool` only, short-circuiting.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    And,
+    Or,
+}
+
+/// `Neg` (`-x`): `Number` only. `Not`: `Bool` only. Both error on any other
+/// operand type.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UnOp {
+    Neg,
+    Not,
 }

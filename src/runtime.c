@@ -39,6 +39,16 @@ static CodeValue *slot_at(void *base, long long index) {
     return (CodeValue *)((char *)base + index * CODE_VALUE_SLOT_SIZE);
 }
 
+/* Mirrors what `code run` does on an interpreter `Err(String)`
+ * (src/main.rs: `eprintln!("error: {e}"); ExitCode::FAILURE`) — operand
+ * types are only known once the program is actually running, so a type
+ * mismatch/division-by-zero can only ever be caught here, not at compile
+ * time (unlike `verify_defined`'s undefined-variable check). */
+_Noreturn static void code_runtime_error(const char *message) {
+    fprintf(stderr, "error: %s\n", message);
+    exit(1);
+}
+
 void code_number(CodeValue *out, double n) {
     out->tag = CODE_NUMBER;
     out->number = n;
@@ -106,6 +116,171 @@ void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
         }
     }
     code_null(out);
+}
+
+/* Operand-type rules below must match ast.rs's `BinOp`/`UnOp` doc comment
+ * and interpreter.rs's `apply_binop`/`eval` exactly — this is the compiled
+ * side of the same decisions, not an independent design. */
+
+void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
+    if (a->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
+        code_number(out, a->number + b->number);
+        return;
+    }
+    if (a->tag == CODE_STR && b->tag == CODE_STR) {
+        /* First heap allocation in this runtime — string concatenation
+         * produces a new, dynamically-sized value that can't live on
+         * `main`'s stack the way every other slot does (see codegen.rs's
+         * VALUE_SIZE comment: those are all statically bounded by program
+         * size; this isn't). Never freed, same "cosmetic for a short-lived
+         * exe, OS reclaims at exit" reasoning as the rest of this runtime
+         * — see memory `new-code-memory-management`. */
+        size_t la = strlen(a->str);
+        size_t lb = strlen(b->str);
+        char *buf = malloc(la + lb + 1);
+        if (!buf) {
+            code_runtime_error("out of memory");
+        }
+        memcpy(buf, a->str, la);
+        memcpy(buf + la, b->str, lb);
+        buf[la + lb] = '\0';
+        code_str(out, buf);
+        return;
+    }
+    if (a->tag == CODE_ARRAY && b->tag == CODE_ARRAY) {
+        long long na = a->len, nb = b->len;
+        void *buf = malloc((size_t)(na + nb) * CODE_VALUE_SLOT_SIZE);
+        if (!buf) {
+            code_runtime_error("out of memory");
+        }
+        for (long long i = 0; i < na; i++) {
+            *slot_at(buf, i) = *slot_at(a->items, i);
+        }
+        for (long long i = 0; i < nb; i++) {
+            *slot_at(buf, na + i) = *slot_at(b->items, i);
+        }
+        code_array(out, buf, na + nb);
+        return;
+    }
+    code_runtime_error("cannot apply '+' to these values");
+}
+
+void code_sub(CodeValue *out, const CodeValue *a, const CodeValue *b) {
+    if (a->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
+        code_number(out, a->number - b->number);
+        return;
+    }
+    code_runtime_error("cannot apply '-' to these values");
+}
+
+void code_mul(CodeValue *out, const CodeValue *a, const CodeValue *b) {
+    if (a->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
+        code_number(out, a->number * b->number);
+        return;
+    }
+    code_runtime_error("cannot apply '*' to these values");
+}
+
+void code_div(CodeValue *out, const CodeValue *a, const CodeValue *b) {
+    if (a->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
+        if (b->number == 0.0) {
+            /* Not Infinity: the value model is JSON, which has no way to
+             * represent that (see ast.rs's BinOp doc comment). */
+            code_runtime_error("division by zero");
+        }
+        code_number(out, a->number / b->number);
+        return;
+    }
+    code_runtime_error("cannot apply '/' to these values");
+}
+
+/* -1/0/1 for orderable pairs (Number-Number, Str-Str); aborts for anything
+ * else. codegen.rs turns the result into `<`/`>`/`<=`/`>=` with a plain
+ * LLVM icmp against 0 — one runtime function instead of four. */
+long long code_compare(const CodeValue *a, const CodeValue *b) {
+    if (a->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
+        if (a->number < b->number) {
+            return -1;
+        }
+        return a->number > b->number ? 1 : 0;
+    }
+    if (a->tag == CODE_STR && b->tag == CODE_STR) {
+        int c = strcmp(a->str, b->str);
+        return c < 0 ? -1 : (c > 0 ? 1 : 0);
+    }
+    code_runtime_error("cannot order these values");
+}
+
+void code_neg(CodeValue *out, const CodeValue *a) {
+    if (a->tag == CODE_NUMBER) {
+        code_number(out, -a->number);
+        return;
+    }
+    code_runtime_error("cannot negate this value");
+}
+
+void code_not(CodeValue *out, const CodeValue *a) {
+    if (a->tag == CODE_BOOL) {
+        code_bool(out, !a->boolean);
+        return;
+    }
+    code_runtime_error("'not' requires a boolean");
+}
+
+/* Used by `and`/`or` codegen to check each operand is actually a bool
+ * before branching on it. */
+int code_bool_value(const CodeValue *v, const char *op) {
+    if (v->tag != CODE_BOOL) {
+        char msg[64];
+        snprintf(msg, sizeof msg, "'%s' requires booleans", op);
+        code_runtime_error(msg);
+    }
+    return v->boolean;
+}
+
+/* Deep structural equality, matching Rust's derived `PartialEq` on `Value`
+ * exactly — including that it's positional for CODE_OBJECT (same keys in
+ * the same order), not a same-set-of-pairs comparison. Used for `==`/`!=`,
+ * which (unlike every other operator here) are well-defined for *any* two
+ * values, including mismatched kinds — never calls code_runtime_error. */
+int code_values_equal(const CodeValue *a, const CodeValue *b) {
+    if (a->tag != b->tag) {
+        return 0;
+    }
+    switch (a->tag) {
+    case CODE_NUMBER:
+        return a->number == b->number;
+    case CODE_STR:
+        return strcmp(a->str, b->str) == 0;
+    case CODE_BOOL:
+        return a->boolean == b->boolean;
+    case CODE_NULL:
+        return 1;
+    case CODE_ARRAY:
+        if (a->len != b->len) {
+            return 0;
+        }
+        for (long long i = 0; i < a->len; i++) {
+            if (!code_values_equal(slot_at(a->items, i), slot_at(b->items, i))) {
+                return 0;
+            }
+        }
+        return 1;
+    case CODE_OBJECT:
+        if (a->len != b->len) {
+            return 0;
+        }
+        for (long long i = 0; i < a->len; i++) {
+            if (strcmp(a->keys[i], b->keys[i]) != 0) {
+                return 0;
+            }
+            if (!code_values_equal(slot_at(a->items, i), slot_at(b->items, i))) {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    return 0;
 }
 
 /* Shortest decimal that round-trips back to `n` — matches Rust's f64

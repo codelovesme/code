@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::ast::{Expr, Program, Stmt};
+use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
 use crate::value::Value;
 
 /// A name -> Value binding table. Rebinding a name to a Value of a different
@@ -100,5 +100,105 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                 _ => Value::Null,
             })
         }
+        Expr::Unary(op, e) => {
+            let v = eval(e, env)?;
+            match (op, v) {
+                (UnOp::Neg, Value::Number(n)) => Ok(Value::Number(-n)),
+                (UnOp::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
+                (UnOp::Neg, v) => Err(format!("cannot negate a {}", type_name(&v))),
+                (UnOp::Not, v) => Err(format!(
+                    "'not' requires a boolean, found a {}",
+                    type_name(&v)
+                )),
+            }
+        }
+        // `and`/`or` short-circuit: the right side is only evaluated (and
+        // only needs to be a bool) when the left side didn't already
+        // determine the result.
+        Expr::Binary(lhs, BinOp::And, rhs) => match eval(lhs, env)? {
+            Value::Bool(false) => Ok(Value::Bool(false)),
+            Value::Bool(true) => require_bool(eval(rhs, env)?, "and"),
+            v => Err(format!(
+                "'and' requires booleans, found a {}",
+                type_name(&v)
+            )),
+        },
+        Expr::Binary(lhs, BinOp::Or, rhs) => match eval(lhs, env)? {
+            Value::Bool(true) => Ok(Value::Bool(true)),
+            Value::Bool(false) => require_bool(eval(rhs, env)?, "or"),
+            v => Err(format!("'or' requires booleans, found a {}", type_name(&v))),
+        },
+        // Equality is well-defined for any two values, including mismatched
+        // kinds (simply `false`, never an error) — `Value`'s derived
+        // `PartialEq` already does exactly that.
+        Expr::Binary(lhs, BinOp::Eq, rhs) => Ok(Value::Bool(eval(lhs, env)? == eval(rhs, env)?)),
+        Expr::Binary(lhs, BinOp::Ne, rhs) => Ok(Value::Bool(eval(lhs, env)? != eval(rhs, env)?)),
+        Expr::Binary(lhs, op, rhs) => {
+            let l = eval(lhs, env)?;
+            let r = eval(rhs, env)?;
+            apply_binop(*op, l, r)
+        }
     }
+}
+
+fn require_bool(v: Value, op: &str) -> Result<Value, String> {
+    match v {
+        Value::Bool(_) => Ok(v),
+        v => Err(format!(
+            "'{op}' requires booleans, found a {}",
+            type_name(&v)
+        )),
+    }
+}
+
+fn type_name(v: &Value) -> &'static str {
+    match v {
+        Value::Number(_) => "number",
+        Value::Str(_) => "string",
+        Value::Bool(_) => "boolean",
+        Value::Null => "null",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+/// `Add`/`Sub`/`Mul`/`Div`/`Lt`/`Gt`/`Le`/`Ge` — see `ast::BinOp`'s doc
+/// comment for the exact operand-type rules this implements. `And`/`Or`/
+/// `Eq`/`Ne` are handled directly in `eval` (short-circuiting / always-
+/// defined, respectively) and never reach here.
+fn apply_binop(op: BinOp, l: Value, r: Value) -> Result<Value, String> {
+    use Value::*;
+    let result = match (op, &l, &r) {
+        (BinOp::Add, Number(a), Number(b)) => Some(Number(a + b)),
+        (BinOp::Add, Str(a), Str(b)) => Some(Str(Rc::from(format!("{a}{b}").as_str()))),
+        (BinOp::Add, Array(a), Array(b)) => {
+            let mut items = (**a).clone();
+            items.extend(b.iter().cloned());
+            Some(Array(Rc::new(items)))
+        }
+        (BinOp::Sub, Number(a), Number(b)) => Some(Number(a - b)),
+        (BinOp::Mul, Number(a), Number(b)) => Some(Number(a * b)),
+        (BinOp::Div, Number(a), Number(b)) => {
+            if *b == 0.0 {
+                return Err("division by zero".to_string());
+            }
+            Some(Number(a / b))
+        }
+        (BinOp::Lt, Number(a), Number(b)) => Some(Bool(a < b)),
+        (BinOp::Gt, Number(a), Number(b)) => Some(Bool(a > b)),
+        (BinOp::Le, Number(a), Number(b)) => Some(Bool(a <= b)),
+        (BinOp::Ge, Number(a), Number(b)) => Some(Bool(a >= b)),
+        (BinOp::Lt, Str(a), Str(b)) => Some(Bool(a < b)),
+        (BinOp::Gt, Str(a), Str(b)) => Some(Bool(a > b)),
+        (BinOp::Le, Str(a), Str(b)) => Some(Bool(a <= b)),
+        (BinOp::Ge, Str(a), Str(b)) => Some(Bool(a >= b)),
+        _ => None,
+    };
+    result.ok_or_else(|| {
+        format!(
+            "cannot apply {op:?} to a {} and a {}",
+            type_name(&l),
+            type_name(&r)
+        )
+    })
 }

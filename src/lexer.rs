@@ -14,6 +14,19 @@ pub enum Token {
     Colon,
     Comma,
     Dot,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    EqEq,
+    NotEq,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    And,
+    Or,
+    Not,
     /// Statement separator — a newline or `;`. Blank lines never produce one
     /// (see `tokenize`: consecutive separators are collapsed).
     Newline,
@@ -43,8 +56,8 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             continue;
         }
 
-        // `--` line comment, chosen to avoid colliding with a future `-`
-        // (negation/subtraction) operator on a single dash.
+        // `--` line comment. A lone `-` is the subtraction/negation operator
+        // (below), so this has to be checked first.
         if c == '-' && chars.get(i + 1) == Some(&'-') {
             while i < chars.len() && chars[i] != '\n' {
                 i += 1;
@@ -52,8 +65,27 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             continue;
         }
 
+        // Two-character operators — each falls back to a one-character
+        // token (or an error, for a bare `!`) when the second `=` isn't
+        // there.
+        let two_char = match (c, chars.get(i + 1)) {
+            ('=', Some('=')) => Some((Token::EqEq, 2)),
+            ('!', Some('=')) => Some((Token::NotEq, 2)),
+            ('<', Some('=')) => Some((Token::Le, 2)),
+            ('>', Some('=')) => Some((Token::Ge, 2)),
+            ('=', _) => Some((Token::Equals, 1)),
+            ('<', _) => Some((Token::Lt, 1)),
+            ('>', _) => Some((Token::Gt, 1)),
+            _ => None,
+        };
+        if let Some((tok, len)) = two_char {
+            tokens.push(tok);
+            last_was_separator = false;
+            i += len;
+            continue;
+        }
+
         if let Some(tok) = match c {
-            '=' => Some(Token::Equals),
             '[' => Some(Token::LBracket),
             ']' => Some(Token::RBracket),
             '{' => Some(Token::LBrace),
@@ -61,6 +93,10 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             ':' => Some(Token::Colon),
             ',' => Some(Token::Comma),
             '.' => Some(Token::Dot),
+            '+' => Some(Token::Plus),
+            '-' => Some(Token::Minus),
+            '*' => Some(Token::Star),
+            '/' => Some(Token::Slash),
             _ => None,
         } {
             tokens.push(tok);
@@ -126,6 +162,9 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 "true" => Token::True,
                 "false" => Token::False,
                 "null" => Token::Null,
+                "and" => Token::And,
+                "or" => Token::Or,
+                "not" => Token::Not,
                 _ => Token::Ident(text),
             };
             tokens.push(tok);
