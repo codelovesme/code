@@ -41,21 +41,36 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Result<Stmt, String> {
-        // Only one statement form exists right now: `name = expr`.
+        if matches!(self.peek(), Token::Assert) {
+            self.advance();
+            let value = self.expr()?;
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::Assert(value));
+        }
+
+        // Otherwise the only statement form is `name = expr`.
         let name = match self.advance() {
             Token::Ident(name) => name,
-            other => return Err(format!("expected a variable name, found {other:?}")),
+            other => {
+                return Err(format!(
+                    "expected a variable name or 'assert', found {other:?}"
+                ))
+            }
         };
         match self.advance() {
             Token::Equals => {}
             other => return Err(format!("expected '=' after '{name}', found {other:?}")),
         }
         let value = self.expr()?;
-        match self.peek() {
-            Token::Newline | Token::Eof => {}
-            other => return Err(format!("expected end of statement, found {other:?}")),
-        }
+        self.expect_end_of_statement()?;
         Ok(Stmt::Assign { name, value })
+    }
+
+    fn expect_end_of_statement(&self) -> Result<(), String> {
+        match self.peek() {
+            Token::Newline | Token::Eof => Ok(()),
+            other => Err(format!("expected end of statement, found {other:?}")),
+        }
     }
 
     // Precedence, loosest to tightest binding: `or` < `and` < `not` <

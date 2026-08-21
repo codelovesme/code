@@ -283,6 +283,19 @@ int code_values_equal(const CodeValue *a, const CodeValue *b) {
     return 0;
 }
 
+/* Silent on success (no output, no return value). Must match
+ * interpreter.rs's `Stmt::Assert` eval rule exactly: `v` must be
+ * CODE_BOOL, and its value must be true — anything else aborts via
+ * code_runtime_error, same as every other operator error here. */
+void code_assert(const CodeValue *v) {
+    if (v->tag != CODE_BOOL) {
+        code_runtime_error("assert requires a boolean");
+    }
+    if (!v->boolean) {
+        code_runtime_error("assertion failed");
+    }
+}
+
 /* Shortest decimal that round-trips back to `n` — matches Rust's f64
  * Display (e.g. 42.0 -> "42", 2.5 -> "2.5"), not printf's fixed-precision
  * default. */

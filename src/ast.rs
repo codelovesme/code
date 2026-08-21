@@ -11,6 +11,11 @@ pub enum Stmt {
     /// `name = expr` — both first binding and reassignment; there is no
     /// separate declaration form (see memory: bare assignment, no `mut`).
     Assign { name: String, value: Expr },
+    /// `assert expr` — `expr` must evaluate to a `Bool`; `false` or any
+    /// other kind aborts the program (interpreter: `Err`; compiled binary:
+    /// `code_runtime_error` + exit 1). Silent on success — no output, no
+    /// binding. `assert` is a reserved word, not a callable/expression.
+    Assert(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq)]

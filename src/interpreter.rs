@@ -47,6 +47,14 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
             env.set(name.clone(), v);
             Ok(())
         }
+        Stmt::Assert(expr) => match eval(expr, env)? {
+            Value::Bool(true) => Ok(()),
+            Value::Bool(false) => Err("assertion failed".to_string()),
+            v => Err(format!(
+                "assert requires a boolean, found a {}",
+                type_name(&v)
+            )),
+        },
     }
 }
 

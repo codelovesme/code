@@ -30,9 +30,14 @@ const VALUE_ALIGN: u32 = 8;
 /// hoisting, so this is a simple sequential scan).
 fn verify_defined(program: &Program) -> Result<(), String> {
     let mut defined = HashSet::new();
-    for Stmt::Assign { name, value } in &program.statements {
-        verify_expr(value, &defined)?;
-        defined.insert(name.clone());
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::Assign { name, value } => {
+                verify_expr(value, &defined)?;
+                defined.insert(name.clone());
+            }
+            Stmt::Assert(expr) => verify_expr(expr, &defined)?,
+        }
     }
     Ok(())
 }
@@ -179,6 +184,11 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_assert = module.add_function(
+        "code_assert",
+        void_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
 
     let main_fn = module.add_function("main", i32_ty.fn_type(&[], false), None);
     let entry = context.append_basic_block(main_fn, "entry");
@@ -211,6 +221,7 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_not,
         fn_bool_value,
         fn_values_equal,
+        fn_assert,
         env: HashMap::new(),
         order: Vec::new(),
     };
@@ -283,6 +294,7 @@ struct Gen<'a> {
     fn_not: FunctionValue<'a>,
     fn_bool_value: FunctionValue<'a>,
     fn_values_equal: FunctionValue<'a>,
+    fn_assert: FunctionValue<'a>,
     /// name -> pointer to that name's current (most-recently-assigned)
     /// `CodeValue` slot. Reassigning a name just rebinds this pointer to a
     /// freshly generated slot — nothing is freed, matching the interpreter's
@@ -348,13 +360,23 @@ impl<'a> Gen<'a> {
     }
 
     fn gen_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
-        let Stmt::Assign { name, value } = stmt;
-        let ptr = self.gen_expr(value)?;
-        if !self.env.contains_key(name) {
-            self.order.push(name.clone());
+        match stmt {
+            Stmt::Assign { name, value } => {
+                let ptr = self.gen_expr(value)?;
+                if !self.env.contains_key(name) {
+                    self.order.push(name.clone());
+                }
+                self.env.insert(name.clone(), ptr);
+                Ok(())
+            }
+            Stmt::Assert(expr) => {
+                let ptr = self.gen_expr(expr)?;
+                self.builder
+                    .build_call(self.fn_assert, &[ptr.into()], "")
+                    .map_err(|e| e.to_string())?;
+                Ok(())
+            }
         }
-        self.env.insert(name.clone(), ptr);
-        Ok(())
     }
 
     /// Evaluates `expr` into a `CodeValue` and returns a pointer to it.
