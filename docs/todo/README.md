@@ -9,11 +9,13 @@ time. Order below is roughly by how likely it is to bite someone.
 
 | Task | Why it matters |
 |---|---|
-| [temp-slots-pin-intermediates.md](temp-slots-pin-intermediates.md) | Memory held longer than necessary |
-| [stress-fixtures-become-playground-examples.md](stress-fixtures-become-playground-examples.md) | Two generated stress fixtures ship as browser demos |
 | [no-language-documentation.md](no-language-documentation.md) | The new language has no README at all |
+| [temp-slots-pin-intermediates.md](temp-slots-pin-intermediates.md) | Memory held longer than necessary |
 
 Done and removed (git log has the detail):
 
 - *deep nesting blows the stack* — every traversal of a value in both
-  runtimes is now iterative, covered by `tests/deep_nesting.code`.
+  runtimes is now iterative, covered by `tests/stress_deep_nesting.code`.
+- *stress fixtures become playground examples* — `stress_*` joins `fail_*`
+  as a prefix `site/build.py` holds back, and the two generated fixtures
+  were renamed into it.

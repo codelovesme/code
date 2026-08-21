@@ -14,12 +14,13 @@ use std::rc::Rc;
 /// bookkeeping only because nothing in the language can mutate a value
 /// in place yet (see memory `new-code-language-design`); adding array/object
 /// mutation later will need its own copy-on-write decision.
+///
 /// Every traversal below — `Drop`, `PartialEq`, `Display` — is written with
 /// an explicit work stack rather than recursion, and `runtime.c` does the
 /// same for its three equivalents. Nesting depth is bounded only by a loop's
 /// iteration count (`loop x over xs { a = [a] }`), not by how many brackets
 /// someone typed, so one native stack frame per level overflows at around
-/// 16k deep — see `tests/deep_nesting.code`.
+/// 16k deep — see `tests/stress_deep_nesting.code`.
 #[derive(Debug, Clone)]
 pub enum Value {
     Number(f64),

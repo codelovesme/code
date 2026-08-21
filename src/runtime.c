@@ -135,7 +135,7 @@ void code_retain(const CodeValue *v) {
  * children, and all three used to recurse. Nesting depth is bounded only by a
  * loop's iteration count (`loop x over xs { a = [a] }`), not by how many
  * brackets the source contains, so one stack frame per level segfaults at
- * around 131k deep — see `tests/deep_nesting.code`, and `value.rs` for the
+ * around 131k deep — see `tests/stress_deep_nesting.code`, and `value.rs` for the
  * interpreter's three equivalents, which have the same shape for the same
  * reason. Each keeps an explicit work stack in heap memory instead.
  *
