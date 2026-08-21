@@ -1,0 +1,4 @@
+-- `break` outside any loop is a parse error, so both output modes reject it
+-- for the same reason at the same stage.
+let x = 1
+break

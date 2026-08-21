@@ -84,24 +84,57 @@ impl Environment {
 pub fn run(program: &Program) -> Result<Environment, String> {
     let mut env = Environment::default();
     for stmt in &program.statements {
+        // Can only ever be `Flow::Normal` out here: the parser rejects a
+        // `break` that isn't inside a loop, so nothing can propagate one up
+        // to the top level.
         exec(stmt, &mut env)?;
     }
     Ok(env)
 }
 
-fn exec(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
+/// Whether a statement finished normally or hit a `break` that the innermost
+/// enclosing `Stmt::Loop` still has to act on. Nested `if`/block bodies just
+/// pass it straight through — a `break` inside an `if` inside a loop breaks
+/// the loop, not the `if`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Flow {
+    Normal,
+    Break,
+}
+
+/// Runs `body` in a *new scope*, stopping early on a `break`. Pops the scope
+/// on every path, error included — hence the explicit `result` binding
+/// rather than `?` mid-function.
+fn exec_scoped_body(body: &[Stmt], env: &mut Environment) -> Result<Flow, String> {
+    env.push_scope();
+    let result = exec_body(body, env);
+    env.pop_scope();
+    result
+}
+
+fn exec_body(body: &[Stmt], env: &mut Environment) -> Result<Flow, String> {
+    for stmt in body {
+        if exec(stmt, env)? == Flow::Break {
+            return Ok(Flow::Break);
+        }
+    }
+    Ok(Flow::Normal)
+}
+
+fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
     match stmt {
         Stmt::Let { name, value } => {
             let v = eval(value, env)?;
             env.declare(name.clone(), v);
-            Ok(())
+            Ok(Flow::Normal)
         }
         Stmt::Assign { name, value } => {
             let v = eval(value, env)?;
-            env.assign(name, v)
+            env.assign(name, v)?;
+            Ok(Flow::Normal)
         }
         Stmt::Assert(expr) => match eval(expr, env)? {
-            Value::Bool(true) => Ok(()),
+            Value::Bool(true) => Ok(Flow::Normal),
             Value::Bool(false) => Err("assertion failed".to_string()),
             v => Err(format!(
                 "assert requires a boolean, found a {}",
@@ -109,21 +142,41 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
             )),
         },
         Stmt::If { condition, body } => match eval(condition, env)? {
-            Value::Bool(true) => {
-                env.push_scope();
-                let result = body.iter().try_for_each(|s| exec(s, env));
-                env.pop_scope();
-                result
-            }
-            Value::Bool(false) => Ok(()),
+            Value::Bool(true) => exec_scoped_body(body, env),
+            Value::Bool(false) => Ok(Flow::Normal),
             v => Err(format!("if requires a boolean, found a {}", type_name(&v))),
         },
-        Stmt::Block(body) => {
-            env.push_scope();
-            let result = body.iter().try_for_each(|s| exec(s, env));
-            env.pop_scope();
-            result
+        Stmt::Block(body) => exec_scoped_body(body, env),
+        Stmt::Loop {
+            var,
+            index,
+            iterable,
+            body,
+        } => {
+            // Evaluated once, up front. Holding the `Rc` here is what makes
+            // that a real snapshot: the body may reassign whatever binding
+            // the array came from without disturbing the iteration (and
+            // since no value is ever mutated in place, the snapshot can't
+            // go stale either way — see memory `new-code-memory-management`).
+            let items = match eval(iterable, env)? {
+                Value::Array(items) => items,
+                v => return Err(format!("loop requires an array, found a {}", type_name(&v))),
+            };
+            for (i, item) in items.iter().enumerate() {
+                env.push_scope();
+                env.declare(var.clone(), item.clone());
+                if let Some(index) = index {
+                    env.declare(index.clone(), Value::Number(i as f64));
+                }
+                let result = exec_body(body, env);
+                env.pop_scope();
+                if result? == Flow::Break {
+                    break;
+                }
+            }
+            Ok(Flow::Normal)
         }
+        Stmt::Break => Ok(Flow::Break),
     }
 }
 

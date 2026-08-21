@@ -32,6 +32,9 @@ pub enum Token {
     Assert,
     If,
     Let,
+    Loop,
+    Over,
+    Break,
     /// Statement separator — a newline or `;`. Blank lines never produce one
     /// (see `tokenize`: consecutive separators are collapsed).
     Newline,
@@ -175,6 +178,9 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 "assert" => Token::Assert,
                 "if" => Token::If,
                 "let" => Token::Let,
+                "loop" => Token::Loop,
+                "over" => Token::Over,
+                "break" => Token::Break,
                 _ => Token::Ident(text),
             };
             tokens.push(tok);

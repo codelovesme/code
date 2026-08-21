@@ -40,6 +40,33 @@ pub enum Stmt {
     /// executes). Lets a user open a scope on demand, e.g. to shadow a
     /// throwaway local without it ever being reachable outside.
     Block(Vec<Stmt>),
+    /// `loop var over iterable { body }` — the language's only iteration
+    /// construct (decided 2026-08-21). `iterable` is evaluated *once*,
+    /// before the first iteration, and must be an `Array` — any other kind
+    /// is a runtime type error, deliberately unlike `Field`/`Index`'s
+    /// permissive null. `body` then runs once per element, in order, in its
+    /// own scope with `var` bound to that element (shadowing any outer
+    /// same-named binding, exactly like a `let`).
+    ///
+    /// There is no `while`, no bare `loop { }`, and no collect/`yield` form:
+    /// every loop is bounded by an array's length, so no program can spin
+    /// forever, and accumulating a result is just `acc = acc + [x]` with the
+    /// array `+` that already exists. Deliberately narrower than the old
+    /// language's five loop forms — the ones left out either depended on the
+    /// constraint system (domain enumeration) or duplicated `+`.
+    Loop {
+        var: String,
+        /// `loop item, i over ...` — the zero-based position, bound as a
+        /// `Number`. Scoped and shadowing exactly like `var`.
+        index: Option<String>,
+        iterable: Expr,
+        body: Vec<Stmt>,
+    },
+    /// `break` — exits the innermost enclosing `Loop` immediately, skipping
+    /// the rest of that iteration's body. `break` outside any loop is a
+    /// *parse* error rather than a later check, so the interpreter and the
+    /// compiler reject it identically without either needing its own rule.
+    Break,
 }
 
 #[derive(Debug, Clone, PartialEq)]

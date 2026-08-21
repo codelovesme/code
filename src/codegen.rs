@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::targets::{
@@ -67,6 +68,30 @@ fn verify_stmts(stmts: &[Stmt], scopes: &mut Vec<HashSet<String>>) -> Result<(),
                 scopes.pop();
                 result?;
             }
+            Stmt::Loop {
+                var,
+                index,
+                iterable,
+                body,
+            } => {
+                // The iterable is evaluated in the *enclosing* scope, before
+                // the loop variables exist — so `loop x over x` correctly
+                // resolves the right-hand `x` to an outer binding, or errors
+                // if there isn't one.
+                verify_expr(iterable, scopes)?;
+                let mut scope = HashSet::new();
+                scope.insert(var.clone());
+                if let Some(index) = index {
+                    scope.insert(index.clone());
+                }
+                scopes.push(scope);
+                let result = verify_stmts(body, scopes);
+                scopes.pop();
+                result?;
+            }
+            // Nothing to check — the parser already rejected any `break`
+            // that isn't inside a loop.
+            Stmt::Break => {}
         }
     }
     Ok(())
@@ -177,6 +202,16 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         ),
         None,
     );
+    let fn_iter_len = module.add_function(
+        "code_iter_len",
+        i64_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_iter_at = module.add_function(
+        "code_iter_at",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into(), i64_ty.into()], false),
+        None,
+    );
     let fn_dump = module.add_function(
         "code_dump_bindings",
         void_ty.fn_type(
@@ -256,8 +291,11 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_bool_value,
         fn_values_equal,
         fn_assert,
+        fn_iter_len,
+        fn_iter_at,
         env: vec![HashMap::new()],
         order: Vec::new(),
+        loop_exits: Vec::new(),
     };
 
     for stmt in &program.statements {
@@ -329,6 +367,8 @@ struct Gen<'a> {
     fn_bool_value: FunctionValue<'a>,
     fn_values_equal: FunctionValue<'a>,
     fn_assert: FunctionValue<'a>,
+    fn_iter_len: FunctionValue<'a>,
+    fn_iter_at: FunctionValue<'a>,
     /// Scope stack, innermost last — mirrors `interpreter::Environment`
     /// (see memory `new-code-if-scoping`). Each name maps to a *permanent*
     /// slot, allocated once on its first assignment and never reallocated:
@@ -352,6 +392,10 @@ struct Gen<'a> {
     /// First-assignment order, for the final bindings dump — mirrors
     /// `interpreter::Environment::order` exactly.
     order: Vec<String>,
+    /// Exit block of each enclosing `loop`, innermost last — where a
+    /// `break` branches to. Mirrors `interpreter::Flow::Break` propagating
+    /// only as far as the innermost loop.
+    loop_exits: Vec<BasicBlock<'a>>,
 }
 
 impl<'a> Gen<'a> {
@@ -419,7 +463,155 @@ impl<'a> Gen<'a> {
             }
             Stmt::If { condition, body } => self.gen_if(condition, body),
             Stmt::Block(body) => self.gen_block(body),
+            Stmt::Loop {
+                var,
+                index,
+                iterable,
+                body,
+            } => self.gen_loop(var, index.as_deref(), iterable, body),
+            Stmt::Break => self.gen_break(),
         }
+    }
+
+    /// Branches straight to the innermost enclosing loop's exit block, then
+    /// leaves the builder in a *fresh* block so any statements written after
+    /// the `break` still have somewhere to be emitted. That block has no
+    /// predecessors, so LLVM drops it — which is exactly the semantics
+    /// (`loop_break.code` covers this: statements after a `break` never run).
+    fn gen_break(&mut self) -> Result<(), String> {
+        let exit = *self
+            .loop_exits
+            .last()
+            .expect("the parser rejects 'break' outside a loop");
+        self.builder
+            .build_unconditional_branch(exit)
+            .map_err(|e| e.to_string())?;
+        let dead = self.context.append_basic_block(self.main_fn, "after_break");
+        self.builder.position_at_end(dead);
+        Ok(())
+    }
+
+    /// `loop var[, index] over iterable { body }`. The counter and both
+    /// variable slots are allocated *once*, in the block the loop starts
+    /// from, and rewritten each iteration — the same permanent-slot model as
+    /// every other binding (see `env`'s doc comment), which is why no PHI
+    /// nodes are needed here either.
+    ///
+    /// Known limitation, deliberately left for the memory-management pass:
+    /// `alloc_slot`/`alloc_buffer` calls emitted *inside* `body` run once per
+    /// iteration, and LLVM `alloca` isn't reclaimed until the function
+    /// returns — so a long-running loop grows `main`'s stack the same way
+    /// `code_add`'s never-freed `malloc`s grow the heap. Reusing the body's
+    /// allocas across iterations would be wrong, not just an optimization:
+    /// an array built in the body keeps a *pointer* to its element buffer
+    /// (see `Expr::Array` in `gen_expr`), so a value that escapes the
+    /// iteration — `let tmp = [x]` then `saved = tmp` — would have its
+    /// contents overwritten by the next iteration. Both leaks go away
+    /// together once array/string storage is refcounted.
+    fn gen_loop(
+        &mut self,
+        var: &str,
+        index: Option<&str>,
+        iterable: &Expr,
+        body: &[Stmt],
+    ) -> Result<(), String> {
+        let arr_ptr = self.gen_expr(iterable)?;
+        let len = self
+            .builder
+            .build_call(self.fn_iter_len, &[arr_ptr.into()], "iterlen")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .left()
+            .expect("code_iter_len returns i64, not void")
+            .into_int_value();
+
+        let counter = self
+            .builder
+            .build_alloca(self.i64_ty, "loop_i")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(counter, self.i64_ty.const_zero())
+            .map_err(|e| e.to_string())?;
+        let var_slot = self.alloc_slot("loopvar")?;
+        let index_slot = match index {
+            Some(_) => Some(self.alloc_slot("loopidx")?),
+            None => None,
+        };
+
+        let head_bb = self.context.append_basic_block(self.main_fn, "loop_head");
+        let body_bb = self.context.append_basic_block(self.main_fn, "loop_body");
+        let after_bb = self.context.append_basic_block(self.main_fn, "loop_after");
+        self.builder
+            .build_unconditional_branch(head_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(head_bb);
+        let i = self
+            .builder
+            .build_load(self.i64_ty, counter, "i")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let more = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, i, len, "loop_more")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(more, body_bb, after_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(body_bb);
+        self.builder
+            .build_call(
+                self.fn_iter_at,
+                &[var_slot.into(), arr_ptr.into(), i.into()],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
+        if let Some(index_slot) = index_slot {
+            let as_f64 = self
+                .builder
+                .build_signed_int_to_float(i, self.f64_ty, "idx_f64")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_call(self.fn_number, &[index_slot.into(), as_f64.into()], "")
+                .map_err(|e| e.to_string())?;
+        }
+
+        let mut scope = HashMap::new();
+        scope.insert(var.to_string(), var_slot);
+        if let (Some(index), Some(index_slot)) = (index, index_slot) {
+            scope.insert(index.to_string(), index_slot);
+        }
+        self.env.push(scope);
+        self.loop_exits.push(after_bb);
+        for stmt in body {
+            self.gen_stmt(stmt)?;
+        }
+        self.loop_exits.pop();
+        self.env.pop();
+
+        // Emitted at whatever block the body *ended* in — after an `if` that
+        // is `if_after`, after a `break` it's the dead block `gen_break` left
+        // us in. Either way that's the fall-through path, so the increment
+        // and back-edge belong there.
+        let current = self
+            .builder
+            .build_load(self.i64_ty, counter, "i_cur")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let next = self
+            .builder
+            .build_int_add(current, self.i64_ty.const_int(1, false), "i_next")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(counter, next)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(head_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(after_bb);
+        Ok(())
     }
 
     /// Unconditional version of `gen_if`'s scope handling, minus the

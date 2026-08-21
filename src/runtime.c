@@ -118,6 +118,28 @@ void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
     code_null(out);
 }
 
+/* `loop x over <expr>` support. Two calls instead of one combined "iterate"
+ * entry point because the loop's control flow lives in the generated IR, not
+ * here: codegen emits the counter, the bounds check and the back-edge itself
+ * (see codegen.rs's `gen_loop`), and only calls into the runtime for the two
+ * things that need to inspect a `CodeValue`. Must match interpreter.rs's
+ * `Stmt::Loop` eval rule: the iterable must be an array — anything else
+ * aborts rather than iterating zero times. */
+long long code_iter_len(const CodeValue *v) {
+    if (v->tag != CODE_ARRAY) {
+        code_runtime_error("loop requires an array");
+    }
+    return v->len;
+}
+
+/* `i` is always in range: the only caller is the loop header codegen emits,
+ * which already compared it against `code_iter_len`'s result. Shallow copy
+ * for the same reason as `code_copy` — element storage is never written to
+ * after construction. */
+void code_iter_at(CodeValue *out, const CodeValue *arr, long long i) {
+    *out = *slot_at(arr->items, i);
+}
+
 /* Operand-type rules below must match ast.rs's `BinOp`/`UnOp` doc comment
  * and interpreter.rs's `apply_binop`/`eval` exactly — this is the compiled
  * side of the same decisions, not an independent design. */

@@ -2,13 +2,23 @@ use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
 use crate::lexer::Token;
 
 pub fn parse(tokens: &[Token]) -> Result<Program, String> {
-    let mut p = Parser { tokens, pos: 0 };
+    let mut p = Parser {
+        tokens,
+        pos: 0,
+        loop_depth: 0,
+    };
     p.program()
 }
 
 struct Parser<'a> {
     tokens: &'a [Token],
     pos: usize,
+    /// How many `loop` bodies enclose the statement being parsed — the only
+    /// piece of context this otherwise context-free parser carries. `break`
+    /// is rejected here, at zero depth, rather than in a later pass so that
+    /// both output modes reject it identically for free (the interpreter has
+    /// no equivalent of codegen's `verify_defined` pass to hook into).
+    loop_depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -56,6 +66,65 @@ impl<'a> Parser<'a> {
             return Ok(Stmt::If { condition, body });
         }
 
+        if matches!(self.peek(), Token::Loop) {
+            self.advance();
+            let var = match self.advance() {
+                Token::Ident(name) => name,
+                other => {
+                    return Err(format!(
+                        "expected a variable name after 'loop', found {other:?}"
+                    ))
+                }
+            };
+            let index = if matches!(self.peek(), Token::Comma) {
+                self.advance();
+                match self.advance() {
+                    Token::Ident(name) => Some(name),
+                    other => {
+                        return Err(format!(
+                            "expected an index variable name after ',', found {other:?}"
+                        ))
+                    }
+                }
+            } else {
+                None
+            };
+            match self.advance() {
+                Token::Over => {}
+                other => {
+                    return Err(format!(
+                        "expected 'over' after 'loop {var}', found {other:?}"
+                    ))
+                }
+            }
+            // The `{` that opens the body can't be mistaken for an object
+            // literal here for the same reason as `if`'s condition: `{` is
+            // not an operator, so the expression grammar always stops before
+            // it (see `primary`'s LBrace case, only reachable in operand
+            // position).
+            let iterable = self.expr()?;
+            self.loop_depth += 1;
+            let body = self.block();
+            self.loop_depth -= 1;
+            let body = body?;
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::Loop {
+                var,
+                index,
+                iterable,
+                body,
+            });
+        }
+
+        if matches!(self.peek(), Token::Break) {
+            self.advance();
+            if self.loop_depth == 0 {
+                return Err("'break' outside of a loop".to_string());
+            }
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::Break);
+        }
+
         // A bare block: unambiguous at statement-start, since object
         // literals only ever appear in expression position (the right-hand
         // side of `=`, an array element, ...), never here.
@@ -89,11 +158,9 @@ impl<'a> Parser<'a> {
         // introduce a name).
         let name = match self.advance() {
             Token::Ident(name) => name,
-            other => {
-                return Err(format!(
-                    "expected a variable name, 'let', 'assert', 'if', or '{{', found {other:?}"
-                ))
-            }
+            other => return Err(format!(
+                "expected a variable name, 'let', 'assert', 'if', 'loop', or '{{', found {other:?}"
+            )),
         };
         match self.advance() {
             Token::Equals => {}
@@ -104,10 +171,8 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Assign { name, value })
     }
 
-    /// `{ stmt* }` — used only by `if` right now, but written as its own
-    /// production since any future block-taking construct would want the
-    /// same "brace, statements separated/terminated by newlines, brace"
-    /// shape.
+    /// `{ stmt* }` — shared by `if`, `loop`, and the bare-block statement:
+    /// "brace, statements separated/terminated by newlines, brace".
     fn block(&mut self) -> Result<Vec<Stmt>, String> {
         match self.advance() {
             Token::LBrace => {}
@@ -131,10 +196,13 @@ impl<'a> Parser<'a> {
     }
 
     // Precedence, loosest to tightest binding: `or` < `and` < `not` <
-    // comparison (`== != < > <= >=`, non-chaining — `1 < 2 < 3` parses as
-    // `(1 < 2) < 3`, not specially handled) < `+ -` < `* /` < unary `-` <
-    // postfix (`.field` / `[index]`) < primary. Standard recursive-descent
-    // precedence climbing, one method per tier.
+    // comparison (`== != < > <= >=`) < `+ -` < `* /` < unary `-` < postfix
+    // (`.field` / `[index]`) < primary. Standard recursive-descent
+    // precedence climbing, one method per tier. Comparison is the one
+    // non-looping tier: it matches at most one operator, so a chain like
+    // `1 < 2 < 3` is a parse error ("expected end of statement") rather than
+    // grouping as `(1 < 2) < 3` — unlike the old language, where ordering
+    // and equality were separate tiers and `a < b = c` was legal.
     fn expr(&mut self) -> Result<Expr, String> {
         self.or_expr()
     }

@@ -1,0 +1,35 @@
+-- Bare assignment inside a loop body mutates the outer binding, exactly
+-- like inside an `if` (see if_bare_assign_still_mutates_outer.code).
+let count = 0
+loop x over [1, 1, 1] {
+    count = count + x
+}
+assert count == 3
+
+-- The loop variable shadows a same-named outer binding for the body only;
+-- the outer binding is untouched afterwards.
+let item = "outer"
+loop item over [1, 2] {
+    assert item == 1 or item == 2
+}
+assert item == "outer"
+
+-- The iterable is evaluated in the *enclosing* scope, before the loop
+-- variable exists — so a loop can iterate a name it also shadows.
+let x = [7, 8]
+let sum = 0
+loop x over x {
+    sum = sum + x
+}
+assert sum == 15
+assert x == [7, 8]
+
+-- A `let` inside the body is local to that body and re-created each
+-- iteration, so only the final iteration's value escapes — via the outer
+-- binding it was copied into.
+let last = 0
+loop x over [5, 6] {
+    let seen = x
+    last = seen
+}
+assert last == 6

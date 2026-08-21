@@ -1,0 +1,6 @@
+-- Zero elements means zero iterations — the body never runs at all.
+let touched = false
+loop x over [] {
+    touched = true
+}
+assert not touched
