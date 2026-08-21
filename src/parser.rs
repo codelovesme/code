@@ -48,12 +48,20 @@ impl<'a> Parser<'a> {
             return Ok(Stmt::Assert(value));
         }
 
+        if matches!(self.peek(), Token::If) {
+            self.advance();
+            let condition = self.expr()?;
+            let body = self.block()?;
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::If { condition, body });
+        }
+
         // Otherwise the only statement form is `name = expr`.
         let name = match self.advance() {
             Token::Ident(name) => name,
             other => {
                 return Err(format!(
-                    "expected a variable name or 'assert', found {other:?}"
+                    "expected a variable name, 'assert', or 'if', found {other:?}"
                 ))
             }
         };
@@ -64,6 +72,25 @@ impl<'a> Parser<'a> {
         let value = self.expr()?;
         self.expect_end_of_statement()?;
         Ok(Stmt::Assign { name, value })
+    }
+
+    /// `{ stmt* }` — used only by `if` right now, but written as its own
+    /// production since any future block-taking construct would want the
+    /// same "brace, statements separated/terminated by newlines, brace"
+    /// shape.
+    fn block(&mut self) -> Result<Vec<Stmt>, String> {
+        match self.advance() {
+            Token::LBrace => {}
+            other => return Err(format!("expected '{{', found {other:?}")),
+        }
+        self.skip_newlines();
+        let mut statements = Vec::new();
+        while !matches!(self.peek(), Token::RBrace) {
+            statements.push(self.statement()?);
+            self.skip_newlines();
+        }
+        self.advance(); // '}'
+        Ok(statements)
     }
 
     fn expect_end_of_statement(&self) -> Result<(), String> {

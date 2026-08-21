@@ -4,31 +4,69 @@ use std::rc::Rc;
 use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
 use crate::value::Value;
 
-/// A name -> Value binding table. Rebinding a name to a Value of a different
-/// variant is not an error — variables are untyped, only Values are.
-#[derive(Debug, Default)]
+/// A name -> Value binding table, scoped for `if` (see memory
+/// `new-code-if-scoping`): a stack of maps, innermost last. Reading and
+/// reassigning search from innermost to outermost, using the first match
+/// found — a name already bound in some outer scope keeps being *that*
+/// binding, wherever it's written from; a name not found anywhere becomes a
+/// new binding in the current (innermost) scope. Rebinding a name to a
+/// Value of a different variant is not an error — variables are untyped,
+/// only Values are.
+#[derive(Debug)]
 pub struct Environment {
-    vars: HashMap<String, Value>,
-    /// First-assignment order of each name, kept separately from `vars`
-    /// since a `HashMap` has none — used only to make output deterministic.
+    scopes: Vec<HashMap<String, Value>>,
+    /// First-assignment order of names in the *outermost* scope only — the
+    /// only scope whose bindings ever get dumped (see `iter_in_order`); an
+    /// `if`-local binding never appears here even if the `if` runs.
     order: Vec<String>,
+}
+
+impl Default for Environment {
+    fn default() -> Self {
+        Environment {
+            scopes: vec![HashMap::new()],
+            order: Vec::new(),
+        }
+    }
 }
 
 impl Environment {
     pub fn get(&self, name: &str) -> Option<&Value> {
-        self.vars.get(name)
+        self.scopes.iter().rev().find_map(|scope| scope.get(name))
     }
 
     fn set(&mut self, name: String, value: Value) {
-        if !self.vars.contains_key(&name) {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(slot) = scope.get_mut(&name) {
+                *slot = value;
+                return;
+            }
+        }
+        if self.scopes.len() == 1 {
             self.order.push(name.clone());
         }
-        self.vars.insert(name, value);
+        self.scopes.last_mut().unwrap().insert(name, value);
     }
 
-    /// Bindings in first-assignment order, for stable, deterministic output.
+    fn push_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
+
+    /// Bindings in first-assignment order, for stable, deterministic output
+    /// — outermost scope only (see `order`'s doc comment).
     pub fn iter_in_order(&self) -> impl Iterator<Item = (&String, &Value)> {
-        self.order.iter().map(|name| (name, &self.vars[name]))
+        self.order.iter().map(|name| {
+            (
+                name,
+                self.scopes[0]
+                    .get(name)
+                    .expect("outermost binding must still exist"),
+            )
+        })
     }
 }
 
@@ -54,6 +92,16 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
                 "assert requires a boolean, found a {}",
                 type_name(&v)
             )),
+        },
+        Stmt::If { condition, body } => match eval(condition, env)? {
+            Value::Bool(true) => {
+                env.push_scope();
+                let result = body.iter().try_for_each(|s| exec(s, env));
+                env.pop_scope();
+                result
+            }
+            Value::Bool(false) => Ok(()),
+            v => Err(format!("if requires a boolean, found a {}", type_name(&v))),
         },
     }
 }

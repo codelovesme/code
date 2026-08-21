@@ -1,0 +1,7 @@
+-- a variable assigned inside an if that doesn't already exist outside is
+-- local to the block: usable within it, gone afterward (see
+-- fail_if_local_leak.code for the "gone afterward" half)
+if true {
+    y = 5
+    assert y == 5
+}

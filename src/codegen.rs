@@ -24,47 +24,67 @@ use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
 const VALUE_SIZE: u64 = 64;
 const VALUE_ALIGN: u32 = 8;
 
-/// Checks every `Expr::Ident` is reachable from an earlier `Stmt::Assign`,
+/// Checks every `Expr::Ident` is reachable from an earlier assignment,
 /// mirroring the interpreter's runtime "undefined variable" error as a
 /// compile-time error instead (the language has no forward references or
-/// hoisting, so this is a simple sequential scan).
+/// hoisting, so this is a simple sequential scan) — scope-aware since `if`
+/// bodies get their own scope (see memory `new-code-if-scoping`): a name
+/// first assigned inside an `if` is only "defined" for the rest of that
+/// `if`'s body, not after it, unless it was already defined outside.
 fn verify_defined(program: &Program) -> Result<(), String> {
-    let mut defined = HashSet::new();
-    for stmt in &program.statements {
+    let mut scopes = vec![HashSet::new()];
+    verify_stmts(&program.statements, &mut scopes)
+}
+
+fn verify_stmts(stmts: &[Stmt], scopes: &mut Vec<HashSet<String>>) -> Result<(), String> {
+    for stmt in stmts {
         match stmt {
             Stmt::Assign { name, value } => {
-                verify_expr(value, &defined)?;
-                defined.insert(name.clone());
+                verify_expr(value, scopes)?;
+                if !is_defined(scopes, name) {
+                    scopes.last_mut().unwrap().insert(name.clone());
+                }
             }
-            Stmt::Assert(expr) => verify_expr(expr, &defined)?,
+            Stmt::Assert(expr) => verify_expr(expr, scopes)?,
+            Stmt::If { condition, body } => {
+                verify_expr(condition, scopes)?;
+                scopes.push(HashSet::new());
+                let result = verify_stmts(body, scopes);
+                scopes.pop();
+                result?;
+            }
         }
     }
     Ok(())
 }
 
-fn verify_expr(expr: &Expr, defined: &HashSet<String>) -> Result<(), String> {
+fn is_defined(scopes: &[HashSet<String>], name: &str) -> bool {
+    scopes.iter().rev().any(|s| s.contains(name))
+}
+
+fn verify_expr(expr: &Expr, scopes: &[HashSet<String>]) -> Result<(), String> {
     match expr {
         Expr::Number(_) | Expr::Str(_) | Expr::Bool(_) | Expr::Null => Ok(()),
         Expr::Ident(name) => {
-            if defined.contains(name) {
+            if is_defined(scopes, name) {
                 Ok(())
             } else {
                 Err(format!("undefined variable '{name}'"))
             }
         }
-        Expr::Array(items) => items.iter().try_for_each(|item| verify_expr(item, defined)),
+        Expr::Array(items) => items.iter().try_for_each(|item| verify_expr(item, scopes)),
         Expr::Object(fields) => fields
             .iter()
-            .try_for_each(|(_, value)| verify_expr(value, defined)),
-        Expr::Field(obj, _) => verify_expr(obj, defined),
+            .try_for_each(|(_, value)| verify_expr(value, scopes)),
+        Expr::Field(obj, _) => verify_expr(obj, scopes),
         Expr::Index(arr, index) => {
-            verify_expr(arr, defined)?;
-            verify_expr(index, defined)
+            verify_expr(arr, scopes)?;
+            verify_expr(index, scopes)
         }
-        Expr::Unary(_, e) => verify_expr(e, defined),
+        Expr::Unary(_, e) => verify_expr(e, scopes),
         Expr::Binary(lhs, _, rhs) => {
-            verify_expr(lhs, defined)?;
-            verify_expr(rhs, defined)
+            verify_expr(lhs, scopes)?;
+            verify_expr(rhs, scopes)
         }
     }
 }
@@ -222,7 +242,7 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_bool_value,
         fn_values_equal,
         fn_assert,
-        env: HashMap::new(),
+        env: vec![HashMap::new()],
         order: Vec::new(),
     };
 
@@ -295,13 +315,26 @@ struct Gen<'a> {
     fn_bool_value: FunctionValue<'a>,
     fn_values_equal: FunctionValue<'a>,
     fn_assert: FunctionValue<'a>,
-    /// name -> pointer to that name's current (most-recently-assigned)
-    /// `CodeValue` slot. Reassigning a name just rebinds this pointer to a
-    /// freshly generated slot — nothing is freed, matching the interpreter's
-    /// "everything mutable, nothing explicitly deallocated here" stance (see
-    /// memory `new-code-memory-management`: no heap allocation exists yet at
-    /// all, every slot lives on `main`'s stack for the program's duration).
-    env: HashMap<String, PointerValue<'a>>,
+    /// Scope stack, innermost last — mirrors `interpreter::Environment`
+    /// (see memory `new-code-if-scoping`). Each name maps to a *permanent*
+    /// slot, allocated once on its first assignment and never reallocated:
+    /// every assignment (first or not) `code_copy`s the computed value into
+    /// that slot rather than rebinding the pointer to a fresh one. Two
+    /// reasons this is always a copy, no zero-copy fast path even for a
+    /// first assignment: (1) an `if` that conditionally reassigns an outer
+    /// name needs the slot to keep whatever it held before when the branch
+    /// doesn't run, which falls out for free *only* if reassignment always
+    /// writes into the same stable memory rather than repointing; (2) if
+    /// `gen_expr`'s result were ever adopted directly as a brand new name's
+    /// permanent slot, `x = y` would alias `x` and `y` onto the exact same
+    /// slot (`Expr::Ident` returns the existing pointer, not a copy — see
+    /// `gen_expr`'s doc comment) — copying always avoids that regardless of
+    /// what the right-hand side is. Nothing is ever freed, matching the
+    /// interpreter's "everything mutable, nothing explicitly deallocated
+    /// here" stance (see memory `new-code-memory-management`: no heap
+    /// allocation exists for this — every slot lives on `main`'s stack for
+    /// the program's duration).
+    env: Vec<HashMap<String, PointerValue<'a>>>,
     /// First-assignment order, for the final bindings dump — mirrors
     /// `interpreter::Environment::order` exactly.
     order: Vec<String>,
@@ -361,14 +394,7 @@ impl<'a> Gen<'a> {
 
     fn gen_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
         match stmt {
-            Stmt::Assign { name, value } => {
-                let ptr = self.gen_expr(value)?;
-                if !self.env.contains_key(name) {
-                    self.order.push(name.clone());
-                }
-                self.env.insert(name.clone(), ptr);
-                Ok(())
-            }
+            Stmt::Assign { name, value } => self.gen_assign(name, value),
             Stmt::Assert(expr) => {
                 let ptr = self.gen_expr(expr)?;
                 self.builder
@@ -376,7 +402,82 @@ impl<'a> Gen<'a> {
                     .map_err(|e| e.to_string())?;
                 Ok(())
             }
+            Stmt::If { condition, body } => self.gen_if(condition, body),
         }
+    }
+
+    /// See `env`'s doc comment for why this always copies rather than ever
+    /// rebinding a pointer.
+    fn gen_assign(&mut self, name: &str, value: &Expr) -> Result<(), String> {
+        let value_ptr = self.gen_expr(value)?;
+        if let Some(existing) = self.lookup(name) {
+            self.builder
+                .build_call(self.fn_copy, &[existing.into(), value_ptr.into()], "")
+                .map_err(|e| e.to_string())?;
+        } else {
+            let permanent = self.alloc_slot("var")?;
+            self.builder
+                .build_call(self.fn_copy, &[permanent.into(), value_ptr.into()], "")
+                .map_err(|e| e.to_string())?;
+            if self.env.len() == 1 {
+                self.order.push(name.to_string());
+            }
+            self.env
+                .last_mut()
+                .unwrap()
+                .insert(name.to_string(), permanent);
+        }
+        Ok(())
+    }
+
+    /// Searches the scope stack innermost-to-outermost, returning the
+    /// first match — the permanent slot for `name`, wherever it lives.
+    fn lookup(&self, name: &str) -> Option<PointerValue<'a>> {
+        self.env
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).copied())
+    }
+
+    /// No `else`, ever — a deliberate language decision, not a missing
+    /// feature (see `ast::Stmt::If`'s doc comment). `body` gets its own
+    /// scope, pushed before and popped after generating it; a name
+    /// assigned inside that already exists in an outer scope resolves
+    /// through `gen_assign`'s `lookup` to that outer permanent slot, so
+    /// mutating it here is correctly visible after the `if` — and, just as
+    /// correctly, simply doesn't happen if the branch doesn't run, with no
+    /// merge/phi logic needed (see `env`'s doc comment).
+    fn gen_if(&mut self, condition: &Expr, body: &[Stmt]) -> Result<(), String> {
+        let cond_ptr = self.gen_expr(condition)?;
+        let cond_bool = self.call_bool_value(cond_ptr, "if")?;
+        let cond = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                cond_bool,
+                self.i32_ty.const_int(0, false),
+                "if_cond",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let then_bb = self.context.append_basic_block(self.main_fn, "if_then");
+        let after_bb = self.context.append_basic_block(self.main_fn, "if_after");
+        self.builder
+            .build_conditional_branch(cond, then_bb, after_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(then_bb);
+        self.env.push(HashMap::new());
+        for stmt in body {
+            self.gen_stmt(stmt)?;
+        }
+        self.env.pop();
+        self.builder
+            .build_unconditional_branch(after_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(after_bb);
+        Ok(())
     }
 
     /// Evaluates `expr` into a `CodeValue` and returns a pointer to it.
@@ -421,9 +522,7 @@ impl<'a> Gen<'a> {
                 Ok(slot)
             }
             Expr::Ident(name) => self
-                .env
-                .get(name)
-                .copied()
+                .lookup(name)
                 .ok_or_else(|| format!("undefined variable '{name}'")),
             Expr::Array(items) => {
                 let len = items.len() as u64;
@@ -761,7 +860,7 @@ impl<'a> Gen<'a> {
                 .build_store(name_slot, name_ptr)
                 .map_err(|e| e.to_string())?;
 
-            let src = *self.env.get(name).expect("binding must exist by dump time");
+            let src = self.lookup(name).expect("binding must exist by dump time");
             let dest = self.slot_at(values_buf, i as u64, "dumpslot")?;
             self.builder
                 .build_call(self.fn_copy, &[dest.into(), src.into()], "")

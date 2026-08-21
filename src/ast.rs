@@ -1,6 +1,5 @@
-/// A parsed program: a flat sequence of statements. Nothing nests yet
-/// (no blocks, no control flow) — this is the smallest slice that exercises
-/// the whole pipeline (lexer -> parser -> AST -> interpreter).
+/// A parsed program: a flat sequence of statements — `Stmt::If`'s `body` is
+/// where nesting actually happens now (see its doc comment).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub statements: Vec<Stmt>,
@@ -16,6 +15,15 @@ pub enum Stmt {
     /// `code_runtime_error` + exit 1). Silent on success — no output, no
     /// binding. `assert` is a reserved word, not a callable/expression.
     Assert(Expr),
+    /// `if condition { body }` — no `else`, ever (deliberate language
+    /// decision, not a missing feature). `condition` must be `Bool`.
+    /// `body` runs in its own scope (see memory `new-code-if-scoping`):
+    /// assigning a name already bound in an outer scope mutates that
+    /// outer binding (visible after the `if`, whether or not the branch
+    /// actually ran — an untaken branch simply leaves it unchanged);
+    /// assigning a name that doesn't exist anywhere outer creates a new
+    /// binding local to `body`, invisible once it ends.
+    If { condition: Expr, body: Vec<Stmt> },
 }
 
 #[derive(Debug, Clone, PartialEq)]
