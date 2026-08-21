@@ -9,7 +9,11 @@ time. Order below is roughly by how likely it is to bite someone.
 
 | Task | Why it matters |
 |---|---|
-| [deep-nesting-blows-the-stack.md](deep-nesting-blows-the-stack.md) | Reachable crash in **both** output modes |
 | [temp-slots-pin-intermediates.md](temp-slots-pin-intermediates.md) | Memory held longer than necessary |
-| [stress-fixtures-become-playground-examples.md](stress-fixtures-become-playground-examples.md) | A 16k-iteration fixture ships as a browser demo |
+| [stress-fixtures-become-playground-examples.md](stress-fixtures-become-playground-examples.md) | Two generated stress fixtures ship as browser demos |
 | [no-language-documentation.md](no-language-documentation.md) | The new language has no README at all |
+
+Done and removed (git log has the detail):
+
+- *deep nesting blows the stack* — every traversal of a value in both
+  runtimes is now iterative, covered by `tests/deep_nesting.code`.

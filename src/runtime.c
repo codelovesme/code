@@ -129,6 +129,39 @@ void code_retain(const CodeValue *v) {
     }
 }
 
+/* ---- Iterative traversal --------------------------------------------------
+ *
+ * `code_release`, `code_values_equal` and `print_json` all walk a value's
+ * children, and all three used to recurse. Nesting depth is bounded only by a
+ * loop's iteration count (`loop x over xs { a = [a] }`), not by how many
+ * brackets the source contains, so one stack frame per level segfaults at
+ * around 131k deep — see `tests/deep_nesting.code`, and `value.rs` for the
+ * interpreter's three equivalents, which have the same shape for the same
+ * reason. Each keeps an explicit work stack in heap memory instead.
+ *
+ * The stacks are file-static and grow on demand, never shrinking: this is a
+ * single-threaded runtime and none of the three can re-enter itself now that
+ * they don't recurse, so one buffer each is enough. */
+
+static void *grow(void *buf, size_t *cap, size_t needed, size_t item_size) {
+    if (*cap >= needed) {
+        return buf;
+    }
+    size_t next = *cap ? *cap * 2 : 64;
+    while (next < needed) {
+        next *= 2;
+    }
+    void *bigger = realloc(buf, next * item_size);
+    if (!bigger) {
+        code_runtime_error("out of memory");
+    }
+    *cap = next;
+    return bigger;
+}
+
+static CodeValue *dead = NULL; /* values whose block is owed a free() */
+static size_t dead_cap = 0;
+
 /* Does NOT clear `v->heap` afterwards: every caller overwrites the slot
  * immediately, and leaving the field alone is what makes `code_copy`'s
  * self-assignment case (`x = x`) work — see its comment. */
@@ -136,14 +169,28 @@ void code_release(CodeValue *v) {
     if (!v->heap) {
         return;
     }
-    CodeHeader *h = header_of(heap_block(v));
-    if (--h->rc == 0) {
-        if (v->tag == CODE_ARRAY || v->tag == CODE_OBJECT) {
-            for (long long i = 0; i < v->len; i++) {
-                code_release(slot_at(v->items, i));
+    if (--header_of(heap_block(v))->rc != 0) {
+        return;
+    }
+
+    size_t len = 0;
+    dead = grow(dead, &dead_cap, len + 1, sizeof(CodeValue));
+    dead[len++] = *v;
+
+    while (len > 0) {
+        CodeValue current = dead[--len];
+        /* Children are read out *before* the block is freed, and only the
+         * ones whose own count reaches zero are queued. */
+        if (current.tag == CODE_ARRAY || current.tag == CODE_OBJECT) {
+            for (long long i = 0; i < current.len; i++) {
+                const CodeValue *child = slot_at(current.items, i);
+                if (child->heap && --header_of(heap_block(child))->rc == 0) {
+                    dead = grow(dead, &dead_cap, len + 1, sizeof(CodeValue));
+                    dead[len++] = *child;
+                }
             }
         }
-        free(h);
+        free(header_of(heap_block(&current)));
         live_blocks--;
     }
 }
@@ -436,44 +483,66 @@ int code_bool_value(const CodeValue *v, const char *op) {
  * the same order), not a same-set-of-pairs comparison. Used for `==`/`!=`,
  * which (unlike every other operator here) are well-defined for *any* two
  * values, including mismatched kinds — never calls code_runtime_error. */
+typedef struct {
+    const CodeValue *a;
+    const CodeValue *b;
+} Pair;
+
+static Pair *pending = NULL; /* value pairs still to compare */
+static size_t pending_cap = 0;
+
 int code_values_equal(const CodeValue *a, const CodeValue *b) {
-    if (a->tag != b->tag) {
-        return 0;
-    }
-    switch (a->tag) {
-    case CODE_NUMBER:
-        return a->number == b->number;
-    case CODE_STR:
-        return strcmp(a->str, b->str) == 0;
-    case CODE_BOOL:
-        return a->boolean == b->boolean;
-    case CODE_NULL:
-        return 1;
-    case CODE_ARRAY:
-        if (a->len != b->len) {
+    size_t len = 0;
+    pending = grow(pending, &pending_cap, len + 1, sizeof(Pair));
+    pending[len].a = a;
+    pending[len].b = b;
+    len++;
+
+    while (len > 0) {
+        Pair pair = pending[--len];
+        const CodeValue *x = pair.a;
+        const CodeValue *y = pair.b;
+        if (x->tag != y->tag) {
             return 0;
         }
-        for (long long i = 0; i < a->len; i++) {
-            if (!code_values_equal(slot_at(a->items, i), slot_at(b->items, i))) {
+        switch (x->tag) {
+        case CODE_NUMBER:
+            if (x->number != y->number) {
                 return 0;
             }
-        }
-        return 1;
-    case CODE_OBJECT:
-        if (a->len != b->len) {
-            return 0;
-        }
-        for (long long i = 0; i < a->len; i++) {
-            if (strcmp(a->keys[i], b->keys[i]) != 0) {
+            break;
+        case CODE_STR:
+            if (strcmp(x->str, y->str) != 0) {
                 return 0;
             }
-            if (!code_values_equal(slot_at(a->items, i), slot_at(b->items, i))) {
+            break;
+        case CODE_BOOL:
+            if (x->boolean != y->boolean) {
                 return 0;
             }
+            break;
+        case CODE_NULL:
+            break;
+        case CODE_ARRAY:
+        case CODE_OBJECT:
+            if (x->len != y->len) {
+                return 0;
+            }
+            pending = grow(pending, &pending_cap, len + (size_t)x->len, sizeof(Pair));
+            for (long long i = 0; i < x->len; i++) {
+                /* Objects compare positionally — same keys in the same
+                 * order — matching value.rs's `PartialEq` exactly. */
+                if (x->tag == CODE_OBJECT && strcmp(x->keys[i], y->keys[i]) != 0) {
+                    return 0;
+                }
+                pending[len].a = slot_at(x->items, i);
+                pending[len].b = slot_at(y->items, i);
+                len++;
+            }
+            break;
         }
-        return 1;
     }
-    return 0;
+    return 1;
 }
 
 /* Silent on success (no output, no return value). Must match
@@ -528,44 +597,82 @@ static void print_json_string(const char *s) {
     putchar('"');
 }
 
+/* One step of print_json's traversal. Closers and separators go on the same
+ * stack as the values they follow, which is what removes the need for a
+ * recursive call to come back and finish a container. Mirrors value.rs's
+ * `Step` enum exactly. */
+typedef struct {
+    const CodeValue *value; /* NULL when this step is punctuation */
+    const char *punct;      /* "," / "]" / "}" , or an object key */
+    int is_key;             /* punct is a key: print quoted, then ':' */
+} Step;
+
+static Step *steps = NULL;
+static size_t steps_cap = 0;
+
+static void push_step(size_t *len, const CodeValue *value, const char *punct, int is_key) {
+    steps = grow(steps, &steps_cap, *len + 1, sizeof(Step));
+    steps[*len].value = value;
+    steps[*len].punct = punct;
+    steps[*len].is_key = is_key;
+    (*len)++;
+}
+
 static void print_json(const CodeValue *v) {
     char buf[64];
-    switch (v->tag) {
-    case CODE_NUMBER:
-        format_number(v->number, buf, sizeof buf);
-        fputs(buf, stdout);
-        break;
-    case CODE_STR:
-        print_json_string(v->str);
-        break;
-    case CODE_BOOL:
-        fputs(v->boolean ? "true" : "false", stdout);
-        break;
-    case CODE_NULL:
-        fputs("null", stdout);
-        break;
-    case CODE_ARRAY:
-        putchar('[');
-        for (long long i = 0; i < v->len; i++) {
-            if (i > 0) {
-                putchar(',');
+    size_t len = 0;
+    push_step(&len, v, NULL, 0);
+
+    while (len > 0) {
+        Step step = steps[--len];
+        if (!step.value) {
+            if (step.is_key) {
+                print_json_string(step.punct);
+                putchar(':');
+            } else {
+                fputs(step.punct, stdout);
             }
-            print_json(slot_at(v->items, i));
+            continue;
         }
-        putchar(']');
-        break;
-    case CODE_OBJECT:
-        putchar('{');
-        for (long long i = 0; i < v->len; i++) {
-            if (i > 0) {
-                putchar(',');
+        const CodeValue *current = step.value;
+        switch (current->tag) {
+        case CODE_NUMBER:
+            format_number(current->number, buf, sizeof buf);
+            fputs(buf, stdout);
+            break;
+        case CODE_STR:
+            print_json_string(current->str);
+            break;
+        case CODE_BOOL:
+            fputs(current->boolean ? "true" : "false", stdout);
+            break;
+        case CODE_NULL:
+            fputs("null", stdout);
+            break;
+        /* Pushed in reverse so they pop in source order, with the closing
+         * bracket pushed first and therefore popped last. */
+        case CODE_ARRAY:
+            putchar('[');
+            push_step(&len, NULL, "]", 0);
+            for (long long i = current->len - 1; i >= 0; i--) {
+                push_step(&len, slot_at(current->items, i), NULL, 0);
+                if (i > 0) {
+                    push_step(&len, NULL, ",", 0);
+                }
             }
-            print_json_string(v->keys[i]);
-            putchar(':');
-            print_json(slot_at(v->items, i));
+            break;
+        case CODE_OBJECT:
+            putchar('{');
+            push_step(&len, NULL, "}", 0);
+            for (long long i = current->len - 1; i >= 0; i--) {
+                push_step(&len, slot_at(current->items, i), NULL, 0);
+                push_step(&len, NULL, current->keys[i], 1);
+                if (i > 0) {
+                    push_step(&len, NULL, ",", 0);
+                }
+            }
+            break;
         }
-        putchar('}');
-        break;
     }
 }
 

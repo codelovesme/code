@@ -12,11 +12,16 @@ for path in sorted(tests_dir.glob("*.code")):
 ```
 
 That rule was right when every fixture was a small hand-written illustration
-of a feature. It stopped being right with `tests/loop_bounded_memory.code`,
-which is machine-generated, 28 lines of `a = a + a`, and runs 16 384
-iterations — it exists to prove the compiled backend doesn't exhaust the
-stack, which is exactly the thing a wasm playground cannot demonstrate. It is
-currently in `dist/index.html` as a selectable example.
+of a feature. It stopped being right with the generated stress fixtures:
+
+- `tests/loop_bounded_memory.code` — 28 lines of `a = a + a`, 16 384
+  iterations, proving the compiled backend doesn't exhaust the stack
+- `tests/deep_nesting.code` — 32 768 iterations building a 262 144-level
+  value, proving no traversal recurses
+
+Both exist to prove something about the *native* backend, which is exactly
+what a wasm playground cannot demonstrate, and both are currently selectable
+examples in `dist/index.html`.
 
 ## Fix direction
 

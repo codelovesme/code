@@ -158,9 +158,13 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             // the array came from without disturbing the iteration (and
             // since no value is ever mutated in place, the snapshot can't
             // go stale either way — see memory `new-code-memory-management`).
-            let items = match eval(iterable, env)? {
-                Value::Array(items) => items,
-                v => return Err(format!("loop requires an array, found a {}", type_name(&v))),
+            // Matched by reference, not by move: `Value` has a manual `Drop`
+            // (see value.rs), and Rust forbids moving a field out of such a
+            // type. `Rc::clone` is the O(1) equivalent here anyway.
+            let evaluated = eval(iterable, env)?;
+            let items = match &evaluated {
+                Value::Array(items) => Rc::clone(items),
+                v => return Err(format!("loop requires an array, found a {}", type_name(v))),
             };
             for (i, item) in items.iter().enumerate() {
                 env.push_scope();
@@ -211,7 +215,7 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
         // like JS, unlike undefined-variable reads which still error.
         Expr::Field(obj, field) => {
             let v = eval(obj, env)?;
-            Ok(match v {
+            Ok(match &v {
                 Value::Object(fields) => fields
                     .iter()
                     .find(|(k, _)| k == field)
@@ -223,9 +227,9 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
         Expr::Index(arr, index) => {
             let v = eval(arr, env)?;
             let i = eval(index, env)?;
-            Ok(match (v, i) {
-                (Value::Array(items), Value::Number(n)) if n.fract() == 0.0 && n >= 0.0 => {
-                    items.get(n as usize).cloned().unwrap_or(Value::Null)
+            Ok(match (&v, &i) {
+                (Value::Array(items), Value::Number(n)) if n.fract() == 0.0 && *n >= 0.0 => {
+                    items.get(*n as usize).cloned().unwrap_or(Value::Null)
                 }
                 _ => Value::Null,
             })
