@@ -15,14 +15,15 @@ use inkwell::OptimizationLevel;
 
 use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
 
-/// Byte size of one runtime `CodeValue` slot (`src/runtime.c`; currently 56
-/// bytes on x86_64, this leaves headroom). Codegen never inspects the
-/// struct's fields — it only allocates opaque, 8-byte-aligned buffers of
-/// this size on `main`'s stack and lets `runtime.c`'s constructors fill them
-/// in, addressed purely as `i8*`. See `runtime.c`'s top-of-file comment for
-/// why constructors write through an out-pointer instead of returning by
-/// value (C-struct-by-value ABI matching is the thing this sidesteps).
-const VALUE_SIZE: u64 = 64;
+/// Byte size of one runtime `CodeValue` slot (`src/runtime.c`; 64 bytes on
+/// x86_64, this leaves headroom). Codegen never inspects the struct's fields
+/// — it only allocates opaque, 8-byte-aligned buffers of this size on
+/// `main`'s stack and lets `runtime.c`'s constructors fill them in,
+/// addressed purely as `i8*`. See `runtime.c`'s top-of-file comment for why
+/// constructors write through an out-pointer instead of returning by value
+/// (C-struct-by-value ABI matching is the thing this sidesteps), and its
+/// `_Static_assert` for the check that catches the two numbers drifting.
+const VALUE_SIZE: u64 = 80;
 const VALUE_ALIGN: u32 = 8;
 
 /// Checks every `Expr::Ident` is reachable from an earlier assignment,
@@ -212,6 +213,12 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into(), i64_ty.into()], false),
         None,
     );
+    let fn_release = module.add_function(
+        "code_release",
+        void_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_check_leaks = module.add_function("code_check_leaks", void_ty.fn_type(&[], false), None);
     let fn_dump = module.add_function(
         "code_dump_bindings",
         void_ty.fn_type(
@@ -260,12 +267,23 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
     );
 
     let main_fn = module.add_function("main", i32_ty.fn_type(&[], false), None);
+    // Two blocks, not one: `entry` collects *every* alloca in the program
+    // (see `Gen::alloca_builder`) and nothing else, then falls through to
+    // `start` where the actual statements go. Allocas have to be gathered
+    // somewhere that runs exactly once — an alloca left inside a loop body
+    // would be executed per iteration and LLVM reclaims none of them until
+    // `main` returns, which is precisely the unbounded stack growth this
+    // arrangement exists to prevent.
     let entry = context.append_basic_block(main_fn, "entry");
-    builder.position_at_end(entry);
+    let start = context.append_basic_block(main_fn, "start");
+    let alloca_builder = context.create_builder();
+    alloca_builder.position_at_end(entry);
+    builder.position_at_end(start);
 
     let mut gen = Gen {
         context: &context,
         builder: &builder,
+        alloca_builder: &alloca_builder,
         main_fn,
         i8_ty,
         i32_ty,
@@ -293,18 +311,28 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_assert,
         fn_iter_len,
         fn_iter_at,
+        fn_release,
         env: vec![HashMap::new()],
         order: Vec::new(),
         loop_exits: Vec::new(),
+        slots: Vec::new(),
     };
 
     for stmt in &program.statements {
         gen.gen_stmt(stmt)?;
     }
     gen.emit_dump(fn_dump)?;
+    gen.emit_cleanup(fn_check_leaks)?;
 
     builder
         .build_return(Some(&i32_ty.const_int(0, false)))
+        .map_err(|e| e.to_string())?;
+
+    // Closed only now: every alloca and its zero-init had to be appended to
+    // `entry` first, and a block stops accepting instructions once it has a
+    // terminator.
+    alloca_builder
+        .build_unconditional_branch(start)
         .map_err(|e| e.to_string())?;
 
     module.verify().map_err(|e| e.to_string())?;
@@ -342,6 +370,12 @@ struct Gen<'a> {
     /// straight-line calls (see `gen_and_or`).
     context: &'a Context,
     builder: &'a Builder<'a>,
+    /// Parked permanently at the end of `main`'s `entry` block, which holds
+    /// nothing but allocas and their zero-init. Every stack allocation goes
+    /// through this builder rather than the main one, so none of them ever
+    /// lands inside a loop body — see `gen_loop`'s comment for why that
+    /// matters, and `alloc_slot` for why reusing a slot is safe.
+    alloca_builder: &'a Builder<'a>,
     main_fn: FunctionValue<'a>,
     i8_ty: inkwell::types::IntType<'a>,
     i32_ty: IntType<'a>,
@@ -369,6 +403,7 @@ struct Gen<'a> {
     fn_assert: FunctionValue<'a>,
     fn_iter_len: FunctionValue<'a>,
     fn_iter_at: FunctionValue<'a>,
+    fn_release: FunctionValue<'a>,
     /// Scope stack, innermost last — mirrors `interpreter::Environment`
     /// (see memory `new-code-if-scoping`). Each name maps to a *permanent*
     /// slot, allocated once on its first assignment and never reallocated:
@@ -383,11 +418,11 @@ struct Gen<'a> {
     /// permanent slot, `x = y` would alias `x` and `y` onto the exact same
     /// slot (`Expr::Ident` returns the existing pointer, not a copy — see
     /// `gen_expr`'s doc comment) — copying always avoids that regardless of
-    /// what the right-hand side is. Nothing is ever freed, matching the
-    /// interpreter's "everything mutable, nothing explicitly deallocated
-    /// here" stance (see memory `new-code-memory-management`: no heap
-    /// allocation exists for this — every slot lives on `main`'s stack for
-    /// the program's duration).
+    /// what the right-hand side is. The slot itself lives on `main`'s stack
+    /// for the whole program; what it *names* is a refcounted heap block
+    /// that `code_copy` releases on the way out, so rebinding a variable
+    /// drops the old value at that point rather than at exit (see
+    /// memory `new-code-memory-management`).
     env: Vec<HashMap<String, PointerValue<'a>>>,
     /// First-assignment order, for the final bindings dump — mirrors
     /// `interpreter::Environment::order` exactly.
@@ -396,26 +431,60 @@ struct Gen<'a> {
     /// `break` branches to. Mirrors `interpreter::Flow::Break` propagating
     /// only as far as the innermost loop.
     loop_exits: Vec<BasicBlock<'a>>,
+    /// Every `CodeValue` slot allocated in `entry`, with how many slots it
+    /// spans (1 for `alloc_slot`, `len` for `alloc_buffer`). Used only by
+    /// `emit_cleanup`, which releases all of them as the program's last act
+    /// so that a finished program owns nothing — see `code_check_leaks` in
+    /// `runtime.c` for why that is worth the extra calls.
+    slots: Vec<(PointerValue<'a>, u64)>,
 }
 
 impl<'a> Gen<'a> {
-    fn alloc_slot(&self, hint: &str) -> Result<PointerValue<'a>, String> {
-        let count = self.i64_ty.const_int(VALUE_SIZE, false);
-        let ptr = self
-            .builder
-            .build_array_alloca(self.i8_ty, count, hint)
-            .map_err(|e| e.to_string())?;
-        self.set_alignment(ptr)?;
+    /// One `CodeValue` slot, allocated in `entry` and zeroed there once.
+    ///
+    /// Every call site gets its own slot, so the total is fixed by the size
+    /// of the program — a slot inside a loop body is *reused* by each
+    /// iteration rather than reallocated. That reuse is safe only because a
+    /// value's payload lives in a refcounted heap block, never in the slot:
+    /// writing the next iteration's value releases the previous one, and
+    /// anything that escaped the iteration (`let tmp = [x]` copied into an
+    /// outer binding) still holds its own reference to a block this slot no
+    /// longer names. Before values were refcounted, reusing slots this way
+    /// would have overwritten an escaped array's storage.
+    ///
+    /// The zero-init is what makes the very first write to a slot safe:
+    /// `runtime.c`'s constructors all release whatever `out` held first, and
+    /// an all-zero `CodeValue` reads as a payload-less `CODE_NUMBER` whose
+    /// `heap` flag is 0, so that release is a no-op.
+    fn alloc_slot(&mut self, hint: &str) -> Result<PointerValue<'a>, String> {
+        let ptr = self.alloc_zeroed(VALUE_SIZE, hint)?;
+        self.slots.push((ptr, 1));
         Ok(ptr)
     }
 
-    fn alloc_buffer(&self, len: u64, hint: &str) -> Result<PointerValue<'a>, String> {
-        let count = self.i64_ty.const_int(VALUE_SIZE * len, false);
+    /// A run of `len` contiguous slots — codegen's scratch space for an
+    /// array's elements or an object's field values. `runtime.c` copies out
+    /// of these into a heap block rather than keeping them, so they are
+    /// reusable across iterations for exactly the same reason `alloc_slot`'s
+    /// slots are.
+    fn alloc_buffer(&mut self, len: u64, hint: &str) -> Result<PointerValue<'a>, String> {
+        let ptr = self.alloc_zeroed(VALUE_SIZE * len, hint)?;
+        self.slots.push((ptr, len));
+        Ok(ptr)
+    }
+
+    fn alloc_zeroed(&self, bytes: u64, hint: &str) -> Result<PointerValue<'a>, String> {
+        let count = self.i64_ty.const_int(bytes, false);
         let ptr = self
-            .builder
+            .alloca_builder
             .build_array_alloca(self.i8_ty, count, hint)
             .map_err(|e| e.to_string())?;
         self.set_alignment(ptr)?;
+        if bytes > 0 {
+            self.alloca_builder
+                .build_memset(ptr, VALUE_ALIGN, self.i8_ty.const_zero(), count)
+                .map_err(|e| e.to_string())?;
+        }
         Ok(ptr)
     }
 
@@ -497,17 +566,10 @@ impl<'a> Gen<'a> {
     /// every other binding (see `env`'s doc comment), which is why no PHI
     /// nodes are needed here either.
     ///
-    /// Known limitation, deliberately left for the memory-management pass:
-    /// `alloc_slot`/`alloc_buffer` calls emitted *inside* `body` run once per
-    /// iteration, and LLVM `alloca` isn't reclaimed until the function
-    /// returns — so a long-running loop grows `main`'s stack the same way
-    /// `code_add`'s never-freed `malloc`s grow the heap. Reusing the body's
-    /// allocas across iterations would be wrong, not just an optimization:
-    /// an array built in the body keeps a *pointer* to its element buffer
-    /// (see `Expr::Array` in `gen_expr`), so a value that escapes the
-    /// iteration — `let tmp = [x]` then `saved = tmp` — would have its
-    /// contents overwritten by the next iteration. Both leaks go away
-    /// together once array/string storage is refcounted.
+    /// A loop's memory stays bounded by the size of the program, not by the
+    /// iteration count, because nothing it emits allocates: all the allocas
+    /// live in `entry` (see `alloc_slot`) and every heap block a body
+    /// produces is released when its slot is rewritten next time round.
     fn gen_loop(
         &mut self,
         var: &str,
@@ -515,7 +577,19 @@ impl<'a> Gen<'a> {
         iterable: &Expr,
         body: &[Stmt],
     ) -> Result<(), String> {
-        let arr_ptr = self.gen_expr(iterable)?;
+        // The loop owns its iterable rather than reading it through whatever
+        // slot the expression happened to land in. `gen_expr` returns a
+        // *borrowed* pointer for `Expr::Ident`, so iterating `xs` while the
+        // body reassigns `xs` would otherwise walk a buffer that had already
+        // been released underneath it (`loop_iterable_reassigned.code`).
+        // This mirrors the interpreter holding the `Rc` for the loop's
+        // duration.
+        let evaluated = self.gen_expr(iterable)?;
+        let arr_ptr = self.alloc_slot("loopiter")?;
+        self.builder
+            .build_call(self.fn_copy, &[arr_ptr.into(), evaluated.into()], "")
+            .map_err(|e| e.to_string())?;
+
         let len = self
             .builder
             .build_call(self.fn_iter_len, &[arr_ptr.into()], "iterlen")
@@ -526,7 +600,7 @@ impl<'a> Gen<'a> {
             .into_int_value();
 
         let counter = self
-            .builder
+            .alloca_builder
             .build_alloca(self.i64_ty, "loop_i")
             .map_err(|e| e.to_string())?;
         self.builder
@@ -712,13 +786,15 @@ impl<'a> Gen<'a> {
     }
 
     /// Evaluates `expr` into a `CodeValue` and returns a pointer to it.
-    /// `Expr::Ident` returns the *existing* slot pointer directly rather
-    /// than copying — cheap structural sharing, identical in spirit to the
-    /// interpreter's `Rc`-based sharing (see memory
-    /// `new-code-memory-management`). Everywhere else that a value needs to
-    /// land in caller-owned contiguous storage (array elements, object
-    /// field values, the final bindings dump), the caller copies via
-    /// `code_copy` after the fact instead of this function copying eagerly.
+    ///
+    /// The pointer is *borrowed*, not owned: for `Expr::Ident` it is the
+    /// variable's own slot, so it stays valid only as long as that binding
+    /// is untouched. Anything that needs the value to outlive the statement
+    /// — a variable being assigned, an array element, an object field, the
+    /// bindings dump, a loop's iterable — copies it into storage of its own
+    /// via `code_copy`, which is what takes the reference. `gen_loop` is
+    /// the one place where forgetting that was an actual bug rather than a
+    /// style point; see its comment.
     fn gen_expr(&mut self, expr: &Expr) -> Result<PointerValue<'a>, String> {
         match expr {
             Expr::Number(n) => {
@@ -775,8 +851,11 @@ impl<'a> Gen<'a> {
             Expr::Object(fields) => {
                 let len = fields.len() as u64;
                 let key_count = self.i64_ty.const_int(len, false);
+                // Plain pointers to string literals, fully rewritten before
+                // every use, so this one needs no zero-init — but it still
+                // belongs in `entry` like every other alloca.
                 let keys_buf = self
-                    .builder
+                    .alloca_builder
                     .build_array_alloca(self.i8_ptr_ty, key_count, "objkeys")
                     .map_err(|e| e.to_string())?;
                 let values_buf = self.alloc_buffer(len, "objvals")?;
@@ -903,7 +982,7 @@ impl<'a> Gen<'a> {
     ) -> Result<PointerValue<'a>, String> {
         let op_name = if is_and { "and" } else { "or" };
         let result_slot = self
-            .builder
+            .alloca_builder
             .build_alloca(self.i32_ty, "logic_result")
             .map_err(|e| e.to_string())?;
 
@@ -1069,7 +1148,7 @@ impl<'a> Gen<'a> {
         let count_val = self.i64_ty.const_int(count, false);
 
         let names_buf = self
-            .builder
+            .alloca_builder
             .build_array_alloca(self.i8_ptr_ty, count_val, "names")
             .map_err(|e| e.to_string())?;
         let values_buf = self.alloc_buffer(count, "dumpvals")?;
@@ -1104,6 +1183,33 @@ impl<'a> Gen<'a> {
                 &[names_buf.into(), values_buf.into(), count_val.into()],
                 "",
             )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Releases every slot in the program, then checks nothing is left. Runs
+    /// after `emit_dump`, so the values are still intact while they're being
+    /// printed.
+    ///
+    /// Strictly speaking this is unnecessary — the process is about to exit
+    /// and the OS reclaims everything either way. It exists to make the
+    /// refcounting *testable*: with it, a finished program provably owns
+    /// nothing, so a single missing release anywhere shows up as a non-zero
+    /// `live_blocks` under `CODE_CHECK_LEAKS` instead of being invisible.
+    /// The cost is one call per slot, i.e. bounded by program size, all of it
+    /// after the last observable output.
+    fn emit_cleanup(&mut self, fn_check_leaks: FunctionValue<'a>) -> Result<(), String> {
+        let slots = std::mem::take(&mut self.slots);
+        for (buf, count) in slots {
+            for i in 0..count {
+                let slot = self.slot_at(buf, i, "cleanup")?;
+                self.builder
+                    .build_call(self.fn_release, &[slot.into()], "")
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        self.builder
+            .build_call(fn_check_leaks, &[], "")
             .map_err(|e| e.to_string())?;
         Ok(())
     }

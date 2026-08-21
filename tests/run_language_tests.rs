@@ -4,9 +4,11 @@
 //! feature identically either way (see memory `new-language-rewrite`).
 //! This file is wiring only — the tests themselves are the `.code` files.
 //!
-//! Pass criterion for a plain `foo.code`: both modes must succeed, and the
+//! Pass criterion for a plain `foo.code`: both modes must succeed, the
 //! compiled binary's stdout must match the interpreter's bindings dump
-//! exactly. For a `fail_foo.code`: both modes must produce an error — for
+//! exactly, and the compiled binary must leak nothing (it runs with
+//! `CODE_CHECK_LEAKS=1`, so the runtime aborts at exit if any heap block
+//! survives — see `check_compile`). For a `fail_foo.code`: both modes must produce an error — for
 //! the interpreter that's always `run_source` returning `Err`; for the
 //! compiler it's either a compile-time error (`compile_source` returning
 //! `Err`, e.g. a parse error or `verify_defined`'s undefined-variable
@@ -78,7 +80,13 @@ fn check_compile(
             }
         }
         Ok(()) => {
+            // Turns "every value the program allocated was released" into an
+            // observable pass/fail: the runtime counts live heap blocks and,
+            // with this set, aborts at exit if any survive codegen's cleanup
+            // (see `code_check_leaks` in runtime.c). Without it a lost
+            // reference would produce byte-identical output to a correct run.
             let output = Command::new(&exe_path)
+                .env("CODE_CHECK_LEAKS", "1")
                 .output()
                 .unwrap_or_else(|e| panic!("{name}: run compiled binary: {e}"));
 

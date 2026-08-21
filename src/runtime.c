@@ -17,23 +17,33 @@ typedef enum { CODE_NUMBER, CODE_STR, CODE_BOOL, CODE_NULL, CODE_ARRAY, CODE_OBJ
 
 typedef struct CodeValue {
     CodeTag tag;
+    /* 1 when this value owns one reference to a refcounted heap block (see
+     * `heap_block` for which field points at it). A string *literal* points
+     * into the program's read-only data instead, and an empty array/object
+     * owns nothing at all — both are `heap = 0`, making retain/release a
+     * no-op for them. */
+    int heap;
     double number;
     const char *str;
     int boolean;
     /* CODE_ARRAY: element buffer; CODE_OBJECT: value buffer. Deliberately
      * `void *`, not `CodeValue *` — codegen.rs packs each element/value at a
-     * fixed CODE_VALUE_SLOT_SIZE-byte stride (its VALUE_SIZE, currently 64),
-     * NOT at `sizeof(CodeValue)` (56 here, but compiler/platform-dependent).
-     * Indexing this as a real `CodeValue[]` would silently read the wrong
-     * slot the moment those two numbers differ — always go through
-     * `slot_at()` below instead of `[]`. */
+     * fixed CODE_VALUE_SLOT_SIZE-byte stride (its VALUE_SIZE), NOT at
+     * `sizeof(CodeValue)` (compiler/platform-dependent). Indexing this as a
+     * real `CodeValue[]` would silently read the wrong slot the moment those
+     * two numbers differ — always go through `slot_at()` below instead of
+     * `[]`. */
     void *items;
     const char **keys; /* CODE_OBJECT only — a genuine char* array, stride sizeof(char*) */
     long long len;     /* CODE_ARRAY/CODE_OBJECT element count */
 } CodeValue;
 
-/* Must match codegen.rs's VALUE_SIZE exactly. */
-#define CODE_VALUE_SLOT_SIZE 64
+/* Must match codegen.rs's VALUE_SIZE exactly. The assert below is the only
+ * thing standing between a struct that outgrows the stride and codegen
+ * silently reading the wrong slot, so keep it. */
+#define CODE_VALUE_SLOT_SIZE 80
+_Static_assert(sizeof(CodeValue) <= CODE_VALUE_SLOT_SIZE,
+               "CodeValue outgrew codegen.rs's VALUE_SIZE stride");
 
 static CodeValue *slot_at(void *base, long long index) {
     return (CodeValue *)((char *)base + index * CODE_VALUE_SLOT_SIZE);
@@ -49,44 +59,194 @@ _Noreturn static void code_runtime_error(const char *message) {
     exit(1);
 }
 
+/* ---- Reference counting -------------------------------------------------
+ *
+ * Compound values (non-empty arrays/objects, concatenated strings) live in
+ * refcounted heap blocks; every `CodeValue` slot that names one owns exactly
+ * one reference to it. Plain refcounting with NO cycle collector is enough
+ * here, and always will be: a cycle can only be built by mutating an
+ * already-constructed value to point back at something that reaches it, and
+ * this language has no mutation at all — values are only ever built bottom
+ * up and read afterwards (see memory `new-code-memory-management`).
+ *
+ * Every reference is created and destroyed inside this file, never by
+ * codegen: each constructor below releases whatever its `out` slot held
+ * before overwriting it, so a slot reused across loop iterations drops the
+ * previous iteration's value automatically. That is what lets codegen.rs
+ * hoist all of its allocas into the entry block and reuse them — see
+ * `gen_loop`'s comment for why that in turn is what keeps a long loop's
+ * memory bounded by program size rather than by iteration count.
+ *
+ * Codegen then releases every slot as the program's last act, so a finished
+ * program owns nothing at all — not because the OS wouldn't reclaim it
+ * anyway, but because "owns nothing" is a property `code_check_leaks` can
+ * actually test. */
+
+typedef struct {
+    long long rc;
+    long long padding; /* keeps the payload 16-byte aligned, like malloc's */
+} CodeHeader;
+
+/* Blocks currently allocated. Exists only so `code_check_leaks` can turn
+ * "the refcounting is correct" into something a test can actually observe —
+ * without it, a missing release and a correct release produce identical
+ * program output. */
+static long long live_blocks = 0;
+
+static void *heap_alloc(size_t bytes) {
+    CodeHeader *h = malloc(sizeof(CodeHeader) + bytes);
+    if (!h) {
+        code_runtime_error("out of memory");
+    }
+    h->rc = 1;
+    live_blocks++;
+    return (char *)h + sizeof(CodeHeader);
+}
+
+static CodeHeader *header_of(const void *payload) {
+    return (CodeHeader *)((char *)payload - sizeof(CodeHeader));
+}
+
+/* The single block a heap-owning value refers to. An object packs its keys
+ * array and its value slots into one allocation — `keys` is the base, and
+ * `items` points partway into it — so one refcount covers both. */
+static void *heap_block(const CodeValue *v) {
+    switch (v->tag) {
+    case CODE_STR:
+        return (void *)v->str;
+    case CODE_ARRAY:
+        return v->items;
+    case CODE_OBJECT:
+        return (void *)v->keys;
+    default:
+        return NULL;
+    }
+}
+
+void code_retain(const CodeValue *v) {
+    if (v->heap) {
+        header_of(heap_block(v))->rc++;
+    }
+}
+
+/* Does NOT clear `v->heap` afterwards: every caller overwrites the slot
+ * immediately, and leaving the field alone is what makes `code_copy`'s
+ * self-assignment case (`x = x`) work — see its comment. */
+void code_release(CodeValue *v) {
+    if (!v->heap) {
+        return;
+    }
+    CodeHeader *h = header_of(heap_block(v));
+    if (--h->rc == 0) {
+        if (v->tag == CODE_ARRAY || v->tag == CODE_OBJECT) {
+            for (long long i = 0; i < v->len; i++) {
+                code_release(slot_at(v->items, i));
+            }
+        }
+        free(h);
+        live_blocks--;
+    }
+}
+
+/* The last thing a compiled program does, after codegen has released every
+ * slot it allocated. Silent unless CODE_CHECK_LEAKS is set, so it costs a
+ * normal run one getenv and never changes its behaviour — the test harness
+ * sets it for every fixture, which is what makes a lost reference a *failing
+ * test* rather than an invisible difference. */
+void code_check_leaks(void) {
+    if (!getenv("CODE_CHECK_LEAKS")) {
+        return;
+    }
+    if (live_blocks != 0) {
+        char msg[96];
+        snprintf(msg, sizeof msg, "%lld heap block(s) leaked", live_blocks);
+        code_runtime_error(msg);
+    }
+}
+
 void code_number(CodeValue *out, double n) {
+    code_release(out);
     out->tag = CODE_NUMBER;
+    out->heap = 0;
     out->number = n;
 }
 
+/* `s` is a string literal in the program's read-only data, so the value
+ * borrows it rather than owning a block — only `code_add`'s concatenation
+ * produces an owned string. */
 void code_str(CodeValue *out, const char *s) {
+    code_release(out);
     out->tag = CODE_STR;
+    out->heap = 0;
     out->str = s;
 }
 
 void code_bool(CodeValue *out, int b) {
+    code_release(out);
     out->tag = CODE_BOOL;
+    out->heap = 0;
     out->boolean = b;
 }
 
 void code_null(CodeValue *out) {
+    code_release(out);
     out->tag = CODE_NULL;
+    out->heap = 0;
 }
 
+/* `items` is codegen's scratch buffer, not the array's storage: the elements
+ * are copied (and retained) into a fresh heap block here, so the scratch
+ * slots are free to be rewritten by the next iteration. An empty array owns
+ * no block at all. */
 void code_array(CodeValue *out, void *items, long long len) {
+    void *buf = NULL;
+    if (len > 0) {
+        buf = heap_alloc((size_t)len * CODE_VALUE_SLOT_SIZE);
+        for (long long i = 0; i < len; i++) {
+            const CodeValue *src = slot_at(items, i);
+            code_retain(src);
+            *slot_at(buf, i) = *src;
+        }
+    }
+    code_release(out);
     out->tag = CODE_ARRAY;
-    out->items = items;
+    out->heap = len > 0;
+    out->items = buf;
     out->len = len;
 }
 
+/* One allocation for both arrays: `[keys...][values...]`. The key pointers
+ * themselves are string literals in read-only data, so only the array of
+ * pointers is copied, never the characters. */
 void code_object(CodeValue *out, const char **keys, void *values, long long len) {
+    const char **key_buf = NULL;
+    void *value_buf = NULL;
+    if (len > 0) {
+        size_t keys_bytes = (size_t)len * sizeof(const char *);
+        key_buf = heap_alloc(keys_bytes + (size_t)len * CODE_VALUE_SLOT_SIZE);
+        value_buf = (char *)key_buf + keys_bytes;
+        for (long long i = 0; i < len; i++) {
+            key_buf[i] = keys[i];
+            const CodeValue *src = slot_at(values, i);
+            code_retain(src);
+            *slot_at(value_buf, i) = *src;
+        }
+    }
+    code_release(out);
     out->tag = CODE_OBJECT;
-    out->keys = keys;
-    out->items = values;
+    out->heap = len > 0;
+    out->keys = key_buf;
+    out->items = value_buf;
     out->len = len;
 }
 
-/* Shallow copy: fine because nothing in the language mutates a value in
- * place (see memory `new-code-memory-management`) — copying an Array's
- * `items`/`len` header still leaves both copies pointing at the *same*
- * element storage, which is safe precisely because that storage is never
- * written to again after construction. */
+/* Retain before release, never the other way round. The two can name the
+ * same block — `x = x`, or overwriting a loop variable with the next element
+ * of the very array the previous element came from — and releasing first
+ * would drop the last reference and free the block this is about to read. */
 void code_copy(CodeValue *out, const CodeValue *src) {
+    code_retain(src);
+    code_release(out);
     *out = *src;
 }
 
@@ -98,7 +258,11 @@ void code_field(CodeValue *out, const CodeValue *obj, const char *field) {
     if (obj->tag == CODE_OBJECT) {
         for (long long i = 0; i < obj->len; i++) {
             if (strcmp(obj->keys[i], field) == 0) {
-                *out = *slot_at(obj->items, i);
+                /* `code_copy`, not a bare struct assignment: the extracted
+                 * value now lives in a second slot and so needs its own
+                 * reference — otherwise `let inner = obj.k` would dangle the
+                 * moment `obj` was overwritten. */
+                code_copy(out, slot_at(obj->items, i));
                 return;
             }
         }
@@ -111,7 +275,7 @@ void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
         double n = index->number;
         long long i = (long long)n;
         if ((double)i == n && i >= 0 && i < arr->len) {
-            *out = *slot_at(arr->items, i);
+            code_copy(out, slot_at(arr->items, i));
             return;
         }
     }
@@ -133,11 +297,9 @@ long long code_iter_len(const CodeValue *v) {
 }
 
 /* `i` is always in range: the only caller is the loop header codegen emits,
- * which already compared it against `code_iter_len`'s result. Shallow copy
- * for the same reason as `code_copy` — element storage is never written to
- * after construction. */
+ * which already compared it against `code_iter_len`'s result. */
 void code_iter_at(CodeValue *out, const CodeValue *arr, long long i) {
-    *out = *slot_at(arr->items, i);
+    code_copy(out, slot_at(arr->items, i));
 }
 
 /* Operand-type rules below must match ast.rs's `BinOp`/`UnOp` doc comment
@@ -150,38 +312,47 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         return;
     }
     if (a->tag == CODE_STR && b->tag == CODE_STR) {
-        /* First heap allocation in this runtime — string concatenation
-         * produces a new, dynamically-sized value that can't live on
-         * `main`'s stack the way every other slot does (see codegen.rs's
-         * VALUE_SIZE comment: those are all statically bounded by program
-         * size; this isn't). Never freed, same "cosmetic for a short-lived
-         * exe, OS reclaims at exit" reasoning as the rest of this runtime
-         * — see memory `new-code-memory-management`. */
+        /* Unlike `code_str`'s literal, a concatenation result is a value
+         * this runtime owns, so it gets a refcounted block. Built before
+         * `out` is released, because `out` may be one of the operands
+         * (`s = s + s`). */
         size_t la = strlen(a->str);
         size_t lb = strlen(b->str);
-        char *buf = malloc(la + lb + 1);
-        if (!buf) {
-            code_runtime_error("out of memory");
-        }
+        char *buf = heap_alloc(la + lb + 1);
         memcpy(buf, a->str, la);
         memcpy(buf + la, b->str, lb);
         buf[la + lb] = '\0';
-        code_str(out, buf);
+        code_release(out);
+        out->tag = CODE_STR;
+        out->heap = 1;
+        out->str = buf;
         return;
     }
     if (a->tag == CODE_ARRAY && b->tag == CODE_ARRAY) {
         long long na = a->len, nb = b->len;
-        void *buf = malloc((size_t)(na + nb) * CODE_VALUE_SLOT_SIZE);
-        if (!buf) {
-            code_runtime_error("out of memory");
+        long long total = na + nb;
+        void *buf = NULL;
+        if (total > 0) {
+            buf = heap_alloc((size_t)total * CODE_VALUE_SLOT_SIZE);
+            for (long long i = 0; i < na; i++) {
+                const CodeValue *src = slot_at(a->items, i);
+                code_retain(src);
+                *slot_at(buf, i) = *src;
+            }
+            for (long long i = 0; i < nb; i++) {
+                const CodeValue *src = slot_at(b->items, i);
+                code_retain(src);
+                *slot_at(buf, na + i) = *src;
+            }
         }
-        for (long long i = 0; i < na; i++) {
-            *slot_at(buf, i) = *slot_at(a->items, i);
-        }
-        for (long long i = 0; i < nb; i++) {
-            *slot_at(buf, na + i) = *slot_at(b->items, i);
-        }
-        code_array(out, buf, na + nb);
+        /* Same ordering point as the string case: the elements are already
+         * retained, so releasing `out` here can't free anything `buf` now
+         * refers to even when `out` was `a` or `b` (`x = x + x`). */
+        code_release(out);
+        out->tag = CODE_ARRAY;
+        out->heap = total > 0;
+        out->items = buf;
+        out->len = total;
         return;
     }
     code_runtime_error("cannot apply '+' to these values");

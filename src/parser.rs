@@ -158,9 +158,11 @@ impl<'a> Parser<'a> {
         // introduce a name).
         let name = match self.advance() {
             Token::Ident(name) => name,
-            other => return Err(format!(
+            other => {
+                return Err(format!(
                 "expected a variable name, 'let', 'assert', 'if', 'loop', or '{{', found {other:?}"
-            )),
+            ))
+            }
         };
         match self.advance() {
             Token::Equals => {}

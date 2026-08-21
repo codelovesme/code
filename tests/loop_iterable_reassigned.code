@@ -1,0 +1,21 @@
+-- The iterable is a snapshot taken before the first iteration. Reassigning
+-- the binding it came from, from inside the body, must not disturb the
+-- iteration in progress — the loop keeps the original array alive on its own.
+let xs = [1, 2, 3]
+let seen = []
+loop x over xs {
+    xs = []
+    seen = seen + [x]
+}
+assert seen == [1, 2, 3]
+assert xs == []
+
+-- Growing it mid-loop doesn't extend the iteration either.
+let ys = [1, 2]
+let count = 0
+loop y over ys {
+    ys = ys + [99]
+    count = count + 1
+}
+assert count == 2
+assert ys == [1, 2, 99, 99]
