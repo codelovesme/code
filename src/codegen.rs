@@ -50,6 +50,11 @@ fn verify_expr(expr: &Expr, defined: &HashSet<String>) -> Result<(), String> {
         Expr::Object(fields) => fields
             .iter()
             .try_for_each(|(_, value)| verify_expr(value, defined)),
+        Expr::Field(obj, _) => verify_expr(obj, defined),
+        Expr::Index(arr, index) => {
+            verify_expr(arr, defined)?;
+            verify_expr(index, defined)
+        }
     }
 }
 
@@ -111,6 +116,22 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_field = module.add_function(
+        "code_field",
+        void_ty.fn_type(
+            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+            false,
+        ),
+        None,
+    );
+    let fn_index = module.add_function(
+        "code_index",
+        void_ty.fn_type(
+            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+            false,
+        ),
+        None,
+    );
     let fn_dump = module.add_function(
         "code_dump_bindings",
         void_ty.fn_type(
@@ -138,6 +159,8 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_array,
         fn_object,
         fn_copy,
+        fn_field,
+        fn_index,
         env: HashMap::new(),
         order: Vec::new(),
     };
@@ -194,6 +217,8 @@ struct Gen<'a> {
     fn_array: FunctionValue<'a>,
     fn_object: FunctionValue<'a>,
     fn_copy: FunctionValue<'a>,
+    fn_field: FunctionValue<'a>,
+    fn_index: FunctionValue<'a>,
     /// name -> pointer to that name's current (most-recently-assigned)
     /// `CodeValue` slot. Reassigning a name just rebinds this pointer to a
     /// freshly generated slot — nothing is freed, matching the interpreter's
@@ -374,6 +399,32 @@ impl<'a> Gen<'a> {
                             values_buf.into(),
                             len_val.into(),
                         ],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+                Ok(out)
+            }
+            Expr::Field(obj, field) => {
+                let obj_ptr = self.gen_expr(obj)?;
+                let field_ptr = self.global_str(field, "fieldname")?;
+                let out = self.alloc_slot("field")?;
+                self.builder
+                    .build_call(
+                        self.fn_field,
+                        &[out.into(), obj_ptr.into(), field_ptr.into()],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+                Ok(out)
+            }
+            Expr::Index(arr, index) => {
+                let arr_ptr = self.gen_expr(arr)?;
+                let index_ptr = self.gen_expr(index)?;
+                let out = self.alloc_slot("index")?;
+                self.builder
+                    .build_call(
+                        self.fn_index,
+                        &[out.into(), arr_ptr.into(), index_ptr.into()],
                         "",
                     )
                     .map_err(|e| e.to_string())?;

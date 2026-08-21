@@ -80,6 +80,34 @@ void code_copy(CodeValue *out, const CodeValue *src) {
     *out = *src;
 }
 
+/* Invalid access (non-object, missing field / non-array, bad index) writes
+ * CODE_NULL into `out` rather than the caller ever seeing an error —
+ * decided 2026-08-21, permissive like JS. Must match
+ * interpreter.rs's `Expr::Field`/`Expr::Index` eval rules exactly. */
+void code_field(CodeValue *out, const CodeValue *obj, const char *field) {
+    if (obj->tag == CODE_OBJECT) {
+        for (long long i = 0; i < obj->len; i++) {
+            if (strcmp(obj->keys[i], field) == 0) {
+                *out = *slot_at(obj->items, i);
+                return;
+            }
+        }
+    }
+    code_null(out);
+}
+
+void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
+    if (arr->tag == CODE_ARRAY && index->tag == CODE_NUMBER) {
+        double n = index->number;
+        long long i = (long long)n;
+        if ((double)i == n && i >= 0 && i < arr->len) {
+            *out = *slot_at(arr->items, i);
+            return;
+        }
+    }
+    code_null(out);
+}
+
 /* Shortest decimal that round-trips back to `n` — matches Rust's f64
  * Display (e.g. 42.0 -> "42", 2.5 -> "2.5"), not printf's fixed-precision
  * default. */

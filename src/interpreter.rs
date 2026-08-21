@@ -76,5 +76,29 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
             }
             Ok(Value::Object(Rc::new(values)))
         }
+        // Invalid access (non-object, missing field / non-array, bad index)
+        // returns Null rather than erroring — decided 2026-08-21, permissive
+        // like JS, unlike undefined-variable reads which still error.
+        Expr::Field(obj, field) => {
+            let v = eval(obj, env)?;
+            Ok(match v {
+                Value::Object(fields) => fields
+                    .iter()
+                    .find(|(k, _)| k == field)
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or(Value::Null),
+                _ => Value::Null,
+            })
+        }
+        Expr::Index(arr, index) => {
+            let v = eval(arr, env)?;
+            let i = eval(index, env)?;
+            Ok(match (v, i) {
+                (Value::Array(items), Value::Number(n)) if n.fract() == 0.0 && n >= 0.0 => {
+                    items.get(n as usize).cloned().unwrap_or(Value::Null)
+                }
+                _ => Value::Null,
+            })
+        }
     }
 }

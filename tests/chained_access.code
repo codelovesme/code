@@ -1,0 +1,5 @@
+-- field/index access chains and composes with literals directly, not just variables
+data = { "items": [1, 2, { "name": "z" }] }
+n = data.items[2].name
+first_of_literal = [10, 20, 30][0]
+field_of_literal = { "a": 1 }.a

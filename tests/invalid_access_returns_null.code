@@ -1,0 +1,14 @@
+-- invalid property/index access is not an error — it returns null (decided
+-- 2026-08-21, permissive/JS-like rather than erroring, unlike undefined
+-- variables which do still error)
+point = { "x": 1 }
+missing_field = point.z
+
+n = 42
+field_on_number = n.x
+
+nums = [1, 2]
+out_of_bounds = nums[5]
+non_integer_index = nums[0.5]
+index_on_object = point[0]
+field_on_array = nums.x

@@ -13,6 +13,7 @@ pub enum Token {
     RBrace,
     Colon,
     Comma,
+    Dot,
     /// Statement separator — a newline or `;`. Blank lines never produce one
     /// (see `tokenize`: consecutive separators are collapsed).
     Newline,
@@ -59,6 +60,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             '}' => Some(Token::RBrace),
             ':' => Some(Token::Colon),
             ',' => Some(Token::Comma),
+            '.' => Some(Token::Dot),
             _ => None,
         } {
             tokens.push(tok);

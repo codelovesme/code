@@ -26,4 +26,13 @@ pub enum Expr {
     /// literals, values are any expression (which may itself reference a
     /// variable, unlike strict JSON).
     Object(Vec<(String, Expr)>),
+    /// `expr.field` — reading a field, not writing one; there is no
+    /// `expr.field = ...` assignment form (yet — see memory
+    /// `new-code-memory-management` on why mutation is a separate, deferred
+    /// decision). Invalid access (non-object, missing field) is not a
+    /// parse-time concern — see `Field`'s evaluation for the runtime rule.
+    Field(Box<Expr>, String),
+    /// `expr[index]` — same read-only scope as `Field`. `index` is itself
+    /// an expression, not restricted to a literal.
+    Index(Box<Expr>, Box<Expr>),
 }

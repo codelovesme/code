@@ -59,8 +59,40 @@ impl<'a> Parser<'a> {
     }
 
     fn expr(&mut self) -> Result<Expr, String> {
-        // No operators yet — an expression is a single literal, identifier,
-        // or a (possibly nested) JSON array/object literal.
+        // No operators yet — an expression is a primary (literal,
+        // identifier, or JSON array/object literal) followed by any number
+        // of `.field` / `[index]` postfix accesses.
+        let mut e = self.primary()?;
+        loop {
+            match self.peek() {
+                Token::Dot => {
+                    self.advance();
+                    let field = match self.advance() {
+                        Token::Ident(name) => name,
+                        other => {
+                            return Err(format!("expected a field name after '.', found {other:?}"))
+                        }
+                    };
+                    e = Expr::Field(Box::new(e), field);
+                }
+                Token::LBracket => {
+                    self.advance();
+                    self.skip_newlines();
+                    let index = self.expr()?;
+                    self.skip_newlines();
+                    match self.advance() {
+                        Token::RBracket => {}
+                        other => return Err(format!("expected ']', found {other:?}")),
+                    }
+                    e = Expr::Index(Box::new(e), Box::new(index));
+                }
+                _ => break,
+            }
+        }
+        Ok(e)
+    }
+
+    fn primary(&mut self) -> Result<Expr, String> {
         match self.peek() {
             Token::LBracket => self.array(),
             Token::LBrace => self.object(),
