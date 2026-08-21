@@ -4,4 +4,4 @@
 let p = Length { "value": [1, 2, 3, 4, 5] }
 let stored = [p]
 emit stored[0] to core get n
-assert n = 5
+assert n.value = 5

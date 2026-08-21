@@ -348,8 +348,8 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
     };
     match class.as_ref() {
         "Length" => match fields.iter().find(|(k, _)| k == "value") {
-            Some((_, Value::Array(items))) => Ok(Value::Number(items.len() as f64)),
-            Some((_, Value::Str(s))) => Ok(Value::Number(s.len() as f64)),
+            Some((_, Value::Array(items))) => Ok(core_result("LengthResult", items.len() as f64)),
+            Some((_, Value::Str(s))) => Ok(core_result("LengthResult", s.len() as f64)),
             Some((_, v)) => Err(format!(
                 "Length requires an array or string 'value', found a {}",
                 type_name(v)
@@ -358,6 +358,17 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
         },
         other => Err(format!("unknown core handler '{other}'")),
     }
+}
+
+/// `{ "_class": class_name, "value": n }` — the shape every core handler's
+/// result takes, matching the old language's `<Name>Result` convention:
+/// what goes into `emit` is a particle, so what comes back out is one too,
+/// not a bare scalar. Must match `runtime.c`'s `code_make_result` exactly.
+fn core_result(class_name: &str, value: f64) -> Value {
+    Value::Object(Rc::new(vec![
+        ("_class".to_string(), Value::Str(Rc::from(class_name))),
+        ("value".to_string(), Value::Number(value)),
+    ]))
 }
 
 fn require_bool(v: Value, op: &str) -> Result<Value, String> {

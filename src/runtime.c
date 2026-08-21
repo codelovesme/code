@@ -352,6 +352,31 @@ static const CodeValue *find_field(const CodeValue *obj, const char *key) {
     return NULL;
 }
 
+/* Builds `{ "_class": class_name, "value": *value }` — the shape every core
+ * handler's result takes, matching the old language's `<Name>Result`
+ * convention: what goes into `emit` is a particle, so what comes back out
+ * is one too, not a bare scalar.
+ *
+ * `slots` is a scratch buffer shaped exactly like the ones codegen.rs builds
+ * for an object literal (`CODE_VALUE_SLOT_SIZE`-strided, addressed only via
+ * `slot_at`) — zero-initialized before anything writes into it, which
+ * matters here specifically: `code_str`/`code_copy` both call
+ * `code_release` on their `out` first, and `code_release` reads `out->heap`
+ * — on an *uninitialized* local that's garbage, not a real flag, so it has
+ * to start at all-zero (reading as a payload-less number, `heap = 0`) for
+ * that first release to be the no-op it's supposed to be. `code_copy`
+ * rather than a raw struct copy for `value` for the same reason the doc
+ * comment above `find_field` flags: a future handler whose result owns a
+ * heap block needs it retained, and `code_copy` does that for free even
+ * though `Length`'s `value` here never does. */
+static void code_make_result(CodeValue *out, const char *class_name, const CodeValue *value) {
+    const char *keys[2] = {"_class", "value"};
+    _Alignas(8) char slots[2 * CODE_VALUE_SLOT_SIZE] = {0};
+    code_str(slot_at(slots, 0), class_name);
+    code_copy(slot_at(slots, 1), value);
+    code_object(out, keys, slots, 2);
+}
+
 void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
     if (particle->tag != CODE_OBJECT) {
         code_runtime_error("emit requires a particle (an object with a \"_class\" field)");
@@ -366,12 +391,17 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
         if (!value) {
             code_runtime_error("Length { \"value\": ... } requires a 'value' field");
         }
+        /* Zero-initialized for the same reason `code_make_result`'s `slots`
+         * is: `code_number` releases `out` before setting it. */
+        CodeValue count = {0};
         if (value->tag == CODE_ARRAY) {
-            code_number(out, (double)value->len);
+            code_number(&count, (double)value->len);
+            code_make_result(out, "LengthResult", &count);
             return;
         }
         if (value->tag == CODE_STR) {
-            code_number(out, (double)strlen(value->str));
+            code_number(&count, (double)strlen(value->str));
+            code_make_result(out, "LengthResult", &count);
             return;
         }
         code_runtime_error("Length requires an array or string 'value'");

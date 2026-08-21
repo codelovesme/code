@@ -1,5 +1,7 @@
 -- `emit <particle> to core [get <name>]` invokes a compiled-in handler,
--- chosen at runtime by the particle's own "_class" field. `Length` counts
--- an array's elements.
+-- chosen at runtime by the particle's own "_class" field. What comes back
+-- is a particle too, not a bare value — a fresh one, tagged "LengthResult",
+-- symmetric with what went in.
 emit Length { "value": [1, 2, 3, 4] } to core get n
-assert n = 4
+assert n = { "_class": "LengthResult", "value": 4 }
+assert n.value = 4
