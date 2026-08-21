@@ -1,1 +1,1 @@
-nums = [1, "two", true, null]
+let nums = [1, "two", true, null]

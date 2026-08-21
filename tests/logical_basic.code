@@ -1,6 +1,6 @@
-a = true and false
-b = true or false
-c = not true
--- no parens/grouping yet — precedence alone must resolve this correctly:
+let a = true and false
+let b = true or false
+let c = not true
+-- no parens here on purpose — precedence alone must resolve this correctly:
 -- 'and' binds tighter than 'or', so this is (true and true) or false
-d = true and true or false
+let d = true and true or false

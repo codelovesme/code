@@ -65,12 +65,33 @@ impl<'a> Parser<'a> {
             return Ok(Stmt::Block(body));
         }
 
-        // Otherwise the only statement form is `name = expr`.
+        if matches!(self.peek(), Token::Let) {
+            self.advance();
+            let name = match self.advance() {
+                Token::Ident(name) => name,
+                other => {
+                    return Err(format!(
+                        "expected a variable name after 'let', found {other:?}"
+                    ))
+                }
+            };
+            match self.advance() {
+                Token::Equals => {}
+                other => return Err(format!("expected '=' after 'let {name}', found {other:?}")),
+            }
+            let value = self.expr()?;
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::Let { name, value });
+        }
+
+        // Otherwise the only statement form is `name = expr` (reassignment
+        // — see `ast::Stmt::Assign`'s doc comment; `let` is the only way to
+        // introduce a name).
         let name = match self.advance() {
             Token::Ident(name) => name,
             other => {
                 return Err(format!(
-                    "expected a variable name, 'assert', 'if', or '{{', found {other:?}"
+                    "expected a variable name, 'let', 'assert', 'if', or '{{', found {other:?}"
                 ))
             }
         };

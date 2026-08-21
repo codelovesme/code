@@ -39,10 +39,18 @@ fn verify_defined(program: &Program) -> Result<(), String> {
 fn verify_stmts(stmts: &[Stmt], scopes: &mut Vec<HashSet<String>>) -> Result<(), String> {
     for stmt in stmts {
         match stmt {
+            Stmt::Let { name, value } => {
+                verify_expr(value, scopes)?;
+                // Always binds in the current scope, even if `name` is
+                // already defined here or further out — shadowing.
+                scopes.last_mut().unwrap().insert(name.clone());
+            }
             Stmt::Assign { name, value } => {
                 verify_expr(value, scopes)?;
                 if !is_defined(scopes, name) {
-                    scopes.last_mut().unwrap().insert(name.clone());
+                    return Err(format!(
+                        "undefined variable '{name}' (use 'let {name} = ...' to declare it)"
+                    ));
                 }
             }
             Stmt::Assert(expr) => verify_expr(expr, scopes)?,
@@ -400,7 +408,8 @@ impl<'a> Gen<'a> {
 
     fn gen_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
         match stmt {
-            Stmt::Assign { name, value } => self.gen_assign(name, value),
+            Stmt::Let { name, value } => self.gen_let(name, value),
+            Stmt::Assign { name, value } => self.gen_reassign(name, value),
             Stmt::Assert(expr) => {
                 let ptr = self.gen_expr(expr)?;
                 self.builder
@@ -424,27 +433,39 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
-    /// See `env`'s doc comment for why this always copies rather than ever
-    /// rebinding a pointer.
-    fn gen_assign(&mut self, name: &str, value: &Expr) -> Result<(), String> {
+    /// `let name = value` — always allocates a brand new permanent slot in
+    /// the *current* scope, even if `name` already exists here or further
+    /// out (shadowing; re-`let`-ing the same name in the same scope just
+    /// overwrites that scope's map entry, still correct). See `env`'s doc
+    /// comment for why every assignment copies rather than ever adopting
+    /// `gen_expr`'s pointer directly.
+    fn gen_let(&mut self, name: &str, value: &Expr) -> Result<(), String> {
         let value_ptr = self.gen_expr(value)?;
-        if let Some(existing) = self.lookup(name) {
-            self.builder
-                .build_call(self.fn_copy, &[existing.into(), value_ptr.into()], "")
-                .map_err(|e| e.to_string())?;
-        } else {
-            let permanent = self.alloc_slot("var")?;
-            self.builder
-                .build_call(self.fn_copy, &[permanent.into(), value_ptr.into()], "")
-                .map_err(|e| e.to_string())?;
-            if self.env.len() == 1 {
-                self.order.push(name.to_string());
-            }
-            self.env
-                .last_mut()
-                .unwrap()
-                .insert(name.to_string(), permanent);
+        let permanent = self.alloc_slot("var")?;
+        self.builder
+            .build_call(self.fn_copy, &[permanent.into(), value_ptr.into()], "")
+            .map_err(|e| e.to_string())?;
+        if self.env.len() == 1 && !self.env[0].contains_key(name) {
+            self.order.push(name.to_string());
         }
+        self.env
+            .last_mut()
+            .unwrap()
+            .insert(name.to_string(), permanent);
+        Ok(())
+    }
+
+    /// Bare `name = value` (no `let`) — reassigns an existing binding.
+    /// `verify_defined` already guarantees `name` is bound somewhere before
+    /// codegen ever runs, so `lookup` here can't miss.
+    fn gen_reassign(&mut self, name: &str, value: &Expr) -> Result<(), String> {
+        let value_ptr = self.gen_expr(value)?;
+        let existing = self
+            .lookup(name)
+            .expect("verify_defined guarantees this name is bound");
+        self.builder
+            .build_call(self.fn_copy, &[existing.into(), value_ptr.into()], "")
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
 

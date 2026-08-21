@@ -7,8 +7,18 @@ pub struct Program {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
-    /// `name = expr` — both first binding and reassignment; there is no
-    /// separate declaration form (see memory: bare assignment, no `mut`).
+    /// `let name = expr` — the *only* way to introduce a name (decided
+    /// 2026-08-21, reversing the original "no declaration keyword"
+    /// design — see memory `new-code-let-keyword`). Always creates a
+    /// *new* binding in the current (innermost) scope, shadowing any
+    /// same-named outer binding for the rest of that scope — even
+    /// re-`let`-ing the same name in the same scope is fine, it just
+    /// rebinds. This is what makes `Assign` below unambiguous.
+    Let { name: String, value: Expr },
+    /// `name = expr` (no `let`) — reassignment only. Searches the scope
+    /// chain outward for an existing binding of `name` and updates it in
+    /// place; an error if `name` isn't bound anywhere (interpreter and
+    /// compiler both — see memory `new-code-let-keyword`).
     Assign { name: String, value: Expr },
     /// `assert expr` — `expr` must evaluate to a `Bool`; `false` or any
     /// other kind aborts the program (interpreter: `Err`; compiled binary:
@@ -17,12 +27,13 @@ pub enum Stmt {
     Assert(Expr),
     /// `if condition { body }` — no `else`, ever (deliberate language
     /// decision, not a missing feature). `condition` must be `Bool`.
-    /// `body` runs in its own scope (see memory `new-code-if-scoping`):
-    /// assigning a name already bound in an outer scope mutates that
-    /// outer binding (visible after the `if`, whether or not the branch
-    /// actually ran — an untaken branch simply leaves it unchanged);
-    /// assigning a name that doesn't exist anywhere outer creates a new
-    /// binding local to `body`, invisible once it ends.
+    /// `body` runs in its own scope (see memory `new-code-if-scoping` and
+    /// `new-code-let-keyword`): a `let` inside always creates a binding
+    /// local to `body`, even shadowing a same-named outer one; a bare
+    /// (`let`-less) assignment always mutates an existing outer binding
+    /// (visible after the `if`, whether or not the branch actually ran —
+    /// an untaken branch simply leaves it unchanged), and is an error if
+    /// no such outer binding exists.
     If { condition: Expr, body: Vec<Stmt> },
     /// A bare `{ body }` — unconditionally runs `body` in a new scope
     /// (same scoping rule as `If`'s `body`, minus the condition: always

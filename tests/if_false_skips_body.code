@@ -1,4 +1,4 @@
-ran = false
+let ran = false
 if false {
     ran = true
 }

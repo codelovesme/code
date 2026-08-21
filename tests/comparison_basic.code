@@ -1,11 +1,11 @@
-a = 1 < 2
-b = 2 <= 2
-c = 3 > 5
-d = "abc" < "abd"
-e = 1 == 1
+let a = 1 < 2
+let b = 2 <= 2
+let c = 3 > 5
+let d = "abc" < "abd"
+let e = 1 == 1
 -- equality across different kinds is always well-defined (false), not an
 -- error — unlike ordering (<, >, <=, >=), which does require matching,
 -- orderable types
-f = 1 == "1"
-g = [1, 2] == [1, 2]
-h = { "x": 1 } == { "x": 1 }
+let f = 1 == "1"
+let g = [1, 2] == [1, 2]
+let h = { "x": 1 } == { "x": 1 }

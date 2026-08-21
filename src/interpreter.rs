@@ -4,14 +4,14 @@ use std::rc::Rc;
 use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
 use crate::value::Value;
 
-/// A name -> Value binding table, scoped for `if` (see memory
-/// `new-code-if-scoping`): a stack of maps, innermost last. Reading and
-/// reassigning search from innermost to outermost, using the first match
-/// found — a name already bound in some outer scope keeps being *that*
-/// binding, wherever it's written from; a name not found anywhere becomes a
-/// new binding in the current (innermost) scope. Rebinding a name to a
-/// Value of a different variant is not an error — variables are untyped,
-/// only Values are.
+/// A name -> Value binding table, scoped for `if`/`let` (see memory
+/// `new-code-if-scoping` and `new-code-let-keyword`): a stack of maps,
+/// innermost last. `declare` (`let`) always writes to the current
+/// (innermost) scope, shadowing any outer same-named binding. `assign`
+/// (bare `name = expr`) searches from innermost to outermost for an
+/// *existing* binding and updates it in place — an error if there isn't
+/// one anywhere. Rebinding a name to a Value of a different variant is not
+/// an error — variables are untyped, only Values are.
 #[derive(Debug)]
 pub struct Environment {
     scopes: Vec<HashMap<String, Value>>,
@@ -35,17 +35,28 @@ impl Environment {
         self.scopes.iter().rev().find_map(|scope| scope.get(name))
     }
 
-    fn set(&mut self, name: String, value: Value) {
-        for scope in self.scopes.iter_mut().rev() {
-            if let Some(slot) = scope.get_mut(&name) {
-                *slot = value;
-                return;
-            }
-        }
-        if self.scopes.len() == 1 {
+    /// `let name = value` — always a new binding in the current scope,
+    /// even if `name` already exists further out (shadowing) or even in
+    /// this exact scope (re-`let`, just rebinds).
+    fn declare(&mut self, name: String, value: Value) {
+        if self.scopes.len() == 1 && !self.scopes[0].contains_key(&name) {
             self.order.push(name.clone());
         }
         self.scopes.last_mut().unwrap().insert(name, value);
+    }
+
+    /// Bare `name = value` — reassigns an existing binding, found by
+    /// searching outward; errors if `name` isn't bound anywhere.
+    fn assign(&mut self, name: &str, value: Value) -> Result<(), String> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(slot) = scope.get_mut(name) {
+                *slot = value;
+                return Ok(());
+            }
+        }
+        Err(format!(
+            "undefined variable '{name}' (use 'let {name} = ...' to declare it)"
+        ))
     }
 
     fn push_scope(&mut self) {
@@ -80,10 +91,14 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 
 fn exec(stmt: &Stmt, env: &mut Environment) -> Result<(), String> {
     match stmt {
+        Stmt::Let { name, value } => {
+            let v = eval(value, env)?;
+            env.declare(name.clone(), v);
+            Ok(())
+        }
         Stmt::Assign { name, value } => {
             let v = eval(value, env)?;
-            env.set(name.clone(), v);
-            Ok(())
+            env.assign(name, v)
         }
         Stmt::Assert(expr) => match eval(expr, env)? {
             Value::Bool(true) => Ok(()),

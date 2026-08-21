@@ -1,2 +1,2 @@
-point = { "x": 1 }
-bad = point.
+let point = { "x": 1 }
+let bad = point.

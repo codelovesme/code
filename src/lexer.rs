@@ -31,6 +31,7 @@ pub enum Token {
     Not,
     Assert,
     If,
+    Let,
     /// Statement separator — a newline or `;`. Blank lines never produce one
     /// (see `tokenize`: consecutive separators are collapsed).
     Newline,
@@ -173,6 +174,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 "not" => Token::Not,
                 "assert" => Token::Assert,
                 "if" => Token::If,
+                "let" => Token::Let,
                 _ => Token::Ident(text),
             };
             tokens.push(tok);

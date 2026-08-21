@@ -1,4 +1,4 @@
 if true {
-    z = 5
+    let z = 5
 }
 w = z

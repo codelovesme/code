@@ -1,5 +1,5 @@
 -- bare blocks and if-bodies compose: nesting one inside the other
-x = 0
+let x = 0
 if true {
     {
         x = 5
