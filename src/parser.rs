@@ -1,4 +1,4 @@
-use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
+use crate::ast::{BinOp, EmitTarget, Expr, Program, Stmt, UnOp};
 use crate::lexer::Token;
 
 fn starts_uppercase(name: &str) -> bool {
@@ -138,15 +138,15 @@ impl<'a> Parser<'a> {
                     ))
                 }
             }
-            match self.advance() {
-                Token::Core => {}
+            let target = match self.advance() {
+                Token::Core => EmitTarget::Core,
+                Token::Ident(name) => EmitTarget::Module(name),
                 other => {
                     return Err(format!(
-                        "expected 'core' after 'to' — no other emit target exists yet, \
-                         found {other:?}"
+                        "expected 'core' or a linked module's name after 'to', found {other:?}"
                     ))
                 }
-            }
+            };
             let result = if matches!(self.peek(), Token::Get) {
                 self.advance();
                 match self.advance() {
@@ -157,7 +157,11 @@ impl<'a> Parser<'a> {
                 None
             };
             self.expect_end_of_statement()?;
-            return Ok(Stmt::Emit { particle, result });
+            return Ok(Stmt::Emit {
+                particle,
+                target,
+                result,
+            });
         }
 
         if matches!(self.peek(), Token::Break) {

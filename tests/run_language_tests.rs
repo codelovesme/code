@@ -1,5 +1,5 @@
 //! Discovers and runs every `tests/*.code` fixture through BOTH output
-//! modes — `code::run_source` (interpret) and `code::compile_source` (LLVM
+//! modes — `code::run_file` (interpret) and `code::compile_file` (LLVM
 //! compile + link + execute) — since the language is meant to run every
 //! feature identically either way (see memory `new-language-rewrite`).
 //! This file is wiring only — the tests themselves are the `.code` files.
@@ -27,6 +27,8 @@ fn code_fixtures_run_as_expected() {
     let tmp_dir = std::env::temp_dir().join("code-compiler-tests");
     fs::create_dir_all(&tmp_dir).expect("create temp dir for compiled fixtures");
 
+    build_native_test_module(&dir);
+
     let mut failures = Vec::new();
     let mut checked = 0;
 
@@ -50,6 +52,26 @@ fn code_fixtures_run_as_expected() {
 
     assert!(checked > 0, "no .code fixtures found in {}", dir.display());
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Compiles `tests/native_modules/test_math.c` into the `.so` that the
+/// `native_link_*`/`fail_native_link_*` fixtures `link` — checked into git
+/// as source, not as a binary (see `.gitignore`), so it has to be built
+/// fresh here before any fixture that needs it can run either mode.
+fn build_native_test_module(tests_dir: &Path) {
+    let src = tests_dir.join("native_modules").join("test_math.c");
+    let so = tests_dir.join("native_modules").join("test_math.so");
+    let status = Command::new("cc")
+        .arg("-shared")
+        .arg("-fPIC")
+        .arg("-o")
+        .arg(&so)
+        .arg(&src)
+        .arg("-lm")
+        .arg("-ldl")
+        .status()
+        .unwrap_or_else(|e| panic!("failed to run cc for {}: {e}", src.display()));
+    assert!(status.success(), "cc failed to build {}", src.display());
 }
 
 fn check_interpret(name: &str, path: &Path, should_fail: bool, failures: &mut Vec<String>) {

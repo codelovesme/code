@@ -1,0 +1,9 @@
+-- Same guarantee as `emit_particle_from_variable.code`, but through a linked
+-- native module: which handler runs is still decided by the particle's own
+-- "_class" at runtime, not by anything written at the `emit` call site —
+-- only *which module* is fixed by `to m`.
+link "native_modules/test_math.so" as m
+let p = Sum { "value": [10, 20] }
+let stored = [p]
+emit stored[0] to m get n
+assert n.value = 30

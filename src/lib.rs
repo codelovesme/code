@@ -4,6 +4,8 @@ pub mod codegen;
 pub mod interpreter;
 pub mod lexer;
 pub mod loader;
+#[cfg(feature = "native-modules")]
+pub mod native;
 pub mod parser;
 pub mod value;
 
@@ -55,6 +57,10 @@ mod compile {
     /// every compiled program links against — embedded so `code build`
     /// works regardless of the current directory or install location.
     const RUNTIME_C: &str = include_str!("runtime.c");
+    /// The native-module ABI header `runtime.c` now `#include`s — embedded
+    /// alongside it and written to the same directory so that `#include`
+    /// resolves regardless of where `code build` runs from.
+    const CODE_ABI_H: &str = include_str!("code_abi.h");
 
     /// Compile a program from a file into a standalone executable at
     /// `exe_path`, via LLVM object codegen (see `codegen.rs`) linked against
@@ -69,17 +75,26 @@ mod compile {
 
         let runtime_c_path = exe_path.with_extension("runtime.c");
         std::fs::write(&runtime_c_path, RUNTIME_C).map_err(|e| format!("write runtime.c: {e}"))?;
+        // Written as a sibling of runtime.c so `#include "code_abi.h"`
+        // resolves regardless of the current directory.
+        let abi_h_path = runtime_c_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("code_abi.h");
+        std::fs::write(&abi_h_path, CODE_ABI_H).map_err(|e| format!("write code_abi.h: {e}"))?;
 
         let link_result = Command::new("cc")
             .arg(&obj_path)
             .arg(&runtime_c_path)
             .arg("-lm")
+            .arg("-ldl")
             .arg("-o")
             .arg(exe_path)
             .status();
 
         let _ = std::fs::remove_file(&obj_path);
         let _ = std::fs::remove_file(&runtime_c_path);
+        let _ = std::fs::remove_file(&abi_h_path);
 
         match link_result {
             Ok(status) if status.success() => Ok(()),
