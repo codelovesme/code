@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code — a constraint-based programming language</title>
+<meta name="description" content="Code is a constraint-based programming language: variables narrow domains instead of being assigned, handlers replace functions, and programs have no core I/O — their result is their final bindings. Try it in your browser, no install.">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="favicon-180.png">
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #1c1a1e;
+    --paper: #faf8f6;
+    --panel: #f1efec;
+    --line: #e2dfda;
+    --muted: #6f6a63;
+    --accent: #0f8b8f;
+    --accent-ink: #f5fbfb;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #f1eee9; --paper: #18171a; --panel: #201f23; --line: #35333a;
+      --muted: #948e88; --accent: #4fc7c2; --accent-ink: #0e2323;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #f1eee9; --paper: #18171a; --panel: #201f23; --line: #35333a;
+    --muted: #948e88; --accent: #4fc7c2; --accent-ink: #0e2323;
+  }
+  :root[data-theme="light"] {
+    --ink: #1c1a1e; --paper: #faf8f6; --panel: #f1efec; --line: #e2dfda;
+    --muted: #6f6a63; --accent: #0f8b8f; --accent-ink: #f5fbfb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.55;
+  }
+  a { color: var(--accent); }
+  nav {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 1.1rem 1.5rem;
+    border-bottom: 1px solid var(--line);
+  }
+  nav .brand { display: flex; align-items: center; gap: 0.55rem; text-decoration: none; }
+  nav .brand img { height: 28px; width: auto; display: block; }
+  nav .word { font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; color: var(--ink); }
+  nav .links { margin-left: auto; display: flex; gap: 1.25rem; font-size: 0.9rem; }
+  nav .links a { text-decoration: none; color: var(--ink); }
+  nav .links a:hover { color: var(--accent); }
+
+  main { max-width: 780px; margin: 0 auto; padding: 0 1.5rem; }
+
+  .hero { padding: 4rem 0 2.5rem; }
+  .hero h1 {
+    font-size: clamp(2rem, 5vw, 2.75rem);
+    line-height: 1.15;
+    margin: 0 0 0.9rem;
+    text-wrap: balance;
+    letter-spacing: -0.015em;
+  }
+  .hero h1 .accent { color: var(--accent); }
+  .hero p.lede {
+    font-size: 1.15rem;
+    color: var(--muted);
+    max-width: 46ch;
+    margin: 0 0 1.8rem;
+  }
+  .cta-row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .btn {
+    display: inline-block;
+    padding: 0.65rem 1.1rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none;
+    border: 1px solid var(--line);
+    color: var(--ink);
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .btn:hover { opacity: 0.9; }
+
+  .example {
+    margin: 2.5rem 0;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .example .bar {
+    padding: 0.5rem 0.9rem;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .example pre {
+    margin: 0;
+    padding: 1.1rem 1.2rem;
+    font: 0.88rem/1.6 var(--mono);
+    overflow-x: auto;
+    background: var(--paper);
+  }
+  .example .kw { color: var(--accent); }
+  .example .cm { color: var(--muted); font-style: italic; }
+
+  section.features {
+    padding: 1rem 0 3rem;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.75rem 2.25rem;
+  }
+  @media (max-width: 620px) { section.features { grid-template-columns: 1fr; } }
+  .feature h3 {
+    font-size: 0.98rem;
+    margin: 0 0 0.35rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+  .feature h3 .glyph { color: var(--accent); font-family: var(--mono); font-weight: 700; }
+  .feature p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+  <nav>
+    <a class="brand" href="./">
+      <img src="favicon-180.png" alt="" width="28" height="28">
+      <span class="word">Code</span>
+    </a>
+    <span class="links">
+      <a href="guide.html">Guide</a>
+      <a href="tutorial.html">Tutorial</a>
+      <a href="reference.html">Reference</a>
+      <a href="playground/">Playground</a>
+      <a href="downloads.html">Downloads</a>
+      <a href="https://github.com/codelovesme/code">GitHub</a>
+    </span>
+  </nav>
+
+  <main>
+    <div class="hero">
+      <h1>A programming language built on <span class="accent">constraints</span>, not assignment.</h1>
+      <p class="lede">Variables narrow a domain of possible values instead of being set imperatively. There are no user-defined functions — reusable logic is handler dispatch. No install needed to try it.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="playground/">Try it in your browser →</a>
+        <a class="btn" href="downloads.html">Download the CLI</a>
+      </div>
+    </div>
+
+    <div class="example">
+      <div class="bar">handlers replace functions</div>
+      <pre><span class="cm">-> Code has no user-defined functions — handlers</span>
+<span class="cm">-> (particle dispatch) are the only unit of reusable logic.</span>
+<span class="kw">type</span> Ping { value ∈ Number }
+
+Ping => {
+    <span class="kw">return</span> Ping { value = value + 10 }
+}
+
+emit Ping { value = 1 } <span class="kw">to</span> this <span class="kw">get</span> result
+assert result.value = 11</pre>
+    </div>
+
+    <section class="features">
+      <div class="feature">
+        <h3><span class="glyph">∈</span> Constraint variables</h3>
+        <p>A variable holds a domain, not a single value — <code>a &gt; 5</code>, <code>a &lt; 10</code>, <code>a ∈ Z</code> all narrow it. Assignment is a special case: a domain of exactly one value.</p>
+      </div>
+      <div class="feature">
+        <h3><span class="glyph">⇒</span> Handlers, not functions</h3>
+        <p>There's no <code>name(args)</code> call syntax anywhere in the grammar. <code>emit X to target get result</code> is the only reusable-logic primitive — and it composes across modules.</p>
+      </div>
+      <div class="feature">
+        <h3><span class="glyph">=</span> Single assignment</h3>
+        <p>A name is bound once. Combined with no recursion and bounded <code>loop … over</code> iteration, a program's total work is always statically bounded.</p>
+      </div>
+      <div class="feature">
+        <h3><span class="glyph">∅</span> No core I/O</h3>
+        <p>The interpreter never writes to stdout. A program's visible result is its final top-level bindings — which is exactly what the playground shows you.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a href="https://github.com/codelovesme/code">codelovesme/code</a> · GPL-3.0
+  </footer>
+</body>
+</html>

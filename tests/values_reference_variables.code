@@ -1,0 +1,4 @@
+-- element/field values may be any expression, not just JSON literals
+x = 42
+arr = [x]
+obj = { "n": x }

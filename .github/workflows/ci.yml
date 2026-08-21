@@ -11,73 +11,44 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # inkwell links LLVM 17.
+  # inkwell links LLVM 17 (codegen.rs). Compiled programs also link against
+  # the embedded C runtime (runtime.c) via the system `cc`, which the
+  # runner's default toolchain already provides.
   LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
   CARGO_TERM_COLOR: always
 
 jobs:
   build-and-test:
-    name: Build + language suite
+    name: Build + test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install LLVM 17 + clang + lld (WASM fixtures)
+      - name: Install LLVM 17
         run: |
           sudo apt-get update
-          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev clang-17 lld-17
-          echo "/usr/lib/llvm-17/bin" >> "$GITHUB_PATH"
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting check
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Build workspace
         run: cargo build --workspace
 
-      - name: Build native-module test fixtures
-        run: ./tests/native_modules/build.sh debug
-
-      - name: Cargo unit tests
+      - name: Tests
         run: cargo test --workspace
 
-      - name: Language suite (.code tests)
-        run: ./target/debug/code test
-
-      - name: Documentation examples run clean
-        run: ./docs/examples/run.sh ./target/debug/code
-
-      - name: Formatting check
-        run: ./target/debug/code format . --check
-
-  lsp-no-llvm:
-    name: code-lsp builds without LLVM
+  wasm-playground:
+    name: code-wasm builds for wasm32 (playground)
     runs-on: ubuntu-latest
-    env:
-      # Prove the decoupling: no LLVM is installed and the sys path is empty, so
-      # any accidental inkwell dependency would fail to build here.
-      LLVM_SYS_170_PREFIX: ""
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Assert code-lsp has no LLVM in its dependency tree
-        run: |
-          if cargo tree -p code-lsp -e normal | grep -Ei 'inkwell|llvm-sys'; then
-            echo "::error::code-lsp pulled in LLVM (inkwell/llvm-sys); it must build without the llvm feature"
-            exit 1
-          fi
-
-      - name: Build code-lsp with no LLVM installed
-        run: cargo build -p code-lsp
-
-  code-runtime-and-wasm:
-    name: code Runtime (no LLVM) + wasm32 core build
-    runs-on: ubuntu-latest
-    env:
-      # No LLVM installed and the sys path is empty, so any accidental inkwell
-      # dependency in the Runtime/wasm build path would fail here (see T18).
-      LLVM_SYS_170_PREFIX: ""
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -85,44 +56,12 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
 
-      - name: Assert the no-default-features build pulls in no LLVM
+      - name: Assert code-wasm pulls in no LLVM (must stay interpreter-only)
         run: |
-          if cargo tree -p code --no-default-features -e normal | grep -Ei 'inkwell|llvm-sys'; then
-            echo "::error::code (--no-default-features) pulled in LLVM (inkwell/llvm-sys); the Runtime tier must build without the llvm feature"
+          if cargo tree -p code-wasm -e normal | grep -Ei 'inkwell|llvm-sys'; then
+            echo "::error::code-wasm pulled in LLVM (inkwell/llvm-sys); it must depend on the root crate with default-features = false"
             exit 1
           fi
 
-      - name: Build code Runtime (no LLVM, no native-so) with no LLVM installed
-        run: cargo build -p code --no-default-features
-
-      - name: Build code_lang core for wasm32-unknown-unknown
-        run: cargo build --lib -p code --no-default-features --target wasm32-unknown-unknown
-
-      - name: Build code-wasm bridge crate for wasm32-unknown-unknown
-        # Release only — a debug build crashes rust-lld (SIGSEGV) at this
-        # crate's size; see the crate README (T19). The larger link-time
-        # stack size (needed for the parser's recursion depth — see
-        # .cargo/config.toml) is picked up automatically, target-scoped.
-        run: cargo build -p code-wasm --target wasm32-unknown-unknown --release
-
-      - name: Functional smoke test code-wasm in node
-        # A build-only check would miss real runtime bugs here (a wasm stack
-        # overflow was one; see smoke-test/run.js) — actually run the module.
-        run: |
-          WASM_BINDGEN_VERSION=$(cargo pkgid wasm-bindgen | sed 's/.*@//')
-          cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
-          wasm-bindgen --target nodejs --out-dir target/wasm-bindgen-out \
-            target/wasm32-unknown-unknown/release/code_wasm.wasm
-          node crates/code-wasm/smoke-test/run.js target/wasm-bindgen-out/code_wasm.js
-
-      - name: Build + smoke test the npm package artifact (T19)
-        # The published package uses --target web (same build the docs-site
-        # playground consumes), not --target nodejs like the check above —
-        # a separate build, so it needs its own smoke test against the exact
-        # bytes that would actually get published. `npm pack --dry-run`
-        # catches a missing `files` entry before it ships broken.
-        run: |
-          bash crates/code-wasm/npm/build.sh
-          cd crates/code-wasm/npm
-          npm pack --dry-run
-          node smoke-test.mjs
+      - name: Build code-wasm for wasm32-unknown-unknown
+        run: cargo build -p code-wasm --release --target wasm32-unknown-unknown

@@ -3,13 +3,13 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Manual dry-run: builds and uploads an Actions artifact but does not
-  # create a GitHub Release (see the `if: startsWith(github.ref, ...)` guard
-  # below), so the packaging can be exercised without cutting a real tag.
+  # Manual dry-run: builds and uploads an Actions artifact but does not create
+  # a GitHub Release (see the `if: github.ref_type == 'tag'` guards below), so
+  # the packaging can be exercised without cutting a real tag.
   workflow_dispatch: {}
 
 env:
-  # inkwell links LLVM 17. Same setup as ci.yml.
+  # inkwell links LLVM 17 (codegen.rs). Same setup as ci.yml.
   LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
   CARGO_TERM_COLOR: always
 
@@ -23,21 +23,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install LLVM 17 + clang + lld
+      - name: Install LLVM 17
         run: |
           sudo apt-get update
-          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev clang-17 lld-17
-          echo "/usr/lib/llvm-17/bin" >> "$GITHUB_PATH"
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      # Single source of truth for the shipped version is the git tag: stamp
-      # the `code` package version from it before building so the binaries'
-      # `--version` matches the release, rather than trusting a hand-edited
-      # Cargo.toml. The `[package]` version is the first `version = ` line in
-      # the root Cargo.toml (the `[workspace]` section above it has none).
-      # v0.4.1 -> 0.4.1.
+      # Single source of truth for the shipped version is the git tag, so the
+      # binary's `--version` matches the release rather than trusting a
+      # hand-edited Cargo.toml. v0.1.0 -> 0.1.0.
       - name: Stamp version from tag
         if: github.ref_type == 'tag'
         run: |
@@ -47,28 +43,8 @@ jobs:
           sed -i "0,/^version = \".*\"/s//version = \"$v\"/" Cargo.toml
           grep -m1 '^version = ' Cargo.toml
 
-      # `code` ships as two capability tiers, both with a binary named `code`
-      # (the dotnet Runtime/SDK model — one command name, capability decided by
-      # which package you installed; see T17/T18):
-      #   - SDK     = default features (llvm + native-so): run/format/test + build
-      #   - Runtime = --no-default-features: run/format/test only, no LLVM
-      # `code-lsp` is a third, independent artifact for editors.
-
-      - name: Build SDK (code, with LLVM) + code-lsp
-        run: cargo build --workspace --release
-
-      - name: Stash SDK + lsp binaries
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          cp target/release/code dist/code-sdk
-          cp target/release/code-lsp dist/code-lsp
-
-      - name: Build Runtime (code, no LLVM)
-        run: cargo build -p code --release --no-default-features
-
-      - name: Stash Runtime binary
-        run: cp target/release/code dist/code-runtime
+      - name: Build release binary
+        run: cargo build --release
 
       - name: Determine version string
         id: version
@@ -79,57 +55,15 @@ jobs:
             echo "version=dev-${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Sanity checks — binaries run standalone
-        run: |
-          set -euo pipefail
-          # SDK: runs, and must NOT dynamically link libLLVM. inkwell statically
-          # links LLVM with this repo's setup — a shared-lib dependency here
-          # would mean the tarball silently requires LLVM on the machine that
-          # runs it, defeating the point of shipping a standalone binary.
-          dist/code-sdk --version
-          if ldd dist/code-sdk | grep -qi llvm; then
-            echo "::error::code SDK binary dynamically links libLLVM — release would require LLVM on the target machine"
-            exit 1
-          fi
-          # Runtime: runs, must have NO libLLVM linkage at all, and must refuse
-          # `build` (it has no compiler backend).
-          dist/code-runtime --version
-          if ldd dist/code-runtime | grep -qi llvm; then
-            echo "::error::code Runtime binary links libLLVM — it must be LLVM-free"
-            exit 1
-          fi
-          if dist/code-runtime build nonexistent.code >/dev/null 2>&1; then
-            echo "::error::code Runtime accepted 'build' — it must refuse without the llvm feature"
-            exit 1
-          fi
-
-      - name: Package tarballs
+      - name: Package tarball
         run: |
           set -euo pipefail
           v="${{ steps.version.outputs.version }}"
-
-          # SDK — binary named `code`
-          stage="code-sdk-${v}-x86_64-linux"
+          stage="code-${v}-x86_64-linux"
           mkdir -p "$stage"
-          cp dist/code-sdk "$stage/code"
-          cp LICENSE README.md "$stage/"
-          tar -czf "${stage}.tar.gz" "$stage"
-
-          # Runtime — binary named `code`
-          stage="code-runtime-${v}-x86_64-linux"
-          mkdir -p "$stage"
-          cp dist/code-runtime "$stage/code"
-          cp LICENSE README.md "$stage/"
-          tar -czf "${stage}.tar.gz" "$stage"
-
-          # LSP server
-          stage="code-lsp-${v}-x86_64-linux"
-          mkdir -p "$stage"
-          cp dist/code-lsp "$stage/code-lsp"
+          cp target/release/code "$stage/code"
           cp LICENSE "$stage/"
           tar -czf "${stage}.tar.gz" "$stage"
-
-          echo "Built tarballs:"
           ls -1 ./*.tar.gz
 
       - name: Upload build artifacts

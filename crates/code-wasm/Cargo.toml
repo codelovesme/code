@@ -2,19 +2,12 @@
 name = "code-wasm"
 version = "0.1.0"
 edition = "2021"
-description = "WASM bridge for running Code (.code) snippets in a browser or JS host — T19"
+description = "wasm32 bridge for the code language interpreter — powers the browser playground."
 license = "GPL-3.0"
-repository = "https://github.com/codelovesme/code"
-publish = false
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
-# Parser/interpreter only — no LLVM backend, no native-.so loading (both
-# unavailable/meaningless on wasm32-unknown-unknown; see T18).
-code_lang = { path = "../..", package = "code", default-features = false }
-chumsky = "0.9"
+code = { path = "../..", default-features = false }
 wasm-bindgen = "0.2"
-serde = { version = "1", features = ["derive"] }
-serde-wasm-bindgen = "0.6"

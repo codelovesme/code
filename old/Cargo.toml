@@ -1,0 +1,55 @@
+[workspace]
+members = ["crates/code-abi", "crates/code-native", "crates/code-lsp", "crates/code-wasm"]
+
+[package]
+name = "code"
+version = "0.4.1"
+edition = "2021"
+description = "The Code programming language — interpreter and LLVM compiler"
+license = "GPL-3.0"
+readme = "README.md"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+name = "code_lang"
+path = "src/lib.rs"
+
+[[bin]]
+name = "code"
+path = "src/main.rs"
+
+[features]
+default = ["llvm", "native-so"]
+# The LLVM backend (codegen). Off by default only for lightweight consumers such
+# as `code-lsp` that need the parser but not the compiler.
+llvm = ["dep:inkwell"]
+# Native `.so` module loading (libloading/dlopen). Off for targets with no
+# filesystem/dlopen, e.g. wasm32-unknown-unknown (see T18).
+native-so = ["dep:libloading"]
+
+[dependencies]
+code-abi = { path = "crates/code-abi" }
+chumsky = "0.9"
+anyhow = "1"
+inkwell = { version = "0.4", features = ["llvm17-0"], optional = true }
+libloading = { version = "0.8", optional = true }
+wasmi = "1.0"
+
+# Strip symbols from release binaries (workspace-wide: `code` SDK/Runtime and
+# `code-lsp`). Shipped binaries don't need symbols; this shrinks the release
+# artifacts at no behavioral cost (see T17).
+[profile.release]
+strip = true
+
+# Full (level 2) debug info on a workspace that statically links LLVM plus a
+# deeply nested chumsky parser combinator (many precedence tiers, each one
+# more generic-type nesting) can push the final `code` binary's DWARF debug
+# sections past the 4GB ceiling for R_X86_64_32 relocations, and rust-lld
+# fails outright ("relocation ... out of range", "too many errors emitted") —
+# hit for real after adding two more parser tiers (T26's `∩`/`∪` set
+# operators). Reduced to line-tables-only: still enough for backtraces/
+# `RUST_BACKTRACE=1` and `#[track_caller]` spans, just not full per-variable
+# type debug info. No effect on program behavior, dev-only (release already
+# strips symbols entirely).
+[profile.dev]
+debug = "line-tables-only"

@@ -1,0 +1,12 @@
+# Native-module test fixtures — built on demand by tests/native_modules/build.sh,
+# never committed (they are compiled artifacts, not source).
+tests/native_modules/*.so
+tests/native_modules/*.wasm
+
+# code-wasm playground glue — built on demand by
+# crates/code-wasm/playground/build.sh, never committed (compiled artifacts).
+crates/code-wasm/playground/pkg/
+
+# code-wasm npm package glue — built on demand by crates/code-wasm/npm/build.sh,
+# never committed (compiled artifacts) — see T19.
+crates/code-wasm/npm/dist/
