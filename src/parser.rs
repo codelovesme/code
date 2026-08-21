@@ -201,6 +201,20 @@ impl<'a> Parser<'a> {
         match self.peek() {
             Token::LBracket => self.array(),
             Token::LBrace => self.object(),
+            // `(expr)` is pure grouping — no AST node of its own, just
+            // however `expr` composed while parsing inside the parens (the
+            // full precedence chain again, so `(a + b) * c` groups exactly
+            // as written).
+            Token::LParen => {
+                self.advance();
+                self.skip_newlines();
+                let e = self.expr()?;
+                self.skip_newlines();
+                match self.advance() {
+                    Token::RParen => Ok(e),
+                    other => Err(format!("expected ')', found {other:?}")),
+                }
+            }
             _ => match self.advance() {
                 Token::Number(n) => Ok(Expr::Number(n)),
                 Token::Str(s) => Ok(Expr::Str(s)),
