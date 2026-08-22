@@ -20,8 +20,71 @@ and stays right no matter what the fixtures are called.
 Usage: build.py <repo-root> <dist-dir>
 """
 import json
+import shutil
 import sys
 from pathlib import Path
+
+# Ordered: first matching prefix wins. `fail_`/`emit_`/`particle_` are the
+# most specific and must be checked before the generic value prefixes.
+CATEGORY_BY_PREFIX = [
+    ("fail_", "Errors"),
+    ("emit_", "Particles"),
+    ("particle_", "Particles"),
+    ("loop_", "Loops"),
+    ("if_", "Conditionals"),
+    ("block_", "Scoping"),
+    ("assert_", "Assertions"),
+    ("let_", "Values & Expressions"),
+    ("variables_", "Values & Expressions"),
+    ("literal_", "Values & Expressions"),
+    ("array_", "Values & Expressions"),
+    ("object_", "Values & Expressions"),
+    ("nested_", "Values & Expressions"),
+    ("multiline_", "Values & Expressions"),
+    ("string_", "Values & Expressions"),
+    ("arithmetic_", "Values & Expressions"),
+    ("comparison_", "Values & Expressions"),
+    ("inequality_", "Values & Expressions"),
+    ("logical_", "Values & Expressions"),
+    ("unary_", "Values & Expressions"),
+    ("operator_", "Values & Expressions"),
+    ("parens_", "Values & Expressions"),
+    ("field_", "Values & Expressions"),
+    ("index_", "Values & Expressions"),
+    ("chained_", "Values & Expressions"),
+    ("invalid_", "Values & Expressions"),
+    ("values_", "Values & Expressions"),
+    ("reassignment_", "Values & Expressions"),
+    ("self_", "Values & Expressions"),
+]
+DEFAULT_CATEGORY = "Values & Expressions"
+
+
+def category_for(name: str) -> str:
+    for prefix, cat in CATEGORY_BY_PREFIX:
+        if name.startswith(prefix):
+            return cat
+    return DEFAULT_CATEGORY
+
+
+def first_comment(source: str) -> str:
+    """The fixture's first `--` comment line, stripped — the author's own
+    one-line explanation of the feature."""
+    for line in source.splitlines():
+        s = line.strip()
+        if s.startswith("--"):
+            text = s[2:].strip()
+            if text:
+                return text
+    return ""
+
+
+def truncate(text: str, limit: int = 110) -> str:
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0]
+    return cut.rstrip(",;: ") + "…"
+
 
 def main() -> None:
     repo_root = Path(sys.argv[1])
@@ -29,7 +92,7 @@ def main() -> None:
     tests_dir = repo_root / "tests"
     site_dir = repo_root / "site"
 
-    examples = {}
+    examples = []
     for path in sorted(tests_dir.glob("*.code")):
         name = path.stem
         if name.startswith("fail_") and name != "fail_undefined_variable":
@@ -41,7 +104,14 @@ def main() -> None:
         # of the syntax to look for.
         if any(line.startswith("link ") for line in source.splitlines()):
             continue
-        examples[name] = source
+        examples.append(
+            {
+                "name": name,
+                "category": category_for(name),
+                "description": truncate(first_comment(source)),
+                "code": source,
+            }
+        )
 
     # Escaping "</" guards against a fixture ever containing a "</script>"
     # substring, which would otherwise close the embedding <script> tag
@@ -53,6 +123,11 @@ def main() -> None:
 
     dist_dir.mkdir(parents=True, exist_ok=True)
     (dist_dir / "index.html").write_text(page)
+
+    # Static assets (logo, favicon) live next to index.html in site/ and are
+    # copied through verbatim — the page references them by relative path.
+    for asset in sorted(site_dir.glob("*.png")):
+        shutil.copy2(asset, dist_dir / asset.name)
 
 if __name__ == "__main__":
     main()

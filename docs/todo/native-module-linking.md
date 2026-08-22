@@ -99,11 +99,37 @@ caught before any module code runs).
 
 ## Still open
 
-- **`.wasm` format.** `.so` and `.a` are the two `link` accepts today — a
-  `.wasm` path is a clear compile-time error naming
+- **`.wasm` format (this doc's scope — a *native* `code run`/`code build`
+  linking a `.wasm` file).** `.so` and `.a` are the two `link` accepts
+  today — a `.wasm` path is a clear compile-time error naming
   `docs/todo/native-module-linking.md`, per the table above. Building it
-  needs a wasm runtime embedded in the interpreter (and, for `code build`,
-  in the emitted binary too) — nothing towards it exists yet.
+  would need a wasm runtime embedded in the interpreter (and, for
+  `code build`, in the emitted binary too) — nothing towards it exists,
+  and 2026-08-22's `crates/code-wasm` work (see below) makes it look less
+  worth doing: the actual use case ("a browser app links modules from
+  different authors") is already served by `code-wasm`'s own bridge,
+  which needs no embedded VM at all. This row stays open only for a
+  *native* binary wanting to run wasm plugins, a narrower and so-far
+  unasked-for case.
+
+**`crates/code-wasm` gained its own module linking, 2026-08-22 — a
+different crate, a different mechanism, not this doc's `.wasm` row.**
+`code-wasm` (the interpreter compiled to wasm32, powering the browser
+playground and now also a standalone `npm install code-wasm` package —
+see `crates/code-wasm/npm/README.md`) can now `link` third-party modules
+via `run_with_modules(src, modules)`: each module is a plain, synchronous
+JS callback, JSON string in, JSON string out
+(`ast::NativeFormat::JsBridge`). Turning an actual `.wasm` file into that
+shape is entirely the embedding JS app's job — none of `code_abi.h`'s
+pointer/stride ABI applies, and `code`'s own Rust code never touches wasm
+bytes. Modules are resolved entirely before the program starts running
+(no async inside `link`); `interpreter::Environment::provide_module` /
+`link_module` and `interpreter::run_with` are the general hooks this
+needed, usable by any future embedder, not just `code-wasm`. Investigating
+this also meant properly reading the old language's own `.wasm` story
+(`old/src/wasm_module.rs`) for the first time — confirms the byte-offset
+ABI approach is real pain worth avoiding, and that it was never even
+extended to a browser build there either.
 
 **`.a` shipped 2026-08-22.** `link "x.a" as m` links straight into the
 `code build` binary — `code run` refuses it outright (there is no `dlopen`

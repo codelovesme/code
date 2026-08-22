@@ -1075,6 +1075,13 @@ impl<'a> Gen<'a> {
                 self.native_links
                     .insert(alias.to_string(), NativeLink::Static(fns.dispatch));
             }
+            // Only ever produced by `crates/code-wasm`'s own resolver, which
+            // `code build` never runs — see `ast::NativeFormat::JsBridge`.
+            NativeFormat::JsBridge => {
+                return Err(format!(
+                    "internal error: link \"{path}\" (JsBridge) reached codegen"
+                ))
+            }
         }
         Ok(())
     }
