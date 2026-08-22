@@ -16,6 +16,14 @@
 //! type mismatch or division by zero — those operand types aren't known
 //! until the program actually runs, so the compiled binary has to detect
 //! and report them itself; see `runtime.c`'s `code_runtime_error`).
+//!
+//! A `buildonly_foo.code` is the one deliberate exception to "every feature
+//! behaves identically in both modes": a `.a`-linked native module (see
+//! `docs/todo/native-module-linking.md`) only works under `code build` —
+//! there is no `dlopen` for a static archive — so these must *fail* under
+//! `code run` and succeed (with a clean exit, leak check included) under
+//! `code build`. There is no interpreted output to compare the compiled
+//! binary's stdout against, so that comparison is skipped for these.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -28,6 +36,7 @@ fn code_fixtures_run_as_expected() {
     fs::create_dir_all(&tmp_dir).expect("create temp dir for compiled fixtures");
 
     build_native_test_module(&dir);
+    build_native_static_test_modules(&dir);
 
     let mut failures = Vec::new();
     let mut checked = 0;
@@ -38,20 +47,35 @@ fn code_fixtures_run_as_expected() {
             continue;
         }
         let name = path.file_name().unwrap().to_string_lossy().to_string();
-        let should_fail = name.starts_with("fail_");
+        let expect = if name.starts_with("fail_") {
+            Expect::Fail
+        } else if name.starts_with("buildonly_") {
+            Expect::BuildOnly
+        } else {
+            Expect::Succeed
+        };
 
         // Both modes take the fixture's *path*, not its text: `link`
         // resolves relative to the linking file, so `tests/modules/*.code`
         // is only reachable from a caller that knows where the fixture is.
         // Those module files live in a subdirectory and so are never picked
         // up as fixtures in their own right by the glob above.
-        check_interpret(&name, &path, should_fail, &mut failures);
-        check_compile(&name, &path, should_fail, &tmp_dir, &mut failures);
+        check_interpret(&name, &path, expect, &mut failures);
+        check_compile(&name, &path, expect, &tmp_dir, &mut failures);
         checked += 1;
     }
 
     assert!(checked > 0, "no .code fixtures found in {}", dir.display());
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// What a fixture's filename prefix (`fail_`/`buildonly_`/none) says about
+/// how the two output modes should behave — see this file's top comment.
+#[derive(Clone, Copy, PartialEq)]
+enum Expect {
+    Succeed,
+    Fail,
+    BuildOnly,
 }
 
 /// Compiles `tests/native_modules/test_math.c` into the `.so` that the
@@ -74,7 +98,44 @@ fn build_native_test_module(tests_dir: &Path) {
     assert!(status.success(), "cc failed to build {}", src.display());
 }
 
-fn check_interpret(name: &str, path: &Path, should_fail: bool, failures: &mut Vec<String>) {
+/// Compiles `test_math_static.c` and `test_math_static_ambiguous.c` into the
+/// `.a` archives the `buildonly_native_link_static_*`/
+/// `fail_native_link_static_*` fixtures `link` — `cc -c` then `ar rcs`,
+/// mirroring `build_native_test_module`'s `cc -shared` for the `.so` case.
+fn build_native_static_test_modules(tests_dir: &Path) {
+    for stem in ["test_math_static", "test_math_static_ambiguous"] {
+        let modules_dir = tests_dir.join("native_modules");
+        let src = modules_dir.join(format!("{stem}.c"));
+        let obj = modules_dir.join(format!("{stem}.o"));
+        let archive = modules_dir.join(format!("{stem}.a"));
+
+        let status = Command::new("cc")
+            .arg("-c")
+            .arg("-o")
+            .arg(&obj)
+            .arg(&src)
+            .status()
+            .unwrap_or_else(|e| panic!("failed to run cc for {}: {e}", src.display()));
+        assert!(status.success(), "cc failed to build {}", src.display());
+
+        let _ = fs::remove_file(&archive);
+        let status = Command::new("ar")
+            .arg("rcs")
+            .arg(&archive)
+            .arg(&obj)
+            .status()
+            .unwrap_or_else(|e| panic!("failed to run ar for {}: {e}", obj.display()));
+        assert!(status.success(), "ar failed to build {}", archive.display());
+
+        let _ = fs::remove_file(&obj);
+    }
+}
+
+fn check_interpret(name: &str, path: &Path, expect: Expect, failures: &mut Vec<String>) {
+    // `BuildOnly` behaves like `Fail` here — a `.a` link is refused by
+    // `interpreter.rs` outright, the same shape of error as any other
+    // fail_*.code fixture, just for a different reason.
+    let should_fail = expect != Expect::Succeed;
     match (should_fail, code::run_file(path)) {
         (false, Err(e)) => failures.push(format!(
             "{name}: interpret: expected to run, but errored: {e}"
@@ -84,15 +145,10 @@ fn check_interpret(name: &str, path: &Path, should_fail: bool, failures: &mut Ve
     }
 }
 
-fn check_compile(
-    name: &str,
-    path: &Path,
-    should_fail: bool,
-    tmp_dir: &Path,
-    failures: &mut Vec<String>,
-) {
+fn check_compile(name: &str, path: &Path, expect: Expect, tmp_dir: &Path, failures: &mut Vec<String>) {
     let stem = name.trim_end_matches(".code");
     let exe_path: PathBuf = tmp_dir.join(stem);
+    let should_fail = expect == Expect::Fail;
 
     match code::compile_file(path, &exe_path) {
         Err(e) => {
@@ -132,6 +188,10 @@ fn check_compile(
                     output.status,
                     String::from_utf8_lossy(&output.stderr)
                 ));
+            } else if expect == Expect::BuildOnly {
+                // No interpreted run to compare against — `code run` never
+                // produces bindings for a `.a` link at all (see
+                // `check_interpret`).
             } else {
                 let compiled_stdout = String::from_utf8_lossy(&output.stdout).to_string();
                 let interpreted_stdout = code::run_file(path)

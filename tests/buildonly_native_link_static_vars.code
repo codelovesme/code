@@ -1,0 +1,5 @@
+-- A `.a` module can export variables (constants) too, reachable as
+-- `m.<name>` exactly like a `.so`'s — see `code_static_vars_object` in
+-- runtime.c. `buildonly_` because `.a` only links under `code build`.
+link "native_modules/test_math_static.a" as m
+assert m.answer = 42

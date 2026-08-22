@@ -14,23 +14,25 @@ export *values* via an optional `code_module_vars()` (see `code_abi.h`'s
 therefore dual-purpose — a field-access target *and* an `emit` target — and
 a module that exports no vars still works as an `emit`-only target (the
 export is optional, not required). See `tests/native_link_vars*.code` and
-`test_math.c`'s `code_module_vars`. What's below is what's still open,
-updated in place rather than rewritten, since most of the original reasoning
-still holds.
+`test_math.c`'s `code_module_vars`.
 
-`link` today resolves `.code` and native `.so` modules. The owner wants it to
-also link `.a`/`.wasm` modules and modules compiled by languages other than
-`code` itself (a `.so` module is already language-agnostic — any C-ABI
-producer works — so that half is actually done; only the format half below
-is still open). The format question was settled while building source
-linking; the hard part was not.
+**Phase 3 shipped 2026-08-22: `.a` static modules.** See the "Still open"
+section below for the detail — kept there rather than moved up here since
+it was written as the answer to what that section used to call the
+remaining blocker.
+
+`link` today resolves `.code` and native `.so`/`.a` modules. The owner wants
+it to also link modules compiled by languages other than `code` itself (a
+`.so`/`.a` module is already language-agnostic — any C-ABI producer works —
+so that half is actually done; only `.wasm` (format) and `code build --lib`
+(direction) below are still open).
 
 ## Formats — decided
 
 | format | `code run` | `code build` | why |
 |---|---|---|---|
 | `.so` | yes | yes | **the primary format**: one artifact both modes accept |
-| `.a` | no, clear error | yes | static archives cannot be loaded at runtime — there is no `dlopen` for them. Worth supporting on the compile side anyway: it produces a binary with no runtime dependency to find |
+| `.a` | no, clear error | **yes (shipped)** | static archives cannot be loaded at runtime — there is no `dlopen` for them. Worth supporting on the compile side anyway: it produces a binary with no runtime dependency to find |
 | `.wasm` | yes | no, clear error | `cc` cannot link a `.wasm` into a native executable; supporting it would mean embedding a wasm runtime in *every* binary we emit. Natural primary format if a wasm build target is ever added |
 
 The reasoning behind keeping `.so` on both sides, rather than splitting `.so`
@@ -97,17 +99,32 @@ caught before any module code runs).
 
 ## Still open
 
-- **`.a`/`.wasm` formats.** `.so` is the only one `link` accepts today — a
-  `.a`/`.wasm` path is a clear compile-time error naming
-  `docs/todo/native-module-linking.md`, per the table above. Building these
-  needs the reasoning above, adapted: `.a` has no dlopen story at all
-  (static-link-only, so the ABI would need to change from
-  "dlsym one fixed symbol name" to something that survives normal object
-  linking — probably back to unique-per-module symbol names, since two
-  `.a`s in the same final binary *do* share one flat symbol namespace,
-  unlike two `.so` handles); `.wasm` needs a wasm runtime embedded in the
-  interpreter (and, for `code build`, in the emitted binary too) — nothing
-  towards either exists yet.
+- **`.wasm` format.** `.so` and `.a` are the two `link` accepts today — a
+  `.wasm` path is a clear compile-time error naming
+  `docs/todo/native-module-linking.md`, per the table above. Building it
+  needs a wasm runtime embedded in the interpreter (and, for `code build`,
+  in the emitted binary too) — nothing towards it exists yet.
+
+**`.a` shipped 2026-08-22.** `link "x.a" as m` links straight into the
+`code build` binary — `code run` refuses it outright (there is no `dlopen`
+for a static archive). The real blocker turned out not to be the
+module-vs-module symbol collision this doc used to speculate about, but a
+module-vs-*host* one: every `code build` binary already links `runtime.c`,
+so a `.a` module can't bring its own copy of it (unlike `.so`, which
+`dlopen` gives a private symbol table) without duplicate-symbol errors on
+every one of runtime.c's ~27 public functions. The fix: a `.a` module calls
+the *host's* own constructors directly (now declared `extern` in
+`code_abi.h`'s new "`.a` static modules" section) instead of bringing its
+own — which also means no deep-copy boundary, no separate allocator, and no
+per-module `code_release` the way `.so` needs. The only names a `.a` module
+must still choose carefully are its own three entry points
+(`<prefix>_code_module_dispatch` etc.), found via `nm` at `code build` time
+(`loader.rs`'s `static_module_symbols`) rather than through any new syntax.
+See `tests/native_modules/test_math_static.c` for a worked example, and
+`tests/buildonly_native_link_static_*.code` / `fail_native_link_static_*.code`
+for the fixture coverage (a new `buildonly_` fixture prefix in
+`run_language_tests.rs`, for the first feature that must succeed under
+`code build` and fail under `code run`).
 - **`code build --lib`.** `code build` still only emits a `main`-having
   executable. A program *written in `code`* can't itself become a linkable
   native module yet — moot today anyway, since a `code`-authored module

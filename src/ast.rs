@@ -118,7 +118,11 @@ pub enum Stmt {
     /// it is also the target `emit ... to x` dispatches to. A module with
     /// no `code_module_vars` export binds `alias` to an empty object. See
     /// `docs/todo/native-module-linking.md`.
-    ImportNative { alias: String, path: String },
+    ImportNative {
+        alias: String,
+        path: String,
+        format: NativeFormat,
+    },
     /// `emit <particle> to <target> [get <name>]` — invokes a handler.
     /// Which one is chosen at **runtime**, by reading the particle's own
     /// `"_class"` field — never resolved at parse or compile time, even
@@ -143,6 +147,27 @@ pub enum Stmt {
     /// *parse* error rather than a later check, so the interpreter and the
     /// compiler reject it identically without either needing its own rule.
     Break,
+}
+
+/// Which format a resolved `Stmt::ImportNative` came from — produced only by
+/// `loader.rs`, consumed differently by each backend (interpreter.rs refuses
+/// `Static` outright; codegen.rs is the only one that can act on it). See
+/// `docs/todo/native-module-linking.md`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NativeFormat {
+    /// `.so` — `dlopen`/`dlsym` at runtime, in both `code run` and `code
+    /// build`. The module is self-contained (its own copy of the runtime),
+    /// so a call across the boundary needs a deep copy both ways — see
+    /// `code_abi.h`.
+    Dynamic,
+    /// `.a` — linked straight into the host binary by `cc`, `code build`
+    /// only (there is no `dlopen` for a static archive). The module shares
+    /// the host's own runtime, so no copy is needed either way; `prefix` is
+    /// what `loader.rs` found by running `nm` on the archive, the module
+    /// author's chosen unique name for `<prefix>_code_module_dispatch` /
+    /// `_code_module_abi_version` / (optionally) `_code_module_vars`. See
+    /// `code_abi.h`'s "`.a` static modules" section.
+    Static { prefix: String, has_vars: bool },
 }
 
 /// `emit`'s `to` clause. `Core` is the compiled-in handler set (`core` is

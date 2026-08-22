@@ -10,8 +10,9 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
-use crate::ast::{Program, Stmt};
+use crate::ast::{NativeFormat, Program, Stmt};
 use crate::{lexer, parser};
 
 /// What a module reference resolved to.
@@ -24,11 +25,17 @@ use crate::{lexer, parser};
 pub enum ResolvedModule {
     /// A `.code` module, to be parsed and inlined.
     Source { identity: String, text: String },
-    /// A native `.so` module — see `docs/todo/native-module-linking.md` and
-    /// `code_abi.h`. Carries a real filesystem path (not source text):
-    /// loading it means `dlopen`, done by the interpreter/codegen, not here
-    /// — this module stays pure AST/path work, like the `Source` case.
-    Native { identity: String, path: String },
+    /// A native module (`.so` or `.a`) — see `docs/todo/native-module-linking.md`
+    /// and `code_abi.h`. Carries a real filesystem path (not source text):
+    /// loading it means `dlopen` or a `cc`-time link, done by the
+    /// interpreter/codegen, not here — this module stays pure AST/path work,
+    /// like the `Source` case. `format` distinguishes the two — see
+    /// `ast::NativeFormat`.
+    Native {
+        identity: String,
+        path: String,
+        format: NativeFormat,
+    },
 }
 
 /// Where module source comes from. Abstracted so the loader is not tied to a
@@ -76,8 +83,11 @@ impl ModuleResolver for FilesystemResolver {
 
         // Format decided by extension (docs/todo/native-module-linking.md):
         // `.so` loads (both output modes, via dlopen — never `cc`-time
-        // static linking, see runtime.c's `code_native_open`). `.a`/`.wasm`
-        // are named there as future formats, not built yet.
+        // static linking, see runtime.c's `code_native_open`). `.a` resolves
+        // here too (both modes see the same AST either way — see
+        // `ast::NativeFormat`), but only `code build` can actually link one;
+        // `interpreter.rs` refuses a `Static` `ImportNative` outright.
+        // `.wasm` is named in the todo doc as a future format, not built yet.
         if let Some(ext) = Path::new(module_ref).extension().and_then(|e| e.to_str()) {
             if ext == "so" {
                 let direct = base.join(module_ref);
@@ -86,12 +96,25 @@ impl ModuleResolver for FilesystemResolver {
                 return Ok(ResolvedModule::Native {
                     identity: canonical.display().to_string(),
                     path: canonical.display().to_string(),
+                    format: NativeFormat::Dynamic,
                 });
             }
-            if ext == "a" || ext == "wasm" {
+            if ext == "a" {
+                let direct = base.join(module_ref);
+                let canonical = fs::canonicalize(&direct)
+                    .map_err(|e| format!("cannot resolve '{}': {e}", direct.display()))?;
+                let path = canonical.display().to_string();
+                let (prefix, has_vars) = static_module_symbols(&path)?;
+                return Ok(ResolvedModule::Native {
+                    identity: path.clone(),
+                    path,
+                    format: NativeFormat::Static { prefix, has_vars },
+                });
+            }
+            if ext == "wasm" {
                 return Err(format!(
                     "cannot link '{module_ref}': .{ext} native modules aren't supported yet \
-                     (see docs/todo/native-module-linking.md) — only .so and .code are"
+                     (see docs/todo/native-module-linking.md) — only .so, .a and .code are"
                 ));
             }
         }
@@ -110,6 +133,75 @@ impl ModuleResolver for FilesystemResolver {
             "cannot resolve module '{module_ref}' from '{from_identity}'"
         ))
     }
+}
+
+/// Finds a `.a` module's chosen prefix by reading its symbol table with
+/// `nm` — the only way to discover it, since (unlike `.so`'s fixed
+/// `code_module_dispatch`, resolved per-handle at `dlopen` time) a `.a`'s
+/// entry points must be uniquely named to survive being linked into one
+/// flat symbol table alongside every other `.a` in the same program (see
+/// `code_abi.h`'s "`.a` static modules" section). Returns the prefix and
+/// whether `<prefix>_code_module_vars` is also present (optional, exactly
+/// like `.so`'s `code_module_vars`).
+///
+/// Read-only introspection, run at `link` time in both output modes (a
+/// `code run` of a program that links a `.a` still fails, but from
+/// `interpreter.rs` refusing a `Static` `ImportNative`, not from a missing
+/// prefix) — consistent with the project's existing reliance on a system
+/// toolchain (`cc`); `nm` ships with the same binutils.
+fn static_module_symbols(path: &str) -> Result<(String, bool), String> {
+    let output = Command::new("nm")
+        .arg("--defined-only")
+        .arg("-g")
+        .arg(path)
+        .output()
+        .map_err(|e| format!("cannot read symbols of '{path}': failed to run nm: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "cannot read symbols of '{path}': nm exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let names: Vec<&str> = text
+        .lines()
+        .filter_map(|line| line.split_whitespace().last())
+        .collect();
+
+    let suffix = "_code_module_dispatch";
+    let matches: Vec<&str> = names
+        .iter()
+        .copied()
+        .filter(|name| *name != suffix && name.ends_with(suffix))
+        .collect();
+    let prefix = match matches.as_slice() {
+        [] => {
+            return Err(format!(
+                "cannot link '{path}': no symbol ending in '{suffix}' found — a .a module must \
+                 export '<prefix>{suffix}' (see code_abi.h's \".a static modules\" section)"
+            ));
+        }
+        [name] => name.trim_end_matches(suffix).to_string(),
+        _ => {
+            return Err(format!(
+                "cannot link '{path}': more than one symbol ends in '{suffix}' ({}) — a .a \
+                 module's prefix must be unique",
+                matches.join(", ")
+            ));
+        }
+    };
+
+    let version_symbol = format!("{prefix}_code_module_abi_version");
+    if !names.contains(&version_symbol.as_str()) {
+        return Err(format!(
+            "cannot link '{path}': missing '{version_symbol}' (found '{prefix}{suffix}', but a \
+             .a module needs both)"
+        ));
+    }
+    let has_vars = names.contains(&format!("{prefix}_code_module_vars").as_str());
+
+    Ok((prefix, has_vars))
 }
 
 /// A resolver for hosts with no module story at all — the wasm playground.
@@ -191,7 +283,9 @@ impl Loader<'_> {
         let (identity, text) = match resolved {
             ResolvedModule::Source { identity, text } => (identity, text),
             ResolvedModule::Native {
-                path: native_path, ..
+                path: native_path,
+                format,
+                ..
             } => {
                 let alias = alias.ok_or_else(|| {
                     format!(
@@ -202,6 +296,7 @@ impl Loader<'_> {
                 return Ok(Stmt::ImportNative {
                     alias,
                     path: native_path,
+                    format,
                 });
             }
         };

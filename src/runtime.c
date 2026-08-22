@@ -35,8 +35,13 @@ static CodeValue *slot_at(void *base, long long index) {
  * (src/main.rs: `eprintln!("error: {e}"); ExitCode::FAILURE`) — operand
  * types are only known once the program is actually running, so a type
  * mismatch/division-by-zero can only ever be caught here, not at compile
- * time (unlike `verify_defined`'s undefined-variable check). */
-_Noreturn static void code_runtime_error(const char *message) {
+ * time (unlike `verify_defined`'s undefined-variable check).
+ *
+ * Not `static`: a `.a` static module (see the "Native modules" section
+ * below) links directly against the host's own copy of this runtime rather
+ * than bringing its own, so it needs this externally visible to raise its
+ * own fatal errors the same way `core`'s handlers do. */
+_Noreturn void code_runtime_error(const char *message) {
     fprintf(stderr, "error: %s\n", message);
     exit(1);
 }
@@ -418,7 +423,17 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
  * allocated. That is what keeps `CODE_CHECK_LEAKS` meaningful on both sides
  * of a dlopen boundary: two separate copies of this runtime, two separate
  * static `live_blocks` counters, each only ever freeing blocks it itself
- * allocated. */
+ * allocated.
+ *
+ * A `.a` static module (`link "x.a" as x`, `code build` only — see
+ * `docs/todo/native-module-linking.md`) is a different story, handled
+ * entirely by codegen.rs rather than by a `NativeHandle` here: it is linked
+ * straight into the same binary as this very runtime, so it calls
+ * `code_number`/`code_array`/... directly rather than bringing its own copy,
+ * and its result needs no deep copy — it was built with the host's own
+ * allocator to begin with. `code_static_module_check` and
+ * `code_static_vars_object` below are the two bits of that path still
+ * shared here rather than duplicated in generated IR. */
 
 typedef struct {
     void (*dispatch)(CodeValue *out, const CodeValue *particle);
@@ -430,6 +445,21 @@ typedef struct {
      * error. */
     const CodeVarList *(*vars)(void);
 } NativeHandle;
+
+/* Shared by both native-module paths (`.so` here, `.a` in codegen's direct
+ * calls — see `code_static_vars_object` below): aborts with a consistent
+ * message if `version` (whatever a module's `code_module_abi_version`
+ * reported) doesn't match this runtime's `CODE_ABI_VERSION`. `what` names
+ * the module in the error (a path for `.so`, the module's chosen prefix for
+ * `.a`). */
+void code_static_module_check(uint32_t version, const char *what) {
+    if (version != CODE_ABI_VERSION) {
+        char msg[256];
+        snprintf(msg, sizeof msg, "native module '%s' has ABI version %u (expected %u)", what,
+                 (unsigned)version, (unsigned)CODE_ABI_VERSION);
+        code_runtime_error(msg);
+    }
+}
 
 void *code_native_open(const char *path) {
     void *handle = dlopen(path, RTLD_NOW);
@@ -445,13 +475,7 @@ void *code_native_open(const char *path) {
         snprintf(msg, sizeof msg, "native module '%s' missing 'code_module_abi_version'", path);
         code_runtime_error(msg);
     }
-    uint32_t version = version_fn();
-    if (version != CODE_ABI_VERSION) {
-        char msg[256];
-        snprintf(msg, sizeof msg, "native module '%s' has ABI version %u (expected %u)", path,
-                 (unsigned)version, (unsigned)CODE_ABI_VERSION);
-        code_runtime_error(msg);
-    }
+    code_static_module_check(version_fn(), path);
 
     NativeHandle *nh = malloc(sizeof(NativeHandle));
     if (!nh) {
@@ -597,6 +621,41 @@ void code_native_vars_object(void *handle, CodeValue *out) {
     // drop the scratch copies now (and the module's own copies are the
     // module's to keep — we never release its name strings, only the values
     // we copied out of its buffer).
+    if (count > 0) {
+        for (long long i = 0; i < count; i++) {
+            code_release(slot_at(values, i));
+        }
+        free(values);
+    }
+    free(keys);
+}
+
+/* `link "x.a" as x`'s equivalent of `code_native_vars_object` above, for a
+ * module whose `code_module_vars` (if it exports one — `list` is NULL
+ * otherwise) already returns host-allocated values: no `code_native_copy_in`
+ * needed, just `code_retain` into a fresh object, exactly like building an
+ * object literal from existing bindings. Key strings are borrowed exactly
+ * as `code_native_vars_object` borrows them — the module's static storage
+ * outlives the program, there being no `.a` equivalent of `dlclose` to worry
+ * about at all. */
+void code_static_vars_object(const CodeVarList *list, CodeValue *out) {
+    long long count = list ? list->count : 0;
+    if (count < 0) {
+        code_runtime_error("native module reports a negative variable count");
+    }
+    const char **keys = NULL;
+    void *values = NULL;
+    if (count > 0) {
+        keys = (const char **)malloc((size_t)count * sizeof(const char *));
+        values = malloc((size_t)count * CODE_VALUE_SLOT_SIZE);
+        for (long long i = 0; i < count; i++) {
+            keys[i] = list->names[i];
+            CodeValue *slot = slot_at(values, i);
+            *slot = *slot_at(list->values, i);
+            code_retain(slot);
+        }
+    }
+    code_object(out, keys, values, count);
     if (count > 0) {
         for (long long i = 0; i < count; i++) {
             code_release(slot_at(values, i));
