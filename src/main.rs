@@ -5,6 +5,11 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+/// Printed by `--version` / `-v`. The release workflow rewrites the package
+/// version from the git tag before building (release.yml), so a tagged build
+/// reports the release version here.
+const VERSION: &str = concat!("Code v", env!("CARGO_PKG_VERSION"));
+
 /// Where the first-party module index lives — the JSON file served from the
 /// Pages site (`docs/todo/community-modules.md`: "starts life as a JSON file
 /// in this repo, served from the Pages site"). Overridable for offline work
@@ -50,6 +55,12 @@ fn main() -> ExitCode {
         Some("remove") | Some("rm") => cmd_remove(args.collect()),
         #[cfg(feature = "install")]
         Some("ls") => cmd_ls(),
+        // A global flag rather than a subcommand, so it takes no feature gate
+        // and works even in the wasm-only interpreter build.
+        Some("--version") | Some("-v") => {
+            println!("{VERSION}");
+            ExitCode::SUCCESS
+        }
         Some(other) => {
             eprintln!("unknown command '{other}' ({USAGE})");
             ExitCode::FAILURE
