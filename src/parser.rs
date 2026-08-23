@@ -15,6 +15,32 @@ pub fn parse(tokens: &[Token]) -> Result<Program, String> {
     p.program()
 }
 
+/// Parses a single expression from `tokens` rather than a whole program — a
+/// thin wrapper around the same `Parser::expr()` that already parses every
+/// literal (`Number`/`Str`/`Bool`/`Null`/`Array`/`Object`) inside a real
+/// `.code` program. Exists to decode JSON text into a `Value`
+/// (`interpreter::eval_literal`) without a second JSON parser: the
+/// language's own literal grammar already *is* JSON's — see `value.rs`'s
+/// `Display` impl, which emits the other direction for free. Used by
+/// `crates/code-wasm` to turn a JS callback's returned JSON string back into
+/// a `Value`. Errors if anything besides the one expression (plus
+/// surrounding newlines) remains.
+pub fn parse_expr(tokens: &[Token]) -> Result<Expr, String> {
+    let mut p = Parser {
+        tokens,
+        pos: 0,
+        loop_depth: 0,
+        block_depth: 0,
+    };
+    p.skip_newlines();
+    let expr = p.expr()?;
+    p.skip_newlines();
+    if !matches!(p.peek(), Token::Eof) {
+        return Err(format!("expected end of input, found {:?}", p.peek()));
+    }
+    Ok(expr)
+}
+
 struct Parser<'a> {
     tokens: &'a [Token],
     pos: usize,

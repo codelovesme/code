@@ -6,6 +6,11 @@
 # deploy time (.github/workflows/pages.yml), never committed.
 /dist/
 
+# npm package build output — assembled by crates/code-wasm/npm/build.sh,
+# same not-committed-binaries convention as /dist/ above.
+/crates/code-wasm/npm/dist/
+/crates/code-wasm/npm/*.tgz
+
 # Editor / OS
 .DS_Store
 *.swp

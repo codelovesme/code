@@ -149,9 +149,11 @@ pub enum Stmt {
     Break,
 }
 
-/// Which format a resolved `Stmt::ImportNative` came from — produced only by
-/// `loader.rs`, consumed differently by each backend (interpreter.rs refuses
-/// `Static` outright; codegen.rs is the only one that can act on it). See
+/// Which format a resolved `Stmt::ImportNative` came from — produced by
+/// `loader.rs` (`Dynamic`/`Static`) or, for `crates/code-wasm`, its own
+/// resolver (`JsBridge`) — consumed differently by each backend
+/// (interpreter.rs refuses `Static` outright; codegen.rs is the only one
+/// that can act on it; `JsBridge` never reaches codegen.rs at all). See
 /// `docs/todo/native-module-linking.md`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum NativeFormat {
@@ -168,6 +170,17 @@ pub enum NativeFormat {
     /// `_code_module_abi_version` / (optionally) `_code_module_vars`. See
     /// `code_abi.h`'s "`.a` static modules" section.
     Static { prefix: String, has_vars: bool },
+    /// A `crates/code-wasm`-only format: the alias dispatches to a plain
+    /// synchronous JS callback (JSON string in, JSON string out) that the
+    /// embedding JS host must have already registered — via
+    /// `Environment::link_module` — before the program ever starts running.
+    /// There is no file to open and nothing to resolve at the point this
+    /// statement executes; the interpreter only checks the alias is present.
+    /// Carries no payload — the alias on `Stmt::ImportNative` itself is the
+    /// only thing needed to look it up. Never produced by `loader.rs`'s own
+    /// `FilesystemResolver`/`NoModules`, and never reaches codegen.rs (there
+    /// is no `code build` in a browser).
+    JsBridge,
 }
 
 /// `emit`'s `to` clause. `Core` is the compiled-in handler set (`core` is

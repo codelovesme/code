@@ -1,0 +1,31 @@
+{
+  "name": "code-wasm",
+  "version": "0.1.0",
+  "description": "Run Code — a language with no user-defined functions, particle emission for behavior, and browser-embeddable third-party modules — in any browser or JS host. A small WASM bridge around the language's real parser and interpreter.",
+  "type": "module",
+  "main": "dist/code_wasm.js",
+  "module": "dist/code_wasm.js",
+  "types": "dist/code_wasm.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "dist/code_wasm.js"
+  ],
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codelovesme/code.git",
+    "directory": "crates/code-wasm"
+  },
+  "homepage": "https://codelovesme.github.io/code/",
+  "bugs": "https://github.com/codelovesme/code/issues",
+  "keywords": [
+    "wasm",
+    "webassembly",
+    "interpreter",
+    "playground",
+    "language",
+    "plugins"
+  ]
+}

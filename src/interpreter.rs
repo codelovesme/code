@@ -1,10 +1,23 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::rc::Rc;
 
 use crate::ast::{BinOp, EmitTarget, Expr, NativeFormat, Program, Stmt, UnOp};
 #[cfg(feature = "native-modules")]
 use crate::native::NativeModule;
 use crate::value::Value;
+
+/// A linked module's live dispatch entry point — what `emit ... to <alias>`
+/// calls. Closure-based rather than a trait `Environment` is generic over:
+/// a `.so` module (`native.rs`, `NativeFormat::Dynamic`) and a
+/// `crates/code-wasm` JS callback (`NativeFormat::JsBridge`) wrap their very
+/// different underlying mechanisms into the exact same shape, the way the
+/// old language's `NativeFnPtr` let a `dlopen`'d `.so` and a `wasmi`-hosted
+/// `.wasm` share one module type. Exported *variables*, unlike dispatch,
+/// need no such abstraction — they're read once at `link` time and stored
+/// as an ordinary `Value` binding (see `link_module`), the same for every
+/// format.
+pub type ModuleDispatch = Rc<dyn Fn(&Value) -> Result<Value, String>>;
 
 /// A name -> Value binding table, scoped for `if`/`let` (see memory
 /// `new-code-if-scoping` and `new-code-let-keyword`): a stack of maps,
@@ -14,20 +27,46 @@ use crate::value::Value;
 /// *existing* binding and updates it in place — an error if there isn't
 /// one anywhere. Rebinding a name to a Value of a different variant is not
 /// an error — variables are untyped, only Values are.
-#[derive(Debug)]
 pub struct Environment {
     scopes: Vec<HashMap<String, Value>>,
     /// First-assignment order of names in the *outermost* scope only — the
     /// only scope whose bindings ever get dumped (see `iter_in_order`); an
     /// `if`-local binding never appears here even if the `if` runs.
     order: Vec<String>,
-    /// Linked native modules, by alias — a separate namespace from
-    /// `scopes`, not a `Value`: this language has no function-value kind a
-    /// handler could be represented as, so a native module is only ever
-    /// reachable via `emit ... to <alias>`, never as an ordinary binding.
-    /// Always top-level, like `Stmt::ImportNative` itself.
-    #[cfg(feature = "native-modules")]
-    native_modules: HashMap<String, NativeModule>,
+    /// Linked modules' dispatch entry points, by alias — a separate
+    /// namespace from `scopes`, not a `Value`: this language has no
+    /// function-value kind a handler could be represented as, so a module is
+    /// only ever reachable via `emit ... to <alias>`, never as an ordinary
+    /// binding. Always top-level, like `Stmt::ImportNative` itself. Present
+    /// unconditionally (not gated on `native-modules`): `crates/code-wasm`
+    /// needs it too, with that feature off.
+    modules: HashMap<String, ModuleDispatch>,
+    /// Modules a host (`crates/code-wasm`) made available *before* the
+    /// program started, by the name it registered them under — distinct from
+    /// `modules`, which is keyed by whatever alias a `link "<name>" as
+    /// <alias>` statement actually bound, and those two names can differ
+    /// (`.so`'s `path` and `alias` are just as decoupled). A
+    /// `NativeFormat::JsBridge` `ImportNative` looks its `path` up here and
+    /// promotes it into `modules`/a binding under `alias` when it runs — see
+    /// `provide_module` and that `exec` arm.
+    available_modules: HashMap<String, (Value, ModuleDispatch)>,
+}
+
+/// Derived `Debug` doesn't work once a field holds a `dyn Fn` (no `Debug`
+/// impl for closures) — written by hand instead, showing `modules`' keys
+/// only, not the dispatchers themselves.
+impl fmt::Debug for Environment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Environment")
+            .field("scopes", &self.scopes)
+            .field("order", &self.order)
+            .field("modules", &self.modules.keys().collect::<Vec<_>>())
+            .field(
+                "available_modules",
+                &self.available_modules.keys().collect::<Vec<_>>(),
+            )
+            .finish()
+    }
 }
 
 impl Default for Environment {
@@ -35,8 +74,8 @@ impl Default for Environment {
         Environment {
             scopes: vec![HashMap::new()],
             order: Vec::new(),
-            #[cfg(feature = "native-modules")]
-            native_modules: HashMap::new(),
+            modules: HashMap::new(),
+            available_modules: HashMap::new(),
         }
     }
 }
@@ -44,6 +83,30 @@ impl Default for Environment {
 impl Environment {
     pub fn get(&self, name: &str) -> Option<&Value> {
         self.scopes.iter().rev().find_map(|scope| scope.get(name))
+    }
+
+    /// Links a module under `alias`: binds `alias` to `vars` (an ordinary
+    /// field-accessible value, exactly like `Import`'s alias — see
+    /// `Stmt::ImportNative`'s doc comment) and registers `dispatch` as what
+    /// `emit ... to <alias>` calls. What every module format's `exec` arm
+    /// calls once it has resolved its own way (`.so` via `NativeModule::open`;
+    /// `JsBridge` via `available_modules`, below) — the one place an alias
+    /// actually becomes usable.
+    pub fn link_module(&mut self, alias: &str, vars: Value, dispatch: ModuleDispatch) {
+        self.declare(alias.to_string(), vars);
+        self.modules.insert(alias.to_string(), dispatch);
+    }
+
+    /// Makes a module available under `name` for a *later* `link "<name>" as
+    /// <alias>"` to promote into a real binding via `link_module` — what a
+    /// host (`crates/code-wasm`) calls, once per JS-provided module, before
+    /// the program itself runs at all. `name` is deliberately a separate
+    /// namespace from any alias a script chooses: exactly like a `.so`'s
+    /// file path and its `as` alias can differ, `link "mymath" as m"` is
+    /// free to rename whatever the host called `"mymath"`.
+    pub fn provide_module(&mut self, name: &str, vars: Value, dispatch: ModuleDispatch) {
+        self.available_modules
+            .insert(name.to_string(), (vars, dispatch));
     }
 
     /// `let name = value` — always a new binding in the current scope,
@@ -93,7 +156,16 @@ impl Environment {
 }
 
 pub fn run(program: &Program) -> Result<Environment, String> {
-    let mut env = Environment::default();
+    run_with(program, Environment::default())
+}
+
+/// Like `run`, but against a caller-supplied `Environment` rather than
+/// always starting from `Environment::default()` — the hook
+/// `crates/code-wasm` needs to pre-link its JS-callback modules
+/// (`Environment::link_module`) before the program itself ever runs, since
+/// a `JsBridge`-formatted `ImportNative` only ever checks an alias is
+/// already present, never resolves one itself (see that arm below).
+pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, String> {
     for stmt in &program.statements {
         // Can only ever be `Flow::Normal` out here: the parser rejects a
         // `break` that isn't inside a loop, so nothing can propagate one up
@@ -144,33 +216,46 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
         Stmt::Link { path, .. } => Err(format!(
             "internal error: link \"{path}\" reached the interpreter unresolved"
         )),
-        Stmt::ImportNative { alias, path, format } => {
-            if let NativeFormat::Static { .. } = format {
-                return Err(format!(
-                    "link \"{path}\": .a modules only work with 'code build', not 'code run' \
-                     — see docs/todo/native-module-linking.md"
-                ));
-            }
-            #[cfg(feature = "native-modules")]
-            {
-                let module = NativeModule::open(path)?;
-                // The module's exported variables (constants) become an
-                // object bound under `alias`, so `alias.name` is ordinary
-                // field access — the same binding `Import`'s alias uses. A
-                // module with no `code_module_vars` export yields an empty
-                // object. The module itself is kept in a separate namespace
-                // for `emit ... to <alias>` dispatch.
-                let vars = module.vars()?;
-                env.declare(alias.clone(), Value::Object(Rc::new(vars)));
-                env.native_modules.insert(alias.clone(), module);
+        Stmt::ImportNative { alias, path, format } => match format {
+            NativeFormat::Static { .. } => Err(format!(
+                "link \"{path}\": .a modules only work with 'code build', not 'code run' \
+                 — see docs/todo/native-module-linking.md"
+            )),
+            // The host (`crates/code-wasm`) must have already called
+            // `Environment::provide_module(path, ...)` before the program
+            // started running at all — `path` is the name the host
+            // registered it under, which `alias` (this `link ... as
+            // <alias>`) may rename. See `ast::NativeFormat::JsBridge`.
+            NativeFormat::JsBridge => {
+                let (vars, dispatch) = env
+                    .available_modules
+                    .get(path)
+                    .cloned()
+                    .ok_or_else(|| format!("link \"{path}\": no module named '{path}' was provided before running"))?;
+                env.link_module(alias, vars, dispatch);
                 Ok(Flow::Normal)
             }
-            #[cfg(not(feature = "native-modules"))]
-            {
-                let _ = (alias, path, format);
-                Err("native modules aren't supported in this build".to_string())
+            NativeFormat::Dynamic => {
+                #[cfg(feature = "native-modules")]
+                {
+                    let module = NativeModule::open(path)?;
+                    // The module's exported variables (constants) become an
+                    // object bound under `alias`, so `alias.name` is ordinary
+                    // field access — the same binding `Import`'s alias uses.
+                    // A module with no `code_module_vars` export yields an
+                    // empty object.
+                    let vars = module.vars()?;
+                    let dispatch: ModuleDispatch = Rc::new(move |v| module.dispatch(v));
+                    env.link_module(alias, Value::Object(Rc::new(vars)), dispatch);
+                    Ok(Flow::Normal)
+                }
+                #[cfg(not(feature = "native-modules"))]
+                {
+                    let _ = (alias, path);
+                    Err("native modules aren't supported in this build".to_string())
+                }
             }
-        }
+        },
         Stmt::Import {
             alias,
             body,
@@ -273,19 +358,12 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             let output = match target {
                 EmitTarget::Core => dispatch_core(&value)?,
                 EmitTarget::Module(alias) => {
-                    #[cfg(feature = "native-modules")]
-                    {
-                        let module = env
-                            .native_modules
-                            .get(alias)
-                            .ok_or_else(|| format!("no linked native module named '{alias}'"))?;
-                        module.dispatch(&value)?
-                    }
-                    #[cfg(not(feature = "native-modules"))]
-                    {
-                        let _ = alias;
-                        return Err("native modules aren't supported in this build".to_string());
-                    }
+                    let dispatch = env
+                        .modules
+                        .get(alias)
+                        .ok_or_else(|| format!("no linked module named '{alias}'"))?
+                        .clone();
+                    dispatch(&value)?
                 }
             };
             if let Some(name) = result {
@@ -295,6 +373,19 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
         }
         Stmt::Break => Ok(Flow::Break),
     }
+}
+
+/// Evaluates a literal expression with no variables to resolve — the other
+/// half of `parser::parse_expr`'s JSON-decoding trick: a JSON literal
+/// (object/array/string/number/bool/null) is exactly this language's own
+/// literal grammar, and `eval` already turns any `Expr` into a `Value`.
+/// Bare `eval` is private and needs an `Environment` because a general
+/// expression *can* reference variables; a literal never does, so a
+/// throwaway empty one is always enough here — an identifier in `expr`
+/// would still correctly fail as "undefined variable", exactly as it should
+/// for something that's supposed to be pure JSON.
+pub fn eval_literal(expr: &Expr) -> Result<Value, String> {
+    eval(expr, &Environment::default())
 }
 
 fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
