@@ -96,3 +96,61 @@ void code_module_dispatch(CodeValue *out, const CodeValue *particle) {
     snprintf(msg, sizeof msg, "test_math: unknown handler '%s'", class_val->str);
     code_runtime_error(msg);
 }
+
+/* Exported variables (constants) — what `link "x.so" as m` exposes as
+ * `m.<name>`. Built once at load time into static storage; the host deep-
+ * copies each value out at `link` time and never frees them (they're the
+ * module's own permanent constants, owned for the module's whole lifetime —
+ * `code_native_close` never `dlclose`s, so they outlive the object that
+ * borrows their key strings). Covers all six value kinds so the
+ * deep-copy-at-the-boundary path (`code_native_copy_in` / `ffi_to_value`) is
+ * exercised for each. `var_values` is a flat `CODE_VALUE_SLOT_SIZE`-strided
+ * buffer, addressed through `slot_at`, never `[]`. */
+static const char *var_names[] = {
+    "answer",  /* Number */
+    "name",    /* Str    */
+    "enabled", /* Bool   */
+    "nothing", /* Null   */
+    "factors", /* Array  */
+    "meta",    /* Object */
+};
+static char var_values[6 * CODE_VALUE_SLOT_SIZE];
+static CodeVarList var_list = {
+    .count = 6,
+    .names = var_names,
+    .values = (CodeValue *)var_values,
+};
+
+__attribute__((constructor))
+static void test_math_init_vars(void) {
+    code_number(slot_at(var_values, 0), 42);
+    code_str(slot_at(var_values, 1), "test_math");
+    code_bool(slot_at(var_values, 2), 1);
+    code_null(slot_at(var_values, 3));
+    /* factors = [2, 3, 5] */
+    {
+        char elems[3 * CODE_VALUE_SLOT_SIZE] = {0};
+        code_number(slot_at(elems, 0), 2);
+        code_number(slot_at(elems, 1), 3);
+        code_number(slot_at(elems, 2), 5);
+        code_array(slot_at(var_values, 4), elems, 3);
+        for (int i = 0; i < 3; i++) {
+            code_release(slot_at(elems, i));
+        }
+    }
+    /* meta = { "version": 1, "owner": "test" } */
+    {
+        const char *keys[] = {"version", "owner"};
+        char vals[2 * CODE_VALUE_SLOT_SIZE] = {0};
+        code_number(slot_at(vals, 0), 1);
+        code_str(slot_at(vals, 1), "test");
+        code_object(slot_at(var_values, 5), keys, vals, 2);
+        for (int i = 0; i < 2; i++) {
+            code_release(slot_at(vals, i));
+        }
+    }
+}
+
+const CodeVarList *code_module_vars(void) {
+    return &var_list;
+}

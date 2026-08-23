@@ -148,6 +148,14 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             #[cfg(feature = "native-modules")]
             {
                 let module = NativeModule::open(path)?;
+                // The module's exported variables (constants) become an
+                // object bound under `alias`, so `alias.name` is ordinary
+                // field access — the same binding `Import`'s alias uses. A
+                // module with no `code_module_vars` export yields an empty
+                // object. The module itself is kept in a separate namespace
+                // for `emit ... to <alias>` dispatch.
+                let vars = module.vars()?;
+                env.declare(alias.clone(), Value::Object(Rc::new(vars)));
                 env.native_modules.insert(alias.clone(), module);
                 Ok(Flow::Normal)
             }

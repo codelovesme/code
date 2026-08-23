@@ -1,0 +1,12 @@
+-- A native module can export variables (constants), reachable as `m.<name>`
+-- — ordinary field access, exactly like a source module's alias. The module's
+-- `code_module_vars` export is read at `link` time and deep-copied into the
+-- host in both output modes, so `m.answer` is a plain value, not a live
+-- reference into the module. Covers all six value kinds.
+link "native_modules/test_math.so" as m
+assert m.answer = 42
+assert m.name = "test_math"
+assert m.enabled = true
+assert m.nothing = null
+assert m.factors = [2, 3, 5]
+assert m.meta = { "version": 1, "owner": "test" }

@@ -107,11 +107,17 @@ pub enum Stmt {
     },
     /// A resolved native-module `Link` (`link "x.so" as x`), produced only
     /// by `loader.rs`. Unlike `Import`, there is no `body` to run — a
-    /// native module contributes no bindings today (Phase 1 is handlers
-    /// only, see `docs/todo/native-module-linking.md`), just a target
-    /// `emit ... to x` can dispatch to. `alias` is mandatory (unlike
-    /// `Link`'s optional one): with no name, nothing could ever refer to
-    /// the module again.
+    /// native module's values come from its `code_module_vars` export, read
+    /// at runtime by whichever backend is running, not from statements to
+    /// execute.
+    ///
+    /// `alias` is mandatory (unlike `Link`'s optional one): with no name,
+    /// nothing could ever refer to the module again. It is bound to an
+    /// *object* of the module's exported variables (so `alias.name` is
+    /// ordinary field access, exactly like `Import`'s alias binding), and
+    /// it is also the target `emit ... to x` dispatches to. A module with
+    /// no `code_module_vars` export binds `alias` to an empty object. See
+    /// `docs/todo/native-module-linking.md`.
     ImportNative { alias: String, path: String },
     /// `emit <particle> to <target> [get <name>]` — invokes a handler.
     /// Which one is chosen at **runtime**, by reading the particle's own

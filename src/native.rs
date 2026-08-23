@@ -59,6 +59,17 @@ impl CodeValueFfi {
     };
 }
 
+/// Bit-for-bit the same layout as `code_abi.h`'s `CodeVarList` — what a
+/// module's optional `code_module_vars` export returns. `values` is strided
+/// at `CODE_VALUE_SLOT_SIZE` (address it through `slot_at`, never `[]`),
+/// exactly like a `CodeValue`'s own `items` buffer.
+#[repr(C)]
+struct CodeVarListFfi {
+    count: i64,
+    names: *const *const c_char,
+    values: *mut CodeValueFfi,
+}
+
 /// Writes `v` at slot `index` of a `CODE_VALUE_SLOT_SIZE`-strided buffer —
 /// the same addressing convention `runtime.c`'s `slot_at` uses, needed here
 /// because a module's `slot_at(items, i)` would otherwise silently read the
@@ -222,6 +233,7 @@ impl std::fmt::Debug for NativeModule {
 type DispatchFn = unsafe extern "C" fn(*mut CodeValueFfi, *const CodeValueFfi);
 type ReleaseFn = unsafe extern "C" fn(*mut CodeValueFfi);
 type VersionFn = unsafe extern "C" fn() -> u32;
+type VarsFn = unsafe extern "C" fn() -> *const CodeVarListFfi;
 
 impl NativeModule {
     pub fn open(path: &str) -> Result<NativeModule, String> {
@@ -285,5 +297,42 @@ impl NativeModule {
         }
 
         Ok(value)
+    }
+
+    /// The module's exported variables (constants), as host-owned
+    /// `(name, value)` pairs in the module's own order — the interpreter's
+    /// equivalent of `runtime.c`'s `code_native_get_var`, for the same
+    /// reason: each value a module hands back belongs to *its* allocator and
+    /// becomes invalid the moment its own `code_release` runs on it, so
+    /// every byte is copied out first. A module with no `code_module_vars`
+    /// export (a Phase 1, handlers-only module) yields an empty list.
+    pub fn vars(&self) -> Result<Vec<(String, Value)>, String> {
+        let vars_ptr = unsafe {
+            self.lib
+                .get::<VarsFn>(b"code_module_vars")
+                .ok()
+                .map(|vars| vars())
+                .filter(|p| !p.is_null())
+        };
+        let Some(vars_ptr) = vars_ptr else {
+            return Ok(Vec::new());
+        };
+        let list = unsafe { &*vars_ptr };
+        if list.count < 0 {
+            return Err(format!(
+                "native module '{}' reports a negative variable count",
+                self.path
+            ));
+        }
+        let count = list.count as usize;
+        let mut out = Vec::with_capacity(count);
+        for i in 0..count {
+            let name = unsafe { CStr::from_ptr(*list.names.add(i)) }
+                .to_string_lossy()
+                .into_owned();
+            let value = unsafe { ffi_to_value(slot_at(list.values as *const c_void, i as i64)) };
+            out.push((name, value));
+        }
+        Ok(out)
     }
 }
