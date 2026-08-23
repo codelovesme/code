@@ -164,9 +164,19 @@ Published via **npm Trusted Publishing (OIDC)** from GitHub Actions
 (`.github/workflows/publish-npm-wasm.yml`) — no `NPM_TOKEN` stored
 anywhere. The workflow exchanges a short-lived GitHub OIDC token for a
 short-lived npm publish credential at publish time; there's no
-long-lived secret to leak or rotate. This package has not been published
-yet — the workflow exists and is verified locally (see below), but the
-one-time npm-side setup below hasn't been done.
+long-lived secret to leak or rotate.
+
+`code-wasm` on npm already has `0.1.0`/`0.1.1` published under this same
+repo, from the *old* language (a different API entirely —
+`run_source`/structured `{ok, bindings, diagnostics}`, superseded here by
+plain `run`/`run_with_modules` string results). That's why this package
+starts at `1.0.0` rather than continuing the `0.1.x` line: a real API
+break deserves a major bump, not a version someone's `^0.1.0` pin would
+silently accept. If the old repo's Trusted Publisher was already
+configured for this exact package name + repo + workflow filename, the
+one-time npm-side setup below is likely already done — check the
+package's **Settings → Trusted Publisher** page on npmjs.com before
+redoing it.
 
 **One-time setup (can't be done from CI — this is npmjs.com account
 configuration, done once by whoever's publishing this the first time):**
