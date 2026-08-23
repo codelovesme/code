@@ -1,4 +1,4 @@
-use crate::ast::{BinOp, EmitTarget, Expr, Program, Stmt, UnOp};
+use crate::ast::{BinOp, EmitTarget, Expr, LoopAccumulator, LoopOver, Program, Stmt, UnOp};
 use crate::lexer::{Lexed, Token};
 use crate::span::Located;
 
@@ -139,52 +139,7 @@ impl<'a> Parser<'a> {
 
         if matches!(self.peek(), Token::Loop) {
             self.advance();
-            let var = match self.advance() {
-                Token::Ident(name) => name,
-                other => {
-                    return Err(format!(
-                        "expected a variable name after 'loop', found {other:?}"
-                    ))
-                }
-            };
-            let index = if matches!(self.peek(), Token::Comma) {
-                self.advance();
-                match self.advance() {
-                    Token::Ident(name) => Some(name),
-                    other => {
-                        return Err(format!(
-                            "expected an index variable name after ',', found {other:?}"
-                        ))
-                    }
-                }
-            } else {
-                None
-            };
-            match self.advance() {
-                Token::Over => {}
-                other => {
-                    return Err(format!(
-                        "expected 'over' after 'loop {var}', found {other:?}"
-                    ))
-                }
-            }
-            // The `{` that opens the body can't be mistaken for an object
-            // literal here for the same reason as `if`'s condition: `{` is
-            // not an operator, so the expression grammar always stops before
-            // it (see `primary`'s LBrace case, only reachable in operand
-            // position).
-            let iterable = self.expr()?;
-            self.loop_depth += 1;
-            let body = self.block();
-            self.loop_depth -= 1;
-            let body = body?;
-            self.expect_end_of_statement()?;
-            return Ok(Stmt::Loop {
-                var,
-                index,
-                iterable,
-                body,
-            });
+            return self.loop_statement();
         }
 
         if matches!(self.peek(), Token::Emit) {
@@ -231,6 +186,15 @@ impl<'a> Parser<'a> {
             }
             self.expect_end_of_statement()?;
             return Ok(Stmt::Break);
+        }
+
+        if matches!(self.peek(), Token::Continue) {
+            self.advance();
+            if self.loop_depth == 0 {
+                return Err("'continue' outside of a loop".to_string());
+            }
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::Continue);
         }
 
         // A bare block: unambiguous at statement-start, since object
@@ -327,6 +291,92 @@ impl<'a> Parser<'a> {
         let value = self.expr()?;
         self.expect_end_of_statement()?;
         Ok(Stmt::Assign { name, value })
+    }
+
+    /// Everything after the `loop` keyword:
+    /// `[var[, index] over iterable] [get name [= init]] { body }`.
+    ///
+    /// Both clauses are optional and independent — see `Stmt::Loop`. The
+    /// `over` clause is recognised by a leading identifier, which is
+    /// unambiguous: the only other things that can follow `loop` are `get`
+    /// and `{`, both of which are their own token.
+    fn loop_statement(&mut self) -> Result<Stmt, String> {
+        let over = if matches!(self.peek(), Token::Ident(_)) {
+            let Token::Ident(var) = self.advance() else {
+                unreachable!("just peeked an Ident")
+            };
+            let index = if matches!(self.peek(), Token::Comma) {
+                self.advance();
+                match self.advance() {
+                    Token::Ident(name) => Some(name),
+                    other => {
+                        return Err(format!(
+                            "expected an index variable name after ',', found {other:?}"
+                        ))
+                    }
+                }
+            } else {
+                None
+            };
+            match self.advance() {
+                Token::Over => {}
+                other => {
+                    return Err(format!(
+                        "expected 'over' after 'loop {var}', found {other:?} \
+                         (a bare infinite loop is written `loop {{ }}`, with no variable)"
+                    ))
+                }
+            }
+            // The `{` that opens the body can't be mistaken for an object
+            // literal here for the same reason as `if`'s condition: `{` is
+            // not an operator, so the expression grammar always stops before
+            // it (see `primary`'s LBrace case, only reachable in operand
+            // position).
+            let iterable = self.expr()?;
+            Some(LoopOver {
+                var,
+                index,
+                iterable,
+            })
+        } else {
+            None
+        };
+
+        // `get <name> [= <init>]`. The init expression stops before `{` for
+        // the same reason `iterable` does.
+        let result_name = if matches!(self.peek(), Token::Get) {
+            self.advance();
+            let name = match self.advance() {
+                Token::Ident(name) => name,
+                other => return Err(format!("expected a name after 'get', found {other:?}")),
+            };
+            let init = if matches!(self.peek(), Token::Equals) {
+                self.advance();
+                Some(self.expr()?)
+            } else {
+                None
+            };
+            Some((name, init))
+        } else {
+            None
+        };
+
+        self.loop_depth += 1;
+        let body = self.block();
+        self.loop_depth -= 1;
+        let body = body?;
+        self.expect_end_of_statement()?;
+
+        let result = result_name.map(|(name, init)| LoopAccumulator {
+            name,
+            // No `= init` means the accumulator has nothing to start from.
+            // Null rather than `[]`: the body decides what it is building by
+            // what it assigns, and guessing "array" would be wrong as often
+            // as right.
+            init: init.unwrap_or(Expr::Null),
+        });
+
+        Ok(Stmt::Loop { over, result, body })
     }
 
     /// `{ stmt* }` — shared by `if`, `loop`, and the bare-block statement:

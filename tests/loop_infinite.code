@@ -1,0 +1,36 @@
+-- `loop { }` has no iterable and no bound — only `break` leaves it.
+let i = 0
+loop {
+    i = i + 1
+    if i = 5 {
+        break
+    }
+}
+assert i = 5
+
+-- It takes a `get` accumulator like any other loop.
+let n = 0
+loop get total = 0 {
+    n = n + 1
+    total = total + n
+    if n = 4 {
+        break
+    }
+}
+assert total = 10
+
+-- Nested bare loops: `break` leaves only the innermost.
+let outer = 0
+let inner_runs = 0
+loop {
+    outer = outer + 1
+    loop {
+        inner_runs = inner_runs + 1
+        break
+    }
+    if outer = 3 {
+        break
+    }
+}
+assert outer = 3
+assert inner_runs = 3

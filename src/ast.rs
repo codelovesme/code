@@ -50,28 +50,44 @@ pub enum Stmt {
     /// executes). Lets a user open a scope on demand, e.g. to shadow a
     /// throwaway local without it ever being reachable outside.
     Block(Vec<Stmt>),
-    /// `loop var over iterable { body }` — the language's only iteration
-    /// construct (decided 2026-08-21). `iterable` is evaluated *once*,
-    /// before the first iteration, and must be an `Array` — any other kind
-    /// is a runtime type error, deliberately unlike `Field`/`Index`'s
-    /// permissive null. `body` then runs once per element, in order, in its
-    /// own scope with `var` bound to that element (shadowing any outer
-    /// same-named binding, exactly like a `let`).
+    /// `loop [var[, index] over iterable] [get name [= init]] { body }` —
+    /// the language's only iteration construct.
     ///
-    /// There is no `while`, no bare `loop { }`, and no collect/`yield` form:
-    /// every loop is bounded by an array's length, so no program can spin
-    /// forever, and accumulating a result is just `acc = acc + [x]` with the
-    /// array `+` that already exists. Deliberately narrower than the old
-    /// language's five loop forms — the ones left out either depended on the
-    /// constraint system (domain enumeration) or duplicated `+`.
+    /// Both clauses are independent and optional, which is what makes one
+    /// statement cover every form:
+    ///
+    /// ```text
+    /// loop x over xs { }                 -- iterate
+    /// loop x, i over xs { }              -- iterate with position
+    /// loop { }                           -- until `break`
+    /// loop x over xs get sum = 0 { }     -- accumulate
+    /// loop x over xs get out = [] { }    -- ... which is also how you collect
+    /// ```
+    ///
+    /// `while` still does not exist; `loop { }` is how an unbounded loop is
+    /// written. Note what that gave up: until 2026-08-23 every loop was
+    /// bounded by an array's length, so no program could spin forever. That
+    /// guarantee was traded away deliberately (owner's call) for the bare
+    /// form — a `loop { }` whose `break` is never reached now hangs, exactly
+    /// like the old language's.
+    ///
+    /// Domain enumeration (`loop x { }` over a variable's possibility space)
+    /// is *not* coming back: it enumerated a constraint domain, and this
+    /// language has none.
     Loop {
-        var: String,
-        /// `loop item, i over ...` — the zero-based position, bound as a
-        /// `Number`. Scoped and shadowing exactly like `var`.
-        index: Option<String>,
-        iterable: Expr,
+        /// `None` is the bare `loop { }`. Grouped into one struct rather
+        /// than three fields that would have to agree: there is no such
+        /// thing as an iterable without a variable, or vice versa.
+        over: Option<LoopOver>,
+        /// `get name [= init]` — see `LoopAccumulator`.
+        result: Option<LoopAccumulator>,
         body: Vec<Stmt>,
     },
+    /// `continue` — skips the rest of this iteration and starts the next
+    /// one. In a `loop ... over`, that means the next element; in a bare
+    /// `loop { }`, it re-enters the body immediately. Rejected outside a
+    /// loop at *parse* time, exactly like `Break`.
+    Continue,
     /// `link "path"` / `link "path" as alias` — brings another module's
     /// exports into this file. Top-level only, like `export`.
     ///
@@ -147,6 +163,48 @@ pub enum Stmt {
     /// *parse* error rather than a later check, so the interpreter and the
     /// compiler reject it identically without either needing its own rule.
     Break,
+}
+
+/// The `var[, index] over iterable` half of a `Stmt::Loop`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoopOver {
+    pub var: String,
+    /// `loop item, i over ...` — the zero-based position, bound as a
+    /// `Number`. Scoped and shadowing exactly like `var`.
+    pub index: Option<String>,
+    /// Evaluated *once*, before the first iteration, and must be an `Array`
+    /// — any other kind is a runtime type error, deliberately unlike
+    /// `Field`/`Index`'s permissive null.
+    pub iterable: Expr,
+}
+
+/// The `get name [= init]` half of a `Stmt::Loop`.
+///
+/// Deliberately not its own runtime concept: `name` is declared as an
+/// ordinary binding in the scope *enclosing* the loop, initialized to
+/// `init` before the first iteration. The body then updates it with the
+/// same `Stmt::Assign` any other reassignment uses — which already resolves
+/// outward through the scope chain — and it is simply still bound once the
+/// loop ends. No accumulator stack, no new scoping rule, and nothing for
+/// either backend to special-case beyond creating the binding.
+///
+/// ```text
+/// loop x over xs get sum = 0 { sum = sum + x }      -- fold
+/// loop x over xs get out = [] { out = out + [x] }   -- collect
+/// ```
+///
+/// A `yield` statement was built and then removed the same day
+/// (2026-08-23): `get out { yield e }` collecting into an array is exactly
+/// `get out = [] { out = out + [e] }`, so it bought one more keyword, a
+/// desugaring step, and a mutual-exclusion rule ("a body either yields or
+/// assigns, never both") in exchange for one line of source. Not worth it.
+/// Note there is no `+=` either — no compound assignment operator exists.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoopAccumulator {
+    pub name: String,
+    /// What `name` holds before the first iteration: the `= init`
+    /// expression, or `null` when `= init` was omitted.
+    pub init: Expr,
 }
 
 /// Which format a resolved `Stmt::ImportNative` came from — produced by

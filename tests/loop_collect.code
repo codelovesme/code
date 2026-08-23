@@ -1,0 +1,40 @@
+-- Collecting into an array is just the `get` accumulator with `[]` as its
+-- initial value — there is no separate collect form or `yield` keyword.
+loop x over [1, 2, 3] get doubled = [] {
+    doubled = doubled + [x * 2]
+}
+assert doubled = [2, 4, 6]
+
+-- Appending conditionally is an ordinary `if`, nothing loop-specific.
+loop x over [1, 2, 3, 4] get evens = [] {
+    if x = 2 {
+        evens = evens + [x]
+    }
+    if x = 4 {
+        evens = evens + [x]
+    }
+}
+assert evens = [2, 4]
+
+-- A body that never appends leaves the initial value untouched.
+loop x over [1, 2] get none = [] {
+    if x = 99 {
+        none = none + [x]
+    }
+}
+assert none = []
+
+-- The index variable is available alongside `get`.
+loop x, i over ["a", "b"] get pairs = [] {
+    pairs = pairs + [[i, x]]
+}
+assert pairs = [[0, "a"], [1, "b"]]
+
+-- Nested loops each accumulate into their own binding.
+loop row over [[1, 2], [3]] get rows = [] {
+    loop cell over row get cells = [] {
+        cells = cells + [cell]
+    }
+    rows = rows + [cells]
+}
+assert rows = [[1, 2], [3]]

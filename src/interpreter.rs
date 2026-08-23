@@ -183,6 +183,10 @@ pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, 
 enum Flow {
     Normal,
     Break,
+    /// Like `Break`, but the enclosing loop starts its next iteration
+    /// instead of stopping. Propagates outward through `if`/block bodies
+    /// exactly the same way.
+    Continue,
 }
 
 /// Runs `body` in a *new scope*, stopping early on a `break`. Pops the scope
@@ -197,8 +201,9 @@ fn exec_scoped_body(body: &[Stmt], env: &mut Environment) -> Result<Flow, String
 
 fn exec_body(body: &[Stmt], env: &mut Environment) -> Result<Flow, String> {
     for stmt in body {
-        if exec(stmt, env)? == Flow::Break {
-            return Ok(Flow::Break);
+        let flow = exec(stmt, env)?;
+        if flow != Flow::Normal {
+            return Ok(flow);
         }
     }
     Ok(Flow::Normal)
@@ -321,36 +326,62 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             v => Err(format!("if requires a boolean, found a {}", type_name(&v))),
         },
         Stmt::Block(body) => exec_scoped_body(body, env),
-        Stmt::Loop {
-            var,
-            index,
-            iterable,
-            body,
-        } => {
-            // Evaluated once, up front. Holding the `Rc` here is what makes
-            // that a real snapshot: the body may reassign whatever binding
-            // the array came from without disturbing the iteration (and
-            // since no value is ever mutated in place, the snapshot can't
-            // go stale either way — see memory `new-code-memory-management`).
-            // Matched by reference, not by move: `Value` has a manual `Drop`
-            // (see value.rs), and Rust forbids moving a field out of such a
-            // type. `Rc::clone` is the O(1) equivalent here anyway.
-            let evaluated = eval(iterable, env)?;
-            let items = match &evaluated {
-                Value::Array(items) => Rc::clone(items),
-                v => return Err(format!("loop requires an array, found a {}", type_name(v))),
-            };
-            for (i, item) in items.iter().enumerate() {
-                env.push_scope();
-                env.declare(var.clone(), item.clone());
-                if let Some(index) = index {
-                    env.declare(index.clone(), Value::Number(i as f64));
+        Stmt::Loop { over, result, body } => {
+            // The accumulator is an ordinary binding in the scope *around*
+            // the loop, created before the first iteration — which is what
+            // makes it survive each iteration's scope and still be bound
+            // afterwards, with no accumulator machinery at all. The body
+            // updates it through the same `Stmt::Assign` as any other
+            // reassignment (see `ast::LoopAccumulator`).
+            if let Some(acc) = result {
+                let init = eval(&acc.init, env)?;
+                env.declare(acc.name.clone(), init);
+            }
+
+            match over {
+                Some(over) => {
+                    // Evaluated once, up front. Holding the `Rc` here is what
+                    // makes that a real snapshot: the body may reassign
+                    // whatever binding the array came from without disturbing
+                    // the iteration (and since no value is ever mutated in
+                    // place, the snapshot can't go stale either way — see
+                    // memory `new-code-memory-management`). Matched by
+                    // reference, not by move: `Value` has a manual `Drop`
+                    // (see value.rs), and Rust forbids moving a field out of
+                    // such a type. `Rc::clone` is the O(1) equivalent anyway.
+                    let evaluated = eval(&over.iterable, env)?;
+                    let items = match &evaluated {
+                        Value::Array(items) => Rc::clone(items),
+                        v => {
+                            return Err(format!("loop requires an array, found a {}", type_name(v)))
+                        }
+                    };
+                    for (i, item) in items.iter().enumerate() {
+                        env.push_scope();
+                        env.declare(over.var.clone(), item.clone());
+                        if let Some(index) = &over.index {
+                            env.declare(index.clone(), Value::Number(i as f64));
+                        }
+                        let flow = exec_body(body, env);
+                        env.pop_scope();
+                        // `Continue` needs no action beyond ending this
+                        // iteration, which returning from the body already
+                        // did — only `Break` changes what happens next.
+                        if flow? == Flow::Break {
+                            break;
+                        }
+                    }
                 }
-                let result = exec_body(body, env);
-                env.pop_scope();
-                if result? == Flow::Break {
-                    break;
-                }
+                // `loop { }` — nothing bounds this but `break`. See
+                // `Stmt::Loop`'s doc comment on the guarantee that gives up.
+                None => loop {
+                    env.push_scope();
+                    let flow = exec_body(body, env);
+                    env.pop_scope();
+                    if flow? == Flow::Break {
+                        break;
+                    }
+                },
             }
             Ok(Flow::Normal)
         }
@@ -377,6 +408,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             Ok(Flow::Normal)
         }
         Stmt::Break => Ok(Flow::Break),
+        Stmt::Continue => Ok(Flow::Continue),
     }
 }
 
@@ -502,6 +534,16 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
         }
     };
     match class.as_ref() {
+        "Timestamp" => {
+            // Whole seconds since the Unix epoch — the old language's
+            // `Timestamp` did exactly this, and human-readable formatting
+            // belongs in a module, not core (see docs/todo/community-modules.md).
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as f64;
+            Ok(core_result("TimestampResult", secs))
+        }
         "Length" => match fields.iter().find(|(k, _)| k == "value") {
             Some((_, Value::Array(items))) => Ok(core_result("LengthResult", items.len() as f64)),
             Some((_, Value::Str(s))) => Ok(core_result("LengthResult", s.len() as f64)),

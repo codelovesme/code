@@ -13,7 +13,9 @@ use inkwell::AddressSpace;
 use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
-use crate::ast::{BinOp, EmitTarget, Expr, NativeFormat, Program, Stmt, UnOp};
+use crate::ast::{
+    BinOp, EmitTarget, Expr, LoopAccumulator, LoopOver, NativeFormat, Program, Stmt, UnOp,
+};
 
 /// Byte size of one runtime `CodeValue` slot (`src/runtime.c`; 64 bytes on
 /// x86_64, this leaves headroom). Codegen never inspects the struct's fields
@@ -120,26 +122,33 @@ fn verify_stmts(
                 scopes.pop();
                 result?;
             }
-            Stmt::Loop {
-                var,
-                index,
-                iterable,
-                body,
-            } => {
-                // The iterable is evaluated in the *enclosing* scope, before
-                // the loop variables exist — so `loop x over x` correctly
-                // resolves the right-hand `x` to an outer binding, or errors
-                // if there isn't one.
-                verify_expr(iterable, scopes)?;
+            Stmt::Loop { over, result, body } => {
+                // Both the iterable and the accumulator's initial value are
+                // evaluated in the *enclosing* scope, before the loop
+                // variables exist — so `loop x over x` correctly resolves
+                // the right-hand `x` to an outer binding, or errors if there
+                // isn't one.
+                if let Some(over) = over {
+                    verify_expr(&over.iterable, scopes)?;
+                }
+                if let Some(acc) = result {
+                    verify_expr(&acc.init, scopes)?;
+                    // Declared in the enclosing scope, matching where the
+                    // binding actually lands (see `ast::LoopAccumulator`) —
+                    // which is also what makes it defined *after* the loop.
+                    scopes.last_mut().unwrap().insert(acc.name.clone());
+                }
                 let mut scope = HashSet::new();
-                scope.insert(var.clone());
-                if let Some(index) = index {
-                    scope.insert(index.clone());
+                if let Some(over) = over {
+                    scope.insert(over.var.clone());
+                    if let Some(index) = &over.index {
+                        scope.insert(index.clone());
+                    }
                 }
                 scopes.push(scope);
-                let result = verify_stmts(body, scopes, natives);
+                let verified = verify_stmts(body, scopes, natives);
                 scopes.pop();
-                result?;
+                verified?;
             }
             Stmt::Emit {
                 particle,
@@ -159,8 +168,8 @@ fn verify_stmts(
                 }
             }
             // Nothing to check — the parser already rejected any `break`
-            // that isn't inside a loop.
-            Stmt::Break => {}
+            // or `continue` that isn't inside a loop.
+            Stmt::Break | Stmt::Continue => {}
         }
     }
     Ok(())
@@ -477,7 +486,7 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_static_vars_object,
         env: vec![HashMap::new()],
         order: Vec::new(),
-        loop_exits: Vec::new(),
+        loop_blocks: Vec::new(),
         slots: Vec::new(),
         native_links: HashMap::new(),
         static_native_fns,
@@ -599,10 +608,10 @@ struct Gen<'a> {
     /// First-assignment order, for the final bindings dump — mirrors
     /// `interpreter::Environment::order` exactly.
     order: Vec<String>,
-    /// Exit block of each enclosing `loop`, innermost last — where a
-    /// `break` branches to. Mirrors `interpreter::Flow::Break` propagating
-    /// only as far as the innermost loop.
-    loop_exits: Vec<BasicBlock<'a>>,
+    /// The branch targets of each enclosing `loop`, innermost last — where
+    /// `break` and `continue` jump to. Mirrors `interpreter::Flow::Break`
+    /// and `Flow::Continue` propagating only as far as the innermost loop.
+    loop_blocks: Vec<LoopBlocks<'a>>,
     /// Every `CodeValue` slot allocated in `entry`, with how many slots it
     /// spans (1 for `alloc_slot`, `len` for `alloc_buffer`). Used only by
     /// `emit_cleanup`, which releases all of them as the program's last act
@@ -631,6 +640,33 @@ struct Gen<'a> {
 enum NativeLink<'a> {
     Dynamic(PointerValue<'a>),
     Static(FunctionValue<'a>),
+}
+
+/// Where a `break`/`continue` inside one enclosing loop branches to. Both
+/// blocks always exist, including for the bare `loop { }` form — `cont` is
+/// simply the back-edge with no counter to bump.
+#[derive(Clone, Copy)]
+struct LoopBlocks<'a> {
+    exit: BasicBlock<'a>,
+    cont: BasicBlock<'a>,
+}
+
+/// Which of a `LoopBlocks`' two targets `gen_jump` should branch to.
+enum JumpTarget {
+    Break,
+    Continue,
+}
+
+/// What `loop ... over` iterates with — absent entirely for `loop { }`.
+/// See `Gen::gen_loop_cursor`.
+struct LoopCursor<'a> {
+    /// The loop's own copy of the array, so the body may reassign whatever
+    /// the iterable came from without disturbing iteration.
+    arr_ptr: PointerValue<'a>,
+    len: IntValue<'a>,
+    counter: PointerValue<'a>,
+    var_slot: PointerValue<'a>,
+    index_slot: Option<PointerValue<'a>>,
 }
 
 impl<'a> Gen<'a> {
@@ -739,35 +775,39 @@ impl<'a> Gen<'a> {
             }
             Stmt::If { condition, body } => self.gen_if(condition, body),
             Stmt::Block(body) => self.gen_block(body),
-            Stmt::Loop {
-                var,
-                index,
-                iterable,
-                body,
-            } => self.gen_loop(var, index.as_deref(), iterable, body),
+            Stmt::Loop { over, result, body } => {
+                self.gen_loop(over.as_ref(), result.as_ref(), body)
+            }
             Stmt::Emit {
                 particle,
                 target,
                 result,
             } => self.gen_emit(particle, target, result.as_deref()),
-            Stmt::Break => self.gen_break(),
+            Stmt::Break => self.gen_jump(JumpTarget::Break),
+            Stmt::Continue => self.gen_jump(JumpTarget::Continue),
         }
     }
 
-    /// Branches straight to the innermost enclosing loop's exit block, then
-    /// leaves the builder in a *fresh* block so any statements written after
-    /// the `break` still have somewhere to be emitted. That block has no
-    /// predecessors, so LLVM drops it — which is exactly the semantics
-    /// (`loop_break.code` covers this: statements after a `break` never run).
-    fn gen_break(&mut self) -> Result<(), String> {
-        let exit = *self
-            .loop_exits
+    /// Branches straight to one of the innermost enclosing loop's blocks —
+    /// its exit for `break`, its continue block (the increment/back-edge,
+    /// see `gen_loop`) for `continue` — then leaves the builder in a *fresh*
+    /// block so any statements written afterwards still have somewhere to be
+    /// emitted. That block has no predecessors, so LLVM drops it, which is
+    /// exactly the semantics (`loop_break.code` covers this: statements
+    /// after a `break` never run).
+    fn gen_jump(&mut self, target: JumpTarget) -> Result<(), String> {
+        let blocks = *self
+            .loop_blocks
             .last()
-            .expect("the parser rejects 'break' outside a loop");
+            .expect("the parser rejects 'break'/'continue' outside a loop");
+        let (dest, label) = match target {
+            JumpTarget::Break => (blocks.exit, "after_break"),
+            JumpTarget::Continue => (blocks.cont, "after_continue"),
+        };
         self.builder
-            .build_unconditional_branch(exit)
+            .build_unconditional_branch(dest)
             .map_err(|e| e.to_string())?;
-        let dead = self.context.append_basic_block(self.main_fn, "after_break");
+        let dead = self.context.append_basic_block(self.main_fn, label);
         self.builder.position_at_end(dead);
         Ok(())
     }
@@ -784,11 +824,143 @@ impl<'a> Gen<'a> {
     /// produces is released when its slot is rewritten next time round.
     fn gen_loop(
         &mut self,
-        var: &str,
-        index: Option<&str>,
-        iterable: &Expr,
+        over: Option<&LoopOver>,
+        result: Option<&LoopAccumulator>,
         body: &[Stmt],
     ) -> Result<(), String> {
+        // The accumulator is an ordinary binding in the scope *around* the
+        // loop, initialized before the first iteration — the body then
+        // updates it through the same reassignment path as any other name
+        // (see `ast::LoopAccumulator`). Registering it in the current scope
+        // rather than the loop's is what leaves it bound afterwards.
+        if let Some(acc) = result {
+            let init = self.gen_expr(&acc.init)?;
+            let slot = self.alloc_slot("loopacc")?;
+            self.builder
+                .build_call(self.fn_copy, &[slot.into(), init.into()], "")
+                .map_err(|e| e.to_string())?;
+            // `bind`, not a raw `env` insert: it also records the name for
+            // the final bindings dump when the loop is at the top level,
+            // which is exactly where `interpreter::Environment::declare`
+            // would have recorded it too.
+            self.bind(&acc.name, slot);
+        }
+
+        // `loop { }` has no iterable, no counter and no bound — `head_bb`
+        // just falls into the body every time, and only a `break` leaves.
+        let iteration = match over {
+            Some(over) => Some(self.gen_loop_cursor(over)?),
+            None => None,
+        };
+
+        let head_bb = self.context.append_basic_block(self.main_fn, "loop_head");
+        let body_bb = self.context.append_basic_block(self.main_fn, "loop_body");
+        // Where an iteration ends: the increment and the back-edge. A
+        // `continue` branches straight here, which is the whole reason this
+        // is its own block rather than code appended to the body.
+        let cont_bb = self.context.append_basic_block(self.main_fn, "loop_cont");
+        let after_bb = self.context.append_basic_block(self.main_fn, "loop_after");
+        self.builder
+            .build_unconditional_branch(head_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(head_bb);
+        let i = match &iteration {
+            Some(cursor) => {
+                let i = self
+                    .builder
+                    .build_load(self.i64_ty, cursor.counter, "i")
+                    .map_err(|e| e.to_string())?
+                    .into_int_value();
+                let more = self
+                    .builder
+                    .build_int_compare(IntPredicate::SLT, i, cursor.len, "loop_more")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_conditional_branch(more, body_bb, after_bb)
+                    .map_err(|e| e.to_string())?;
+                Some(i)
+            }
+            None => {
+                self.builder
+                    .build_unconditional_branch(body_bb)
+                    .map_err(|e| e.to_string())?;
+                None
+            }
+        };
+
+        self.builder.position_at_end(body_bb);
+        let mut scope = HashMap::new();
+        if let (Some(over), Some(cursor), Some(i)) = (over, &iteration, i) {
+            self.builder
+                .build_call(
+                    self.fn_iter_at,
+                    &[cursor.var_slot.into(), cursor.arr_ptr.into(), i.into()],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+            if let Some(index_slot) = cursor.index_slot {
+                let as_f64 = self
+                    .builder
+                    .build_signed_int_to_float(i, self.f64_ty, "idx_f64")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_call(self.fn_number, &[index_slot.into(), as_f64.into()], "")
+                    .map_err(|e| e.to_string())?;
+            }
+            scope.insert(over.var.clone(), cursor.var_slot);
+            if let (Some(index), Some(index_slot)) = (&over.index, cursor.index_slot) {
+                scope.insert(index.clone(), index_slot);
+            }
+        }
+
+        self.env.push(scope);
+        self.loop_blocks.push(LoopBlocks {
+            exit: after_bb,
+            cont: cont_bb,
+        });
+        for stmt in body {
+            self.gen_stmt(stmt)?;
+        }
+        self.loop_blocks.pop();
+        self.env.pop();
+
+        // Emitted at whatever block the body *ended* in — after an `if` that
+        // is `if_after`, after a `break` it's the dead block `gen_jump` left
+        // us in. Either way that's the fall-through path, so it belongs
+        // there.
+        self.builder
+            .build_unconditional_branch(cont_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(cont_bb);
+        if let Some(cursor) = &iteration {
+            let current = self
+                .builder
+                .build_load(self.i64_ty, cursor.counter, "i_cur")
+                .map_err(|e| e.to_string())?
+                .into_int_value();
+            let next = self
+                .builder
+                .build_int_add(current, self.i64_ty.const_int(1, false), "i_next")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_store(cursor.counter, next)
+                .map_err(|e| e.to_string())?;
+        }
+        self.builder
+            .build_unconditional_branch(head_bb)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(after_bb);
+        Ok(())
+    }
+
+    /// Sets up everything `loop ... over` iterates *with*: the snapshot of
+    /// the array, its length, the counter, and the slots the element and
+    /// index are written into each time round. Split out of `gen_loop` only
+    /// so the bare `loop { }` form can skip all of it.
+    fn gen_loop_cursor(&mut self, over: &LoopOver) -> Result<LoopCursor<'a>, String> {
         // The loop owns its iterable rather than reading it through whatever
         // slot the expression happened to land in. `gen_expr` returns a
         // *borrowed* pointer for `Expr::Ident`, so iterating `xs` while the
@@ -796,7 +968,7 @@ impl<'a> Gen<'a> {
         // been released underneath it (`loop_iterable_reassigned.code`).
         // This mirrors the interpreter holding the `Rc` for the loop's
         // duration.
-        let evaluated = self.gen_expr(iterable)?;
+        let evaluated = self.gen_expr(&over.iterable)?;
         let arr_ptr = self.alloc_slot("loopiter")?;
         self.builder
             .build_call(self.fn_copy, &[arr_ptr.into(), evaluated.into()], "")
@@ -819,85 +991,17 @@ impl<'a> Gen<'a> {
             .build_store(counter, self.i64_ty.const_zero())
             .map_err(|e| e.to_string())?;
         let var_slot = self.alloc_slot("loopvar")?;
-        let index_slot = match index {
+        let index_slot = match over.index {
             Some(_) => Some(self.alloc_slot("loopidx")?),
             None => None,
         };
-
-        let head_bb = self.context.append_basic_block(self.main_fn, "loop_head");
-        let body_bb = self.context.append_basic_block(self.main_fn, "loop_body");
-        let after_bb = self.context.append_basic_block(self.main_fn, "loop_after");
-        self.builder
-            .build_unconditional_branch(head_bb)
-            .map_err(|e| e.to_string())?;
-
-        self.builder.position_at_end(head_bb);
-        let i = self
-            .builder
-            .build_load(self.i64_ty, counter, "i")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let more = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, i, len, "loop_more")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_conditional_branch(more, body_bb, after_bb)
-            .map_err(|e| e.to_string())?;
-
-        self.builder.position_at_end(body_bb);
-        self.builder
-            .build_call(
-                self.fn_iter_at,
-                &[var_slot.into(), arr_ptr.into(), i.into()],
-                "",
-            )
-            .map_err(|e| e.to_string())?;
-        if let Some(index_slot) = index_slot {
-            let as_f64 = self
-                .builder
-                .build_signed_int_to_float(i, self.f64_ty, "idx_f64")
-                .map_err(|e| e.to_string())?;
-            self.builder
-                .build_call(self.fn_number, &[index_slot.into(), as_f64.into()], "")
-                .map_err(|e| e.to_string())?;
-        }
-
-        let mut scope = HashMap::new();
-        scope.insert(var.to_string(), var_slot);
-        if let (Some(index), Some(index_slot)) = (index, index_slot) {
-            scope.insert(index.to_string(), index_slot);
-        }
-        self.env.push(scope);
-        self.loop_exits.push(after_bb);
-        for stmt in body {
-            self.gen_stmt(stmt)?;
-        }
-        self.loop_exits.pop();
-        self.env.pop();
-
-        // Emitted at whatever block the body *ended* in — after an `if` that
-        // is `if_after`, after a `break` it's the dead block `gen_break` left
-        // us in. Either way that's the fall-through path, so the increment
-        // and back-edge belong there.
-        let current = self
-            .builder
-            .build_load(self.i64_ty, counter, "i_cur")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let next = self
-            .builder
-            .build_int_add(current, self.i64_ty.const_int(1, false), "i_next")
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_store(counter, next)
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_unconditional_branch(head_bb)
-            .map_err(|e| e.to_string())?;
-
-        self.builder.position_at_end(after_bb);
-        Ok(())
+        Ok(LoopCursor {
+            arr_ptr,
+            len,
+            counter,
+            var_slot,
+            index_slot,
+        })
     }
 
     /// Unconditional version of `gen_if`'s scope handling, minus the

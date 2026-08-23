@@ -1,6 +1,6 @@
 -- `loop x over arr { }` runs the body once per element, in order, with `x`
--- bound to that element. There is no `yield`/collect form — accumulating
--- goes through the array `+` that already exists.
+-- bound to that element. Accumulating a result goes through `get` plus the
+-- array `+` that already exists — see loop_collect.code.
 let items = [10, 20, 30]
 let doubled = []
 loop item over items {

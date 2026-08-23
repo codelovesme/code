@@ -22,11 +22,13 @@ So the material is there; it is just not addressed to a reader.
 The language as it now stands: `let` and reassignment, the six JSON value
 kinds, `.field`/`[index]` (read-only, null on invalid access), operators and
 their operand-type rules, `assert`, `if` (no `else`, ever), bare blocks,
-`loop ... over` with optional index, and `break`.
+every `loop` form (`over` with optional index, bare `loop { }`, and the
+`get name [= init]` accumulator), `break`, and `continue`.
 
 Worth stating explicitly, because each is a deliberate decision a reader will
-otherwise read as an omission: no functions, no `else`, no `while`, no
-mutation of a constructed value, no type keywords.
+otherwise read as an omission: no functions, no `else`, no `while` (`loop { }`
+is how an unbounded loop is written), no mutation of a constructed value, no
+type keywords.
 
 Also worth a short section on the two output modes (`code run` / `code build`)
 and the rule that binds them — every feature must behave identically in both,

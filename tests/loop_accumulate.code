@@ -1,0 +1,30 @@
+-- `loop ... get out = init { out = ... }` is the other `get` form: `out`
+-- starts at `init` and the body assigns to it directly. Whatever it was last
+-- assigned is what survives the loop.
+loop x over [1, 2, 3] get sum = 0 {
+    sum = sum + x
+}
+assert sum = 6
+
+-- The accumulator is an ordinary binding, so any value kind works.
+loop s over ["a", "b", "c"] get joined = "" {
+    joined = joined + s
+}
+assert joined = "abc"
+
+-- It can be read as well as written, including across iterations.
+loop x over [1, 2, 3] get running = [] {
+    running = running + [x]
+}
+assert running = [1, 2, 3]
+
+-- With no `= init` at all, the accumulator starts as null.
+loop x over [1] get untouched {
+}
+assert untouched = null
+
+-- An empty array leaves the accumulator at its initial value.
+loop x over [] get never = 7 {
+    never = 0
+}
+assert never = 7

@@ -304,6 +304,55 @@
   .ex-card .try { font-size: 0.75rem; color: var(--teal); opacity: 0; transition: opacity 0.15s; }
   .ex-card:hover .try { opacity: 1; }
 
+  /* ---------- take it with you (packages) ---------- */
+  .pkg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; align-items: start; }
+  .pkg {
+    border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+    background: rgba(11, 14, 23, 0.7);
+    display: flex; flex-direction: column;
+  }
+  .pkg-head { padding: 1.15rem 1.25rem 1rem; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+  .pkg-tag {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-family: var(--mono); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
+    border: 1px solid var(--border); border-radius: 999px; padding: 0.22rem 0.7rem;
+    margin-bottom: 0.7rem;
+  }
+  .pkg-tag.wasm { color: var(--violet); background: rgba(167,139,250,0.08); }
+  .pkg-tag.native { color: var(--amber); background: rgba(251,191,36,0.08); }
+  .pkg h3 { margin: 0 0 0.3rem; font-size: 1.12rem; font-weight: 700; display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap; }
+  .pkg h3 code { font-family: var(--mono); font-size: 0.95rem; color: var(--text); }
+  .pkg-desc { margin: 0; font-size: 0.88rem; color: var(--muted); }
+  .pkg-body { padding: 1.15rem 1.25rem 1.25rem; display: flex; flex-direction: column; gap: 1.05rem; flex: 1; }
+  .step-label {
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--muted-2); margin-bottom: 0.45rem; display: flex; align-items: center; gap: 0.45rem;
+  }
+  .step-label .num {
+    width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center;
+    font-family: var(--mono); font-size: 0.68rem; color: #0a0c12; background: var(--grad);
+  }
+  pre.codeblock {
+    margin: 0; padding: 0.75rem 0.9rem;
+    font-family: var(--mono); font-size: 0.78rem; line-height: 1.6;
+    background: rgba(0,0,0,0.32); border: 1px solid var(--border); border-radius: 9px;
+    white-space: pre-wrap; word-break: break-word; color: var(--text);
+  }
+  pre.codeblock .cm { color: var(--muted-2); font-style: italic; }
+  pre.codeblock .kw { color: var(--violet); }
+  pre.codeblock .st { color: var(--green); }
+  pre.codeblock .fn { color: var(--teal); }
+  .pkg-links { display: flex; gap: 0.7rem; flex-wrap: wrap; margin-top: auto; padding-top: 0.35rem; }
+  .pkg-links a {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-size: 0.82rem; font-weight: 600; color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 0.42rem 0.85rem;
+    background: var(--panel); transition: border-color 0.15s, background 0.15s;
+  }
+  .pkg-links a:hover { border-color: var(--border-2); background: var(--panel-2); text-decoration: none; }
+  .pkg-note { font-size: 0.8rem; color: var(--muted-2); margin: 0; }
+  .pkg-note b { color: var(--muted); font-weight: 600; }
+
   /* ---------- footer ---------- */
   footer { border-top: 1px solid var(--border); margin-top: 2rem; }
   .foot-inner { max-width: 1120px; margin: 0 auto; padding: 2rem 1.5rem 3rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; color: var(--muted); font-size: 0.88rem; }
@@ -316,7 +365,7 @@
   @media (max-width: 900px) {
     .hero { grid-template-columns: 1fr; gap: 2.5rem; padding-top: 3.5rem; }
     .feat-grid, .ex-grid { grid-template-columns: repeat(2, 1fr); }
-    .pg-grid { grid-template-columns: 1fr; }
+    .pg-grid, .pkg-grid { grid-template-columns: 1fr; }
     pre#output { min-height: 260px; }
   }
   @media (max-width: 560px) {
@@ -345,6 +394,7 @@
     <div class="nav-links">
       <a href="#playground">Playground</a>
       <a href="#examples">Examples</a>
+      <a href="#packages">Packages</a>
       <a class="gh" href="https://github.com/codelovesme/code" target="_blank" rel="noopener">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
         GitHub
@@ -520,6 +570,137 @@
     <div class="chips reveal" id="chips" role="tablist" aria-label="filter examples by category"></div>
     <div class="ex-grid" id="ex-grid"></div>
   </section>
+
+  <section id="packages">
+    <div class="reveal">
+      <div class="overline">take it with you</div>
+      <h2>Beyond this page</h2>
+      <p class="section-sub">
+        The playground is the same interpreter you can ship yourself. Two
+        packages cover the two directions: embed <code>code</code> in your web app,
+        or give your native program handlers written in Rust.
+      </p>
+    </div>
+    <div class="pkg-grid">
+      <article class="pkg reveal">
+        <div class="pkg-head">
+          <span class="pkg-tag wasm">npm · browser &amp; node</span>
+          <h3><code>code-wasm</code> — run code in any JS host</h3>
+          <p class="pkg-desc">
+            The real parser + interpreter as a small WASM bridge. One call per
+            program, synchronous results, and third-party modules as plain JS
+            callbacks.
+          </p>
+        </div>
+        <div class="pkg-body">
+          <div>
+            <div class="step-label"><span class="num">1</span> install</div>
+<pre class="codeblock"><span class="cm"># bundler (Vite, webpack, Rollup…)</span>
+npm install code-wasm
+
+<span class="cm"># …or straight from a CDN, no build step</span>
+import init, { run } from "https://esm.sh/code-wasm";</pre>
+          </div>
+          <div>
+            <div class="step-label"><span class="num">2</span> run programs</div>
+<pre class="codeblock"><span class="kw">await</span> init();
+console.log(run(<span class="st">"let a = 5\nassert a = 5\n"</span>));
+<span class="cm">// "a = 5\n" — final bindings, like `code run` stdout</span></pre>
+          </div>
+          <div>
+            <div class="step-label"><span class="num">3</span> link modules from your app</div>
+<pre class="codeblock"><span class="kw">const</span> modules = {
+  math: {
+    dispatch(particleJson) {
+      <span class="kw">const</span> p = JSON.parse(particleJson);
+      <span class="kw">if</span> (p._class === <span class="st">"Double"</span>)
+        <span class="kw">return</span> JSON.stringify({ _class: <span class="st">"DoubleResult"</span>, value: p.value * 2 });
+      <span class="kw">throw new</span> Error(<span class="st">"unknown handler"</span>);
+    },
+  },
+};
+run_with_modules(
+  <span class="st">'link "math" as m\nemit Double { "value": 21 } to m get r\n'</span> +
+  <span class="st">"assert r.value = 42\n"</span>,
+  modules,
+);</pre>
+          </div>
+          <p class="pkg-note">
+            Everything crosses that boundary as JSON strings — a module backed by
+            a plain function works exactly like one backed by a real
+            <code>.wasm</code> file. All modules must be provided up front:
+            <code>link</code> resolves before the program starts.
+          </p>
+          <div class="pkg-links">
+            <a href="https://www.npmjs.com/package/code-wasm" target="_blank" rel="noopener">npm ↗</a>
+            <a href="https://github.com/codelovesme/code/blob/main/crates/code-wasm/npm/README.md" target="_blank" rel="noopener">full docs ↗</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="pkg reveal">
+        <div class="pkg-head">
+          <span class="pkg-tag native">crates.io · rust → .so</span>
+          <h3><code>code-native</code> — write native modules in Rust</h3>
+          <p class="pkg-desc">
+            Safe builders over the real ABI, plus the runtime linked in for you —
+            no checkout of this repo needed. Your crate builds into a
+            <code>.so</code> that both <code>code run</code> and <code>code build</code> accept.
+          </p>
+        </div>
+        <div class="pkg-body">
+          <div>
+            <div class="step-label"><span class="num">1</span> set up the crate</div>
+<pre class="codeblock"><span class="cm"># Cargo.toml</span>
+[lib]
+crate-type = [<span class="st">"cdylib"</span>]
+
+[dependencies]
+code-native = <span class="st">"1.0"</span></pre>
+          </div>
+          <div>
+            <div class="step-label"><span class="num">2</span> implement two exports</div>
+<pre class="codeblock"><span class="kw">use</span> code_native::*;
+
+#[no_mangle]
+pub <span class="kw">extern</span> <span class="st">"C"</span> <span class="kw">fn</span> code_module_abi_version() -&gt; u32 {
+    CODE_ABI_VERSION
+}
+
+#[no_mangle]
+pub <span class="kw">unsafe extern</span> <span class="st">"C"</span> <span class="kw">fn</span> code_module_dispatch(out: *mut CodeValue, particle: *<span class="kw">const</span> CodeValue) {
+    <span class="kw">match</span> read_field_str(&amp;*particle, <span class="st">"_class"</span>) {
+        Some(<span class="st">"Double"</span>) =&gt; {
+            <span class="kw">let</span> v = read_field_number(&amp;*particle, <span class="st">"value"</span>).unwrap_or(0.0);
+            make_result(&amp;<span class="kw">mut</span> *out, c<span class="st">"DoubleResult"</span>, |slot| number(slot, v * 2.0));
+        }
+        other =&gt; runtime_error(format!(<span class="st">"unknown handler: {other:?}"</span>)),
+    }
+}</pre>
+          </div>
+          <div>
+            <div class="step-label"><span class="num">3</span> build &amp; link it from code</div>
+<pre class="codeblock">cargo build --release   <span class="cm"># → target/release/libmymodule.so</span>
+
+<span class="cm">-- my_script.code</span>
+link <span class="st">"libmymodule.so"</span> <span class="kw">as</span> m
+emit Double { <span class="st">"value"</span>: 21 } <span class="kw">to</span> m <span class="kw">get</span> result
+assert result.value = 42</pre>
+          </div>
+          <p class="pkg-note">
+            An optional third export, <code>code_module_vars</code>, makes
+            <code>m.someConst</code> work alongside <code>emit</code>. C (and anything else that
+            produces a C-ABI shared library) uses <code>src/code_abi.h</code> directly —
+            there's no registry to publish a bundle to.
+          </p>
+          <div class="pkg-links">
+            <a href="https://crates.io/crates/code-native" target="_blank" rel="noopener">crates.io ↗</a>
+            <a href="https://github.com/codelovesme/code/blob/main/crates/code-native/README.md" target="_blank" rel="noopener">full docs ↗</a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
 </main>
 
 <footer>
@@ -529,14 +710,6 @@
       <a href="https://github.com/codelovesme/code" target="_blank" rel="noopener">github.com/codelovesme/code</a>.
       A previous, syntactically unrelated version of this language is kept as an
       architectural reference under <code>old/</code> in that repository.
-      <br />
-      Packages —
-      <code>npm install code-wasm</code>
-      (<a href="https://www.npmjs.com/package/code-wasm" target="_blank" rel="noopener">npm</a>,
-      embeds this same interpreter in any JS host) ·
-      <code>cargo add code-native</code>
-      (<a href="https://crates.io/crates/code-native" target="_blank" rel="noopener">crates.io</a>,
-      write native modules in Rust)
     </span>
     <span style="font-family:var(--mono); font-size:0.8rem; color:var(--muted-2)">
       interpreter → wasm → your browser
@@ -569,7 +742,7 @@
   /* ---------- syntax highlighting ---------- */
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const TOKEN_RE =
-    /(--[^\n]*)|("(?:[^"\\]|\\.)*")|(\b\d+(?:\.\d+)?\b)|\b(let|assert|if|loop|over|break|link|emit|to|export)\b|\b(true|false|null)\b|([A-Z][A-Za-z0-9_]*)(?=\s*\{)/g;
+    /(--[^\n]*)|("(?:[^"\\]|\\.)*")|(\b\d+(?:\.\d+)?\b)|\b(let|assert|if|loop|over|get|break|continue|link|emit|to|core|export)\b|\b(true|false|null)\b|([A-Z][A-Za-z0-9_]*)(?=\s*\{)/g;
   function highlight(src) {
     let out = "", last = 0, m;
     TOKEN_RE.lastIndex = 0;
