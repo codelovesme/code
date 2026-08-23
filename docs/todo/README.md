@@ -9,7 +9,10 @@ time. Order below is roughly by how likely it is to bite someone.
 
 | Task | Why it matters |
 |---|---|
+| [build-targets.md](build-targets.md) | `code build` only makes an executable; `--target exe\|shared\|static\|wasm` brings back what the archived language had — the three native targets are a flag plus a link step, wasm needs a ~200-line freestanding libc shim because `runtime.c` has none on wasm32 |
 | [community-modules.md](community-modules.md) | How native modules reach users: core stays minimal (`Length`, `Timestamp`), first-party modules are per-host (`terminal` native / `console` browser, then `math`, `strings`, `net`) on GitHub Releases + npm via `code install`, and the community publish path — direction decided 2026-08-23, phased A–F |
+| [emit-bare-particle-name.md](emit-bare-particle-name.md) | `emit Timestamp {} to core` should also be writable `emit Timestamp to core` — a no-field particle shouldn't need ceremonial braces; a parser-only desugar, three lines and no ripple |
+| [formatter.md](formatter.md) | No canonical layout for `.code` source: `code format [--check]`, token-stream based so comments and `+=` survive, with token-equality + idempotence proven over the fixture corpus and a CI gate beside `cargo fmt` |
 | [native-module-linking.md](native-module-linking.md) | Phase 1 (`.so` handlers) + Phase 2 (exported vars) shipped 2026-08-21, Phase 3 (`.a` static modules) + the `code-native` Rust crate shipped 2026-08-22; a *native* `link "x.wasm"`, `code build --lib`, and per-language bundles for anything besides Rust/C still open (a *different* `crates/code-wasm` module-linking story shipped 2026-08-22 too — see that doc) |
 | [no-language-documentation.md](no-language-documentation.md) | The new language has no README at all |
 | [runtime-error-locations.md](runtime-error-locations.md) | Parse errors point at a line/column since 2026-08-23; runtime ones (`assertion failed`) still don't |
