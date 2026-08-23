@@ -81,22 +81,33 @@ enum Expect {
     BuildOnly,
 }
 
-/// Compiles each `tests/native_modules/<stem>.c` into the `.so` the
+/// Compiles each dynamic native module into the `.so` the
 /// `native_link_*`/`fail_native_link_*` and `terminal_*` fixtures `link`
 /// — checked into git as source, not as a binary (see `.gitignore`), so it
 /// has to be built fresh here before any fixture that needs it can run
-/// either mode.
+/// either mode. Sources live next to their consumers: `test_math` is a pure
+/// test double (stays in `tests/native_modules/`), while `terminal` is a
+/// real first-party module that happens to be exercised by fixtures (its
+/// canonical home is `crates/modules/terminal/`, where the release CI
+/// builds it from).
 fn build_native_dynamic_test_modules(tests_dir: &Path) {
-    for stem in ["test_math", "terminal"] {
-        let modules_dir = tests_dir.join("native_modules");
-        let src = modules_dir.join(format!("{stem}.c"));
+    let modules_dir = tests_dir.join("native_modules");
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let sources: &[(&str, &Path)] = &[
+        ("test_math", &modules_dir.join("test_math.c")),
+        (
+            "terminal",
+            &manifest_dir.join("crates/modules/terminal/terminal.c"),
+        ),
+    ];
+    for (stem, src) in sources {
         let so = modules_dir.join(format!("{stem}.so"));
         let status = Command::new("cc")
             .arg("-shared")
             .arg("-fPIC")
             .arg("-o")
             .arg(&so)
-            .arg(&src)
+            .arg(src)
             .arg("-lm")
             .arg("-ldl")
             .status()

@@ -23,7 +23,7 @@
  * "export your own code_release" part of the ABI contract, and it also hands
  * this file every `static` helper runtime.c has (`find_field`, `slot_at`).
  */
-#include "../../src/runtime.c"
+#include "../../../src/runtime.c"
 
 uint32_t code_module_abi_version(void) {
     return CODE_ABI_VERSION;

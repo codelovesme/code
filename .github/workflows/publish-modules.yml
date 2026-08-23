@@ -1,0 +1,232 @@
+name: Publish modules
+
+on:
+  # Per-module versioning: `modules/terminal/v1.0.0` cuts a release for
+  # `terminal` at 1.0.0 without touching anything else. Each first-party
+  # module ships on its own cadence (docs/todo/community-modules.md).
+  push:
+    tags: ["modules/*/v*"]
+  # Manual dry-run: builds every platform artifact and uploads them as
+  # Actions artifacts, but creates no GitHub Release (guarded below), so
+  # the pipeline can be exercised without cutting a tag.
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  resolve:
+    name: Resolve module + version
+    runs-on: ubuntu-latest
+    outputs:
+      module: ${{ steps.parse.outputs.module }}
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - id: parse
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # modules/<name>/v<semver> -> name, semver
+            ref="${GITHUB_REF_NAME}"
+            module="$(cut -d/ -f2 <<<"$ref")"
+            version="${ref##*/}"
+            version="${version#v}"
+          else
+            module="terminal"
+            version="dev-${GITHUB_SHA}"
+          fi
+          # Allowlist: only modules whose source lives under crates/modules/.
+          # Add a line here when math/strings/net land.
+          case "$module" in
+            terminal) ;;
+            *) echo "::error::unknown module '$module' (allowed: terminal)"; exit 1 ;;
+          esac
+          echo "module=$module" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  # Every build job compiles the same way — one C file, no dependencies —
+  # so the only differences are the runner, the compiler invocation, and
+  # the artifact extension (.so vs .dylib). Asset names follow the
+  # distribution doc: <module>-<platform><ext>.
+  build-linux-x86_64:
+    name: Build linux-x86_64
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile
+        run: |
+          set -euo pipefail
+          m="${{ needs.resolve.outputs.module }}"
+          mkdir -p dist
+          cc -O2 -shared -fPIC \
+            -o "dist/${m}-linux-x86_64.so" \
+            "crates/modules/${m}/${m}.c" -lm -ldl
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-${{ needs.resolve.outputs.module }}-linux-x86_64
+          path: "dist/*.so"
+
+  build-linux-arm64:
+    name: Build linux-arm64
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Compile
+        run: |
+          set -euo pipefail
+          m="${{ needs.resolve.outputs.module }}"
+          mkdir -p dist
+          aarch64-linux-gnu-gcc -O2 -shared -fPIC \
+            -o "dist/${m}-linux-arm64.so" \
+            "crates/modules/${m}/${m}.c" -lm -ldl
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-${{ needs.resolve.outputs.module }}-linux-arm64
+          path: "dist/*.so"
+
+  build-macos-x86_64:
+    name: Build macos-x86_64
+    needs: resolve
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile
+        run: |
+          set -euo pipefail
+          m="${{ needs.resolve.outputs.module }}"
+          mkdir -p dist
+          cc -O2 -dynamiclib \
+            -install_name "@rpath/${m}.dylib" \
+            -o "dist/${m}-macos-x86_64.dylib" \
+            "crates/modules/${m}/${m}.c" -lm
+          # Unsigned dylibs get killed/quarantined on some setups — ad-hoc
+          # sign at minimum (distribution doc).
+          codesign --sign - "dist/${m}-macos-x86_64.dylib"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-${{ needs.resolve.outputs.module }}-macos-x86_64
+          path: "dist/*.dylib"
+
+  build-macos-arm64:
+    name: Build macos-arm64
+    needs: resolve
+    runs-on: macos-14-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile
+        run: |
+          set -euo pipefail
+          m="${{ needs.resolve.outputs.module }}"
+          mkdir -p dist
+          cc -O2 -dynamiclib \
+            -install_name "@rpath/${m}.dylib" \
+            -o "dist/${m}-macos-arm64.dylib" \
+            "crates/modules/${m}/${m}.c" -lm
+          codesign --sign - "dist/${m}-macos-arm64.dylib"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-${{ needs.resolve.outputs.module }}-macos-arm64
+          path: "dist/*.dylib"
+
+  # Proof the artifact actually loads: build the real `code` binary and run
+  # a script that links the just-built .so through BOTH output modes — the
+  # same parity invariant the fixture harness enforces, applied to the
+  # shipped artifact rather than the test-tree build.
+  dogfood:
+    name: Dogfood (load artifact via code run + code build)
+    needs: [resolve, build-linux-x86_64]
+    runs-on: ubuntu-latest
+    env:
+      LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build code
+        run: cargo build --release
+      - name: Download linux-x86_64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: module-${{ needs.resolve.outputs.module }}-linux-x86_64
+          path: dogfood
+      - name: Run through both output modes
+        run: |
+          set -euo pipefail
+          cat > dogfood/demo.code <<'EOF'
+          link "terminal.so" as term
+          emit Print { "value": "phase B works" } to term get r
+          assert r.value = 13
+          EOF
+          mv "dogfood/terminal-linux-x86_64.so" dogfood/terminal.so
+          ./target/release/code run dogfood/demo.code
+          ./target/release/code build dogfood/demo.code -o dogfood/demo
+          CODE_CHECK_LEAKS=1 ./dogfood/demo
+
+  publish:
+    name: Create GitHub Release
+    needs:
+      [
+        resolve,
+        build-linux-x86_64,
+        build-linux-arm64,
+        build-macos-x86_64,
+        build-macos-arm64,
+        dogfood,
+      ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Flatten into dist/
+        run: find dist -type f \( -name '*.so' -o -name '*.dylib' \) -exec mv {} dist/ \;
+      - name: Write module.json
+        run: |
+          set -euo pipefail
+          m="${{ needs.resolve.outputs.module }}"
+          v="${{ needs.resolve.outputs.version }}"
+          sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
+          cat > "dist/${m}.json" <<EOF
+          {
+            "name": "${m}",
+            "version": "${v}",
+            "abi_version": 1,
+            "handlers": ["Print"],
+            "vars": [],
+            "platforms": {
+              "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" },
+              "linux-arm64": { "asset": "${m}-linux-arm64.so", "sha256": "$(sum ${m}-linux-arm64.so)" },
+              "macos-x86_64": { "asset": "${m}-macos-x86_64.dylib", "sha256": "$(sum ${m}-macos-x86_64.dylib)" },
+              "macos-arm64": { "asset": "${m}-macos-arm64.dylib", "sha256": "$(sum ${m}-macos-arm64.dylib)" }
+            }
+          }
+          EOF
+          python3 -m json.tool "dist/${m}.json" >/dev/null # validate
+      - name: Upload build artifacts (always — usable as a dry-run record)
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-${{ needs.resolve.outputs.module }}-${{ needs.resolve.outputs.version }}
+          path: dist/*
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/*
+          generate_release_notes: true
