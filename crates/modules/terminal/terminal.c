@@ -64,7 +64,7 @@ static void render_value(const CodeValue *v, char **buf, size_t *cap, size_t *le
         *len += (size_t)t;
         break;
     }
-    default:
+    default: {
         /* Bool / Null / Array / Object — fall back to a stable, readable form.
          * Arrays and objects are rare things to Print; showing their element
          * count keeps the line honest without pulling in a full JSON encoder.
@@ -88,6 +88,7 @@ static void render_value(const CodeValue *v, char **buf, size_t *cap, size_t *le
         memcpy(*buf + *len, tmp, (size_t)t);
         *len += (size_t)t;
         break;
+    }
     }
 }
 

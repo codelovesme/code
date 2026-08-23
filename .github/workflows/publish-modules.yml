@@ -71,30 +71,6 @@ jobs:
           name: module-${{ needs.resolve.outputs.module }}-linux-x86_64
           path: "dist/*.so"
 
-  build-macos-x86_64:
-    name: Build macos-x86_64
-    needs: resolve
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-      - name: Compile
-        run: |
-          set -euo pipefail
-          m="${{ needs.resolve.outputs.module }}"
-          mkdir -p dist
-          cc -O2 -dynamiclib \
-            -install_name "@rpath/${m}.dylib" \
-            -o "dist/${m}-macos-x86_64.dylib" \
-            "crates/modules/${m}/${m}.c" -lm
-          # Unsigned dylibs get killed/quarantined on some setups — ad-hoc
-          # sign at minimum (distribution doc).
-          codesign --sign - "dist/${m}-macos-x86_64.dylib"
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: module-${{ needs.resolve.outputs.module }}-macos-x86_64
-          path: "dist/*.dylib"
-
   # Proof the artifact actually loads: build the real `code` binary and run
   # a script that links the just-built .so through BOTH output modes — the
   # same parity invariant the fixture harness enforces, applied to the
@@ -139,7 +115,6 @@ jobs:
       [
         resolve,
         build-linux-x86_64,
-        build-macos-x86_64,
         dogfood,
       ]
     runs-on: ubuntu-latest
@@ -164,8 +139,7 @@ jobs:
             "handlers": ["Print"],
             "vars": [],
             "platforms": {
-              "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" },
-              "macos-x86_64": { "asset": "${m}-macos-x86_64.dylib", "sha256": "$(sum ${m}-macos-x86_64.dylib)" }
+              "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" }
             }
           }
           EOF
