@@ -17,11 +17,17 @@ name = "code"
 path = "src/main.rs"
 
 [features]
-default = ["llvm"]
+default = ["llvm", "native-modules"]
 # The LLVM backend (codegen.rs, `code build`). Off for targets with no native
 # LLVM toolchain — currently just wasm32-unknown-unknown (crates/code-wasm),
 # which only ever needs the interpreter.
 llvm = ["dep:inkwell"]
+# `link`ing a native `.so` module (src/native.rs), via dlopen/dlsym — off for
+# the same reason `llvm` is: wasm32-unknown-unknown has no dlopen, and
+# code-wasm's `NoModules` resolver refuses every `link` anyway, so there is
+# nothing for this feature to do there.
+native-modules = ["dep:libloading"]
 
 [dependencies]
 inkwell = { version = "0.4", features = ["llvm17-0"], optional = true }
+libloading = { version = "0.8", optional = true }

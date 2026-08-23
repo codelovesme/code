@@ -8,40 +8,22 @@
  * codegen.rs only ever passes opaque pointers, never inspects the struct's
  * layout itself. See codegen.rs's VALUE_SIZE comment for the size contract.
  */
+#define _GNU_SOURCE
+#include <dlfcn.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum { CODE_NUMBER, CODE_STR, CODE_BOOL, CODE_NULL, CODE_ARRAY, CODE_OBJECT } CodeTag;
+#include "code_abi.h"
 
-typedef struct CodeValue {
-    CodeTag tag;
-    /* 1 when this value owns one reference to a refcounted heap block (see
-     * `heap_block` for which field points at it). A string *literal* points
-     * into the program's read-only data instead, and an empty array/object
-     * owns nothing at all — both are `heap = 0`, making retain/release a
-     * no-op for them. */
-    int heap;
-    double number;
-    const char *str;
-    int boolean;
-    /* CODE_ARRAY: element buffer; CODE_OBJECT: value buffer. Deliberately
-     * `void *`, not `CodeValue *` — codegen.rs packs each element/value at a
-     * fixed CODE_VALUE_SLOT_SIZE-byte stride (its VALUE_SIZE), NOT at
-     * `sizeof(CodeValue)` (compiler/platform-dependent). Indexing this as a
-     * real `CodeValue[]` would silently read the wrong slot the moment those
-     * two numbers differ — always go through `slot_at()` below instead of
-     * `[]`. */
-    void *items;
-    const char **keys; /* CODE_OBJECT only — a genuine char* array, stride sizeof(char*) */
-    long long len;     /* CODE_ARRAY/CODE_OBJECT element count */
-} CodeValue;
-
-/* Must match codegen.rs's VALUE_SIZE exactly. The assert below is the only
- * thing standing between a struct that outgrows the stride and codegen
+/* `CodeTag`/`CodeValue`/`CODE_VALUE_SLOT_SIZE` now live in code_abi.h — it's
+ * the native-module ABI, so runtime.c and every module built against it (see
+ * that header) share one definition instead of two that could drift apart.
+ *
+ * Must match codegen.rs's VALUE_SIZE exactly. The assert below is the only
+ * thing standing between a struct that outgrew the stride and codegen
  * silently reading the wrong slot, so keep it. */
-#define CODE_VALUE_SLOT_SIZE 80
 _Static_assert(sizeof(CodeValue) <= CODE_VALUE_SLOT_SIZE,
                "CodeValue outgrew codegen.rs's VALUE_SIZE stride");
 
@@ -375,6 +357,15 @@ static void code_make_result(CodeValue *out, const char *class_name, const CodeV
     code_str(slot_at(slots, 0), class_name);
     code_copy(slot_at(slots, 1), value);
     code_object(out, keys, slots, 2);
+    /* `code_object` retained its own copy of each slot; these scratch ones
+     * are done being needed the moment it returns. Harmless no-ops for
+     * `Length` (`slots[0]` is a literal, `slots[1]` a Number — neither ever
+     * `heap`), but load-bearing the moment a handler's `value` argument (see
+     * this function's doc comment above `code_core_dispatch`) is itself
+     * heap-owned: without this, that caller's own reference to `value`
+     * would double-count against the fresh copy `code_object` just made. */
+    code_release(slot_at(slots, 0));
+    code_release(slot_at(slots, 1));
 }
 
 void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
@@ -410,6 +401,156 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
     char msg[96];
     snprintf(msg, sizeof msg, "unknown core handler '%s'", class_val->str);
     code_runtime_error(msg);
+}
+
+/* ---- Native modules (`link "x.so" as x`, `emit ... to x [get n]`) --------
+ *
+ * See code_abi.h for the contract every module implements. Loading is
+ * dlopen/dlsym-based here, exactly as in the interpreter (native.rs) — never
+ * cc-time static linking, so multiple linked modules that all export the
+ * identically-named `code_module_dispatch` never collide: dlsym resolves
+ * within one module's own handle, never the whole process.
+ *
+ * A module's result is never adopted directly — `code_native_dispatch`
+ * always deep-copies it into a fresh, host-allocated value
+ * (`code_native_copy_in`), then calls the module's *own* copy of
+ * `code_release` (looked up from the same handle) to free whatever it
+ * allocated. That is what keeps `CODE_CHECK_LEAKS` meaningful on both sides
+ * of a dlopen boundary: two separate copies of this runtime, two separate
+ * static `live_blocks` counters, each only ever freeing blocks it itself
+ * allocated. */
+
+typedef struct {
+    void (*dispatch)(CodeValue *out, const CodeValue *particle);
+    void (*release)(CodeValue *v);
+} NativeHandle;
+
+void *code_native_open(const char *path) {
+    void *handle = dlopen(path, RTLD_NOW);
+    if (!handle) {
+        char msg[256];
+        snprintf(msg, sizeof msg, "cannot load native module '%s': %s", path, dlerror());
+        code_runtime_error(msg);
+    }
+
+    uint32_t (*version_fn)(void) = (uint32_t (*)(void))dlsym(handle, "code_module_abi_version");
+    if (!version_fn) {
+        char msg[256];
+        snprintf(msg, sizeof msg, "native module '%s' missing 'code_module_abi_version'", path);
+        code_runtime_error(msg);
+    }
+    uint32_t version = version_fn();
+    if (version != CODE_ABI_VERSION) {
+        char msg[256];
+        snprintf(msg, sizeof msg, "native module '%s' has ABI version %u (expected %u)", path,
+                 (unsigned)version, (unsigned)CODE_ABI_VERSION);
+        code_runtime_error(msg);
+    }
+
+    NativeHandle *nh = malloc(sizeof(NativeHandle));
+    if (!nh) {
+        code_runtime_error("out of memory");
+    }
+    nh->dispatch = (void (*)(CodeValue *, const CodeValue *))dlsym(handle, "code_module_dispatch");
+    nh->release = (void (*)(CodeValue *))dlsym(handle, "code_release");
+    if (!nh->dispatch || !nh->release) {
+        char msg[256];
+        snprintf(msg, sizeof msg,
+                 "native module '%s' missing 'code_module_dispatch' or 'code_release'", path);
+        code_runtime_error(msg);
+    }
+    return nh;
+}
+
+/* Builds a fresh heap-owned string value by copying `s`'s bytes — unlike
+ * `code_str`, whose caller always passes a program literal it doesn't own.
+ * Needed here because a module's own string may become dangling the moment
+ * its `code_release` runs. */
+static void code_str_owned(CodeValue *out, const char *s) {
+    size_t n = strlen(s);
+    char *buf = heap_alloc(n + 1);
+    memcpy(buf, s, n + 1);
+    code_release(out);
+    out->tag = CODE_STR;
+    out->heap = 1;
+    out->str = buf;
+}
+
+/* Deep-copies a value produced by a *different* copy of this runtime (a
+ * dlopen'd module) into a fresh, host-owned value — see the section comment
+ * above for why this can never be a plain assignment or retain. */
+static void code_native_copy_in(CodeValue *out, const CodeValue *from) {
+    switch (from->tag) {
+    case CODE_NUMBER:
+        code_number(out, from->number);
+        return;
+    case CODE_STR:
+        code_str_owned(out, from->str);
+        return;
+    case CODE_BOOL:
+        code_bool(out, from->boolean);
+        return;
+    case CODE_NULL:
+        code_null(out);
+        return;
+    case CODE_ARRAY: {
+        // Zero-initialized (calloc, not malloc): each recursive
+        // code_native_copy_in call below may write a CODE_STR/CODE_ARRAY/
+        // CODE_OBJECT result via a constructor that calls code_release(out)
+        // *first* (see code_str_owned) — that reads out->heap, which has to
+        // start real rather than garbage, same hazard code_make_result's
+        // doc comment already flags.
+        void *slots = from->len > 0 ? calloc((size_t)from->len, CODE_VALUE_SLOT_SIZE) : NULL;
+        for (long long i = 0; i < from->len; i++) {
+            code_native_copy_in(slot_at(slots, i), slot_at(from->items, i));
+        }
+        code_array(out, slots, from->len);
+        for (long long i = 0; i < from->len; i++) {
+            code_release(slot_at(slots, i));
+        }
+        free(slots);
+        return;
+    }
+    case CODE_OBJECT: {
+        const char **keys = from->len > 0 ? malloc((size_t)from->len * sizeof(const char *)) : NULL;
+        // Zero-initialized for the same reason the CODE_ARRAY case above is.
+        void *slots = from->len > 0 ? calloc((size_t)from->len, CODE_VALUE_SLOT_SIZE) : NULL;
+        for (long long i = 0; i < from->len; i++) {
+            keys[i] = from->keys[i];
+            code_native_copy_in(slot_at(slots, i), slot_at(from->items, i));
+        }
+        code_object(out, keys, slots, from->len);
+        for (long long i = 0; i < from->len; i++) {
+            code_release(slot_at(slots, i));
+        }
+        free(keys);
+        free(slots);
+        return;
+    }
+    }
+}
+
+/* Frees the small `NativeHandle` `code_native_open` allocated — called once
+ * per linked module as part of the program's end-of-run cleanup (see
+ * codegen.rs's `emit_cleanup`), the same "owns nothing when it exits" rule
+ * `code_check_leaks` already holds every `CodeValue` slot to. Does not
+ * `dlclose` the module itself: nothing depends on unloading it before the
+ * process exits anyway, and dlclose has its own sharp edges (a module with
+ * `__attribute__((destructor))` running at an unexpected time, symbols still
+ * live on a stack frame mid-unwind) that aren't worth taking on for no
+ * actual benefit here. */
+void code_native_close(void *handle) {
+    free(handle);
+}
+
+/* `emit <particle> to <alias> [get <name>]` for a linked native module.
+ * `handle` is whatever `code_native_open` returned for that alias. */
+void code_native_dispatch(void *handle, CodeValue *out, const CodeValue *particle) {
+    NativeHandle *nh = (NativeHandle *)handle;
+    CodeValue result = {0};
+    nh->dispatch(&result, particle);
+    code_native_copy_in(out, &result);
+    nh->release(&result);
 }
 
 /* `loop x over <expr>` support. Two calls instead of one combined "iterate"

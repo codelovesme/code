@@ -13,7 +13,7 @@ use inkwell::AddressSpace;
 use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
-use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
+use crate::ast::{BinOp, EmitTarget, Expr, Program, Stmt, UnOp};
 
 /// Byte size of one runtime `CodeValue` slot (`src/runtime.c`; 64 bytes on
 /// x86_64, this leaves headroom). Codegen never inspects the struct's fields
@@ -35,10 +35,15 @@ const VALUE_ALIGN: u32 = 8;
 /// `if`'s body, not after it, unless it was already defined outside.
 fn verify_defined(program: &Program) -> Result<(), String> {
     let mut scopes = vec![HashSet::new()];
-    verify_stmts(&program.statements, &mut scopes)
+    let mut natives = HashSet::new();
+    verify_stmts(&program.statements, &mut scopes, &mut natives)
 }
 
-fn verify_stmts(stmts: &[Stmt], scopes: &mut Vec<HashSet<String>>) -> Result<(), String> {
+fn verify_stmts(
+    stmts: &[Stmt],
+    scopes: &mut Vec<HashSet<String>>,
+    natives: &mut HashSet<String>,
+) -> Result<(), String> {
     for stmt in stmts {
         match stmt {
             Stmt::Let { name, value, .. } => {
@@ -58,7 +63,7 @@ fn verify_stmts(stmts: &[Stmt], scopes: &mut Vec<HashSet<String>>) -> Result<(),
                 exports,
             } => {
                 scopes.push(HashSet::new());
-                let result = verify_stmts(body, scopes);
+                let result = verify_stmts(body, scopes, natives);
                 scopes.pop();
                 result?;
                 // The module's own scope is gone; only what it exported is
@@ -74,6 +79,14 @@ fn verify_stmts(stmts: &[Stmt], scopes: &mut Vec<HashSet<String>>) -> Result<(),
                     }
                 }
             }
+            Stmt::ImportNative { alias, .. } => {
+                // A separate namespace from `scopes`, matching
+                // `interpreter::Environment::native_modules`: nothing in
+                // this language can bind a handler as an ordinary `Value`,
+                // so the alias is only ever reachable via `emit ... to
+                // <alias>`.
+                natives.insert(alias.clone());
+            }
             Stmt::Assign { name, value } => {
                 verify_expr(value, scopes)?;
                 if !is_defined(scopes, name) {
@@ -86,13 +99,13 @@ fn verify_stmts(stmts: &[Stmt], scopes: &mut Vec<HashSet<String>>) -> Result<(),
             Stmt::If { condition, body } => {
                 verify_expr(condition, scopes)?;
                 scopes.push(HashSet::new());
-                let result = verify_stmts(body, scopes);
+                let result = verify_stmts(body, scopes, natives);
                 scopes.pop();
                 result?;
             }
             Stmt::Block(body) => {
                 scopes.push(HashSet::new());
-                let result = verify_stmts(body, scopes);
+                let result = verify_stmts(body, scopes, natives);
                 scopes.pop();
                 result?;
             }
@@ -113,12 +126,23 @@ fn verify_stmts(stmts: &[Stmt], scopes: &mut Vec<HashSet<String>>) -> Result<(),
                     scope.insert(index.clone());
                 }
                 scopes.push(scope);
-                let result = verify_stmts(body, scopes);
+                let result = verify_stmts(body, scopes, natives);
                 scopes.pop();
                 result?;
             }
-            Stmt::Emit { particle, result } => {
+            Stmt::Emit {
+                particle,
+                target,
+                result,
+            } => {
                 verify_expr(particle, scopes)?;
+                if let EmitTarget::Module(alias) = target {
+                    if !natives.contains(alias) {
+                        return Err(format!(
+                            "'emit ... to {alias}' but no native module is linked as '{alias}'"
+                        ));
+                    }
+                }
                 if let Some(name) = result {
                     scopes.last_mut().unwrap().insert(name.clone());
                 }
@@ -256,6 +280,24 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_native_open = module.add_function(
+        "code_native_open",
+        i8_ptr_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_native_dispatch = module.add_function(
+        "code_native_dispatch",
+        void_ty.fn_type(
+            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+            false,
+        ),
+        None,
+    );
+    let fn_native_close = module.add_function(
+        "code_native_close",
+        void_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_check_leaks = module.add_function("code_check_leaks", void_ty.fn_type(&[], false), None);
     let fn_dump = module.add_function(
         "code_dump_bindings",
@@ -351,10 +393,14 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_iter_at,
         fn_release,
         fn_core_dispatch,
+        fn_native_open,
+        fn_native_dispatch,
+        fn_native_close,
         env: vec![HashMap::new()],
         order: Vec::new(),
         loop_exits: Vec::new(),
         slots: Vec::new(),
+        native_handles: HashMap::new(),
     };
 
     for stmt in &program.statements {
@@ -444,6 +490,9 @@ struct Gen<'a> {
     fn_iter_at: FunctionValue<'a>,
     fn_release: FunctionValue<'a>,
     fn_core_dispatch: FunctionValue<'a>,
+    fn_native_open: FunctionValue<'a>,
+    fn_native_dispatch: FunctionValue<'a>,
+    fn_native_close: FunctionValue<'a>,
     /// Scope stack, innermost last — mirrors `interpreter::Environment`
     /// (see memory `new-code-if-scoping`). Each name maps to a *permanent*
     /// slot, allocated once on its first assignment and never reallocated:
@@ -477,6 +526,15 @@ struct Gen<'a> {
     /// so that a finished program owns nothing — see `code_check_leaks` in
     /// `runtime.c` for why that is worth the extra calls.
     slots: Vec<(PointerValue<'a>, u64)>,
+    /// Handles from `code_native_open`, by the alias `link "x.so" as x`
+    /// bound — a raw `i8*` SSA value, not a `CodeValue` slot (see
+    /// `alloc_slot`'s doc comment; this pointer never needs to survive a
+    /// reassignment or a loop-body reuse the way a value slot does, it's
+    /// written once at `link` time and only ever read afterward). Storing
+    /// the call result directly relies on `link` being top-level-only: the
+    /// block that opens a module always dominates every block that could
+    /// `emit ... to` it.
+    native_handles: HashMap<String, PointerValue<'a>>,
 }
 
 impl<'a> Gen<'a> {
@@ -570,6 +628,7 @@ impl<'a> Gen<'a> {
                 body,
                 exports,
             } => self.gen_import(alias.as_deref(), body, exports),
+            Stmt::ImportNative { alias, path } => self.gen_import_native(alias, path),
             Stmt::Assign { name, value } => self.gen_reassign(name, value),
             Stmt::Assert(expr) => {
                 let ptr = self.gen_expr(expr)?;
@@ -586,7 +645,11 @@ impl<'a> Gen<'a> {
                 iterable,
                 body,
             } => self.gen_loop(var, index.as_deref(), iterable, body),
-            Stmt::Emit { particle, result } => self.gen_emit(particle, result.as_deref()),
+            Stmt::Emit {
+                particle,
+                target,
+                result,
+            } => self.gen_emit(particle, target, result.as_deref()),
             Stmt::Break => self.gen_break(),
         }
     }
@@ -813,23 +876,67 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
-    /// `emit particle to core [get name]`. The handler call always writes
-    /// into a temp slot first, exactly like every other `gen_expr` call —
-    /// only *if* `get name` is present does that result get copied into a
-    /// fresh permanent slot and bound, the same two-step `gen_let` already
-    /// uses. Without `get`, the temp slot is simply never bound to
+    /// A resolved native `link` (`link "x.so" as x`). Opens the module
+    /// exactly once, at the point the `link` appears in program order —
+    /// `code_native_open` aborts (via `code_runtime_error`) on a bad path,
+    /// wrong ABI version, or a module missing a required symbol, so there's
+    /// nothing here to check; the returned handle is just remembered under
+    /// `alias` for `gen_emit` to call through later.
+    fn gen_import_native(&mut self, alias: &str, path: &str) -> Result<(), String> {
+        let path_ptr = self.global_str(path, "native_path")?;
+        let handle = self
+            .builder
+            .build_call(self.fn_native_open, &[path_ptr.into()], "native_handle")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .left()
+            .expect("code_native_open returns i8*, not void")
+            .into_pointer_value();
+        self.native_handles.insert(alias.to_string(), handle);
+        Ok(())
+    }
+
+    /// `emit particle to core|<alias> [get name]`. The handler call always
+    /// writes into a temp slot first, exactly like every other `gen_expr`
+    /// call — only *if* `get name` is present does that result get copied
+    /// into a fresh permanent slot and bound, the same two-step `gen_let`
+    /// already uses. Without `get`, the temp slot is simply never bound to
     /// anything; `emit_cleanup`'s end-of-program sweep still releases it
     /// like any other slot.
-    fn gen_emit(&mut self, particle: &Expr, result: Option<&str>) -> Result<(), String> {
+    fn gen_emit(
+        &mut self,
+        particle: &Expr,
+        target: &EmitTarget,
+        result: Option<&str>,
+    ) -> Result<(), String> {
         let particle_ptr = self.gen_expr(particle)?;
         let temp = self.alloc_slot("emit_result")?;
-        self.builder
-            .build_call(
-                self.fn_core_dispatch,
-                &[temp.into(), particle_ptr.into()],
-                "",
-            )
-            .map_err(|e| e.to_string())?;
+        match target {
+            EmitTarget::Core => {
+                self.builder
+                    .build_call(
+                        self.fn_core_dispatch,
+                        &[temp.into(), particle_ptr.into()],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            EmitTarget::Module(alias) => {
+                // `verify_defined` already rejected an `alias` that was
+                // never `link`ed, so this is always present.
+                let handle = *self
+                    .native_handles
+                    .get(alias)
+                    .expect("verify_defined checked this alias was linked");
+                self.builder
+                    .build_call(
+                        self.fn_native_dispatch,
+                        &[handle.into(), temp.into(), particle_ptr.into()],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+        }
         if let Some(name) = result {
             let permanent = self.alloc_slot("var")?;
             self.builder
@@ -1358,6 +1465,15 @@ impl<'a> Gen<'a> {
                     .build_call(self.fn_release, &[slot.into()], "")
                     .map_err(|e| e.to_string())?;
             }
+        }
+        // Every linked native module's handle (see `code_native_open`) —
+        // the same "owns nothing at exit" rule as the `CodeValue` slots
+        // above, just a plain `free` instead of a refcount release.
+        let handles = std::mem::take(&mut self.native_handles);
+        for (_, handle) in handles {
+            self.builder
+                .build_call(self.fn_native_close, &[handle.into()], "")
+                .map_err(|e| e.to_string())?;
         }
         self.builder
             .build_call(fn_check_leaks, &[], "")

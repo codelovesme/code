@@ -1,0 +1,7 @@
+-- `link "x.so" as x` loads a native module (dlopen, both output modes —
+-- never `cc`-time static linking, see runtime.c's `code_native_open`).
+-- `emit ... to x [get name]` dispatches into it exactly like `to core`,
+-- just at a module the program named itself instead of the built-in set.
+link "native_modules/test_math.so" as m
+emit Double { "value": 21 } to m get n
+assert n = { "_class": "DoubleResult", "value": 42 }

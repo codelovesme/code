@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::ast::{BinOp, Expr, Program, Stmt, UnOp};
+use crate::ast::{BinOp, EmitTarget, Expr, Program, Stmt, UnOp};
+#[cfg(feature = "native-modules")]
+use crate::native::NativeModule;
 use crate::value::Value;
 
 /// A name -> Value binding table, scoped for `if`/`let` (see memory
@@ -19,6 +21,13 @@ pub struct Environment {
     /// only scope whose bindings ever get dumped (see `iter_in_order`); an
     /// `if`-local binding never appears here even if the `if` runs.
     order: Vec<String>,
+    /// Linked native modules, by alias — a separate namespace from
+    /// `scopes`, not a `Value`: this language has no function-value kind a
+    /// handler could be represented as, so a native module is only ever
+    /// reachable via `emit ... to <alias>`, never as an ordinary binding.
+    /// Always top-level, like `Stmt::ImportNative` itself.
+    #[cfg(feature = "native-modules")]
+    native_modules: HashMap<String, NativeModule>,
 }
 
 impl Default for Environment {
@@ -26,6 +35,8 @@ impl Default for Environment {
         Environment {
             scopes: vec![HashMap::new()],
             order: Vec::new(),
+            #[cfg(feature = "native-modules")]
+            native_modules: HashMap::new(),
         }
     }
 }
@@ -133,6 +144,19 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
         Stmt::Link { path, .. } => Err(format!(
             "internal error: link \"{path}\" reached the interpreter unresolved"
         )),
+        Stmt::ImportNative { alias, path } => {
+            #[cfg(feature = "native-modules")]
+            {
+                let module = NativeModule::open(path)?;
+                env.native_modules.insert(alias.clone(), module);
+                Ok(Flow::Normal)
+            }
+            #[cfg(not(feature = "native-modules"))]
+            {
+                let _ = (alias, path);
+                Err("native modules aren't supported in this build".to_string())
+            }
+        }
         Stmt::Import {
             alias,
             body,
@@ -226,9 +250,30 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             }
             Ok(Flow::Normal)
         }
-        Stmt::Emit { particle, result } => {
+        Stmt::Emit {
+            particle,
+            target,
+            result,
+        } => {
             let value = eval(particle, env)?;
-            let output = dispatch_core(&value)?;
+            let output = match target {
+                EmitTarget::Core => dispatch_core(&value)?,
+                EmitTarget::Module(alias) => {
+                    #[cfg(feature = "native-modules")]
+                    {
+                        let module = env
+                            .native_modules
+                            .get(alias)
+                            .ok_or_else(|| format!("no linked native module named '{alias}'"))?;
+                        module.dispatch(&value)?
+                    }
+                    #[cfg(not(feature = "native-modules"))]
+                    {
+                        let _ = alias;
+                        return Err("native modules aren't supported in this build".to_string());
+                    }
+                }
+            };
             if let Some(name) = result {
                 env.declare(name.clone(), output);
             }

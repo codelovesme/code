@@ -1,0 +1,6 @@
+-- Omitting `get` runs the handler and discards the result, same as `to
+-- core`.
+link "native_modules/test_math.so" as m
+emit Double { "value": 1 } to m
+let done = true
+assert done

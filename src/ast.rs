@@ -105,28 +105,31 @@ pub enum Stmt {
         body: Vec<Stmt>,
         exports: Vec<String>,
     },
-    /// `emit <particle> to core [get <name>]` — invokes a compiled-in "core"
-    /// handler. Which one is chosen at **runtime**, by reading the
-    /// particle's own `"_class"` field — never resolved at parse or compile
-    /// time, even when `particle` is a literal `ClassName { ... }` written
-    /// right here, so a particle built earlier, stored, and passed around
-    /// dispatches exactly the same way a literal one does (see memory
+    /// A resolved native-module `Link` (`link "x.so" as x`), produced only
+    /// by `loader.rs`. Unlike `Import`, there is no `body` to run — a
+    /// native module contributes no bindings today (Phase 1 is handlers
+    /// only, see `docs/todo/native-module-linking.md`), just a target
+    /// `emit ... to x` can dispatch to. `alias` is mandatory (unlike
+    /// `Link`'s optional one): with no name, nothing could ever refer to
+    /// the module again.
+    ImportNative { alias: String, path: String },
+    /// `emit <particle> to <target> [get <name>]` — invokes a handler.
+    /// Which one is chosen at **runtime**, by reading the particle's own
+    /// `"_class"` field — never resolved at parse or compile time, even
+    /// when `particle` is a literal `ClassName { ... }` written right here,
+    /// so a particle built earlier, stored, and passed around dispatches
+    /// exactly the same way a literal one does (see memory
     /// `new-code-particle`: that's the reason particles carry `_class` with
     /// them in the first place). Consistent with every other operand-type
     /// rule in this language: always a runtime check, never special-cased
     /// for the literal case (see ast.rs's `BinOp` doc comment).
-    ///
-    /// `core` is the only valid target today — not a special-cased
-    /// identifier but its own reserved word, so `let core = ...` is
-    /// rejected rather than silently shadowing it. Linking a native module
-    /// as a target is future work (see
-    /// `docs/todo/native-module-linking.md`).
     ///
     /// `get <name>` always **declares** a new binding, shadowing like
     /// `let` — never a reassignment, the same rule `Stmt::Import`'s alias
     /// follows. Omitting it runs the handler and discards the result.
     Emit {
         particle: Expr,
+        target: EmitTarget,
         result: Option<String>,
     },
     /// `break` — exits the innermost enclosing `Loop` immediately, skipping
@@ -134,6 +137,18 @@ pub enum Stmt {
     /// *parse* error rather than a later check, so the interpreter and the
     /// compiler reject it identically without either needing its own rule.
     Break,
+}
+
+/// `emit`'s `to` clause. `Core` is the compiled-in handler set (`core` is
+/// its own reserved word — see `Stmt::Emit`'s doc comment). `Module` names a
+/// `link`ed native module by its (mandatory) alias — resolved against
+/// whatever `link "....so" as <alias>` bound, at runtime, not parse time
+/// (an undefined alias is a runtime error, matching every other name lookup
+/// in this language).
+#[derive(Debug, Clone, PartialEq)]
+pub enum EmitTarget {
+    Core,
+    Module(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]

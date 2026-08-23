@@ -9,7 +9,7 @@ time. Order below is roughly by how likely it is to bite someone.
 
 | Task | Why it matters |
 |---|---|
-| [native-module-linking.md](native-module-linking.md) | Asked for explicitly; blocked on a language decision, not on plumbing |
+| [native-module-linking.md](native-module-linking.md) | Phase 1 (`.so` handlers) shipped 2026-08-21; `.a`/`.wasm`, exported vars, `code build --lib` still open |
 | [no-language-documentation.md](no-language-documentation.md) | The new language has no README at all |
 | [temp-slots-pin-intermediates.md](temp-slots-pin-intermediates.md) | Memory held longer than necessary |
 
