@@ -145,7 +145,13 @@ fn check_interpret(name: &str, path: &Path, expect: Expect, failures: &mut Vec<S
     }
 }
 
-fn check_compile(name: &str, path: &Path, expect: Expect, tmp_dir: &Path, failures: &mut Vec<String>) {
+fn check_compile(
+    name: &str,
+    path: &Path,
+    expect: Expect,
+    tmp_dir: &Path,
+    failures: &mut Vec<String>,
+) {
     let stem = name.trim_end_matches(".code");
     let exe_path: PathBuf = tmp_dir.join(stem);
     let should_fail = expect == Expect::Fail;

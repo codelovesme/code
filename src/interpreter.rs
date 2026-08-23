@@ -216,7 +216,11 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
         Stmt::Link { path, .. } => Err(format!(
             "internal error: link \"{path}\" reached the interpreter unresolved"
         )),
-        Stmt::ImportNative { alias, path, format } => match format {
+        Stmt::ImportNative {
+            alias,
+            path,
+            format,
+        } => match format {
             NativeFormat::Static { .. } => Err(format!(
                 "link \"{path}\": .a modules only work with 'code build', not 'code run' \
                  — see docs/todo/native-module-linking.md"
@@ -227,11 +231,12 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             // registered it under, which `alias` (this `link ... as
             // <alias>`) may rename. See `ast::NativeFormat::JsBridge`.
             NativeFormat::JsBridge => {
-                let (vars, dispatch) = env
-                    .available_modules
-                    .get(path)
-                    .cloned()
-                    .ok_or_else(|| format!("link \"{path}\": no module named '{path}' was provided before running"))?;
+                let (vars, dispatch) =
+                    env.available_modules.get(path).cloned().ok_or_else(|| {
+                        format!(
+                            "link \"{path}\": no module named '{path}' was provided before running"
+                        )
+                    })?;
                 env.link_module(alias, vars, dispatch);
                 Ok(Flow::Normal)
             }

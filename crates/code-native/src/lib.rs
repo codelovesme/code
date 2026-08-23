@@ -186,7 +186,8 @@ pub unsafe extern "C" fn code_release(v: *mut CodeValue) {
 /// arithmetic, safe to reimplement independently (no allocator/refcount
 /// logic to drift from `runtime.c`).
 pub fn slot_at(base: *mut c_void, index: i64) -> *mut CodeValue {
-    (base as *mut u8).wrapping_offset(index as isize * CODE_VALUE_SLOT_SIZE as isize) as *mut CodeValue
+    (base as *mut u8).wrapping_offset(index as isize * CODE_VALUE_SLOT_SIZE as isize)
+        as *mut CodeValue
 }
 
 fn cstr(s: &str) -> std::ffi::CString {
@@ -312,7 +313,10 @@ pub struct SlotBuffer {
 
 impl SlotBuffer {
     pub fn new(count: usize) -> Self {
-        Self { buf: vec![0u8; count * CODE_VALUE_SLOT_SIZE], len: count as i64 }
+        Self {
+            buf: vec![0u8; count * CODE_VALUE_SLOT_SIZE],
+            len: count as i64,
+        }
     }
 
     /// Slot `index` — write a value into it with [`number`]/[`owned_str`]/etc.
@@ -350,7 +354,14 @@ pub fn array(out: &mut CodeValue, elems: &mut SlotBuffer) {
 pub fn object(out: &mut CodeValue, keys: &[&'static CStr], values: &mut SlotBuffer) {
     debug_assert_eq!(keys.len() as i64, values.len);
     let mut key_ptrs: Vec<*const c_char> = keys.iter().map(|k| k.as_ptr()).collect();
-    unsafe { code_object(out, key_ptrs.as_mut_ptr(), values.as_items_ptr(), values.len) }
+    unsafe {
+        code_object(
+            out,
+            key_ptrs.as_mut_ptr(),
+            values.as_items_ptr(),
+            values.len,
+        )
+    }
 }
 
 // ===========================================================================
@@ -412,7 +423,11 @@ pub fn read_field_bool(v: &CodeValue, name: &str) -> Option<bool> {
 
 /// Iterate an Array's elements.
 pub fn array_elems(v: &CodeValue) -> impl Iterator<Item = &CodeValue> {
-    let (items, len) = if v.tag == CodeTag::Array { (v.items, v.len) } else { (std::ptr::null_mut(), 0) };
+    let (items, len) = if v.tag == CodeTag::Array {
+        (v.items, v.len)
+    } else {
+        (std::ptr::null_mut(), 0)
+    };
     (0..len).map(move |i| unsafe { &*slot_at(items, i) })
 }
 
@@ -422,7 +437,11 @@ pub fn array_elems(v: &CodeValue) -> impl Iterator<Item = &CodeValue> {
 /// C module reaches via `#include "runtime.c"` but isn't exported for a
 /// separately-linked module to call directly, so this is a small
 /// reimplementation rather than an FFI binding.
-pub fn make_result(out: &mut CodeValue, class_name: &'static CStr, fill: impl FnOnce(&mut CodeValue)) {
+pub fn make_result(
+    out: &mut CodeValue,
+    class_name: &'static CStr,
+    fill: impl FnOnce(&mut CodeValue),
+) {
     let mut value = CodeValue::zeroed();
     fill(&mut value);
     let mut buf = SlotBuffer::new(2);

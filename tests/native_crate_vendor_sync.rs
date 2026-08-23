@@ -12,8 +12,10 @@ fn vendored_files_match_src() {
         ("src/runtime.c", "crates/code-native/vendor/runtime.c"),
     ];
     for (canonical, vendored) in pairs {
-        let want = std::fs::read_to_string(canonical).unwrap_or_else(|e| panic!("reading {canonical}: {e}"));
-        let got = std::fs::read_to_string(vendored).unwrap_or_else(|e| panic!("reading {vendored}: {e}"));
+        let want = std::fs::read_to_string(canonical)
+            .unwrap_or_else(|e| panic!("reading {canonical}: {e}"));
+        let got =
+            std::fs::read_to_string(vendored).unwrap_or_else(|e| panic!("reading {vendored}: {e}"));
         assert_eq!(
             want, got,
             "{vendored} has drifted from {canonical} — copy {canonical} over it again"

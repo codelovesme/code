@@ -67,17 +67,19 @@ fn run_with_modules_inner(src: &str, modules: Object) -> Result<Environment, Str
         let alias = key
             .as_string()
             .ok_or_else(|| "module keys must be strings".to_string())?;
-        let descriptor = Reflect::get(&modules, &key)
-            .map_err(|e| format!("reading module '{alias}': {e:?}"))?;
+        let descriptor =
+            Reflect::get(&modules, &key).map_err(|e| format!("reading module '{alias}': {e:?}"))?;
 
-        let dispatch_fn: js_sys::Function = Reflect::get(&descriptor, &JsValue::from_str("dispatch"))
-            .map_err(|e| format!("module '{alias}' has no 'dispatch': {e:?}"))?
-            .dyn_into()
-            .map_err(|_| format!("module '{alias}': 'dispatch' is not a function"))?;
+        let dispatch_fn: js_sys::Function =
+            Reflect::get(&descriptor, &JsValue::from_str("dispatch"))
+                .map_err(|e| format!("module '{alias}' has no 'dispatch': {e:?}"))?
+                .dyn_into()
+                .map_err(|_| format!("module '{alias}': 'dispatch' is not a function"))?;
 
-        let vars_fn: Option<js_sys::Function> = Reflect::get(&descriptor, &JsValue::from_str("vars"))
-            .ok()
-            .and_then(|v| v.dyn_into().ok());
+        let vars_fn: Option<js_sys::Function> =
+            Reflect::get(&descriptor, &JsValue::from_str("vars"))
+                .ok()
+                .and_then(|v| v.dyn_into().ok());
 
         let vars = match vars_fn {
             Some(vars_fn) => {
@@ -99,9 +101,9 @@ fn run_with_modules_inner(src: &str, modules: Object) -> Result<Environment, Str
             let result = dispatch_fn
                 .call1(&JsValue::NULL, &arg)
                 .map_err(|e| format!("calling module '{dispatch_alias}': {e:?}"))?;
-            let json = result.as_string().ok_or_else(|| {
-                format!("module '{dispatch_alias}' must return a JSON string")
-            })?;
+            let json = result
+                .as_string()
+                .ok_or_else(|| format!("module '{dispatch_alias}' must return a JSON string"))?;
             decode_json(&json)
         });
 
