@@ -5,8 +5,8 @@
 -- compiled binary segfaulted at ~131k; this builds 262144 levels, 8 per
 -- iteration, and both tears it down and compares it.
 --
--- Everything lives in a block so none of it reaches the bindings dump:
--- the point is the teardown and equality paths, not 64KB of output.
+-- Everything lives in a block so none of it leaks past the program:
+-- the point is the teardown and equality paths, not 64KB of garbage.
 -- Teardown happens either way -- at scope exit in the interpreter, in
 -- the end-of-program sweep when compiled.
 {

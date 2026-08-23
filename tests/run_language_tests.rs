@@ -4,11 +4,15 @@
 //! feature identically either way (see memory `new-language-rewrite`).
 //! This file is wiring only — the tests themselves are the `.code` files.
 //!
-//! Pass criterion for a plain `foo.code`: both modes must succeed, the
-//! compiled binary's stdout must match the interpreter's bindings dump
-//! exactly, and the compiled binary must leak nothing (it runs with
-//! `CODE_CHECK_LEAKS=1`, so the runtime aborts at exit if any heap block
-//! survives — see `check_compile`). For a `fail_foo.code`: both modes must produce an error — for
+//! Pass criterion for a plain `foo.code`: both modes must succeed, and the
+//! compiled binary must leak nothing (it runs with `CODE_CHECK_LEAKS=1`, so
+//! the runtime aborts at exit if any heap block survives — see
+//! `check_compile`). Correctness lives in the fixtures themselves: each one
+//! `assert`s the values it cares about, in both modes. Programs are
+//! otherwise silent — there is no bindings dump anymore, so a module's
+//! `Print` writes straight to stdout and there is nothing to compare across
+//! backends; a fixture that prints simply prints, in both modes.
+//! For a `fail_foo.code`: both modes must produce an error — for
 //! the interpreter that's always `run_source` returning `Err`; for the
 //! compiler it's either a compile-time error (`compile_source` returning
 //! `Err`, e.g. a parse error or `verify_defined`'s undefined-variable
@@ -22,8 +26,7 @@
 //! `docs/todo/native-module-linking.md`) only works under `code build` —
 //! there is no `dlopen` for a static archive — so these must *fail* under
 //! `code run` and succeed (with a clean exit, leak check included) under
-//! `code build`. There is no interpreted output to compare the compiled
-//! binary's stdout against, so that comparison is skipped for these.
+//! `code build`. There is no interpreted run at all for these.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,7 +38,7 @@ fn code_fixtures_run_as_expected() {
     let tmp_dir = std::env::temp_dir().join("code-compiler-tests");
     fs::create_dir_all(&tmp_dir).expect("create temp dir for compiled fixtures");
 
-    build_native_test_module(&dir);
+    build_native_dynamic_test_modules(&dir);
     build_native_static_test_modules(&dir);
 
     let mut failures = Vec::new();
@@ -78,30 +81,35 @@ enum Expect {
     BuildOnly,
 }
 
-/// Compiles `tests/native_modules/test_math.c` into the `.so` that the
-/// `native_link_*`/`fail_native_link_*` fixtures `link` — checked into git
-/// as source, not as a binary (see `.gitignore`), so it has to be built
-/// fresh here before any fixture that needs it can run either mode.
-fn build_native_test_module(tests_dir: &Path) {
-    let src = tests_dir.join("native_modules").join("test_math.c");
-    let so = tests_dir.join("native_modules").join("test_math.so");
-    let status = Command::new("cc")
-        .arg("-shared")
-        .arg("-fPIC")
-        .arg("-o")
-        .arg(&so)
-        .arg(&src)
-        .arg("-lm")
-        .arg("-ldl")
-        .status()
-        .unwrap_or_else(|e| panic!("failed to run cc for {}: {e}", src.display()));
-    assert!(status.success(), "cc failed to build {}", src.display());
+/// Compiles each `tests/native_modules/<stem>.c` into the `.so` the
+/// `native_link_*`/`fail_native_link_*` and `terminal_*` fixtures `link`
+/// — checked into git as source, not as a binary (see `.gitignore`), so it
+/// has to be built fresh here before any fixture that needs it can run
+/// either mode.
+fn build_native_dynamic_test_modules(tests_dir: &Path) {
+    for stem in ["test_math", "terminal"] {
+        let modules_dir = tests_dir.join("native_modules");
+        let src = modules_dir.join(format!("{stem}.c"));
+        let so = modules_dir.join(format!("{stem}.so"));
+        let status = Command::new("cc")
+            .arg("-shared")
+            .arg("-fPIC")
+            .arg("-o")
+            .arg(&so)
+            .arg(&src)
+            .arg("-lm")
+            .arg("-ldl")
+            .status()
+            .unwrap_or_else(|e| panic!("failed to run cc for {}: {e}", src.display()));
+        assert!(status.success(), "cc failed to build {}", src.display());
+    }
 }
 
 /// Compiles `test_math_static.c` and `test_math_static_ambiguous.c` into the
 /// `.a` archives the `buildonly_native_link_static_*`/
 /// `fail_native_link_static_*` fixtures `link` — `cc -c` then `ar rcs`,
-/// mirroring `build_native_test_module`'s `cc -shared` for the `.so` case.
+/// mirroring `build_native_dynamic_test_modules`' `cc -shared` for the `.so`
+/// case.
 fn build_native_static_test_modules(tests_dir: &Path) {
     for stem in ["test_math_static", "test_math_static_ambiguous"] {
         let modules_dir = tests_dir.join("native_modules");
@@ -198,16 +206,6 @@ fn check_compile(
                 // No interpreted run to compare against — `code run` never
                 // produces bindings for a `.a` link at all (see
                 // `check_interpret`).
-            } else {
-                let compiled_stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                let interpreted_stdout = code::run_file(path)
-                    .map(|env| code::format_bindings(&env))
-                    .unwrap_or_default();
-                if compiled_stdout != interpreted_stdout {
-                    failures.push(format!(
-                        "{name}: compile: stdout mismatch\n  interpreted: {interpreted_stdout:?}\n  compiled:    {compiled_stdout:?}"
-                    ));
-                }
             }
             let _ = fs::remove_file(&exe_path);
         }

@@ -1,6 +1,9 @@
 /* Runtime support linked into every compiled program. Mirrors src/value.rs's
- * `Value` and its `Display` impl exactly, so `code build foo.code && ./foo`
- * prints byte-for-byte what `code run foo.code` prints.
+ * `Value` (the six JSON-shaped kinds) so a compiled program manipulates values
+ * identically to the interpreter. Programs themselves are silent unless they
+ * emit through a linked module (such as `terminal`, which writes straight to
+ * stdout) — there is no bindings dump anymore, so nothing here renders values
+ * for display; the only text this file produces is error messages on stderr.
  *
  * Every constructor writes into a caller-owned `CodeValue*` (rather than
  * returning by value) specifically to sidestep C-struct-by-value calling-
@@ -119,17 +122,17 @@ void code_retain(const CodeValue *v) {
 
 /* ---- Iterative traversal --------------------------------------------------
  *
- * `code_release`, `code_values_equal` and `print_json` all walk a value's
- * children, and all three used to recurse. Nesting depth is bounded only by a
- * loop's iteration count (`loop x over xs { a = [a] }`), not by how many
- * brackets the source contains, so one stack frame per level segfaults at
- * around 131k deep — see `tests/stress_deep_nesting.code`, and `value.rs` for the
- * interpreter's three equivalents, which have the same shape for the same
- * reason. Each keeps an explicit work stack in heap memory instead.
+ * `code_release` and `code_values_equal` both walk a value's children, and
+ * both used to recurse. Nesting depth is bounded only by a loop's iteration
+ * count (`loop x over xs { a = [a] }`), not by how many brackets the source
+ * contains, so one stack frame per level segfaults at around 131k deep — see
+ * `tests/stress_deep_nesting.code`, and `value.rs` for the interpreter's
+ * equivalents, which have the same shape for the same reason. Each keeps an
+ * explicit work stack in heap memory instead.
  *
  * The stacks are file-static and grow on demand, never shrinking: this is a
- * single-threaded runtime and none of the three can re-enter itself now that
- * they don't recurse, so one buffer each is enough. */
+ * single-threaded runtime and neither can re-enter itself now that they
+ * don't recurse, so one buffer each is enough. */
 
 static void *grow(void *buf, size_t *cap, size_t needed, size_t item_size) {
     if (*cap >= needed) {
@@ -949,135 +952,5 @@ void code_assert(const CodeValue *v) {
     }
     if (!v->boolean) {
         code_runtime_error("assertion failed");
-    }
-}
-
-/* Shortest decimal that round-trips back to `n` — matches Rust's f64
- * Display (e.g. 42.0 -> "42", 2.5 -> "2.5"), not printf's fixed-precision
- * default. */
-static void format_number(double n, char *buf, size_t bufsize) {
-    if (n == (double)(long long)n && fabs(n) < 1e15) {
-        snprintf(buf, bufsize, "%lld", (long long)n);
-        return;
-    }
-    for (int prec = 1; prec <= 17; prec++) {
-        snprintf(buf, bufsize, "%.*g", prec, n);
-        if (strtod(buf, NULL) == n) {
-            return;
-        }
-    }
-}
-
-static void print_json_string(const char *s) {
-    putchar('"');
-    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
-        switch (*p) {
-        case '"':
-            fputs("\\\"", stdout);
-            break;
-        case '\\':
-            fputs("\\\\", stdout);
-            break;
-        case '\n':
-            fputs("\\n", stdout);
-            break;
-        case '\t':
-            fputs("\\t", stdout);
-            break;
-        default:
-            putchar(*p);
-        }
-    }
-    putchar('"');
-}
-
-/* One step of print_json's traversal. Closers and separators go on the same
- * stack as the values they follow, which is what removes the need for a
- * recursive call to come back and finish a container. Mirrors value.rs's
- * `Step` enum exactly. */
-typedef struct {
-    const CodeValue *value; /* NULL when this step is punctuation */
-    const char *punct;      /* "," / "]" / "}" , or an object key */
-    int is_key;             /* punct is a key: print quoted, then ':' */
-} Step;
-
-static Step *steps = NULL;
-static size_t steps_cap = 0;
-
-static void push_step(size_t *len, const CodeValue *value, const char *punct, int is_key) {
-    steps = grow(steps, &steps_cap, *len + 1, sizeof(Step));
-    steps[*len].value = value;
-    steps[*len].punct = punct;
-    steps[*len].is_key = is_key;
-    (*len)++;
-}
-
-static void print_json(const CodeValue *v) {
-    char buf[64];
-    size_t len = 0;
-    push_step(&len, v, NULL, 0);
-
-    while (len > 0) {
-        Step step = steps[--len];
-        if (!step.value) {
-            if (step.is_key) {
-                print_json_string(step.punct);
-                putchar(':');
-            } else {
-                fputs(step.punct, stdout);
-            }
-            continue;
-        }
-        const CodeValue *current = step.value;
-        switch (current->tag) {
-        case CODE_NUMBER:
-            format_number(current->number, buf, sizeof buf);
-            fputs(buf, stdout);
-            break;
-        case CODE_STR:
-            print_json_string(current->str);
-            break;
-        case CODE_BOOL:
-            fputs(current->boolean ? "true" : "false", stdout);
-            break;
-        case CODE_NULL:
-            fputs("null", stdout);
-            break;
-        /* Pushed in reverse so they pop in source order, with the closing
-         * bracket pushed first and therefore popped last. */
-        case CODE_ARRAY:
-            putchar('[');
-            push_step(&len, NULL, "]", 0);
-            for (long long i = current->len - 1; i >= 0; i--) {
-                push_step(&len, slot_at(current->items, i), NULL, 0);
-                if (i > 0) {
-                    push_step(&len, NULL, ",", 0);
-                }
-            }
-            break;
-        case CODE_OBJECT:
-            putchar('{');
-            push_step(&len, NULL, "}", 0);
-            for (long long i = current->len - 1; i >= 0; i--) {
-                push_step(&len, slot_at(current->items, i), NULL, 0);
-                push_step(&len, NULL, current->keys[i], 1);
-                if (i > 0) {
-                    push_step(&len, NULL, ",", 0);
-                }
-            }
-            break;
-        }
-    }
-}
-
-/* Prints "name = value\n" per binding, in first-assignment order — matches
- * src/main.rs's `run` dump exactly (see memory: this is a temporary
- * observability hack, not a language design decision, on both sides). */
-void code_dump_bindings(const char **names, void *values, long long count) {
-    for (long long i = 0; i < count; i++) {
-        fputs(names[i], stdout);
-        fputs(" = ", stdout);
-        print_json(slot_at(values, i));
-        putchar('\n');
     }
 }

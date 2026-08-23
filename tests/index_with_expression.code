@@ -3,3 +3,5 @@
 let nums = [10, 20, 30, 40]
 let i = 1
 let picked = nums[i + 1]
+
+assert picked = 30

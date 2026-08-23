@@ -334,14 +334,6 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         None,
     );
     let fn_check_leaks = module.add_function("code_check_leaks", void_ty.fn_type(&[], false), None);
-    let fn_dump = module.add_function(
-        "code_dump_bindings",
-        void_ty.fn_type(
-            &[i8_ptr_ptr_ty.into(), i8_ptr_ty.into(), i64_ty.into()],
-            false,
-        ),
-        None,
-    );
     let arith_ty = void_ty.fn_type(
         &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
         false,
@@ -485,7 +477,6 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_static_module_check,
         fn_static_vars_object,
         env: vec![HashMap::new()],
-        order: Vec::new(),
         loop_blocks: Vec::new(),
         slots: Vec::new(),
         native_links: HashMap::new(),
@@ -495,7 +486,6 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
     for stmt in &program.statements {
         gen.gen_stmt(stmt)?;
     }
-    gen.emit_dump(fn_dump)?;
     gen.emit_cleanup(fn_check_leaks)?;
 
     builder
@@ -605,9 +595,6 @@ struct Gen<'a> {
     /// drops the old value at that point rather than at exit (see
     /// memory `new-code-memory-management`).
     env: Vec<HashMap<String, PointerValue<'a>>>,
-    /// First-assignment order, for the final bindings dump — mirrors
-    /// `interpreter::Environment::order` exactly.
-    order: Vec<String>,
     /// The branch targets of each enclosing `loop`, innermost last — where
     /// `break` and `continue` jump to. Mirrors `interpreter::Flow::Break`
     /// and `Flow::Continue` propagating only as far as the innermost loop.
@@ -839,10 +826,9 @@ impl<'a> Gen<'a> {
             self.builder
                 .build_call(self.fn_copy, &[slot.into(), init.into()], "")
                 .map_err(|e| e.to_string())?;
-            // `bind`, not a raw `env` insert: it also records the name for
-            // the final bindings dump when the loop is at the top level,
-            // which is exactly where `interpreter::Environment::declare`
-            // would have recorded it too.
+            // `bind`, not a raw `env` insert: it shadows any outer binding
+            // of the same name for the loop's duration, exactly like
+            // `interpreter::Environment::declare` would.
             self.bind(&acc.name, slot);
         }
 
@@ -1254,13 +1240,10 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
-    /// Registers `slot` under `name` in the current scope, recording it for
-    /// the bindings dump if that scope is the outermost one — the same rule
+    /// Registers `slot` under `name` in the current scope, shadowing any
+    /// outer same-named binding for the scope's lifetime — the same rule
     /// `interpreter::Environment::declare` follows.
     fn bind(&mut self, name: &str, slot: PointerValue<'a>) {
-        if self.env.len() == 1 && !self.env[0].contains_key(name) {
-            self.order.push(name.to_string());
-        }
         self.env.last_mut().unwrap().insert(name.to_string(), slot);
     }
 
@@ -1276,13 +1259,7 @@ impl<'a> Gen<'a> {
         self.builder
             .build_call(self.fn_copy, &[permanent.into(), value_ptr.into()], "")
             .map_err(|e| e.to_string())?;
-        if self.env.len() == 1 && !self.env[0].contains_key(name) {
-            self.order.push(name.to_string());
-        }
-        self.env
-            .last_mut()
-            .unwrap()
-            .insert(name.to_string(), permanent);
+        self.bind(name, permanent);
         Ok(())
     }
 
@@ -1355,11 +1332,11 @@ impl<'a> Gen<'a> {
     /// The pointer is *borrowed*, not owned: for `Expr::Ident` it is the
     /// variable's own slot, so it stays valid only as long as that binding
     /// is untouched. Anything that needs the value to outlive the statement
-    /// — a variable being assigned, an array element, an object field, the
-    /// bindings dump, a loop's iterable — copies it into storage of its own
-    /// via `code_copy`, which is what takes the reference. `gen_loop` is
-    /// the one place where forgetting that was an actual bug rather than a
-    /// style point; see its comment.
+    /// — a variable being assigned, an array element, an object field, a
+    /// loop's iterable — copies it into storage of its own via `code_copy`,
+    /// which is what takes the reference. `gen_loop` is the one place where
+    /// forgetting that was an actual bug rather than a style point; see its
+    /// comment.
     fn gen_expr(&mut self, expr: &Expr) -> Result<PointerValue<'a>, String> {
         match expr {
             Expr::Number(n) => {
@@ -1708,53 +1685,8 @@ impl<'a> Gen<'a> {
         Ok(out)
     }
 
-    fn emit_dump(&mut self, fn_dump: FunctionValue<'a>) -> Result<(), String> {
-        let count = self.order.len() as u64;
-        let count_val = self.i64_ty.const_int(count, false);
-
-        let names_buf = self
-            .alloca_builder
-            .build_array_alloca(self.i8_ptr_ty, count_val, "names")
-            .map_err(|e| e.to_string())?;
-        let values_buf = self.alloc_buffer(count, "dumpvals")?;
-
-        let order = self.order.clone();
-        for (i, name) in order.iter().enumerate() {
-            let name_ptr = self.global_str(name, "namelit")?;
-            let name_slot = unsafe {
-                self.builder
-                    .build_gep(
-                        self.i8_ptr_ty,
-                        names_buf,
-                        &[self.i64_ty.const_int(i as u64, false)],
-                        "nameslot",
-                    )
-                    .map_err(|e| e.to_string())?
-            };
-            self.builder
-                .build_store(name_slot, name_ptr)
-                .map_err(|e| e.to_string())?;
-
-            let src = self.lookup(name).expect("binding must exist by dump time");
-            let dest = self.slot_at(values_buf, i as u64, "dumpslot")?;
-            self.builder
-                .build_call(self.fn_copy, &[dest.into(), src.into()], "")
-                .map_err(|e| e.to_string())?;
-        }
-
-        self.builder
-            .build_call(
-                fn_dump,
-                &[names_buf.into(), values_buf.into(), count_val.into()],
-                "",
-            )
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    /// Releases every slot in the program, then checks nothing is left. Runs
-    /// after `emit_dump`, so the values are still intact while they're being
-    /// printed.
+    /// Releases every slot in the program, then checks nothing is left.
+    /// Runs as the program's last act, after the final observable output.
     ///
     /// Strictly speaking this is unnecessary — the process is about to exit
     /// and the OS reclaims everything either way. It exists to make the

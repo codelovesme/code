@@ -5,3 +5,9 @@ let b = 2 * 3 + 4
 let c = 10 - 2 - 3
 let d = 20 / 2 / 2
 let e = 1 + 2 = 3
+
+assert a = 14
+assert b = 10
+assert c = 5
+assert d = 5
+assert e = true

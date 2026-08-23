@@ -1,1 +1,3 @@
 let greeting = "hello" + " " + "world"
+
+assert greeting = "hello world"

@@ -60,13 +60,10 @@ fn run_file(path: &str) -> ExitCode {
     // linking, so reading the source here and passing a string would lose the
     // only thing module resolution has to work from.
     match code::run_file(Path::new(path)) {
-        // There's no print/output construct in the language yet (an open
-        // design question, not decided either way) — dump the final
-        // bindings so a run is actually observable in the meantime.
-        Ok(env) => {
-            print!("{}", code::format_bindings(&env));
-            ExitCode::SUCCESS
-        }
+        // Silent on success: a program's observable output is whatever it
+        // itself emits (through a linked module such as `terminal`), not a
+        // dump of its final bindings. Errors go to stderr.
+        Ok(_) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");
             ExitCode::FAILURE

@@ -2,3 +2,6 @@
 let x = 42
 let arr = [x]
 let obj = { "n": x }
+
+assert arr = [42]
+assert obj.n = 42

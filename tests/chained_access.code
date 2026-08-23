@@ -3,3 +3,7 @@ let data = { "items": [1, 2, { "name": "z" }] }
 let n = data.items[2].name
 let first_of_literal = [10, 20, 30][0]
 let field_of_literal = { "a": 1 }.a
+
+assert n = "z"
+assert first_of_literal = 10
+assert field_of_literal = 1

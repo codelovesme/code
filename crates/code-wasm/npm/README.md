@@ -61,15 +61,15 @@ console.log(run("let a = 1\n"));
 
 ## `run(src)`
 
-Returns the program's final top-level bindings, rendered exactly like
-`code run`'s stdout (`name = value`, one per line, JSON-shaped values) —
-or `"error: ..."` on any failure (parse error, undefined variable, a
-failed `assert`, …). There is no structured result type; parse the string
-yourself if you need one.
+Runs the program and returns `""` on success or `"error: ..."` on any
+failure (parse error, undefined variable, a failed `assert`, …). A
+program's observable output is whatever it emits itself through a linked
+module — there is no bindings dump to return. There is no structured
+result type; parse the string yourself if you need one.
 
 ```js
-run("let a = 5\nlet b = \"hi\"\nassert a = 5\n");
-// 'a = 5\nb = "hi"\n'
+run('let a = 5\nassert a = 5\n');
+// ''
 ```
 
 ## `run_with_modules(src, modules)`

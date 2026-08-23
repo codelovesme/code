@@ -24,14 +24,14 @@ use js_sys::{Object, Reflect};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-/// Runs `src` and returns either the bindings dump (matching `code run`'s
-/// stdout exactly, via the same `format_bindings`) or `"error: ..."` — a
-/// single string return keeps the JS side trivial for now. No module
-/// support — see `run_with_modules` for that.
+/// Runs `src` and returns `""` on success or `"error: ..."` — a program's
+/// output is whatever it emits itself (through a linked module), not a dump
+/// of its final bindings. A single string return keeps the JS side trivial
+/// for now. No module support — see `run_with_modules` for that.
 #[wasm_bindgen]
 pub fn run(src: &str) -> String {
     match code::run_source(src) {
-        Ok(env) => code::format_bindings(&env),
+        Ok(_) => String::new(),
         Err(e) => format!("error: {e}"),
     }
 }
@@ -54,7 +54,7 @@ pub fn run(src: &str) -> String {
 #[wasm_bindgen]
 pub fn run_with_modules(src: &str, modules: Object) -> String {
     match run_with_modules_inner(src, modules) {
-        Ok(env) => code::format_bindings(&env),
+        Ok(_) => String::new(),
         Err(e) => format!("error: {e}"),
     }
 }

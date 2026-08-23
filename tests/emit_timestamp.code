@@ -3,10 +3,8 @@
 -- back as a particle — `TimestampResult` — not a bare number.
 --
 -- The value is checked inside a block rather than left as a top-level
--- binding: the harness compares the interpreter's and the compiled binary's
--- stdout byte-for-byte, and two runs moments apart may land on different
--- seconds. Block locals die with the block (see block_local_variable.code),
--- so the bindings dump stays stable across runs.
+-- binding: the assertion is the whole point, and keeping the timestamp out
+-- of top-level scope means the program prints nothing at all.
 {
     emit Timestamp {} to core get t
     assert t._class = "TimestampResult"

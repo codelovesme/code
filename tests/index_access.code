@@ -1,3 +1,6 @@
 let nums = [10, 20, 30]
 let first = nums[0]
 let last = nums[2]
+
+assert first = 10
+assert last = 30

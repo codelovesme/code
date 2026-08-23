@@ -1,3 +1,6 @@
 let x = 5
 let y = -x
 let z = -3.5
+
+assert y = -5
+assert z = -3.5

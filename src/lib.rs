@@ -35,16 +35,6 @@ pub fn run_source(src: &str) -> Result<Environment, String> {
     interpreter::run(&program)
 }
 
-/// Renders a run's final bindings the way `code run` prints them — shared by
-/// the CLI and by tests that need to compare the interpreter's output
-/// against the compiled binary's stdout, so the two can never silently
-/// drift apart.
-pub fn format_bindings(env: &Environment) -> String {
-    env.iter_in_order()
-        .map(|(name, value)| format!("{name} = {value}\n"))
-        .collect()
-}
-
 #[cfg(feature = "llvm")]
 mod compile {
     use std::fs;

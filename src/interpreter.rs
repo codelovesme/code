@@ -29,10 +29,6 @@ pub type ModuleDispatch = Rc<dyn Fn(&Value) -> Result<Value, String>>;
 /// an error — variables are untyped, only Values are.
 pub struct Environment {
     scopes: Vec<HashMap<String, Value>>,
-    /// First-assignment order of names in the *outermost* scope only — the
-    /// only scope whose bindings ever get dumped (see `iter_in_order`); an
-    /// `if`-local binding never appears here even if the `if` runs.
-    order: Vec<String>,
     /// Linked modules' dispatch entry points, by alias — a separate
     /// namespace from `scopes`, not a `Value`: this language has no
     /// function-value kind a handler could be represented as, so a module is
@@ -59,7 +55,6 @@ impl fmt::Debug for Environment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Environment")
             .field("scopes", &self.scopes)
-            .field("order", &self.order)
             .field("modules", &self.modules.keys().collect::<Vec<_>>())
             .field(
                 "available_modules",
@@ -73,7 +68,6 @@ impl Default for Environment {
     fn default() -> Self {
         Environment {
             scopes: vec![HashMap::new()],
-            order: Vec::new(),
             modules: HashMap::new(),
             available_modules: HashMap::new(),
         }
@@ -113,9 +107,6 @@ impl Environment {
     /// even if `name` already exists further out (shadowing) or even in
     /// this exact scope (re-`let`, just rebinds).
     fn declare(&mut self, name: String, value: Value) {
-        if self.scopes.len() == 1 && !self.scopes[0].contains_key(&name) {
-            self.order.push(name.clone());
-        }
         self.scopes.last_mut().unwrap().insert(name, value);
     }
 
@@ -139,19 +130,6 @@ impl Environment {
 
     fn pop_scope(&mut self) {
         self.scopes.pop();
-    }
-
-    /// Bindings in first-assignment order, for stable, deterministic output
-    /// — outermost scope only (see `order`'s doc comment).
-    pub fn iter_in_order(&self) -> impl Iterator<Item = (&String, &Value)> {
-        self.order.iter().map(|name| {
-            (
-                name,
-                self.scopes[0]
-                    .get(name)
-                    .expect("outermost binding must still exist"),
-            )
-        })
     }
 }
 

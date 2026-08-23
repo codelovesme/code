@@ -2,3 +2,8 @@ let n = 2.5
 let s = "hi"
 let b = true
 let z = null
+
+assert n = 2.5
+assert s = "hi"
+assert b = true
+assert z = null
