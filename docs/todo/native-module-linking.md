@@ -158,8 +158,38 @@ for the fixture coverage (a new `buildonly_` fixture prefix in
   there's no `code`-side syntax to *declare* a module's exported vars yet
   (Phase 2 reads them from a native module's `code_module_vars`, it doesn't
   let a `code` program define one).
-- **A published `code-native`-equivalent crate/header bundle.** Today
-  writing a module means hand-`#include`-ing `runtime.c` (see
-  `tests/native_modules/test_math.c`'s doc comment) — fine for a test
-  fixture, not yet a documented, versioned, easy-to-depend-on story for a
-  real module author.
+- **A published `code-native`-equivalent crate/header bundle — shipped
+  2026-08-22 for Rust.** `crates/code-native` is a Rust crate (`cargo add
+  code-native`, published to crates.io) that compiles the vendored
+  `code_abi.h`/`runtime.c` via its own `build.rs` and links them into a
+  module's `cdylib` — no checkout of this repo needed. It is *not* the
+  old language's macro/descriptor-table design (`old/crates/code-native`):
+  the new ABI dropped that for one hand-written `code_module_dispatch`
+  function, so there's no boilerplate left to generate — this crate is
+  safe `CodeValue` builders/readers plus the linking mechanics, nothing
+  more. See `crates/code-native/README.md`.
+
+  Distribution is deliberately **per consuming language**, not one
+  language-agnostic bundle — mirroring `crates/code-wasm`'s existing npm
+  package for JS. C (and anything else that can produce a C-ABI shared
+  library) still uses `src/code_abi.h` + `src/runtime.c` directly; C has no
+  package registry to target, so that already *is* the C story, unchanged.
+  Go, C#, and other languages remain open — nothing has been started for
+  them, and each would need its own crate/package-equivalent when someone
+  actually needs one (see [no-language-documentation.md](no-language-documentation.md)
+  for a similar "written for the case that exists" scoping call).
+
+  `crates/code-native/vendor/{code_abi.h,runtime.c}` are verbatim copies of
+  the `src/` files, guarded against drift by
+  `tests/native_crate_vendor_sync.rs` at the workspace root (kept out of
+  the published crate itself so it can't break `cargo publish`'s isolated
+  build check). One implementation wrinkle worth remembering if this ever
+  needs revisiting: `cdylib` targets get `--exclude-libs=ALL` from rustc by
+  default, which hides symbols pulled in from a *linked static archive*
+  (exactly what `build.rs`'s `cc::Build::compile` produces) from the
+  dynamic symbol table — even though the crate's own code calls them fine
+  internally. Only `code_release` is actually ABI-required to be
+  `dlsym`-able (`code_number` etc. never are), so the fix was narrow:
+  `build.rs` compiles `runtime.c` with `code_release` renamed via `-D`,
+  and `src/lib.rs` re-exports it under the real name from a genuine Rust
+  `#[no_mangle]` function, which isn't subject to that exclusion.

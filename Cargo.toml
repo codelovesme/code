@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/code-wasm"]
+members = [".", "crates/code-wasm", "crates/code-native"]
 
 [package]
 name = "code"

@@ -9,7 +9,7 @@ time. Order below is roughly by how likely it is to bite someone.
 
 | Task | Why it matters |
 |---|---|
-| [native-module-linking.md](native-module-linking.md) | Phase 1 (`.so` handlers) + Phase 2 (exported vars) shipped 2026-08-21, Phase 3 (`.a` static modules) shipped 2026-08-22; a *native* `link "x.wasm"`, `code build --lib` still open (a *different* `crates/code-wasm` module-linking story shipped 2026-08-22 too — see that doc) |
+| [native-module-linking.md](native-module-linking.md) | Phase 1 (`.so` handlers) + Phase 2 (exported vars) shipped 2026-08-21, Phase 3 (`.a` static modules) + the `code-native` Rust crate shipped 2026-08-22; a *native* `link "x.wasm"`, `code build --lib`, and per-language bundles for anything besides Rust/C still open (a *different* `crates/code-wasm` module-linking story shipped 2026-08-22 too — see that doc) |
 | [no-language-documentation.md](no-language-documentation.md) | The new language has no README at all |
 | [temp-slots-pin-intermediates.md](temp-slots-pin-intermediates.md) | Memory held longer than necessary |
 

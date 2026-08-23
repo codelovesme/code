@@ -1,0 +1,18 @@
+[package]
+name = "code-native"
+version = "1.0.0"
+edition = "2021"
+description = "Write native .so modules for the Code programming language in Rust — safe CodeValue builders/readers over the real runtime.c, no reimplementation."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+readme = "README.md"
+keywords = ["ffi", "abi", "plugin", "native"]
+categories = ["api-bindings", "development-tools::ffi"]
+# vendor/ is what build.rs compiles; it must ship in the published package.
+include = ["src/**", "vendor/**", "build.rs", "README.md", "LICENSE"]
+
+[lib]
+crate-type = ["rlib"]
+
+[build-dependencies]
+cc = "1"

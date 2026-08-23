@@ -39,6 +39,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-native"
+version = "1.0.0"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "code-wasm"
 version = "0.1.0"
 dependencies = [
