@@ -1,0 +1,6 @@
+-- A `.a` link needs an alias for the same reason a `.so` link does —
+-- nothing else could name it in `emit ... to <name>`. Resolved identically
+-- in both output modes (loader.rs's nm scan and alias check run before
+-- either backend ever sees the program), so this is a plain `fail_`
+-- fixture, not `buildonly_`.
+link "native_modules/test_math_static.a"

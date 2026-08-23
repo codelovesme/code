@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::ast::{BinOp, EmitTarget, Expr, Program, Stmt, UnOp};
+use crate::ast::{BinOp, EmitTarget, Expr, NativeFormat, Program, Stmt, UnOp};
 #[cfg(feature = "native-modules")]
 use crate::native::NativeModule;
 use crate::value::Value;
@@ -144,7 +144,13 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
         Stmt::Link { path, .. } => Err(format!(
             "internal error: link \"{path}\" reached the interpreter unresolved"
         )),
-        Stmt::ImportNative { alias, path } => {
+        Stmt::ImportNative { alias, path, format } => {
+            if let NativeFormat::Static { .. } = format {
+                return Err(format!(
+                    "link \"{path}\": .a modules only work with 'code build', not 'code run' \
+                     — see docs/todo/native-module-linking.md"
+                ));
+            }
             #[cfg(feature = "native-modules")]
             {
                 let module = NativeModule::open(path)?;
@@ -161,7 +167,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             }
             #[cfg(not(feature = "native-modules"))]
             {
-                let _ = (alias, path);
+                let _ = (alias, path, format);
                 Err("native modules aren't supported in this build".to_string())
             }
         }

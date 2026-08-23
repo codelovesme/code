@@ -14,3 +14,5 @@
 # checked-in .c source, not committed themselves (see native-module-linking
 # in docs/todo for why a prebuilt .so isn't portable across machines).
 /tests/native_modules/*.so
+/tests/native_modules/*.a
+/tests/native_modules/*.o

@@ -98,4 +98,56 @@ typedef struct CodeVarList {
     CodeValue *values; /* CODE_VALUE_SLOT_SIZE stride, `count` slots */
 } CodeVarList;
 
+/* ---- `.a` static modules — a different, simpler contract -----------------
+ *
+ * Everything above is the `.so` contract: a module `dlopen`s in as a
+ * self-contained unit with its own copy of the runtime, so values crossing
+ * the boundary need a deep copy and the module needs its own `code_release`.
+ *
+ * A `.a` module is linked straight into the same binary as the host by `cc`
+ * (`code build` only — there is no `dlopen` for a static archive, so `code
+ * run` refuses to link one at all). That means there is only ever one copy
+ * of the runtime in the final program — the host's — so a `.a` module does
+ * NOT bring its own copy of it. It builds its results by calling the host's
+ * own constructors directly, declared `extern` below, and needs no
+ * `code_release` of its own: nothing it builds is ever a separate
+ * allocation to free.
+ *
+ * The only names a `.a` module must still choose carefully are the ones it
+ * defines itself — `code_module_dispatch` and `code_module_abi_version`
+ * (required), `code_module_vars` (optional) — because unlike `.so` handles,
+ * every `.a` linked into one program shares a single flat symbol table.
+ * Convention: pick a prefix unique among every `.a` your program will ever
+ * link alongside, and name them `<prefix>_code_module_dispatch`,
+ * `<prefix>_code_module_abi_version`, `<prefix>_code_module_vars`. `code
+ * build` finds them by running `nm` on the archive at link time (see
+ * `loader.rs`), so `link "libfoo.a" as m` needs no syntax to name the
+ * prefix — it just has to be unique. */
+
+void code_number(CodeValue *out, double n);
+void code_str(CodeValue *out, const char *s);
+void code_bool(CodeValue *out, int b);
+void code_null(CodeValue *out);
+void code_array(CodeValue *out, void *items, long long len);
+void code_object(CodeValue *out, const char **keys, void *values, long long len);
+void code_copy(CodeValue *out, const CodeValue *src);
+void code_field(CodeValue *out, const CodeValue *obj, const char *field);
+void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index);
+void code_retain(const CodeValue *v);
+void code_release(CodeValue *v);
+int code_values_equal(const CodeValue *a, const CodeValue *b);
+int code_bool_value(const CodeValue *v, const char *op);
+void code_assert(const CodeValue *v);
+_Noreturn void code_runtime_error(const char *message);
+
+/* Addresses slot `index` of a `CODE_VALUE_SLOT_SIZE`-strided buffer — the
+ * same convention `items`/`values` buffers use throughout this header.
+ * `static inline` rather than declared `extern`: it's pure pointer
+ * arithmetic with no state, so a header-only copy in each translation unit
+ * that includes this file (host and every `.a` module alike) is simpler
+ * than giving it one more externally-linked name to keep unique. */
+static inline CodeValue *code_slot_at(void *base, long long index) {
+    return (CodeValue *)((char *)base + index * CODE_VALUE_SLOT_SIZE);
+}
+
 #endif

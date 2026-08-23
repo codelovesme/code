@@ -49,7 +49,7 @@ mod compile {
     use std::path::Path;
     use std::process::Command;
 
-    use crate::ast::Program;
+    use crate::ast::{NativeFormat, Program, Stmt};
     use crate::codegen;
     use crate::loader::{self, FilesystemResolver};
 
@@ -83,9 +83,29 @@ mod compile {
             .join("code_abi.h");
         std::fs::write(&abi_h_path, CODE_ABI_H).map_err(|e| format!("write code_abi.h: {e}"))?;
 
+        // Every `.a` static module `link`ed in this program (see
+        // `ast::NativeFormat::Static`) — appended after `runtime_c_path` so
+        // its unresolved `code_number`/etc. references are satisfied by that
+        // plain (non-archive) object regardless of `.a`-vs-.o ordering
+        // quirks, while `obj_path`'s own references to
+        // `<prefix>_code_module_dispatch` pull the archive member in.
+        let static_modules: Vec<&str> = program
+            .statements
+            .iter()
+            .filter_map(|stmt| match stmt {
+                Stmt::ImportNative {
+                    path,
+                    format: NativeFormat::Static { .. },
+                    ..
+                } => Some(path.as_str()),
+                _ => None,
+            })
+            .collect();
+
         let link_result = Command::new("cc")
             .arg(&obj_path)
             .arg(&runtime_c_path)
+            .args(&static_modules)
             .arg("-lm")
             .arg("-ldl")
             .arg("-o")

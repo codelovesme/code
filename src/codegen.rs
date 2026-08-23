@@ -13,7 +13,7 @@ use inkwell::AddressSpace;
 use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
-use crate::ast::{BinOp, EmitTarget, Expr, Program, Stmt, UnOp};
+use crate::ast::{BinOp, EmitTarget, Expr, NativeFormat, Program, Stmt, UnOp};
 
 /// Byte size of one runtime `CodeValue` slot (`src/runtime.c`; 64 bytes on
 /// x86_64, this leaves headroom). Codegen never inspects the struct's fields
@@ -25,6 +25,15 @@ use crate::ast::{BinOp, EmitTarget, Expr, Program, Stmt, UnOp};
 /// `_Static_assert` for the check that catches the two numbers drifting.
 const VALUE_SIZE: u64 = 80;
 const VALUE_ALIGN: u32 = 8;
+
+/// A `.a` static module's three (`vars` optional) entry points, declared up
+/// front in `compile_to_object` — see the comment there for why this has to
+/// happen before `Gen` exists rather than inside one of its methods.
+struct StaticModuleFns<'a> {
+    abi_version: FunctionValue<'a>,
+    dispatch: FunctionValue<'a>,
+    vars: Option<FunctionValue<'a>>,
+}
 
 /// Checks every `Expr::Ident` is reachable from an earlier assignment,
 /// mirroring the interpreter's runtime "undefined variable" error as a
@@ -305,6 +314,16 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
+    let fn_static_module_check = module.add_function(
+        "code_static_module_check",
+        void_ty.fn_type(&[i32_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_static_vars_object = module.add_function(
+        "code_static_vars_object",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_check_leaks = module.add_function("code_check_leaks", void_ty.fn_type(&[], false), None);
     let fn_dump = module.add_function(
         "code_dump_bindings",
@@ -352,6 +371,56 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
+
+    // Every `.a` static module's `<prefix>_code_module_*` functions,
+    // declared up front by alias, in this same textual region as every
+    // other `module.add_function` call above — deliberately *not* done
+    // inside a `Gen` method later: `Gen`'s methods never name `Module`
+    // itself (only the `FunctionValue`s it returns, which — unlike
+    // `Module` — carry no `Drop` impl), so `Gen`'s single lifetime
+    // parameter never has to be unified with a Drop-implementing local's
+    // own generic parameter, which is what a `&Module` parameter or field
+    // on `Gen` ran into (rustc's dropck rejects it: `module`, `builder` and
+    // `alloca_builder` are all local to this function and must be provably
+    // droppable in *some* valid order, which dropck can't confirm once a
+    // reference to `Module` — Drop, generic over the same lifetime as
+    // everything else here — flows through a `Gen` field or method
+    // signature). See `docs/todo/native-module-linking.md`.
+    let mut static_native_fns: HashMap<String, StaticModuleFns> = HashMap::new();
+    for stmt in &program.statements {
+        if let Stmt::ImportNative {
+            alias,
+            format: NativeFormat::Static { prefix, has_vars },
+            ..
+        } = stmt
+        {
+            let abi_version = module.add_function(
+                &format!("{prefix}_code_module_abi_version"),
+                i32_ty.fn_type(&[], false),
+                None,
+            );
+            let dispatch = module.add_function(
+                &format!("{prefix}_code_module_dispatch"),
+                void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+                None,
+            );
+            let vars = has_vars.then(|| {
+                module.add_function(
+                    &format!("{prefix}_code_module_vars"),
+                    i8_ptr_ty.fn_type(&[], false),
+                    None,
+                )
+            });
+            static_native_fns.insert(
+                alias.clone(),
+                StaticModuleFns {
+                    abi_version,
+                    dispatch,
+                    vars,
+                },
+            );
+        }
+    }
 
     let main_fn = module.add_function("main", i32_ty.fn_type(&[], false), None);
     // Two blocks, not one: `entry` collects *every* alloca in the program
@@ -404,11 +473,14 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_native_dispatch,
         fn_native_vars_object,
         fn_native_close,
+        fn_static_module_check,
+        fn_static_vars_object,
         env: vec![HashMap::new()],
         order: Vec::new(),
         loop_exits: Vec::new(),
         slots: Vec::new(),
-        native_handles: HashMap::new(),
+        native_links: HashMap::new(),
+        static_native_fns,
     };
 
     for stmt in &program.statements {
@@ -502,6 +574,8 @@ struct Gen<'a> {
     fn_native_dispatch: FunctionValue<'a>,
     fn_native_vars_object: FunctionValue<'a>,
     fn_native_close: FunctionValue<'a>,
+    fn_static_module_check: FunctionValue<'a>,
+    fn_static_vars_object: FunctionValue<'a>,
     /// Scope stack, innermost last — mirrors `interpreter::Environment`
     /// (see memory `new-code-if-scoping`). Each name maps to a *permanent*
     /// slot, allocated once on its first assignment and never reallocated:
@@ -535,15 +609,28 @@ struct Gen<'a> {
     /// so that a finished program owns nothing — see `code_check_leaks` in
     /// `runtime.c` for why that is worth the extra calls.
     slots: Vec<(PointerValue<'a>, u64)>,
-    /// Handles from `code_native_open`, by the alias `link "x.so" as x`
-    /// bound — a raw `i8*` SSA value, not a `CodeValue` slot (see
-    /// `alloc_slot`'s doc comment; this pointer never needs to survive a
-    /// reassignment or a loop-body reuse the way a value slot does, it's
-    /// written once at `link` time and only ever read afterward). Storing
-    /// the call result directly relies on `link` being top-level-only: the
-    /// block that opens a module always dominates every block that could
-    /// `emit ... to` it.
-    native_handles: HashMap<String, PointerValue<'a>>,
+    /// What `link "x" as x` bound `x` to for `emit ... to x` dispatch, by
+    /// alias. A raw SSA value either way, not a `CodeValue` slot (see
+    /// `alloc_slot`'s doc comment; this never needs to survive a
+    /// reassignment or a loop-body reuse the way a value slot does — it's
+    /// written once at `link` time and only ever read afterward). Storing it
+    /// directly relies on `link` being top-level-only: the block that opens
+    /// a module always dominates every block that could `emit ... to` it.
+    native_links: HashMap<String, NativeLink<'a>>,
+    /// Every `.a` static module's declared entry points, by alias — built
+    /// once before `Gen` exists (see `compile_to_object`), consumed (via
+    /// `remove`) the one time each is `link`ed.
+    static_native_fns: HashMap<String, StaticModuleFns<'a>>,
+}
+
+/// See `Gen::native_links`. A `.so` (`NativeFormat::Dynamic`) dispatches
+/// through a `code_native_open` handle, looked up per-call by
+/// `code_native_dispatch`; a `.a` (`NativeFormat::Static`) is linked
+/// straight into this binary, so its `<prefix>_code_module_dispatch` is
+/// called directly, the same shape as `EmitTarget::Core`.
+enum NativeLink<'a> {
+    Dynamic(PointerValue<'a>),
+    Static(FunctionValue<'a>),
 }
 
 impl<'a> Gen<'a> {
@@ -637,7 +724,11 @@ impl<'a> Gen<'a> {
                 body,
                 exports,
             } => self.gen_import(alias.as_deref(), body, exports),
-            Stmt::ImportNative { alias, path } => self.gen_import_native(alias, path),
+            Stmt::ImportNative {
+                alias,
+                path,
+                format,
+            } => self.gen_import_native(alias, path, format),
             Stmt::Assign { name, value } => self.gen_reassign(name, value),
             Stmt::Assert(expr) => {
                 let ptr = self.gen_expr(expr)?;
@@ -885,39 +976,106 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
-    /// A resolved native `link` (`link "x.so" as x`). Opens the module
-    /// exactly once, at the point the `link` appears in program order —
-    /// `code_native_open` aborts (via `code_runtime_error`) on a bad path,
-    /// wrong ABI version, or a module missing a required symbol, so there's
-    /// nothing here to check; the returned handle is just remembered under
-    /// `alias` for `gen_emit` to call through later.
-    fn gen_import_native(&mut self, alias: &str, path: &str) -> Result<(), String> {
-        let path_ptr = self.global_str(path, "native_path")?;
-        let handle = self
-            .builder
-            .build_call(self.fn_native_open, &[path_ptr.into()], "native_handle")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .left()
-            .expect("code_native_open returns i8*, not void")
-            .into_pointer_value();
-        self.native_handles.insert(alias.to_string(), handle);
-        // The module's exported variables (constants) become an object bound
-        // under `alias`, so `alias.name` is ordinary field access — the same
-        // binding `gen_import`'s alias uses. The object is built at *runtime*
-        // (the module is dlopen'd at runtime, so its variables are only known
-        // then), by `code_native_vars_object` reading the module's optional
-        // `code_module_vars` export and deep-copying each value out. A module
-        // with no such export yields an empty object.
-        let permanent = self.alloc_slot("module")?;
-        self.builder
-            .build_call(
-                self.fn_native_vars_object,
-                &[handle.into(), permanent.into()],
-                "",
-            )
-            .map_err(|e| e.to_string())?;
-        self.bind(alias, permanent);
+    /// A resolved native `link` (`link "x.so" as x` or `link "x.a" as x`).
+    /// `Dynamic` opens the module exactly once, at the point the `link`
+    /// appears in program order — `code_native_open` aborts (via
+    /// `code_runtime_error`) on a bad path, wrong ABI version, or a module
+    /// missing a required symbol, so there's nothing here to check; the
+    /// returned handle is just remembered under `alias` for `gen_emit` to
+    /// call through later.
+    ///
+    /// `Static` has no handle to open at all — its `<prefix>_code_module_*`
+    /// functions are already declared (see `static_native_fns`), so this
+    /// just calls the version check and vars lookup, then remembers the
+    /// dispatch function directly for `gen_emit`.
+    fn gen_import_native(
+        &mut self,
+        alias: &str,
+        path: &str,
+        format: &NativeFormat,
+    ) -> Result<(), String> {
+        match format {
+            NativeFormat::Dynamic => {
+                let path_ptr = self.global_str(path, "native_path")?;
+                let handle = self
+                    .builder
+                    .build_call(self.fn_native_open, &[path_ptr.into()], "native_handle")
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .left()
+                    .expect("code_native_open returns i8*, not void")
+                    .into_pointer_value();
+                self.native_links
+                    .insert(alias.to_string(), NativeLink::Dynamic(handle));
+                // The module's exported variables (constants) become an
+                // object bound under `alias`, so `alias.name` is ordinary
+                // field access — the same binding `gen_import`'s alias uses.
+                // The object is built at *runtime* (the module is dlopen'd
+                // at runtime, so its variables are only known then), by
+                // `code_native_vars_object` reading the module's optional
+                // `code_module_vars` export and deep-copying each value out.
+                // A module with no such export yields an empty object.
+                let permanent = self.alloc_slot("module")?;
+                self.builder
+                    .build_call(
+                        self.fn_native_vars_object,
+                        &[handle.into(), permanent.into()],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+                self.bind(alias, permanent);
+            }
+            NativeFormat::Static { prefix, .. } => {
+                // Declared up front in `compile_to_object`, by alias — see
+                // `static_native_fns`'s doc comment for why that has to
+                // happen before `Gen` exists rather than here.
+                let fns = self
+                    .static_native_fns
+                    .remove(alias)
+                    .expect("compile_to_object declared this alias's functions up front");
+
+                let version = self
+                    .builder
+                    .build_call(fns.abi_version, &[], "static_module_version")
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .left()
+                    .expect("<prefix>_code_module_abi_version returns i32, not void")
+                    .into_int_value();
+                let prefix_ptr = self.global_str(prefix, "native_prefix")?;
+                self.builder
+                    .build_call(
+                        self.fn_static_module_check,
+                        &[version.into(), prefix_ptr.into()],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+
+                let vars_ptr = if let Some(vars_fn) = fns.vars {
+                    self.builder
+                        .build_call(vars_fn, &[], "static_module_vars")
+                        .map_err(|e| e.to_string())?
+                        .try_as_basic_value()
+                        .left()
+                        .expect("<prefix>_code_module_vars returns i8*, not void")
+                        .into_pointer_value()
+                } else {
+                    self.i8_ptr_ty.const_null()
+                };
+                let permanent = self.alloc_slot("module")?;
+                self.builder
+                    .build_call(
+                        self.fn_static_vars_object,
+                        &[vars_ptr.into(), permanent.into()],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+                self.bind(alias, permanent);
+
+                self.native_links
+                    .insert(alias.to_string(), NativeLink::Static(fns.dispatch));
+            }
+        }
         Ok(())
     }
 
@@ -949,17 +1107,30 @@ impl<'a> Gen<'a> {
             EmitTarget::Module(alias) => {
                 // `verify_defined` already rejected an `alias` that was
                 // never `link`ed, so this is always present.
-                let handle = *self
-                    .native_handles
+                match self
+                    .native_links
                     .get(alias)
-                    .expect("verify_defined checked this alias was linked");
-                self.builder
-                    .build_call(
-                        self.fn_native_dispatch,
-                        &[handle.into(), temp.into(), particle_ptr.into()],
-                        "",
-                    )
-                    .map_err(|e| e.to_string())?;
+                    .expect("verify_defined checked this alias was linked")
+                {
+                    NativeLink::Dynamic(handle) => {
+                        let handle = *handle;
+                        self.builder
+                            .build_call(
+                                self.fn_native_dispatch,
+                                &[handle.into(), temp.into(), particle_ptr.into()],
+                                "",
+                            )
+                            .map_err(|e| e.to_string())?;
+                    }
+                    NativeLink::Static(dispatch) => {
+                        // Linked straight into this binary — a direct call,
+                        // no handle, exactly like `EmitTarget::Core` above.
+                        let dispatch = *dispatch;
+                        self.builder
+                            .build_call(dispatch, &[temp.into(), particle_ptr.into()], "")
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
             }
         }
         if let Some(name) = result {
@@ -1491,14 +1662,18 @@ impl<'a> Gen<'a> {
                     .map_err(|e| e.to_string())?;
             }
         }
-        // Every linked native module's handle (see `code_native_open`) —
-        // the same "owns nothing at exit" rule as the `CodeValue` slots
-        // above, just a plain `free` instead of a refcount release.
-        let handles = std::mem::take(&mut self.native_handles);
-        for (_, handle) in handles {
-            self.builder
-                .build_call(self.fn_native_close, &[handle.into()], "")
-                .map_err(|e| e.to_string())?;
+        // Every linked `.so`'s handle (see `code_native_open`) — the same
+        // "owns nothing at exit" rule as the `CodeValue` slots above, just a
+        // plain `free` instead of a refcount release. A `.a`'s `NativeLink`
+        // owns no allocation of its own (it's just an extern function
+        // reference into this very binary), so there's nothing to close.
+        let links = std::mem::take(&mut self.native_links);
+        for (_, link) in links {
+            if let NativeLink::Dynamic(handle) = link {
+                self.builder
+                    .build_call(self.fn_native_close, &[handle.into()], "")
+                    .map_err(|e| e.to_string())?;
+            }
         }
         self.builder
             .build_call(fn_check_leaks, &[], "")

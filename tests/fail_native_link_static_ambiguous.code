@@ -1,0 +1,5 @@
+-- A `.a` module must export exactly one `<prefix>_code_module_dispatch` —
+-- two prefixes in the same archive share one flat symbol table with no way
+-- to tell them apart. Resolved (and rejected) identically in both output
+-- modes by loader.rs's `nm` scan, so this is a plain `fail_` fixture.
+link "native_modules/test_math_static_ambiguous.a" as m
