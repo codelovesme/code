@@ -71,28 +71,6 @@ jobs:
           name: module-${{ needs.resolve.outputs.module }}-linux-x86_64
           path: "dist/*.so"
 
-  build-linux-arm64:
-    name: Build linux-arm64
-    needs: resolve
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install cross compiler
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-      - name: Compile
-        run: |
-          set -euo pipefail
-          m="${{ needs.resolve.outputs.module }}"
-          mkdir -p dist
-          aarch64-linux-gnu-gcc -O2 -shared -fPIC \
-            -o "dist/${m}-linux-arm64.so" \
-            "crates/modules/${m}/${m}.c" -lm -ldl
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: module-${{ needs.resolve.outputs.module }}-linux-arm64
-          path: "dist/*.so"
-
   build-macos-x86_64:
     name: Build macos-x86_64
     needs: resolve
@@ -115,28 +93,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: module-${{ needs.resolve.outputs.module }}-macos-x86_64
-          path: "dist/*.dylib"
-
-  build-macos-arm64:
-    name: Build macos-arm64
-    needs: resolve
-    runs-on: macos-14-arm64
-    steps:
-      - uses: actions/checkout@v4
-      - name: Compile
-        run: |
-          set -euo pipefail
-          m="${{ needs.resolve.outputs.module }}"
-          mkdir -p dist
-          cc -O2 -dynamiclib \
-            -install_name "@rpath/${m}.dylib" \
-            -o "dist/${m}-macos-arm64.dylib" \
-            "crates/modules/${m}/${m}.c" -lm
-          codesign --sign - "dist/${m}-macos-arm64.dylib"
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: module-${{ needs.resolve.outputs.module }}-macos-arm64
           path: "dist/*.dylib"
 
   # Proof the artifact actually loads: build the real `code` binary and run
@@ -183,9 +139,7 @@ jobs:
       [
         resolve,
         build-linux-x86_64,
-        build-linux-arm64,
         build-macos-x86_64,
-        build-macos-arm64,
         dogfood,
       ]
     runs-on: ubuntu-latest
@@ -211,9 +165,7 @@ jobs:
             "vars": [],
             "platforms": {
               "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" },
-              "linux-arm64": { "asset": "${m}-linux-arm64.so", "sha256": "$(sum ${m}-linux-arm64.so)" },
-              "macos-x86_64": { "asset": "${m}-macos-x86_64.dylib", "sha256": "$(sum ${m}-macos-x86_64.dylib)" },
-              "macos-arm64": { "asset": "${m}-macos-arm64.dylib", "sha256": "$(sum ${m}-macos-arm64.dylib)" }
+              "macos-x86_64": { "asset": "${m}-macos-x86_64.dylib", "sha256": "$(sum ${m}-macos-x86_64.dylib)" }
             }
           }
           EOF

@@ -62,18 +62,20 @@ under both `code run` and `code build`.
 No registry server. Provenance is free (source and CI are visible per
 artifact), and it is where the community lives anyway. Per release:
 
-- one asset per platform: `math-linux-x86_64.so`, `math-macos-arm64.dylib`, …
+- one asset per platform: `math-linux-x86_64.so`, `math-macos-x86_64.dylib`, …
   (the extension follows the platform; the loader already keys off suffix)
 - one `module.json`: name, version, ABI version, handler list, exported
   vars, supported platforms, sha256 per asset
 - everything built from source in CI (cross-compilation matrix), never
   uploaded by hand
 
-Matrix: linux-{x86_64, arm64}, macos-{x86_64, arm64}. Build on an
-older-glibc runner image for maximum compatibility. macOS assets ad-hoc
-signed at minimum (unsigned dylibs get killed/quarantined). **Windows is
-deferred**: it needs a `LoadLibrary`/`GetProcAddress` path in
-`src/native.rs` and `runtime.c` — real work, tracked as phase F.
+Matrix: linux-x86_64, macos-x86_64 (arm64 variants deferred — add a job
+per arch when demand shows up; the recipe is identical apart from the
+runner and toolchain prefix). Build on an older-glibc runner image for
+maximum compatibility. macOS assets ad-hoc signed at minimum (unsigned
+dylibs get killed/quarantined). **Windows is deferred**: it needs a
+`LoadLibrary`/`GetProcAddress` path in `src/native.rs` and `runtime.c` —
+real work, tracked as phase F.
 
 ### Install: `code install`
 
