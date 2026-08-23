@@ -172,9 +172,9 @@ pub struct LoopOver {
     /// `loop item, i over ...` — the zero-based position, bound as a
     /// `Number`. Scoped and shadowing exactly like `var`.
     pub index: Option<String>,
-    /// Evaluated *once*, before the first iteration, and must be an `Array`
-    /// — any other kind is a runtime type error, deliberately unlike
-    /// `Field`/`Index`'s permissive null.
+    /// Evaluated *once*, before the first iteration, and must be an
+    /// `Array` — any other kind is a runtime type error, the same rule
+    /// `Field`/`Index` follow.
     pub iterable: Expr,
 }
 
@@ -269,11 +269,22 @@ pub enum Expr {
     /// `expr.field` — reading a field, not writing one; there is no
     /// `expr.field = ...` assignment form (yet — see memory
     /// `new-code-memory-management` on why mutation is a separate, deferred
-    /// decision). Invalid access (non-object, missing field) is not a
-    /// parse-time concern — see `Field`'s evaluation for the runtime rule.
+    /// decision).
+    ///
+    /// `.` **requires an object** and `[]` **requires an array**: anything
+    /// else is a runtime error (revised 2026-08-23 — until then any invalid
+    /// access quietly produced null, which hid mistakes like `"abc"[0]` and
+    /// `"abc".length`).
+    ///
+    /// A member that is merely *absent* is still null, though: `obj.nope`
+    /// and `arr[99]` (and a non-integer or negative index) evaluate to null
+    /// rather than erroring. That half is load-bearing — reading a name a
+    /// module did not export goes through an alias object as a missing
+    /// field, and `link_default_private.code` asserts it is null.
     Field(Box<Expr>, String),
-    /// `expr[index]` — same read-only scope as `Field`. `index` is itself
-    /// an expression, not restricted to a literal.
+    /// `expr[index]` — same read-only scope, and the same
+    /// wrong-kind-errors / absent-member-is-null split as `Field`. `index`
+    /// is itself an expression, not restricted to a literal.
     Index(Box<Expr>, Box<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),

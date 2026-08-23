@@ -285,28 +285,58 @@ void code_copy(CodeValue *out, const CodeValue *src) {
     *out = *src;
 }
 
-/* Invalid access (non-object, missing field / non-array, bad index) writes
- * CODE_NULL into `out` rather than the caller ever seeing an error —
- * decided 2026-08-21, permissive like JS. Must match
- * interpreter.rs's `Expr::Field`/`Expr::Index` eval rules exactly. */
+/* The wrong *kind* of operand for `.`/`[]` is a runtime error; a member
+ * that simply isn't there is still null. Must match interpreter.rs's
+ * `Expr::Field`/`Expr::Index` eval rules — and their message text — exactly. */
+/* Mirrors interpreter.rs's `type_name` exactly — the two backends' error
+ * messages are meant to read identically, not merely to both fail. */
+static const char *article_for(const CodeValue *v) {
+    return (v->tag == CODE_ARRAY || v->tag == CODE_OBJECT) ? "an" : "a";
+}
+
+static const char *type_name(const CodeValue *v) {
+    switch (v->tag) {
+    case CODE_NUMBER: return "number";
+    case CODE_STR:    return "string";
+    case CODE_BOOL:   return "boolean";
+    case CODE_NULL:   return "null";
+    case CODE_ARRAY:  return "array";
+    case CODE_OBJECT: return "object";
+    }
+    return "value";
+}
+
 void code_field(CodeValue *out, const CodeValue *obj, const char *field) {
-    if (obj->tag == CODE_OBJECT) {
-        for (long long i = 0; i < obj->len; i++) {
-            if (strcmp(obj->keys[i], field) == 0) {
-                /* `code_copy`, not a bare struct assignment: the extracted
-                 * value now lives in a second slot and so needs its own
-                 * reference — otherwise `let inner = obj.k` would dangle the
-                 * moment `obj` was overwritten. */
-                code_copy(out, slot_at(obj->items, i));
-                return;
-            }
+    if (obj->tag != CODE_OBJECT) {
+        char msg[128];
+        snprintf(msg, sizeof msg,
+                 "cannot read field '%s' of %s %s — '.' requires an object", field,
+                 article_for(obj), type_name(obj));
+        code_runtime_error(msg);
+    }
+    for (long long i = 0; i < obj->len; i++) {
+        if (strcmp(obj->keys[i], field) == 0) {
+            /* `code_copy`, not a bare struct assignment: the extracted
+             * value now lives in a second slot and so needs its own
+             * reference — otherwise `let inner = obj.k` would dangle the
+             * moment `obj` was overwritten. */
+            code_copy(out, slot_at(obj->items, i));
+            return;
         }
     }
+    /* A *missing* field is still null: only the wrong operand kind errors
+     * (see interpreter.rs's `Expr::Field`). */
     code_null(out);
 }
 
 void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
-    if (arr->tag == CODE_ARRAY && index->tag == CODE_NUMBER) {
+    if (arr->tag != CODE_ARRAY) {
+        char msg[96];
+        snprintf(msg, sizeof msg, "cannot index %s %s — '[]' requires an array",
+                 article_for(arr), type_name(arr));
+        code_runtime_error(msg);
+    }
+    if (index->tag == CODE_NUMBER) {
         double n = index->number;
         long long i = (long long)n;
         if ((double)i == n && i >= 0 && i < arr->len) {
@@ -314,6 +344,8 @@ void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
             return;
         }
     }
+    /* An out-of-range or non-integer index is still null, for the same
+     * reason a missing field is. */
     code_null(out);
 }
 
@@ -409,7 +441,17 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
             return;
         }
         if (value->tag == CODE_STR) {
-            code_number(&count, (double)strlen(value->str));
+            /* Characters, not bytes: `strlen` reported 6 for "héllo".
+             * Counting the bytes that are not UTF-8 continuation bytes
+             * (0b10xxxxxx) counts codepoints, which is what `chars().count()`
+             * gives on the interpreter side — the two must agree. */
+            long long chars = 0;
+            for (const char *p = value->str; *p; p++) {
+                if (((unsigned char)*p & 0xC0) != 0x80) {
+                    chars++;
+                }
+            }
+            code_number(&count, (double)chars);
             code_make_result(out, "LengthResult", &count);
             return;
         }

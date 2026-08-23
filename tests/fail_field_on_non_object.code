@@ -1,0 +1,4 @@
+-- `.` requires an object. Reading a field off anything else used to yield
+-- null, which silently hid the mistake; since 2026-08-23 it is an error.
+let n = 42
+let bad = n.x

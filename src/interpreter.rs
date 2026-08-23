@@ -316,14 +316,14 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             Value::Bool(true) => Ok(Flow::Normal),
             Value::Bool(false) => Err("assertion failed".to_string()),
             v => Err(format!(
-                "assert requires a boolean, found a {}",
-                type_name(&v)
+                "assert requires a boolean, found {}",
+                a_type_name(&v)
             )),
         },
         Stmt::If { condition, body } => match eval(condition, env)? {
             Value::Bool(true) => exec_scoped_body(body, env),
             Value::Bool(false) => Ok(Flow::Normal),
-            v => Err(format!("if requires a boolean, found a {}", type_name(&v))),
+            v => Err(format!("if requires a boolean, found {}", a_type_name(&v))),
         },
         Stmt::Block(body) => exec_scoped_body(body, env),
         Stmt::Loop { over, result, body } => {
@@ -353,7 +353,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     let items = match &evaluated {
                         Value::Array(items) => Rc::clone(items),
                         v => {
-                            return Err(format!("loop requires an array, found a {}", type_name(v)))
+                            return Err(format!("loop requires an array, found {}", a_type_name(v)))
                         }
                     };
                     for (i, item) in items.iter().enumerate() {
@@ -451,39 +451,58 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
             }
             Ok(Value::Object(Rc::new(values)))
         }
-        // Invalid access (non-object, missing field / non-array, bad index)
-        // returns Null rather than erroring — decided 2026-08-21, permissive
-        // like JS, unlike undefined-variable reads which still error.
+        // Two different situations, deliberately answered differently
+        // (revised 2026-08-23, replacing a blanket permissive-null rule):
+        // the *wrong kind* of operand is a mistake and errors, while a
+        // member that merely isn't there is null. `"abc"[0]` silently
+        // yielding null hid real bugs; `obj.absent` being null is load-
+        // bearing, since it is how an un-exported module name reads.
         Expr::Field(obj, field) => {
             let v = eval(obj, env)?;
-            Ok(match &v {
-                Value::Object(fields) => fields
+            match &v {
+                // A *missing* field is still null — that is what makes a
+                // module's un-exported name read as null through its alias
+                // (`link_default_private.code`). Only the wrong *kind* of
+                // operand is an error.
+                Value::Object(fields) => Ok(fields
                     .iter()
                     .find(|(k, _)| k == field)
                     .map(|(_, v)| v.clone())
-                    .unwrap_or(Value::Null),
-                _ => Value::Null,
-            })
+                    .unwrap_or(Value::Null)),
+                v => Err(format!(
+                    "cannot read field '{field}' of {} — '.' requires an object",
+                    a_type_name(v)
+                )),
+            }
         }
         Expr::Index(arr, index) => {
             let v = eval(arr, env)?;
             let i = eval(index, env)?;
-            Ok(match (&v, &i) {
-                (Value::Array(items), Value::Number(n)) if n.fract() == 0.0 && *n >= 0.0 => {
-                    items.get(*n as usize).cloned().unwrap_or(Value::Null)
-                }
-                _ => Value::Null,
-            })
+            match &v {
+                // An out-of-range or non-integer index stays null, for the
+                // same reason a missing field does: the operand kind is
+                // right, the lookup simply found nothing.
+                Value::Array(items) => Ok(match &i {
+                    Value::Number(n) if n.fract() == 0.0 && *n >= 0.0 => {
+                        items.get(*n as usize).cloned().unwrap_or(Value::Null)
+                    }
+                    _ => Value::Null,
+                }),
+                v => Err(format!(
+                    "cannot index {} — '[]' requires an array",
+                    a_type_name(v)
+                )),
+            }
         }
         Expr::Unary(op, e) => {
             let v = eval(e, env)?;
             match (op, v) {
                 (UnOp::Neg, Value::Number(n)) => Ok(Value::Number(-n)),
                 (UnOp::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
-                (UnOp::Neg, v) => Err(format!("cannot negate a {}", type_name(&v))),
+                (UnOp::Neg, v) => Err(format!("cannot negate {}", a_type_name(&v))),
                 (UnOp::Not, v) => Err(format!(
-                    "'not' requires a boolean, found a {}",
-                    type_name(&v)
+                    "'not' requires a boolean, found {}",
+                    a_type_name(&v)
                 )),
             }
         }
@@ -494,14 +513,14 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
             Value::Bool(false) => Ok(Value::Bool(false)),
             Value::Bool(true) => require_bool(eval(rhs, env)?, "and"),
             v => Err(format!(
-                "'and' requires booleans, found a {}",
-                type_name(&v)
+                "'and' requires booleans, found {}",
+                a_type_name(&v)
             )),
         },
         Expr::Binary(lhs, BinOp::Or, rhs) => match eval(lhs, env)? {
             Value::Bool(true) => Ok(Value::Bool(true)),
             Value::Bool(false) => require_bool(eval(rhs, env)?, "or"),
-            v => Err(format!("'or' requires booleans, found a {}", type_name(&v))),
+            v => Err(format!("'or' requires booleans, found {}", a_type_name(&v))),
         },
         // Equality is well-defined for any two values, including mismatched
         // kinds (simply `false`, never an error) — `Value`'s derived
@@ -523,8 +542,8 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
 fn dispatch_core(particle: &Value) -> Result<Value, String> {
     let Value::Object(fields) = particle else {
         return Err(format!(
-            "emit requires a particle (an object with a \"_class\" field), found a {}",
-            type_name(particle)
+            "emit requires a particle (an object with a \"_class\" field), found {}",
+            a_type_name(particle)
         ));
     };
     let class = match fields.iter().find(|(k, _)| k == "_class") {
@@ -546,10 +565,12 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
         }
         "Length" => match fields.iter().find(|(k, _)| k == "value") {
             Some((_, Value::Array(items))) => Ok(core_result("LengthResult", items.len() as f64)),
-            Some((_, Value::Str(s))) => Ok(core_result("LengthResult", s.len() as f64)),
+            // Characters, not bytes — `len()` reported 6 for "héllo". Must
+            // match runtime.c's continuation-byte count exactly.
+            Some((_, Value::Str(s))) => Ok(core_result("LengthResult", s.chars().count() as f64)),
             Some((_, v)) => Err(format!(
-                "Length requires an array or string 'value', found a {}",
-                type_name(v)
+                "Length requires an array or string 'value', found {}",
+                a_type_name(v)
             )),
             None => Err("Length { \"value\": ... } requires a 'value' field".to_string()),
         },
@@ -572,10 +593,22 @@ fn require_bool(v: Value, op: &str) -> Result<Value, String> {
     match v {
         Value::Bool(_) => Ok(v),
         v => Err(format!(
-            "'{op}' requires booleans, found a {}",
-            type_name(&v)
+            "'{op}' requires booleans, found {}",
+            a_type_name(&v)
         )),
     }
+}
+
+/// `type_name` with the right indefinite article — "a number", "an array".
+/// Every message below reads "found {a_type_name(v)}" rather than hardcoding
+/// "a {type_name(v)}", which used to produce "a array" / "a object".
+fn a_type_name(v: &Value) -> String {
+    let name = type_name(v);
+    let article = match name.chars().next() {
+        Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+        _ => "a",
+    };
+    format!("{article} {name}")
 }
 
 fn type_name(v: &Value) -> &'static str {
@@ -634,7 +667,7 @@ fn apply_binop(op: BinOp, l: Value, r: Value) -> Result<Value, String> {
     };
     result.ok_or_else(|| {
         format!(
-            "cannot apply {op:?} to a {} and a {}",
+            "cannot apply {op:?} to {} and {}",
             type_name(&l),
             type_name(&r)
         )
