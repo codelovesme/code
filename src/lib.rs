@@ -7,6 +7,7 @@ pub mod loader;
 #[cfg(feature = "native-modules")]
 pub mod native;
 pub mod parser;
+pub mod span;
 pub mod value;
 
 use std::path::Path;

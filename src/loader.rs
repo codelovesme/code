@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::ast::{NativeFormat, Program, Stmt};
-use crate::{lexer, parser};
+use crate::{lexer, parser, span};
 
 /// What a module reference resolved to.
 ///
@@ -227,6 +227,24 @@ impl ModuleResolver for NoModules {
     }
 }
 
+/// A module identity, shortened for reading. Identities are canonical
+/// absolute paths because that is what cycle detection and relative
+/// resolution need — but an absolute path is mostly noise in an error
+/// message, so anything under the working directory is shown relative to it,
+/// the way a compiler normally echoes the path you gave it. Falls back to the
+/// full identity whenever that isn't possible: a module in another directory,
+/// or a host with no working directory at all (wasm).
+fn display_path(identity: &str) -> &str {
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Ok(rel) = Path::new(identity).strip_prefix(&cwd) {
+            if let Some(shown) = rel.to_str() {
+                return shown;
+            }
+        }
+    }
+    identity
+}
+
 /// Load `entry` through `resolver`, returning a program with no `Link` left
 /// in it.
 pub fn load(entry: &str, resolver: &dyn ModuleResolver) -> Result<Program, String> {
@@ -256,8 +274,14 @@ struct Loader<'a> {
 
 impl Loader<'_> {
     fn load_source(&mut self, identity: &str, text: &str) -> Result<Program, String> {
-        let tokens = lexer::tokenize(text)?;
-        let program = parser::parse(&tokens)?;
+        // The only place that holds a module's source text *and* the name to
+        // call it by, so it is where a located error becomes a rendered one.
+        // Both backends see plain strings from here on — see `span`'s doc
+        // comment.
+        let shown = display_path(identity);
+        let locate = |e: span::Located| span::render(text, shown, e.at, &e.msg);
+        let lexed = lexer::tokenize(text).map_err(locate)?;
+        let program = parser::parse(&lexed).map_err(locate)?;
 
         let mut statements = Vec::with_capacity(program.statements.len());
         for stmt in program.statements {

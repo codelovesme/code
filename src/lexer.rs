@@ -1,3 +1,5 @@
+use crate::span::Located;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Ident(String),
@@ -60,18 +62,34 @@ pub enum Token {
     Eof,
 }
 
-pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
+/// Tokens plus where each one started — the two are always produced
+/// together, so they travel together rather than as two arguments every
+/// caller has to keep in step.
+pub struct Lexed {
+    pub tokens: Vec<Token>,
+    /// Char offset into the source where `tokens[i]` starts, same length as
+    /// `tokens`. Char, not byte, so a multi-byte operator earlier on the line
+    /// doesn't skew the column — see `span::render`.
+    pub starts: Vec<u32>,
+}
+
+pub fn tokenize(src: &str) -> Result<Lexed, Located> {
     let chars: Vec<char> = src.chars().collect();
     let mut i = 0;
     let mut tokens = Vec::new();
+    let mut starts = Vec::new();
     let mut last_was_separator = true; // suppress a leading Newline
 
     while i < chars.len() {
         let c = chars[i];
+        // Whitespace and comments `continue` before reaching any push below,
+        // so this is always the first char of whatever token is pushed next.
+        let start = i;
 
         if c == '\n' || c == ';' {
             if !last_was_separator {
                 tokens.push(Token::Newline);
+                starts.push(start as u32);
                 last_was_separator = true;
             }
             i += 1;
@@ -96,7 +114,10 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
         // meaning at all, and a bare `!` is overwhelmingly likely to be
         // someone reaching for the operator that moved.
         if c == '!' {
-            return Err("unexpected character '!' (inequality is '≠')".to_string());
+            return Err(Located::at(
+                i,
+                "unexpected character '!' (inequality is '≠')",
+            ));
         }
 
         if let Some(tok) = match c {
@@ -124,6 +145,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             _ => None,
         } {
             tokens.push(tok);
+            starts.push(start as u32);
             last_was_separator = false;
             i += 1;
             continue;
@@ -134,7 +156,9 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             let mut s = String::new();
             loop {
                 match chars.get(i) {
-                    None => return Err("unterminated string literal".to_string()),
+                    // Points at the opening quote, not the end of the file:
+                    // the quote is what the reader has to go find.
+                    None => return Err(Located::at(start, "unterminated string literal")),
                     Some('"') => {
                         i += 1;
                         break;
@@ -146,8 +170,13 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                             Some('t') => s.push('\t'),
                             Some('"') => s.push('"'),
                             Some('\\') => s.push('\\'),
-                            Some(other) => return Err(format!("unknown escape '\\{other}'")),
-                            None => return Err("unterminated string literal".to_string()),
+                            Some(other) => {
+                                return Err(Located::at(
+                                    i - 1,
+                                    format!("unknown escape '\\{other}'"),
+                                ))
+                            }
+                            None => return Err(Located::at(start, "unterminated string literal")),
                         }
                         i += 1;
                     }
@@ -158,26 +187,26 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 }
             }
             tokens.push(Token::Str(s));
+            starts.push(start as u32);
             last_was_separator = false;
             continue;
         }
 
         if c.is_ascii_digit() {
-            let start = i;
             while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
                 i += 1;
             }
             let text: String = chars[start..i].iter().collect();
             let n: f64 = text
                 .parse()
-                .map_err(|_| format!("invalid number literal '{text}'"))?;
+                .map_err(|_| Located::at(start, format!("invalid number literal '{text}'")))?;
             tokens.push(Token::Number(n));
+            starts.push(start as u32);
             last_was_separator = false;
             continue;
         }
 
         if c.is_alphabetic() || c == '_' {
-            let start = i;
             while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
                 i += 1;
             }
@@ -205,16 +234,21 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 _ => Token::Ident(text),
             };
             tokens.push(tok);
+            starts.push(start as u32);
             last_was_separator = false;
             continue;
         }
 
-        return Err(format!("unexpected character '{c}'"));
+        return Err(Located::at(i, format!("unexpected character '{c}'")));
     }
 
+    // Both synthetic: they stand at the end of the source, which is exactly
+    // where an "unexpected end of input" error wants to point.
     if !last_was_separator {
         tokens.push(Token::Newline);
+        starts.push(chars.len() as u32);
     }
     tokens.push(Token::Eof);
-    Ok(tokens)
+    starts.push(chars.len() as u32);
+    Ok(Lexed { tokens, starts })
 }

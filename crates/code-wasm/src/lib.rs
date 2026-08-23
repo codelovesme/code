@@ -125,8 +125,11 @@ fn run_with_modules_inner(src: &str, modules: Object) -> Result<Environment, Str
 /// grammar (object/array/string/number/bool/null) already *is* JSON's — see
 /// `parser::parse_expr`'s doc comment.
 fn decode_json(json: &str) -> Result<Value, String> {
-    let tokens = code::lexer::tokenize(json)?;
-    let expr = code::parser::parse_expr(&tokens)?;
+    // The message alone, not `span::render`'s source block: this text is a
+    // JS callback's return value, not a `.code` file the user wrote, so
+    // there's no file or line worth pointing them at.
+    let lexed = code::lexer::tokenize(json).map_err(|e| e.msg)?;
+    let expr = code::parser::parse_expr(&lexed).map_err(|e| e.msg)?;
     interpreter::eval_literal(&expr)
 }
 

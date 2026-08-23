@@ -1,18 +1,17 @@
 use crate::ast::{BinOp, EmitTarget, Expr, Program, Stmt, UnOp};
-use crate::lexer::Token;
+use crate::lexer::{Lexed, Token};
+use crate::span::Located;
 
 fn starts_uppercase(name: &str) -> bool {
     name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
 }
 
-pub fn parse(tokens: &[Token]) -> Result<Program, String> {
-    let mut p = Parser {
-        tokens,
-        pos: 0,
-        loop_depth: 0,
-        block_depth: 0,
-    };
-    p.program()
+pub fn parse(lexed: &Lexed) -> Result<Program, Located> {
+    let mut p = Parser::new(lexed);
+    // Every error site below stays a plain `String`; the position is attached
+    // once, here, from wherever the parser had got to. That's what keeps
+    // locations from having to be threaded through two dozen error sites.
+    p.program().map_err(|msg| p.locate(msg))
 }
 
 /// Parses a single expression from `tokens` rather than a whole program — a
@@ -25,25 +24,31 @@ pub fn parse(tokens: &[Token]) -> Result<Program, String> {
 /// `crates/code-wasm` to turn a JS callback's returned JSON string back into
 /// a `Value`. Errors if anything besides the one expression (plus
 /// surrounding newlines) remains.
-pub fn parse_expr(tokens: &[Token]) -> Result<Expr, String> {
-    let mut p = Parser {
-        tokens,
-        pos: 0,
-        loop_depth: 0,
-        block_depth: 0,
-    };
-    p.skip_newlines();
-    let expr = p.expr()?;
-    p.skip_newlines();
-    if !matches!(p.peek(), Token::Eof) {
-        return Err(format!("expected end of input, found {:?}", p.peek()));
-    }
-    Ok(expr)
+pub fn parse_expr(lexed: &Lexed) -> Result<Expr, Located> {
+    let mut p = Parser::new(lexed);
+    let parsed = (|| {
+        p.skip_newlines();
+        let expr = p.expr()?;
+        p.skip_newlines();
+        if !matches!(p.peek(), Token::Eof) {
+            p.err_here();
+            return Err(format!("expected end of input, found {:?}", p.peek()));
+        }
+        Ok(expr)
+    })();
+    parsed.map_err(|msg| p.locate(msg))
 }
 
 struct Parser<'a> {
     tokens: &'a [Token],
+    /// Parallel to `tokens` — see `Lexed`. Only ever read by `locate`.
+    starts: &'a [u32],
     pos: usize,
+    /// Which token an error should point at. Nearly every error site here
+    /// reports on a token it has just `advance()`d past, so this tracks the
+    /// last token *consumed* rather than the current one; the few sites that
+    /// `peek()` instead call `err_here` to correct it.
+    err_pos: usize,
     /// How many `loop` bodies enclose the statement being parsed — the only
     /// piece of context this otherwise context-free parser carries. `break`
     /// is rejected here, at zero depth, rather than in a later pass so that
@@ -59,12 +64,41 @@ struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
+    fn new(lexed: &'a Lexed) -> Self {
+        Parser {
+            tokens: &lexed.tokens,
+            starts: &lexed.starts,
+            pos: 0,
+            err_pos: 0,
+            loop_depth: 0,
+            block_depth: 0,
+        }
+    }
+
+    /// Turns one of this parser's plain-`String` errors into a located one,
+    /// using wherever `err_pos` last pointed. The single place a position is
+    /// attached — see `parse`.
+    fn locate(&self, msg: String) -> Located {
+        Located {
+            at: self.starts.get(self.err_pos).copied(),
+            msg,
+        }
+    }
+
+    /// Points the next error at the *current* token rather than the last
+    /// consumed one — for the handful of sites that `peek()` and reject
+    /// without consuming.
+    fn err_here(&mut self) {
+        self.err_pos = self.pos;
+    }
+
     fn peek(&self) -> &Token {
         &self.tokens[self.pos]
     }
 
     fn advance(&mut self) -> Token {
         let t = self.tokens[self.pos].clone();
+        self.err_pos = self.pos;
         if self.pos + 1 < self.tokens.len() {
             self.pos += 1;
         }
@@ -240,6 +274,7 @@ impl<'a> Parser<'a> {
                 return Err("'export' is only allowed at the top level of a file".to_string());
             }
             if !matches!(self.peek(), Token::Let) {
+                self.err_here();
                 return Err(format!(
                     "'export' must be followed by 'let' — it marks a declaration, and \
                      'let' is the only way to declare a name (found {:?})",
@@ -319,10 +354,14 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
-    fn expect_end_of_statement(&self) -> Result<(), String> {
+    fn expect_end_of_statement(&mut self) -> Result<(), String> {
         match self.peek() {
             Token::Newline | Token::Eof => Ok(()),
-            other => Err(format!("expected end of statement, found {other:?}")),
+            other => {
+                let msg = format!("expected end of statement, found {other:?}");
+                self.err_here();
+                Err(msg)
+            }
         }
     }
 
