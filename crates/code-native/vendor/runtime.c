@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "code_abi.h"
 
@@ -380,6 +381,18 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
     const CodeValue *class_val = find_field(particle, "_class");
     if (!class_val || class_val->tag != CODE_STR) {
         code_runtime_error("emit requires a particle (an object with a \"_class\" field)");
+    }
+
+    if (strcmp(class_val->str, "Timestamp") == 0) {
+        /* Whole seconds since the Unix epoch — must match
+         * interpreter.rs's `dispatch_core` exactly. Takes no operands,
+         * so there is nothing to validate beyond the particle shape.
+         * Zero-initialized for the same reason `code_make_result`'s
+         * `slots` is: `code_number` releases `out` before setting it. */
+        CodeValue ts = {0};
+        code_number(&ts, (double)time(NULL));
+        code_make_result(out, "TimestampResult", &ts);
+        return;
     }
 
     if (strcmp(class_val->str, "Length") == 0) {

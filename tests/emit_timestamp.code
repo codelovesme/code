@@ -1,0 +1,14 @@
+-- `Timestamp` is a compiled-in core handler taking no operands: it reports
+-- the current Unix time in whole seconds. Like every core result it comes
+-- back as a particle — `TimestampResult` — not a bare number.
+--
+-- The value is checked inside a block rather than left as a top-level
+-- binding: the harness compares the interpreter's and the compiled binary's
+-- stdout byte-for-byte, and two runs moments apart may land on different
+-- seconds. Block locals die with the block (see block_local_variable.code),
+-- so the bindings dump stays stable across runs.
+{
+    emit Timestamp {} to core get t
+    assert t._class = "TimestampResult"
+    assert t.value ≥ 1700000000
+}
