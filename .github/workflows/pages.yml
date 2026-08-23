@@ -1,16 +1,29 @@
 name: Deploy playground
 
+# Dogfoods the published npm package rather than building code-wasm from
+# source: the same artifact a real `npm install code-wasm` embedder gets is
+# what the playground runs, so a packaging bug (missing file, wrong export)
+# would show up here too, not just in crates/code-wasm/npm/'s own
+# smoke-test.mjs. This is also why `src/**`/`crates/code-wasm/**` are no
+# longer in the trigger path list below — a Rust source change has no effect
+# on the playground until PLAYGROUND_CODE_WASM_VERSION is bumped by hand and
+# a real npm release ships (see .github/workflows/publish-npm-wasm.yml and
+# crates/code-wasm/npm/README.md's "Releasing" section).
+
 on:
   push:
     branches: [main]
     paths:
       - "site/**"
-      - "crates/code-wasm/**"
-      - "src/**"
       - "tests/*.code"
-      - "Cargo.toml"
       - ".github/workflows/pages.yml"
   workflow_dispatch: {}
+
+env:
+  # Bump this and push after every real `code-wasm` npm release you want the
+  # playground to pick up — it does not track `latest` automatically, the
+  # same deliberate pinning the old language's playground used.
+  PLAYGROUND_CODE_WASM_VERSION: "1.0.0"
 
 permissions:
   contents: read
@@ -30,31 +43,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
         with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
+          node-version: "24"
 
-      # Interpreter only — code-wasm depends on the root crate with
-      # default-features = false (see crates/code-wasm/Cargo.toml), so this
-      # never touches the llvm feature/inkwell at all (wasm32-unknown-unknown
-      # has no native LLVM toolchain to link against anyway).
-      - name: Build code-wasm for wasm32-unknown-unknown
-        run: cargo build -p code-wasm --release --target wasm32-unknown-unknown
-
-      - name: Install wasm-bindgen-cli matching the wasm-bindgen crate version
+      # Installed into a scratch directory, well outside the repo checkout,
+      # so nothing from `npm install` (a node_modules tree, a lockfile) ever
+      # risks being picked up by anything else in this job.
+      - name: Fetch code-wasm@${{ env.PLAYGROUND_CODE_WASM_VERSION }} from npm
         run: |
           set -euo pipefail
-          version=$(cargo pkgid wasm-bindgen | sed 's/.*@//')
-          cargo install wasm-bindgen-cli --version "$version" --locked
+          mkdir -p /tmp/code-wasm-pkg
+          cd /tmp/code-wasm-pkg
+          npm install --no-save "code-wasm@${PLAYGROUND_CODE_WASM_VERSION}"
 
       - name: Assemble site
         run: |
           set -euo pipefail
           rm -rf dist
           mkdir -p dist/pkg
-          wasm-bindgen --target web --out-dir dist/pkg \
-            target/wasm32-unknown-unknown/release/code_wasm.wasm
+          cp /tmp/code-wasm-pkg/node_modules/code-wasm/dist/* dist/pkg/
           python3 site/build.py . dist
 
       - uses: actions/upload-pages-artifact@v3
