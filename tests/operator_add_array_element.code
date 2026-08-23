@@ -1,0 +1,28 @@
+-- `+` with exactly one array operand treats the other as a single element:
+-- appending when the array is on the left, prepending when it's on the right.
+assert [1, 2] + 3 = [1, 2, 3]
+assert 0 + [1, 2] = [0, 1, 2]
+assert [] + 1 = [1]
+assert 1 + [] = [1]
+
+-- Two arrays still concatenate — that case is checked first, which is what
+-- keeps "append this array as one item" expressible at all.
+assert [1] + [2] = [1, 2]
+assert [1] + [[2]] = [1, [2]]
+
+-- Any value kind can be the appended element, not just numbers.
+assert ["a"] + "b" = ["a", "b"]
+assert [1] + null = [1, null]
+assert [1] + true = [1, true]
+assert [1] + {"k": 2} = [1, {"k": 2}]
+
+-- Building up an array one element at a time, which is the point of it.
+let acc = []
+loop x over [1, 2, 3] {
+    acc = acc + x * 10
+}
+assert acc = [10, 20, 30]
+
+-- Non-array mixed kinds are still a type error, unchanged.
+assert 1 + 2 = 3
+assert "a" + "b" = "ab"

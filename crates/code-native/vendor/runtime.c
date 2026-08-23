@@ -711,19 +711,25 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         out->str = buf;
         return;
     }
-    if (a->tag == CODE_ARRAY && b->tag == CODE_ARRAY) {
-        long long na = a->len, nb = b->len;
+    /* One array operand is enough: the other is then a single *element* to
+     * append or prepend, and only two arrays concatenate. Written as one
+     * case rather than three because "how many elements does this operand
+     * contribute, and where do they come from" is the only difference —
+     * see interpreter.rs's matching arms. */
+    if (a->tag == CODE_ARRAY || b->tag == CODE_ARRAY) {
+        long long na = (a->tag == CODE_ARRAY) ? a->len : 1;
+        long long nb = (b->tag == CODE_ARRAY) ? b->len : 1;
         long long total = na + nb;
         void *buf = NULL;
         if (total > 0) {
             buf = heap_alloc((size_t)total * CODE_VALUE_SLOT_SIZE);
             for (long long i = 0; i < na; i++) {
-                const CodeValue *src = slot_at(a->items, i);
+                const CodeValue *src = (a->tag == CODE_ARRAY) ? slot_at(a->items, i) : a;
                 code_retain(src);
                 *slot_at(buf, i) = *src;
             }
             for (long long i = 0; i < nb; i++) {
-                const CodeValue *src = slot_at(b->items, i);
+                const CodeValue *src = (b->tag == CODE_ARRAY) ? slot_at(b->items, i) : b;
                 code_retain(src);
                 *slot_at(buf, na + i) = *src;
             }

@@ -280,11 +280,25 @@ pub enum Expr {
 }
 
 /// Operand type rules (decided 2026-08-21, do not re-propose alternatives):
-/// - `Add`/`Sub`/`Mul`/`Div`: `Number` only, except `Add` which also
-///   concatenates `Str+Str` and `Array+Array` — any other type pairing
-///   (including mixed kinds, e.g. `Number+Str`) is a runtime type error.
-///   `Div` by zero is also a runtime error, not `Infinity` — the value
-///   model is JSON, which has no way to represent that.
+/// - `Sub`/`Mul`/`Div`: `Number` only. `Div` by zero is a runtime error,
+///   not `Infinity` — the value model is JSON, which has no way to
+///   represent that.
+/// - `Add` is the one overloaded operator:
+///   - `Number + Number` adds, `Str + Str` concatenates.
+///   - `Array + Array` concatenates.
+///   - With exactly *one* array operand, the other is a single element:
+///     `[1,2] + 3` is `[1,2,3]` and `0 + [1,2]` is `[0,1,2]`. Any value
+///     kind can be the element, so `[1] + [[2]]` appends an array as one
+///     item (`[1,[2]]`) while `[1] + [2]` still concatenates (`[1,2]`) —
+///     the two-array case is checked first, which is what keeps that
+///     distinction available at all.
+///   - Everything else, including mixed non-array kinds like `Number+Str`,
+///     is a runtime type error.
+///
+/// `name += expr` is sugar for `name = name + expr`, rewritten by the
+/// parser (see `Stmt::Assign`), so it inherits every rule above and needs
+/// no support of its own anywhere downstream. It is the only compound
+/// assignment operator — there is no `-=`, `*=`, or `/=`.
 /// - `Eq` (`=`) / `Ne` (`≠`): well-defined for *any* two values, including
 ///   mismatched kinds (`1 = "1"` is simply `false`, never an error) — deep
 ///   structural equality.

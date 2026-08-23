@@ -284,12 +284,31 @@ impl<'a> Parser<'a> {
             ))
             }
         };
-        match self.advance() {
-            Token::Equals => {}
-            other => return Err(format!("expected '=' after '{name}', found {other:?}")),
-        }
+        // `+=` is the one compound form. It is pure sugar, rewritten here
+        // into `name = name + expr` so that neither backend — nor anything
+        // else downstream — learns it exists. Whatever `+` means for the two
+        // operands is therefore exactly what `+=` means, including appending
+        // to an array (see `ast::BinOp`).
+        let compound = match self.advance() {
+            Token::Equals => false,
+            Token::PlusEq => true,
+            other => {
+                return Err(format!(
+                    "expected '=' or '+=' after '{name}', found {other:?}"
+                ))
+            }
+        };
         let value = self.expr()?;
         self.expect_end_of_statement()?;
+        let value = if compound {
+            Expr::Binary(
+                Box::new(Expr::Ident(name.clone())),
+                BinOp::Add,
+                Box::new(value),
+            )
+        } else {
+            value
+        };
         Ok(Stmt::Assign { name, value })
     }
 

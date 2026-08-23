@@ -24,6 +24,11 @@ pub enum Token {
     Comma,
     Dot,
     Plus,
+    /// `+=` — the language's only multi-character operator, and only ever a
+    /// statement form (`name += expr`), never part of an expression. The
+    /// parser rewrites it into `name = name + expr`, so it never reaches
+    /// either backend.
+    PlusEq,
     Minus,
     Star,
     Slash,
@@ -119,6 +124,18 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                 i,
                 "unexpected character '!' (inequality is '≠')",
             ));
+        }
+
+        // `+=`, checked before the single-character table below so the `+`
+        // isn't consumed on its own. The only two-character operator there
+        // is: the comparison operators are each exactly one character, which
+        // is what `==`/`<=`/`>=` are rejected for.
+        if c == '+' && chars.get(i + 1) == Some(&'=') {
+            tokens.push(Token::PlusEq);
+            starts.push(start as u32);
+            last_was_separator = false;
+            i += 2;
+            continue;
         }
 
         if let Some(tok) = match c {

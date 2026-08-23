@@ -603,6 +603,21 @@ fn apply_binop(op: BinOp, l: Value, r: Value) -> Result<Value, String> {
             items.extend(b.iter().cloned());
             Some(Array(Rc::new(items)))
         }
+        // With exactly one array operand, the other is one *element* rather
+        // than a sequence — appending or prepending it. Both arms sit after
+        // the `Array + Array` case above, so two arrays still concatenate;
+        // that is what keeps `[1] + [2]` = `[1, 2]` rather than `[1, [2]]`.
+        (BinOp::Add, Array(a), item) => {
+            let mut items = (**a).clone();
+            items.push(item.clone());
+            Some(Array(Rc::new(items)))
+        }
+        (BinOp::Add, item, Array(b)) => {
+            let mut items = Vec::with_capacity(b.len() + 1);
+            items.push(item.clone());
+            items.extend(b.iter().cloned());
+            Some(Array(Rc::new(items)))
+        }
         (BinOp::Sub, Number(a), Number(b)) => Some(Number(a - b)),
         (BinOp::Mul, Number(a), Number(b)) => Some(Number(a * b)),
         (BinOp::Div, Number(a), Number(b)) => {
