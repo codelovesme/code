@@ -1,0 +1,9 @@
+-- `Trim` removes leading and trailing whitespace only — interior runs are
+-- left exactly as they were. `Trim` trims; it does not collapse.
+link "native_modules/strings.so" as s
+emit Trim { "value": "  padded  " } to s get n
+assert n = { "_class": "TrimResult", "value": "padded" }
+emit Trim { "value": "\t\ttabs\n" } to s get t
+assert t = { "_class": "TrimResult", "value": "tabs" }
+emit Trim { "value": "  inner  space  kept  " } to s get i
+assert i = { "_class": "TrimResult", "value": "inner  space  kept" }

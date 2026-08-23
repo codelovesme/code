@@ -242,6 +242,15 @@ pub fn release(v: &mut CodeValue) {
     unsafe { code_release(v) }
 }
 
+/// Deep-copy `src` into `out` — `out` ends up owning its own references to
+/// everything `src` points at, and `src` is left untouched. This is how a
+/// handler passes a value it did not build itself along (e.g. an `Echo`
+/// returning its operand): the copy takes new references, so neither side's
+/// lifetime constrains the other.
+pub fn copy(out: &mut CodeValue, src: &CodeValue) {
+    unsafe { code_copy(out, src) }
+}
+
 /// Increment `v`'s refcount — needed only if you're holding onto a
 /// [`CodeValue`] you didn't just build yourself (e.g. a borrowed field from
 /// [`find_field`]) somewhere that will outlive the call it came from.

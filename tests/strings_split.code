@@ -1,0 +1,10 @@
+-- `Split` breaks a string on a single-character separator. Empty segments
+-- survive, and a leading separator yields an empty first segment — the
+-- least-surprising reading of "split".
+link "native_modules/strings.so" as s
+emit Split { "value": "a,b,c", "separator": "," } to s get n
+assert n = { "_class": "SplitResult", "value": ["a", "b", "c"] }
+emit Split { "value": "a,,b", "separator": "," } to s get m
+assert m = { "_class": "SplitResult", "value": ["a", "", "b"] }
+emit Split { "value": ",lead", "separator": "," } to s get l
+assert l = { "_class": "SplitResult", "value": ["", "lead"] }

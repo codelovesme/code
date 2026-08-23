@@ -1,0 +1,7 @@
+-- `Echo` passes whatever `value` was handed in through unchanged, including
+-- nested Array/Object — the handler that shares structure with its input
+-- rather than building something fresh. Inherited from `test_math` by the
+-- same split as `Shout`.
+link "native_modules/strings.so" as s
+emit Echo { "value": { "tag": "x", "nums": [1, 2, 3] } } to s get n
+assert n = { "_class": "EchoResult", "value": { "tag": "x", "nums": [1, 2, 3] } }

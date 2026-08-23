@@ -98,10 +98,11 @@ none is planned for Phase 1. Unlike `core`, which the interpreter
 reimplements natively in Rust specifically so a bad handler call there is a
 clean `Result::Err`, a linked module is real code running in-process; this
 is the same tradeoff every native-extension mechanism makes. Documented in
-`code_abi.h`; the fixture suite works around it by never provoking a
-module's fatal path in-process (no `fail_native_*` fixture exercises a
-module's *internal* error — only "wrong alias" and "missing file", both
-caught before any module code runs).
+`code_abi.h`. The fixture suite handles it by running the interpret check
+as a subprocess (`check_interpret` spawns `code run` and observes the exit
+code) — since 2026-08-23's `strings` module, `fail_strings_*` fixtures do
+provoke a module's internal error, and the subprocess turns the host-killing
+exit into the capturable non-zero status the check wants.
 
 ## Still open
 

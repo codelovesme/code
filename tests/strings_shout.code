@@ -1,0 +1,8 @@
+-- The `strings` module is the first first-party module written in Rust on
+-- `code-native` (rather than C on `runtime.c` directly) — see the module's
+-- README for why the split exists. `Shout` is the inherited handler: it used
+-- to live in `test_math`, and the split proposal hands it over here. Same
+-- contract byte-for-byte: uppercase the ASCII letters, append `!`.
+link "native_modules/strings.so" as s
+emit Shout { "value": "whisper" } to s get n
+assert n = { "_class": "ShoutResult", "value": "WHISPER!" }

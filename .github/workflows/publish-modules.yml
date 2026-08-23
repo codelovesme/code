@@ -39,17 +39,20 @@ jobs:
             version="dev-${GITHUB_SHA}"
           fi
           # Allowlist: only modules whose source lives under crates/modules/.
-          # Add a line here when math/strings/net land.
+          # Add a line here when math/net land.
           case "$module" in
-            terminal) ;;
-            *) echo "::error::unknown module '$module' (allowed: terminal)"; exit 1 ;;
+            terminal|strings) ;;
+            *) echo "::error::unknown module '$module' (allowed: terminal, strings)"; exit 1 ;;
           esac
           echo "module=$module" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  # Every build job compiles the same way — one C file, no dependencies —
-  # so the only differences are the runner, the compiler invocation, and
-  # the artifact extension (.so vs .dylib). Asset names follow the
+  # Every build job compiles the same way — one self-contained crate, no
+  # external dependencies — so the only differences are the runner, the
+  # compiler invocation, and the artifact extension (.so vs .dylib).
+  # `terminal` is plain C (`cc`); `strings` is Rust on `code-native`
+  # (`cargo build` inside its standalone workspace — see that crate's
+  # Cargo.toml for why it opts out of the main one). Asset names follow the
   # distribution doc: <module>-<platform><ext>.
   build-linux-x86_64:
     name: Build linux-x86_64
@@ -62,9 +65,17 @@ jobs:
           set -euo pipefail
           m="${{ needs.resolve.outputs.module }}"
           mkdir -p dist
-          cc -O2 -shared -fPIC \
-            -o "dist/${m}-linux-x86_64.so" \
-            "crates/modules/${m}/${m}.c" -lm -ldl
+          case "$m" in
+            strings)
+              (cd "crates/modules/$m" && cargo build --release)
+              mv "crates/modules/$m/target/release/lib$m.so" "dist/${m}-linux-x86_64.so"
+              ;;
+            *)
+              cc -O2 -shared -fPIC \
+                -o "dist/${m}-linux-x86_64.so" \
+                "crates/modules/${m}/${m}.c" -lm -ldl
+              ;;
+          esac
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -99,12 +110,23 @@ jobs:
       - name: Run through both output modes
         run: |
           set -euo pipefail
-          cat > dogfood/demo.code <<'EOF'
-          link "terminal.so" as term
-          emit Print { "value": "phase B works" } to term get r
-          assert r.value = 13
+          m="${{ needs.resolve.outputs.module }}"
+          # One small dispatch per module — proof the artifact loads and
+          # routes a particle, in both output modes. `Print` writes to
+          # stdout and reports 13; `Echo` hands its operand back unchanged,
+          # so asserting on the echoed value proves the round trip.
+          cat > dogfood/demo.code <<EOF
+          link "${m}.so" as mod
           EOF
-          mv "dogfood/terminal-linux-x86_64.so" dogfood/terminal.so
+          case "$m" in
+            terminal)
+              printf 'emit Print { "value": "phase B works" } to mod get r\nassert r.value = 13\n' >> dogfood/demo.code
+              ;;
+            strings)
+              printf 'emit Echo { "value": 13 } to mod get r\nassert r.value = 13\n' >> dogfood/demo.code
+              ;;
+          esac
+          mv "dogfood/${m}-linux-x86_64.so" "dogfood/${m}.so"
           ./target/release/code run dogfood/demo.code
           ./target/release/code build dogfood/demo.code -o dogfood/demo
           CODE_CHECK_LEAKS=1 ./dogfood/demo
@@ -131,12 +153,18 @@ jobs:
           m="${{ needs.resolve.outputs.module }}"
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
+          # Handlers live with their module — keep this in sync when a
+          # module gains one (the index consumers show it in docs/help).
+          case "$m" in
+            terminal) handlers='["Print"]' ;;
+            strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower"]' ;;
+          esac
           cat > "dist/${m}.json" <<EOF
           {
             "name": "${m}",
             "version": "${v}",
             "abi_version": 1,
-            "handlers": ["Print"],
+            "handlers": ${handlers},
             "vars": [],
             "platforms": {
               "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" }

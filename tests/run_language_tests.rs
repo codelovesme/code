@@ -1,7 +1,7 @@
 //! Discovers and runs every `tests/*.code` fixture through BOTH output
-//! modes — `code::run_file` (interpret) and `code::compile_file` (LLVM
-//! compile + link + execute) — since the language is meant to run every
-//! feature identically either way (see memory `new-language-rewrite`).
+//! modes — `code run` (interpret, as a subprocess) and `code build`
+//! (LLVM compile + link + execute) — since the language is meant to run
+//! every feature identically either way (see memory `new-language-rewrite`).
 //! This file is wiring only — the tests themselves are the `.code` files.
 //!
 //! Pass criterion for a plain `foo.code`: both modes must succeed, and the
@@ -12,8 +12,12 @@
 //! otherwise silent — there is no bindings dump anymore, so a module's
 //! `Print` writes straight to stdout and there is nothing to compare across
 //! backends; a fixture that prints simply prints, in both modes.
-//! For a `fail_foo.code`: both modes must produce an error — for
-//! the interpreter that's always `run_source` returning `Err`; for the
+//! For a `fail_foo.code`: both modes must produce an error — for the
+//! interpreter that's the `code run` subprocess exiting non-zero (the
+//! interpret check runs the real binary in a child process, because a
+//! linked module's fatal error takes the *host* process down with it —
+//! see `docs/todo/native-module-linking.md`; a subprocess turns that into
+//! a capturable exit code instead of killing this harness); for the
 //! compiler it's either a compile-time error (`compile_source` returning
 //! `Err`, e.g. a parse error or `verify_defined`'s undefined-variable
 //! check) OR the compiled binary itself exiting non-zero at runtime (e.g. a
@@ -82,14 +86,17 @@ enum Expect {
 }
 
 /// Compiles each dynamic native module into the `.so` the
-/// `native_link_*`/`fail_native_link_*` and `terminal_*` fixtures `link`
-/// — checked into git as source, not as a binary (see `.gitignore`), so it
-/// has to be built fresh here before any fixture that needs it can run
-/// either mode. Sources live next to their consumers: `test_math` is a pure
-/// test double (stays in `tests/native_modules/`), while `terminal` is a
-/// real first-party module that happens to be exercised by fixtures (its
-/// canonical home is `crates/modules/terminal/`, where the release CI
-/// builds it from).
+/// `native_link_*`/`fail_native_link_*`, `terminal_*`, and `strings_*`
+/// fixtures `link` — checked into git as source, not as a binary (see
+/// `.gitignore`), so it has to be built fresh here before any fixture that
+/// needs it can run either mode. Sources live next to their consumers:
+/// `test_math` is a pure test double (stays in `tests/native_modules/`),
+/// while `terminal` and `strings` are real first-party modules that happen
+/// to be exercised by fixtures (their canonical homes are under
+/// `crates/modules/`, where the release CI builds them from). The C modules
+/// go straight through `cc`; `strings` is the first Rust-on-`code-native`
+/// module, so it gets a `cargo build` instead — same output location, same
+/// stem, the fixtures cannot tell the difference.
 fn build_native_dynamic_test_modules(tests_dir: &Path) {
     let modules_dir = tests_dir.join("native_modules");
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -114,6 +121,23 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
             .unwrap_or_else(|e| panic!("failed to run cc for {}: {e}", src.display()));
         assert!(status.success(), "cc failed to build {}", src.display());
     }
+
+    // The Rust module: `cargo build` inside its standalone workspace, then
+    // move the cdylib onto the same `native_modules/<stem>.so` convention.
+    let strings_crate = manifest_dir.join("crates/modules/strings");
+    let cargo_status = Command::new("cargo")
+        .args(["build", "--release"])
+        .current_dir(&strings_crate)
+        .status()
+        .unwrap_or_else(|e| panic!("failed to run cargo for strings: {e}"));
+    assert!(
+        cargo_status.success(),
+        "cargo failed to build crates/modules/strings"
+    );
+    let built = strings_crate.join("target/release/libstrings.so");
+    let dest = modules_dir.join("strings.so");
+    fs::rename(&built, &dest)
+        .unwrap_or_else(|e| panic!("cannot move {} to {}: {e}", built.display(), dest.display()));
 }
 
 /// Compiles `test_math_static.c` and `test_math_static_ambiguous.c` into the
@@ -150,16 +174,27 @@ fn build_native_static_test_modules(tests_dir: &Path) {
     }
 }
 
+/// Runs the fixture through `code run` in a child process. See the top-of-file
+/// note on why the interpret check is a subprocess rather than an in-process
+/// `code::run_file` call.
 fn check_interpret(name: &str, path: &Path, expect: Expect, failures: &mut Vec<String>) {
     // `BuildOnly` behaves like `Fail` here — a `.a` link is refused by
     // `interpreter.rs` outright, the same shape of error as any other
     // fail_*.code fixture, just for a different reason.
     let should_fail = expect != Expect::Succeed;
-    match (should_fail, code::run_file(path)) {
-        (false, Err(e)) => failures.push(format!(
-            "{name}: interpret: expected to run, but errored: {e}"
+    let output = Command::new(env!("CARGO_BIN_EXE_code"))
+        .arg("run")
+        .arg(path)
+        .output()
+        .unwrap_or_else(|e| panic!("{name}: run `code run` subprocess: {e}"));
+
+    match (should_fail, output.status.success()) {
+        (false, false) => failures.push(format!(
+            "{name}: interpret: expected to run, but exited {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
         )),
-        (true, Ok(_)) => failures.push(format!("{name}: interpret: expected an error, but it ran")),
+        (true, true) => failures.push(format!("{name}: interpret: expected an error, but it ran")),
         _ => {}
     }
 }

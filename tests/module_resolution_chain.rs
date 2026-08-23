@@ -19,6 +19,19 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, MutexGuard};
+
+/// Serializes the tests' `HOME`/`CODE_MODULE_PATH` swaps: those are process
+/// globals, and libtest runs the five tests on parallel threads, so without
+/// this lock two tests can interleave their set/remove pairs and one sees
+/// the other's fake root (an intermittent `resolves_from_*` failure).
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+fn env_guard() -> MutexGuard<'static, ()> {
+    ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 const MAIN_CODE: &str = r#"link "test_math.so" as m
 emit Double { "value": 21 } to m get n
@@ -78,6 +91,7 @@ fn run_with_env(script_dir: &Path, home: Option<&Path>, module_path: Option<&Pat
 
 #[test]
 fn resolves_from_script_directory_first() {
+    let _env = env_guard();
     let dir = fixture_dir("scriptdir");
     build_test_math(&dir.join("test_math.so"));
     fs::write(dir.join("main.code"), MAIN_CODE).unwrap();
@@ -90,6 +104,7 @@ fn resolves_from_script_directory_first() {
 
 #[test]
 fn resolves_from_project_modules_dir() {
+    let _env = env_guard();
     let dir = fixture_dir("project");
     // main.code lives in a subdir; the module sits in <root>/.code/modules/,
     // i.e. NOT next to the script — only the fallback chain reaches it.
@@ -108,6 +123,7 @@ fn resolves_from_project_modules_dir() {
 
 #[test]
 fn resolves_from_code_module_path() {
+    let _env = env_guard();
     let dir = fixture_dir("envpath");
     let script = dir.join("proj");
     fs::create_dir_all(&script).unwrap();
@@ -124,6 +140,7 @@ fn resolves_from_code_module_path() {
 
 #[test]
 fn resolves_from_global_home_modules() {
+    let _env = env_guard();
     let dir = fixture_dir("global");
     let script = dir.join("proj");
     fs::create_dir_all(&script).unwrap();
@@ -141,6 +158,7 @@ fn resolves_from_global_home_modules() {
 
 #[test]
 fn refuses_tampered_module_while_locked() {
+    let _env = env_guard();
     let dir = fixture_dir("tamper");
     let script = dir.join("proj");
     fs::create_dir_all(&script).unwrap();

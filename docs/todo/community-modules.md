@@ -150,9 +150,19 @@ Batch 1 (proves the pipeline):
 - **math** — starts from `tests/native_modules/test_math.c`, which is
   already a complete working module (`Double`, `Shout`, `Sum`, `Echo`).
   Split proposal: `math` keeps `Double`/`Sum`; `Shout`/`Echo` move to
-  **strings**.
-- **strings** — `Shout`, `Echo`, plus the obvious gaps (split/join/trim/
-  upper/lower).
+  **strings** (done — `test_math` stays a pure test double with all four,
+  so the split costs it nothing).
+- **strings** — shipped 2026-08-23: `Shout`, `Echo`, `Split`, `Join`,
+  `Trim`, `Upper`, `Lower`. Written in Rust on `code-native` — the first
+  first-party module to take the Rust path. Rationale: `terminal` stays C
+  because it is the canonical reference implementation (zero framework
+  between a reader and the ABI), while everything whose substance is logic
+  rather than syscalls goes through the crate; that split keeps both paths
+  exercised in production, so an ABI drift fails differently in a C module
+  and a Rust module — exactly the diagnostic you want. Design decisions
+  live in the module's header comment (ASCII-only case conversion, empty
+  segments survive `Split`, `Join` refuses non-string elements, multi-char
+  separators refused outright).
 
 Batch 2 (flagship — proves the pipeline with a non-trivial module):
 

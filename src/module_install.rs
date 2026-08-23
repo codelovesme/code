@@ -133,10 +133,7 @@ pub enum InstallScope {
 /// against whatever machine runs them, which is exactly the contract: the
 /// manifest must cover *this* machine.
 pub fn current_platform() -> &'static str {
-    match (
-        std::env::consts::OS.as_ref(),
-        std::env::consts::ARCH.as_ref(),
-    ) {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
         ("linux", "x86_64") => "linux-x86_64",
         ("linux", "aarch64") => "linux-arm64",
         ("macos", "x86_64") => "macos-x86_64",
