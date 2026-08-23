@@ -129,15 +129,26 @@ impl LanguageServer for Backend {
         };
 
         let toks = tokens::semantic_tokens(&text);
+        // `as_chunks::<5>` rather than `chunks_exact(5)`: the width is a
+        // constant, so this yields `&[u32; 5]` and the five fields can be
+        // named by destructuring instead of indexed positionally.
+        // `encode_deltas` emits whole 5-tuples, so the remainder (`.1`) is
+        // always empty.
         let data: Vec<SemanticToken> = tokens::encode_deltas(&toks)
-            .chunks_exact(5)
-            .map(|c| SemanticToken {
-                delta_line: c[0],
-                delta_start: c[1],
-                length: c[2],
-                token_type: c[3],
-                token_modifiers_bitset: c[4],
-            })
+            .as_chunks::<5>()
+            .0
+            .iter()
+            .map(
+                |&[delta_line, delta_start, length, token_type, token_modifiers_bitset]| {
+                    SemanticToken {
+                        delta_line,
+                        delta_start,
+                        length,
+                        token_type,
+                        token_modifiers_bitset,
+                    }
+                },
+            )
             .collect();
 
         Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
