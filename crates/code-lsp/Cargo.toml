@@ -1,0 +1,21 @@
+[package]
+name = "code-lsp"
+version = "0.1.0"
+edition = "2021"
+description = "Language Server Protocol implementation for the Code programming language — diagnostics and semantic tokens over the real lexer and parser."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+publish = false
+
+[[bin]]
+name = "code-lsp"
+path = "src/main.rs"
+
+[dependencies]
+# Lexer/parser/span only — no LLVM backend, no native module loading, no
+# installer. Those all live behind default-off features (see the crate
+# root's Cargo.toml), so disabling them here is just not asking for what an
+# editor-integration process has no use for.
+code = { path = "../..", default-features = false }
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["io-std", "macros", "rt"] }

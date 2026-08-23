@@ -77,6 +77,17 @@ pub struct Lexed {
     /// `tokens`. Char, not byte, so a multi-byte operator earlier on the line
     /// doesn't skew the column — see `span::render`.
     pub starts: Vec<u32>,
+    /// Char offset just past `tokens[i]` — `starts[i]..ends[i]` slices the
+    /// token's exact source text. Same length as `tokens` and `starts`. The
+    /// two synthetic end-of-input tokens (a trailing `Newline`, then `Eof`)
+    /// are zero-width: their `ends` equals their `starts`, since neither
+    /// covers real source text. Consumers that want a token's literal
+    /// spelling (`crates/code-lsp`'s semantic tokens; the formatter
+    /// described in `docs/todo/formatter.md`) slice `src` with this instead
+    /// of re-deriving it from the `Token` payload, which is lossy (a
+    /// `Number` is an `f64`, not the digits as written; `+=` is rewritten
+    /// away by the parser, never even reaching this struct's consumers).
+    pub ends: Vec<u32>,
 }
 
 pub fn tokenize(src: &str) -> Result<Lexed, Located> {
@@ -84,6 +95,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
     let mut i = 0;
     let mut tokens = Vec::new();
     let mut starts = Vec::new();
+    let mut ends = Vec::new();
     let mut last_was_separator = true; // suppress a leading Newline
 
     while i < chars.len() {
@@ -96,6 +108,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
             if !last_was_separator {
                 tokens.push(Token::Newline);
                 starts.push(start as u32);
+                ends.push(start as u32 + 1);
                 last_was_separator = true;
             }
             i += 1;
@@ -133,6 +146,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
         if c == '+' && chars.get(i + 1) == Some(&'=') {
             tokens.push(Token::PlusEq);
             starts.push(start as u32);
+            ends.push(start as u32 + 2);
             last_was_separator = false;
             i += 2;
             continue;
@@ -164,6 +178,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
         } {
             tokens.push(tok);
             starts.push(start as u32);
+            ends.push(start as u32 + 1);
             last_was_separator = false;
             i += 1;
             continue;
@@ -206,6 +221,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
             }
             tokens.push(Token::Str(s));
             starts.push(start as u32);
+            ends.push(i as u32);
             last_was_separator = false;
             continue;
         }
@@ -220,6 +236,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                 .map_err(|_| Located::at(start, format!("invalid number literal '{text}'")))?;
             tokens.push(Token::Number(n));
             starts.push(start as u32);
+            ends.push(i as u32);
             last_was_separator = false;
             continue;
         }
@@ -254,6 +271,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
             };
             tokens.push(tok);
             starts.push(start as u32);
+            ends.push(i as u32);
             last_was_separator = false;
             continue;
         }
@@ -262,12 +280,61 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
     }
 
     // Both synthetic: they stand at the end of the source, which is exactly
-    // where an "unexpected end of input" error wants to point.
+    // where an "unexpected end of input" error wants to point. Zero-width —
+    // see `Lexed::ends`.
     if !last_was_separator {
         tokens.push(Token::Newline);
         starts.push(chars.len() as u32);
+        ends.push(chars.len() as u32);
     }
     tokens.push(Token::Eof);
     starts.push(chars.len() as u32);
-    Ok(Lexed { tokens, starts })
+    ends.push(chars.len() as u32);
+    Ok(Lexed {
+        tokens,
+        starts,
+        ends,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `starts[i]..ends[i]` must slice back exactly the substring that
+    /// produced `tokens[i]` — the property every `Lexed::ends` consumer
+    /// relies on (see its doc comment).
+    #[test]
+    fn ends_slice_back_the_source_text() {
+        let src = "let n += 1.50 -- a comment\nemit Foo {} to core get t\n\"a\\nb\"";
+        let lexed = tokenize(src).unwrap();
+        let chars: Vec<char> = src.chars().collect();
+        let mut texts = Vec::new();
+        for (start, end) in lexed.starts.iter().zip(&lexed.ends) {
+            let text: String = chars[*start as usize..*end as usize].iter().collect();
+            texts.push(text);
+        }
+        assert_eq!(
+            texts,
+            vec![
+                "let",
+                "n",
+                "+=",
+                "1.50",
+                "\n",
+                "emit",
+                "Foo",
+                "{",
+                "}",
+                "to",
+                "core",
+                "get",
+                "t",
+                "\n",
+                "\"a\\nb\"",
+                "",
+                "",
+            ],
+        );
+    }
 }
