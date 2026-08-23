@@ -20,10 +20,12 @@ So the material is there; it is just not addressed to a reader.
 ## What it should cover
 
 The language as it now stands: `let` and reassignment, the six JSON value
-kinds, `.field`/`[index]` (read-only, null on invalid access), operators and
-their operand-type rules, `assert`, `if` (no `else`, ever), bare blocks,
-every `loop` form (`over` with optional index, bare `loop { }`, and the
-`get name [= init]` accumulator), `break`, and `continue`.
+kinds, `.field`/`[index]` (read-only, `[index]` works against an array *or*
+an object since 2026-08-23, null on invalid access), operators and their
+operand-type rules, `assert`, `if` (no `else`, ever), bare blocks, every
+`loop` form (`over` an array or object with an optional `key,` prefix that
+right-aligns against `(key, value)`, bare `loop { }`, and the `get name [=
+init]` accumulator), `break`, and `continue`.
 
 Worth stating explicitly, because each is a deliberate decision a reader will
 otherwise read as an omission: no functions, no `else`, no `while` (`loop { }`

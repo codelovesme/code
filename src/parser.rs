@@ -313,35 +313,40 @@ impl<'a> Parser<'a> {
     }
 
     /// Everything after the `loop` keyword:
-    /// `[var[, index] over iterable] [get name [= init]] { body }`.
+    /// `[key, ] value over iterable] [get name [= init]] { body }`.
     ///
     /// Both clauses are optional and independent — see `Stmt::Loop`. The
     /// `over` clause is recognised by a leading identifier, which is
     /// unambiguous: the only other things that can follow `loop` are `get`
     /// and `{`, both of which are their own token.
+    ///
+    /// The first identifier is provisionally `value`; if a `,` follows, that
+    /// identifier demotes to `key` and the name after the comma becomes the
+    /// real `value` — this is what makes `loop v over xs` bind the value
+    /// with no comma at all, per the right-alignment rule on `Stmt::Loop`.
     fn loop_statement(&mut self) -> Result<Stmt, String> {
         let over = if matches!(self.peek(), Token::Ident(_)) {
-            let Token::Ident(var) = self.advance() else {
+            let Token::Ident(first) = self.advance() else {
                 unreachable!("just peeked an Ident")
             };
-            let index = if matches!(self.peek(), Token::Comma) {
+            let (key, value) = if matches!(self.peek(), Token::Comma) {
                 self.advance();
                 match self.advance() {
-                    Token::Ident(name) => Some(name),
+                    Token::Ident(name) => (Some(first), name),
                     other => {
                         return Err(format!(
-                            "expected an index variable name after ',', found {other:?}"
+                            "expected a value variable name after ',', found {other:?}"
                         ))
                     }
                 }
             } else {
-                None
+                (None, first)
             };
             match self.advance() {
                 Token::Over => {}
                 other => {
                     return Err(format!(
-                        "expected 'over' after 'loop {var}', found {other:?} \
+                        "expected 'over' after 'loop {value}', found {other:?} \
                          (a bare infinite loop is written `loop {{ }}`, with no variable)"
                     ))
                 }
@@ -353,8 +358,8 @@ impl<'a> Parser<'a> {
             // position).
             let iterable = self.expr()?;
             Some(LoopOver {
-                var,
-                index,
+                key,
+                value,
                 iterable,
             })
         } else {

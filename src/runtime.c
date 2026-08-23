@@ -332,24 +332,43 @@ void code_field(CodeValue *out, const CodeValue *obj, const char *field) {
     code_null(out);
 }
 
+/* `obj[key]` — a *computed* field read, the thing `code_field` can never
+ * offer since its `field` argument is always a literal baked in at the call
+ * site. Same absent-is-null rule as `code_field`; a non-`CODE_STR` key is
+ * also just null, not an error, matching the array branch's non-`CODE_NUMBER`
+ * case below. See interpreter.rs's `Expr::Index` — this must match it
+ * exactly. */
 void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
-    if (arr->tag != CODE_ARRAY) {
-        char msg[96];
-        snprintf(msg, sizeof msg, "cannot index %s %s — '[]' requires an array",
-                 article_for(arr), type_name(arr));
-        code_runtime_error(msg);
-    }
-    if (index->tag == CODE_NUMBER) {
-        double n = index->number;
-        long long i = (long long)n;
-        if ((double)i == n && i >= 0 && i < arr->len) {
-            code_copy(out, slot_at(arr->items, i));
-            return;
+    if (arr->tag == CODE_ARRAY) {
+        if (index->tag == CODE_NUMBER) {
+            double n = index->number;
+            long long i = (long long)n;
+            if ((double)i == n && i >= 0 && i < arr->len) {
+                code_copy(out, slot_at(arr->items, i));
+                return;
+            }
         }
+        /* An out-of-range or non-integer index is still null, for the same
+         * reason a missing field is. */
+        code_null(out);
+        return;
     }
-    /* An out-of-range or non-integer index is still null, for the same
-     * reason a missing field is. */
-    code_null(out);
+    if (arr->tag == CODE_OBJECT) {
+        if (index->tag == CODE_STR) {
+            for (long long i = 0; i < arr->len; i++) {
+                if (strcmp(arr->keys[i], index->str) == 0) {
+                    code_copy(out, slot_at(arr->items, i));
+                    return;
+                }
+            }
+        }
+        code_null(out);
+        return;
+    }
+    char msg[96];
+    snprintf(msg, sizeof msg, "cannot index %s %s — '[]' requires an array or object",
+             article_for(arr), type_name(arr));
+    code_runtime_error(msg);
 }
 
 /* `emit <particle> to core [get <name>]`. `class_name` is read from the
@@ -723,16 +742,18 @@ void code_static_vars_object(const CodeVarList *list, CodeValue *out) {
     free(keys);
 }
 
-/* `loop x over <expr>` support. Two calls instead of one combined "iterate"
- * entry point because the loop's control flow lives in the generated IR, not
- * here: codegen emits the counter, the bounds check and the back-edge itself
- * (see codegen.rs's `gen_loop`), and only calls into the runtime for the two
- * things that need to inspect a `CodeValue`. Must match interpreter.rs's
- * `Stmt::Loop` eval rule: the iterable must be an array — anything else
- * aborts rather than iterating zero times. */
+/* `loop [k,] v over <expr>` support. Three calls instead of one combined
+ * "iterate" entry point because the loop's control flow lives in the
+ * generated IR, not here: codegen emits the counter, the bounds check and
+ * the back-edge itself (see codegen.rs's `gen_loop`), and only calls into
+ * the runtime for the things that need to inspect a `CodeValue`. Must match
+ * interpreter.rs's `Stmt::Loop` eval rule: the iterable must be an array or
+ * object — anything else aborts rather than iterating zero times. An
+ * object's `items` is laid out parallel to its `keys` (see `code_object`),
+ * which is what lets `code_iter_at` serve both container kinds unchanged. */
 long long code_iter_len(const CodeValue *v) {
-    if (v->tag != CODE_ARRAY) {
-        code_runtime_error("loop requires an array");
+    if (v->tag != CODE_ARRAY && v->tag != CODE_OBJECT) {
+        code_runtime_error("loop requires an array or object");
     }
     return v->len;
 }
@@ -741,6 +762,20 @@ long long code_iter_len(const CodeValue *v) {
  * which already compared it against `code_iter_len`'s result. */
 void code_iter_at(CodeValue *out, const CodeValue *arr, long long i) {
     code_copy(out, slot_at(arr->items, i));
+}
+
+/* The `key` half of `loop k, v over <expr>` — see `Stmt::Loop`'s doc comment
+ * for the law (`X[k] = v`) this exists to satisfy. `code_str_owned`, not a
+ * borrowed pointer into `keys`: a key can outlive the loop (assigned to a
+ * `get` accumulator), and for an object built by a *different* copy of this
+ * runtime (a dlopen'd module) the key bytes aren't even ours to hand back a
+ * pointer into. `i` is always in range, same as `code_iter_at`. */
+void code_iter_key(CodeValue *out, const CodeValue *v, long long i) {
+    if (v->tag == CODE_OBJECT) {
+        code_str_owned(out, v->keys[i]);
+        return;
+    }
+    code_number(out, (double)i);
 }
 
 /* Operand-type rules below must match ast.rs's `BinOp`/`UnOp` doc comment

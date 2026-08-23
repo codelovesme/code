@@ -57,12 +57,30 @@ pub enum Stmt {
     /// statement cover every form:
     ///
     /// ```text
-    /// loop x over xs { }                 -- iterate
-    /// loop x, i over xs { }              -- iterate with position
+    /// loop v over xs { }                 -- iterate
+    /// loop k, v over xs { }              -- iterate with key
     /// loop { }                           -- until `break`
-    /// loop x over xs get sum = 0 { }     -- accumulate
-    /// loop x over xs get out = [] { }    -- ... which is also how you collect
+    /// loop v over xs get sum = 0 { }     -- accumulate
+    /// loop v over xs get out = [] { }    -- ... which is also how you collect
     /// ```
+    ///
+    /// **The law: `loop k, v over X` guarantees `X[k] = v`**, for both
+    /// containers `over` accepts — an `Array` or an `Object` (2026-08-23,
+    /// same day `[]`/`Index` grew the object case — see `Expr::Index`'s doc
+    /// comment). An array's key is its `Number` position; an object's key is
+    /// its `Str` field name. `[]` and `loop` are therefore the same lookup
+    /// viewed two ways, which is the whole reason to tie them together: one
+    /// rule to learn, one place each backend can get it wrong.
+    ///
+    /// Loop variable names **right-align** against `(key, value)`: one name
+    /// binds the value (`loop v over xs`), two bind key then value (`loop k,
+    /// v over xs`). This reversed `loop item, i over xs` (index *second*,
+    /// the original 2026-08-21 order) — the owner's call, made so the common
+    /// one-name case never has to say `loop _, item over xs` and so a lone
+    /// name always means the same slot regardless of arity. There is no
+    /// silent-breakage detection possible for this: a program still on the
+    /// old order keeps parsing, just with `key`/`value` swapped, since both
+    /// are ordinary identifiers to the parser.
     ///
     /// `while` still does not exist; `loop { }` is how an unbounded loop is
     /// written. Note what that gave up: until 2026-08-23 every loop was
@@ -165,16 +183,21 @@ pub enum Stmt {
     Break,
 }
 
-/// The `var[, index] over iterable` half of a `Stmt::Loop`.
+/// The `[key,] value over iterable` half of a `Stmt::Loop`. Field order
+/// mirrors source order — `key` (when present) comes first in both.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoopOver {
-    pub var: String,
-    /// `loop item, i over ...` — the zero-based position, bound as a
-    /// `Number`. Scoped and shadowing exactly like `var`.
-    pub index: Option<String>,
-    /// Evaluated *once*, before the first iteration, and must be an
-    /// `Array` — any other kind is a runtime type error, the same rule
-    /// `Field`/`Index` follow.
+    /// `loop key, value over ...` — each container's key, per the law on
+    /// `Stmt::Loop`: a `Number` position for an `Array`, a `Str` field name
+    /// for an `Object`. `None` when only one name was written (`loop value
+    /// over ...`), in which case the key is computed and discarded, not
+    /// omitted from the container.
+    pub key: Option<String>,
+    /// Scoped and shadowing exactly like `key`.
+    pub value: String,
+    /// Evaluated *once*, before the first iteration, and must be an `Array`
+    /// or an `Object` — any other kind is a runtime type error, the same
+    /// rule `Field`/`Index` follow.
     pub iterable: Expr,
 }
 
@@ -271,20 +294,29 @@ pub enum Expr {
     /// `new-code-memory-management` on why mutation is a separate, deferred
     /// decision).
     ///
-    /// `.` **requires an object** and `[]` **requires an array**: anything
-    /// else is a runtime error (revised 2026-08-23 — until then any invalid
-    /// access quietly produced null, which hid mistakes like `"abc"[0]` and
-    /// `"abc".length`).
+    /// `.` **requires an object** and `[]` **requires an array or an
+    /// object** (widened 2026-08-23 to admit `obj[key]` — a *computed*
+    /// field read, which `.` can never offer since its name is always a
+    /// bare identifier): anything else is a runtime error (also revised
+    /// 2026-08-23 — until then any invalid access quietly produced null,
+    /// which hid mistakes like `"abc"[0]` and `"abc".length`).
     ///
-    /// A member that is merely *absent* is still null, though: `obj.nope`
-    /// and `arr[99]` (and a non-integer or negative index) evaluate to null
-    /// rather than erroring. That half is load-bearing — reading a name a
-    /// module did not export goes through an alias object as a missing
-    /// field, and `link_default_private.code` asserts it is null.
+    /// A member that is merely *absent* is still null, though: `obj.nope`,
+    /// `obj["nope"]` and `arr[99]` (and a non-`Number` key against an array,
+    /// a non-`Str` key against an object, or a non-integer/negative array
+    /// index) evaluate to null rather than erroring — the operand *kind* is
+    /// right, the lookup simply found nothing. That half is load-bearing —
+    /// reading a name a module did not export goes through an alias object
+    /// as a missing field, and `link_default_private.code` asserts it is
+    /// null.
     Field(Box<Expr>, String),
     /// `expr[index]` — same read-only scope, and the same
     /// wrong-kind-errors / absent-member-is-null split as `Field`. `index`
-    /// is itself an expression, not restricted to a literal.
+    /// is itself an expression, not restricted to a literal: against an
+    /// `Array` it must be a `Number` (the same rule `Stmt::Loop`'s `key`
+    /// produces), against an `Object` a `Str` (an object's field name) —
+    /// see `Stmt::Loop`'s doc comment for the law tying this to `loop k, v
+    /// over X`.
     Index(Box<Expr>, Box<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),

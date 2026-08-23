@@ -1,0 +1,6 @@
+-- `obj[key]` where `key` is a variable — a *computed* field read, the thing
+-- `.field` can never offer since its name is always a bare identifier
+-- written at the call site.
+let point = {"x": 1, "y": 2}
+let which = "y"
+assert point[which] = 2

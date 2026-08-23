@@ -1,14 +1,15 @@
--- `loop item, i over arr { }` also binds the zero-based position.
+-- `loop k, v over arr { }` binds the array's key — its zero-based position
+-- — first, and the value second: `X[k] = v` (see ast.rs's `Stmt::Loop`).
 let colors = ["red", "green", "blue"]
 let positions = []
-loop color, i over colors {
+loop i, color over colors {
     positions = positions + [i]
 }
 assert positions = [0, 1, 2]
 
--- The index is an ordinary Number, usable in arithmetic.
+-- The key is an ordinary Number, usable in arithmetic.
 let shifted = []
-loop n, i over [10, 20, 30] {
+loop i, n over [10, 20, 30] {
     shifted = shifted + [n + i]
 }
 assert shifted = [10, 21, 32]

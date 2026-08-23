@@ -24,8 +24,8 @@ loop x over [1, 2] get none = [] {
 }
 assert none = []
 
--- The index variable is available alongside `get`.
-loop x, i over ["a", "b"] get pairs = [] {
+-- The key variable is available alongside `get`.
+loop i, x over ["a", "b"] get pairs = [] {
     pairs = pairs + [[i, x]]
 }
 assert pairs = [[0, "a"], [1, "b"]]

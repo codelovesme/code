@@ -167,6 +167,38 @@ enum Flow {
     Continue,
 }
 
+/// A snapshotted `Stmt::Loop` container — an `Array` or an `Object`, indexed
+/// uniformly as `len()` positions each yielding `(key, value)`. Shaped as
+/// exactly this pair because it is what `runtime.c`'s `code_iter_len` /
+/// `code_iter_at` / `code_iter_key` already expose, so the interpreter and
+/// the compiled backend read as the same algorithm — see `Stmt::Loop`'s doc
+/// comment for the law (`X[k] = v`) this exists to satisfy.
+enum LoopIter {
+    Array(Rc<Vec<Value>>),
+    Object(Rc<Vec<(String, Value)>>),
+}
+
+impl LoopIter {
+    fn len(&self) -> usize {
+        match self {
+            LoopIter::Array(items) => items.len(),
+            LoopIter::Object(fields) => fields.len(),
+        }
+    }
+
+    /// `i` is always in range — the only caller is the loop above, which
+    /// only ever asks for `0..self.len()`.
+    fn at(&self, i: usize) -> (Value, Value) {
+        match self {
+            LoopIter::Array(items) => (Value::Number(i as f64), items[i].clone()),
+            LoopIter::Object(fields) => {
+                let (key, value) = &fields[i];
+                (Value::Str(Rc::from(key.as_str())), value.clone())
+            }
+        }
+    }
+}
+
 /// Runs `body` in a *new scope*, stopping early on a `break`. Pops the scope
 /// on every path, error included — hence the explicit `result` binding
 /// rather than `?` mid-function.
@@ -320,26 +352,32 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                 Some(over) => {
                     // Evaluated once, up front. Holding the `Rc` here is what
                     // makes that a real snapshot: the body may reassign
-                    // whatever binding the array came from without disturbing
-                    // the iteration (and since no value is ever mutated in
-                    // place, the snapshot can't go stale either way — see
-                    // memory `new-code-memory-management`). Matched by
-                    // reference, not by move: `Value` has a manual `Drop`
-                    // (see value.rs), and Rust forbids moving a field out of
-                    // such a type. `Rc::clone` is the O(1) equivalent anyway.
+                    // whatever binding the container came from without
+                    // disturbing the iteration (and since no value is ever
+                    // mutated in place, the snapshot can't go stale either
+                    // way — see memory `new-code-memory-management`).
+                    // Matched by reference, not by move: `Value` has a
+                    // manual `Drop` (see value.rs), and Rust forbids moving a
+                    // field out of such a type. `Rc::clone` is the O(1)
+                    // equivalent anyway.
                     let evaluated = eval(&over.iterable, env)?;
-                    let items = match &evaluated {
-                        Value::Array(items) => Rc::clone(items),
+                    let container = match &evaluated {
+                        Value::Array(items) => LoopIter::Array(Rc::clone(items)),
+                        Value::Object(fields) => LoopIter::Object(Rc::clone(fields)),
                         v => {
-                            return Err(format!("loop requires an array, found {}", a_type_name(v)))
+                            return Err(format!(
+                                "loop requires an array or object, found {}",
+                                a_type_name(v)
+                            ))
                         }
                     };
-                    for (i, item) in items.iter().enumerate() {
+                    for i in 0..container.len() {
+                        let (key, value) = container.at(i);
                         env.push_scope();
-                        env.declare(over.var.clone(), item.clone());
-                        if let Some(index) = &over.index {
-                            env.declare(index.clone(), Value::Number(i as f64));
+                        if let Some(key_name) = &over.key {
+                            env.declare(key_name.clone(), key);
                         }
+                        env.declare(over.value.clone(), value);
                         let flow = exec_body(body, env);
                         env.pop_scope();
                         // `Continue` needs no action beyond ending this
@@ -466,8 +504,21 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                     }
                     _ => Value::Null,
                 }),
+                // `obj[key]` — a *computed* field read, the thing `.` can
+                // never offer since its name is always a bare identifier.
+                // Same absent-is-null rule as `Field`; a non-`Str` key is
+                // also just null, not an error, matching `Array`'s
+                // non-`Number` case above.
+                Value::Object(fields) => Ok(match &i {
+                    Value::Str(key) => fields
+                        .iter()
+                        .find(|(k, _)| k.as_str() == key.as_ref())
+                        .map(|(_, v)| v.clone())
+                        .unwrap_or(Value::Null),
+                    _ => Value::Null,
+                }),
                 v => Err(format!(
-                    "cannot index {} — '[]' requires an array",
+                    "cannot index {} — '[]' requires an array or object",
                     a_type_name(v)
                 )),
             }

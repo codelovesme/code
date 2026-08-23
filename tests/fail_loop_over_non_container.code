@@ -1,0 +1,7 @@
+-- `loop` requires an array or object. Anything else is a runtime type
+-- error, not a silent zero-iteration no-op — unlike field/index access,
+-- which is deliberately permissive (see invalid_access_returns_null.code).
+let n = 42
+loop x over n {
+    assert true
+}

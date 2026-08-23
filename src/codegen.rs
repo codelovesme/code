@@ -140,9 +140,9 @@ fn verify_stmts(
                 }
                 let mut scope = HashSet::new();
                 if let Some(over) = over {
-                    scope.insert(over.var.clone());
-                    if let Some(index) = &over.index {
-                        scope.insert(index.clone());
+                    scope.insert(over.value.clone());
+                    if let Some(key) = &over.key {
+                        scope.insert(key.clone());
                     }
                 }
                 scopes.push(scope);
@@ -287,6 +287,11 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
     );
     let fn_iter_at = module.add_function(
         "code_iter_at",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into(), i64_ty.into()], false),
+        None,
+    );
+    let fn_iter_key = module.add_function(
+        "code_iter_key",
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into(), i64_ty.into()], false),
         None,
     );
@@ -468,6 +473,7 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
         fn_assert,
         fn_iter_len,
         fn_iter_at,
+        fn_iter_key,
         fn_release,
         fn_core_dispatch,
         fn_native_open,
@@ -567,6 +573,7 @@ struct Gen<'a> {
     fn_assert: FunctionValue<'a>,
     fn_iter_len: FunctionValue<'a>,
     fn_iter_at: FunctionValue<'a>,
+    fn_iter_key: FunctionValue<'a>,
     fn_release: FunctionValue<'a>,
     fn_core_dispatch: FunctionValue<'a>,
     fn_native_open: FunctionValue<'a>,
@@ -647,13 +654,13 @@ enum JumpTarget {
 /// What `loop ... over` iterates with — absent entirely for `loop { }`.
 /// See `Gen::gen_loop_cursor`.
 struct LoopCursor<'a> {
-    /// The loop's own copy of the array, so the body may reassign whatever
-    /// the iterable came from without disturbing iteration.
-    arr_ptr: PointerValue<'a>,
+    /// The loop's own copy of the container, so the body may reassign
+    /// whatever the iterable came from without disturbing iteration.
+    container_ptr: PointerValue<'a>,
     len: IntValue<'a>,
     counter: PointerValue<'a>,
     var_slot: PointerValue<'a>,
-    index_slot: Option<PointerValue<'a>>,
+    key_slot: Option<PointerValue<'a>>,
 }
 
 impl<'a> Gen<'a> {
@@ -881,22 +888,29 @@ impl<'a> Gen<'a> {
             self.builder
                 .build_call(
                     self.fn_iter_at,
-                    &[cursor.var_slot.into(), cursor.arr_ptr.into(), i.into()],
+                    &[
+                        cursor.var_slot.into(),
+                        cursor.container_ptr.into(),
+                        i.into(),
+                    ],
                     "",
                 )
                 .map_err(|e| e.to_string())?;
-            if let Some(index_slot) = cursor.index_slot {
-                let as_f64 = self
-                    .builder
-                    .build_signed_int_to_float(i, self.f64_ty, "idx_f64")
-                    .map_err(|e| e.to_string())?;
+            // `code_iter_key` decides the key's *kind* (a `Number` position
+            // for an array, a `Str` field name for an object) — codegen
+            // stays container-agnostic, same as `fn_iter_len`/`fn_iter_at`.
+            if let Some(key_slot) = cursor.key_slot {
                 self.builder
-                    .build_call(self.fn_number, &[index_slot.into(), as_f64.into()], "")
+                    .build_call(
+                        self.fn_iter_key,
+                        &[key_slot.into(), cursor.container_ptr.into(), i.into()],
+                        "",
+                    )
                     .map_err(|e| e.to_string())?;
             }
-            scope.insert(over.var.clone(), cursor.var_slot);
-            if let (Some(index), Some(index_slot)) = (&over.index, cursor.index_slot) {
-                scope.insert(index.clone(), index_slot);
+            scope.insert(over.value.clone(), cursor.var_slot);
+            if let (Some(key), Some(key_slot)) = (&over.key, cursor.key_slot) {
+                scope.insert(key.clone(), key_slot);
             }
         }
 
@@ -943,26 +957,30 @@ impl<'a> Gen<'a> {
     }
 
     /// Sets up everything `loop ... over` iterates *with*: the snapshot of
-    /// the array, its length, the counter, and the slots the element and
-    /// index are written into each time round. Split out of `gen_loop` only
-    /// so the bare `loop { }` form can skip all of it.
+    /// the container, its length, the counter, and the slots the value and
+    /// key are written into each time round. Split out of `gen_loop` only
+    /// so the bare `loop { }` form can skip all of it. "Container" rather
+    /// than "array" throughout: since 2026-08-23 this also serves `loop`
+    /// over an `Object`, and neither this function nor `gen_loop` needs to
+    /// know which — `code_iter_len`/`code_iter_at`/`code_iter_key` are the
+    /// only things that branch on it (see `runtime.c`).
     fn gen_loop_cursor(&mut self, over: &LoopOver) -> Result<LoopCursor<'a>, String> {
-        // The loop owns its iterable rather than reading it through whatever
-        // slot the expression happened to land in. `gen_expr` returns a
-        // *borrowed* pointer for `Expr::Ident`, so iterating `xs` while the
-        // body reassigns `xs` would otherwise walk a buffer that had already
-        // been released underneath it (`loop_iterable_reassigned.code`).
-        // This mirrors the interpreter holding the `Rc` for the loop's
-        // duration.
+        // The loop owns its container rather than reading it through
+        // whatever slot the expression happened to land in. `gen_expr`
+        // returns a *borrowed* pointer for `Expr::Ident`, so iterating `xs`
+        // while the body reassigns `xs` would otherwise walk a buffer that
+        // had already been released underneath it
+        // (`loop_iterable_reassigned.code`). This mirrors the interpreter
+        // holding the `Rc` for the loop's duration.
         let evaluated = self.gen_expr(&over.iterable)?;
-        let arr_ptr = self.alloc_slot("loopiter")?;
+        let container_ptr = self.alloc_slot("loopcontainer")?;
         self.builder
-            .build_call(self.fn_copy, &[arr_ptr.into(), evaluated.into()], "")
+            .build_call(self.fn_copy, &[container_ptr.into(), evaluated.into()], "")
             .map_err(|e| e.to_string())?;
 
         let len = self
             .builder
-            .build_call(self.fn_iter_len, &[arr_ptr.into()], "iterlen")
+            .build_call(self.fn_iter_len, &[container_ptr.into()], "iterlen")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .left()
@@ -977,16 +995,16 @@ impl<'a> Gen<'a> {
             .build_store(counter, self.i64_ty.const_zero())
             .map_err(|e| e.to_string())?;
         let var_slot = self.alloc_slot("loopvar")?;
-        let index_slot = match over.index {
-            Some(_) => Some(self.alloc_slot("loopidx")?),
+        let key_slot = match over.key {
+            Some(_) => Some(self.alloc_slot("loopkey")?),
             None => None,
         };
         Ok(LoopCursor {
-            arr_ptr,
+            container_ptr,
             len,
             counter,
             var_slot,
-            index_slot,
+            key_slot,
         })
     }
 
