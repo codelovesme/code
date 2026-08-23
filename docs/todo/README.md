@@ -9,6 +9,7 @@ time. Order below is roughly by how likely it is to bite someone.
 
 | Task | Why it matters |
 |---|---|
+| [community-modules.md](community-modules.md) | How native modules reach users: core stays minimal (`Length`, `Timestamp`), first-party modules are per-host (`terminal` native / `console` browser, then `math`, `strings`, `net`) on GitHub Releases + npm via `code install`, and the community publish path — direction decided 2026-08-23, phased A–F |
 | [native-module-linking.md](native-module-linking.md) | Phase 1 (`.so` handlers) + Phase 2 (exported vars) shipped 2026-08-21, Phase 3 (`.a` static modules) + the `code-native` Rust crate shipped 2026-08-22; a *native* `link "x.wasm"`, `code build --lib`, and per-language bundles for anything besides Rust/C still open (a *different* `crates/code-wasm` module-linking story shipped 2026-08-22 too — see that doc) |
 | [no-language-documentation.md](no-language-documentation.md) | The new language has no README at all |
 | [runtime-error-locations.md](runtime-error-locations.md) | Parse errors point at a line/column since 2026-08-23; runtime ones (`assertion failed`) still don't |
