@@ -16,6 +16,7 @@ on:
     paths:
       - "site/**"
       - "tests/*.code"
+      - "modules-index.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch: {}
 

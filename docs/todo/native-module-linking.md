@@ -25,9 +25,12 @@ remaining blocker.
 it to also link modules compiled by languages other than `code` itself (a
 `.so`/`.a` module is already language-agnostic — any C-ABI producer works —
 so that half is actually done; only `.wasm` (format) and `code build --lib`
-(direction) below are still open). Note that resolution is currently
-script-directory-only by design; the planned install/fallback-chain story
-(that changes this deliberately) lives in
+(direction) below are still open). Native resolution is no longer
+script-directory-only: the fallback chain shipped with the install tooling
+(2026-08-23) searches the script directory, the nearest ancestor
+`.code/modules/`, `$CODE_MODULE_PATH`, and `~/.code/modules/`, and additionally
+maps bare filenames through the project lockfile onto the installed layout
+(`<root>/<name>/<version>/<asset>`). Details live in
 [community-modules.md](community-modules.md).
 
 ## Formats — decided

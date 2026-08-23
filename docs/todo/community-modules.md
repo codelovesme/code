@@ -76,37 +76,53 @@ and **Windows**, which additionally needs a `LoadLibrary`/`GetProcAddress`
 path in `src/native.rs` and `runtime.c` — real work, tracked as phase F.
 Build on an older-glibc runner image for maximum compatibility.
 
-### Install: `code install`
+### Install: `code install` — shipped 2026-08-23
 
-New subcommands: `code install <name-or-url>`, `code remove <name>`,
-`code ls` (installed + available).
+Subcommands: `code install <name-or-url> [--global]`, `code remove <name>`
+(alias `rm`), `code ls` (installed + available).
 
 - Resolution: first-party names hit an index (which starts life as a JSON
   file in this repo, served from the Pages site); community modules install
   by full URL until a name-based community index exists (phase F).
+  Shipped form: the index maps name → latest release-tag page, and the
+  manifest URL is derived from it (`…/releases/tag/TAG` →
+  `…/releases/download/TAG/<name>.json`); a by-URL reference is the
+  manifest URL itself. The default index URL is overridable via
+  `CODE_MODULE_INDEX`.
 - Storage: project-local `.code/modules/<name>/<version>/` plus
-  `.code/lock.json` recording name, version, source URL, and sha256.
+  `.code/lock.json` recording name, version, source URL, and sha256;
+  `--global` installs to `~/.code/modules/` but records the same project
+  lockfile (with a `global` flag), so there is exactly one lockfile per
+  project.
 - Verification: sha256 checked at download time **and** re-checked at load
   time while a lock entry exists (modules are small, so this is cheap — a
-  tampered or replaced `.so` fails loudly instead of loading).
+  tampered or replaced `.so` fails loudly instead of loading). Enforcement
+  is scoped to bytes sitting under an install root, so vendored copies
+  elsewhere stay unpinned.
 - Trust model for v1: you can inspect exactly what loads — the lockfile
   pins a hash, and the hash points at a public artifact whose source and CI
   are visible. Artifact signing (minisign) is a later phase, not day one.
 
-### Loader: fallback chain
+### Loader: fallback chain — shipped 2026-08-23
 
-Today `FilesystemResolver` resolves `link "x.so"` against the linking
+`FilesystemResolver` used to resolve `link "x.so"` against the linking
 script's directory only — deliberately no search path, so where a module
-comes from is always answerable by looking at the two files involved. Adding
-a search path is a deliberate design change; the agreed shape:
+comes from is always answerable by looking at the two files involved. The
+agreed shape is now implemented:
 
 1. the script's directory (unchanged — explicit wins)
 2. the nearest ancestor's `.code/modules/` (walk up, like `node_modules`)
 3. `$CODE_MODULE_PATH` (colon-separated, for unusual setups)
 4. `~/.code/modules/` (globally installed)
 
-Documented wherever `link` is documented. The provenance guarantee becomes:
-answerable by looking at the script, its lockfile, and four fixed places.
+plus a fifth lookup that makes installed layouts reachable: a bare filename
+maps through the project lockfile onto `<root>/<name>/<version>/<asset>`
+(the layout `code install` writes). Without the lockfile entry the layout
+lookup has nothing to go on — the lockfile is the single source of truth
+for "what is installed here", and flat vendored layouts keep resolving
+through steps 1–4 unchanged. Documented wherever `link` is documented. The
+provenance guarantee became: answerable by looking at the script, its
+lockfile, and four fixed places.
 
 ## First-party modules (phases B, D)
 
@@ -171,7 +187,7 @@ the same data `code ls` reads. It doubles as the de-facto index.
 |---|---|---|
 | A | core `Timestamp` (both backends, fixtures) | the core-handler pattern proven before any module ships |
 | B | `crates/modules/{terminal,math,strings}` + cross-build CI → GitHub Releases, `console` npm package; dogfood by hand | proof the pipeline works |
-| C | `code install/remove/ls` + resolver fallback chain + lockfile/sha256 | users getting modules without copying files |
+| C | ~~`code install/remove/ls` + resolver fallback chain + lockfile/sha256~~ — shipped 2026-08-23 | users getting modules without copying files |
 | D | `net` module | the flagship community-facing module |
 | E | template repo + publish guide + website Modules page | other people publishing |
 | F | (optional) Windows `.dll` support, name-based community index, artifact signing | wider reach / stronger trust |
@@ -179,8 +195,10 @@ the same data `code ls` reads. It doubles as the de-facto index.
 ## Still open
 
 - `Print` operand policy (both `terminal` and `console`): strings only, or coerce numbers/booleans too?
-- Walk-up semantics for `.code/modules/`: stop at the nearest `.code/`
-  directory, or define "project root" some other way (git root)?
+- ~~Walk-up semantics for `.code/modules/`~~ — decided 2026-08-23 with the
+  fallback chain: stop at the nearest `.code/` directory (shared helper
+  `find_project_code_dir` in `src/loader.rs`); git-root detection deferred
+  until it earns its complexity.
 - `net` API shape: one particle per verb (`Get`/`Post`) vs one `Request`
   particle carrying a method field — sketch in the module's README before
   coding.
