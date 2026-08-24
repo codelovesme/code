@@ -5,6 +5,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+#[cfg(feature = "llvm")]
+use code::codegen::BuildTarget;
+
 /// Printed by `--version` / `-v`. The release workflow rewrites the package
 /// version from the git tag before building (release.yml), so a tagged build
 /// reports the release version here.
@@ -34,20 +37,39 @@ fn main() -> ExitCode {
         #[cfg(feature = "llvm")]
         Some("build") => {
             let Some(path) = args.next() else {
-                eprintln!("usage: code build <file> [-o <output>]");
+                eprintln!(
+                    "usage: code build <file> [--target exe|shared|static|wasm] [-o <output>]"
+                );
                 return ExitCode::FAILURE;
             };
             let mut out: Option<PathBuf> = None;
+            let mut target = BuildTarget::Exe;
             while let Some(arg) = args.next() {
-                if arg == "-o" {
-                    out = args.next().map(PathBuf::from);
-                } else {
-                    eprintln!("unknown argument '{arg}'");
-                    return ExitCode::FAILURE;
+                match arg.as_str() {
+                    "-o" => out = args.next().map(PathBuf::from),
+                    "--target" => {
+                        let Some(value) = args.next() else {
+                            eprintln!("--target takes a value (exe|shared|static|wasm)");
+                            return ExitCode::FAILURE;
+                        };
+                        match BuildTarget::parse(&value) {
+                            Some(t) => target = t,
+                            None => {
+                                eprintln!(
+                                    "unknown target '{value}' (expected exe|shared|static|wasm)"
+                                );
+                                return ExitCode::FAILURE;
+                            }
+                        }
+                    }
+                    other => {
+                        eprintln!("unknown argument '{other}'");
+                        return ExitCode::FAILURE;
+                    }
                 }
             }
-            let out = out.unwrap_or_else(|| default_output_path(&path));
-            build_file(&path, &out)
+            let out = out.unwrap_or_else(|| default_output_path(&path, target));
+            build_file(&path, target, &out)
         }
         #[cfg(feature = "install")]
         Some("install") => cmd_install(args.collect()),
@@ -72,14 +94,24 @@ fn main() -> ExitCode {
     }
 }
 
-const USAGE: &str = "run <file> | build <file> [-o <output>] | install <name-or-url> [--global] | remove <name> | ls";
+const USAGE: &str = "run <file> | build <file> [--target exe|shared|static|wasm] [-o <output>] | install <name-or-url> [--global] | remove <name> | ls";
 
 #[cfg(feature = "llvm")]
-fn default_output_path(input: &str) -> PathBuf {
-    Path::new(input)
+fn default_output_path(input: &str, target: BuildTarget) -> PathBuf {
+    let stem = Path::new(input)
         .file_stem()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("a.out"))
+        .map(|s| s.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "a.out".to_string());
+    // Without `-o`, the extension follows the target rather than always
+    // being the bare file stem: an executable has none, but a library
+    // should look like one.
+    match target {
+        BuildTarget::Exe => PathBuf::from(stem),
+        BuildTarget::Shared => PathBuf::from(format!("lib{stem}.so")),
+        BuildTarget::Static => PathBuf::from(format!("lib{stem}.a")),
+        BuildTarget::Wasm => PathBuf::from(format!("{stem}.wasm")),
+    }
 }
 
 fn run_file(path: &str) -> ExitCode {
@@ -99,8 +131,8 @@ fn run_file(path: &str) -> ExitCode {
 }
 
 #[cfg(feature = "llvm")]
-fn build_file(path: &str, out: &Path) -> ExitCode {
-    match code::compile_file(Path::new(path), out) {
+fn build_file(path: &str, target: BuildTarget, out: &Path) -> ExitCode {
+    match code::compile_file(Path::new(path), target, out) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");

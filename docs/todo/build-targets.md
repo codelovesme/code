@@ -1,7 +1,34 @@
 # `code build --target exe|shared|static|wasm`
 
-`code build` produces exactly one thing today — a native executable — with
-no flag to ask for anything else. The archived language had
+**Phase 1 shipped 2026-08-24:** the `BuildTarget` enum, the `--target` flag,
+and the `exe`/`shared`/`static` link steps exist (`codegen.rs`, `main.rs`,
+the `compile` module in `lib.rs`; covered by `tests/build_targets.rs`). Two
+refinements over this doc's original sketch: `--target shared` passes
+statically `link`ed `.a` modules through to the linker rather than refusing
+them (a PIC archive links into a `.so` exactly as into an executable, and a
+non-PIC one produces the ordinary relocation error naming its member —
+correct behaviour falls out of doing nothing special), and without `-o` the
+default output name follows the target (`prog`, `libprog.so`, `libprog.a`,
+`prog.wasm`).
+
+**Phase 2 shipped 2026-08-24:** `--target wasm` now emits a real
+`wasm32-unknown-unknown` module. The compiler builds the same program object
+for wasm, compiles `runtime.c` with the small freestanding shim in
+`src/wasm_shim.h`, and links both with `wasm-ld` (or Rust's `rust-lld` when
+`wasm-ld` is not installed). The module exports `main` and `memory`, and the
+host supplies these imports:
+
+```
+env.code_host_error(ptr: i32, len: i32) -> ()
+env.code_host_now() -> f64
+```
+
+Native `.so`/`.a` links are refused in a wasm build. Modules must instead be
+given by the host when the wasm module is created, which is the same approach
+used by `crates/code-wasm`.
+
+`code build` produced exactly one thing before that — a native executable —
+with no flag to ask for anything else. The archived language had
 `code build --target ir|exe|shared|static|wasm` (`old/src/main.rs`); the
 rewrite kept only `exe`. The owner wants the other three back (`ir` is not
 asked for and is not planned here).
@@ -16,7 +43,7 @@ work:
 | `exe` | unchanged | `cc` (today's) | **none** — it is the current behaviour, it just needs a flag |
 | `shared` | unchanged | `cc -shared` | small mechanically; see "the semantics question" below |
 | `static` | unchanged | `ar rcs` | small mechanically; same question |
-| `wasm` | wasm32 triple | `wasm-ld` | **the whole job** — the runtime has no libc to compile against |
+| `wasm` | wasm32 triple | `wasm-ld` or `rust-lld` | **shipped 2026-08-24** — a small freestanding shim replaces the missing libc |
 
 The three native targets emit a *byte-identical* object: codegen already
 asks for `RelocMode::PIC` (see `compile_to_object`, and the comment there
@@ -83,7 +110,7 @@ no interpreter and no parser in the output. Different artifacts, different
 sizes, different use cases (embedding a finished `.code` program in a JS
 app). Neither replaces the other.
 
-### The blocker: `runtime.c` has no libc on wasm32
+### Implementation notes: `runtime.c` has no libc on wasm32
 
 `wasm32-unknown-unknown` is freestanding — there is no libc at all. The
 first thing that happens is:
@@ -114,9 +141,10 @@ text — the `terminal` module does its own formatting in its own `.c`. That
 one fact is what keeps the shim small; a `%g` implementation would have been
 most of it.
 
-So: a `wasm_shim.h`, force-included ahead of `runtime.c` with
-`clang -include`, supplying the above. Estimate ~200 lines, most of it a
-first-fit allocator.
+The shipped `src/wasm_shim.h` is force-included ahead of `runtime.c` with
+`clang -include`. It supplies this small surface with a simple linear heap;
+the runtime's own leak counter still checks language values, while the
+wasm host owns the module's whole memory after execution.
 
 ### Native modules are refused, not broken
 
@@ -138,13 +166,13 @@ code_host_error(ptr: i32, len: i32) -> ()   // what code_runtime_error writes
 code_host_now() -> f64                       // Unix seconds, for Timestamp
 ```
 
-And the module exports `main() -> i32`. That triple is the whole embedding
-contract, and belongs in a short doc section once it works.
+And the module exports `main() -> i32` and `memory`. That is the embedding
+contract.
 
 ### The linker
 
-`wasm-ld --no-entry --export-all --allow-undefined`. It is not installed on
-the owner's machine (`apt install lld` provides it), but **`rust-lld` is** —
+`wasm-ld --no-entry --export=main --export-memory --allow-undefined`.
+The compiler looks for `wasm-ld` first and falls back to **`rust-lld`** —
 every rustup toolchain ships it, and `rust-lld -flavor wasm` is the same
 LLD. Verified working here:
 
@@ -166,6 +194,7 @@ needs installing — worth doing precisely because it removes the one
 code build <file> [--target exe|shared|static|wasm] [-o <output>]
 ```
 
+File first, flags after — the same shape as `-o` (shipped 2026-08-24).
 `--target exe` is the default, so every existing invocation is unaffected.
 Without `-o`, the extension follows the target (`prog`, `libprog.so`,
 `libprog.a`, `prog.wasm`) rather than always using the bare file stem as
@@ -177,14 +206,16 @@ rustup-managed toolchain") rather than as a failed subprocess.
 
 ## Phases
 
-1. `BuildTarget` enum, `--target` flag, `exe`/`shared`/`static`. Small, and
-   `exe` is already proven by the whole fixture suite.
-2. `wasm_shim.h` + wasm codegen path + linker discovery. The bulk.
-3. Fixtures: a `buildonly_`-style prefix cannot express this (that already
+1. ~~`BuildTarget` enum, `--target` flag, `exe`/`shared`/`static`.~~ **Shipped
+   2026-08-24.** Small, and `exe` was already proven by the whole fixture
+  suite; `shared`/`static` get their own checks in `tests/build_targets.rs`
+  (a `.so` the dynamic loader accepts and a `.a` holding exactly the program
+  object).
+2. ~~`wasm_shim.h` + wasm codegen path + linker discovery.~~ **Shipped
+  2026-08-24.** `tests/build_targets.rs` builds and runs a wasm module under
+  Node, supplying the two host imports documented above.
+3. ~~Fixtures: a `buildonly_`-style prefix cannot express this (that already
    means `.a`-linked), so runner support for "builds for wasm and the module
-   validates" needs its own harness hook — probably `wasmtime`/`node` in CI
-   rather than a `.code` fixture prefix.
-4. Document the embedding contract (imports/exports above).
 
 ## Deliberately out of scope
 

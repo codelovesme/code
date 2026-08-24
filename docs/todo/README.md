@@ -9,7 +9,7 @@ time. Order below is roughly by how likely it is to bite someone.
 
 | Task | Why it matters |
 |---|---|
-| [build-targets.md](build-targets.md) | `code build` only makes an executable; `--target exe\|shared\|static\|wasm` brings back what the archived language had — the three native targets are a flag plus a link step, wasm needs a ~200-line freestanding libc shim because `runtime.c` has none on wasm32 |
+| [build-targets.md](build-targets.md) | Phases 1 and 2 shipped 2026-08-24: `--target exe\|shared\|static\|wasm` works; wasm uses a small freestanding runtime shim and host-supplied clock/error imports, with Node coverage in `tests/build_targets.rs` |
 | [community-modules.md](community-modules.md) | How native modules reach users: core stays minimal (`Length`, `Timestamp`), first-party modules are per-host (`terminal` native / `console` browser, then `math`, `strings`, `net`) on GitHub Releases + npm via `code install`, and the community publish path — direction decided 2026-08-23, phased A–F |
 | [emit-bare-particle-name.md](emit-bare-particle-name.md) | `emit Timestamp {} to core` should also be writable `emit Timestamp to core` — a no-field particle shouldn't need ceremonial braces; a parser-only desugar, three lines and no ripple |
 | [formatter.md](formatter.md) | No canonical layout for `.code` source: `code format [--check]`, token-stream based so comments and `+=` survive, with token-equality + idempotence proven over the fixture corpus and a CI gate beside `cargo fmt` |

@@ -5,7 +5,7 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::targets::{
-    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
+    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
 use inkwell::types::{IntType, PointerType};
 use inkwell::values::{FunctionValue, IntValue, PointerValue};
@@ -27,6 +27,41 @@ use crate::ast::{
 /// `_Static_assert` for the check that catches the two numbers drifting.
 const VALUE_SIZE: u64 = 80;
 const VALUE_ALIGN: u32 = 8;
+
+/// What container `code build` wraps the generated object in (the CLI flag
+/// is `--target`; see `docs/todo/build-targets.md`). `Exe` is today's
+/// behaviour — `cc` links a standalone executable. `Shared` and `Static`
+/// emit the same byte-identical PIC object (codegen already asks for
+/// `RelocMode::PIC`, which `-shared` needs anyway) but differ purely in the
+/// link step that runs after codegen: `cc -shared` vs `ar rcs`. They are
+/// deliberately *not* module-ABI libraries — a `.so` whose only entry point
+/// is `main` has no consumer, and the useful version of that artifact is
+/// the separate `--lib` feature (blocked on handler syntax, tracked in
+/// `docs/todo/native-module-linking.md`). `Wasm` is planned (phase 2 of the
+/// same doc): it will target `wasm32-unknown-unknown` with a freestanding
+/// libc shim, and until then it fails with a clear message rather than
+/// pretending to work.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuildTarget {
+    Exe,
+    Shared,
+    Static,
+    Wasm,
+}
+
+impl BuildTarget {
+    /// Parses the value of `--target <value>`; `None` is the flag-less
+    /// invocation, which keeps today's behaviour.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "exe" => Some(Self::Exe),
+            "shared" => Some(Self::Shared),
+            "static" => Some(Self::Static),
+            "wasm" => Some(Self::Wasm),
+            _ => None,
+        }
+    }
+}
 
 /// A `.a` static module's three (`vars` optional) entry points, declared up
 /// front in `compile_to_object` — see the comment there for why this has to
@@ -179,6 +214,24 @@ fn is_defined(scopes: &[HashSet<String>], name: &str) -> bool {
     scopes.iter().rev().any(|s| s.contains(name))
 }
 
+fn reject_wasm_native_links(stmts: &[Stmt]) -> Result<(), String> {
+    for stmt in stmts {
+        match stmt {
+            Stmt::ImportNative { path, .. } => {
+                return Err(format!(
+                    "native module '{path}' cannot be linked into wasm; supply modules from the host"
+                ));
+            }
+            Stmt::Import { body, .. } | Stmt::Block(body) | Stmt::If { body, .. } => {
+                reject_wasm_native_links(body)?;
+            }
+            Stmt::Loop { body, .. } => reject_wasm_native_links(body)?,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 fn verify_expr(expr: &Expr, scopes: &[HashSet<String>]) -> Result<(), String> {
     match expr {
         Expr::Number(_) | Expr::Str(_) | Expr::Bool(_) | Expr::Null => Ok(()),
@@ -206,8 +259,15 @@ fn verify_expr(expr: &Expr, scopes: &[HashSet<String>]) -> Result<(), String> {
     }
 }
 
-pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), String> {
+pub fn compile_to_object(
+    program: &Program,
+    target: BuildTarget,
+    obj_path: &Path,
+) -> Result<(), String> {
     verify_defined(program)?;
+    if target == BuildTarget::Wasm {
+        reject_wasm_native_links(&program.statements)?;
+    }
 
     let context = Context::create();
     let module = context.create_module("code");
@@ -507,15 +567,20 @@ pub fn compile_to_object(program: &Program, obj_path: &Path) -> Result<(), Strin
 
     module.verify().map_err(|e| e.to_string())?;
 
-    Target::initialize_native(&InitializationConfig::default())?;
-    let triple = TargetMachine::get_default_triple();
-    let target = Target::from_triple(&triple).map_err(|e| e.to_string())?;
+    let triple = if target == BuildTarget::Wasm {
+        Target::initialize_webassembly(&InitializationConfig::default());
+        TargetTriple::create("wasm32-unknown-unknown")
+    } else {
+        Target::initialize_native(&InitializationConfig::default())?;
+        TargetMachine::get_default_triple()
+    };
+    let llvm_target = Target::from_triple(&triple).map_err(|e| e.to_string())?;
     // PIC, not Default: the system `cc` we link with produces PIE
     // executables by default on this target, which requires
     // position-independent object code — Default relocation produced
     // relocations `ld` rejected ("can not be used when making a PIE
     // object").
-    let target_machine = target
+    let target_machine = llvm_target
         .create_target_machine(
             &triple,
             "generic",
@@ -1740,5 +1805,40 @@ impl<'a> Gen<'a> {
             .build_call(fn_check_leaks, &[], "")
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    use crate::lexer::tokenize;
+    use crate::parser::parse;
+
+    fn trivial_program() -> Program {
+        let lexed = tokenize("let a = 1\nassert a = 1\n").expect("tokenize");
+        parse(&lexed).expect("parse")
+    }
+
+    #[test]
+    fn build_target_parses_every_flag_value() {
+        assert_eq!(BuildTarget::parse("exe"), Some(BuildTarget::Exe));
+        assert_eq!(BuildTarget::parse("shared"), Some(BuildTarget::Shared));
+        assert_eq!(BuildTarget::parse("static"), Some(BuildTarget::Static));
+        assert_eq!(BuildTarget::parse("wasm"), Some(BuildTarget::Wasm));
+        assert_eq!(BuildTarget::parse("ir"), None);
+        assert_eq!(BuildTarget::parse("EXE"), None);
+        assert_eq!(BuildTarget::parse(""), None);
+    }
+
+    #[test]
+    fn wasm_target_emits_an_object() {
+        let dir = std::env::temp_dir().join(format!("code-gen-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let obj = dir.join("prog.o");
+        compile_to_object(&trivial_program(), BuildTarget::Wasm, &obj).expect("wasm codegen");
+        assert!(obj.is_file(), "expected a wasm object to be written");
+        let _ = fs::remove_dir_all(&dir);
     }
 }

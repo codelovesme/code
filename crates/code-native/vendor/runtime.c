@@ -12,12 +12,16 @@
  * layout itself. See codegen.rs's VALUE_SIZE comment for the size contract.
  */
 #define _GNU_SOURCE
+#ifdef CODE_WASM
+#include "wasm_shim.h"
+#else
 #include <dlfcn.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#endif
 
 #include "code_abi.h"
 
@@ -46,8 +50,13 @@ static CodeValue *slot_at(void *base, long long index) {
  * than bringing its own, so it needs this externally visible to raise its
  * own fatal errors the same way `core`'s handlers do. */
 _Noreturn void code_runtime_error(const char *message) {
+#ifdef CODE_WASM
+    code_host_error(message, (unsigned int)strlen(message));
+    __builtin_trap();
+#else
     fprintf(stderr, "error: %s\n", message);
     exit(1);
+#endif
 }
 
 /* ---- Reference counting -------------------------------------------------
@@ -444,7 +453,11 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
          * Zero-initialized for the same reason `code_make_result`'s
          * `slots` is: `code_number` releases `out` before setting it. */
         CodeValue ts = {0};
+    #ifdef CODE_WASM
+        code_number(&ts, code_host_now());
+    #else
         code_number(&ts, (double)time(NULL));
+    #endif
         code_make_result(out, "TimestampResult", &ts);
         return;
     }
@@ -539,6 +552,11 @@ void code_static_module_check(uint32_t version, const char *what) {
 }
 
 void *code_native_open(const char *path) {
+#ifdef CODE_WASM
+    (void)path;
+    code_runtime_error("native modules are not available in a wasm build");
+    return NULL;
+#else
     void *handle = dlopen(path, RTLD_NOW);
     if (!handle) {
         char msg[256];
@@ -569,6 +587,7 @@ void *code_native_open(const char *path) {
     /* Optional — a module without it simply has no exported variables. */
     nh->vars = (const CodeVarList *(*)(void))dlsym(handle, "code_module_vars");
     return nh;
+#endif
 }
 
 /* Builds a fresh heap-owned string value by copying `s`'s bytes — unlike

@@ -138,11 +138,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         let built = crate_dir.join(format!("target/release/lib{stem}.so"));
         let dest = modules_dir.join(format!("{stem}.so"));
         fs::rename(&built, &dest).unwrap_or_else(|e| {
-            panic!(
-                "cannot move {} to {}: {e}",
-                built.display(),
-                dest.display()
-            )
+            panic!("cannot move {} to {}: {e}", built.display(), dest.display())
         });
     }
 }
@@ -217,7 +213,10 @@ fn check_compile(
     let exe_path: PathBuf = tmp_dir.join(stem);
     let should_fail = expect == Expect::Fail;
 
-    match code::compile_file(path, &exe_path) {
+    // This harness checks behaviour, not container shape — every fixture
+    // compiles to the default `Exe` target (`--target shared|static|wasm`
+    // is covered separately in `tests/build_targets.rs`).
+    match code::compile_file(path, code::BuildTarget::Exe, &exe_path) {
         Err(e) => {
             // A compile-time failure (parse error, undefined variable) is a
             // valid way for a fail_*.code fixture to fail — nothing further

@@ -45,7 +45,7 @@ mod compile {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     use crate::ast::{NativeFormat, Program, Stmt};
-    use crate::codegen;
+    use crate::codegen::{self, BuildTarget};
     use crate::loader::{self, FilesystemResolver};
 
     /// Runtime support functions (`code_number`, `code_array`, ...) that
@@ -56,6 +56,8 @@ mod compile {
     /// alongside it and written next to it so that `#include` resolves
     /// regardless of where `code build` runs from.
     const CODE_ABI_H: &str = include_str!("code_abi.h");
+    /// Freestanding libc-shaped helpers used only by the wasm runtime build.
+    const WASM_SHIM_H: &str = include_str!("wasm_shim.h");
 
     /// Distinguishes concurrent builds *within* one process; the pid
     /// distinguishes them across processes. See `scratch_dir`.
@@ -87,11 +89,20 @@ mod compile {
         Ok(dir)
     }
 
-    /// Compile a program from a file into a standalone executable at
-    /// `exe_path`, via LLVM object codegen (see `codegen.rs`) linked against
-    /// the embedded C runtime through the system `cc`. Takes a path for the
-    /// same reason `run_file` does — `link` resolves relative to it.
-    pub fn compile_file(source_path: &Path, exe_path: &Path) -> Result<(), String> {
+    /// Compile a program from a file into the artifact named by `target`
+    /// at `out_path`, via LLVM object codegen (see `codegen.rs`). The
+    /// generated object is byte-identical for all three native containers —
+    /// codegen asks for `RelocMode::PIC`, which `-shared` needs anyway — so
+    /// the target changes only the link step: `cc` for `Exe`, `cc -shared`
+    /// for `Shared`, `ar rcs` for `Static` (see `docs/todo/build-targets.md`
+    /// for why these are deliberately plain containers, not module-ABI
+    /// libraries). Takes a path for the same reason `run_file` does —
+    /// `link` resolves relative to it.
+    pub fn compile_file(
+        source_path: &Path,
+        target: BuildTarget,
+        out_path: &Path,
+    ) -> Result<(), String> {
         let program: Program =
             loader::load(&source_path.display().to_string(), &FilesystemResolver)?;
 
@@ -99,13 +110,34 @@ mod compile {
         let obj_path = scratch.join("program.o");
         let runtime_c_path = scratch.join("runtime.c");
         let abi_h_path = scratch.join("code_abi.h");
+        let wasm_shim_path = scratch.join("wasm_shim.h");
+        let runtime_obj_path = scratch.join("runtime.o");
 
         // Every path below is inside `scratch`, so the whole directory can be
         // removed as one on the way out, on success and failure alike.
         let result = (|| {
-            codegen::compile_to_object(&program, &obj_path)?;
-            fs::write(&runtime_c_path, RUNTIME_C).map_err(|e| format!("write runtime.c: {e}"))?;
-            fs::write(&abi_h_path, CODE_ABI_H).map_err(|e| format!("write code_abi.h: {e}"))?;
+            codegen::compile_to_object(&program, target, &obj_path)?;
+
+            // `Static` never links against the C runtime — there is no link
+            // step beyond archiving the object — so skip writing the sources
+            // it would not even read.
+            if !matches!(target, BuildTarget::Static) {
+                fs::write(&runtime_c_path, RUNTIME_C)
+                    .map_err(|e| format!("write runtime.c: {e}"))?;
+                fs::write(&abi_h_path, CODE_ABI_H).map_err(|e| format!("write code_abi.h: {e}"))?;
+            }
+
+            if target == BuildTarget::Wasm {
+                fs::write(&wasm_shim_path, WASM_SHIM_H)
+                    .map_err(|e| format!("write wasm_shim.h: {e}"))?;
+                compile_wasm_runtime(
+                    &runtime_c_path,
+                    &wasm_shim_path,
+                    &abi_h_path,
+                    &runtime_obj_path,
+                )?;
+                return link_wasm(&obj_path, &runtime_obj_path, out_path);
+            }
 
             // Every `.a` static module `link`ed in this program (see
             // `ast::NativeFormat::Static`) — appended after `runtime_c_path`
@@ -126,27 +158,165 @@ mod compile {
                 })
                 .collect();
 
-            let link_result = Command::new("cc")
-                .arg(&obj_path)
-                .arg(&runtime_c_path)
-                .args(&static_modules)
-                .arg("-lm")
-                .arg("-ldl")
-                .arg("-o")
-                .arg(exe_path)
-                .status();
-
-            match link_result {
-                Ok(status) if status.success() => Ok(()),
-                Ok(status) => Err(format!("cc failed with {status}")),
-                Err(e) => Err(format!("failed to run cc: {e}")),
+            match target {
+                BuildTarget::Exe => {
+                    cc_link(&[&obj_path, &runtime_c_path], &static_modules, out_path)
+                }
+                BuildTarget::Shared => {
+                    cc_link_shared(&[&obj_path, &runtime_c_path], &static_modules, out_path)
+                }
+                BuildTarget::Static => ar_archive(&obj_path, out_path),
+                // Refused earlier, in `compile_to_object` — unreachable.
+                BuildTarget::Wasm => unreachable!("wasm refused before codegen"),
             }
         })();
 
         let _ = fs::remove_dir_all(&scratch);
         result
     }
+
+    /// Links a standalone executable: the program object plus the embedded
+    /// C runtime, any statically `link`ed modules, and the usual system
+    /// libraries.
+    fn cc_link(
+        obj_paths: &[&Path],
+        static_modules: &[&str],
+        out_path: &Path,
+    ) -> Result<(), String> {
+        run_command(
+            Command::new("cc")
+                .args(obj_paths)
+                .args(static_modules)
+                .arg("-lm")
+                .arg("-ldl")
+                .arg("-o")
+                .arg(out_path),
+            "cc",
+        )
+    }
+
+    /// Links a shared library: the same inputs as `cc_link` under
+    /// `-shared`. Statically `link`ed modules come along too — a `.a`
+    /// whose members are position-independent links into a `.so` exactly
+    /// as it does into an executable (and one that isn't produces the
+    /// ordinary linker relocation error, which names the offending
+    /// member). `-fPIC` is passed for clarity even though codegen already
+    /// emits PIC objects: it documents intent and guards against a future
+    /// codegen change silently producing a non-loadable library.
+    fn cc_link_shared(
+        obj_paths: &[&Path],
+        static_modules: &[&str],
+        out_path: &Path,
+    ) -> Result<(), String> {
+        run_command(
+            Command::new("cc")
+                .arg("-shared")
+                .arg("-fPIC")
+                .args(obj_paths)
+                .args(static_modules)
+                .arg("-lm")
+                .arg("-ldl")
+                .arg("-o")
+                .arg(out_path),
+            "cc",
+        )
+    }
+
+    /// Archives the program object into a static library. No runtime, no
+    /// system libraries — consumers of the archive supply their own.
+    fn ar_archive(obj_path: &Path, out_path: &Path) -> Result<(), String> {
+        run_command(
+            Command::new("ar").arg("rcs").arg(out_path).arg(obj_path),
+            "ar",
+        )
+    }
+
+    fn compile_wasm_runtime(
+        runtime_c_path: &Path,
+        shim_path: &Path,
+        abi_h_path: &Path,
+        runtime_obj_path: &Path,
+    ) -> Result<(), String> {
+        run_command(
+            Command::new("clang")
+                .arg("--target=wasm32-unknown-unknown")
+                .arg("-nostdlib")
+                .arg("-fno-builtin")
+                .arg("-DCODE_WASM")
+                .arg("-include")
+                .arg(shim_path)
+                .arg("-I")
+                .arg(abi_h_path.parent().unwrap_or_else(|| Path::new(".")))
+                .arg("-c")
+                .arg(runtime_c_path)
+                .arg("-o")
+                .arg(runtime_obj_path),
+            "clang (wasm runtime)",
+        )
+    }
+
+    fn link_wasm(obj_path: &Path, runtime_obj_path: &Path, out_path: &Path) -> Result<(), String> {
+        let mut linker = Command::new("wasm-ld");
+        if linker.output().is_err() {
+            let sysroot = Command::new("rustc")
+                .args(["--print", "sysroot"])
+                .output()
+                .map_err(|e| format!("failed to find wasm linker: {e}"))?;
+            if !sysroot.status.success() {
+                return Err("failed to find wasm linker: rustc --print sysroot failed".to_string());
+            }
+            let host = Command::new("rustc")
+                .args(["-vV"])
+                .output()
+                .map_err(|e| format!("failed to find wasm linker host: {e}"))?;
+            let host = String::from_utf8_lossy(&host.stdout)
+                .lines()
+                .find_map(|line| line.strip_prefix("host: "))
+                .map(str::to_owned)
+                .ok_or_else(|| "failed to find wasm linker host triple".to_string())?;
+            let rust_lld = PathBuf::from(String::from_utf8_lossy(&sysroot.stdout).trim())
+                .join("lib/rustlib")
+                .join(host)
+                .join("bin/rust-lld");
+            if !rust_lld.is_file() {
+                return Err(
+                    "no wasm linker found — install lld, or use a rustup-managed toolchain"
+                        .to_string(),
+                );
+            }
+            linker = Command::new(rust_lld);
+            linker.arg("-flavor").arg("wasm");
+        }
+        run_command(
+            linker
+                .arg("--no-entry")
+                .arg("--export=main")
+                .arg("--export-memory")
+                .arg("--allow-undefined")
+                .arg(obj_path)
+                .arg(runtime_obj_path)
+                .arg("-o")
+                .arg(out_path),
+            "wasm linker",
+        )
+    }
+
+    /// Runs a linker/archiver and reports a failed status or spawn error as
+    /// itself, naming the tool — a missing `ar` should read as "failed to
+    /// run ar", not as some downstream mystery.
+    fn run_command(cmd: &mut Command, tool: &str) -> Result<(), String> {
+        let status = cmd
+            .status()
+            .map_err(|e| format!("failed to run {tool}: {e}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("{tool} failed with {status}"))
+        }
+    }
 }
 
+#[cfg(feature = "llvm")]
+pub use codegen::BuildTarget;
 #[cfg(feature = "llvm")]
 pub use compile::compile_file;
