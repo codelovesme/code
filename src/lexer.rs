@@ -62,6 +62,9 @@ pub enum Token {
     /// `get` — binds an `emit`'s result to a name. Always declares a fresh
     /// binding, shadowing like `let` — never a reassignment.
     Get,
+    /// `is` — the type-test operator: `expr is ClassName` asks whether
+    /// `expr` is a particle of that class (see `Expr::Is`).
+    Is,
     /// Statement separator — a newline or `;`. Blank lines never produce one
     /// (see `tokenize`: consecutive separators are collapsed).
     Newline,
@@ -267,6 +270,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                 "to" => Token::To,
                 "core" => Token::Core,
                 "get" => Token::Get,
+                "is" => Token::Is,
                 _ => Token::Ident(text),
             };
             tokens.push(tok);

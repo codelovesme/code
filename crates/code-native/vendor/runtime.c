@@ -918,6 +918,23 @@ void code_not(CodeValue *out, const CodeValue *a) {
     code_runtime_error("'not' requires a boolean");
 }
 
+/* `expr is ClassName` — the type test (see ast.rs's `Expr::Is`): 1 when
+ * `a` is an object whose `"_class"` field holds the string `name`, 0 for
+ * everything else. Total by design — a missing `_class` or a non-object
+ * operand simply answers 0, mirroring how `find_field` reports absence as
+ * null and equality turns that into false. Must match interpreter.rs's
+ * `Expr::Is` arm exactly. */
+int code_is_particle(const CodeValue *a, const char *name) {
+    if (a->tag != CODE_OBJECT) {
+        return 0;
+    }
+    const CodeValue *class_val = find_field(a, "_class");
+    if (!class_val || class_val->tag != CODE_STR) {
+        return 0;
+    }
+    return strcmp(class_val->str, name) == 0 ? 1 : 0;
+}
+
 /* Used by `and`/`or` codegen to check each operand is actually a bool
  * before branching on it. */
 int code_bool_value(const CodeValue *v, const char *op) {

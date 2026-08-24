@@ -535,6 +535,17 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                 )),
             }
         }
+        // `expr is ClassName` — a type test, not a lookup: true exactly
+        // when `expr` is a particle of that class, false otherwise (an
+        // object without a `"_class"` field, a wrong class, or any
+        // non-object value). Never an error — see `Expr::Is`'s doc comment.
+        Expr::Is(e, class) => {
+            let v = eval(e, env)?;
+            let is_particle_of_class = matches!(&v, Value::Object(fields)
+                if fields.iter().any(|(k, val)| k == "_class"
+                    && matches!(val, Value::Str(s) if **s == *class)));
+            Ok(Value::Bool(is_particle_of_class))
+        }
         // `and`/`or` short-circuit: the right side is only evaluated (and
         // only needs to be a bool) when the left side didn't already
         // determine the result.

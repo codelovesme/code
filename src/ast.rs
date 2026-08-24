@@ -320,6 +320,25 @@ pub enum Expr {
     Index(Box<Expr>, Box<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),
+    /// `expr is ClassName` — the type test. True exactly when `expr` is an
+    /// object whose `"_class"` field holds the string `ClassName`; false
+    /// for everything else, including objects with no `_class` field and
+    /// non-object values. Never an error — the same spirit as `=` / `≠`,
+    /// which are well-defined for mismatched kinds too.
+    ///
+    /// The right side is a bare *name*, not an arbitrary expression: a
+    /// class name is a lexical fact (uppercase-first), and allowing `x is
+    /// y` where `y` is a variable would invite questions this language
+    /// doesn't want to answer. The parser desugars `Name {}` particles
+    /// elsewhere but keeps `is`'s operand as a plain identifier here.
+    ///
+    /// Semantically this is `expr._class = "ClassName"` with two
+    /// differences: reading a missing `_class` yields null (which compares
+    /// unequal, so the result is the same), and the spelling says what it
+    /// means. Both backends evaluate it through their ordinary equality
+    /// machinery — see `interpreter.rs`'s `eval` and `codegen.rs`'s
+    /// `gen_is`.
+    Is(Box<Expr>, String),
 }
 
 /// Operand type rules (decided 2026-08-21, do not re-propose alternatives):

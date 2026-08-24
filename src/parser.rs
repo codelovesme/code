@@ -452,7 +452,7 @@ impl<'a> Parser<'a> {
     }
 
     // Precedence, loosest to tightest binding: `or` < `and` < `not` <
-    // comparison (`= ≠ < > ≤ ≥`) < `+ -` < `* /` < unary `-` < postfix
+    // comparison (`= ≠ < > ≤ ≥`) < `is` < `+ -` < `* /` < unary `-` < postfix
     // (`.field` / `[index]`) < primary. Standard recursive-descent
     // precedence climbing, one method per tier. Comparison is the one
     // non-looping tier: it matches at most one operator, so a chain like
@@ -494,7 +494,7 @@ impl<'a> Parser<'a> {
     }
 
     fn comparison(&mut self) -> Result<Expr, String> {
-        let e = self.additive()?;
+        let e = self.is_expr()?;
         let op = match self.peek() {
             // The same `=` that separates a name from its value in a
             // statement. See `lexer::Token::Equals` for why the two uses
@@ -508,8 +508,27 @@ impl<'a> Parser<'a> {
             _ => return Ok(e),
         };
         self.advance();
-        let rhs = self.additive()?;
+        let rhs = self.is_expr()?;
         Ok(Expr::Binary(Box::new(e), op, Box::new(rhs)))
+    }
+
+    /// `expr is ClassName` — the type test (see `Expr::Is`). Sits between
+    /// comparison and additive on the ladder, so `t is TimestampResult and
+    /// t.value ≥ 0` reads left-to-right without parentheses, and `1 + x is
+    /// Foo` groups as `(1 + x) is Foo`. Non-looping, like comparison:
+    /// `a is B is C` falls out as "expected end of statement", which is
+    /// fine — chaining tests is nonsense anyway.
+    fn is_expr(&mut self) -> Result<Expr, String> {
+        let e = self.additive()?;
+        if !matches!(self.peek(), Token::Is) {
+            return Ok(e);
+        }
+        self.advance();
+        let class = match self.advance() {
+            Token::Ident(name) => name,
+            other => return Err(format!("expected a class name after 'is', found {other:?}")),
+        };
+        Ok(Expr::Is(Box::new(e), class))
     }
 
     fn additive(&mut self) -> Result<Expr, String> {

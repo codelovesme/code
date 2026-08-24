@@ -252,6 +252,7 @@ fn verify_expr(expr: &Expr, scopes: &[HashSet<String>]) -> Result<(), String> {
             verify_expr(index, scopes)
         }
         Expr::Unary(_, e) => verify_expr(e, scopes),
+        Expr::Is(e, _) => verify_expr(e, scopes),
         Expr::Binary(lhs, _, rhs) => {
             verify_expr(lhs, scopes)?;
             verify_expr(rhs, scopes)
@@ -422,6 +423,11 @@ pub fn compile_to_object(
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_is_particle = module.add_function(
+        "code_is_particle",
+        i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_bool_value = module.add_function(
         "code_bool_value",
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
@@ -528,6 +534,7 @@ pub fn compile_to_object(
         fn_compare,
         fn_neg,
         fn_not,
+        fn_is_particle,
         fn_bool_value,
         fn_values_equal,
         fn_assert,
@@ -633,6 +640,7 @@ struct Gen<'a> {
     fn_compare: FunctionValue<'a>,
     fn_neg: FunctionValue<'a>,
     fn_not: FunctionValue<'a>,
+    fn_is_particle: FunctionValue<'a>,
     fn_bool_value: FunctionValue<'a>,
     fn_values_equal: FunctionValue<'a>,
     fn_assert: FunctionValue<'a>,
@@ -1559,6 +1567,28 @@ impl<'a> Gen<'a> {
                 let out = self.alloc_slot("unary")?;
                 self.builder
                     .build_call(fn_val, &[out.into(), ptr.into()], "")
+                    .map_err(|e| e.to_string())?;
+                Ok(out)
+            }
+            // `expr is ClassName` — a runtime call, like every other
+            // operator here: the value's kind is only known while running.
+            // `code_is_particle` returns 0/1, which becomes a bool via the
+            // same `code_bool` constructor every other bool-producing site
+            // uses.
+            Expr::Is(e, class) => {
+                let ptr = self.gen_expr(e)?;
+                let class_ptr = self.global_str(class, "isclass")?;
+                let flag = self
+                    .builder
+                    .build_call(self.fn_is_particle, &[ptr.into(), class_ptr.into()], "")
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .left()
+                    .expect("code_is_particle returns i32, not void")
+                    .into_int_value();
+                let out = self.alloc_slot("is")?;
+                self.builder
+                    .build_call(self.fn_bool, &[out.into(), flag.into()], "")
                     .map_err(|e| e.to_string())?;
                 Ok(out)
             }

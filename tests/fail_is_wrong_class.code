@@ -1,0 +1,7 @@
+-- A failing type test is just a failing assertion: `TimestampResult` is
+-- not `Foo`, so `assert t is Foo` must abort in both modes, exactly like
+-- any other false assertion.
+{
+    emit Timestamp to core get t
+    assert t is Foo
+}

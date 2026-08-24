@@ -137,6 +137,7 @@ void code_retain(const CodeValue *v);
 void code_release(CodeValue *v);
 int code_values_equal(const CodeValue *a, const CodeValue *b);
 int code_bool_value(const CodeValue *v, const char *op);
+int code_is_particle(const CodeValue *a, const char *name);
 void code_assert(const CodeValue *v);
 _Noreturn void code_runtime_error(const char *message);
 
