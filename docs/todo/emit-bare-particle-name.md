@@ -1,5 +1,16 @@
 # A no-field particle still has to be written `{}`
 
+**Shipped 2026-08-24**, exactly as sketched below: the rewrite lives in the
+`Stmt::Emit` arm of `parser::statement`, fires only on a bare uppercase
+`Expr::Ident` once `to` is confirmed, and desugars to the same
+`Expr::Object` `Name {}` produces. Covered by `tests/emit_bare_particle.code`
+(identical shape to `emit_timestamp.code`), plus
+`fail_emit_bare_unknown_handler.code` (dispatch is still runtime) and
+`fail_emit_lowercase_unbound.code` (lowercase stays a variable read).
+Everything below is the original proposal, kept for context.
+
+---
+
 Every particle in an `emit` must be written with a brace body, even when it
 has no fields to carry:
 

@@ -153,6 +153,18 @@ impl<'a> Parser<'a> {
                     ))
                 }
             }
+            // `emit Name to ...` — a bare uppercase name is the empty
+            // particle of that class, exactly what `Name {}` desugars to
+            // in `primary`. Rewritten here, after `to` is confirmed, so
+            // `primary` keeps treating an uppercase name as an ordinary
+            // identifier everywhere else. Lowercase names fall through
+            // untouched: they stay variable reads.
+            let particle = match particle {
+                Expr::Ident(name) if starts_uppercase(&name) => {
+                    Expr::Object(vec![("_class".to_string(), Expr::Str(name))])
+                }
+                other => other,
+            };
             let target = match self.advance() {
                 Token::Core => EmitTarget::Core,
                 Token::Ident(name) => EmitTarget::Module(name),

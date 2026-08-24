@@ -1,0 +1,5 @@
+-- A lowercase name in emit position is still a variable read, not a
+-- particle: `p` is unbound, so this must die with an undefined-variable
+-- error, not an unknown-handler one. (A bound particle held in a variable
+-- is covered by emit_particle_from_variable.code.)
+emit p to core get n

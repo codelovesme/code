@@ -1,0 +1,11 @@
+-- A bare uppercase name in emit position is the empty particle of that
+-- class: `emit Timestamp to core` means exactly what
+-- `emit Timestamp {} to core` means (see
+-- docs/todo/emit-bare-particle-name.md). The assertions mirror
+-- emit_timestamp.code, so the two spellings are proven identical rather
+-- than merely both accepted.
+{
+    emit Timestamp to core get t
+    assert t._class = "TimestampResult"
+    assert t.value ≥ 1700000000
+}
