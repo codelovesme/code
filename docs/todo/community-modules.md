@@ -147,11 +147,13 @@ Batch 1 (proves the pipeline):
   counterparts, `Group` / `GroupEnd` → `console.group`. No `Read`: there
   is no stdin in a browser, and the module doesn't pretend otherwise.
   Overlapping particles share names and result shapes with `terminal`'s.
-- **math** — starts from `tests/native_modules/test_math.c`, which is
-  already a complete working module (`Double`, `Shout`, `Sum`, `Echo`).
-  Split proposal: `math` keeps `Double`/`Sum`; `Shout`/`Echo` move to
-  **strings** (done — `test_math` stays a pure test double with all four,
-  so the split costs it nothing).
+- **math** — shipped 2026-08-24: `Double`, `Sum`. Written in Rust on
+  `code-native`, inheriting the numeric half of `test_math` under the split
+  proposal (`Shout`/`Echo` went to **strings**; `test_math` stays a pure
+  test double with all four, so the split cost it nothing). Design
+  decisions live in the module's header comment (plain `f64` end to end —
+  no rounding/formatting policy invented; `Sum` over an empty array is 0;
+  non-number operands refused rather than coerced).
 - **strings** — shipped 2026-08-23: `Shout`, `Echo`, `Split`, `Join`,
   `Trim`, `Upper`, `Lower`. Written in Rust on `code-native` — the first
   first-party module to take the Rust path. Rationale: `terminal` stays C

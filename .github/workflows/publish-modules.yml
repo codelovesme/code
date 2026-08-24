@@ -39,10 +39,10 @@ jobs:
             version="dev-${GITHUB_SHA}"
           fi
           # Allowlist: only modules whose source lives under crates/modules/.
-          # Add a line here when math/net land.
+          # Add a line here when net lands.
           case "$module" in
-            terminal|strings) ;;
-            *) echo "::error::unknown module '$module' (allowed: terminal, strings)"; exit 1 ;;
+            terminal|strings|math) ;;
+            *) echo "::error::unknown module '$module' (allowed: terminal, strings, math)"; exit 1 ;;
           esac
           echo "module=$module" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -50,10 +50,10 @@ jobs:
   # Every build job compiles the same way — one self-contained crate, no
   # external dependencies — so the only differences are the runner, the
   # compiler invocation, and the artifact extension (.so vs .dylib).
-  # `terminal` is plain C (`cc`); `strings` is Rust on `code-native`
-  # (`cargo build` inside its standalone workspace — see that crate's
-  # Cargo.toml for why it opts out of the main one). Asset names follow the
-  # distribution doc: <module>-<platform><ext>.
+  # `terminal` is plain C (`cc`); `strings` and `math` are Rust on
+  # `code-native` (`cargo build` inside their standalone workspaces — see
+  # those crates' Cargo.toml for why they opt out of the main one). Asset
+  # names follow the distribution doc: <module>-<platform><ext>.
   build-linux-x86_64:
     name: Build linux-x86_64
     needs: resolve
@@ -66,7 +66,7 @@ jobs:
           m="${{ needs.resolve.outputs.module }}"
           mkdir -p dist
           case "$m" in
-            strings)
+            strings|math)
               (cd "crates/modules/$m" && cargo build --release)
               mv "crates/modules/$m/target/release/lib$m.so" "dist/${m}-linux-x86_64.so"
               ;;
@@ -125,6 +125,9 @@ jobs:
             strings)
               printf 'emit Echo { "value": 13 } to mod get r\nassert r.value = 13\n' >> dogfood/demo.code
               ;;
+            math)
+              printf 'emit Double { "value": 21 } to mod get r\nassert r.value = 42\n' >> dogfood/demo.code
+              ;;
           esac
           mv "dogfood/${m}-linux-x86_64.so" "dogfood/${m}.so"
           ./target/release/code run dogfood/demo.code
@@ -158,6 +161,7 @@ jobs:
           case "$m" in
             terminal) handlers='["Print"]' ;;
             strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower"]' ;;
+            math) handlers='["Double", "Sum"]' ;;
           esac
           cat > "dist/${m}.json" <<EOF
           {

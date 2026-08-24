@@ -1,0 +1,5 @@
+-- `Sum` refuses an operand that isn't an array. There is no sensible
+-- reading of "sum a scalar" that isn't just the scalar itself, and that
+-- belongs to the caller, not to the module.
+link "native_modules/math.so" as m
+emit Sum { "value": 5 } to m get n

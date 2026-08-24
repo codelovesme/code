@@ -1,0 +1,20 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree. Same convention the
+# `old/` tree uses.
+[workspace]
+
+[package]
+name = "math"
+version = "0.1.0"
+edition = "2021"
+description = "The `math` native module for the Code programming language — Double, Sum. Written in Rust on code-native; inherits the numeric half of test_math under the split proposal."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }

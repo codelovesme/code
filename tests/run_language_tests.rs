@@ -86,17 +86,17 @@ enum Expect {
 }
 
 /// Compiles each dynamic native module into the `.so` the
-/// `native_link_*`/`fail_native_link_*`, `terminal_*`, and `strings_*`
-/// fixtures `link` — checked into git as source, not as a binary (see
-/// `.gitignore`), so it has to be built fresh here before any fixture that
-/// needs it can run either mode. Sources live next to their consumers:
+/// `native_link_*`/`fail_native_link_*`, `terminal_*`, `strings_*`, and
+/// `math_*` fixtures `link` — checked into git as source, not as a binary
+/// (see `.gitignore`), so it has to be built fresh here before any fixture
+/// that needs it can run either mode. Sources live next to their consumers:
 /// `test_math` is a pure test double (stays in `tests/native_modules/`),
-/// while `terminal` and `strings` are real first-party modules that happen
-/// to be exercised by fixtures (their canonical homes are under
+/// while `terminal`, `strings`, and `math` are real first-party modules
+/// that happen to be exercised by fixtures (their canonical homes are under
 /// `crates/modules/`, where the release CI builds them from). The C modules
-/// go straight through `cc`; `strings` is the first Rust-on-`code-native`
-/// module, so it gets a `cargo build` instead — same output location, same
-/// stem, the fixtures cannot tell the difference.
+/// go straight through `cc`; `strings` and `math` are Rust-on-`code-native`
+/// modules, so they get a `cargo build` instead — same output location,
+/// same stem, the fixtures cannot tell the difference.
 fn build_native_dynamic_test_modules(tests_dir: &Path) {
     let modules_dir = tests_dir.join("native_modules");
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -122,22 +122,29 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         assert!(status.success(), "cc failed to build {}", src.display());
     }
 
-    // The Rust module: `cargo build` inside its standalone workspace, then
+    // The Rust modules: `cargo build` inside each standalone workspace, then
     // move the cdylib onto the same `native_modules/<stem>.so` convention.
-    let strings_crate = manifest_dir.join("crates/modules/strings");
-    let cargo_status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&strings_crate)
-        .status()
-        .unwrap_or_else(|e| panic!("failed to run cargo for strings: {e}"));
-    assert!(
-        cargo_status.success(),
-        "cargo failed to build crates/modules/strings"
-    );
-    let built = strings_crate.join("target/release/libstrings.so");
-    let dest = modules_dir.join("strings.so");
-    fs::rename(&built, &dest)
-        .unwrap_or_else(|e| panic!("cannot move {} to {}: {e}", built.display(), dest.display()));
+    for stem in ["strings", "math"] {
+        let crate_dir = manifest_dir.join("crates/modules").join(stem);
+        let cargo_status = Command::new("cargo")
+            .args(["build", "--release"])
+            .current_dir(&crate_dir)
+            .status()
+            .unwrap_or_else(|e| panic!("failed to run cargo for {stem}: {e}"));
+        assert!(
+            cargo_status.success(),
+            "cargo failed to build crates/modules/{stem}"
+        );
+        let built = crate_dir.join(format!("target/release/lib{stem}.so"));
+        let dest = modules_dir.join(format!("{stem}.so"));
+        fs::rename(&built, &dest).unwrap_or_else(|e| {
+            panic!(
+                "cannot move {} to {}: {e}",
+                built.display(),
+                dest.display()
+            )
+        });
+    }
 }
 
 /// Compiles `test_math_static.c` and `test_math_static_ambiguous.c` into the

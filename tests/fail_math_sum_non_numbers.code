@@ -1,0 +1,5 @@
+-- `Sum` refuses an element that isn't a Number. Coercing strings into
+-- numbers here would invent a parsing policy the language hasn't decided —
+-- the error names the mistake instead.
+link "native_modules/math.so" as m
+emit Sum { "value": [1, "two", 3] } to m get n
