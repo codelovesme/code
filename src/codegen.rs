@@ -447,6 +447,11 @@ pub fn compile_to_object(
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
+    let fn_poll_inbound = module.add_function(
+        "code_poll_inbound",
+        i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_runtime_error = module.add_function(
         "code_runtime_error",
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
@@ -591,9 +596,11 @@ pub fn compile_to_object(
         native_links: HashMap::new(),
         static_native_fns,
         fn_check_particle,
+        fn_poll_inbound,
         fn_runtime_error,
         handler_fns: HashMap::new(),
         dispatch_fn: None,
+        drain_fn: None,
         handler_frame: None,
         global_count: 0,
     };
@@ -604,9 +611,14 @@ pub fn compile_to_object(
     // recursion and mutual recursion compile at all.
     gen.declare_handlers(&program.statements)?;
 
+    gen.declare_drain();
     for stmt in &program.statements {
         gen.gen_stmt(stmt)?;
+        gen.gen_drain_call()?;
     }
+    // Before `emit_cleanup`, which takes `native_links` — the drain body is
+    // generated from exactly those handles.
+    gen.gen_drain_body()?;
     gen.emit_cleanup(fn_check_leaks)?;
     // Last, once every handler function exists to be dispatched to.
     gen.gen_dispatch_body()?;
@@ -756,7 +768,12 @@ struct Gen<'a, 'm> {
     /// `remove`) the one time each is `link`ed.
     static_native_fns: HashMap<String, StaticModuleFns<'a>>,
     fn_check_particle: FunctionValue<'a>,
+    fn_poll_inbound: FunctionValue<'a>,
     fn_runtime_error: FunctionValue<'a>,
+    /// The generated `_code_drain_inbound`, called after every top-level
+    /// statement. Declared up front (the calls are emitted as statements are
+    /// generated) and defined last, once every module global exists.
+    drain_fn: Option<FunctionValue<'a>>,
     /// Every `ClassName => { ... }` in the program, by class name, declared
     /// up front and defined as its statement is reached.
     handler_fns: HashMap<String, FunctionValue<'a>>,
@@ -847,6 +864,20 @@ impl<'a, 'm> Gen<'a, 'm> {
         );
         self.dispatch_fn = Some(dispatch);
         Ok(())
+    }
+
+    /// Declares `_code_drain_inbound`. Separate from `declare_handlers`
+    /// because a program can link a module that speaks first without
+    /// defining any handler of its own — that program is still wrong (the
+    /// pushed particle has nowhere to go), but it should fail with *that*
+    /// error at runtime rather than a missing symbol at link time.
+    fn declare_drain(&mut self) {
+        let void_ty = self.context.void_type();
+        self.drain_fn = Some(self.module.add_function(
+            "_code_drain_inbound",
+            void_ty.fn_type(&[], false),
+            None,
+        ));
     }
 
     fn collect_handler_decls(&mut self, stmts: &[Stmt]) -> Result<(), String> {
@@ -1004,6 +1035,197 @@ impl<'a, 'm> Gen<'a, 'm> {
         let function = self.current_function();
         let dead = self.context.append_basic_block(function, "after_return");
         self.builder.position_at_end(dead);
+        Ok(())
+    }
+
+    /// A call to `_code_drain_inbound`, emitted after every top-level
+    /// statement so the compiled program hands off queued particles at
+    /// exactly the points the interpreter does (see
+    /// `interpreter::drain_inbound`).
+    fn gen_drain_call(&mut self) -> Result<(), String> {
+        let Some(drain) = self.drain_fn else {
+            return Ok(());
+        };
+        // Nothing to drain from, so don't pay a call per statement.
+        if self.native_links.is_empty() {
+            return Ok(());
+        }
+        self.builder
+            .build_call(drain, &[], "")
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Defines `_code_drain_inbound`: poll every linked module in turn,
+    /// dispatching each queued particle to the program's own handlers, and
+    /// keep going until a full pass finds nothing — so a handler that causes
+    /// further pushes has them picked up before the function returns.
+    ///
+    /// Generated last, once every module's handle global exists. The globals
+    /// are what make this possible at all: a handle used to be an SSA value
+    /// in `main`, which a separate function could not see.
+    fn gen_drain_body(&mut self) -> Result<(), String> {
+        let Some(drain) = self.drain_fn else {
+            return Ok(());
+        };
+        let handles: Vec<PointerValue<'a>> = self
+            .native_links
+            .values()
+            .filter_map(|link| match link {
+                NativeLink::Dynamic(slot) => Some(*slot),
+                // A `.a` module is linked straight in and has no handle to
+                // queue against — inbound is a `.so` story for now.
+                NativeLink::Static(_) => None,
+            })
+            .collect();
+
+        let entry = self.context.append_basic_block(drain, "entry");
+        let saved_block = self.builder.get_insert_block();
+        self.builder.position_at_end(entry);
+
+        if handles.is_empty() {
+            self.builder.build_return(None).map_err(|e| e.to_string())?;
+            if let Some(block) = saved_block {
+                self.builder.position_at_end(block);
+            }
+            return Ok(());
+        }
+
+        // Two slots, allocated here rather than through `alloc_slot`: they
+        // belong to this function, and it is neither `main` nor a handler
+        // frame.
+        let alloca_builder = self.context.create_builder();
+        alloca_builder.position_at_end(entry);
+        let bytes = self.i64_ty.const_int(VALUE_SIZE, false);
+        let particle = alloca_builder
+            .build_array_alloca(self.i8_ty, bytes, "inbound")
+            .map_err(|e| e.to_string())?;
+        let result = alloca_builder
+            .build_array_alloca(self.i8_ty, bytes, "inbound_result")
+            .map_err(|e| e.to_string())?;
+        for slot in [particle, result] {
+            slot.as_instruction()
+                .expect("alloca is always an instruction")
+                .set_alignment(VALUE_ALIGN)
+                .map_err(|e| e.to_string())?;
+            alloca_builder
+                .build_memset(slot, VALUE_ALIGN, self.i8_ty.const_zero(), bytes)
+                .map_err(|e| e.to_string())?;
+        }
+        let progress = alloca_builder
+            .build_alloca(self.i32_ty, "drain_progress")
+            .map_err(|e| e.to_string())?;
+
+        let pass = self.context.append_basic_block(drain, "pass");
+        let done = self.context.append_basic_block(drain, "drain_done");
+        alloca_builder
+            .build_unconditional_branch(pass)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(pass);
+        self.builder
+            .build_store(progress, self.i32_ty.const_zero())
+            .map_err(|e| e.to_string())?;
+
+        for handle_slot in handles {
+            let poll = self.context.append_basic_block(drain, "poll");
+            let handle_body = self.context.append_basic_block(drain, "handle");
+            let next = self.context.append_basic_block(drain, "poll_next");
+            self.builder
+                .build_unconditional_branch(poll)
+                .map_err(|e| e.to_string())?;
+
+            self.builder.position_at_end(poll);
+            let handle = self
+                .builder
+                .build_load(self.i8_ptr_ty, handle_slot, "handle")
+                .map_err(|e| e.to_string())?
+                .into_pointer_value();
+            let got = self
+                .builder
+                .build_call(
+                    self.fn_poll_inbound,
+                    &[handle.into(), particle.into()],
+                    "got",
+                )
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .left()
+                .expect("code_poll_inbound returns i32")
+                .into_int_value();
+            let cond = self
+                .builder
+                .build_int_compare(
+                    IntPredicate::NE,
+                    got,
+                    self.i32_ty.const_zero(),
+                    "haspending",
+                )
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_conditional_branch(cond, handle_body, next)
+                .map_err(|e| e.to_string())?;
+
+            self.builder.position_at_end(handle_body);
+            self.builder
+                .build_store(progress, self.i32_ty.const_int(1, false))
+                .map_err(|e| e.to_string())?;
+            match self.dispatch_fn {
+                Some(dispatch) => {
+                    self.builder
+                        .build_call(dispatch, &[result.into(), particle.into()], "")
+                        .map_err(|e| e.to_string())?;
+                }
+                // No handler exists anywhere in the program, so nothing could
+                // ever match. Same message the dispatch chain's fallthrough
+                // gives, since it is the same mistake.
+                None => {
+                    let msg = self
+                        .global_str("no handler defined for this particle's class", "nohandler")?;
+                    self.builder
+                        .build_call(self.fn_runtime_error, &[msg.into()], "")
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+            // Straight back to the same module: one poll per pass would
+            // reorder a burst across modules.
+            self.builder
+                .build_unconditional_branch(poll)
+                .map_err(|e| e.to_string())?;
+
+            self.builder.position_at_end(next);
+        }
+
+        let made_progress = self
+            .builder
+            .build_load(self.i32_ty, progress, "made_progress")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let again = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                made_progress,
+                self.i32_ty.const_zero(),
+                "again",
+            )
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(again, pass, done)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(done);
+        self.builder
+            .build_call(self.fn_release, &[particle.into()], "")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_call(self.fn_release, &[result.into()], "")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_return(None).map_err(|e| e.to_string())?;
+
+        if let Some(block) = saved_block {
+            self.builder.position_at_end(block);
+        }
         Ok(())
     }
 

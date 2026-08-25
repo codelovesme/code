@@ -500,6 +500,29 @@ very same library the interpreter does. A `.a` static archive is
 `code build` only, since there is no `dlopen` for an archive; those fixtures
 are named `buildonly_*`.
 
+A module can also **speak first**. If it exports `code_module_set_inbound`,
+the host hands it a queue at link time and it may push particles the program
+never asked for — which is what an event loop is made of. Those go to the
+program's own handlers, not back into the module:
+
+```
+link "native_modules/events.so" as ev
+
+Tick { value } => {
+    ...
+}
+
+emit Start { "value": 3 } to ev get started   -- module queues three Ticks
+-- by here they have all been handled
+```
+
+Queued particles are dispatched after each top-level statement, in the order
+pushed, and a class the program has no handler for is an error. The queue is
+bounded at 256 per module, dropping the oldest — a module that outruns the
+program costs bounded memory. Continuous draining, which an interactive
+daemon would need, is not built yet (see
+[`docs/todo/inbound-emissions-from-native-modules.md`](docs/todo/inbound-emissions-from-native-modules.md)).
+
 First-party modules today: `terminal` (print to stdout), `math`, `strings`.
 `code install <name>` fetches one into `./.code/modules/`, pinned by sha256
 in `./.code/lock.json`; `--global` puts it in `~/.code/modules/` instead. A

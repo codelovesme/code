@@ -25,6 +25,26 @@
  *      object. This is optional (not a required symbol) so that a Phase 1
  *      module — handlers only — keeps working unchanged, and so the ABI
  *      version does not have to bump for it.
+ *   6. *Optionally* export `void code_module_set_inbound(void *queue,
+ *      CodeEmitFn emit)`. The host calls it once at link time to hand the
+ *      module a queue and the function that pushes onto it; the module
+ *      keeps both and may call `emit(queue, &particle)` to speak *first*,
+ *      rather than only answering a dispatch. Optional for the same reason
+ *      as `code_module_vars`: a module that never initiates simply doesn't
+ *      export it, and the ABI version doesn't move.
+ *
+ * Why `emit` is a function *pointer* the host supplies, rather than a
+ * `code_emit_inbound` a module could call directly: a `.so` carries its own
+ * copy of this runtime (see below), so a direct call would push onto the
+ * module's own queue, which the host never reads. The pointer is the host's.
+ * A queued particle is deep-copied into the host's heap by that function,
+ * the same boundary rule a dispatch result follows, so the module may
+ * release its own copy the moment `emit` returns.
+ *
+ * Queued particles are dispatched to the *program's* handlers — a `.code`
+ * `ClassName { ... } => { ... }` — not back into the module. That is what
+ * makes an event loop expressible: the module supplies events, the program
+ * decides what they mean.
  *
  * Why a module needs its own `code_release`, not the host's: values never
  * cross this boundary by shared ownership. Whatever a module allocates for
@@ -62,6 +82,7 @@
 
 #define CODE_ABI_VERSION 1
 
+
 typedef enum { CODE_NUMBER, CODE_STR, CODE_BOOL, CODE_NULL, CODE_ARRAY, CODE_OBJECT } CodeTag;
 
 typedef struct CodeValue {
@@ -79,6 +100,15 @@ typedef struct CodeValue {
 } CodeValue;
 
 #define CODE_VALUE_SLOT_SIZE 80
+
+/* What `code_module_set_inbound` hands a module: the host's own pusher.
+ * `queue` is opaque to the module — it only ever passes it straight back. */
+typedef void (*CodeEmitFn)(void *queue, const CodeValue *value);
+
+/* How many pushed particles a module may have outstanding before the oldest
+ * starts being dropped. Bounded on purpose: a module that pushes faster than
+ * the program drains must cost bounded memory, not unbounded. */
+#define CODE_INBOUND_CAPACITY 256
 
 /* A module's exported variables (constants) — what `code_module_vars`
  * returns. `names` and `values` are parallel arrays of `count` entries:

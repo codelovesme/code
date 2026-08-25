@@ -102,6 +102,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let sources: &[(&str, &Path)] = &[
         ("test_math", &modules_dir.join("test_math.c")),
+        ("test_events", &modules_dir.join("test_events.c")),
         (
             "terminal",
             &manifest_dir.join("crates/modules/terminal/terminal.c"),

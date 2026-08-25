@@ -1,0 +1,13 @@
+-- A module that queues nothing leaves the program untouched: draining an
+-- empty queue is not an error and costs the program nothing.
+link "native_modules/test_events.so" as ev
+
+let seen = []
+Tick { value } => {
+    seen += value
+    return Ack {}
+}
+
+emit Start { "value": 0 } to ev get started
+assert started.value = 0
+assert seen = []

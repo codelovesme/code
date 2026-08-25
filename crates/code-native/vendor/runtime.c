@@ -534,6 +534,13 @@ typedef struct {
      * object. Unlike the two required symbols above, a missing one is not an
      * error. */
     const CodeVarList *(*vars)(void);
+    /* Particles this module has pushed and the program hasn't handled yet —
+     * see `code_emit_inbound`. A bounded ring: a module that runs away must
+     * not grow the host's memory without bound, so the oldest entry is
+     * dropped rather than the allocation growing. */
+    CodeValue inbound[CODE_INBOUND_CAPACITY];
+    int inbound_head;
+    int inbound_count;
 } NativeHandle;
 
 /* Shared by both native-module paths (`.so` here, `.a` in codegen's direct
@@ -550,6 +557,10 @@ void code_static_module_check(uint32_t version, const char *what) {
         code_runtime_error(msg);
     }
 }
+
+/* Defined below, next to `code_poll_inbound` — forward-declared so
+ * `code_native_open` can hand its address to a module. */
+void code_emit_inbound(void *queue, const CodeValue *value);
 
 void *code_native_open(const char *path) {
 #ifdef CODE_WASM
@@ -586,6 +597,18 @@ void *code_native_open(const char *path) {
     }
     /* Optional — a module without it simply has no exported variables. */
     nh->vars = (const CodeVarList *(*)(void))dlsym(handle, "code_module_vars");
+
+    /* Also optional: a module that never speaks first doesn't export it.
+     * The pusher handed across is *this* runtime's, not the module's own
+     * copy — see code_abi.h for why that distinction matters. */
+    memset(nh->inbound, 0, sizeof nh->inbound);
+    nh->inbound_head = 0;
+    nh->inbound_count = 0;
+    void (*set_inbound)(void *, CodeEmitFn) =
+        (void (*)(void *, CodeEmitFn))dlsym(handle, "code_module_set_inbound");
+    if (set_inbound) {
+        set_inbound(nh, code_emit_inbound);
+    }
     return nh;
 #endif
 }
@@ -658,6 +681,63 @@ static void code_native_copy_in(CodeValue *out, const CodeValue *from) {
     }
 }
 
+/* ---- Inbound: a module speaking first --------------------------------------
+ *
+ * The other direction across the boundary. `code_module_dispatch` answers a
+ * question; this lets a module raise one — a `terminal` pushing `Key`
+ * particles as they arrive, say — which is what an event loop is made of.
+ *
+ * Deep-copied on the way in, exactly like a dispatch result: the value
+ * belongs to the module's allocator until this returns, so nothing may be
+ * retained. See `code_native_copy_in`.
+ *
+ * Deliberately lock-free, because this phase is synchronous: a module pushes
+ * from inside a dispatch call it is already on the program's thread for. A
+ * module pushing from a thread of its own needs a lock here and a keep-alive
+ * loop in the generated `main` — the next phase, see
+ * docs/todo/inbound-emissions-from-native-modules.md. */
+
+void code_emit_inbound(void *queue, const CodeValue *value) {
+    if (!queue || !value) {
+        return;
+    }
+    NativeHandle *nh = (NativeHandle *)queue;
+    int slot;
+    if (nh->inbound_count == CODE_INBOUND_CAPACITY) {
+        /* Full: drop the oldest so a runaway module costs bounded memory
+         * rather than unbounded. */
+        slot = nh->inbound_head;
+        code_release(&nh->inbound[slot]);
+        memset(&nh->inbound[slot], 0, sizeof(CodeValue));
+        nh->inbound_head = (nh->inbound_head + 1) % CODE_INBOUND_CAPACITY;
+    } else {
+        slot = (nh->inbound_head + nh->inbound_count) % CODE_INBOUND_CAPACITY;
+        nh->inbound_count++;
+    }
+    code_native_copy_in(&nh->inbound[slot], value);
+}
+
+/* Pops the oldest queued particle into `out`, or returns 0 when the queue is
+ * empty (including for a module that never pushes at all, and for a handle
+ * that hasn't been linked yet — the generated drain loop runs over every
+ * module global, some of which may still be null). */
+int code_poll_inbound(void *queue, CodeValue *out) {
+    if (!queue) {
+        return 0;
+    }
+    NativeHandle *nh = (NativeHandle *)queue;
+    if (nh->inbound_count == 0) {
+        return 0;
+    }
+    int slot = nh->inbound_head;
+    code_copy(out, &nh->inbound[slot]);
+    code_release(&nh->inbound[slot]);
+    memset(&nh->inbound[slot], 0, sizeof(CodeValue));
+    nh->inbound_head = (nh->inbound_head + 1) % CODE_INBOUND_CAPACITY;
+    nh->inbound_count--;
+    return 1;
+}
+
 /* Frees the small `NativeHandle` `code_native_open` allocated — called once
  * per linked module as part of the program's end-of-run cleanup (see
  * codegen.rs's `emit_cleanup`), the same "owns nothing when it exits" rule
@@ -668,6 +748,14 @@ static void code_native_copy_in(CodeValue *out, const CodeValue *from) {
  * live on a stack frame mid-unwind) that aren't worth taking on for no
  * actual benefit here. */
 void code_native_close(void *handle) {
+    if (handle) {
+        /* Anything still queued at exit is this runtime's to free — the
+         * "owns nothing when it exits" rule `code_check_leaks` enforces. */
+        NativeHandle *nh = (NativeHandle *)handle;
+        for (int i = 0; i < nh->inbound_count; i++) {
+            code_release(&nh->inbound[(nh->inbound_head + i) % CODE_INBOUND_CAPACITY]);
+        }
+    }
     free(handle);
 }
 

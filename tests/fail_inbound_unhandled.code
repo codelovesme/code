@@ -1,0 +1,7 @@
+-- A queued particle whose class the program defines no handler for. Loud
+-- rather than silently dropped — the same answer `emit ... to this` gives
+-- for a class nothing handles.
+link "native_modules/test_events.so" as ev
+
+emit Start { "value": 1 } to ev get started
+assert started.value = 1

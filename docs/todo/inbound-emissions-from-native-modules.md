@@ -1,5 +1,13 @@
 # Native modules cannot push particles back into the program
 
+> **Phases A and B shipped 2026-08-25.** A module may export
+> `code_module_set_inbound` and push particles; both output modes drain
+> after every top-level statement and dispatch each one to the *program's*
+> own handlers. What remains open is the **keep-alive loop** — continuous
+> draining, which is what an interactive daemon needs and what makes a
+> module able to push from a thread of its own. See "What is still open"
+> at the end.
+
 Dispatch is strictly request/response: `emit … to <module>` crosses into
 native code and waits for one answer. The old implementation added the other
 direction — a module could *initiate*, queuing particles that the program
@@ -74,12 +82,54 @@ coverage joins `tests/build_targets.rs` for the wasm target if inbound
 ever applies there (it shouldn't — wasm modules are sandboxed libraries,
 note that explicitly when it comes up).
 
-## Open question
+## What was built, and where it differs from the plan above
 
-Whether draining happens *only* between top-level statements (deterministic,
-testable) or continuously (needed for interactive daemons). Old did both —
-between-statement drain plus keep-alive spin. Recommend keeping exactly
-that split; it costs nothing extra once the queue exists.
+**Routing changed.** This document predates user-defined handlers, so it
+routed a queued particle back to `<module_alias>.<its _class>` — into the
+module that pushed it, the only place handling could live at the time. Now
+that a program can write `Tick { value } => { … }`, queued particles go to
+the *program's* handlers instead (`EmitTarget::This`). That is what an event
+loop actually wants: the module supplies events, the program decides what
+they mean. A class the program has no handler for is a runtime error, the
+same answer `emit … to this` gives.
+
+**The queue is handed over, not called into.** `code_module_set_inbound(void
+*queue, CodeEmitFn emit)` is an optional module export; the host calls it at
+link time with an opaque queue and *its own* pusher. The function pointer is
+load-bearing: a `.so` carries its own copy of `runtime.c`, so a module
+calling `code_emit_inbound` directly would push onto its own queue, which the
+host never reads.
+
+**Bounded, dropping oldest**, at `CODE_INBOUND_CAPACITY` (256) — mirrored as
+a Rust constant in `native.rs` under the same lockstep rule as
+`VALUE_SIZE`/`CODE_VALUE_SLOT_SIZE`, because both runtimes must lose exactly
+the same particles under overload or a fixture would assert differently per
+mode. `tests/inbound_overflow_drops_oldest.code` pins that down; catching it
+is what turned the interpreter's originally-unbounded `VecDeque` into a
+capped one.
+
+**Draining is between top-level statements only**, in both modes — the
+deterministic, testable half of the split this section originally proposed.
+The compiled side gets one generated `_code_drain_inbound` called after each
+top-level statement, which polls every module and loops until a full pass
+finds nothing, so a handler that causes further pushes is still serviced
+before the function returns.
+
+## What is still open
+
+- **The keep-alive loop.** Everything above is synchronous: a module pushes
+  from inside a `code_module_dispatch` call it is already on the program's
+  thread for. A module with a thread of its own (a real `terminal` reading
+  keys, a server accepting connections) needs a lock around the queue —
+  `runtime.c`'s ring is deliberately lock-free today, and `native.rs` uses
+  `RefCell`, neither of which is safe to push to from another thread — plus
+  a loop that keeps draining after the last statement. Decide the shape of
+  the "this program is a daemon" flag when the first real consumer lands;
+  the plumbing underneath is already in place.
+- **`.a` static modules** have no queue: inbound is a `.so` story so far.
+  `gen_drain_body` skips them explicitly.
+- **wasm** needs nothing — `reject_wasm_native_links` refuses a native link
+  at compile time, so no queue can exist.
 
 ## Related: the old `base` target
 

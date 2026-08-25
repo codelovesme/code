@@ -11,6 +11,8 @@
 //! module in the first place (`loader::NoModules` refuses every `link`), so
 //! there is nothing for this file to do there.
 
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::rc::Rc;
 
@@ -19,6 +21,12 @@ use libloading::Library;
 use crate::value::Value;
 
 const CODE_ABI_VERSION: u32 = 1;
+
+/// Must equal `code_abi.h`'s `CODE_INBOUND_CAPACITY`. The two runtimes have
+/// to drop the *same* particles under overload or a fixture would assert
+/// differently per output mode — the same lockstep rule `VALUE_SIZE` and
+/// `CODE_VALUE_SLOT_SIZE` already live under.
+const CODE_INBOUND_CAPACITY: usize = 256;
 const CODE_VALUE_SLOT_SIZE: usize = 80; // must match code_abi.h / codegen.rs
 
 const TAG_NUMBER: i32 = 0;
@@ -220,6 +228,10 @@ unsafe fn ffi_to_value(v: *const CodeValueFfi) -> Value {
 pub struct NativeModule {
     lib: Library,
     path: String,
+    /// Where this module's pushed particles land until the program drains
+    /// them. Leaked at `open`, so the raw pointer the module keeps stays
+    /// valid for as long as the module is loaded.
+    inbound: &'static InboundQueue,
 }
 
 impl std::fmt::Debug for NativeModule {
@@ -234,6 +246,57 @@ type DispatchFn = unsafe extern "C" fn(*mut CodeValueFfi, *const CodeValueFfi);
 type ReleaseFn = unsafe extern "C" fn(*mut CodeValueFfi);
 type VersionFn = unsafe extern "C" fn() -> u32;
 type VarsFn = unsafe extern "C" fn() -> *const CodeVarListFfi;
+type SetInboundFn = unsafe extern "C" fn(*mut c_void, EmitFn);
+/// The host function a module calls to speak first — see `code_abi.h`'s
+/// `CodeEmitFn`. Handed across as a pointer because a `.so` has its own copy
+/// of the runtime, so a direct call would reach the wrong queue.
+type EmitFn = unsafe extern "C" fn(*mut c_void, *const CodeValueFfi);
+
+/// What `queue` actually points at on the host side. Boxed and leaked for the
+/// module's lifetime: the module keeps the raw pointer, and a `.so` is never
+/// unloaded before the program ends.
+///
+/// Not a `Mutex`: this phase is deliberately synchronous — a module pushes
+/// only from inside a `code_module_dispatch` call it is already on the
+/// program's thread for. A module that wants to push from a thread of its
+/// own needs a lock here and a keep-alive loop in the interpreter, which is
+/// the next phase (see docs/todo/inbound-emissions-from-native-modules.md).
+#[derive(Default)]
+pub struct InboundQueue {
+    pending: RefCell<VecDeque<Value>>,
+}
+
+impl InboundQueue {
+    /// Takes everything queued so far, leaving the queue empty. Draining
+    /// rather than peeking so a handler that causes more pushes has them
+    /// picked up by the next round rather than this one.
+    pub fn take(&self) -> Vec<Value> {
+        self.pending.borrow_mut().drain(..).collect()
+    }
+
+    /// Bounded, dropping the *oldest* past capacity — byte-for-byte the
+    /// policy `runtime.c`'s ring follows, so both output modes lose exactly
+    /// the same particles when a module outruns the program.
+    fn push(&self, value: Value) {
+        let mut pending = self.pending.borrow_mut();
+        if pending.len() == CODE_INBOUND_CAPACITY {
+            pending.pop_front();
+        }
+        pending.push_back(value);
+    }
+}
+
+/// The `EmitFn` every module is handed. Deep-copies out of the module's heap
+/// immediately — `ffi_to_value` does that — so the module is free to release
+/// its own copy the moment this returns.
+unsafe extern "C" fn push_inbound(queue: *mut c_void, value: *const CodeValueFfi) {
+    if queue.is_null() || value.is_null() {
+        return;
+    }
+    let queue = unsafe { &*(queue as *const InboundQueue) };
+    let value = unsafe { ffi_to_value(&*value) };
+    queue.push(value);
+}
 
 impl NativeModule {
     pub fn open(path: &str) -> Result<NativeModule, String> {
@@ -260,10 +323,28 @@ impl NativeModule {
                 .map_err(|_| format!("native module '{path}' missing 'code_release'"))?;
         }
 
+        // Optional, like `code_module_vars`: a module that never speaks
+        // first simply doesn't export it. Leaked on purpose — the module
+        // holds the raw pointer for as long as it is loaded, which is until
+        // the program ends.
+        let inbound: &'static InboundQueue = Box::leak(Box::new(InboundQueue::default()));
+        unsafe {
+            if let Ok(set) = lib.get::<SetInboundFn>(b"code_module_set_inbound") {
+                set(inbound as *const InboundQueue as *mut c_void, push_inbound);
+            }
+        }
+
         Ok(NativeModule {
             lib,
             path: path.to_string(),
+            inbound,
         })
+    }
+
+    /// The queue itself, usable after this module has been moved into a
+    /// dispatch closure — `'static` because it was leaked at `open`.
+    pub fn inbound_handle(&self) -> &'static InboundQueue {
+        self.inbound
     }
 
     /// Dispatch `particle` and return the module's (deep-copied, host-owned)

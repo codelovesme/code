@@ -52,6 +52,12 @@ pub struct Environment {
     /// starts, so a handler can emit to one defined further down the file,
     /// which is what makes recursion and mutual recursion expressible.
     handlers: HashMap<String, Rc<HandlerBody>>,
+    /// One drain per linked module that can speak first — each returns
+    /// whatever that module has queued since it was last called. A closure
+    /// rather than the queue itself for the same reason `ModuleDispatch` is
+    /// one: it keeps this field free of any `native-modules`-only type, so
+    /// `crates/code-wasm` compiles with the feature off.
+    inbound: Vec<Rc<dyn Fn() -> Vec<Value>>>,
 }
 
 /// A registered handler: the fields to seed its scope with, and the body to
@@ -85,6 +91,7 @@ impl Default for Environment {
             modules: HashMap::new(),
             available_modules: HashMap::new(),
             handlers: HashMap::new(),
+            inbound: Vec::new(),
         }
     }
 }
@@ -113,6 +120,13 @@ impl Environment {
     /// namespace from any alias a script chooses: exactly like a `.so`'s
     /// file path and its `as` alias can differ, `link "mymath" as m"` is
     /// free to rename whatever the host called `"mymath"`.
+    /// Registers a linked module's inbound queue, so `drain_inbound` will
+    /// pick up whatever it pushes. Separate from `link_module` because most
+    /// modules never speak first — `code_module_set_inbound` is optional.
+    pub fn link_inbound(&mut self, drain: Rc<dyn Fn() -> Vec<Value>>) {
+        self.inbound.push(drain);
+    }
+
     pub fn provide_module(&mut self, name: &str, vars: Value, dispatch: ModuleDispatch) {
         self.available_modules
             .insert(name.to_string(), (vars, dispatch));
@@ -145,6 +159,36 @@ impl Environment {
 
     fn pop_scope(&mut self) {
         self.scopes.pop();
+    }
+}
+
+/// Hands every particle a linked module has queued to the program's own
+/// handlers, and keeps going until nothing new appears — a handler that
+/// causes further pushes has them picked up by the next round.
+///
+/// Runs after each *top-level* statement, which is what makes it
+/// deterministic and testable: a fixture can assert on exactly what has been
+/// handled by a given line. A continuously-draining keep-alive loop, which
+/// is what an interactive daemon needs, is the next phase — see
+/// `docs/todo/inbound-emissions-from-native-modules.md`.
+///
+/// Queued particles go to the *program's* handlers (`EmitTarget::This`),
+/// never back to the module that pushed them: the module supplies events,
+/// the program decides what they mean. A class nothing handles is an error,
+/// the same answer `emit ... to this` gives.
+fn drain_inbound(env: &mut Environment) -> Result<(), String> {
+    loop {
+        let drains = env.inbound.clone();
+        let mut queued = Vec::new();
+        for drain in &drains {
+            queued.extend(drain());
+        }
+        if queued.is_empty() {
+            return Ok(());
+        }
+        for particle in queued {
+            dispatch_handler(&particle, env)?;
+        }
     }
 }
 
@@ -202,6 +246,7 @@ pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, 
         // `break` that isn't inside a loop, so nothing can propagate one up
         // to the top level.
         exec(stmt, &mut env)?;
+        drain_inbound(&mut env)?;
     }
     Ok(env)
 }
@@ -322,8 +367,12 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     // A module with no `code_module_vars` export yields an
                     // empty object.
                     let vars = module.vars()?;
+                    // Taken before the module moves into the closure below;
+                    // the queue outlives both (it was leaked at `open`).
+                    let inbound = module.inbound_handle();
                     let dispatch: ModuleDispatch = Rc::new(move |v| module.dispatch(v));
                     env.link_module(alias, Value::Object(Rc::new(vars)), dispatch);
+                    env.link_inbound(Rc::new(move || inbound.take()));
                     Ok(Flow::Normal)
                 }
                 #[cfg(not(feature = "native-modules"))]

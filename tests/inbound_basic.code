@@ -1,0 +1,19 @@
+-- A native module speaking first. `Start` makes `test_events` queue three
+-- `Tick` particles; the program handles them with its own `=>` handler,
+-- which is what user-defined handlers made possible — before them a pushed
+-- particle would have had nowhere in the language to land.
+link "native_modules/test_events.so" as ev
+
+let seen = []
+
+Tick { value } => {
+    seen += value
+    return Ack {}
+}
+
+emit Start { "value": 3 } to ev get started
+assert started.value = 3
+
+-- Queued particles are dispatched after the top-level statement that caused
+-- them, so by here they have all been handled, in the order pushed.
+assert seen = [0, 1, 2]
