@@ -445,6 +445,17 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
     match expr {
         Expr::Number(n) => Ok(Value::Number(*n)),
         Expr::Str(s) => Ok(Value::Str(Rc::from(s.as_str()))),
+        Expr::Interpolated(parts) => {
+            let mut out = String::new();
+            for part in parts {
+                match &eval(part, env)? {
+                    // Bare, not quoted — see `Expr::Interpolated`'s doc.
+                    Value::Str(s) => out.push_str(s),
+                    other => out.push_str(&other.to_string()),
+                }
+            }
+            Ok(Value::Str(Rc::from(out.as_str())))
+        }
         Expr::Bool(b) => Ok(Value::Bool(*b)),
         Expr::Null => Ok(Value::Null),
         // Cheap regardless of size: `Value::clone` on Str/Array/Object is

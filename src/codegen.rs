@@ -235,6 +235,7 @@ fn reject_wasm_native_links(stmts: &[Stmt]) -> Result<(), String> {
 fn verify_expr(expr: &Expr, scopes: &[HashSet<String>]) -> Result<(), String> {
     match expr {
         Expr::Number(_) | Expr::Str(_) | Expr::Bool(_) | Expr::Null => Ok(()),
+        Expr::Interpolated(parts) => parts.iter().try_for_each(|part| verify_expr(part, scopes)),
         Expr::Ident(name) => {
             if is_defined(scopes, name) {
                 Ok(())
@@ -418,6 +419,11 @@ pub fn compile_to_object(
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_to_text = module.add_function(
+        "code_to_text",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_not = module.add_function(
         "code_not",
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
@@ -533,6 +539,7 @@ pub fn compile_to_object(
         fn_div,
         fn_compare,
         fn_neg,
+        fn_to_text,
         fn_not,
         fn_is_particle,
         fn_bool_value,
@@ -639,6 +646,7 @@ struct Gen<'a> {
     fn_div: FunctionValue<'a>,
     fn_compare: FunctionValue<'a>,
     fn_neg: FunctionValue<'a>,
+    fn_to_text: FunctionValue<'a>,
     fn_not: FunctionValue<'a>,
     fn_is_particle: FunctionValue<'a>,
     fn_bool_value: FunctionValue<'a>,
@@ -1445,6 +1453,35 @@ impl<'a> Gen<'a> {
                     .build_call(self.fn_str, &[slot.into(), g.into()], "")
                     .map_err(|e| e.to_string())?;
                 Ok(slot)
+            }
+            // Folded left with `code_add` rather than a bespoke n-ary join:
+            // string `+` already concatenates and already handles the case
+            // where the destination is also an operand, which is exactly what
+            // an accumulator needs. Literal parts skip `code_to_text` — they
+            // are strings already, and routing them through it would heap-copy
+            // every constant segment for nothing.
+            Expr::Interpolated(parts) => {
+                let acc = self.alloc_slot("interp")?;
+                let empty = self.global_str("", "interpempty")?;
+                self.builder
+                    .build_call(self.fn_str, &[acc.into(), empty.into()], "")
+                    .map_err(|e| e.to_string())?;
+                for part in parts {
+                    let ptr = self.gen_expr(part)?;
+                    let text = if matches!(part, Expr::Str(_)) {
+                        ptr
+                    } else {
+                        let slot = self.alloc_slot("interptext")?;
+                        self.builder
+                            .build_call(self.fn_to_text, &[slot.into(), ptr.into()], "")
+                            .map_err(|e| e.to_string())?;
+                        slot
+                    };
+                    self.builder
+                        .build_call(self.fn_add, &[acc.into(), acc.into(), text.into()], "")
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(acc)
             }
             Expr::Bool(b) => {
                 let slot = self.alloc_slot("bool")?;

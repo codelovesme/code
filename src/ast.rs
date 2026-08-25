@@ -280,6 +280,24 @@ pub enum EmitTarget {
 pub enum Expr {
     Number(f64),
     Str(String),
+    /// `"hi $name"` — the parts of an interpolated string in source order,
+    /// alternating `Expr::Str` literals and `Expr::Ident` splices. Parts are
+    /// `Expr`s rather than a bespoke part type so there is exactly one thing
+    /// to evaluate: an interpolated name is an ordinary variable reference,
+    /// and gets `verify_defined`'s undefined check and both backends' name
+    /// lookup for free.
+    ///
+    /// Only built when the string actually contains a `$` — a plain literal
+    /// stays `Str`, so the common case gains no node and no allocation.
+    ///
+    /// Rendering is *not* uniform across kinds, deliberately: a `Str` part
+    /// splices in bare, since quoting it would make `"$s"` read `"hi"`
+    /// instead of `hi`, and that is the whole point of interpolation. Every
+    /// other kind renders as the compact JSON `Value`'s `Display` produces —
+    /// which means a string *nested* inside an interpolated array or object
+    /// does keep its quotes. Interpolation is therefore total: no value is
+    /// uninterpolable.
+    Interpolated(Vec<Expr>),
     Bool(bool),
     Null,
     /// A reference to a previously-bound name.

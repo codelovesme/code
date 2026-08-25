@@ -1,0 +1,3 @@
+-- `$` must start an interpolation. Anything else is a lex error rather
+-- than a silently literal dollar — write `\$` for that.
+let oops = "a $ 1"

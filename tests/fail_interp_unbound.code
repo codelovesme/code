@@ -1,0 +1,3 @@
+-- An interpolated name is an ordinary variable reference: undefined is
+-- still an error, not an empty splice.
+assert "hi $nobody" = "hi "

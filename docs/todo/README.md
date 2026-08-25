@@ -14,7 +14,6 @@ time. Order below is roughly by how likely it is to bite someone.
 | [emit-bare-particle-name.md](emit-bare-particle-name.md) | Shipped 2026-08-24: `emit Timestamp to core` drops the empty `{}` — a parser-only desugar in the `Stmt::Emit` arm, covered by `tests/emit_bare_particle.code` and two `fail_` fixtures |
 | [user-defined-handlers.md](user-defined-handlers.md) | Found 2026-08-25 comparing against `old/`: `Name => { … }`, `return`, `emit … to this/base` all dropped in the rewrite — handlers can only live in C or native modules; spec'd for both backends (old compiled backend had inline label-dispatch too) |
 | [inbound-emissions-from-native-modules.md](inbound-emissions-from-native-modules.md) | Found 2026-08-25: dispatch is request/response only; old had per-module `EmitQueue`s + `drain_emissions()` + keep-alive polling so modules could push events (event loops impossible without it) |
-| [string-interpolation.md](string-interpolation.md) | Found 2026-08-25: old parsed `"hi $name"`; new lexer treats `$` as a plain character, so rewritten programs silently print the literal text instead of failing |
 | [object-spread.md](object-spread.md) | Found 2026-08-25: `{ ...source, k: v }` gone with the constraint-era object model; the "copy a particle, tweak a field" idiom has no syntax |
 | [release-flag.md](release-flag.md) | Found 2026-08-25: old toggled `-O0`↔`-O2` via `--release`; new hardcodes `-O2` (`codegen.rs:595`) — dev builds pay full optimization with no knob |
 | [formatter.md](formatter.md) | No canonical layout for `.code` source: `code format [--check]`, token-stream based so comments and `+=` survive, with token-equality + idempotence proven over the fixture corpus and a CI gate beside `cargo fmt` |
@@ -22,6 +21,7 @@ time. Order below is roughly by how likely it is to bite someone.
 | [no-language-documentation.md](no-language-documentation.md) | The new language has no README at all |
 | [runtime-error-locations.md](runtime-error-locations.md) | Parse errors point at a line/column since 2026-08-23; runtime ones (`assertion failed`) still don't |
 | [temp-slots-pin-intermediates.md](temp-slots-pin-intermediates.md) | Memory held longer than necessary |
+| [wasm-fractional-number-text.md](wasm-fractional-number-text.md) | Found 2026-08-25 while shipping string interpolation: interpreter and native `code build` render numbers identically to Rust's `Display`, but `--target wasm` has no libc float formatting, so interpolating a *fractional* number there errors instead |
 
 Done and removed (git log has the detail):
 
@@ -30,3 +30,7 @@ Done and removed (git log has the detail):
 - *stress fixtures become playground examples* — `stress_*` joins `fail_*`
   as a prefix `site/build.py` holds back, and the two generated fixtures
   were renamed into it.
+- *string interpolation* — `"hi $name"` splices variables again, with `\$`
+  for a literal dollar and a bare `$` a lex error rather than silent literal
+  text. Rendering agrees byte-for-byte between the interpreter and native
+  `code build`; the wasm gap it exposed is its own entry above.

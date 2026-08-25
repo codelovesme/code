@@ -58,6 +58,10 @@ fn classify(tok: &Token, prev_dot: bool) -> Option<Kind> {
     use Token::*;
     Some(match tok {
         Str(_) => Kind::String,
+        // Colors as one string, interpolations included. The token stream
+        // carries a single span per token, so picking the `$name` runs out
+        // as variables would mean reshaping it — not worth it for the tint.
+        InterpStr(_) => Kind::String,
         Number(_) => Kind::Number,
         True | False | Null | And | Or | Not | Assert | If | Let | Loop | Over | Break
         | Continue | Link | As | Export | Emit | To | Core | Get | Is => Kind::Keyword,

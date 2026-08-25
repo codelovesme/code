@@ -1,10 +1,24 @@
 use crate::span::Located;
 
+/// One piece of an interpolated string, in source order: either literal text
+/// (already unescaped) or the name of a variable to splice in.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StringPart {
+    Lit(String),
+    Var(String),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Ident(String),
     Number(f64),
     Str(String),
+    /// A double-quoted string that contained at least one `$name`. Splitting
+    /// happens here rather than in the parser because the quote-scanning loop
+    /// already owns string internals — escapes included. A string with no `$`
+    /// stays a plain `Str`, so every existing use site (a `link` path, an
+    /// object key) keeps rejecting interpolation for free.
+    InterpStr(Vec<StringPart>),
     True,
     False,
     Null,
@@ -190,6 +204,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
         if c == '"' {
             i += 1;
             let mut s = String::new();
+            let mut parts: Vec<StringPart> = Vec::new();
             loop {
                 match chars.get(i) {
                     // Points at the opening quote, not the end of the file:
@@ -206,6 +221,11 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                             Some('t') => s.push('\t'),
                             Some('"') => s.push('"'),
                             Some('\\') => s.push('\\'),
+                            // The one escape that exists only because `$` is
+                            // otherwise mandatory-interpolation: without it a
+                            // literal dollar would be unwritable, not merely
+                            // awkward (`"costs $5"` would be a lex error).
+                            Some('$') => s.push('$'),
                             Some(other) => {
                                 return Err(Located::at(
                                     i - 1,
@@ -216,13 +236,40 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                         }
                         i += 1;
                     }
+                    Some('$') => {
+                        let dollar = i;
+                        i += 1;
+                        let name_start = i;
+                        if !matches!(chars.get(i), Some(c) if c.is_alphabetic() || *c == '_') {
+                            return Err(Located::at(
+                                dollar,
+                                "'$' in a string must start an interpolation ($name); \
+                                 write '\\$' for a literal dollar sign",
+                            ));
+                        }
+                        while matches!(chars.get(i), Some(c) if c.is_alphanumeric() || *c == '_') {
+                            i += 1;
+                        }
+                        if !s.is_empty() {
+                            parts.push(StringPart::Lit(std::mem::take(&mut s)));
+                        }
+                        parts.push(StringPart::Var(chars[name_start..i].iter().collect()));
+                    }
                     Some(ch) => {
                         s.push(*ch);
                         i += 1;
                     }
                 }
             }
-            tokens.push(Token::Str(s));
+            let tok = if parts.is_empty() {
+                Token::Str(s)
+            } else {
+                if !s.is_empty() {
+                    parts.push(StringPart::Lit(s));
+                }
+                Token::InterpStr(parts)
+            };
+            tokens.push(tok);
             starts.push(start as u32);
             ends.push(i as u32);
             last_was_separator = false;

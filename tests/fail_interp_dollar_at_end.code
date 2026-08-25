@@ -1,0 +1,2 @@
+-- A `$` with nothing after it before the closing quote.
+let oops = "trailing $"

@@ -797,6 +797,288 @@ void code_iter_key(CodeValue *out, const CodeValue *v, long long i) {
     code_number(out, (double)i);
 }
 
+/* ---- Rendering a value as text -------------------------------------------
+ *
+ * The compiled side of string interpolation (`"hi $name"`), and the first
+ * place either runtime had to turn a value back into characters — so this
+ * has to agree with `value.rs`'s `Display` byte for byte, or the same
+ * fixture would assert differently under `code run` than under `code build`.
+ *
+ * Same split as `Expr::Interpolated`'s doc comment: a string at the *top*
+ * level renders bare, everything else as compact JSON — which means a string
+ * nested inside an array or object does keep its quotes. Iterative, for the
+ * reason the traversal section above gives. */
+
+typedef struct {
+    char *buf;
+    size_t len;
+    size_t cap;
+} TextBuf;
+
+static void text_push(TextBuf *t, const char *s, size_t n) {
+    if (t->len + n + 1 > t->cap) {
+        size_t next = t->cap ? t->cap : 64;
+        while (next < t->len + n + 1) {
+            next *= 2;
+        }
+        char *bigger = realloc(t->buf, next);
+        if (!bigger) {
+            code_runtime_error("out of memory");
+        }
+        t->buf = bigger;
+        t->cap = next;
+    }
+    memcpy(t->buf + t->len, s, n);
+    t->len += n;
+}
+
+static void text_push_str(TextBuf *t, const char *s) { text_push(t, s, strlen(s)); }
+
+/* Rust's `{}` for f64 is the shortest decimal that round-trips, laid out
+ * positionally (never in exponent form). Reproduced here digit by digit,
+ * because the obvious shortcut — let `printf("%.*e")` do the rounding and
+ * just move the point — disagrees on exact ties: glibc rounds those to even
+ * (2181495296738027.25 -> "...27.2") while Rust rounds away from zero
+ * ("...27.3"). So `printf` is used only for the *exact* expansion, and the
+ * rounding to the shortest round-tripping length happens below. Verified
+ * against Rust's own output over 205k values, random bit patterns included.
+ *
+ * Integral values short-circuit through `%lld`: it is the overwhelmingly
+ * common case, it is exact, and it is the only path the wasm shim (which has
+ * no float formatting and no `strtod`) can offer at all. A fractional number
+ * on wasm is a loud error rather than a string that silently disagrees with
+ * the other two modes — see docs/todo/wasm-fractional-number-text.md. */
+static void text_push_number(TextBuf *t, double d) {
+    char tmp[512];
+    if (d == (double)(long long)d && d >= -9007199254740992.0 && d <= 9007199254740992.0) {
+        /* `(long long)-0.0` is 0, which would print an unsigned zero — but
+         * Rust's `Display` keeps the sign. Tested by dividing rather than
+         * with `signbit`, so the wasm build needs no `math.h`. */
+        if (d == 0.0 && 1.0 / d < 0.0) {
+            text_push_str(t, "-0");
+            return;
+        }
+        snprintf(tmp, sizeof tmp, "%lld", (long long)d);
+        text_push_str(t, tmp);
+        return;
+    }
+#ifdef CODE_WASM
+    code_runtime_error("rendering a fractional number as text is not supported on wasm yet");
+#else
+    /* 41 significant digits: more than the 17 any double needs to round-trip,
+     * so `full` is the exact expansion as far as the rounding below can care. */
+    char exact[80];
+    snprintf(exact, sizeof exact, "%.40e", d);
+    const char *p = exact;
+    int negative = (*p == '-');
+    if (negative) {
+        p++;
+    }
+    char full[48];
+    size_t nfull = 0;
+    for (; *p && *p != 'e'; p++) {
+        if (*p != '.') {
+            full[nfull++] = *p;
+        }
+    }
+    int fullexp = (int)strtol(p + 1, NULL, 10);
+
+    /* Shortest length whose correctly-rounded form reads back bit-identically.
+     * 17 always does, so the loop always terminates with a usable answer. */
+    char m[48];
+    size_t n = 1;
+    int exp10 = fullexp;
+    for (int len = 1; len <= 17; len++) {
+        n = (size_t)len;
+        exp10 = fullexp;
+        memcpy(m, full, n);
+        if (nfull > n && full[n] >= '5') {
+            size_t i = n;
+            while (i > 0) {
+                if (m[i - 1] == '9') {
+                    m[i - 1] = '0';
+                    i--;
+                } else {
+                    m[i - 1]++;
+                    break;
+                }
+            }
+            /* Carried off the front (999... -> 1000...): one more digit, one
+             * higher power of ten. */
+            if (i == 0) {
+                memmove(m + 1, m, n);
+                m[0] = '1';
+                exp10++;
+            }
+        }
+        char sci[64];
+        size_t o = 0;
+        if (negative) {
+            sci[o++] = '-';
+        }
+        sci[o++] = m[0];
+        if (n > 1) {
+            sci[o++] = '.';
+            memcpy(sci + o, m + 1, n - 1);
+            o += n - 1;
+        }
+        o += (size_t)snprintf(sci + o, sizeof sci - o, "e%d", exp10);
+        sci[o] = '\0';
+        if (strtod(sci, NULL) == d) {
+            break;
+        }
+    }
+    while (n > 1 && m[n - 1] == '0') {
+        n--;
+    }
+
+    /* Exponent form was only ever the intermediate — lay the digits out
+     * positionally, which is the one form Rust's `Display` ever prints. */
+    size_t out = 0;
+    if (negative) {
+        tmp[out++] = '-';
+    }
+    if (exp10 >= (int)n - 1) {
+        /* Whole number: every digit, then zeros out to the decimal point. */
+        memcpy(tmp + out, m, n);
+        out += n;
+        for (int i = 0; i < exp10 - (int)n + 1; i++) {
+            tmp[out++] = '0';
+        }
+    } else if (exp10 >= 0) {
+        /* Point falls inside the digit run. */
+        memcpy(tmp + out, m, (size_t)exp10 + 1);
+        out += (size_t)exp10 + 1;
+        tmp[out++] = '.';
+        memcpy(tmp + out, m + exp10 + 1, n - (size_t)exp10 - 1);
+        out += n - (size_t)exp10 - 1;
+    } else {
+        /* Leading `0.` and however many zeros before the first digit. */
+        tmp[out++] = '0';
+        tmp[out++] = '.';
+        for (int i = 0; i < -exp10 - 1; i++) {
+            tmp[out++] = '0';
+        }
+        memcpy(tmp + out, m, n);
+        out += n;
+    }
+    text_push(t, tmp, out);
+#endif
+}
+
+static void text_push_json_string(TextBuf *t, const char *s) {
+    text_push(t, "\"", 1);
+    for (const char *p = s; *p; p++) {
+        switch (*p) {
+        case '"':  text_push(t, "\\\"", 2); break;
+        case '\\': text_push(t, "\\\\", 2); break;
+        case '\n': text_push(t, "\\n", 2); break;
+        case '\t': text_push(t, "\\t", 2); break;
+        default:   text_push(t, p, 1); break;
+        }
+    }
+    text_push(t, "\"", 1);
+}
+
+/* One entry of the render work stack. `value` is a value still to write;
+ * otherwise `punct` is literal text to emit (a bracket, a comma, or a key
+ * that has already been quoted into the buffer's own storage). */
+typedef struct {
+    const CodeValue *value;
+    const char *punct;
+    int is_key;
+} TextStep;
+
+static TextStep *steps = NULL;
+static size_t steps_cap = 0;
+
+void code_to_text(CodeValue *out, const CodeValue *v) {
+    TextBuf t = {NULL, 0, 0};
+    size_t len = 0;
+
+    steps = grow(steps, &steps_cap, len + 1, sizeof(TextStep));
+    steps[len++] = (TextStep){v, NULL, 0};
+    int top_level = 1;
+
+    while (len > 0) {
+        TextStep step = steps[--len];
+        if (!step.value) {
+            if (step.is_key) {
+                text_push_json_string(&t, step.punct);
+                text_push(&t, ":", 1);
+            } else {
+                text_push_str(&t, step.punct);
+            }
+            continue;
+        }
+        const CodeValue *current = step.value;
+        switch (current->tag) {
+        case CODE_NUMBER:
+            text_push_number(&t, current->number);
+            break;
+        case CODE_STR:
+            if (top_level) {
+                text_push_str(&t, current->str);
+            } else {
+                text_push_json_string(&t, current->str);
+            }
+            break;
+        case CODE_BOOL:
+            text_push_str(&t, current->boolean ? "true" : "false");
+            break;
+        case CODE_NULL:
+            text_push_str(&t, "null");
+            break;
+        /* Pushed in reverse so they pop in source order, with the closing
+         * bracket pushed first and therefore popped last — mirroring
+         * `value.rs`'s `Display`. */
+        case CODE_ARRAY:
+            text_push(&t, "[", 1);
+            steps = grow(steps, &steps_cap, len + 1, sizeof(TextStep));
+            steps[len++] = (TextStep){NULL, "]", 0};
+            for (long long i = current->len - 1; i >= 0; i--) {
+                steps = grow(steps, &steps_cap, len + 2, sizeof(TextStep));
+                steps[len++] = (TextStep){slot_at(current->items, i), NULL, 0};
+                if (i > 0) {
+                    steps[len++] = (TextStep){NULL, ",", 0};
+                }
+            }
+            break;
+        case CODE_OBJECT:
+            text_push(&t, "{", 1);
+            steps = grow(steps, &steps_cap, len + 1, sizeof(TextStep));
+            steps[len++] = (TextStep){NULL, "}", 0};
+            for (long long i = current->len - 1; i >= 0; i--) {
+                steps = grow(steps, &steps_cap, len + 3, sizeof(TextStep));
+                steps[len++] = (TextStep){slot_at(current->items, i), NULL, 0};
+                steps[len++] = (TextStep){NULL, current->keys[i], 1};
+                if (i > 0) {
+                    steps[len++] = (TextStep){NULL, ",", 0};
+                }
+            }
+            break;
+        }
+        top_level = 0;
+    }
+
+    /* `text_push` always keeps one spare byte, but an empty render never
+     * called it — this makes the buffer exist either way. */
+    text_push(&t, "", 0);
+    t.buf[t.len] = '\0';
+
+    /* Rehomed into a refcounted block: `t.buf` came from plain `realloc`, and
+     * every owned string in this runtime has to be freeable by `code_release`
+     * like any other. Built before `out` is released — `out` may be the very
+     * value being rendered. */
+    char *owned = heap_alloc(t.len + 1);
+    memcpy(owned, t.buf, t.len + 1);
+    free(t.buf);
+    code_release(out);
+    out->tag = CODE_STR;
+    out->heap = 1;
+    out->str = owned;
+}
+
 /* Operand-type rules below must match ast.rs's `BinOp`/`UnOp` doc comment
  * and interpreter.rs's `apply_binop`/`eval` exactly — this is the compiled
  * side of the same decisions, not an independent design. */

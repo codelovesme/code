@@ -1,5 +1,5 @@
 use crate::ast::{BinOp, EmitTarget, Expr, LoopAccumulator, LoopOver, Program, Stmt, UnOp};
-use crate::lexer::{Lexed, Token};
+use crate::lexer::{Lexed, StringPart, Token};
 use crate::span::Located;
 
 fn starts_uppercase(name: &str) -> bool {
@@ -622,6 +622,18 @@ impl<'a> Parser<'a> {
             _ => match self.advance() {
                 Token::Number(n) => Ok(Expr::Number(n)),
                 Token::Str(s) => Ok(Expr::Str(s)),
+                // Nothing to split here — the lexer hands the parts over
+                // already separated, since it is the quote-scanning loop that
+                // owns string internals.
+                Token::InterpStr(parts) => Ok(Expr::Interpolated(
+                    parts
+                        .into_iter()
+                        .map(|part| match part {
+                            StringPart::Lit(s) => Expr::Str(s),
+                            StringPart::Var(name) => Expr::Ident(name),
+                        })
+                        .collect(),
+                )),
                 Token::True => Ok(Expr::Bool(true)),
                 Token::False => Ok(Expr::Bool(false)),
                 Token::Null => Ok(Expr::Null),
