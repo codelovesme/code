@@ -4,6 +4,7 @@ use std::path::Path;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
+use inkwell::module::Module;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
@@ -92,6 +93,18 @@ fn verify_stmts(
 ) -> Result<(), String> {
     for stmt in stmts {
         match stmt {
+            Stmt::HandlerDef { fields, body, .. } => {
+                let scope: HashSet<String> = fields.iter().cloned().collect();
+                // Only the top level is visible, matching what the body will
+                // actually close over — not whatever scopes happen to be open
+                // where the definition sits (it is top-level only anyway).
+                let enclosing = std::mem::replace(scopes, vec![scope]);
+                scopes.insert(0, enclosing[0].clone());
+                let verified = verify_stmts(body, scopes, natives);
+                *scopes = enclosing;
+                verified?;
+            }
+            Stmt::Return(value) => verify_expr(value, scopes)?,
             Stmt::Let { name, value, .. } => {
                 verify_expr(value, scopes)?;
                 // Always binds in the current scope, even if `name` is
@@ -272,8 +285,13 @@ pub fn compile_to_object(
     }
 
     let context = Context::create();
-    let module = context.create_module("code");
+    // Declared before `module` deliberately: locals drop in reverse, so this
+    // puts the module's `Drop` *before* the builders'. `Module`'s `Drop`
+    // observes its lifetime parameter, which `Gen` also borrows the builders
+    // under, and dropck rejects the other order.
     let builder = context.create_builder();
+    let alloca_builder = context.create_builder();
+    let module = context.create_module("code");
 
     let i8_ty = context.i8_type();
     let i32_ty = context.i32_type();
@@ -424,6 +442,16 @@ pub fn compile_to_object(
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_check_particle = module.add_function(
+        "code_check_particle",
+        void_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_runtime_error = module.add_function(
+        "code_runtime_error",
+        void_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_not = module.add_function(
         "code_not",
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
@@ -510,12 +538,13 @@ pub fn compile_to_object(
     // arrangement exists to prevent.
     let entry = context.append_basic_block(main_fn, "entry");
     let start = context.append_basic_block(main_fn, "start");
-    let alloca_builder = context.create_builder();
+
     alloca_builder.position_at_end(entry);
     builder.position_at_end(start);
 
     let mut gen = Gen {
         context: &context,
+        module: &module,
         builder: &builder,
         alloca_builder: &alloca_builder,
         main_fn,
@@ -561,13 +590,26 @@ pub fn compile_to_object(
         slots: Vec::new(),
         native_links: HashMap::new(),
         static_native_fns,
+        fn_check_particle,
+        fn_runtime_error,
+        handler_fns: HashMap::new(),
+        dispatch_fn: None,
+        handler_frame: None,
+        global_count: 0,
     };
+
+    // Handler functions are declared before any body is generated, so a
+    // handler can emit to one defined further down the file — the codegen
+    // half of `interpreter::register_handlers`' hoisting, and what makes
+    // recursion and mutual recursion compile at all.
+    gen.declare_handlers(&program.statements)?;
 
     for stmt in &program.statements {
         gen.gen_stmt(stmt)?;
     }
     gen.emit_cleanup(fn_check_leaks)?;
-
+    // Last, once every handler function exists to be dispatched to.
+    gen.gen_dispatch_body()?;
     builder
         .build_return(Some(&i32_ty.const_int(0, false)))
         .map_err(|e| e.to_string())?;
@@ -613,11 +655,19 @@ pub fn compile_to_object(
 /// Codegen state for one module. Only ever used within `compile_to_object`,
 /// so a single implicit lifetime tying everything to `context`/`module`/
 /// `builder`'s scope is enough — no separate `'ctx` parameter needed.
-struct Gen<'a> {
+struct Gen<'a, 'm> {
     /// Needed to create new basic blocks for `and`/`or` short-circuiting —
     /// the one place this codegen needs actual control flow, not just
     /// straight-line calls (see `gen_and_or`).
     context: &'a Context,
+    /// Handler functions and `main`'s slot globals are added through it.
+    ///
+    /// Borrowed under its *own* lifetime, not `'a`: `Module`'s `Drop`
+    /// observes its lifetime parameter, so `&'a Module<'a>` would make
+    /// dropck demand that every other `'a` borrow here — the builders —
+    /// strictly outlive `Gen`, which they don't. A reference drops nothing,
+    /// so a separate `'m` sidesteps that entirely.
+    module: &'m Module<'a>,
     builder: &'a Builder<'a>,
     /// Parked permanently at the end of `main`'s `entry` block, which holds
     /// nothing but allocas and their zero-init. Every stack allocation goes
@@ -705,6 +755,35 @@ struct Gen<'a> {
     /// once before `Gen` exists (see `compile_to_object`), consumed (via
     /// `remove`) the one time each is `link`ed.
     static_native_fns: HashMap<String, StaticModuleFns<'a>>,
+    fn_check_particle: FunctionValue<'a>,
+    fn_runtime_error: FunctionValue<'a>,
+    /// Every `ClassName => { ... }` in the program, by class name, declared
+    /// up front and defined as its statement is reached.
+    handler_fns: HashMap<String, FunctionValue<'a>>,
+    /// The generated `_code_dispatch_this`: one `if code_is_particle(p, "N")`
+    /// chain over `handler_fns`, ending in a runtime error. Every
+    /// `emit ... to this` calls it, so recursion is an ordinary call rather
+    /// than anything the emit site has to know about.
+    dispatch_fn: Option<FunctionValue<'a>>,
+    /// Set while a handler body is being generated — see `HandlerFrame`.
+    /// `None` means the statement stream belongs to `main`.
+    handler_frame: Option<HandlerFrame<'a>>,
+    /// Names the globals that back `main`'s slots apart. See `alloc_zeroed`.
+    global_count: usize,
+}
+
+/// What a handler body needs that `main` doesn't: somewhere to put a
+/// `return`'s value, a block to branch to once it has, and its own slot list
+/// to release on the way out.
+///
+/// A handler's slots are **allocas**, unlike `main`'s globals — that is
+/// precisely what makes recursion work, since each invocation gets its own
+/// stack frame while a global would be shared across all of them.
+struct HandlerFrame<'a> {
+    out: PointerValue<'a>,
+    exit: BasicBlock<'a>,
+    slots: Vec<(PointerValue<'a>, u64)>,
+    alloca_builder: Builder<'a>,
 }
 
 /// See `Gen::native_links`. A `.so` (`NativeFormat::Dynamic`) dispatches
@@ -713,6 +792,8 @@ struct Gen<'a> {
 /// straight into this binary, so its `<prefix>_code_module_dispatch` is
 /// called directly, the same shape as `EmitTarget::Core`.
 enum NativeLink<'a> {
+    /// The *global* holding `code_native_open`'s handle, not the handle
+    /// itself — see where it is stored for why.
     Dynamic(PointerValue<'a>),
     Static(FunctionValue<'a>),
 }
@@ -744,7 +825,270 @@ struct LoopCursor<'a> {
     key_slot: Option<PointerValue<'a>>,
 }
 
-impl<'a> Gen<'a> {
+impl<'a, 'm> Gen<'a, 'm> {
+    /// Declares one LLVM function per `ClassName => { ... }`, plus the
+    /// dispatch function every `emit ... to this` calls, before any body is
+    /// generated. Hoisting: a handler may emit to one defined later in the
+    /// file, and to itself.
+    ///
+    /// Descends into `Stmt::Import` bodies, matching
+    /// `interpreter::register_handlers` — a linked module's top level is a
+    /// top level, so its handlers join the same program-wide table.
+    fn declare_handlers(&mut self, stmts: &[Stmt]) -> Result<(), String> {
+        self.collect_handler_decls(stmts)?;
+        if self.handler_fns.is_empty() {
+            return Ok(());
+        }
+        let void_ty = self.context.void_type();
+        let dispatch = self.module.add_function(
+            "_code_dispatch_this",
+            void_ty.fn_type(&[self.i8_ptr_ty.into(), self.i8_ptr_ty.into()], false),
+            None,
+        );
+        self.dispatch_fn = Some(dispatch);
+        Ok(())
+    }
+
+    fn collect_handler_decls(&mut self, stmts: &[Stmt]) -> Result<(), String> {
+        for stmt in stmts {
+            match stmt {
+                Stmt::HandlerDef { class_name, .. } => {
+                    if self.handler_fns.contains_key(class_name) {
+                        return Err(format!(
+                            "duplicate handler for '{class_name}': only one handler per class"
+                        ));
+                    }
+                    let void_ty = self.context.void_type();
+                    let f = self.module.add_function(
+                        &format!("_code_handler_{class_name}"),
+                        void_ty.fn_type(&[self.i8_ptr_ty.into(), self.i8_ptr_ty.into()], false),
+                        None,
+                    );
+                    self.handler_fns.insert(class_name.clone(), f);
+                }
+                Stmt::Import { body, .. } => self.collect_handler_decls(body)?,
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// Fills in one handler's body.
+    ///
+    /// The body is generated where its definition appears, so the top-level
+    /// scope it closes over holds exactly the bindings declared before it —
+    /// the same names `verify_stmts` checked it against. Its enclosing scope
+    /// is the top level and nothing else: the scope stack is swapped for one
+    /// holding only the outermost frame, mirroring what
+    /// `interpreter::dispatch_handler` does by draining its own.
+    fn gen_handler(
+        &mut self,
+        class_name: &str,
+        fields: &[String],
+        body: &[Stmt],
+    ) -> Result<(), String> {
+        let function = self.handler_fns[class_name];
+        let entry = self.context.append_basic_block(function, "entry");
+        let start = self.context.append_basic_block(function, "start");
+        let exit = self.context.append_basic_block(function, "exit");
+
+        let alloca_builder = self.context.create_builder();
+        alloca_builder.position_at_end(entry);
+
+        let out = function.get_nth_param(0).unwrap().into_pointer_value();
+        let particle = function.get_nth_param(1).unwrap().into_pointer_value();
+
+        // Everything but `main`'s builder position, scope stack, loop stack
+        // and slot list steps aside for the duration.
+        let saved_block = self.builder.get_insert_block();
+        let saved_env = std::mem::replace(&mut self.env, vec![HashMap::new()]);
+        self.env.insert(0, saved_env[0].clone());
+        self.env.truncate(2);
+        let saved_loops = std::mem::take(&mut self.loop_blocks);
+        let saved_frame = self.handler_frame.replace(HandlerFrame {
+            out,
+            exit,
+            slots: Vec::new(),
+            alloca_builder,
+        });
+
+        self.builder.position_at_end(start);
+
+        let result = (|| -> Result<(), String> {
+            // The result starts as null: a body that never returns yields
+            // null, which is not an error — plenty of handlers exist for
+            // their effect rather than their answer.
+            self.builder
+                .build_call(self.fn_null, &[out.into()], "")
+                .map_err(|e| e.to_string())?;
+
+            // `code_field` already answers null for an absent field, which
+            // is the same answer `.field` gives — nothing more to do.
+            for name in fields {
+                let slot = self.alloc_slot(&format!("field_{name}"))?;
+                let key = self.global_str(name, "fieldname")?;
+                self.builder
+                    .build_call(
+                        self.fn_field,
+                        &[slot.into(), particle.into(), key.into()],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+                self.bind(name, slot);
+            }
+
+            for stmt in body {
+                self.gen_stmt(stmt)?;
+            }
+            Ok(())
+        })();
+
+        // Falling off the end of the body is the no-`return` case.
+        if result.is_ok() && self.builder.get_insert_block().is_some() {
+            self.builder
+                .build_unconditional_branch(exit)
+                .map_err(|e| e.to_string())?;
+        }
+
+        // Release this invocation's slots, then return. Whatever `out` holds
+        // has its own reference (every write to it goes through a
+        // constructor or `code_copy`), so releasing the locals can't take it.
+        self.builder.position_at_end(exit);
+        let frame = self
+            .handler_frame
+            .take()
+            .expect("frame was installed just above");
+        for (buf, count) in &frame.slots {
+            for i in 0..*count {
+                let slot = self.slot_at(*buf, i, "hcleanup")?;
+                self.builder
+                    .build_call(self.fn_release, &[slot.into()], "")
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        self.builder.build_return(None).map_err(|e| e.to_string())?;
+
+        frame
+            .alloca_builder
+            .build_unconditional_branch(start)
+            .map_err(|e| e.to_string())?;
+
+        self.handler_frame = saved_frame;
+        self.env = saved_env;
+        self.loop_blocks = saved_loops;
+        if let Some(block) = saved_block {
+            self.builder.position_at_end(block);
+        }
+        result
+    }
+
+    /// `return <particle>` — check, store, and branch to the frame's exit.
+    fn gen_return(&mut self, value: &Expr) -> Result<(), String> {
+        let value_ptr = self.gen_expr(value)?;
+        self.builder
+            .build_call(self.fn_check_particle, &[value_ptr.into()], "")
+            .map_err(|e| e.to_string())?;
+        let frame = self
+            .handler_frame
+            .as_ref()
+            .expect("the parser rejects 'return' outside a handler body");
+        let (out, exit) = (frame.out, frame.exit);
+        self.builder
+            .build_call(self.fn_copy, &[out.into(), value_ptr.into()], "")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(exit)
+            .map_err(|e| e.to_string())?;
+        // Anything written after a `return` is unreachable but still has to
+        // land somewhere LLVM accepts — the same shape `gen_break` uses.
+        let function = self.current_function();
+        let dead = self.context.append_basic_block(function, "after_return");
+        self.builder.position_at_end(dead);
+        Ok(())
+    }
+
+    /// The `if code_is_particle(p, "N") { handler_N(out, p); return; }` chain,
+    /// ending in a runtime error for a class nothing handles. Generated last,
+    /// once every handler function exists.
+    fn gen_dispatch_body(&mut self) -> Result<(), String> {
+        let Some(dispatch) = self.dispatch_fn else {
+            return Ok(());
+        };
+        let entry = self.context.append_basic_block(dispatch, "entry");
+        let saved_block = self.builder.get_insert_block();
+        self.builder.position_at_end(entry);
+
+        let out = dispatch.get_nth_param(0).unwrap().into_pointer_value();
+        let particle = dispatch.get_nth_param(1).unwrap().into_pointer_value();
+
+        let mut names: Vec<String> = self.handler_fns.keys().cloned().collect();
+        names.sort();
+        for class_name in names {
+            let function = self.handler_fns[&class_name];
+            let matched = self.context.append_basic_block(dispatch, "matched");
+            let next = self.context.append_basic_block(dispatch, "next");
+            let name_ptr = self.global_str(&class_name, "hclass")?;
+            let is = self
+                .builder
+                .build_call(
+                    self.fn_is_particle,
+                    &[particle.into(), name_ptr.into()],
+                    "ishandler",
+                )
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .left()
+                .expect("code_is_particle returns i32")
+                .into_int_value();
+            let cond = self
+                .builder
+                .build_int_compare(IntPredicate::NE, is, self.i32_ty.const_zero(), "hmatch")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_conditional_branch(cond, matched, next)
+                .map_err(|e| e.to_string())?;
+
+            self.builder.position_at_end(matched);
+            self.builder
+                .build_call(function, &[out.into(), particle.into()], "")
+                .map_err(|e| e.to_string())?;
+            self.builder.build_return(None).map_err(|e| e.to_string())?;
+
+            self.builder.position_at_end(next);
+        }
+
+        // Nothing matched. A runtime error rather than null, the same answer
+        // `to core` gives an unknown class.
+        let msg = self.global_str("no handler defined for this particle's class", "nohandler")?;
+        self.builder
+            .build_call(self.fn_runtime_error, &[msg.into()], "")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_return(None).map_err(|e| e.to_string())?;
+
+        if let Some(block) = saved_block {
+            self.builder.position_at_end(block);
+        }
+        Ok(())
+    }
+
+    /// The entry block of whichever function is being built — every alloca
+    /// goes here rather than wherever the builder happens to be, so none
+    /// lands inside a loop body (see `gen_loop`). A handler has its own.
+    fn entry_builder(&self) -> &Builder<'a> {
+        match &self.handler_frame {
+            Some(frame) => &frame.alloca_builder,
+            None => self.alloca_builder,
+        }
+    }
+
+    /// Whichever function statements are currently being appended to.
+    fn current_function(&self) -> FunctionValue<'a> {
+        self.builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .unwrap_or(self.main_fn)
+    }
+
     /// One `CodeValue` slot, allocated in `entry` and zeroed there once.
     ///
     /// Every call site gets its own slot, so the total is fixed by the size
@@ -763,8 +1107,17 @@ impl<'a> Gen<'a> {
     /// `heap` flag is 0, so that release is a no-op.
     fn alloc_slot(&mut self, hint: &str) -> Result<PointerValue<'a>, String> {
         let ptr = self.alloc_zeroed(VALUE_SIZE, hint)?;
-        self.slots.push((ptr, 1));
+        self.record_slot(ptr, 1);
         Ok(ptr)
+    }
+
+    /// Slots belong to whichever frame allocated them: a handler's are
+    /// released when that invocation returns, `main`'s when the program ends.
+    fn record_slot(&mut self, ptr: PointerValue<'a>, count: u64) {
+        match &mut self.handler_frame {
+            Some(frame) => frame.slots.push((ptr, count)),
+            None => self.slots.push((ptr, count)),
+        }
     }
 
     /// A run of `len` contiguous slots — codegen's scratch space for an
@@ -774,19 +1127,40 @@ impl<'a> Gen<'a> {
     /// slots are.
     fn alloc_buffer(&mut self, len: u64, hint: &str) -> Result<PointerValue<'a>, String> {
         let ptr = self.alloc_zeroed(VALUE_SIZE * len, hint)?;
-        self.slots.push((ptr, len));
+        self.record_slot(ptr, len);
         Ok(ptr)
     }
 
-    fn alloc_zeroed(&self, bytes: u64, hint: &str) -> Result<PointerValue<'a>, String> {
+    /// `main`'s slots are **globals**; a handler body's are allocas in its
+    /// own entry block.
+    ///
+    /// Both are permanent-and-reused, which is what the slot model needs (a
+    /// slot inside a loop body is rewritten each iteration, never
+    /// reallocated), so a global serves `main` exactly as well as an entry
+    /// alloca did — and it is reachable from a handler function, which
+    /// `main`'s stack is not. That is the whole reason for the split: a
+    /// handler body reads and writes top-level bindings.
+    ///
+    /// A handler's slots must *not* be globals, though: recursion needs each
+    /// invocation to have its own, which is precisely what a stack frame is.
+    fn alloc_zeroed(&mut self, bytes: u64, hint: &str) -> Result<PointerValue<'a>, String> {
+        if self.handler_frame.is_none() {
+            let ty = self.i8_ty.array_type(bytes.max(1) as u32);
+            let name = format!("_code_slot_{}_{hint}", self.global_count);
+            self.global_count += 1;
+            let global = self.module.add_global(ty, None, &name);
+            global.set_initializer(&ty.const_zero());
+            global.set_alignment(VALUE_ALIGN);
+            return Ok(global.as_pointer_value());
+        }
         let count = self.i64_ty.const_int(bytes, false);
-        let ptr = self
-            .alloca_builder
+        let alloca_builder = self.entry_builder();
+        let ptr = alloca_builder
             .build_array_alloca(self.i8_ty, count, hint)
             .map_err(|e| e.to_string())?;
         self.set_alignment(ptr)?;
         if bytes > 0 {
-            self.alloca_builder
+            alloca_builder
                 .build_memset(ptr, VALUE_ALIGN, self.i8_ty.const_zero(), count)
                 .map_err(|e| e.to_string())?;
         }
@@ -826,6 +1200,12 @@ impl<'a> Gen<'a> {
 
     fn gen_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
         match stmt {
+            Stmt::HandlerDef {
+                class_name,
+                fields,
+                body,
+            } => self.gen_handler(class_name, fields, body),
+            Stmt::Return(value) => self.gen_return(value),
             Stmt::Let { name, value, .. } => self.gen_let(name, value),
             Stmt::Link { path, .. } => Err(format!(
                 "internal error: link \"{path}\" reached codegen unresolved"
@@ -882,7 +1262,9 @@ impl<'a> Gen<'a> {
         self.builder
             .build_unconditional_branch(dest)
             .map_err(|e| e.to_string())?;
-        let dead = self.context.append_basic_block(self.main_fn, label);
+        let dead = self
+            .context
+            .append_basic_block(self.current_function(), label);
         self.builder.position_at_end(dead);
         Ok(())
     }
@@ -927,13 +1309,21 @@ impl<'a> Gen<'a> {
             None => None,
         };
 
-        let head_bb = self.context.append_basic_block(self.main_fn, "loop_head");
-        let body_bb = self.context.append_basic_block(self.main_fn, "loop_body");
+        let head_bb = self
+            .context
+            .append_basic_block(self.current_function(), "loop_head");
+        let body_bb = self
+            .context
+            .append_basic_block(self.current_function(), "loop_body");
         // Where an iteration ends: the increment and the back-edge. A
         // `continue` branches straight here, which is the whole reason this
         // is its own block rather than code appended to the body.
-        let cont_bb = self.context.append_basic_block(self.main_fn, "loop_cont");
-        let after_bb = self.context.append_basic_block(self.main_fn, "loop_after");
+        let cont_bb = self
+            .context
+            .append_basic_block(self.current_function(), "loop_cont");
+        let after_bb = self
+            .context
+            .append_basic_block(self.current_function(), "loop_after");
         self.builder
             .build_unconditional_branch(head_bb)
             .map_err(|e| e.to_string())?;
@@ -1069,7 +1459,7 @@ impl<'a> Gen<'a> {
             .into_int_value();
 
         let counter = self
-            .alloca_builder
+            .entry_builder()
             .build_alloca(self.i64_ty, "loop_i")
             .map_err(|e| e.to_string())?;
         self.builder
@@ -1194,8 +1584,22 @@ impl<'a> Gen<'a> {
                     .left()
                     .expect("code_native_open returns i8*, not void")
                     .into_pointer_value();
+                // Parked in a global rather than kept as an SSA value: a
+                // handler body is a separate function, and `main`'s SSA
+                // values don't reach it. `link` is top-level only, so the
+                // store always dominates every load.
+                let slot = self.module.add_global(
+                    self.i8_ptr_ty,
+                    None,
+                    &format!("_code_native_handle_{alias}"),
+                );
+                slot.set_initializer(&self.i8_ptr_ty.const_null());
+                let slot = slot.as_pointer_value();
+                self.builder
+                    .build_store(slot, handle)
+                    .map_err(|e| e.to_string())?;
                 self.native_links
-                    .insert(alias.to_string(), NativeLink::Dynamic(handle));
+                    .insert(alias.to_string(), NativeLink::Dynamic(slot));
                 // The module's exported variables (constants) become an
                 // object bound under `alias`, so `alias.name` is ordinary
                 // field access — the same binding `gen_import`'s alias uses.
@@ -1291,6 +1695,14 @@ impl<'a> Gen<'a> {
         let particle_ptr = self.gen_expr(particle)?;
         let temp = self.alloc_slot("emit_result")?;
         match target {
+            EmitTarget::This => {
+                let dispatch = self
+                    .dispatch_fn
+                    .ok_or_else(|| "no handler is defined in this program".to_string())?;
+                self.builder
+                    .build_call(dispatch, &[temp.into(), particle_ptr.into()], "")
+                    .map_err(|e| e.to_string())?;
+            }
             EmitTarget::Core => {
                 self.builder
                     .build_call(
@@ -1308,8 +1720,12 @@ impl<'a> Gen<'a> {
                     .get(alias)
                     .expect("verify_defined checked this alias was linked")
                 {
-                    NativeLink::Dynamic(handle) => {
-                        let handle = *handle;
+                    NativeLink::Dynamic(slot) => {
+                        let handle = self
+                            .builder
+                            .build_load(self.i8_ptr_ty, *slot, "native_handle")
+                            .map_err(|e| e.to_string())?
+                            .into_pointer_value();
                         self.builder
                             .build_call(
                                 self.fn_native_dispatch,
@@ -1406,8 +1822,12 @@ impl<'a> Gen<'a> {
             )
             .map_err(|e| e.to_string())?;
 
-        let then_bb = self.context.append_basic_block(self.main_fn, "if_then");
-        let after_bb = self.context.append_basic_block(self.main_fn, "if_after");
+        let then_bb = self
+            .context
+            .append_basic_block(self.current_function(), "if_then");
+        let after_bb = self
+            .context
+            .append_basic_block(self.current_function(), "if_after");
         self.builder
             .build_conditional_branch(cond, then_bb, after_bb)
             .map_err(|e| e.to_string())?;
@@ -1525,7 +1945,7 @@ impl<'a> Gen<'a> {
                 // every use, so this one needs no zero-init — but it still
                 // belongs in `entry` like every other alloca.
                 let keys_buf = self
-                    .alloca_builder
+                    .entry_builder()
                     .build_array_alloca(self.i8_ptr_ty, key_count, "objkeys")
                     .map_err(|e| e.to_string())?;
                 let values_buf = self.alloc_buffer(len, "objvals")?;
@@ -1674,7 +2094,7 @@ impl<'a> Gen<'a> {
     ) -> Result<PointerValue<'a>, String> {
         let op_name = if is_and { "and" } else { "or" };
         let result_slot = self
-            .alloca_builder
+            .entry_builder()
             .build_alloca(self.i32_ty, "logic_result")
             .map_err(|e| e.to_string())?;
 
@@ -1690,9 +2110,15 @@ impl<'a> Gen<'a> {
             )
             .map_err(|e| e.to_string())?;
 
-        let short_bb = self.context.append_basic_block(self.main_fn, "logic_short");
-        let rhs_bb = self.context.append_basic_block(self.main_fn, "logic_rhs");
-        let merge_bb = self.context.append_basic_block(self.main_fn, "logic_merge");
+        let short_bb = self
+            .context
+            .append_basic_block(self.current_function(), "logic_short");
+        let rhs_bb = self
+            .context
+            .append_basic_block(self.current_function(), "logic_rhs");
+        let merge_bb = self
+            .context
+            .append_basic_block(self.current_function(), "logic_merge");
         self.builder
             .build_conditional_branch(short_circuits, short_bb, rhs_bb)
             .map_err(|e| e.to_string())?;
@@ -1862,7 +2288,12 @@ impl<'a> Gen<'a> {
         // reference into this very binary), so there's nothing to close.
         let links = std::mem::take(&mut self.native_links);
         for (_, link) in links {
-            if let NativeLink::Dynamic(handle) = link {
+            if let NativeLink::Dynamic(slot) = link {
+                let handle = self
+                    .builder
+                    .build_load(self.i8_ptr_ty, slot, "native_handle")
+                    .map_err(|e| e.to_string())?
+                    .into_pointer_value();
                 self.builder
                     .build_call(self.fn_native_close, &[handle.into()], "")
                     .map_err(|e| e.to_string())?;

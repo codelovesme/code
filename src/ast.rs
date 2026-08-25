@@ -181,6 +181,50 @@ pub enum Stmt {
     /// *parse* error rather than a later check, so the interpreter and the
     /// compiler reject it identically without either needing its own rule.
     Break,
+    /// `ClassName { fields } => { body }` — a handler written in the
+    /// language itself, rather than in C (core) or a native module.
+    ///
+    /// **Top level only**, like `Link`: dispatch is one program-wide table
+    /// keyed by class name, not something a block can add to conditionally.
+    /// A second definition of the same class is an error rather than a
+    /// silent override — the same rule duplicate `link`s follow. Modules
+    /// register into the same table, so the names are program-wide.
+    ///
+    /// `fields` gives the body's names a declaration site. There are no
+    /// types here to declare a particle's shape — the old language had
+    /// `Ping = Particle ∩ { value ∈ Number }`, which is what made a body's
+    /// `value` traceable — so an implicit binding would be the one name in
+    /// the language that appears from nowhere. Listing them mirrors the
+    /// literal that constructs the particle.
+    ///
+    /// A listed field the particle doesn't carry is null, the same answer
+    /// `.field` gives for an absent member. Everything *not* listed is
+    /// simply unreachable from the body; the particle itself is never bound
+    /// to a name.
+    ///
+    /// The body's *enclosing* scope is the top level, so it reads and
+    /// reassigns top-level bindings and linked module aliases (a handler
+    /// with no access to an alias could never print, since `link` is
+    /// top-level too). Ordinary `let` rules apply inside: `let` declares a
+    /// local, bare `name = ...` reaches outward. The old language let `let`
+    /// reassign outward inside a handler, which is precisely the
+    /// shadow-vs-mutate ambiguity mandatory `let` exists to remove.
+    HandlerDef {
+        class_name: String,
+        fields: Vec<String>,
+        body: Vec<Stmt>,
+    },
+    /// `return <particle>` — ends a handler body early with that result.
+    ///
+    /// The value must be a **particle** (an object carrying `_class`), so
+    /// every `get` result has a class to test with `is`. That is the same
+    /// reason core handlers were changed to return particles rather than
+    /// bare values. A body that never returns yields null, which is not an
+    /// error: plenty of handlers exist for their effect, `Print` among them.
+    ///
+    /// Outside a handler it is a *parse* error, exactly like `Break` outside
+    /// a loop, so both backends reject it without either needing a rule.
+    Return(Expr),
 }
 
 /// The `[key,] value over iterable` half of a `Stmt::Loop`. Field order
@@ -274,6 +318,11 @@ pub enum NativeFormat {
 pub enum EmitTarget {
     Core,
     Module(String),
+    /// `to this` — a handler defined by the program itself
+    /// (`Stmt::HandlerDef`). Named rather than left implicit so every
+    /// `emit` states where it is going, the same way `link` makes a native
+    /// module name itself with `as`.
+    This,
 }
 
 #[derive(Debug, Clone, PartialEq)]

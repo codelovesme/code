@@ -1,0 +1,16 @@
+-- A body that never returns yields null. Handlers that exist for their
+-- effect rather than their answer are ordinary — `Print` is one — so
+-- returning nothing is not an error.
+let seen = 0
+
+Note { text } => {
+    seen = seen + 1
+}
+
+emit Note { "text": "first" } to this get nothing
+assert nothing = null
+assert seen = 1
+
+-- `get` is optional, exactly as it is for core and module targets.
+emit Note { "text": "second" } to this
+assert seen = 2

@@ -38,11 +38,14 @@ pub enum Token {
     Comma,
     Dot,
     Plus,
-    /// `+=` — the language's only multi-character operator, and only ever a
-    /// statement form (`name += expr`), never part of an expression. The
-    /// parser rewrites it into `name = name + expr`, so it never reaches
-    /// either backend.
+    /// `+=` — only ever a statement form (`name += expr`), never part of an
+    /// expression. The parser rewrites it into `name = name + expr`, so it
+    /// never reaches either backend.
     PlusEq,
+    /// `=>` — separates a handler's class name from its body
+    /// (`Greet => { ... }`). One of the two multi-character operators, the
+    /// other being `+=`.
+    Arrow,
     Minus,
     Star,
     Slash,
@@ -79,6 +82,12 @@ pub enum Token {
     /// `is` — the type-test operator: `expr is ClassName` asks whether
     /// `expr` is a particle of that class (see `Expr::Is`).
     Is,
+    /// `this` — the `emit ... to this` target: a handler the program
+    /// defines itself. A keyword rather than an ordinary name, so it can
+    /// never also be a variable.
+    This,
+    /// `return` — a handler body's early exit with a result.
+    Return,
     /// Statement separator — a newline or `;`. Blank lines never produce one
     /// (see `tokenize`: consecutive separators are collapsed).
     Newline,
@@ -156,12 +165,23 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
             ));
         }
 
-        // `+=`, checked before the single-character table below so the `+`
-        // isn't consumed on its own. The only two-character operator there
-        // is: the comparison operators are each exactly one character, which
-        // is what `==`/`<=`/`>=` are rejected for.
+        // The two-character operators, checked before the single-character
+        // table below so their first character isn't consumed on its own.
+        // There are exactly two — the comparison operators are each one
+        // character, which is what `==`/`<=`/`>=` are rejected for.
         if c == '+' && chars.get(i + 1) == Some(&'=') {
             tokens.push(Token::PlusEq);
+            starts.push(start as u32);
+            ends.push(start as u32 + 2);
+            last_was_separator = false;
+            i += 2;
+            continue;
+        }
+
+        // `=>` introduces a handler body. Checked before `=` so the arrow
+        // never decays into an equality followed by a stray `>`.
+        if c == '=' && chars.get(i + 1) == Some(&'>') {
+            tokens.push(Token::Arrow);
             starts.push(start as u32);
             ends.push(start as u32 + 2);
             last_was_separator = false;
@@ -318,6 +338,8 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                 "core" => Token::Core,
                 "get" => Token::Get,
                 "is" => Token::Is,
+                "this" => Token::This,
+                "return" => Token::Return,
                 _ => Token::Ident(text),
             };
             tokens.push(tok);

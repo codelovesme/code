@@ -1,0 +1,4 @@
+-- No handler is defined for this class. A runtime error, not null: the
+-- same decision `to core` already makes (see fail_emit_unknown_handler.code),
+-- so a literal and a variable-held particle fail identically.
+emit Nobody { "x": 1 } to this

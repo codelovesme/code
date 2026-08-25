@@ -1,0 +1,13 @@
+-- A handler body is ordinary code: it can emit to core and to a linked
+-- native module, not just to `this`.
+link "native_modules/math.so" as m
+
+Total { values } => {
+    emit Length { "value": values } to core get n
+    emit Sum { "value": values } to m get s
+    return Totals { "count": n.value, "sum": s.value }
+}
+
+emit Total { "values": [1, 2, 3, 4] } to this get r
+assert r.count = 4
+assert r.sum = 10

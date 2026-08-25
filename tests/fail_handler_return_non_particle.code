@@ -1,0 +1,7 @@
+-- A handler's result must be a particle: an object carrying `_class`.
+-- Core handlers were made to return particles rather than bare values for
+-- the same reason, so `get`'s result always has a class to test with `is`.
+Ping => {
+    return 42
+}
+emit Ping {} to this

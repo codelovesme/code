@@ -61,6 +61,12 @@ struct Parser<'a> {
     /// it could never mean anything, and confining `link` to the top level
     /// means `loader.rs` only has to scan one flat statement list.
     block_depth: usize,
+    /// Whether the statement being parsed is inside a handler body. Like
+    /// `loop_depth` for `break`, this is what lets `return` outside a
+    /// handler be a parse error, rejected identically by both output modes
+    /// without either needing its own pass. A flag rather than a count:
+    /// handler definitions are top-level only, so they never nest.
+    in_handler: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -72,6 +78,7 @@ impl<'a> Parser<'a> {
             err_pos: 0,
             loop_depth: 0,
             block_depth: 0,
+            in_handler: false,
         }
     }
 
@@ -167,10 +174,12 @@ impl<'a> Parser<'a> {
             };
             let target = match self.advance() {
                 Token::Core => EmitTarget::Core,
+                Token::This => EmitTarget::This,
                 Token::Ident(name) => EmitTarget::Module(name),
                 other => {
                     return Err(format!(
-                        "expected 'core' or a linked module's name after 'to', found {other:?}"
+                        "expected 'core', 'this', or a linked module's name after 'to', \
+                         found {other:?}"
                     ))
                 }
             };
@@ -209,6 +218,16 @@ impl<'a> Parser<'a> {
             return Ok(Stmt::Continue);
         }
 
+        if matches!(self.peek(), Token::Return) {
+            self.advance();
+            if !self.in_handler {
+                return Err("'return' outside of a handler body".to_string());
+            }
+            let value = self.expr()?;
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::Return(value));
+        }
+
         // A bare block: unambiguous at statement-start, since object
         // literals only ever appear in expression position (the right-hand
         // side of `=`, an array element, ...), never here.
@@ -242,6 +261,56 @@ impl<'a> Parser<'a> {
             };
             self.expect_end_of_statement()?;
             return Ok(Stmt::Link { path, alias });
+        }
+
+        // `ClassName { fields } => { body }` — a handler definition. An
+        // uppercase name at statement position is otherwise only ever an
+        // assignment (`X = 5`, see particle_uppercase_var_not_special.code),
+        // so one token of lookahead separates them: `{` or `=>` means a
+        // handler, `=` means a reassignment. A particle *expression* can't
+        // appear here at all — no statement begins with a bare expression.
+        if let Token::Ident(name) = self.peek() {
+            if starts_uppercase(name)
+                && matches!(
+                    self.tokens.get(self.pos + 1),
+                    Some(Token::LBrace) | Some(Token::Arrow)
+                )
+            {
+                let class_name = name.clone();
+                self.advance();
+                if self.block_depth > 0 {
+                    return Err(format!(
+                        "handler '{class_name}' is only allowed at the top level of a file — \
+                         dispatch is one program-wide table, not something a block adds to"
+                    ));
+                }
+                let fields = if matches!(self.peek(), Token::LBrace) {
+                    self.handler_fields()?
+                } else {
+                    Vec::new()
+                };
+                match self.advance() {
+                    Token::Arrow => {}
+                    other => {
+                        return Err(format!(
+                            "expected '=>' after handler '{class_name}', found {other:?}"
+                        ))
+                    }
+                }
+                if self.in_handler {
+                    return Err("handlers cannot be defined inside a handler body".to_string());
+                }
+                self.in_handler = true;
+                let body = self.block();
+                self.in_handler = false;
+                let body = body?;
+                self.expect_end_of_statement()?;
+                return Ok(Stmt::HandlerDef {
+                    class_name,
+                    fields,
+                    body,
+                });
+            }
         }
 
         let exported = if matches!(self.peek(), Token::Export) {
@@ -417,6 +486,56 @@ impl<'a> Parser<'a> {
 
     /// `{ stmt* }` — shared by `if`, `loop`, and the bare-block statement:
     /// "brace, statements separated/terminated by newlines, brace".
+    /// `{ }`, `{ a }`, `{ a, b }` — a handler's field list. Bare
+    /// identifiers rather than the quoted keys a particle *literal* uses:
+    /// these are the names being declared, not the strings being looked up,
+    /// and every other binding form in the language (`let`, `loop`'s
+    /// variables, `get`) declares with a bare name too.
+    fn handler_fields(&mut self) -> Result<Vec<String>, String> {
+        match self.advance() {
+            Token::LBrace => {}
+            other => {
+                return Err(format!(
+                    "expected '{{' to start a field list, found {other:?}"
+                ))
+            }
+        }
+        let mut fields: Vec<String> = Vec::new();
+        self.skip_newlines();
+        if matches!(self.peek(), Token::RBrace) {
+            self.advance();
+            return Ok(fields);
+        }
+        loop {
+            self.skip_newlines();
+            let name = match self.advance() {
+                Token::Ident(name) => name,
+                other => return Err(format!("expected a field name, found {other:?}")),
+            };
+            if fields.contains(&name) {
+                return Err(format!("field '{name}' is listed twice"));
+            }
+            fields.push(name);
+            self.skip_newlines();
+            match self.advance() {
+                Token::Comma => {}
+                Token::RBrace => break,
+                other => {
+                    return Err(format!(
+                        "expected ',' or '}}' in a field list, found {other:?}"
+                    ))
+                }
+            }
+            self.skip_newlines();
+            // A trailing comma before the brace.
+            if matches!(self.peek(), Token::RBrace) {
+                self.advance();
+                break;
+            }
+        }
+        Ok(fields)
+    }
+
     fn block(&mut self) -> Result<Vec<Stmt>, String> {
         match self.advance() {
             Token::LBrace => {}

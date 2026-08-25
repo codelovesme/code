@@ -797,6 +797,29 @@ void code_iter_key(CodeValue *out, const CodeValue *v, long long i) {
     code_number(out, (double)i);
 }
 
+/* ---- Handlers written in the language itself -------------------------------
+ *
+ * The one check the compiled backend needs that nothing else did. Its
+ * interpreter counterpart lives in `interpreter.rs`'s `dispatch_handler`, so
+ * a handler behaves identically whichever backend runs it. */
+
+/* A handler's result must be a particle, so every `get` binding has a class
+ * to test with `is`. Same rule the core handlers follow. */
+void code_check_particle(const CodeValue *v) {
+    if (v->tag == CODE_OBJECT) {
+        for (long long i = 0; i < v->len; i++) {
+            if (strcmp(v->keys[i], "_class") == 0) {
+                return;
+            }
+        }
+    }
+    char msg[128];
+    snprintf(msg, sizeof msg,
+             "a handler must return a particle — an object with a '_class' field — found %s %s",
+             article_for(v), type_name(v));
+    code_runtime_error(msg);
+}
+
 /* ---- Rendering a value as text -------------------------------------------
  *
  * The compiled side of string interpolation (`"hi $name"`), and the first

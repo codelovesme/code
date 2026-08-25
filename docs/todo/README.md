@@ -12,8 +12,7 @@ time. Order below is roughly by how likely it is to bite someone.
 | [build-targets.md](build-targets.md) | Phases 1 and 2 shipped 2026-08-24: `--target exe\|shared\|static\|wasm` works; wasm uses a small freestanding runtime shim and host-supplied clock/error imports, with Node coverage in `tests/build_targets.rs` |
 | [community-modules.md](community-modules.md) | How native modules reach users: core stays minimal (`Length`, `Timestamp`), first-party modules are per-host (`terminal` native / `console` browser, then `math`, `strings`, `net`) on GitHub Releases + npm via `code install`, and the community publish path — direction decided 2026-08-23, phased A–F |
 | [emit-bare-particle-name.md](emit-bare-particle-name.md) | Shipped 2026-08-24: `emit Timestamp to core` drops the empty `{}` — a parser-only desugar in the `Stmt::Emit` arm, covered by `tests/emit_bare_particle.code` and two `fail_` fixtures |
-| [user-defined-handlers.md](user-defined-handlers.md) | Found 2026-08-25 comparing against `old/`: `Name => { … }`, `return`, `emit … to this/base` all dropped in the rewrite — handlers can only live in C or native modules; spec'd for both backends (old compiled backend had inline label-dispatch too) |
-| [inbound-emissions-from-native-modules.md](inbound-emissions-from-native-modules.md) | Found 2026-08-25: dispatch is request/response only; old had per-module `EmitQueue`s + `drain_emissions()` + keep-alive polling so modules could push events (event loops impossible without it) |
+| [inbound-emissions-from-native-modules.md](inbound-emissions-from-native-modules.md) | Found 2026-08-25: dispatch is request/response only; old had per-module `EmitQueue`s + `drain_emissions()` + keep-alive polling so modules could push events (event loops impossible without it). Now also carries the old `emit … to base` — an *upward* edge in the module graph, the same problem for `.code` modules |
 | [object-spread.md](object-spread.md) | Found 2026-08-25: `{ ...source, k: v }` gone with the constraint-era object model; the "copy a particle, tweak a field" idiom has no syntax |
 | [release-flag.md](release-flag.md) | Found 2026-08-25: old toggled `-O0`↔`-O2` via `--release`; new hardcodes `-O2` (`codegen.rs:595`) — dev builds pay full optimization with no knob |
 | [formatter.md](formatter.md) | No canonical layout for `.code` source: `code format [--check]`, token-stream based so comments and `+=` survive, with token-equality + idempotence proven over the fixture corpus and a CI gate beside `cargo fmt` |
@@ -33,6 +32,14 @@ Done and removed (git log has the detail):
   for a literal dollar and a bare `$` a lex error rather than silent literal
   text. Rendering agrees byte-for-byte between the interpreter and native
   `code build`; the wasm gap it exposed is its own entry above.
+- *user-defined handlers* — `ClassName { fields } => { body }` and
+  `emit … to this`, in both backends. Two claims in the old write-up turned
+  out to be wrong and are corrected in the git history: duplicate handlers
+  were always an error in `old/` (not "stacked, last non-null wins"), and
+  `to base` meant the linking *module*, not an enclosing handler — that half
+  moved to the inbound-emissions entry above. `Exception`/catchable asserts
+  stay unported: making a failed assert catchable is a try/catch design
+  decision of its own, not handler mechanics.
 - *no language documentation* — the root `README.md` now documents the
   language as it actually stands, states plainly that `old/` is an archive,
   and covers the deliberate omissions so they don't read as gaps. Every

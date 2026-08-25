@@ -1,0 +1,11 @@
+-- A handler's enclosing scope is the top level, never the caller's. `local`
+-- is in scope at the emit site but not inside the body, so this is an
+-- undefined variable — which is what makes a handler's meaning independent
+-- of where it happens to be invoked from.
+Peek => {
+    return Ack { "value": local }
+}
+{
+    let local = 1
+    emit Peek to this
+}

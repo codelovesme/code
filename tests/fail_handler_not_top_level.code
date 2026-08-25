@@ -1,0 +1,7 @@
+-- Handler definitions are top-level only, like `link` — dispatch is a
+-- program-wide table, not something a block can add to conditionally.
+if true {
+    Nested => {
+        return Ack {}
+    }
+}

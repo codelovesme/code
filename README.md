@@ -19,7 +19,7 @@ emit Print { "value": "$name won $rounds rounds" } to term
 
 > **`old/` is an archive.** The directory `old/` holds a *different*,
 > earlier language that happened to share the name — constraints, `∈`,
-> handlers written in the language itself. It is kept for reference only.
+> particles with declared schemas. It is kept for reference only.
 > Nothing outside `old/` refers to it, and `old/README.md` documents that
 > archived language, not this one. If you arrived at a description of
 > `code` involving constraints or particles-with-schemas, you were reading
@@ -34,6 +34,7 @@ emit Print { "value": "$name won $rounds rounds" } to term
   - [Reading members](#reading-members) · [assert](#assert)
   - [if and blocks](#if-and-blocks) · [loop](#loop)
   - [Particles](#particles) · [emit](#emit) · [is](#is)
+- [Handlers](#handlers)
 - [Modules](#modules)
 - [What the language deliberately does not have](#what-the-language-deliberately-does-not-have)
 - [The two output modes](#the-two-output-modes)
@@ -362,6 +363,8 @@ assert n.value = 3
   Core stays deliberately minimal: `Length` (of an Array, or of a Str in
   characters — not bytes) and `Timestamp` (Unix seconds). Every core result
   comes back as a *particle*, never a bare value.
+- **`to this`** dispatches to a handler the program
+  [defines itself](#handlers).
 - **`to <alias>`** dispatches to a [linked module](#modules).
 - **`get <name>`** binds the result. Without it the result is discarded.
 
@@ -389,6 +392,60 @@ assert t is TimestampResult
 
 The right side is a bare name, not an expression: a class name is a lexical
 fact.
+
+## Handlers
+
+A handler is the only thing in the language that resembles a function, and
+`emit` is the only way to reach one. Core provides two; a native module
+provides its own; and a program can define its own with `=>`:
+
+```
+Greet { who } => {
+    return Greeting { "text": "hi $who" }
+}
+
+emit Greet { "who": "ada" } to this get r
+assert r is Greeting
+assert r.text = "hi ada"
+```
+
+**The field list is not optional decoration.** There are no types here to
+declare a particle's shape, so without it a body's `who` would be the one
+name in the language that appears from nowhere. Listing the fields mirrors
+the literal that constructs the particle and gives every name a declaration
+site. Anything not listed is simply unreachable from the body.
+
+A listed field the particle doesn't carry is null — the same answer `.field`
+gives for an absent member.
+
+The rest of the rules:
+
+- **Top level only**, like `link` — dispatch is one program-wide table, and
+  a linked module's handlers join it. A second definition of the same class
+  is an error.
+- **`return` must yield a particle**, so every result has a class to test
+  with `is`. A body that never returns yields null, which is fine: plenty of
+  handlers exist for their effect rather than their answer.
+- **No matching handler is an error**, not null — the same answer `to core`
+  gives an unknown class.
+- **The body's enclosing scope is the top level**, never the caller's. It
+  reads and reassigns top-level bindings and linked module aliases (it must:
+  `link` is top-level too, so otherwise a handler could never print), but a
+  caller's locals are invisible to it. Ordinary `let` rules apply inside.
+- **Handlers may emit to themselves**, so recursion and mutual recursion
+  both work.
+
+```
+Countdown { n } => {
+    if n = 0 {
+        return Done { "steps": 0 }
+    }
+    emit Countdown { "n": n - 1 } to this get inner
+    return Done { "steps": inner.steps + 1 }
+}
+emit Countdown { "n": 5 } to this get r
+assert r.steps = 5
+```
 
 ## Modules
 
@@ -455,9 +512,9 @@ then the nearest project's `.code/modules/`, then `$CODE_MODULE_PATH`, then
 Each of these is a decision, not an omission waiting to be filled:
 
 - **No functions.** Handlers, reached by `emit`, are the only call-like
-  construct — and today they can only be written in C or a native module,
-  not in the language itself. (That last part *is* a gap; see
-  [`docs/todo/user-defined-handlers.md`](docs/todo/user-defined-handlers.md).)
+  construct — and the only unit of reuse. They take a particle and return
+  one; there are no parameters lists, no return-type declarations, and no
+  way to hold one as a value.
 - **No `else`.** Write a second `if`.
 - **No `while`.** `loop { }` with `break` is the unbounded loop.
 - **No mutation of a constructed value.** `.field`/`[index]` read only;

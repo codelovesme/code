@@ -46,6 +46,20 @@ pub struct Environment {
     /// promotes it into `modules`/a binding under `alias` when it runs — see
     /// `provide_module` and that `exec` arm.
     available_modules: HashMap<String, (Value, ModuleDispatch)>,
+    /// Handlers the program defines itself (`Stmt::HandlerDef`), by class
+    /// name. Flat and program-wide rather than scoped, because a definition
+    /// is top-level only — and collected in one pass *before* execution
+    /// starts, so a handler can emit to one defined further down the file,
+    /// which is what makes recursion and mutual recursion expressible.
+    handlers: HashMap<String, Rc<HandlerBody>>,
+}
+
+/// A registered handler: the fields to seed its scope with, and the body to
+/// run. `Rc` so invoking one doesn't clone the statements.
+#[derive(Debug)]
+struct HandlerBody {
+    fields: Vec<String>,
+    body: Vec<Stmt>,
 }
 
 /// Derived `Debug` doesn't work once a field holds a `dyn Fn` (no `Debug`
@@ -70,6 +84,7 @@ impl Default for Environment {
             scopes: vec![HashMap::new()],
             modules: HashMap::new(),
             available_modules: HashMap::new(),
+            handlers: HashMap::new(),
         }
     }
 }
@@ -133,6 +148,43 @@ impl Environment {
     }
 }
 
+/// Collects every `Stmt::HandlerDef` into `env.handlers` before a single
+/// statement runs. Hoisting is what lets a handler emit to one defined later
+/// in the file — without it, recursion would be impossible to write and
+/// mutual recursion would depend on definition order.
+///
+/// Descends into `Stmt::Import` bodies (a linked module's top level is a top
+/// level too, so its handlers join the same program-wide table) and nothing
+/// else: the parser already rejects a definition inside an `if`, a block, or
+/// a loop.
+fn register_handlers(stmts: &[Stmt], env: &mut Environment) -> Result<(), String> {
+    for stmt in stmts {
+        match stmt {
+            Stmt::HandlerDef {
+                class_name,
+                fields,
+                body,
+            } => {
+                if env.handlers.contains_key(class_name) {
+                    return Err(format!(
+                        "duplicate handler for '{class_name}': only one handler per class"
+                    ));
+                }
+                env.handlers.insert(
+                    class_name.clone(),
+                    Rc::new(HandlerBody {
+                        fields: fields.clone(),
+                        body: body.clone(),
+                    }),
+                );
+            }
+            Stmt::Import { body, .. } => register_handlers(body, env)?,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 pub fn run(program: &Program) -> Result<Environment, String> {
     run_with(program, Environment::default())
 }
@@ -144,6 +196,7 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 /// a `JsBridge`-formatted `ImportNative` only ever checks an alias is
 /// already present, never resolves one itself (see that arm below).
 pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, String> {
+    register_handlers(&program.statements, &mut env)?;
     for stmt in &program.statements {
         // Can only ever be `Flow::Normal` out here: the parser rejects a
         // `break` that isn't inside a loop, so nothing can propagate one up
@@ -157,10 +210,14 @@ pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, 
 /// enclosing `Stmt::Loop` still has to act on. Nested `if`/block bodies just
 /// pass it straight through — a `break` inside an `if` inside a loop breaks
 /// the loop, not the `if`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum Flow {
     Normal,
     Break,
+    /// `return <particle>` — unwinds to the enclosing handler body, which is
+    /// the only thing that ever consumes it. Propagates outward through
+    /// `if`/block/loop bodies like `Break`, but no loop absorbs it.
+    Return(Value),
     /// Like `Break`, but the enclosing loop starts its next iteration
     /// instead of stopping. Propagates outward through `if`/block bodies
     /// exactly the same way.
@@ -383,8 +440,12 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                         // `Continue` needs no action beyond ending this
                         // iteration, which returning from the body already
                         // did — only `Break` changes what happens next.
-                        if flow? == Flow::Break {
-                            break;
+                        // `Return` belongs to the enclosing handler, so it
+                        // passes straight through rather than being absorbed.
+                        match flow? {
+                            Flow::Break => break,
+                            Flow::Return(value) => return Ok(Flow::Return(value)),
+                            _ => {}
                         }
                     }
                 }
@@ -394,8 +455,10 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     env.push_scope();
                     let flow = exec_body(body, env);
                     env.pop_scope();
-                    if flow? == Flow::Break {
-                        break;
+                    match flow? {
+                        Flow::Break => break,
+                        Flow::Return(value) => return Ok(Flow::Return(value)),
+                        _ => {}
                     }
                 },
             }
@@ -409,6 +472,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             let value = eval(particle, env)?;
             let output = match target {
                 EmitTarget::Core => dispatch_core(&value)?,
+                EmitTarget::This => dispatch_handler(&value, env)?,
                 EmitTarget::Module(alias) => {
                     let dispatch = env
                         .modules
@@ -425,7 +489,75 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
         }
         Stmt::Break => Ok(Flow::Break),
         Stmt::Continue => Ok(Flow::Continue),
+        // Already collected by `register_handlers` before execution began —
+        // reaching the definition in statement order does nothing.
+        Stmt::HandlerDef { .. } => Ok(Flow::Normal),
+        Stmt::Return(expr) => Ok(Flow::Return(eval(expr, env)?)),
     }
+}
+
+/// `emit <particle> to this` — runs the handler registered for the
+/// particle's own `_class`.
+///
+/// The body's enclosing scope is the **top level**, never the caller's: the
+/// scope stack is temporarily cut down to its outermost frame for the
+/// duration, so a handler invoked from inside a loop or another handler sees
+/// exactly what one invoked from the top of the file would. Cutting rather
+/// than copying keeps top-level *writes* live — a handler reassigning a
+/// top-level binding is the point of `handler_outer_scope.code`.
+fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, String> {
+    let class = match particle {
+        Value::Object(fields) => fields.iter().find(|(k, _)| k == "_class").map(|(_, v)| v),
+        _ => None,
+    };
+    let Some(Value::Str(class)) = class else {
+        return Err("emit requires a particle — an object with a '_class' field".to_string());
+    };
+    let handler = env
+        .handlers
+        .get(class.as_ref())
+        .ok_or_else(|| format!("no handler defined for '{class}'"))?
+        .clone();
+
+    // Everything but the top-level frame steps aside for the call.
+    let saved: Vec<HashMap<String, Value>> = env.scopes.drain(1..).collect();
+
+    // A listed field the particle doesn't carry is null — the same answer
+    // `.field` gives for an absent member.
+    let mut seeded = HashMap::new();
+    for name in &handler.fields {
+        let supplied = match particle {
+            Value::Object(fields) => fields
+                .iter()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.clone()),
+            _ => None,
+        };
+        seeded.insert(name.clone(), supplied.unwrap_or(Value::Null));
+    }
+
+    env.scopes.push(seeded);
+    let flow = exec_body(&handler.body, env);
+    env.pop_scope();
+    let result = match flow {
+        // No `return` at all: the result is null. Handlers that exist for
+        // their effect rather than their answer are ordinary.
+        Ok(Flow::Normal) => Ok(Value::Null),
+        Ok(Flow::Return(value)) => match &value {
+            Value::Object(fields) if fields.iter().any(|(k, _)| k == "_class") => Ok(value),
+            other => Err(format!(
+                "a handler must return a particle — an object with a '_class' field — found {}",
+                a_type_name(other)
+            )),
+        },
+        // The parser rejects `break`/`continue` outside a loop, so neither
+        // can escape a body to here.
+        Ok(_) => Ok(Value::Null),
+        Err(e) => Err(e),
+    };
+
+    env.scopes.extend(saved);
+    result
 }
 
 /// Evaluates a literal expression with no variables to resolve — the other

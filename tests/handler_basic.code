@@ -1,0 +1,17 @@
+-- A handler defined in the language itself: `ClassName { fields } => { body }`
+-- at the top level, invoked by emitting a particle of that class `to this`.
+-- Until now a handler could only live in C (core) or a native module.
+--
+-- The field list is what makes the body's names have a declaration site.
+-- There are no types here to declare a particle's shape, so an implicit
+-- binding would be the one name in the language that appears from nowhere;
+-- listing them mirrors the literal that constructs the particle.
+Greet { who } => {
+    assert who = "ada"
+    return Greeting { "text": "hi $who" }
+}
+
+emit Greet { "who": "ada" } to this get r
+assert r is Greeting
+assert r.text = "hi ada"
+assert r = { "_class": "Greeting", "text": "hi ada" }

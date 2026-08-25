@@ -80,3 +80,24 @@ Whether draining happens *only* between top-level statements (deterministic,
 testable) or continuously (needed for interactive daemons). Old did both —
 between-statement drain plus keep-alive spin. Recommend keeping exactly
 that split; it costs nothing extra once the queue exists.
+
+## Related: the old `base` target
+
+Found 2026-08-25 while porting user-defined handlers. `docs/todo`'s
+now-removed `user-defined-handlers.md` described `emit ... to base` as
+"handlers visible outside the innermost enclosing handler
+(override-and-fallback)". That was a misreading of the old tree.
+
+`old/tests/base_target_single.code` states what it actually meant:
+*"dispatch to the module that linked this module"*. A child module emits
+`to base` and the **parent module's** handler answers
+(`get_handlers_outside_current_scope`, keyed on module scope, not handler
+scope) — and `base_target_multi.code` shows one shared child reaching several
+different linking parents.
+
+So `base` is an *upward* edge in the module graph, which puts it here rather
+than with handler mechanics: it is the same "a module needs to talk back to
+whoever loaded it" problem this document already covers, for `.code` modules
+instead of native ones. Worth designing the two together — if inbound
+emissions get a shape, `base` should either reuse it or be dropped in favour
+of it, not reinvented alongside.

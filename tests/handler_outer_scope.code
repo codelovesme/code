@@ -1,0 +1,28 @@
+-- A handler body's enclosing scope is the top level: it reads top-level
+-- bindings, and reassigns them with a bare `name = ...` like any other
+-- statement. `let` inside a body declares a *local*, the ordinary rule —
+-- the old language let `let` reassign outward inside a handler, which is
+-- exactly the shadow-vs-mutate ambiguity mandatory `let` exists to remove.
+let suffix = "!"
+let calls = 0
+let last = null
+
+Shout { text } => {
+    calls = calls + 1
+    let local = text + suffix
+    last = local
+    return Shouted { "value": local }
+}
+
+emit Shout { "text": "hi" } to this get a
+assert a.value = "hi!"
+assert calls = 1
+assert last = "hi!"
+
+emit Shout { "text": "bye" } to this get b
+assert b.value = "bye!"
+assert calls = 2
+assert last = "bye!"
+
+-- `local` was a handler-local binding and never escaped to the top level.
+assert suffix = "!"

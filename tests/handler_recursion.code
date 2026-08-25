@@ -1,0 +1,37 @@
+-- A handler may emit to itself. Both backends have to support it: the
+-- compiled one gives each handler a real function rather than inlining its
+-- body at the call site, which is what makes this terminate rather than
+-- being impossible to express.
+Countdown { n } => {
+    if n = 0 {
+        return Done { "steps": 0 }
+    }
+    let next = Countdown { "n": n - 1 }
+    emit next to this get inner
+    return Done { "steps": inner.steps + 1 }
+}
+
+emit Countdown { "n": 5 } to this get r
+assert r is Done
+assert r.steps = 5
+
+-- Mutual recursion between two handlers works for the same reason.
+Even { n } => {
+    if n = 0 {
+        return Answer { "value": true }
+    }
+    emit Odd { "n": n - 1 } to this get r
+    return r
+}
+Odd { n } => {
+    if n = 0 {
+        return Answer { "value": false }
+    }
+    emit Even { "n": n - 1 } to this get r
+    return r
+}
+
+emit Even { "n": 8 } to this get e
+assert e.value = true
+emit Even { "n": 7 } to this get o
+assert o.value = false

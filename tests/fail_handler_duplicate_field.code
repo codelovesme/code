@@ -1,0 +1,6 @@
+-- The same field twice in one list. Nothing sensible to bind, and almost
+-- certainly a typo.
+Greet { who, who } => {
+    return Ack {}
+}
+emit Greet { "who": "ada" } to this
