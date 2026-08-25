@@ -18,7 +18,6 @@ time. Order below is roughly by how likely it is to bite someone.
 | [release-flag.md](release-flag.md) | Found 2026-08-25: old toggled `-O0`↔`-O2` via `--release`; new hardcodes `-O2` (`codegen.rs:595`) — dev builds pay full optimization with no knob |
 | [formatter.md](formatter.md) | No canonical layout for `.code` source: `code format [--check]`, token-stream based so comments and `+=` survive, with token-equality + idempotence proven over the fixture corpus and a CI gate beside `cargo fmt` |
 | [native-module-linking.md](native-module-linking.md) | Phase 1 (`.so` handlers) + Phase 2 (exported vars) shipped 2026-08-21, Phase 3 (`.a` static modules) + the `code-native` Rust crate shipped 2026-08-22; a *native* `link "x.wasm"`, `code build --lib`, and per-language bundles for anything besides Rust/C still open (a *different* `crates/code-wasm` module-linking story shipped 2026-08-22 too — see that doc) |
-| [no-language-documentation.md](no-language-documentation.md) | The new language has no README at all |
 | [runtime-error-locations.md](runtime-error-locations.md) | Parse errors point at a line/column since 2026-08-23; runtime ones (`assertion failed`) still don't |
 | [temp-slots-pin-intermediates.md](temp-slots-pin-intermediates.md) | Memory held longer than necessary |
 | [wasm-fractional-number-text.md](wasm-fractional-number-text.md) | Found 2026-08-25 while shipping string interpolation: interpreter and native `code build` render numbers identically to Rust's `Display`, but `--target wasm` has no libc float formatting, so interpolating a *fractional* number there errors instead |
@@ -34,3 +33,8 @@ Done and removed (git log has the detail):
   for a literal dollar and a bare `$` a lex error rather than silent literal
   text. Rendering agrees byte-for-byte between the interpreter and native
   `code build`; the wasm gap it exposed is its own entry above.
+- *no language documentation* — the root `README.md` now documents the
+  language as it actually stands, states plainly that `old/` is an archive,
+  and covers the deliberate omissions so they don't read as gaps. Every
+  example in it was executed in both output modes, and every error it
+  promises was checked to actually error.
