@@ -1,0 +1,10 @@
+-- The cycle a static pass cannot see: the particle comes from a variable, so
+-- nothing at the call site names the handler it will reach. `check_cycles`
+-- lets this through, and the runtime re-entry guard catches it instead —
+-- which is why both halves exist.
+Loopy { n } => {
+    let again = Loopy { "n": n - 1 }
+    emit again to this get r
+    return Ack {}
+}
+emit Loopy { "n": 2 } to this

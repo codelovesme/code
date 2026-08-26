@@ -1,0 +1,34 @@
+-- Handlers may call each other; what they may not do is form a cycle. A
+-- chain is fine, however long, because the depth it can reach is bounded by
+-- the number of distinct handlers in the program.
+Third { n } => {
+    return Done { "value": n + 1 }
+}
+Second { n } => {
+    emit Third { "n": n * 2 } to this get t
+    return Done { "value": t.value }
+}
+First { n } => {
+    emit Second { "n": n } to this get s
+    return Done { "value": s.value }
+}
+
+emit First { "n": 5 } to this get r
+assert r.value = 11
+
+-- The same handler twice in a row is not a cycle: the first call has
+-- already returned before the second begins.
+Twice { n } => {
+    emit Third { "n": n } to this get a
+    emit Third { "n": a.value } to this get b
+    return Done { "value": b.value }
+}
+emit Twice { "n": 1 } to this get t
+assert t.value = 3
+
+-- Nor is calling the same handler from inside a loop.
+loop x over [1, 2, 3] get total = 0 {
+    emit Third { "n": x } to this get one
+    total = total + one.value
+}
+assert total = 9

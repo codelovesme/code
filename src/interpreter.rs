@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 
@@ -50,7 +50,7 @@ pub struct Environment {
     /// name. Flat and program-wide rather than scoped, because a definition
     /// is top-level only — and collected in one pass *before* execution
     /// starts, so a handler can emit to one defined further down the file,
-    /// which is what makes recursion and mutual recursion expressible.
+    /// which is what lets a handler emit to one defined further down.
     handlers: HashMap<String, Rc<HandlerBody>>,
     /// One drain per linked module that can speak first — each returns
     /// whatever that module has queued since it was last called. A closure
@@ -58,6 +58,11 @@ pub struct Environment {
     /// one: it keeps this field free of any `native-modules`-only type, so
     /// `crates/code-wasm` compiles with the feature off.
     inbound: Vec<Rc<dyn Fn() -> Vec<Value>>>,
+    /// Handlers currently on the call stack. `handlers::check_cycles` already
+    /// rejects every cycle it can see, but dispatch is by the particle's
+    /// runtime `_class`, so a particle held in a variable names a handler no
+    /// static pass could have resolved. This catches those.
+    active: HashSet<String>,
 }
 
 /// A registered handler: the fields to seed its scope with, and the body to
@@ -92,6 +97,7 @@ impl Default for Environment {
             available_modules: HashMap::new(),
             handlers: HashMap::new(),
             inbound: Vec::new(),
+            active: HashSet::new(),
         }
     }
 }
@@ -194,8 +200,11 @@ fn drain_inbound(env: &mut Environment) -> Result<(), String> {
 
 /// Collects every `Stmt::HandlerDef` into `env.handlers` before a single
 /// statement runs. Hoisting is what lets a handler emit to one defined later
-/// in the file — without it, recursion would be impossible to write and
-/// mutual recursion would depend on definition order.
+/// in the file — without it, which handlers a body could reach would depend
+/// on definition order.
+///
+/// Hoisting does *not* permit cycles: `handlers::check_cycles` rejects those
+/// before a statement runs.
 ///
 /// Descends into `Stmt::Import` bodies (a linked module's top level is a top
 /// level too, so its handlers join the same program-wide table) and nothing
@@ -241,6 +250,7 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 /// already present, never resolves one itself (see that arm below).
 pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, String> {
     register_handlers(&program.statements, &mut env)?;
+    crate::handlers::check_cycles(program)?;
     for stmt in &program.statements {
         // Can only ever be `Flow::Normal` out here: the parser rejects a
         // `break` that isn't inside a loop, so nothing can propagate one up
@@ -567,6 +577,12 @@ fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, St
         .get(class.as_ref())
         .ok_or_else(|| format!("no handler defined for '{class}'"))?
         .clone();
+    if !env.active.insert(class.to_string()) {
+        return Err(format!(
+            "handler '{class}' is already running — a handler cannot re-enter one \
+             that is already on the call stack"
+        ));
+    }
 
     // Everything but the top-level frame steps aside for the call.
     let saved: Vec<HashMap<String, Value>> = env.scopes.drain(1..).collect();
@@ -606,6 +622,7 @@ fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, St
     };
 
     env.scopes.extend(saved);
+    env.active.remove(class.as_ref());
     result
 }
 

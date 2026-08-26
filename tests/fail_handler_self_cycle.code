@@ -1,0 +1,8 @@
+-- The simplest cycle: a handler emitting to itself. Rejected before the
+-- program runs, in both output modes — recursion is what would let a chain
+-- of handler calls overflow the stack, so the language does not have it.
+Down { n } => {
+    emit Down { "n": n - 1 } to this get inner
+    return Done { "value": 0 }
+}
+emit Down { "n": 3 } to this

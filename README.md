@@ -432,20 +432,48 @@ The rest of the rules:
   reads and reassigns top-level bindings and linked module aliases (it must:
   `link` is top-level too, so otherwise a handler could never print), but a
   caller's locals are invisible to it. Ordinary `let` rules apply inside.
-- **Handlers may emit to themselves**, so recursion and mutual recursion
-  both work.
+- **The handler call graph must be acyclic** — see below.
+
+### No recursion
+
+A handler may emit to another handler, but **no handler may re-enter one that
+is already running**: not itself, and not around a longer loop.
 
 ```
-Countdown { n } => {
-    if n = 0 {
-        return Done { "steps": 0 }
-    }
-    emit Countdown { "n": n - 1 } to this get inner
-    return Done { "steps": inner.steps + 1 }
+Third { n } => {
+    return Done { "value": n + 1 }
 }
-emit Countdown { "n": 5 } to this get r
-assert r.steps = 5
+Second { n } => {
+    emit Third { "n": n } to this get t
+    return Done { "value": t.value }
+}
+First { n } => {
+    emit Second { "n": n } to this get s
+    return Done { "value": s.value }
+}
 ```
+
+That chain is fine, and so is calling the same handler twice in a row or from
+inside a loop — the first call has returned before the next begins. What is
+rejected is a cycle:
+
+```
+Down { n } => {
+    emit Down { "n": n - 1 } to this get inner   -- error, before it runs:
+    return Done { "value": 0 }                   -- handler cycle: Down -> Down
+}
+```
+
+This is what keeps handler calls bounded. With no cycle, the deepest a chain
+can reach is the number of distinct handlers in the program, so the stack
+cannot run away — where allowing recursion meant a program could overflow it,
+which in a compiled binary arrived as a bare segfault with no message.
+
+Cycles are caught **before the program runs**, in both output modes, and
+reported as the whole path (`handler cycle: A -> B -> C -> A`). Because
+dispatch is by the particle's runtime `_class`, a particle held in a variable
+names a handler no static pass can resolve; those are caught at runtime
+instead, with the same message in both modes.
 
 ## Modules
 

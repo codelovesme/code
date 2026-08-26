@@ -280,6 +280,7 @@ pub fn compile_to_object(
     obj_path: &Path,
 ) -> Result<(), String> {
     verify_defined(program)?;
+    crate::handlers::check_cycles(program)?;
     if target == BuildTarget::Wasm {
         reject_wasm_native_links(&program.statements)?;
     }
@@ -608,7 +609,8 @@ pub fn compile_to_object(
     // Handler functions are declared before any body is generated, so a
     // handler can emit to one defined further down the file — the codegen
     // half of `interpreter::register_handlers`' hoisting, and what makes
-    // recursion and mutual recursion compile at all.
+    // a chain of handler calls resolve at all, whatever order they are
+    // written in.
     gen.declare_handlers(&program.statements)?;
 
     gen.declare_drain();
@@ -779,8 +781,8 @@ struct Gen<'a, 'm> {
     handler_fns: HashMap<String, FunctionValue<'a>>,
     /// The generated `_code_dispatch_this`: one `if code_is_particle(p, "N")`
     /// chain over `handler_fns`, ending in a runtime error. Every
-    /// `emit ... to this` calls it, so recursion is an ordinary call rather
-    /// than anything the emit site has to know about.
+    /// `emit ... to this` calls it, so reaching another handler is an
+    /// ordinary call rather than anything the emit site has to know about.
     dispatch_fn: Option<FunctionValue<'a>>,
     /// Set while a handler body is being generated — see `HandlerFrame`.
     /// `None` means the statement stream belongs to `main`.
@@ -794,8 +796,8 @@ struct Gen<'a, 'm> {
 /// to release on the way out.
 ///
 /// A handler's slots are **allocas**, unlike `main`'s globals — that is
-/// precisely what makes recursion work, since each invocation gets its own
-/// stack frame while a global would be shared across all of them.
+/// what keeps one handler's locals separate from another's along a chain,
+/// where a global would be shared across every frame at once.
 struct HandlerFrame<'a> {
     out: PointerValue<'a>,
     exit: BasicBlock<'a>,
@@ -945,6 +947,53 @@ impl<'a, 'm> Gen<'a, 'm> {
 
         self.builder.position_at_end(start);
 
+        // Re-entry guard. `handlers::check_cycles` rejects every cycle it can
+        // see before codegen runs, but dispatch is by the particle's runtime
+        // `_class`, so a particle held in a variable names a handler no static
+        // pass could resolve — this is what catches those.
+        let active =
+            self.module
+                .add_global(self.i32_ty, None, &format!("_code_active_{class_name}"));
+        active.set_initializer(&self.i32_ty.const_zero());
+        let active = active.as_pointer_value();
+        let reenter = self.context.append_basic_block(function, "reentered");
+        let enter = self.context.append_basic_block(function, "enter");
+        let running = self
+            .builder
+            .build_load(self.i32_ty, active, "running")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let is_running = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                running,
+                self.i32_ty.const_zero(),
+                "isrunning",
+            )
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(is_running, reenter, enter)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(reenter);
+        let msg = self.global_str(
+            &format!(
+                "handler '{class_name}' is already running — a handler cannot re-enter one \
+                 that is already on the call stack"
+            ),
+            "reentry",
+        )?;
+        self.builder
+            .build_call(self.fn_runtime_error, &[msg.into()], "")
+            .map_err(|e| e.to_string())?;
+        self.builder.build_return(None).map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(enter);
+        self.builder
+            .build_store(active, self.i32_ty.const_int(1, false))
+            .map_err(|e| e.to_string())?;
+
         let result = (|| -> Result<(), String> {
             // The result starts as null: a body that never returns yields
             // null, which is not an error — plenty of handlers exist for
@@ -985,6 +1034,9 @@ impl<'a, 'm> Gen<'a, 'm> {
         // has its own reference (every write to it goes through a
         // constructor or `code_copy`), so releasing the locals can't take it.
         self.builder.position_at_end(exit);
+        self.builder
+            .build_store(active, self.i32_ty.const_zero())
+            .map_err(|e| e.to_string())?;
         let frame = self
             .handler_frame
             .take()
@@ -1363,8 +1415,8 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// `main`'s stack is not. That is the whole reason for the split: a
     /// handler body reads and writes top-level bindings.
     ///
-    /// A handler's slots must *not* be globals, though: recursion needs each
-    /// invocation to have its own, which is precisely what a stack frame is.
+    /// A handler's slots must *not* be globals, though: each invocation
+    /// needs its own, which is precisely what a stack frame is.
     fn alloc_zeroed(&mut self, bytes: u64, hint: &str) -> Result<PointerValue<'a>, String> {
         if self.handler_frame.is_none() {
             let ty = self.i8_ty.array_type(bytes.max(1) as u32);
