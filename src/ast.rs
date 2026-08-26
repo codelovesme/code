@@ -421,6 +421,16 @@ pub enum Expr {
 ///     item (`[1,[2]]`) while `[1] + [2]` still concatenates (`[1,2]`) —
 ///     the two-array case is checked first, which is what keeps that
 ///     distinction available at all.
+///   - `Object + Object` merges (added 2026-08-26, restoring what the old
+///     language did): the result holds every field of both. A field *both*
+///     sides name takes the right operand's value in the left operand's
+///     position — order is part of an object's identity here, since `Eq`
+///     compares fields pairwise in order. There is no one-object-operand
+///     case to match the array one: an array can absorb a bare value as an
+///     element, but an object has no key to file it under, so
+///     `{"a": 1} + 3` stays an error. With one array operand and one
+///     object, the array case above still wins and the object is a single
+///     element (`[1] + {"k": 2}` is `[1, {"k": 2}]`).
 ///   - Everything else, including mixed non-array kinds like `Number+Str`,
 ///     is a runtime type error.
 ///

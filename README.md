@@ -84,6 +84,15 @@ Six kinds, exactly JSON's: **Number** (an f64), **Str**, **Bool**, **Null**,
 **Array**, **Object**. There are no type keywords and no declarations of
 type; a binding holds whatever it was last assigned.
 
+That correspondence is a commitment, not a coincidence: **the set is closed,
+and it stays JSON's.** New capability is expressed *with* these six rather
+than beside them — a particle is an Object carrying a `_class` field, a
+linked module's alias is an Object of its exports, a core handler's answer is
+an Object. There is no seventh kind coming, and the two containers stay two:
+folding Array and Object into a single ordered map was considered and
+rejected (`docs/todo/README.md`), because `+`, serialization and the native
+layout all still have to ask which one they are holding.
+
 ```
 let n = 2.5
 let s = "hi"
@@ -209,6 +218,24 @@ assert "a" + "b" = "ab"
 assert [1] + [2] = [1, 2]        -- two arrays concatenate
 assert [1, 2] + 3 = [1, 2, 3]    -- one array: the other side is an element
 assert 0 + [1, 2] = [0, 1, 2]    -- appended or prepended by which side it's on
+assert {"a": 1} + {"b": 2} = {"a": 1, "b": 2}      -- two objects merge
+assert {"a": 1, "b": 2} + {"a": 9} = {"a": 9, "b": 2}   -- right wins, in place
+```
+
+The two containers each combine with themselves, and neither borrows the
+other's rule. A field both objects name takes the **right** value in the
+**left** position — order is part of an object's identity, since equality
+compares fields pairwise in order — and merging is one level deep, never
+recursive. There is no one-object-operand form to match the array one:
+an array can absorb any value as an element, but an object has no key to
+file a bare value under, so `{"a": 1} + 3` is an error. With one array and
+one object, the array rule wins and the object is simply an element.
+
+Merging is how you copy a particle and change a field, which is the shape
+most handler chains want:
+
+```
+let edited = received + {"text": "ok"}
 ```
 
 `name += expr` is exactly `name = name + expr`, so it means whatever `+`

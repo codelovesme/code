@@ -900,6 +900,25 @@ fn apply_binop(op: BinOp, l: Value, r: Value) -> Result<Value, String> {
             items.extend(b.iter().cloned());
             Some(Array(Rc::new(items)))
         }
+        // Two objects merge, the way two arrays concatenate. Arrays have no
+        // duplicate keys to reconcile and objects do, so this arm has the
+        // one extra rule: a field both sides name takes the *right* value
+        // in the *left* position, which is what makes `a + b` mean "a, with
+        // b's fields applied" rather than "a, then b appended". Order is
+        // load-bearing — `PartialEq` compares objects pairwise in order.
+        (BinOp::Add, Object(a), Object(b)) => {
+            let mut fields: Vec<(String, Value)> = Vec::with_capacity(a.len() + b.len());
+            for (key, value) in a.iter() {
+                let overridden = b.iter().find(|(k, _)| k == key).map(|(_, v)| v);
+                fields.push((key.clone(), overridden.unwrap_or(value).clone()));
+            }
+            for (key, value) in b.iter() {
+                if !a.iter().any(|(k, _)| k == key) {
+                    fields.push((key.clone(), value.clone()));
+                }
+            }
+            Some(Object(Rc::new(fields)))
+        }
         (BinOp::Sub, Number(a), Number(b)) => Some(Number(a - b)),
         (BinOp::Mul, Number(a), Number(b)) => Some(Number(a * b)),
         (BinOp::Div, Number(a), Number(b)) => {

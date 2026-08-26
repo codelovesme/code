@@ -1249,6 +1249,64 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         out->len = total;
         return;
     }
+    /* Two objects merge, the way two arrays concatenate — see
+     * interpreter.rs's matching arm for the rule this implements. A field
+     * both sides name takes b's value in a's position; b's remaining fields
+     * follow in b's own order. Checked *after* the array case above, so one
+     * array operand still makes the object a single element rather than
+     * something to merge into.
+     *
+     * `find_field` compares key text, never pointers: two literals spelling
+     * the same name are separate objects in read-only data, and a module's
+     * keys live in its own storage entirely. Layout and key ownership match
+     * `code_object` exactly — one allocation holding `[keys...][values...]`,
+     * with the key *pointers* copied and the characters borrowed from
+     * whichever operand supplied them (both outlive this call, and their
+     * storage outlives the program). */
+    if (a->tag == CODE_OBJECT && b->tag == CODE_OBJECT) {
+        long long total = a->len;
+        for (long long j = 0; j < b->len; j++) {
+            if (find_field(a, b->keys[j]) == NULL) {
+                total++;
+            }
+        }
+        const char **key_buf = NULL;
+        void *value_buf = NULL;
+        if (total > 0) {
+            size_t keys_bytes = (size_t)total * sizeof(const char *);
+            key_buf = heap_alloc(keys_bytes + (size_t)total * CODE_VALUE_SLOT_SIZE);
+            value_buf = (char *)key_buf + keys_bytes;
+            long long n = 0;
+            for (long long i = 0; i < a->len; i++) {
+                const CodeValue *override_val = find_field(b, a->keys[i]);
+                const CodeValue *src = override_val ? override_val : slot_at(a->items, i);
+                key_buf[n] = a->keys[i];
+                code_retain(src);
+                *slot_at(value_buf, n) = *src;
+                n++;
+            }
+            for (long long j = 0; j < b->len; j++) {
+                if (find_field(a, b->keys[j]) != NULL) {
+                    continue;
+                }
+                key_buf[n] = b->keys[j];
+                const CodeValue *src = slot_at(b->items, j);
+                code_retain(src);
+                *slot_at(value_buf, n) = *src;
+                n++;
+            }
+        }
+        /* Same ordering point as the two cases above: every value is
+         * retained already, so releasing `out` here cannot free anything the
+         * new block refers to, even when `out` is `a` or `b` (`x = x + x`). */
+        code_release(out);
+        out->tag = CODE_OBJECT;
+        out->heap = total > 0;
+        out->keys = key_buf;
+        out->items = value_buf;
+        out->len = total;
+        return;
+    }
     code_runtime_error("cannot apply '+' to these values");
 }
 

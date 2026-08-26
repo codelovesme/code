@@ -1,0 +1,57 @@
+-- `+` on two objects merges them, the way two arrays concatenate. Arrays
+-- cannot have duplicate keys and objects can, so a merge has one extra rule:
+-- a field named by both sides takes the *right* value and keeps the *left*
+-- position, which makes `a + b` read as "a, with b's fields applied".
+assert {"a": 1} + {"b": 2} = {"a": 1, "b": 2}
+assert {"a": 1, "b": 2} + {"a": 9} = {"a": 9, "b": 2}
+assert {} + {"a": 1} = {"a": 1}
+assert {"a": 1} + {} = {"a": 1}
+assert {} + {} = {}
+
+-- Order is part of an object's identity — equality depends on it — so
+-- overriding in place is a different value from dropping and re-appending.
+assert {"a": 1, "b": 2} + {"a": 9} ≠ {"b": 2, "a": 9}
+
+-- Fields are replaced whole; nothing merges recursively.
+assert {"n": {"x": 1}} + {"n": {"y": 2}} = {"n": {"y": 2}}
+assert {"xs": [1]} + {"xs": [2]} = {"xs": [2]}
+
+-- Neither operand is disturbed: `+` builds a new value, like every other
+-- operator in the language.
+let left = {"a": 1}
+let right = {"a": 2}
+let merged = left + right
+assert left = {"a": 1}
+assert right = {"a": 2}
+assert merged = {"a": 2}
+
+-- The everyday idiom this exists for: copy a particle, change a field.
+let base = Reply { "text": "hi", "recipient": "ada" }
+let edited = base + {"text": "bye"}
+assert edited.text = "bye"
+assert edited.recipient = "ada"
+assert edited._class = "Reply"
+assert edited is Reply
+
+-- `_class` is an ordinary field, so a merge can re-tag a particle too. The
+-- particle sugar puts `_class` first, and the override keeps that position.
+let retagged = base + Draft {}
+assert retagged is Draft
+assert retagged.text = "hi"
+
+-- `+=` is `x = x + x`'s sugar, so it inherits all of the above.
+let acc = {}
+loop k, v over {"a": 1, "b": 2} {
+    acc += {"seen": k}
+}
+assert acc = {"seen": "b"}
+
+-- Self-merge is a value operation, not an aliasing one.
+let same = {"a": 1}
+same = same + same
+assert same = {"a": 1}
+
+-- An array operand still wins: with one array involved, the object is a
+-- single *element*, not something to merge into. Unchanged behaviour.
+assert [1] + {"k": 2} = [1, {"k": 2}]
+assert {"k": 2} + [1] = [{"k": 2}, 1]
