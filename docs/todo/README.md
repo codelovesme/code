@@ -13,7 +13,6 @@ time. Order below is roughly by how likely it is to bite someone.
 | [community-modules.md](community-modules.md) | How native modules reach users: core stays minimal (`Length`, `Timestamp`), first-party modules are per-host (`terminal` native / `console` browser, then `math`, `strings`, `net`) on GitHub Releases + npm via `code install`, and the community publish path — direction decided 2026-08-23, phased A–F |
 | [emit-bare-particle-name.md](emit-bare-particle-name.md) | Shipped 2026-08-24: `emit Timestamp to core` drops the empty `{}` — a parser-only desugar in the `Stmt::Emit` arm, covered by `tests/emit_bare_particle.code` and two `fail_` fixtures |
 | [inbound-emissions-from-native-modules.md](inbound-emissions-from-native-modules.md) | Phases A and B shipped 2026-08-25: a module exports `code_module_set_inbound` and pushes particles, both modes drain between top-level statements and dispatch to the *program's* handlers, bounded at 256 dropping oldest. Still open: the keep-alive loop (daemons, and pushing from a module's own thread), plus the old `emit … to base` — an *upward* edge in the module graph |
-| [release-flag.md](release-flag.md) | Found 2026-08-25: old toggled `-O0`↔`-O2` via `--release`; new hardcodes `-O2` (`codegen.rs:595`) — dev builds pay full optimization with no knob |
 | [formatter.md](formatter.md) | No canonical layout for `.code` source: `code format [--check]`, token-stream based so comments and `+=` survive, with token-equality + idempotence proven over the fixture corpus and a CI gate beside `cargo fmt` |
 | [native-module-linking.md](native-module-linking.md) | Phase 1 (`.so` handlers) + Phase 2 (exported vars) shipped 2026-08-21, Phase 3 (`.a` static modules) + the `code-native` Rust crate shipped 2026-08-22; a *native* `link "x.wasm"`, `code build --lib`, and per-language bundles for anything besides Rust/C still open (a *different* `crates/code-wasm` module-linking story shipped 2026-08-22 too — see that doc) |
 | [runtime-error-locations.md](runtime-error-locations.md) | Parse errors point at a line/column since 2026-08-23; runtime ones (`assertion failed`) still don't |
@@ -45,6 +44,13 @@ Done and removed (git log has the detail):
   JSON's six kinds**, and anything new is expressed with them rather than
   beside them. Costs kept: the paired traversals in `value.rs` and
   `runtime.c`, and `LoopIter`'s two variants.
+
+- *`code build --release`* — **shipped 2026-08-27.** The opt level was
+  hardcoded at `-O2`; it is now `-O0` by default with `--release` for `-O2`,
+  matching `old/`. The tradeoff taken knowingly: build-and-ship in one step
+  now produces an unoptimized artifact unless the flag is remembered, the
+  same bargain `cargo` makes. Detail in
+  [release-flag.md](release-flag.md), which stays as the record.
 
 - *deep nesting blows the stack* — every traversal of a value in both
   runtimes is now iterative, covered by `tests/stress_deep_nesting.code`.

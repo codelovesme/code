@@ -36,6 +36,7 @@ fn shared_target_produces_a_loadable_library() {
         &fixture("arithmetic_basic.code"),
         code::BuildTarget::Shared,
         &out,
+        false,
     )
     .expect("build --target shared");
     assert!(out.is_file(), "expected a .so at {}", out.display());
@@ -68,6 +69,7 @@ fn static_target_produces_an_archive_holding_only_the_program_object() {
         &fixture("arithmetic_basic.code"),
         code::BuildTarget::Static,
         &out,
+        false,
     )
     .expect("build --target static");
 
@@ -98,6 +100,7 @@ fn wasm_target_produces_a_runnable_module() {
         &fixture("arithmetic_basic.code"),
         code::BuildTarget::Wasm,
         &out,
+        false,
     )
     .expect("build --target wasm");
     assert!(out.is_file(), "expected a wasm file at {}", out.display());
@@ -169,5 +172,53 @@ fn cli_default_output_name_follows_the_target() {
         stderr.contains("unknown target 'bogus'"),
         "usage error should name the bad value, got: {stderr}"
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// `--release` is the only knob in `code build` that changes nothing about
+/// what a program *means*, which makes it the easy one to break silently:
+/// drop the plumbing anywhere between the CLI flag and
+/// `create_target_machine` and every test still passes. So this asserts the
+/// two settings actually produce different artifacts — and that the
+/// optimized one still runs, since `-O2` is the path no other test in the
+/// suite exercises now that the default is `-O0`.
+#[test]
+fn release_optimizes_and_the_default_does_not() {
+    let dir = temp_dir("release");
+    let source = fixture("object_merge.code");
+
+    let dev = dir.join("dev");
+    let release = dir.join("release");
+    code::compile_file(&source, code::BuildTarget::Exe, &dev, false).expect("build (default)");
+    code::compile_file(&source, code::BuildTarget::Exe, &release, true).expect("build --release");
+
+    let dev_size = fs::metadata(&dev).expect("stat default build").len();
+    let release_size = fs::metadata(&release).expect("stat release build").len();
+    assert_ne!(
+        dev_size, release_size,
+        "--release produced a byte-identical artifact ({dev_size} bytes) — \
+         the flag is not reaching the target machine"
+    );
+
+    // The fixture is a wall of asserts, so a non-zero exit means the
+    // optimizer changed the program's meaning.
+    let status = Command::new(&release).status().expect("run release build");
+    assert!(status.success(), "release build failed its own assertions");
+
+    // And the CLI half: the flag is spelled the way the usage string
+    // promises, and does not fall through to `unknown argument`.
+    let output = Command::new(env!("CARGO_BIN_EXE_code"))
+        .arg("build")
+        .arg(&source)
+        .arg("--release")
+        .args(["-o", &dir.join("cli").display().to_string()])
+        .output()
+        .expect("spawn code build --release");
+    assert!(
+        output.status.success(),
+        "code build --release failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
     let _ = fs::remove_dir_all(&dir);
 }

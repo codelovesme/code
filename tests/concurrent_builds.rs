@@ -48,7 +48,7 @@ fn concurrent_builds_sharing_an_output_directory_all_succeed() {
             .map(|(i, source)| {
                 let exe = dir.join(format!("out{i}"));
                 scope.spawn(move || {
-                    match code::compile_file(source, code::BuildTarget::Exe, &exe) {
+                    match code::compile_file(source, code::BuildTarget::Exe, &exe, false) {
                         Ok(()) => None,
                         Err(e) => Some(format!("build {i}: {e}")),
                     }
@@ -80,7 +80,7 @@ fn a_build_leaves_no_intermediates_beside_its_output() {
     fs::write(&source, "let a = 1\nassert a = 1\n").expect("write fixture");
 
     let exe = dir.join("prog");
-    code::compile_file(&source, code::BuildTarget::Exe, &exe).expect("build");
+    code::compile_file(&source, code::BuildTarget::Exe, &exe, false).expect("build");
 
     let mut left: Vec<String> = fs::read_dir(&dir)
         .expect("read test directory")

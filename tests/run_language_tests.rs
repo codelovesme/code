@@ -217,7 +217,7 @@ fn check_compile(
     // This harness checks behaviour, not container shape — every fixture
     // compiles to the default `Exe` target (`--target shared|static|wasm`
     // is covered separately in `tests/build_targets.rs`).
-    match code::compile_file(path, code::BuildTarget::Exe, &exe_path) {
+    match code::compile_file(path, code::BuildTarget::Exe, &exe_path, false) {
         Err(e) => {
             // A compile-time failure (parse error, undefined variable) is a
             // valid way for a fail_*.code fixture to fail — nothing further

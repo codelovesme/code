@@ -99,10 +99,15 @@ mod compile {
     /// for why these are deliberately plain containers, not module-ABI
     /// libraries). Takes a path for the same reason `run_file` does —
     /// `link` resolves relative to it.
+    ///
+    /// `release` selects the LLVM optimization level — off by default, `-O2`
+    /// when asked. It changes only how the object is compiled, never what the
+    /// program means, so no fixture's output depends on it.
     pub fn compile_file(
         source_path: &Path,
         target: BuildTarget,
         out_path: &Path,
+        release: bool,
     ) -> Result<(), String> {
         let program: Program =
             loader::load(&source_path.display().to_string(), &FilesystemResolver)?;
@@ -117,7 +122,7 @@ mod compile {
         // Every path below is inside `scratch`, so the whole directory can be
         // removed as one on the way out, on success and failure alike.
         let result = (|| {
-            codegen::compile_to_object(&program, target, &obj_path)?;
+            codegen::compile_to_object(&program, target, &obj_path, release)?;
 
             // `Static` never links against the C runtime — there is no link
             // step beyond archiving the object — so skip writing the sources

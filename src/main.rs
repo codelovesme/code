@@ -38,15 +38,17 @@ fn main() -> ExitCode {
         Some("build") => {
             let Some(path) = args.next() else {
                 eprintln!(
-                    "usage: code build <file> [--target exe|shared|static|wasm] [-o <output>]"
+                    "usage: code build <file> [--target exe|shared|static|wasm] [--release] [-o <output>]"
                 );
                 return ExitCode::FAILURE;
             };
             let mut out: Option<PathBuf> = None;
             let mut target = BuildTarget::Exe;
+            let mut release = false;
             while let Some(arg) = args.next() {
                 match arg.as_str() {
                     "-o" => out = args.next().map(PathBuf::from),
+                    "--release" => release = true,
                     "--target" => {
                         let Some(value) = args.next() else {
                             eprintln!("--target takes a value (exe|shared|static|wasm)");
@@ -69,7 +71,7 @@ fn main() -> ExitCode {
                 }
             }
             let out = out.unwrap_or_else(|| default_output_path(&path, target));
-            build_file(&path, target, &out)
+            build_file(&path, target, &out, release)
         }
         #[cfg(feature = "install")]
         Some("install") => cmd_install(args.collect()),
@@ -94,7 +96,7 @@ fn main() -> ExitCode {
     }
 }
 
-const USAGE: &str = "run <file> | build <file> [--target exe|shared|static|wasm] [-o <output>] | install <name-or-url> [--global] | remove <name> | ls";
+const USAGE: &str = "run <file> | build <file> [--target exe|shared|static|wasm] [--release] [-o <output>] | install <name-or-url> [--global] | remove <name> | ls";
 
 #[cfg(feature = "llvm")]
 fn default_output_path(input: &str, target: BuildTarget) -> PathBuf {
@@ -131,8 +133,8 @@ fn run_file(path: &str) -> ExitCode {
 }
 
 #[cfg(feature = "llvm")]
-fn build_file(path: &str, target: BuildTarget, out: &Path) -> ExitCode {
-    match code::compile_file(Path::new(path), target, out) {
+fn build_file(path: &str, target: BuildTarget, out: &Path, release: bool) -> ExitCode {
+    match code::compile_file(Path::new(path), target, out, release) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");

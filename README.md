@@ -55,6 +55,7 @@ code run program.code                      # interpret
 code build program.code                    # -> ./program (native executable)
 code build program.code --target wasm      # exe | shared | static | wasm
 code build program.code -o out/thing
+code build program.code --release          # -O2; the default is unoptimized
 code install terminal                      # fetch a module into ./.code/modules
 code ls                                    # what's installed
 code remove terminal
