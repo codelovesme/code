@@ -179,29 +179,46 @@ fn cli_default_output_name_follows_the_target() {
 /// what a program *means*, which makes it the easy one to break silently:
 /// drop the plumbing anywhere between the CLI flag and
 /// `create_target_machine` and every test still passes. So this asserts the
-/// two settings actually produce different artifacts — and that the
-/// optimized one still runs, since `-O2` is the path no other test in the
-/// suite exercises now that the default is `-O0`.
+/// two settings actually produce different output — and that the optimized
+/// one still runs, since `-O2` is the path no other test in the suite
+/// exercises now that the default is `-O0`.
 #[test]
 fn release_optimizes_and_the_default_does_not() {
     let dir = temp_dir("release");
     let source = fixture("object_merge.code");
 
-    let dev = dir.join("dev");
-    let release = dir.join("release");
-    code::compile_file(&source, code::BuildTarget::Exe, &dev, false).expect("build (default)");
-    code::compile_file(&source, code::BuildTarget::Exe, &release, true).expect("build --release");
-
-    let dev_size = fs::metadata(&dev).expect("stat default build").len();
-    let release_size = fs::metadata(&release).expect("stat release build").len();
+    // Compared at the *object* level, and by content rather than length.
+    // Both of those are load-bearing. An earlier version of this test
+    // compared the sizes of two linked executables and passed locally while
+    // failing on CI, where the linker's section padding happened to round
+    // both to the same length — the objects underneath differed all along.
+    // No linker sits between `compile_to_object` and the flag, so nothing
+    // can absorb the difference here.
+    let program = {
+        let text = fs::read_to_string(&source).expect("read fixture");
+        let lexed = code::lexer::tokenize(&text).expect("tokenize fixture");
+        code::parser::parse(&lexed).expect("parse fixture")
+    };
+    let mut objects = Vec::new();
+    for (name, release) in [("dev.o", false), ("release.o", true)] {
+        let path = dir.join(name);
+        code::codegen::compile_to_object(&program, code::BuildTarget::Exe, &path, release)
+            .expect("compile to object");
+        objects.push(fs::read(&path).expect("read object"));
+    }
     assert_ne!(
-        dev_size, release_size,
-        "--release produced a byte-identical artifact ({dev_size} bytes) — \
-         the flag is not reaching the target machine"
+        objects[0],
+        objects[1],
+        "-O0 and -O2 produced byte-identical objects ({} bytes) — \
+         the flag is not reaching the target machine",
+        objects[0].len()
     );
 
-    // The fixture is a wall of asserts, so a non-zero exit means the
-    // optimizer changed the program's meaning.
+    // Then end to end, where the optimizer has to not have changed what the
+    // program means. The fixture is a wall of asserts, so a non-zero exit is
+    // the program itself reporting that it did.
+    let release = dir.join("release");
+    code::compile_file(&source, code::BuildTarget::Exe, &release, true).expect("build --release");
     let status = Command::new(&release).status().expect("run release build");
     assert!(status.success(), "release build failed its own assertions");
 

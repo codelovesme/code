@@ -61,11 +61,20 @@ someone would be iterating on.
 
 `tests/build_targets.rs::release_optimizes_and_the_default_does_not`. The
 flag is the easy one to break silently — drop it anywhere along the three
-hops above and every other test still passes — so the test asserts the two
-settings produce artifacts of *different size*, runs the optimized one to
+hops above and every other test still passes — so the test compiles one
+fixture twice and asserts the two objects differ, runs the optimized one to
 confirm `-O2` did not change the program's meaning (the fixture,
 `object_merge.code`, is a wall of asserts), and spawns the real CLI with
-`--release` so the argument parsing is covered too.
+`--release` so the argument parsing is covered too. Verified by mutation:
+hardcoding the opt level again makes it fail, and only it.
+
+**Compare objects, by content — not linked artifacts, by size.** The first
+version of this test compared the *sizes* of two linked executables. It
+passed locally (56888 vs 52792 bytes) and failed on CI, where the linker's
+section padding rounded both to exactly 56728 — the objects underneath had
+differed the whole time. Size is a proxy for "the optimizer did something",
+and a linker is free to absorb it; `compile_to_object` has nothing between
+it and the flag.
 
 The rest of the suite builds at the new default, which means `-O2` is no
 longer exercised across the whole fixture corpus the way it was when it was
