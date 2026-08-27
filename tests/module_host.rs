@@ -51,6 +51,8 @@ fn dispatches_through_a_provided_closure() {
                 Box::new(Expr::Number(42.0)),
             )),
         ],
+        // Hand-built: no source text, so no runtime error locations.
+        ..Default::default()
     };
 
     let result = interpreter::run_with(&program, env).expect("program should run");
@@ -84,6 +86,8 @@ fn link_as_can_rename_a_provided_module() {
                 result: Some("n".to_string()),
             },
         ],
+        // Hand-built: no source text, so no runtime error locations.
+        ..Default::default()
     };
 
     let result = interpreter::run_with(&program, env).expect("program should run");
@@ -96,6 +100,7 @@ fn a_jsbridge_link_with_no_provided_module_is_a_clear_error() {
     let env = Environment::default();
     let program = Program {
         statements: vec![link_stmt("missing", "missing")],
+        ..Default::default()
     };
 
     let err = interpreter::run_with(&program, env).expect_err("should fail: never provided");
@@ -117,6 +122,7 @@ fn emit_to_an_unlinked_alias_is_a_clear_error() {
             target: EmitTarget::Module("nope".to_string()),
             result: None,
         }],
+        ..Default::default()
     };
 
     let err = interpreter::run_with(&program, env).expect_err("should fail: never linked");

@@ -4,12 +4,16 @@
 //! and `parser`, and consumed by `loader`, which is the only place holding
 //! both a module's source text and its name. Everything downstream — the
 //! interpreter, codegen, `runtime.c` — keeps plain `String` errors and never
-//! learns that offsets exist, so this whole feature is three files wide and
-//! can be changed or removed without touching the language itself.
+//! learns that offsets exist, so parse-error locations are three files wide
+//! and can be changed or removed without touching the language itself.
 //!
-//! That containment is also what bounds it: locating a *runtime* error would
-//! mean carrying spans on AST nodes, a much more invasive change kept
-//! deliberately out of scope — see `docs/todo/runtime-error-locations.md`.
+//! Runtime errors reach the same `render` by a second, equally narrow route
+//! (shipped 2026-08-27). `Origin` below carries the entry module's text and
+//! name on `Program`, beside a `starts` offset per *top-level* statement, and
+//! the interpreter's top-level loop is the one place that renders with them.
+//! No AST node carries a span, and codegen ignores both fields — see
+//! `docs/todo/runtime-error-locations.md` for why the exact-everywhere
+//! version was not taken.
 
 /// An error that may know where in its source it happened.
 ///
@@ -29,6 +33,20 @@ impl Located {
             msg: msg.into(),
         }
     }
+}
+
+/// The source a `Program`'s top-level `starts` offsets index into, carried
+/// so that a *runtime* error — which happens long after the tokens are gone
+/// — can still be rendered against the text it came from.
+///
+/// Only ever the entry module: a linked module's statements are folded into
+/// a `Stmt::Import` body by the loader, so they are no longer top-level
+/// statements and have no entry in `starts` to point at.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Origin {
+    /// The name to print, already run through `loader::display_path`.
+    pub file: String,
+    pub source: String,
 }
 
 /// Lets `?` lift a plain `String` error into a position-less `Located`, so a

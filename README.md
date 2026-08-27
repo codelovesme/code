@@ -286,6 +286,19 @@ Programs are otherwise silent — there is no print statement in the language
 (see [emit](#emit)) — so `assert` is how a fixture states what it means. Every
 file in [`tests/`](tests) is a real program that asserts its own expectations.
 
+Under `code run`, a failure points at the statement it came from:
+
+```text
+error: assertion failed
+ --> demo.code:3:1
+  |
+3 | assert a = b
+  | ^
+```
+
+The caret finds the top-level statement, so a failure inside an `if` or
+`loop` body names the enclosing `loop` rather than the inner line.
+
 ### if and blocks
 
 ```
@@ -625,6 +638,12 @@ discovers every `tests/*.code` file and runs it through both paths:
 The fixtures are the specification. Each asserts its own expected values, so
 "what does this construct do" is answered by an executable file rather than
 by prose that can drift.
+
+The invariant is about *behaviour*, not message text, and one difference
+lives in that gap: `code run` locates a runtime error in the source (see
+[assert](#assert)), while a compiled binary raises it from `runtime.c` and
+prints the bare message. Both modes agree on which programs fail — see
+[`docs/todo/runtime-error-locations.md`](docs/todo/runtime-error-locations.md).
 
 ## Repository layout
 

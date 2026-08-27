@@ -120,12 +120,23 @@ impl<'a> Parser<'a> {
 
     fn program(&mut self) -> Result<Program, String> {
         let mut statements = Vec::new();
+        // Recorded before `statement()` runs, so it is the offset of the
+        // statement's *first* token rather than wherever parsing it ended
+        // up. Only the top level is tracked — see `Program::starts`.
+        let mut starts = Vec::new();
         self.skip_newlines();
         while !matches!(self.peek(), Token::Eof) {
+            starts.push(self.starts[self.pos]);
             statements.push(self.statement()?);
             self.skip_newlines();
         }
-        Ok(Program { statements })
+        Ok(Program {
+            statements,
+            starts,
+            // Filled in by `loader::load`, the only place that knows which
+            // text and name these offsets belong to.
+            origin: None,
+        })
     }
 
     fn statement(&mut self) -> Result<Stmt, String> {

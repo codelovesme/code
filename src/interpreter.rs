@@ -251,14 +251,37 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, String> {
     register_handlers(&program.statements, &mut env)?;
     crate::handlers::check_cycles(program)?;
-    for stmt in &program.statements {
+    for (i, stmt) in program.statements.iter().enumerate() {
         // Can only ever be `Flow::Normal` out here: the parser rejects a
         // `break` that isn't inside a loop, so nothing can propagate one up
         // to the top level.
-        exec(stmt, &mut env)?;
-        drain_inbound(&mut env)?;
+        //
+        // The one place a runtime error learns where it came from. Every
+        // error site below stays a plain `String` — the position is attached
+        // once, here, from the statement being executed, exactly as
+        // `parser::parse` does it for parse errors. A failure nested in an
+        // `if` or `loop` body surfaces here too, and so reports the
+        // *enclosing* top-level statement; see `Program::starts`.
+        exec(stmt, &mut env)
+            .and_then(|_| drain_inbound(&mut env))
+            .map_err(|msg| locate(program, i, msg))?;
     }
     Ok(env)
+}
+
+/// Renders `msg` against the source `program` came from, pointing at the
+/// top-level statement at index `i`. Returns it unchanged when the program
+/// carries no origin (a hand-built one) or no offset for `i`.
+fn locate(program: &Program, i: usize, msg: String) -> String {
+    let Some(origin) = &program.origin else {
+        return msg;
+    };
+    crate::span::render(
+        &origin.source,
+        &origin.file,
+        program.starts.get(i).copied(),
+        &msg,
+    )
 }
 
 /// Whether a statement finished normally or hit a `break` that the innermost

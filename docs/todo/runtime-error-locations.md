@@ -1,5 +1,11 @@
 # Runtime errors have no source location
 
+> **Option 1 shipped 2026-08-27**, under `code run`. A runtime error now
+> points at the top-level statement it came from; a failure nested in an
+> `if`/`loop` body reports that enclosing statement. `code build` is
+> unchanged and still prints a bare message — the "Note on the compiled
+> backend" below is the only part of this document still open.
+
 Parse and lex errors point at the offending line and column
 (`src/span.rs`, shipped 2026-08-23):
 
@@ -63,13 +69,58 @@ the whole point, for roughly a tenth of the disruption. Worth confirming
 against real use that enclosing-statement attribution is actually too coarse
 before paying for option 2.
 
-## Note on the compiled backend
+## What shipped
 
-Whatever is done here, `code build` needs its own answer. A compiled
+Option 1, close to as sketched. The one addition the sketch did not
+anticipate: `starts` alone is not enough to *render* anything. By the time a
+runtime error happens the loader has dropped the source text, and
+`interpreter::run(&program)` has nothing else to work from. So `Program`
+gained two fields rather than one:
+
+- `starts: Vec<u32>` — char offset of each top-level statement, filled by
+  `parser::program()` before it parses each one, so it is the offset of the
+  statement's *first* token.
+- `origin: Option<span::Origin>` — the entry module's display name and text,
+  attached by `loader::load`. It is `None` for a module and for any
+  hand-built `Program`; `Program` derives `Default` so those write
+  `Program { statements, ..Default::default() }` and opt out entirely.
+
+Only the *entry* module gets an origin, and that falls out of the existing
+design rather than being a limitation to work around: a linked module's
+statements are folded into a `Stmt::Import` body by `resolve_link`, so they
+are no longer top-level statements at all. A failure inside a linked module
+therefore reports the entry file's `link` line — the same enclosing-statement
+rule as `if`/`loop`, applied one level up.
+
+Rendering is one site: the top-level loop in `run_with` decorates any `Err`
+via a small `locate` helper, mirroring how `parser::parse` attaches a
+position once for all ~24 parse error sites. **No AST node carries a span**,
+no individual error site knows offsets exist, and codegen ignores both new
+fields — which is what keeps this "lightweight and easily alterable" rather
+than heavy and depended on everywhere.
+
+### Coverage
+
+`tests/error_locations.rs` — the file that previously pinned
+*`runtime_errors_are_not_located_yet`*, which is why closing this gap had to
+come here on purpose. It now covers the exact rendering of a failing
+top-level `assert`, that other runtime errors (`undefined variable`) are
+located too, that a nested failure reports its enclosing statement, and that
+an origin-less `Program` still produces a bare message.
+
+The fixture harness needed no changes and got none: it only ever checks
+pass/fail, never message text (`run_language_tests.rs`), so nothing there was
+silently relaxed.
+
+## Note on the compiled backend — still open
+
+`code build` still needs its own answer. A compiled
 binary's runtime errors are raised by `runtime.c`
 (`code_runtime_error`), which has no idea what line it came from — passing
 one in would mean threading a location through every call site in the
-generated IR. Until then the two output modes will differ in how well they
+generated IR. So the two output modes now differ in how well they
 *report* an error, though not in which programs error — the standing
 run/build invariant is about behaviour, not message text, and the fixture
-harness only checks that both modes agree on pass/fail.
+harness only checks that both modes agree on pass/fail. That divergence is
+stated in the README's "two output modes" section rather than left to be
+discovered.

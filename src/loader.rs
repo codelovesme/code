@@ -450,7 +450,16 @@ pub fn load(entry: &str, resolver: &dyn ModuleResolver) -> Result<Program, Strin
         // back is caught as a cycle rather than loaded a second time.
         visiting: vec![identity.clone()],
     };
-    loader.load_source(&identity, &text)
+    let mut program = loader.load_source(&identity, &text)?;
+    // Attached here rather than in `load_source` because only the entry
+    // module's statements are still top-level when the program runs: a
+    // linked module's are folded into a `Stmt::Import` body below, which
+    // leaves its `starts` with nothing to be parallel to.
+    program.origin = Some(span::Origin {
+        file: display_path(&identity).to_string(),
+        source: text,
+    });
+    Ok(program)
 }
 
 struct Loader<'a> {
@@ -483,7 +492,13 @@ impl Loader<'_> {
                 other => statements.push(other),
             }
         }
-        Ok(Program { statements })
+        // One statement in, one statement out — a `Link` becomes an
+        // `Import` in place — so the parser's offsets stay parallel.
+        Ok(Program {
+            statements,
+            starts: program.starts,
+            origin: program.origin,
+        })
     }
 
     fn resolve_link(

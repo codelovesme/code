@@ -1,8 +1,29 @@
 /// A parsed program: a flat sequence of statements — `Stmt::If`'s `body` is
 /// where nesting actually happens now (see its doc comment).
-#[derive(Debug, Clone, PartialEq)]
+///
+/// `Default` exists so a hand-built `Program` can write
+/// `Program { statements, ..Default::default() }` and stay out of the
+/// source-location business entirely — that is what every test and every
+/// synthetic program does.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Program {
     pub statements: Vec<Stmt>,
+    /// Char offset where each top-level statement begins, parallel to
+    /// `statements` — or empty, meaning "no idea", which is what a
+    /// hand-built program gets.
+    ///
+    /// This is the *whole* extent of the AST's knowledge of source
+    /// positions, and it stops at the top level deliberately: a failure
+    /// inside an `if` or `loop` body is reported against the top-level
+    /// statement containing it. Spans on every `Stmt` would be exact, and
+    /// would also put a position on twenty nodes that have no use for one —
+    /// see `docs/todo/runtime-error-locations.md` for the tradeoff.
+    pub starts: Vec<u32>,
+    /// The text these offsets index into, and the name to call it by.
+    /// Attached by `loader::load` for the entry module only, since only the
+    /// entry module's statements are still at the top level by the time the
+    /// program runs — a linked module's become a `Stmt::Import` body.
+    pub origin: Option<crate::span::Origin>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
