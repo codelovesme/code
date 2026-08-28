@@ -6,10 +6,10 @@
 [workspace]
 
 [package]
-name = "net"
+name = "http_client"
 version = "0.1.0"
 edition = "2021"
-description = "The `net` native module for the Code programming language — Get and Post over HTTP(S). Written in Rust on code-native."
+description = "The `http_client` native module for the Code programming language — Get, Post, Put, Patch, Delete, Head and Options over HTTP(S). Written in Rust on code-native."
 license = "GPL-3.0"
 repository = "https://github.com/codelovesme/code"
 

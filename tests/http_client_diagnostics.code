@@ -1,4 +1,4 @@
--- `net` speaks first: a request that never got a response also pushes an
+-- `http_client` speaks first: a request that never got a response also pushes an
 -- `Exception` particle into the program, dispatched to the program's own
 -- handler between top-level statements.
 --
@@ -9,7 +9,7 @@
 --
 -- Port 1 is privileged and never bound, so the refusal is immediate and
 -- this fixture needs no network.
-link "native_modules/net.so" as net
+link "native_modules/http_client.so" as http
 
 let reported = ""
 
@@ -17,10 +17,10 @@ Exception { source, message } => {
     reported = source
 }
 
-emit Get { "url": "http://127.0.0.1:1/" } to net get r
+emit Get { "url": "http://127.0.0.1:1/" } to http get r
 assert not r.ok
 assert r.status = 0
 
 -- Draining happens between top-level statements, so the handler has already
 -- run by the time this line does.
-assert reported = "net"
+assert reported = "http_client"

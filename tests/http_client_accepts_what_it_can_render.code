@@ -1,4 +1,4 @@
--- `net` has no validation pass. A field the particle does not carry is
+-- `http_client` has no validation pass. A field the particle does not carry is
 -- null, exactly as `.field` reads an absent member, and a url that cannot be
 -- fetched is simply a request that fails — so the message comes from
 -- attempting the request rather than from a guard refusing to try.
@@ -6,26 +6,26 @@
 -- Replaces fail_net_missing_url and fail_net_header_not_string (2026-08-28,
 -- docs/todo/errors-as-particles.md). Needs no network: nothing here gets
 -- far enough to open a socket except the refused one on port 1.
-link "native_modules/net.so" as net
+link "native_modules/http_client.so" as http
 
 -- No url at all: the request stage rejects an empty one, and says so.
-emit Get {} to net get a
+emit Get {} to http get a
 assert not a.ok
 assert a.status = 0
 
 -- A url that is not a String is rendered rather than refused, so the
 -- message names what was actually asked for.
-emit Get { "url": 42 } to net get b
+emit Get { "url": 42 } to http get b
 assert not b.ok
 
 -- A non-String header value is rendered too — `"X-Count": 3` sends `3`,
 -- which is plainly what the caller meant. The request itself still fails,
 -- because nothing is listening on port 1.
-emit Get { "url": "http://127.0.0.1:1/", "headers": { "X-Count": 3 } } to net get c
+emit Get { "url": "http://127.0.0.1:1/", "headers": { "X-Count": 3 } } to http get c
 assert not c.ok
 assert c.status = 0
 
 -- A non-positive timeout falls back to the default instead of refusing —
 -- and, more to the point, instead of panicking inside Duration.
-emit Get { "url": "http://127.0.0.1:1/", "timeout_seconds": -1 } to net get d
+emit Get { "url": "http://127.0.0.1:1/", "timeout_seconds": -1 } to http get d
 assert not d.ok

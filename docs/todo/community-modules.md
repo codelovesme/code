@@ -12,7 +12,7 @@ Three tiers, distinguished by *where the bytes live*:
 | tier | what | how users get it |
 |---|---|---|
 | **core** | `Length` (shipped), `Timestamp` | compiled into the `code` binary — nothing to install, works everywhere including the wasm playground |
-| **first-party modules** | `terminal`, `console`, `math`, `strings`, `net`, … | native: GitHub Releases + `code install <name>`; browser: npm |
+| **first-party modules** | `terminal`, `console`, `math`, `strings`, `http_client`, … | native: GitHub Releases + `code install <name>`; browser: npm |
 | **community modules** | anyone's | the author publishes to *their own* GitHub Releases (a template repo provides the CI); consumers install by URL first, by name once an index exists |
 
 The rule separating tier 1 from tier 2: **fundamentals are core**. Only
@@ -176,10 +176,12 @@ Batch 1 (proves the pipeline):
 
 Batch 2 (flagship — proves the pipeline with a non-trivial module):
 
-- **net** — shipped 2026-08-28: `Get`/`Post` taking a url plus optional
+- **http_client** — shipped 2026-08-28 as `net`, renamed and completed
+  2026-08-29: all seven HTTP methods (`Get`, `Post`, `Put`, `Patch`,
+  `Delete`, `Head`, `Options`) taking a url plus optional
   `headers`/`timeout_seconds`/`max_body_bytes`, answering
   `HttpResponse { ok, status, body }`. Blocking, as sketched. Full contract
-  and reasoning in [`crates/modules/net/README.md`](../../crates/modules/net/README.md);
+  and reasoning in [`crates/modules/http_client/README.md`](../../crates/modules/http_client/README.md);
   the shape was settled by reading `euglena-language`'s `native-http-client`
   and `http-client` organelles, which is where the per-verb particles and
   the `ok`/`status` response come from.
@@ -193,6 +195,14 @@ Batch 2 (flagship — proves the pipeline with a non-trivial module):
     that could only speak `http://` would not be the flagship. Cost: a
     ~17 s cold build and a 3 MB `.so` — both paid once per CI run, and the
     fixtures still need no network.
+  - **The name.** It shipped as `net` and was renamed on 2026-08-29, at the
+    owner's question: if a client takes the name `http`, an `http_server`
+    later reads as the lesser half of a pair whose other half never said it
+    was only a client. `http_client`/`http_server` is symmetric, and each
+    artifact does one thing — a program that only makes requests does not
+    download a listener. Nothing external broke: the module was never
+    tagged, so no release, index entry or lockfile referred to it.
+
   - **No `headers` in the *response*.** Not an omission by choice:
     `code_object` copies key *pointers*, not key strings
     (`runtime.c`'s `key_buf[i] = keys[i]`), so every field name in a value
@@ -250,7 +260,7 @@ the same data `code ls` reads. It doubles as the de-facto index.
 | A | core `Timestamp` (both backends, fixtures) | the core-handler pattern proven before any module ships |
 | B | `crates/modules/{terminal,math,strings}` + cross-build CI → GitHub Releases, `console` npm package; dogfood by hand | proof the pipeline works |
 | C | ~~`code install/remove/ls` + resolver fallback chain + lockfile/sha256~~ — shipped 2026-08-23 | users getting modules without copying files |
-| D | ~~`net` module~~ — shipped 2026-08-28 | the flagship community-facing module |
+| D | ~~`net` module~~ — shipped 2026-08-28, renamed `http_client` 2026-08-29 | the flagship community-facing module |
 | E | ~~template + publish guide~~ — shipped 2026-08-28 as `templates/module/`, in-tree rather than a separate `code-module-template` repo; website Modules page still open | other people publishing |
 | F | (optional) Windows `.dll` support, name-based community index, artifact signing | wider reach / stronger trust |
 

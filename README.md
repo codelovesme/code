@@ -707,7 +707,7 @@ each *loop iteration*, which is a statement boundary too — in the order
 pushed. **A pushed class the program has no handler for is dropped**, not an
 error: the module chose to speak, so a message nobody asked to hear is not a
 mistake by the program. That is what lets a module report a problem without
-every program that links it having to care — `net` pushes `Exception` and
+every program that links it having to care — `http_client` pushes `Exception` and
 `Log`, and [`net_unreachable.code`](tests/net_unreachable.code) handles
 neither and passes. Since 2026-08-28 the outbound direction gives the same
 answer — `emit` with no matching handler is null — so the two agree rather
@@ -744,11 +744,11 @@ sleeps on your behalf or guesses how long you meant to wait. A module that
 is an event source blocks inside its own `code_module_dispatch` (a condvar, a
 `recv`, an `epoll`) and returns when it has something; the program parks
 there at no cost, and the drain at the end of the iteration hands over
-whatever was queued meanwhile. `net` already blocks this way for an HTTP
+whatever was queued meanwhile. `http_client` already blocks this way for an HTTP
 round trip.
 
 Two things such a module owes its callers. **Bound the block** — a timeout
-field, as `net` has: nothing in the ABI can stop a module that blocks
+field, as `http_client` has: nothing in the ABI can stop a module that blocks
 forever, and a module that must be asked before the program may exit is a
 module that can hang it. **Expect a backlog** — while one module is parked,
 another's pushes queue up behind it, and past 256 the oldest are dropped.
@@ -784,7 +784,7 @@ Log { source, level, message } => {
 }
 ```
 
-That handler works for `net` today and for a module written next year, with
+That handler works for `http_client` today and for a module written next year, with
 no branching and nothing to update when a link is added.
 
 **Extension is additive.** A module may carry extra fields — a handler that
@@ -801,8 +801,8 @@ This is a convention, not a mechanism. Nothing enforces it, exactly as
 nothing enforces `_class` itself. Two modules that both send `Log` with
 different shapes will silently mismatch — the second one's fields arrive as
 null — which is a bug in the module that ignored the vocabulary, not a
-question the language answers. `net` is the reference: see
-[`crates/modules/net`](crates/modules/net/README.md).
+question the language answers. `http_client` is the reference: see
+[`crates/modules/http_client`](crates/modules/http_client/README.md).
 
 ### Writing one
 
@@ -825,8 +825,8 @@ a class you do not handle, and failures returned as values are the three
 rules that make a module unable to break someone else's program.
 
 First-party modules today: `terminal` (print to stdout), `math`, `strings`,
-`net` (HTTP `Get`/`Post`, and `Exception`/`Log` pushed back — see
-[its README](crates/modules/net/README.md)).
+`http_client` (the seven HTTP methods, and `Exception`/`Log` pushed back —
+see [its README](crates/modules/http_client/README.md)).
 `code install <name>` fetches one into `./.code/modules/`, pinned by sha256
 in `./.code/lock.json`; `--global` puts it in `~/.code/modules/` instead. A
 `link` reference resolves against a fixed chain — the script's own directory,

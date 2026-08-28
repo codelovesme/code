@@ -87,19 +87,19 @@ enum Expect {
 
 /// Compiles each dynamic native module into the `.so` the
 /// `native_link_*`/`fail_native_link_*`, `terminal_*`, `strings_*`,
-/// `math_*`, and `net_*` fixtures `link` — checked into git as source, not
+/// `math_*`, and `http_client_*` fixtures `link` — checked into git as source, not
 /// as a binary
 /// (see `.gitignore`), so it has to be built fresh here before any fixture
 /// that needs it can run either mode. Sources live next to their consumers:
 /// `test_math` is a pure test double (stays in `tests/native_modules/`),
-/// while `terminal`, `strings`, `math`, and `net` are real first-party
+/// while `terminal`, `strings`, `math`, and `http_client` are real first-party
 /// modules
 /// that happen to be exercised by fixtures (their canonical homes are under
 /// `crates/modules/`, where the release CI builds them from). The C modules
-/// go straight through `cc`; `strings`, `math`, and `net` are
+/// go straight through `cc`; `strings`, `math`, and `http_client` are
 /// Rust-on-`code-native` modules, so they get a `cargo build` instead —
 /// same output location, same stem, the fixtures cannot tell the
-/// difference. `net` is much the slowest of the three to build cold (it
+/// difference. `http_client` is much the slowest of the three to build cold (it
 /// pulls ureq and rustls); nothing here needs a network, though — its
 /// fixtures only ever talk to a refused port on loopback.
 fn build_native_dynamic_test_modules(tests_dir: &Path) {
@@ -110,7 +110,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
     for stem in [
         "strings",
         "math",
-        "net",
+        "http_client",
         "terminal",
         "test_math",
         "test_events",

@@ -1,26 +1,53 @@
-# `net` — HTTP requests
+# `http_client` — HTTP requests
 
 The first module that reaches something outside the machine. `terminal`
-writes to a stream, `math` and `strings` are pure; `net` is the one where the
+writes to a stream, `math` and `strings` are pure; this is the one where the
 outside world can say no.
 
-```code
-link "net.so" as net
+Named for half of a pair. It was called `net` until 2026-08-29; the rename
+is what makes room for an `http_server` that is a separate artifact rather
+than a second half bolted onto a module most programs link only to make
+requests. `http` alone would have forced the server to be `http_server`
+against a client called `http`, which reads as though one of them is the
+real one.
 
-emit Get { "url": "https://example.com" } to net get r
+```code
+link "http_client.so" as http
+
+emit Get { "url": "https://example.com" } to http get r
 assert r.ok
 assert r.status = 200
 ```
 
 ## Handlers
 
+Seven, one per HTTP method. Four carry no request body:
+
 ```
-Get  { url, headers?, timeout_seconds?, max_body_bytes? } → HttpResponse
-Post { url, body, content_type?, headers?,
-       timeout_seconds?, max_body_bytes? }                → HttpResponse
+Get     { url, headers?, timeout_seconds?, max_body_bytes? } → HttpResponse
+Delete  { same }                                             → HttpResponse
+Head    { same }                                             → HttpResponse
+Options { same }                                             → HttpResponse
+```
+
+and three do:
+
+```
+Post  { url, body, content_type?, headers?,
+        timeout_seconds?, max_body_bytes? }                  → HttpResponse
+Put   { same }                                               → HttpResponse
+Patch { same }                                               → HttpResponse
 ```
 
 `HttpResponse { ok: Boolean, status: Number, body: String }`.
+
+A `Head` response carries no body by definition, so its `body` is the empty
+string. That is HTTP's answer, not a special case here.
+
+`Delete` is on the bodyless side. HTTP permits a body on it and forbids
+nothing, but no defined semantics attach to one and servers disagree about
+whether it even arrives — a field this module offered would be promising
+something it cannot deliver.
 
 `ok` answers **did a response arrive**, not did the server like the request.
 A 404 or a 500 is a perfectly good response: `ok: true`, `status: 404`, and
@@ -31,24 +58,24 @@ status — refused, unresolvable, timed out, TLS rejected, or larger than
 | Field | Kind | Default | Meaning |
 |---|---|---|---|
 | `url` | String | — | rendered as text; absent or unfetchable fails the request |
-| `body` | String | — | `Post` only, required |
-| `content_type` | String | `application/octet-stream` | `Post` only |
+| `body` | String | — | `Post`/`Put`/`Patch` only |
+| `content_type` | String | `application/octet-stream` | `Post`/`Put`/`Patch` only |
 | `headers` | Object | none | `{ "Accept": "text/plain" }`; values are rendered as text |
 | `timeout_seconds` | Number | `10` | whole request, connect included; a non-positive value takes the default |
 | `max_body_bytes` | Number | `1048576` | a longer response fails the request |
 
 ## Diagnostics
 
-`net` also speaks first. Every request that gets a response pushes
+This module also speaks first. Every request that gets a response pushes
 
 ```
-Log { source: "net", level: "Info", message: "Get <url> -> <status>" }
+Log { source: "http_client", level: "Info", message: "Get <url> -> <status>" }
 ```
 
 and every request that never got one pushes
 
 ```
-Exception { source: "net", message: "Get <url>: <reason>" }
+Exception { source: "http_client", message: "Get <url>: <reason>" }
 ```
 
 into the program, dispatched to *its* handlers between top-level statements.
@@ -60,10 +87,10 @@ Exception { source, message } => {
 ```
 
 `Log` and `Exception` are the language's **common particles**, not names
-`net` invented — see "Common particles" in the root README. That is what
-lets one handler in a program serve `net` and every other module that
-reports, with no branching and nothing to change when a link is added.
-`net` is meant to read as the reference implementation of that agreement:
+this module invented — see "Common particles" in the root README. That is what
+lets one handler in a program serve `http_client` and every other module
+that reports, with no branching and nothing to change when a link is added.
+It is meant to read as the reference implementation of that agreement:
 common shape, `source` carrying its own name, extra detail added as fields
 rather than as a private class.
 
@@ -86,11 +113,17 @@ language is already a `_class` switch — `code_module_dispatch` reads
 switch on a string, re-implementing the dispatcher one level down. The verb
 belongs where the language already looks for it.
 
+Held up when the other five methods landed on 2026-08-29: seven arms in a
+`match` on `_class`, and the only thing that distinguishes them is whether a
+body comes along — which is ureq's own split too
+(`RequestBuilder<WithBody>` against `WithoutBody`), so the module never
+re-derives what the caller already said.
+
 **A failed request is a value, not an error.** `ok: false, status: 0` for a
 refused connection, a DNS failure, a timeout. This is not a style
 preference: the language has no `try`/`catch` and no catchable assert, so a
 `code_runtime_error` here would end the program with *no construct able to
-recover*. Every other module can honestly treat a bad emit as a bug. `net`
+recover*. Every other module can honestly treat a bad emit as a bug. This one
 cannot — a network failing is normal operation.
 
 And as of 2026-08-28 that is the *only* answer: nothing here ends the
@@ -125,9 +158,10 @@ answer. `max_body_bytes` is a cap on what is *acceptable*, not a request to
 cut.
 
 **Synchronous.** `emit … get r` blocks until the response arrives, which is
-what `emit` already means everywhere else. No callbacks, no futures, and
-notably nothing from the still-unbuilt keep-alive loop — `net` needs none of
-it.
+what `emit` already means everywhere else. No callbacks, no futures. Since
+2026-08-29 that is also the language's answer to waiting in general: a
+module blocks inside its own dispatch, and the runtime never sleeps on a
+program's behalf.
 
 ## Deliberately not here
 
@@ -139,10 +173,11 @@ it.
   field names must outlive it — hence `object()`'s `&'static CStr`. Header
   names arrive at runtime. Returning them needs an owned-keys constructor in
   the ABI, which is a decision bigger than this module.
-- **No server.** Accepting connections needs continuous draining and a
-  thread pushing inbound particles — the open half of
-  `docs/todo/inbound-emissions-from-native-modules.md`. A separate module
-  when that lands.
+- **No server.** A separate `http_server` module, which is what the name
+  leaves room for. Accepting connections needs a thread pushing inbound
+  particles, which stopped being the open half of
+  `docs/todo/inbound-emissions-from-native-modules.md` on 2026-08-29 — so
+  the blocker now is only that nobody has written it.
 
 ## Prior art
 
@@ -163,5 +198,5 @@ is a no-op that logs), and the JSON variants.
 ## Build
 
 ```sh
-cargo build --release        # -> target/release/libnet.so
+cargo build --release        # -> target/release/libhttp_client.so
 ```

@@ -40,8 +40,8 @@ jobs:
           fi
           # Allowlist: only modules whose source lives under crates/modules/.
           case "$module" in
-            terminal|strings|math|net) ;;
-            *) echo "::error::unknown module '$module' (allowed: terminal, strings, math, net)"; exit 1 ;;
+            terminal|strings|math|http_client) ;;
+            *) echo "::error::unknown module '$module' (allowed: terminal, strings, math, http_client)"; exit 1 ;;
           esac
           echo "module=$module" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -120,7 +120,7 @@ jobs:
             math)
               printf 'emit Double { "value": 21 } to mod get r\nassert r.value = 42\n' >> dogfood/demo.code
               ;;
-            net)
+            http_client)
               # Nothing is listening on port 1, so this needs no network —
               # it proves the artifact loads and routes, and that a refused
               # connection comes back as a value rather than killing the

@@ -1,12 +1,18 @@
-//! The `net` native module — HTTP(S) requests for the Code programming
-//! language, written in Rust on [`code-native`].
+//! The `http_client` native module — HTTP(S) requests for the Code
+//! programming language, written in Rust on [`code-native`].
 //!
-//! Handlers (see `README.md` for the API contract and the reasoning):
+//! Handlers (see `README.md` for the API contract and the reasoning). One
+//! particle per method, because dispatch in this language is already a
+//! `_class` switch and a `method` field would make this module run a second
+//! switch on a string, re-implementing the dispatcher one level down:
 //!
-//! - `Get`  — `{ url, headers?, timeout_seconds?, max_body_bytes? }`
-//! - `Post` — the same plus `{ body, content_type? }`
+//! - `Get`, `Delete`, `Head`, `Options` —
+//!   `{ url, headers?, timeout_seconds?, max_body_bytes? }`
+//! - `Post`, `Put`, `Patch` — the same plus `{ body, content_type? }`
 //!
-//! Both answer with `HttpResponse { ok, status, body }`.
+//! All seven answer with `HttpResponse { ok, status, body }`. A `Head`
+//! response carries no body by definition, so its `body` is the empty
+//! string — that is HTTP's answer, not a special case here.
 //!
 //! The one rule that shapes everything here: **a request that fails is a
 //! value, not an error.** As of 2026-08-28 that is the whole rule — there is
@@ -37,7 +43,7 @@ const DEFAULT_TIMEOUT_SECONDS: f64 = 10.0;
 /// rather than truncating — see `README.md`.
 const DEFAULT_MAX_BODY_BYTES: f64 = 1_048_576.0;
 
-// The optional inbound export: `net` speaks first, to report what went
+// The optional inbound export: this module speaks first, to report what went
 // wrong, rather than only answering. A program that defines no `Exception`
 // or `Log` handler simply never hears it — a pushed class nothing handles is
 // dropped (decided 2026-08-28), which is exactly what makes diagnostics safe
@@ -52,7 +58,7 @@ fn report_exception(message: &str) {
     let mut particle = CodeValue::zeroed();
     let mut buf = SlotBuffer::new(3);
     borrowed_str(buf.slot_mut(0), c"Exception");
-    borrowed_str(buf.slot_mut(1), c"net");
+    borrowed_str(buf.slot_mut(1), c"http_client");
     owned_str(buf.slot_mut(2), message);
     object(&mut particle, &[c"_class", c"source", c"message"], &mut buf);
     buf.release_all();
@@ -67,7 +73,7 @@ fn report_log(level: &str, message: &str) {
     let mut particle = CodeValue::zeroed();
     let mut buf = SlotBuffer::new(4);
     borrowed_str(buf.slot_mut(0), c"Log");
-    borrowed_str(buf.slot_mut(1), c"net");
+    borrowed_str(buf.slot_mut(1), c"http_client");
     owned_str(buf.slot_mut(2), level);
     owned_str(buf.slot_mut(3), message);
     object(
@@ -102,13 +108,18 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
     // Everything below runs inside `guarded`, so a panic anywhere in this
     // module — ours or one of ureq's — becomes an `Exception` rather than
     // taking the host down with it.
-    guarded(&mut *out, "net", |out| {
+    guarded(&mut *out, "http_client", |out| {
         // Not a particle, or a class this module does not handle: null.
         // Neither is an error — whether to act on a particle is the
         // recipient's business (docs/todo/errors-as-particles.md).
         match read_field_str(particle, "_class") {
             Some("Get") => request(out, particle, Method::Get),
             Some("Post") => request(out, particle, Method::Post),
+            Some("Put") => request(out, particle, Method::Put),
+            Some("Patch") => request(out, particle, Method::Patch),
+            Some("Delete") => request(out, particle, Method::Delete),
+            Some("Head") => request(out, particle, Method::Head),
+            Some("Options") => request(out, particle, Method::Options),
             _ => null(out),
         }
     })
@@ -118,6 +129,11 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
 enum Method {
     Get,
     Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+    Options,
 }
 
 impl Method {
@@ -125,7 +141,24 @@ impl Method {
         match self {
             Method::Get => "Get",
             Method::Post => "Post",
+            Method::Put => "Put",
+            Method::Patch => "Patch",
+            Method::Delete => "Delete",
+            Method::Head => "Head",
+            Method::Options => "Options",
         }
+    }
+
+    /// Whether this method carries a request body — which is ureq's own
+    /// split (`RequestBuilder<WithBody>` against `WithoutBody`) and the only
+    /// thing that makes the seven methods anything but one list.
+    ///
+    /// `Delete` is on the bodyless side. HTTP permits a body on it and
+    /// forbids nothing, but no defined semantics attach to one, and servers
+    /// disagree about whether it even arrives; a module that offered the
+    /// field would be promising something it cannot deliver.
+    fn has_body(self) -> bool {
+        matches!(self, Method::Post | Method::Put | Method::Patch)
     }
 }
 
@@ -235,20 +268,19 @@ fn request(out: &mut CodeValue, particle: &CodeValue, method: Method) {
     let max_body = optional_number(particle, "max_body_bytes", DEFAULT_MAX_BODY_BYTES) as u64;
     let headers = headers(particle);
 
-    // Both are `Post`-only. An absent body is an empty one, which is a legal
-    // request, and an absent content type takes the default.
-    let (body, content_type) = match method {
-        Method::Get => (String::new(), String::new()),
-        Method::Post => {
-            let body = find_field(particle, "body")
-                .map(value_text)
-                .unwrap_or_default();
-            let content_type = match find_field(particle, "content_type").map(value_text) {
-                Some(ct) if !ct.is_empty() => ct,
-                _ => "application/octet-stream".to_string(),
-            };
-            (body, content_type)
-        }
+    // Body-carrying methods only. An absent body is an empty one, which is a
+    // legal request, and an absent content type takes the default.
+    let (body, content_type) = if method.has_body() {
+        let body = find_field(particle, "body")
+            .map(value_text)
+            .unwrap_or_default();
+        let content_type = match find_field(particle, "content_type").map(value_text) {
+            Some(ct) if !ct.is_empty() => ct,
+            _ => "application/octet-stream".to_string(),
+        };
+        (body, content_type)
+    } else {
+        (String::new(), String::new())
     };
 
     match perform(
@@ -302,13 +334,26 @@ fn perform(
         .build()
         .into();
 
-    // The two branches cannot share a variable: ureq types its builder by
+    // The two groups cannot share a variable: ureq types its builder by
     // whether a body is coming (`WithoutBody`/`WithBody`), so they only meet
     // again at the `Result<Response, _>` both sends produce.
     let mut response = match method {
         Method::Get => with_headers(agent.get(url), headers).call(),
+        Method::Delete => with_headers(agent.delete(url), headers).call(),
+        Method::Head => with_headers(agent.head(url), headers).call(),
+        Method::Options => with_headers(agent.options(url), headers).call(),
         Method::Post => with_headers(
             agent.post(url).header("Content-Type", content_type),
+            headers,
+        )
+        .send(body),
+        Method::Put => with_headers(
+            agent.put(url).header("Content-Type", content_type),
+            headers,
+        )
+        .send(body),
+        Method::Patch => with_headers(
+            agent.patch(url).header("Content-Type", content_type),
             headers,
         )
         .send(body),
@@ -341,7 +386,7 @@ fn perform(
 }
 
 /// Apply caller-supplied headers, generic over ureq's body-presence type
-/// parameter so `Get` and `Post` share one implementation.
+/// parameter so all seven methods share one implementation.
 fn with_headers<T>(
     mut builder: ureq::RequestBuilder<T>,
     headers: &[(String, String)],
