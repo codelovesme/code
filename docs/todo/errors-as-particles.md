@@ -1,167 +1,143 @@
-# Errors become particles: nothing but the program itself may end the program
+# Errors are values: a frame ends, the program does not
 
 Decided 2026-08-28. This reverses a documented decision — the root README
-still lists catchable asserts among the things the language deliberately
-does not have, and `docs/todo/inbound-emissions-from-native-modules.md`
-records `Exception` as explicitly unported. That text goes when this lands.
+lists catchable asserts among what the language deliberately lacks, and
+`inbound-emissions-from-native-modules.md` records `Exception` as
+explicitly unported. That text goes when this lands.
 
-## The decisions
+## The model, in one rule
 
-1. **A module may never bring the application down.** Hard constraint, not a
-   guideline. Today `emit Get {} to net get r` prints
-   `net: Get requires a 'url' field` and exits 1 — a module deciding the
-   program dies. That must become `r = null` and a continuing program.
-2. **A particle sent to a module with no handler for it is discarded**, and
-   the emit yields null. (Already agreed separately; it is the same rule seen
-   from the other side.)
-3. **`assert <false>` stops being a program-ending error** and becomes,
-   semantically, `emit Exception …` followed by `return` — the current
-   handler unwinds and its caller carries on.
-4. **At the top level of the entry program there is nothing left to unwind
-   to**, so the program ends. That is accepted.
-5. **Errors before the program runs may still be errors** — parse, verify,
-   link, duplicate handler, cycles. Nothing here changes those.
-6. Module authors are told the constraint, and a module that fails it does
-   not get into the registry.
+> A runtime error does not end the program. It ends the **frame**, which
+> returns `Exception { message, innerException }`.
 
-## What must not break
+- Raised inside a handler → that handler returns the `Exception`. Its caller
+  receives it through `get`, like any other result.
+- Raised at the top level of the entry program → there is no frame left to
+  return to, so the program ends, **exit non-zero**.
 
-`tests/` holds **76 `fail_*` fixtures** and **144 fixtures using `assert`**,
-and the harness decides pass/fail purely on a non-zero exit status. So:
+Two consequences that make this small rather than sweeping:
 
-> **A failed `assert` at the top level must still exit non-zero.**
+**Receiving an `Exception` is not itself an error.** It is an ordinary
+value. The caller may test it, ignore it, or pass it on. There is **no
+automatic propagation**: if C returns an `Exception` to B and B does not
+look, B carries on from where it was. This is a result-returning model, not
+exceptions with unwinding — closer to Go or Rust's `Result` than to
+try/catch.
 
-This is not in tension with decision 4 — "the program ends" and "the program
-ends *reporting failure*" are the same sentence here — but it has to be
-written down, because an implementation that ends the program at status 0
-would leave all 76 fixtures silently passing and remove the language's only
-way to state that something must not work.
+**Nothing new to write.** `is` already does the check the model needs:
 
-Migration check needed: fixtures that `assert` *inside a handler* rather
-than at the top level change meaning under this design — the handler
-unwinds, the caller continues, and the program may now succeed. **There are
-13**, found by scanning for an `assert` after a `=> {`:
-
-```
-fail_handler_local_leak  handler_basic  handler_chain
-handler_dispatch_by_class  handler_emits_core  handler_fields
-handler_no_return  handler_outer_scope  handler_scope_is_top_level
-inbound_basic  inbound_none_queued  inbound_overflow_drops_oldest
-net_diagnostics
+```code
+emit Greet { "who": "ada" } to this get r
+if r is Exception {
+    emit Print { "value": r.message } to term
+}
 ```
 
-`fail_handler_local_leak.code` is the one to look at first: it is a `fail_`
-fixture whose failure *is* an assert inside a handler, so under the new
-semantics it would unwind and the program could exit 0 — a fixture that
-silently stops testing what it was written for. These have to be re-stated
-before the semantics change, not after.
+And "a handler's `return` must yield a particle" still holds unchanged —
+`Exception` is a particle.
 
-## The two tensions the decisions do not yet resolve
+## What each decision settles
 
-### A. Can an unhandled `Exception` end the program?
+| | Rule |
+|---|---|
+| Expression errors (`1 + "a"`, `x / 0`, `.field` on a number) | same as any error: the binding never happens, the frame returns `Exception`. Values are never poisoned |
+| Top-level | program ends, non-zero — "finished with an error" |
+| A callee's `Exception` | a plain value; caller continues unless it chooses otherwise |
+| `emit` with no `get` | the `Exception` is discarded, silently, by the caller's choice |
+| No handler anywhere (`to this`, `to core`, `to <alias>`) | **null, not an error.** Sending a particle is not a demand: whether to act on it is the recipient's business |
+| Module with a handler but unusable input | `Exception`. "I don't do `Ping`" and "I do `Get` but you gave me no `url`" are different answers |
+| `assert` that passes | nothing changes; execution continues to the next statement |
+| Pre-run errors (parse, verify, link, cycles, duplicate handler) | still errors, unchanged |
 
-The two goals pull opposite ways:
+## `Exception`'s shape
 
-- If **yes**, a failed `assert` with no `Exception` handler ends the program,
-  which is exactly what keeps the 76 fixtures working (none of them defines
-  an `Exception` handler).
-- If **no**, a failed assert deep in a handler is silently swallowed: the
-  handler returns null, the caller continues with null, and nothing anywhere
-  reports it. That is the silent-wrongness this repo has refused everywhere
-  else.
+```
+Exception { message, innerException }
+```
 
-But "yes" collides with decision 1: `net` pushes `Exception` today for a
-refused connection, and `tests/net_unreachable.code` handles it nowhere and
-passes. Under "yes" that program would die — a module ending the
-application, which is the exact thing decision 1 forbids.
+No `source`. A returned value does not need to say who it came from — the
+caller wrote `to net` and knows. `innerException` lets a failure carry the
+one beneath it.
 
-**Proposed resolution: `Exception` and diagnostics are different things.**
+This differs from the `Exception { source, message }` in the root README's
+"Common particles" section, which describes what `net` pushes *today*. Both
+change together when this ships. `Log` keeps its `source`: a *pushed*
+particle has no caller to infer it from, which is exactly the asymmetry.
 
-| Particle | Meaning | Unhandled |
-|---|---|---|
-| `Exception` | control unwound — something failed | ends the program, non-zero |
-| `Log` (level `Error`) | a report; the caller already has the answer | dropped |
+Line and column belong inside `message` — `span::render` already produces
+that text for runtime errors, so it comes for free.
 
-Under that split `net`'s refused connection is a `Log` at `Error`, not an
-`Exception` — which is arguably what it always was, since the caller is
-handed `ok: false` and has lost nothing. `Exception` is reserved for "the
-work did not complete and control left early". `net_unreachable.code` keeps
-passing, and a failed assert stays loud.
+## Fixture impact
 
-This needs confirming before any code is written; it changes what `net`
-pushes.
+**In-handler asserts: none.** An earlier count of 13 in this document was
+wrong — it matched any `assert` appearing after a `=> {` anywhere in the
+file. Scanning handler *bodies* properly finds exactly one
+(`handler_basic.code`), and its assert passes, so it behaves identically
+either way.
 
-### B. What does a module return when it refuses?
+**Unknown-handler fixtures: four, and they invert.** These pass today
+*because* an unmatched class is an error; under the new rule they get null
+and succeed, so they stop testing anything:
 
-Decision 1 says `r = null`. Decision 6 says a module "may only return
-`Exception` when there is a problem". Those are two different answers to the
-same question. The likely reading, matching what `net` already does for
-network failures, is: **return null *and* report** — the value says "nothing
-came back", the pushed particle says why. Which particle it pushes depends
-on A.
+```
+fail_emit_bare_unknown_handler.code   unknown core handler 'Foo'
+fail_emit_unknown_handler.code        unknown core handler 'Foo'
+fail_handler_unknown.code             no handler defined for 'Nobody'
+fail_net_unknown_handler.code         net: unknown handler 'Delete'
+```
 
-## Scope: everything that can end a program today
+They must be re-stated as `emit … get r` + `assert r = null` — asserting
+the new rule rather than the old one — *before* the semantics move.
 
-Gathered from source rather than memory, so the work has a definite edge.
+**The other 72 `fail_*` fixtures** fail through top-level errors and keep
+working: a top-level error still ends the program non-zero. That is what the
+non-zero exit requirement protects, since the harness reads nothing but exit
+status.
 
-**Ends the program before it runs — unchanged by this ticket (decision 5).**
-Parse and lex errors; `duplicate handler`; handler cycles; link resolution,
-circular links, ELF/ABI mismatch; `break`/`continue` outside a loop;
-`link`/`export` inside a block; undefined variables under `code build`.
+## Implementation cost, honestly
 
-**The program's own logic — not covered by the decisions above.**
-`assertion failed` (covered), `division by zero`, arithmetic on non-numbers,
-comparison across kinds, non-boolean in `if`/`assert`/`and`/`or`/`not`,
-negating a non-number, `.` on a non-object, `[]` on a non-container, `loop`
-over a non-container, `emit` of a non-particle, a handler returning a
-non-particle, undefined variable under `code run`.
+**The interpreter is the easy half.** Errors are already `Result<_, String>`
+threaded through every call, and `Flow` already has a `Return(Value)`
+variant for `return`. Turning an error into `Flow::Return(Exception)` at the
+frame boundary is a contained change.
 
-Decision 3 names only `assert`. Whether `1 + "a"` should also become an
-`Exception` is open — and it is the difference between "asserts are
-catchable" and "the language has exceptions". Worth deciding deliberately
-rather than by drift.
+**The compiled backend has no unwinding machinery at all.** Every runtime
+error is `code_runtime_error`, which is `_Noreturn` and calls `exit(1)` —
+**34 call sites in `runtime.c`**, plus 5 error paths generated by
+`codegen.rs`. Making a frame return instead means giving the C runtime an
+error channel it does not have: either every helper returns a status the
+generated code checks after each call, or a pending-exception slot is set
+and checked at each step. Both are a real redesign of `runtime.c`'s calling
+convention, and this is where the bulk of the work is.
 
-**Dispatch.** `to this` / `to core` with no handler still error (the program
-addressed itself or the core; a wrong address is a bug). `to <alias>` with
-no handler becomes null. An inbound push with no handler already drops.
-A handler re-entering itself still errors.
+Until that exists, the two output modes would disagree about which programs
+end — which the fixture harness *cannot catch*, since it only compares
+pass/fail and both modes would still "fail", just differently. Any phase
+that changes error semantics needs its own both-mode fixture.
 
-**From inside a module — what decision 1 is really about.**
-Every `code_runtime_error` call a module makes. `net` alone has six. The
-host cannot police these: `code_runtime_error` is exported to modules from
-`runtime.c` and calls `exit(1)`. Honouring decision 1 means either removing
-it from the module-facing ABI or making it non-fatal, and either way every
-existing module — `net`, `strings`, `math`, `terminal`, and the test
-doubles — has to be rewritten to return rather than abort.
+## Phasing
 
-**System and resource — noted, to be discussed (decision 5's "later").**
-`out of memory`; rendering a fractional number as text under
-`--target wasm`; the `CODE_CHECK_LEAKS=1` exit-time abort; a native module
-failing to load. Stack overflow is *not* on this list: deep-nesting
-traversals became iterative on 2026-08-26 and `stress_deep_nesting.code`
-holds that.
+1. **No handler yields null** — `to this`, `to core`, `to <alias>`. Re-state
+   the four fixtures above first. No `Exception` semantics needed yet, and
+   `_code_dispatch_this` already has the drop flag from 2026-08-28.
+2. **Modules return `Exception` instead of aborting** — remove
+   `code_runtime_error` from the module-facing ABI; rewrite `net`,
+   `strings`, `math`, `terminal` and the test doubles. Independent of the
+   backend redesign, because a module's dispatch already returns a value.
+3. **The C runtime gains an error channel** — the 34 sites. The prerequisite
+   for anything below.
+4. **`assert` returns `Exception`**, both backends.
+5. **Every other runtime error returns `Exception`** — arithmetic, division
+   by zero, field access, `loop` operands, non-particle `emit`.
 
-## Suggested phasing
+1 and 2 are shippable now and leave the suite green. 3 is the large one.
 
-Each phase is independently shippable and leaves the suite green.
+## Still open
 
-1. **`to <alias>` with no handler yields null.** Self-contained, no ABI
-   movement, no `Exception` semantics needed yet.
-2. **Modules stop aborting.** Remove or defuse `code_runtime_error` in the
-   module-facing ABI; rewrite `net`/`strings`/`math`/`terminal` and the test
-   doubles to return null and report. Largest mechanical change; needs A
-   answered first, since it decides what they report.
-3. **`assert` becomes `Exception` + `return`.** Needs A answered, needs the
-   handler-internal-assert fixtures migrated first, and touches both
-   backends plus the `Flow` enum in the interpreter and the unwinding path
-   in codegen.
-4. **The rest of the program's own logic** (division by zero, type
-   mismatches), if that is wanted — see the open question above.
-5. **System and resource cases**, discussed one at a time.
-
-## Constraint to hold throughout
-
-Both output modes must agree on which programs fail, exactly as they do
-today. The fixture harness only checks pass/fail, so a divergence here would
-not be caught by anything currently in the suite — every phase needs its own
-both-mode fixture.
+- **`code run` vs `code build` divergence during phases 1–2.** Modules stop
+  aborting in both modes, but language-level errors still abort in both, so
+  the invariant holds. It only becomes delicate at 4 and 5.
+- **Out of memory, wasm fractional number text, the `CODE_CHECK_LEAKS`
+  abort, and a native module failing to load** — noted 2026-08-28 to be
+  discussed one at a time; every case that ends a program with an error is
+  to be revisited.
