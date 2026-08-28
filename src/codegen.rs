@@ -1728,6 +1728,20 @@ impl<'a, 'm> Gen<'a, 'm> {
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(cont_bb);
+        // A loop iteration is a statement boundary too, so queued particles
+        // are handed over here rather than waiting for the loop to finish.
+        // `cont_bb` is where both the fall-through and every `continue`
+        // arrive, which makes it the one place an iteration always passes
+        // through.
+        //
+        // Not inside a handler: a drain there would dispatch a particle into
+        // a handler while one is running, and re-entry is what the language
+        // forbids — the loop would quietly fill with `Exception`s.
+        // `interpreter.rs`'s `drain_between_iterations` makes the same test
+        // against `env.active`.
+        if self.handler_frame.is_none() {
+            self.gen_drain_call()?;
+        }
         if let Some(cursor) = &iteration {
             let current = self
                 .builder

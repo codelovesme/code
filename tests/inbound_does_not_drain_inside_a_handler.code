@@ -1,0 +1,33 @@
+-- The drain added to loop iterations stops at a handler's edge, and this is
+-- why: a handler's own loop draining would dispatch a particle *into* a
+-- handler while one is running, and re-entry is what the language forbids.
+--
+-- `Tick`'s body loops and asks for another `Tick`. If the loop inside it
+-- drained, the queued `Tick` would re-enter the handler that is running and
+-- come back as an `Exception` — silently, since a pushed particle's result is
+-- discarded. Instead the queue waits for the top-level boundary, where
+-- nothing is running.
+link "native_modules/test_events.so" as ev
+
+let ticks = 0
+let asked = 0
+
+Tick { value } => {
+    ticks += 1
+    -- Only the first tick asks for more, or this would never end.
+    if ticks = 1 {
+        loop y over [1] {
+            emit Start { "value": 2 } to ev get s
+            asked += 1
+        }
+    }
+    return Ack {}
+}
+
+emit Start { "value": 1 } to ev get started
+assert started.value = 1
+
+-- One tick from the top-level `Start`, then the two its handler asked for —
+-- delivered after it returned, not inside it.
+assert ticks = 3
+assert asked = 1

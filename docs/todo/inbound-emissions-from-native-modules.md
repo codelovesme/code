@@ -139,15 +139,49 @@ before the function returns.
 
 ## What is still open
 
-- **The keep-alive loop.** Everything above is synchronous: a module pushes
+- **The keep-alive loop.** Two halves, and the first one shipped 2026-08-29.
+
+  **How a program says "keep me up" is decided: `loop { }`.** Owner's call,
+  from three options — a bare loop, a core `Wait` handler, or the module
+  telling the host. The bare loop wins on adding no concept at all: it is
+  already in the language, already means "until `break`", and a program that
+  wants to stay up writes the thing that stays.
+
+  **Shipped: a loop iteration is a statement boundary.** Queued particles had
+  been handed over between *top-level statements* only, which was enough while
+  a program was a straight line — and left everything a module pushed inside
+  `loop { … }` sitting in the queue until the loop ended. So the one shape an
+  event loop has to take was the one shape that did not work. Measured before
+  fixing: `[1, 2, -1, -1]` where the ticks should have been `[1, -1, 2, -1]`.
+
+  The drain stops at a handler's edge, in both backends
+  (`interpreter.rs`'s `env.active`, codegen's `handler_frame`). A drain inside
+  a handler's own loop would dispatch a particle *into* a handler while one is
+  running, and re-entry is what the language forbids — the queue would quietly
+  fill with `Exception`s that nothing looks at, since a pushed particle's
+  result is discarded. `inbound_drains_each_loop_iteration.code` and
+  `inbound_does_not_drain_inside_a_handler.code`.
+
+  **Still open: a module with a thread of its own** — a real `terminal`
+  reading keys, a server accepting connections. Today a module can only push
   from inside a `code_module_dispatch` call it is already on the program's
-  thread for. A module with a thread of its own (a real `terminal` reading
-  keys, a server accepting connections) needs a lock around the queue —
-  `runtime.c`'s ring is deliberately lock-free today, and `native.rs` uses
-  `RefCell`, neither of which is safe to push to from another thread — plus
-  a loop that keeps draining after the last statement. Decide the shape of
-  the "this program is a daemon" flag when the first real consumer lands;
-  the plumbing underneath is already in place.
+  thread for, so `loop { }` serves a *polling* event loop
+  (`loop { emit Poll {} to src get r … }`) and an empty `loop { }` still
+  waits for something that can never arrive. What that needs:
+
+  - A lock around the ring. `runtime.c`'s is deliberately lock-free and
+    `native.rs` uses `RefCell`; neither is safe to push to from another
+    thread.
+  - `live_blocks`, the leak counter `heap_alloc` bumps, becomes a data race
+    the moment a second thread allocates. Atomic, or the `CODE_CHECK_LEAKS`
+    build stops meaning anything.
+  - A sleep when an *empty* `loop { }` drained nothing, or waiting costs a
+    core. Decidable at compile time — an empty body is the "I am only
+    waiting" case, and a loop with a body is doing work and must not be
+    slowed.
+  - A threaded module to prove it with, which is also what would validate the
+    three above. A `timer` pushing `Tick` from its own thread is the smallest
+    honest one.
 - **Two modules pushing the same class with different shapes** silently
   mismatch. Examined 2026-08-28 by building it: two modules both pushing
   `Log`, one as `{ source, level, message }` and one as `{ text, ts }`, into

@@ -182,6 +182,29 @@ impl Environment {
 /// never back to the module that pushed them: the module supplies events,
 /// the program decides what they mean. A class nothing handles is an error,
 /// the same answer `emit ... to this` gives.
+/// A loop iteration is a statement boundary too.
+///
+/// Queued particles have been handed over between *top-level statements*
+/// since inbound emissions shipped, which was enough while a program was a
+/// straight line. It is not enough for a program that stays up: everything a
+/// module pushed inside `loop { … }` sat in the queue until the loop ended,
+/// so the one shape an event loop has to take was the one shape that did not
+/// work (measured 2026-08-29 — `seen` came out `[99, 0, 1]` instead of
+/// `[0, 1, 99]`).
+///
+/// Only outside a handler, which `env.active` already answers: it holds the
+/// handlers currently on the call stack, so empty means top level. A drain
+/// inside a handler's own loop would dispatch a particle into a handler while
+/// one is running, and re-entry is exactly what the language forbids —
+/// the loop would quietly fill with `Exception`s. `codegen.rs`'s `gen_loop`
+/// makes the same test with `handler_frame`.
+fn drain_between_iterations(env: &mut Environment) -> Result<(), String> {
+    if env.active.is_empty() {
+        drain_inbound(env)?;
+    }
+    Ok(())
+}
+
 fn drain_inbound(env: &mut Environment) -> Result<(), String> {
     loop {
         let drains = env.inbound.clone();
@@ -541,6 +564,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                         env.declare(over.value.clone(), value);
                         let flow = exec_body(body, env);
                         env.pop_scope();
+                        drain_between_iterations(env)?;
                         // `Continue` needs no action beyond ending this
                         // iteration, which returning from the body already
                         // did — only `Break` changes what happens next.
@@ -559,6 +583,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     env.push_scope();
                     let flow = exec_body(body, env);
                     env.pop_scope();
+                    drain_between_iterations(env)?;
                     match flow? {
                         Flow::Break => break,
                         Flow::Return(value) => return Ok(Flow::Return(value)),
