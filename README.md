@@ -601,6 +601,48 @@ outruns the program costs bounded memory. Continuous draining, which an
 interactive daemon would need, is not built yet (see
 [`docs/todo/inbound-emissions-from-native-modules.md`](docs/todo/inbound-emissions-from-native-modules.md)).
 
+### Common particles
+
+A module that pushes cannot know who will receive it, and a program's
+handler should be its own definition rather than something shaped by which
+modules happen to be linked. So the agreement has to live in the particle,
+and two of them are common vocabulary:
+
+```
+Log       { source, level, message }    -- level: Info | Warn | Error | Debug
+Exception { source, message }
+```
+
+`source` is the module's own name, and it is the module's *data* — not
+something the host adds. It exists so one handler can serve every module
+without naming any of them:
+
+```code
+Log { source, level, message } => {
+    emit Print { "value": "[$source] $message" } to term
+}
+```
+
+That handler works for `net` today and for a module written next year, with
+no branching and nothing to update when a link is added.
+
+**Extension is additive.** A module may carry extra fields — a handler that
+doesn't list them simply never sees them. What breaks the agreement is
+*renaming* the common ones.
+
+**If your shape is not the common one, your name should not be either.** A
+module with its own kind of record gives it its own class name
+(`NetTrace`, not a private `Log`), and a program handles it separately or
+not at all — an unhandled push is dropped, so a module's own vocabulary
+costs nothing to a program that isn't interested.
+
+This is a convention, not a mechanism. Nothing enforces it, exactly as
+nothing enforces `_class` itself. Two modules that both send `Log` with
+different shapes will silently mismatch — the second one's fields arrive as
+null — which is a bug in the module that ignored the vocabulary, not a
+question the language answers. `net` is the reference: see
+[`crates/modules/net`](crates/modules/net/README.md).
+
 First-party modules today: `terminal` (print to stdout), `math`, `strings`,
 `net` (HTTP `Get`/`Post`, and `Exception`/`Log` pushed back — see
 [its README](crates/modules/net/README.md)).

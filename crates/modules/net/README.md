@@ -59,6 +59,14 @@ Exception { source, message } => {
 }
 ```
 
+`Log` and `Exception` are the language's **common particles**, not names
+`net` invented — see "Common particles" in the root README. That is what
+lets one handler in a program serve `net` and every other module that
+reports, with no branching and nothing to change when a link is added.
+`net` is meant to read as the reference implementation of that agreement:
+common shape, `source` carrying its own name, extra detail added as fields
+rather than as a private class.
+
 Two properties make this safe to send unasked. A pushed class the program
 has no handler for is **dropped**, so a program that wants none of this
 writes none of it and nothing changes. And the push is **additional, never

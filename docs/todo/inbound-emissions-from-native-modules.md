@@ -145,6 +145,40 @@ before the function returns.
   a loop that keeps draining after the last statement. Decide the shape of
   the "this program is a daemon" flag when the first real consumer lands;
   the plumbing underneath is already in place.
+- **Two modules pushing the same class with different shapes** silently
+  mismatch. Examined 2026-08-28 by building it: two modules both pushing
+  `Log`, one as `{ source, level, message }` and one as `{ text, ts }`, into
+  a program with one `Log` handler. The second one's fields all arrive as
+  `null`, the handler runs, and **the program exits 0** — no error in either
+  runtime, at any point, and no way to discover the data was lost.
+
+  Note the inconsistency this sits in: two `.code` modules that both
+  *define* `Log =>` are a hard error before the program runs (`duplicate
+  handler for 'Log': only one handler per class`), while two native modules
+  that both *push* `Log` are merged in silence. Definitions collide loudly,
+  pushes collide silently — and the push path is the one with less
+  information at the collision point.
+
+  **Accepted for now rather than fixed**, and the reasoning is worth
+  keeping. Two mechanisms were considered and rejected. Qualifying the
+  handler by the pushing alias (`net.Log { … } => { … }`) makes a program's
+  handler definitions depend on its own `link` structure, so a handler stops
+  being a first-class definition — and a module author cannot know who will
+  consume them anyway. A shared particle registry or definition file is a
+  type system by another name, in a language whose README lists "no type
+  keywords, annotations, or declarations of type" as a decision; it also
+  designs for a scale that does not exist, with two common particles and
+  four first-party modules.
+
+  What shipped instead is a **convention, not a mechanism**: the "Common
+  particles" section of the root README fixes the shape of `Log` and
+  `Exception`, makes `source` the module's own data so one handler can serve
+  every module without branching, and says that a module whose shape is not
+  the common one must not use the common name either. A module that ignores
+  that is a buggy module, not a gap in the language. Revisit if the
+  vocabulary grows enough to need versioning — then there will be a concrete
+  problem to design against.
+
 - **`.a` static modules** have no queue: inbound is a `.so` story so far.
   `gen_drain_body` skips them explicitly.
 - **Rust modules can now push too** — `code-native` gained `CodeEmitFn`,
