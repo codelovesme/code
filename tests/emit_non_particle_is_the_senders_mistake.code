@@ -12,22 +12,22 @@
 -- `Exception`. Nothing is terminated.
 link "native_modules/math.so" as math
 
-Viathis { } => {
+Viathis {} => {
     emit 5 to this get r
-    return Reached { }
+    return Reached {}
 }
-Viacore { } => {
+Viacore {} => {
     emit 5 to core get r
-    return Reached { }
+    return Reached {}
 }
-Viamodule { } => {
+Viamodule {} => {
     emit 5 to math get r
-    return Reached { }
+    return Reached {}
 }
 
-emit Viathis { } to this get a
-emit Viacore { } to this get b
-emit Viamodule { } to this get c
+emit Viathis {} to this get a
+emit Viacore {} to this get b
+emit Viamodule {} to this get c
 
 assert a is Exception
 assert b is Exception
@@ -40,15 +40,15 @@ assert a.message = "emit requires a particle — an object with a '_class' field
 
 -- Not just numbers: a plain object is not a particle either, since there is
 -- no `_class` to dispatch on.
-Plain { } => {
+Plain {} => {
     emit { "value": 1 } to math get r
-    return Reached { }
+    return Reached {}
 }
-emit Plain { } to this get d
+emit Plain {} to this get d
 assert d is Exception
 assert d.message = "emit requires a particle — an object with a '_class' field — found an object"
 
 -- And this is a different question from "nobody handles that class", which
 -- is still null rather than a failure — sending a particle is not a demand.
-emit Nobody { } to math get e
+emit Nobody {} to math get e
 assert e = null

@@ -1,5 +1,5 @@
 -- `obj["key"]` reads a field by a string literal — the same result `.field`
 -- gives, since both requests the same lookup, just spelled differently.
-let point = {"x": 1, "y": 2}
+let point = { "x": 1, "y": 2 }
 assert point["x"] = 1
 assert point["x"] = point.x

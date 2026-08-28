@@ -3,7 +3,7 @@
 -- follows for a value (see loop_value_escapes.code). This also exercises
 -- the compiled backend's `code_iter_key`, which must hand back an owned
 -- string rather than a pointer into the (by-then-released) loop cursor.
-let obj = {"first": 1, "second": 2}
+let obj = { "first": 1, "second": 2 }
 loop k, v over obj get last = "" {
     last = k
 }

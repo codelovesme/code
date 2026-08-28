@@ -14,7 +14,7 @@ assert [1] + [[2]] = [1, [2]]
 assert ["a"] + "b" = ["a", "b"]
 assert [1] + null = [1, null]
 assert [1] + true = [1, true]
-assert [1] + {"k": 2} = [1, {"k": 2}]
+assert [1] + { "k": 2 } = [1, { "k": 2 }]
 
 -- Building up an array one element at a time, which is the point of it.
 let acc = []

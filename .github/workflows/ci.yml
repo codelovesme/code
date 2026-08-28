@@ -37,6 +37,13 @@ jobs:
       - name: Formatting check
         run: cargo fmt --all --check
 
+      # The same gate for the language's own source. `--check` writes nothing
+      # and exits non-zero if any `.code` file is not canonically laid out;
+      # the `fail_*` fixtures that are deliberate parse errors are reported
+      # and skipped rather than failing it (see `cmd_format`).
+      - name: Code formatting check
+        run: cargo run --quiet -- format --check tests/
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 

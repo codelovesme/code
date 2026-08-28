@@ -1,5 +1,9 @@
 # `code format`
 
+> **Shipped 2026-08-28**, close to as planned. What follows is the original
+> write-up; "What shipped" at the foot records the two style decisions the
+> diff actually forced and the one prediction that was wrong.
+
 One canonical layout for `.code` source, enforced in CI the way
 `cargo fmt --all --check` already gates the Rust half of this repo
 (`.github/workflows/ci.yml`). `code format <paths>` rewrites in place;
@@ -168,3 +172,47 @@ having quietly turned into re-flow.
 - **stdin/stdout mode** (`code format -`), for editor integration.
 - **Anything configurable.** No width knob, no indent knob — a formatter
   with options is a style argument with extra steps.
+
+## What shipped
+
+All five phases, in order. `Lexed::ends` turned out to exist already (added
+for `crates/code-lsp`, whose doc comment names this document), so phase 1 was
+`format.rs` alone — 250 lines rather than the 117 budgeted, the extra being
+doc comments and the two spacing cases below, not re-flow.
+
+**The properties held against the tree as its authors left it**, which was
+the point of writing `tests/format_fixtures.rs` before reformatting anything:
+token equality, comment preservation and idempotence all passed over the
+corpus *unchanged*. Two more tests guard the guards — that most of the corpus
+is actually formatted (so the three cannot pass vacuously by refusing
+everything), and that every file refused is a `fail_*` one.
+
+Then the whole suite passed after reformatting all 213 fixtures, in both
+output modes, which is the real evidence: a formatter that changed meaning
+would have shown up as a failing program, not just a failing property.
+
+### The two rules the corpus decided, not this document
+
+- **`[` after a value is a subscript, and takes no space.** The spacing table
+  here only said "none after an opener", which turned `data.items[2]` into
+  `data.items [2]`. Told apart by whether the preceding token could end an
+  operand.
+- **Empty braces close up: `Ping {}`, not `Ping { }`.** The corpus was
+  genuinely split (28 to 37 the other way), so this was decided on the diff:
+  `{}` leaves 172 files untouched against 164 for `{ }`. The inner space
+  exists to hold content off the braces and there is none.
+
+### The prediction that was wrong
+
+"The tree has no trailing comments today; the rule exists so the first one is
+not a surprise." It has three, in `is_basic.code`, and they were *column
+aligned*. Rule 4 collapses them to two spaces, which loses the alignment —
+kept as written, because a formatter that preserves hand alignment is not
+canonical, and this is the same trade `cargo fmt` makes next door.
+
+### The diff, which was the style review
+
+22 files, 69 lines, in four groups: `{ }` to `{}` (32), `{"a": 1}` to
+`{ "a": 1 }` (the minority spelling, 51 occurrences against 229), the three
+aligned comments above, and `multiline_literal.code`'s two-space body going
+to four — the one diff this document predicted by name.

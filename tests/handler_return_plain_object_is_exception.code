@@ -3,7 +3,7 @@
 -- fails and answers an `Exception`.
 --
 -- Was `fail_handler_return_plain_object.code`.
-Ping { } => {
+Ping {} => {
     return { "x": 1 }
 }
 

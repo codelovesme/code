@@ -14,7 +14,7 @@ link "native_modules/terminal.so" as term
 Greet { who } => {
     return Greeting { "missing": who = null }
 }
-emit Greet { } to this get g
+emit Greet {} to this get g
 assert g.missing = true
 
 -- A core handler: `Length { }` and `Length { "value": null }` are the same
@@ -25,17 +25,17 @@ assert g.missing = true
 
 -- A module handler with nothing to validate answers rather than refusing:
 -- there is no value `Echo` cannot pass through, or `Print` cannot render.
-emit Echo { } to strings get e
+emit Echo {} to strings get e
 assert e is EchoResult
 assert e.value = null
 
-emit Print { } to term get p
+emit Print {} to term get p
 assert p is TerminalResult
 assert p.value = 4
 
 -- One that genuinely cannot proceed still fails — on the value, not on its
 -- absence. `Double { }` is `Double { "value": null }`, and null is not a
 -- number. One message now, where there used to be two.
-emit Double { } to math get d
+emit Double {} to math get d
 assert d is Exception
 assert d.message = "Double requires a numeric 'value'"

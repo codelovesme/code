@@ -73,6 +73,7 @@ fn main() -> ExitCode {
             let out = out.unwrap_or_else(|| default_output_path(&path, target));
             build_file(&path, target, &out, release)
         }
+        Some("format") => cmd_format(args.collect()),
         #[cfg(feature = "install")]
         Some("install") => cmd_install(args.collect()),
         #[cfg(feature = "install")]
@@ -96,7 +97,105 @@ fn main() -> ExitCode {
     }
 }
 
-const USAGE: &str = "run <file> | build <file> [--target exe|shared|static|wasm] [--release] [-o <output>] | install <name-or-url> [--global] | remove <name> | ls";
+const USAGE: &str = "run <file> | build <file> [--target exe|shared|static|wasm] [--release] [-o <output>] | format [--check] <path>... | install <name-or-url> [--global] | remove <name> | ls";
+
+/// `code format <path>...` rewrites in place; `--check` writes nothing and
+/// exits non-zero if anything would change. A path may be a directory, walked
+/// for `*.code`.
+///
+/// Never calls the loader: this lexes and parses *one file's text*, so a file
+/// that `link`s a module which isn't installed still formats — resolving
+/// anything is not the formatter's business.
+///
+/// A file that does not parse is reported and **skipped**, not failed. That
+/// is the point rather than a leniency: `tests/` is full of `fail_*.code`
+/// fixtures that are deliberate parse errors, and they have no layout to
+/// canonicalize. Failing on them would make the CI gate unusable.
+fn cmd_format(args: Vec<String>) -> ExitCode {
+    let check = args.iter().any(|a| a == "--check");
+    let paths: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
+    if paths.is_empty() {
+        eprintln!("usage: code format [--check] <path>...");
+        return ExitCode::FAILURE;
+    }
+
+    let mut files = Vec::new();
+    for path in paths {
+        collect_code_files(Path::new(path), &mut files);
+    }
+    files.sort();
+
+    let mut changed = Vec::new();
+    let mut failed = false;
+    for file in &files {
+        let src = match std::fs::read_to_string(file) {
+            Ok(src) => src,
+            Err(e) => {
+                eprintln!("error: cannot read {}: {e}", file.display());
+                failed = true;
+                continue;
+            }
+        };
+        let formatted = match code::format::format(&src) {
+            Ok(formatted) => formatted,
+            // Reported, not counted against the exit status — see the doc
+            // comment above.
+            Err(e) => {
+                eprintln!("skipped {} ({})", file.display(), e.msg);
+                continue;
+            }
+        };
+        if formatted == src {
+            continue;
+        }
+        changed.push(file.clone());
+        if !check {
+            if let Err(e) = std::fs::write(file, &formatted) {
+                eprintln!("error: cannot write {}: {e}", file.display());
+                failed = true;
+            }
+        }
+    }
+
+    if check && !changed.is_empty() {
+        for file in &changed {
+            eprintln!("would reformat {}", file.display());
+        }
+        eprintln!("{} file(s) need formatting", changed.len());
+        return ExitCode::FAILURE;
+    }
+    if !check && !changed.is_empty() {
+        println!("formatted {} file(s)", changed.len());
+    }
+    if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// Every `*.code` at or under `path`. A file is taken as given whatever its
+/// extension — an explicitly named file is an explicit request — while a
+/// directory is filtered, so `code format tests/` doesn't try to rewrite the
+/// `.so` modules sitting beside the fixtures.
+fn collect_code_files(path: &Path, out: &mut Vec<PathBuf>) {
+    if path.is_dir() {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            eprintln!("error: cannot read directory {}", path.display());
+            return;
+        };
+        for entry in entries.filter_map(|e| e.ok()) {
+            let child = entry.path();
+            if child.is_dir() || child.extension().is_some_and(|x| x == "code") {
+                collect_code_files(&child, out);
+            }
+        }
+    } else if path.exists() {
+        out.push(path.to_path_buf());
+    } else {
+        eprintln!("error: no such path: {}", path.display());
+    }
+}
 
 #[cfg(feature = "llvm")]
 fn default_output_path(input: &str, target: BuildTarget) -> PathBuf {

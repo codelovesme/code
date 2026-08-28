@@ -1,6 +1,6 @@
 let nums = [
-  1,
-  2
+    1,
+    2
 ]
 
 assert nums = [1, 2]

@@ -20,7 +20,7 @@ assert n.source = "core"
 assert n.message = "Length requires an array or string 'value', found a number"
 
 emit Length { "value": null } to core get a
-emit Length { } to core get b
+emit Length {} to core get b
 assert a is Exception
 assert b is Exception
 assert a.message = b.message

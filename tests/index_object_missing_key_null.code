@@ -1,5 +1,5 @@
 -- A key that is merely *absent* is still null — the operand kind (a Str
 -- key against an object) is right, the lookup simply found nothing. Same
 -- rule `.field` follows (missing_member_returns_null.code).
-let o = {"a": 1}
+let o = { "a": 1 }
 assert o["nope"] = null

@@ -8,7 +8,7 @@
 -- status; `fail_assert_basic.code` and friends pin that half.
 Check { n } => {
     assert n = 1
-    return Ok { }
+    return Ok {}
 }
 
 emit Check { "n": 2 } to this get bad

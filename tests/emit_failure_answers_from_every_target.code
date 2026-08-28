@@ -11,26 +11,26 @@
 -- case.
 link "native_modules/math.so" as math
 
-Bad { } => {
+Bad {} => {
     return 42
 }
 
-Viacore { } => {
-    emit Length { } to core get r
+Viacore {} => {
+    emit Length {} to core get r
     return Reached { "r": r }
 }
-Viamodule { } => {
-    emit Double { } to math get r
+Viamodule {} => {
+    emit Double {} to math get r
     return Reached { "r": r }
 }
-Viahandler { } => {
-    emit Bad { } to this get r
+Viahandler {} => {
+    emit Bad {} to this get r
     return Reached { "r": r }
 }
 
-emit Viacore { } to this get a
-emit Viamodule { } to this get b
-emit Viahandler { } to this get c
+emit Viacore {} to this get a
+emit Viamodule {} to this get b
+emit Viahandler {} to this get c
 
 -- The point: every one of them got past the emit.
 assert a is Reached

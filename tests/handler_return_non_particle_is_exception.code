@@ -6,7 +6,7 @@
 --
 -- Was `fail_handler_return_non_particle.code`, which pinned the old rule that
 -- this aborted.
-Ping { } => {
+Ping {} => {
     return 42
 }
 
