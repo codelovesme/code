@@ -169,7 +169,10 @@ having quietly turned into re-flow.
   formatting from the parse tree rather than the token stream. Worth
   revisiting only if hand-layout drift turns out to be a real problem; the
   tree's longest line today is 87 characters.
-- **stdin/stdout mode** (`code format -`), for editor integration.
+- ~~**stdin/stdout mode** (`code format -`), for editor integration.~~ Not
+  needed: `crates/code-lsp` serves `textDocument/formatting` directly from
+  `code::format::format`, so an editor gets format-on-save without shelling
+  out to anything (shipped 2026-08-28, alongside this).
 - **Anything configurable.** No width knob, no indent knob — a formatter
   with options is a style argument with extra steps.
 

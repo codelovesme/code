@@ -37,6 +37,7 @@ emit Print { "value": "$name won $rounds rounds" } to term
 - [Handlers](#handlers)
 - [Errors](#errors)
 - [Modules](#modules)
+- [One canonical layout](#one-canonical-layout)
 - [What the language deliberately does not have](#what-the-language-deliberately-does-not-have)
 - [The two output modes](#the-two-output-modes)
 - [Repository layout](#repository-layout)
@@ -57,6 +58,8 @@ code build program.code                    # -> ./program (native executable)
 code build program.code --target wasm      # exe | shared | static | wasm
 code build program.code -o out/thing
 code build program.code --release          # -O2; the default is unoptimized
+code format src/ program.code              # canonical layout, rewritten in place
+code format --check tests/                 # writes nothing; non-zero if any differ
 code install terminal                      # fetch a module into ./.code/modules
 code ls                                    # what's installed
 code remove terminal
@@ -819,6 +822,34 @@ frame returns an `Exception` whose `message` the program can read (see
 [Errors](#errors)), so two backends wording a failure differently would be a
 difference in what a program *computes*.
 
+## One canonical layout
+
+`code format` gives `.code` source a single layout the way `cargo fmt` does
+for the Rust half of this repo, and the same CI step enforces it. Editors get
+it through [`crates/code-lsp`](crates/code-lsp), which serves the identical
+function over `textDocument/formatting`.
+
+It formats the **token stream**, never the AST — which is not an
+implementation detail but the reason it is safe to run on your files. The AST
+is desugared by design: comments are gone by the time it exists, `n += 1` has
+become `n = n + 1`, `Timestamp {}` has become an object literal, and `1.50`
+has become an `f64`. A formatter built on it would silently rewrite all four.
+Working from tokens, every piece of output is a slice of the input, so
+literals keep their spelling and comments survive verbatim.
+
+Hard line breaks stay yours. There is no maximum width and no re-flow: a
+`{ "x": 1 }` written inline stays inline, and a multi-line array stays
+multi-line. What gets normalized is indentation, spacing between tokens, and
+runs of blank lines.
+
+Three properties are checked over every fixture in
+[`tests/`](tests), in [`tests/format_fixtures.rs`](tests/format_fixtures.rs):
+the token stream is identical before and after (so the meaning cannot have
+changed), every comment survives in order, and formatting twice is the same
+as formatting once.
+
+A file that does not parse is reported and left alone, never half-rewritten.
+
 ## Repository layout
 
 ```
@@ -828,7 +859,8 @@ tests/          *.code fixtures (the spec) + the harnesses that run them
 crates/
   code-wasm/    interpreter-only build for the browser playground (npm)
   code-native/  the crate for writing native modules in Rust (crates.io)
-  code-lsp/     diagnostics and semantic tokens over the real lexer/parser
+  code-lsp/     diagnostics, semantic tokens and formatting, over the real
+                lexer/parser and the same `code format` the CLI runs
   modules/      first-party modules: terminal, math, strings
 site/           the playground; build.py embeds tests/*.code as examples
 docs/todo/      open tasks, one file each, written to be picked up cold
