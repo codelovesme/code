@@ -702,7 +702,8 @@ emit Start { "value": 3 } to ev get started   -- module queues three Ticks
 -- by here they have all been handled
 ```
 
-Queued particles are dispatched after each top-level statement, in the order
+Queued particles are dispatched after each top-level statement — and after
+each *loop iteration*, which is a statement boundary too — in the order
 pushed. **A pushed class the program has no handler for is dropped**, not an
 error: the module chose to speak, so a message nobody asked to hear is not a
 mistake by the program. That is what lets a module report a problem without
@@ -714,9 +715,38 @@ than contrast. The cost, accepted deliberately: a module pushing a
 *mistyped* class now goes unnoticed.
 
 The queue is bounded at 256 per module, dropping the oldest — a module that
-outruns the program costs bounded memory. Continuous draining, which an
-interactive daemon would need, is not built yet (see
-[`docs/todo/inbound-emissions-from-native-modules.md`](docs/todo/inbound-emissions-from-native-modules.md)).
+outruns the program costs bounded memory.
+
+A module may push from **a thread of its own**, not only from inside a
+dispatch call it was asked on: a timer, a socket accept loop, a terminal
+reading keys. A program that wants to receive those has to stay up, and the
+way it says so is `loop { }` — the loop that was already in the language,
+because a program that wants to stay up writes the thing that stays. Nothing
+in the body causes the particles; they arrive because something else is
+putting them there:
+
+```
+link "modules/timer.so" as timer
+
+Tick { value } => {
+    ...
+}
+
+emit Start { "value": 3 } to timer get started
+loop {
+}                                       -- ticks arrive here, and keep arriving
+```
+
+An empty `loop { }` waits a millisecond between drains rather than spending a
+core asking the same question a million times a second, and skips the wait on
+a round that did hand something over, so a burst still drains at full speed.
+A loop with a body is doing work each time round and is never slowed. There
+is no way out of an empty `loop { }` — that is the point: such a program is a
+daemon, and ends when something kills it.
+
+The drain stops at a handler's edge. A loop inside a handler does not drain,
+because handing a particle over while a handler is running is re-entry, and
+[handlers may not re-enter](#handlers).
 
 ### Common particles
 

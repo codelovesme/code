@@ -114,6 +114,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         "terminal",
         "test_math",
         "test_events",
+        "test_timer",
         "test_panics",
     ] {
         // `test_panics` is a test double rather than a shipped module, so

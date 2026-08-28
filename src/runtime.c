@@ -17,6 +17,7 @@
 #else
 #include <dlfcn.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -185,8 +186,20 @@ typedef struct {
 /* Blocks currently allocated. Exists only so `code_check_leaks` can turn
  * "the refcounting is correct" into something a test can actually observe —
  * without it, a missing release and a correct release produce identical
- * program output. */
+ * program output.
+ *
+ * Bumped atomically because a module with a thread of its own allocates from
+ * that thread — `code_emit_inbound` deep-copies the pushed particle on
+ * whichever thread pushed it (see the "Inbound" section). A plain `++` there
+ * is a data race, and a lost increment would make `CODE_CHECK_LEAKS` report
+ * a leak that never happened, or miss one that did. Relaxed ordering is
+ * enough: nothing is published through this counter, it is only read once at
+ * exit, after every thread that could touch it has been shut out
+ * (`code_native_close`). */
 static long long live_blocks = 0;
+
+#define code_blocks_add(n) (void)__atomic_add_fetch(&live_blocks, (n), __ATOMIC_RELAXED)
+#define code_blocks_read() __atomic_load_n(&live_blocks, __ATOMIC_RELAXED)
 
 static void *heap_alloc(size_t bytes) {
     CodeHeader *h = malloc(sizeof(CodeHeader) + bytes);
@@ -194,7 +207,7 @@ static void *heap_alloc(size_t bytes) {
         code_runtime_error("out of memory");
     }
     h->rc = 1;
-    live_blocks++;
+    code_blocks_add(1);
     return (char *)h + sizeof(CodeHeader);
 }
 
@@ -234,9 +247,24 @@ void code_retain(const CodeValue *v) {
  * equivalents, which have the same shape for the same reason. Each keeps an
  * explicit work stack in heap memory instead.
  *
- * The stacks are file-static and grow on demand, never shrinking: this is a
- * single-threaded runtime and neither can re-enter itself now that they
- * don't recurse, so one buffer each is enough. */
+ * The stacks grow on demand and never shrink: neither can re-enter itself
+ * now that they don't recurse, so one buffer each is enough — per thread.
+ *
+ * `code_release`'s is thread-local, because the release path is reachable
+ * from a module's own thread: `code_emit_inbound` deep-copies onto a ring
+ * that is full, and dropping the oldest entry releases it. A shared buffer
+ * would then be walked by two threads at once, which is heap corruption
+ * rather than a wrong answer. One buffer per thread costs a few KB for the
+ * one or two threads a program has, and is never freed — the same bargain
+ * the single shared one already made. `code_values_equal`'s stays plain
+ * static: comparison is only ever reached from program code, which runs on
+ * the program's own thread. */
+#ifdef CODE_WASM
+/* No threads in a wasm build, and the freestanding shim has no TLS. */
+#define CODE_THREAD_LOCAL
+#else
+#define CODE_THREAD_LOCAL __thread
+#endif
 
 static void *grow(void *buf, size_t *cap, size_t needed, size_t item_size) {
     if (*cap >= needed) {
@@ -254,8 +282,8 @@ static void *grow(void *buf, size_t *cap, size_t needed, size_t item_size) {
     return bigger;
 }
 
-static CodeValue *dead = NULL; /* values whose block is owed a free() */
-static size_t dead_cap = 0;
+static CODE_THREAD_LOCAL CodeValue *dead = NULL; /* values whose block is owed a free() */
+static CODE_THREAD_LOCAL size_t dead_cap = 0;
 
 /* Does NOT clear `v->heap` afterwards: every caller overwrites the slot
  * immediately, and leaving the field alone is what makes `code_copy`'s
@@ -286,7 +314,7 @@ void code_release(CodeValue *v) {
             }
         }
         free(header_of(heap_block(&current)));
-        live_blocks--;
+        code_blocks_add(-1);
     }
 }
 
@@ -299,9 +327,10 @@ void code_check_leaks(void) {
     if (!getenv("CODE_CHECK_LEAKS")) {
         return;
     }
-    if (live_blocks != 0) {
+    long long leaked = code_blocks_read();
+    if (leaked != 0) {
         char msg[96];
-        snprintf(msg, sizeof msg, "%lld heap block(s) leaked", live_blocks);
+        snprintf(msg, sizeof msg, "%lld heap block(s) leaked", leaked);
         code_runtime_error(msg);
     }
 }
@@ -698,6 +727,22 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
  * `code_static_vars_object` below are the two bits of that path still
  * shared here rather than duplicated in generated IR. */
 
+/* The ring below is touched from two threads once a module has one of its
+ * own, so it is locked. Under CODE_WASM there are no native modules at all
+ * (`code_native_open` refuses one) and the freestanding shim has no pthreads,
+ * so the lock compiles away to nothing there. */
+#ifdef CODE_WASM
+typedef int CodeMutex;
+#define code_mutex_init(m) ((void)(m))
+#define code_mutex_lock(m) ((void)(m))
+#define code_mutex_unlock(m) ((void)(m))
+#else
+typedef pthread_mutex_t CodeMutex;
+#define code_mutex_init(m) pthread_mutex_init((m), NULL)
+#define code_mutex_lock(m) pthread_mutex_lock(m)
+#define code_mutex_unlock(m) pthread_mutex_unlock(m)
+#endif
+
 typedef struct {
     void (*dispatch)(CodeValue *out, const CodeValue *particle);
     void (*release)(CodeValue *v);
@@ -714,6 +759,21 @@ typedef struct {
     CodeValue inbound[CODE_INBOUND_CAPACITY];
     int inbound_head;
     int inbound_count;
+    /* Guards the three fields above and the deep copy that fills a slot.
+     * Held for the whole of a push so a poll can never see a half-built
+     * value. */
+    CodeMutex lock;
+    /* Whether the module took the inbound channel — i.e. whether anything
+     * but this thread can ever reach the ring. Decides what
+     * `code_native_close` may do with the handle. */
+    int has_inbound;
+    /* Set at cleanup: the program is done, and a push arriving after it is
+     * dropped rather than queued. Without it a module thread still running
+     * at exit would allocate into a ring nobody will drain, and
+     * `code_check_leaks` would report those blocks as a leak — a race
+     * between two threads showing up as a flaky failure in an unrelated
+     * test. */
+    int closed;
 } NativeHandle;
 
 /* Shared by both native-module paths (`.so` here, `.a` in codegen's direct
@@ -777,8 +837,11 @@ void *code_native_open(const char *path) {
     memset(nh->inbound, 0, sizeof nh->inbound);
     nh->inbound_head = 0;
     nh->inbound_count = 0;
+    nh->closed = 0;
+    code_mutex_init(&nh->lock);
     void (*set_inbound)(void *, CodeEmitFn) =
         (void (*)(void *, CodeEmitFn))dlsym(handle, "code_module_set_inbound");
+    nh->has_inbound = set_inbound != NULL;
     if (set_inbound) {
         set_inbound(nh, code_emit_inbound);
     }
@@ -811,6 +874,11 @@ void *code_static_open(void) {
     memset(nh->inbound, 0, sizeof nh->inbound);
     nh->inbound_head = 0;
     nh->inbound_count = 0;
+    nh->closed = 0;
+    /* A `.a` is only given a handle at all because it declared an inbound
+     * export — that is what `loader.rs` looks for before emitting the call. */
+    nh->has_inbound = 1;
+    code_mutex_init(&nh->lock);
     return nh;
 }
 
@@ -898,17 +966,31 @@ static void code_native_copy_in(CodeValue *out, const CodeValue *from) {
  * belongs to the module's allocator until this returns, so nothing may be
  * retained. See `code_native_copy_in`.
  *
- * Deliberately lock-free, because this phase is synchronous: a module pushes
- * from inside a dispatch call it is already on the program's thread for. A
- * module pushing from a thread of its own needs a lock here and a keep-alive
- * loop in the generated `main` — the next phase, see
- * docs/todo/inbound-emissions-from-native-modules.md. */
+ * Callable from a thread the program knows nothing about: a module that
+ * spawns one (a timer, a socket accept loop) pushes from there, which is what
+ * makes an event loop more than polling. Everything that costs is inside the
+ * lock — the ring's three fields *and* the deep copy that fills a slot, so a
+ * poll never sees a half-built value. The copy allocates, which is why
+ * `live_blocks` is atomic and `code_release`'s work stack is thread-local;
+ * see both.
+ *
+ * The rest of the runtime stays single-threaded and unlocked. That holds
+ * because a pushed value is only ever reachable from one thread at a time:
+ * the pusher builds it alone, the ring holds it under this lock, and the
+ * program owns it alone once `code_poll_inbound` hands it over. */
 
 void code_emit_inbound(void *queue, const CodeValue *value) {
     if (!queue || !value) {
         return;
     }
     NativeHandle *nh = (NativeHandle *)queue;
+    code_mutex_lock(&nh->lock);
+    if (nh->closed) {
+        /* The program has finished and drained. Nothing would ever read this,
+         * and allocating it would read as a leak. */
+        code_mutex_unlock(&nh->lock);
+        return;
+    }
     int slot;
     if (nh->inbound_count == CODE_INBOUND_CAPACITY) {
         /* Full: drop the oldest so a runaway module costs bounded memory
@@ -922,6 +1004,7 @@ void code_emit_inbound(void *queue, const CodeValue *value) {
         nh->inbound_count++;
     }
     code_native_copy_in(&nh->inbound[slot], value);
+    code_mutex_unlock(&nh->lock);
 }
 
 /* Pops the oldest queued particle into `out`, or returns 0 when the queue is
@@ -933,7 +1016,9 @@ int code_poll_inbound(void *queue, CodeValue *out) {
         return 0;
     }
     NativeHandle *nh = (NativeHandle *)queue;
+    code_mutex_lock(&nh->lock);
     if (nh->inbound_count == 0) {
+        code_mutex_unlock(&nh->lock);
         return 0;
     }
     int slot = nh->inbound_head;
@@ -942,7 +1027,27 @@ int code_poll_inbound(void *queue, CodeValue *out) {
     memset(&nh->inbound[slot], 0, sizeof(CodeValue));
     nh->inbound_head = (nh->inbound_head + 1) % CODE_INBOUND_CAPACITY;
     nh->inbound_count--;
+    code_mutex_unlock(&nh->lock);
     return 1;
+}
+
+/* What an empty `loop { }` does between drains: waits a moment instead of
+ * spending a core asking the same question a million times a second.
+ *
+ * Only an *empty* body gets this. That is the shape a program takes when all
+ * it is doing is staying up for whatever its modules push (see
+ * docs/todo/inbound-emissions-from-native-modules.md); a loop with a body is
+ * doing work each time round and must not be slowed. Codegen decides which
+ * is which at compile time, and skips the wait entirely on an iteration that
+ * did handle something, so a burst is drained at full speed. */
+void code_idle_wait(void) {
+#ifndef CODE_WASM
+    struct timespec ts;
+    ts.tv_sec = 0;
+    ts.tv_nsec = 1000000L; /* 1ms — 1000 wakeups a second is free, and it
+                            * bounds how long an event waits to be noticed. */
+    nanosleep(&ts, NULL);
+#endif
 }
 
 /* Frees the small `NativeHandle` `code_native_open` allocated — called once
@@ -955,15 +1060,32 @@ int code_poll_inbound(void *queue, CodeValue *out) {
  * live on a stack frame mid-unwind) that aren't worth taking on for no
  * actual benefit here. */
 void code_native_close(void *handle) {
-    if (handle) {
-        /* Anything still queued at exit is this runtime's to free — the
-         * "owns nothing when it exits" rule `code_check_leaks` enforces. */
-        NativeHandle *nh = (NativeHandle *)handle;
-        for (int i = 0; i < nh->inbound_count; i++) {
-            code_release(&nh->inbound[(nh->inbound_head + i) % CODE_INBOUND_CAPACITY]);
-        }
+    if (!handle) {
+        return;
     }
-    free(handle);
+    NativeHandle *nh = (NativeHandle *)handle;
+    /* Anything still queued at exit is this runtime's to free — the
+     * "owns nothing when it exits" rule `code_check_leaks` enforces. */
+    code_mutex_lock(&nh->lock);
+    for (int i = 0; i < nh->inbound_count; i++) {
+        code_release(&nh->inbound[(nh->inbound_head + i) % CODE_INBOUND_CAPACITY]);
+    }
+    nh->inbound_count = 0;
+    nh->closed = 1;
+    int has_inbound = nh->has_inbound;
+    code_mutex_unlock(&nh->lock);
+    if (has_inbound) {
+        /* Deliberately not freed. A module that took the inbound channel may
+         * still have a thread holding this pointer, and there is no way to
+         * ask it to stop — the ABI has no shutdown call, on purpose (a module
+         * that must be asked politely before the program may exit is a module
+         * that can hang it). Leaving the struct mapped, with `closed` set,
+         * turns a late push into a no-op instead of a use-after-free. It is
+         * one small malloc per linked module, and `code_check_leaks` doesn't
+         * see it: this is not a refcounted block. */
+        return;
+    }
+    free(nh);
 }
 
 /* `emit <particle> to <alias> [get <name>]` for a linked native module.

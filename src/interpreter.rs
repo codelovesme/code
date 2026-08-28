@@ -198,14 +198,24 @@ impl Environment {
 /// one is running, and re-entry is exactly what the language forbids —
 /// the loop would quietly fill with `Exception`s. `codegen.rs`'s `gen_loop`
 /// makes the same test with `handler_frame`.
-fn drain_between_iterations(env: &mut Environment) -> Result<(), String> {
+///
+/// Answers whether anything was handed over, which is what tells an empty
+/// `loop { }` whether it is waiting or working — see `IDLE_WAIT`.
+fn drain_between_iterations(env: &mut Environment) -> Result<bool, String> {
     if env.active.is_empty() {
-        drain_inbound(env)?;
+        return drain_inbound(env);
     }
-    Ok(())
+    Ok(false)
 }
 
-fn drain_inbound(env: &mut Environment) -> Result<(), String> {
+/// How long an empty `loop { }` waits between drains rather than spending a
+/// core asking the same question a million times a second. Matched by
+/// `runtime.c`'s `code_idle_wait`, since a program's shape must not depend on
+/// which mode ran it.
+const IDLE_WAIT: std::time::Duration = std::time::Duration::from_millis(1);
+
+fn drain_inbound(env: &mut Environment) -> Result<bool, String> {
+    let mut handled_any = false;
     loop {
         let drains = env.inbound.clone();
         let mut queued = Vec::new();
@@ -213,8 +223,9 @@ fn drain_inbound(env: &mut Environment) -> Result<(), String> {
             queued.extend(drain());
         }
         if queued.is_empty() {
-            return Ok(());
+            return Ok(handled_any);
         }
+        handled_any = true;
         for particle in queued {
             // A pushed class the program has no handler for is *dropped*,
             // not an error — decided 2026-08-28, when `net` gained
@@ -308,7 +319,7 @@ pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, 
         // `if` or `loop` body surfaces here too, and so reports the
         // *enclosing* top-level statement; see `Program::starts`.
         exec(stmt, &mut env)
-            .and_then(|_| drain_inbound(&mut env))
+            .and_then(|_| drain_inbound(&mut env).map(|_| ()))
             .map_err(|msg| locate(program, i, msg))?;
     }
     Ok(env)
@@ -564,6 +575,9 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                         env.declare(over.value.clone(), value);
                         let flow = exec_body(body, env);
                         env.pop_scope();
+                        // A loop that iterates a container has a bound of its
+                        // own, so it never waits — the drain's answer is only
+                        // of interest to the bare form below.
                         drain_between_iterations(env)?;
                         // `Continue` needs no action beyond ending this
                         // iteration, which returning from the body already
@@ -579,17 +593,31 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                 }
                 // `loop { }` — nothing bounds this but `break`. See
                 // `Stmt::Loop`'s doc comment on the guarantee that gives up.
-                None => loop {
-                    env.push_scope();
-                    let flow = exec_body(body, env);
-                    env.pop_scope();
-                    drain_between_iterations(env)?;
-                    match flow? {
-                        Flow::Break => break,
-                        Flow::Return(value) => return Ok(Flow::Return(value)),
-                        _ => {}
+                None => {
+                    // An empty `loop { }` is how a program says "keep me up"
+                    // — there is nothing to do but wait for what a module
+                    // pushes. Sleeping a moment each time round costs that
+                    // program nothing and saves it a whole core; an iteration
+                    // that *did* handle something skips the wait, so a burst
+                    // still drains at full speed. A loop with a body is doing
+                    // work and is never slowed. Codegen's `gen_loop` makes
+                    // the same distinction, from the same empty-body test.
+                    let waiting = body.is_empty();
+                    loop {
+                        env.push_scope();
+                        let flow = exec_body(body, env);
+                        env.pop_scope();
+                        let handled = drain_between_iterations(env)?;
+                        if waiting && !handled {
+                            std::thread::sleep(IDLE_WAIT);
+                        }
+                        match flow? {
+                            Flow::Break => break,
+                            Flow::Return(value) => return Ok(Flow::Return(value)),
+                            _ => {}
+                        }
                     }
-                },
+                }
             }
             Ok(Flow::Normal)
         }

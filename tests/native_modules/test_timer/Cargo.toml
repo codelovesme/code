@@ -1,0 +1,15 @@
+# Standalone workspace, like every other module here.
+[workspace]
+
+[package]
+name = "test_timer"
+version = "0.1.0"
+edition = "2021"
+description = "The fixture harness's threaded test double: a module that pushes particles from a thread of its own, after the dispatch call that started it has already returned."
+license = "GPL-3.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../../crates/code-native" }

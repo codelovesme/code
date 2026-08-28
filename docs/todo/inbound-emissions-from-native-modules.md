@@ -3,10 +3,13 @@
 > **Phases A and B shipped 2026-08-25.** A module may export
 > `code_module_set_inbound` and push particles; both output modes drain
 > after every top-level statement and dispatch each one to the *program's*
-> own handlers. What remains open is the **keep-alive loop** — continuous
-> draining, which is what an interactive daemon needs and what makes a
-> module able to push from a thread of its own; `.a` static modules joined
-> the story on 2026-08-28. See "What is still open" at the end.
+> own handlers. `.a` static modules joined the story on 2026-08-28.
+>
+> **The keep-alive loop shipped 2026-08-29**, in two halves: a loop iteration
+> became a statement boundary, and then a module gained the right to push
+> from a thread of its own. `loop { }` is how a program says "keep me up",
+> and it waits rather than spins. See "What is still open" at the end for
+> what is left — `emit … to base`, and the two modules/one class collision.
 
 Dispatch is strictly request/response: `emit … to <module>` crosses into
 native code and waits for one answer. The old implementation added the other
@@ -162,26 +165,72 @@ before the function returns.
   result is discarded. `inbound_drains_each_loop_iteration.code` and
   `inbound_does_not_drain_inside_a_handler.code`.
 
-  **Still open: a module with a thread of its own** — a real `terminal`
-  reading keys, a server accepting connections. Today a module can only push
-  from inside a `code_module_dispatch` call it is already on the program's
-  thread for, so `loop { }` serves a *polling* event loop
-  (`loop { emit Poll {} to src get r … }`) and an empty `loop { }` still
-  waits for something that can never arrive. What that needs:
+  **Shipped: a module with a thread of its own** (2026-08-29). A module may
+  now push from a thread the program knows nothing about, which is what a
+  real `terminal` reading keys or a server accepting connections needs — and
+  what makes an empty `loop { }` wait for something that can actually arrive,
+  rather than only serving a *polling* loop
+  (`loop { emit Poll {} to src get r … }`). The four items this section
+  listed, and what each turned into:
 
-  - A lock around the ring. `runtime.c`'s is deliberately lock-free and
-    `native.rs` uses `RefCell`; neither is safe to push to from another
-    thread.
-  - `live_blocks`, the leak counter `heap_alloc` bumps, becomes a data race
-    the moment a second thread allocates. Atomic, or the `CODE_CHECK_LEAKS`
-    build stops meaning anything.
-  - A sleep when an *empty* `loop { }` drained nothing, or waiting costs a
-    core. Decidable at compile time — an empty body is the "I am only
-    waiting" case, and a loop with a body is doing work and must not be
-    slowed.
-  - A threaded module to prove it with, which is also what would validate the
-    three above. A `timer` pushing `Tick` from its own thread is the smallest
-    honest one.
+  - **A lock around the ring.** `runtime.c`'s `NativeHandle` gained a
+    `pthread_mutex_t`, held for the whole of a push — the ring's three fields
+    *and* the deep copy that fills a slot, so a poll can never see a
+    half-built value. `native.rs`'s `RefCell` became a `Mutex`. `cc_link`
+    passes `-pthread` (a no-op on glibc 2.34+, where the mutex calls moved
+    into libc; what makes an older one link).
+
+    `Value` holds `Rc`s and is not `Send`, and nothing asserts that it is:
+    the queue reaches the module as a raw pointer across FFI, which the
+    compiler never type-checks. What makes it sound is that a queued value is
+    never *shared*, only handed over — the pushing thread builds a fresh deep
+    copy, the mutex publishes it, the program owns it alone from `take`
+    onwards. No two threads ever touch one `Rc`'s count.
+
+  - **`live_blocks` became atomic**, as this section predicted. Relaxed
+    ordering: nothing is published through it, and it is read once at exit
+    after the pushing thread has been shut out.
+
+  - **`code_release`'s work stack had to become thread-local**, which this
+    section did not predict and is the sharper half of the same problem. The
+    push path reaches `code_release` — a full ring drops its oldest entry —
+    and that walk uses a file-static buffer, deliberately, because the
+    runtime was single-threaded. Two threads walking one buffer is heap
+    corruption rather than a wrong answer. `__thread` on the two `dead`
+    variables, a few KB per thread. `code_values_equal`'s stayed plain
+    static: comparison is only reachable from program code.
+
+  - **The sleep**, as designed: `code_idle_wait` (1ms) in `runtime.c`,
+    `IDLE_WAIT` in the interpreter, chosen from the *empty body* at compile
+    time. `_code_drain_inbound` now returns whether it handed anything over,
+    so a round that did skips the wait and a burst drains at full speed.
+
+  - **A threaded module to prove it with**:
+    `tests/native_modules/test_timer/`, which answers `Start` immediately and
+    *then* pushes one `Tick` per millisecond from a spawned thread —
+    `inbound_from_a_module_thread.code`, dual-mode. Deliberately a test
+    double rather than a shipped `timer` module: what wanted proving is the
+    host side, and a real timer module is a distribution question
+    (`community-modules.md`), not this one.
+
+  **What the threaded module forced, beyond the four:** a module that can
+  speak first is never unloaded. `dlclose` (interpreter) and `free`ing the
+  `NativeHandle` (compiled) both pull memory out from under a thread that may
+  still be running, so the program would die during its own cleanup, after
+  its last statement succeeded. Both sides now leave such a module mapped for
+  the life of the process, and `code_native_close` sets a `closed` flag under
+  the lock so a late push is dropped instead of allocating into a ring nobody
+  will drain — which `CODE_CHECK_LEAKS` would otherwise report as a leak, as
+  a flaky failure in whatever test happened to lose the race. There is no
+  shutdown call in the ABI to do this politely, on purpose: a module that must
+  be asked before the program may exit is a module that can hang it.
+
+  **How it is tested that it waits.** Nothing a `.code` fixture can assert
+  distinguishes a sleeping `loop { }` from a spinning one — both produce the
+  same absence of output, forever, and neither ends. `tests/idle_loop.rs`
+  watches the process instead: run it half a second, read `utime + stime`
+  from `/proc/<pid>/stat`, kill it. Sleeping costs 0–1 ticks, spinning 49,
+  so the threshold (10) is not a close call. Linux-only, skipped elsewhere.
 - **Two modules pushing the same class with different shapes** silently
   mismatch. Examined 2026-08-28 by building it: two modules both pushing
   `Log`, one as `{ source, level, message }` and one as `{ text, ts }`, into

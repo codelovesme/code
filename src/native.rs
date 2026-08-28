@@ -11,10 +11,11 @@
 //! module in the first place (`loader::NoModules` refuses every `link`), so
 //! there is nothing for this file to do there.
 
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::ffi::{c_char, c_void, CStr, CString};
+use std::mem::ManuallyDrop;
 use std::rc::Rc;
+use std::sync::Mutex;
 
 use libloading::Library;
 
@@ -226,12 +227,39 @@ unsafe fn ffi_to_value(v: *const CodeValueFfi) -> Value {
 /// A loaded, ready-to-dispatch native module — what `link "x.so" as x`
 /// produces at runtime.
 pub struct NativeModule {
-    lib: Library,
+    /// `ManuallyDrop` because of `Drop for NativeModule` below: a module with
+    /// a thread of its own must not be unloaded while that thread is running.
+    lib: ManuallyDrop<Library>,
     path: String,
+    /// Whether the module took the inbound channel — the one thing that can
+    /// give it a life of its own past a dispatch call.
+    has_inbound: bool,
     /// Where this module's pushed particles land until the program drains
     /// them. Leaked at `open`, so the raw pointer the module keeps stays
     /// valid for as long as the module is loaded.
     inbound: &'static InboundQueue,
+}
+
+/// Unloads the module at the end of the run — unless it took the inbound
+/// channel, in which case it is left mapped for the life of the process.
+///
+/// A module that can speak first is a module that may have spawned a thread,
+/// and `dlclose` unmaps the code that thread is executing: the program would
+/// die during its own cleanup, after its last statement succeeded. There is
+/// no shutdown call in the ABI to avoid this with, deliberately — a module
+/// that has to be asked politely before the program may exit is a module that
+/// can hang it. So the mapping stays; the process is about to end anyway, and
+/// `runtime.c`'s `code_native_close` keeps its half of this bargain the same
+/// way.
+impl Drop for NativeModule {
+    fn drop(&mut self) {
+        if !self.has_inbound {
+            // SAFETY: `lib` is never used again — this is `drop`, and the
+            // field is `ManuallyDrop` precisely so this is the only place it
+            // can happen.
+            unsafe { ManuallyDrop::drop(&mut self.lib) };
+        }
+    }
 }
 
 impl std::fmt::Debug for NativeModule {
@@ -256,14 +284,21 @@ type EmitFn = unsafe extern "C" fn(*mut c_void, *const CodeValueFfi);
 /// module's lifetime: the module keeps the raw pointer, and a `.so` is never
 /// unloaded before the program ends.
 ///
-/// Not a `Mutex`: this phase is deliberately synchronous — a module pushes
-/// only from inside a `code_module_dispatch` call it is already on the
-/// program's thread for. A module that wants to push from a thread of its
-/// own needs a lock here and a keep-alive loop in the interpreter, which is
-/// the next phase (see docs/todo/inbound-emissions-from-native-modules.md).
+/// A `Mutex`, not a `RefCell`: a module may push from a thread of its own,
+/// which is what makes an event loop more than polling. `runtime.c`'s ring
+/// takes a `pthread_mutex_t` for the same reason.
+///
+/// `Value` holds `Rc`s and so is not `Send`, and nothing here asserts that it
+/// is — the queue is shared with the module through a raw pointer across FFI,
+/// which the compiler never type-checks. What makes it sound is that a queued
+/// value is never *shared* between threads, only handed over: the pushing
+/// thread builds a fresh deep copy (`ffi_to_value` allocates every node), the
+/// mutex publishes it, and the program owns it alone from `take` onwards. No
+/// two threads ever touch one `Rc`'s count, and the lock provides the
+/// happens-before that hand-off needs.
 #[derive(Default)]
 pub struct InboundQueue {
-    pending: RefCell<VecDeque<Value>>,
+    pending: Mutex<VecDeque<Value>>,
 }
 
 impl InboundQueue {
@@ -271,14 +306,22 @@ impl InboundQueue {
     /// rather than peeking so a handler that causes more pushes has them
     /// picked up by the next round rather than this one.
     pub fn take(&self) -> Vec<Value> {
-        self.pending.borrow_mut().drain(..).collect()
+        self.lock().drain(..).collect()
+    }
+
+    /// Poisoning is ignored on purpose: the only code that can panic while
+    /// holding this lock is `ffi_to_value` on a malformed value, and a
+    /// half-pushed particle leaves the `VecDeque` itself intact — refusing
+    /// every later push would turn one bad particle into a dead program.
+    fn lock(&self) -> std::sync::MutexGuard<'_, VecDeque<Value>> {
+        self.pending.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Bounded, dropping the *oldest* past capacity — byte-for-byte the
     /// policy `runtime.c`'s ring follows, so both output modes lose exactly
     /// the same particles when a module outruns the program.
     fn push(&self, value: Value) {
-        let mut pending = self.pending.borrow_mut();
+        let mut pending = self.lock();
         if pending.len() == CODE_INBOUND_CAPACITY {
             pending.pop_front();
         }
@@ -328,15 +371,18 @@ impl NativeModule {
         // holds the raw pointer for as long as it is loaded, which is until
         // the program ends.
         let inbound: &'static InboundQueue = Box::leak(Box::new(InboundQueue::default()));
+        let mut has_inbound = false;
         unsafe {
             if let Ok(set) = lib.get::<SetInboundFn>(b"code_module_set_inbound") {
                 set(inbound as *const InboundQueue as *mut c_void, push_inbound);
+                has_inbound = true;
             }
         }
 
         Ok(NativeModule {
-            lib,
+            lib: ManuallyDrop::new(lib),
             path: path.to_string(),
+            has_inbound,
             inbound,
         })
     }

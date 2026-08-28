@@ -1,0 +1,43 @@
+-- A module speaking from a thread of its own.
+--
+-- Every earlier inbound fixture pushes from inside the `code_module_dispatch`
+-- call it was asked on: still the program's thread, still inside the `emit`.
+-- That is a module answering elaborately, not a module with a life of its
+-- own. `test_timer` answers `Start` immediately and *then* pushes from a
+-- thread the program knows nothing about, one `Tick` per millisecond — which
+-- is what a terminal reading keys or a socket accepting connections actually
+-- does, and what the ring being locked is for (see `runtime.c`'s "Inbound"
+-- section and `native.rs`'s `InboundQueue`).
+link "native_modules/test_timer.so" as timer
+
+let seen = []
+
+Tick { value } => {
+    seen += value
+    return Ack {}
+}
+
+emit Start { "value": 3 } to timer get started
+assert started.value = 3
+
+-- The event loop. Nothing in this body causes a push — the ticks arrive
+-- because a thread inside the module is putting them there while the program
+-- is somewhere else entirely, and the drain at the end of each iteration
+-- hands them over.
+loop get spins = 0 {
+    spins = spins + 1
+    emit Length { "value": seen } to core get n
+    if n.value = 3 {
+        break
+    }
+    -- A bound, so a push that never arrives fails this fixture instead of
+    -- hanging it. Nothing about the passing run depends on the number: three
+    -- sleeps of a millisecond is over long before it.
+    if spins > 2000000 {
+        break
+    }
+}
+
+-- In order, and all three: the ring hands particles over oldest-first
+-- whichever thread put them there.
+assert seen = [0, 1, 2]

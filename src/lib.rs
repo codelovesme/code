@@ -197,6 +197,12 @@ mod compile {
                 .args(static_modules)
                 .arg("-lm")
                 .arg("-ldl")
+                // The runtime locks each module's inbound ring, because a
+                // module may push from a thread of its own (see
+                // `runtime.c`'s "Inbound" section). Glibc 2.34 and later put
+                // the mutex calls in libc itself, so this is a no-op there;
+                // it is what makes an older one link.
+                .arg("-pthread")
                 .arg("-o")
                 .arg(out_path),
             "cc",
@@ -224,6 +230,8 @@ mod compile {
                 .args(static_modules)
                 .arg("-lm")
                 .arg("-ldl")
+                // See `cc_link`.
+                .arg("-pthread")
                 .arg("-o")
                 .arg(out_path),
             "cc",
