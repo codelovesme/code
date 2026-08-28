@@ -46,20 +46,21 @@ fn fixture_dir(name: &str) -> PathBuf {
     dir
 }
 
-/// Compile `tests/native_modules/test_math.c` into `dest` — the same recipe
-/// the fixture harness uses (`run_language_tests.rs`), kept local so this
-/// suite does not depend on which other test happened to run first.
+/// Build `tests/native_modules/test_math` into `dest` — the same recipe the
+/// fixture harness uses (`run_language_tests.rs`), kept local so this suite
+/// does not depend on which other test happened to run first. `cargo`'s own
+/// lock serialises the two when they overlap.
 fn build_test_math(dest: &Path) {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let status = Command::new("cc")
-        .args(["-shared", "-fPIC"])
-        .arg("-o")
-        .arg(dest)
-        .arg(manifest_dir.join("tests/native_modules/test_math.c"))
-        .args(["-lm", "-ldl"])
+    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/native_modules/test_math");
+    let status = Command::new("cargo")
+        .args(["build", "--release"])
+        .current_dir(&crate_dir)
         .status()
-        .unwrap_or_else(|e| panic!("failed to run cc for test_math: {e}"));
-    assert!(status.success(), "cc failed to build test_math.so");
+        .unwrap_or_else(|e| panic!("failed to run cargo for test_math: {e}"));
+    assert!(status.success(), "cargo failed to build test_math");
+    let built = crate_dir.join("target/release/libtest_math.so");
+    fs::copy(&built, dest)
+        .unwrap_or_else(|e| panic!("cannot copy {} to {}: {e}", built.display(), dest.display()));
 }
 
 /// Run `main.code` from `script_dir` with `home` as `$HOME` and

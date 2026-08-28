@@ -5,7 +5,7 @@
 via dlopen/dlsym in both (never `cc`-time static linking — see
 `runtime.c`'s "Native modules" section and `src/native.rs`). See
 `code_abi.h` for the ABI a module implements, and
-`tests/native_modules/test_math.c` for a working example.
+`tests/native_modules/test_math/` for a working example.
 
 **Phase 2 shipped 2026-08-21: exported variables.** A module may now also
 export *values* via an optional `code_module_vars()` (see `code_abi.h`'s
@@ -14,7 +14,7 @@ export *values* via an optional `code_module_vars()` (see `code_abi.h`'s
 therefore dual-purpose — a field-access target *and* an `emit` target — and
 a module that exports no vars still works as an `emit`-only target (the
 export is optional, not required). See `tests/native_link_vars*.code` and
-`test_math.c`'s `code_module_vars`.
+`test_math`'s `code_module_vars`.
 
 **Phase 3 shipped 2026-08-22: `.a` static modules.** See the "Still open"
 section below for the detail — kept there rather than moved up here since

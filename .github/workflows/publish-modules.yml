@@ -49,10 +49,12 @@ jobs:
   # Every build job compiles the same way — one self-contained crate, no
   # external dependencies — so the only differences are the runner, the
   # compiler invocation, and the artifact extension (.so vs .dylib).
-  # `terminal` is plain C (`cc`); `strings`, `math`, and `net` are Rust on
-  # `code-native` (`cargo build` inside their standalone workspaces — see
-  # those crates' Cargo.toml for why they opt out of the main one). Asset
-  # names follow the distribution doc: <module>-<platform><ext>.
+  # Every first-party module is Rust on `code-native` since 2026-08-28
+  # (`cargo build` inside its standalone workspace — see those crates'
+  # Cargo.toml for why they opt out of the main one). `terminal` was the last
+  # C one; it moved because a module may not end the application and that
+  # promise is only keepable in Rust. Asset names follow the distribution
+  # doc: <module>-<platform><ext>.
   build-linux-x86_64:
     name: Build linux-x86_64
     needs: resolve
@@ -64,17 +66,8 @@ jobs:
           set -euo pipefail
           m="${{ needs.resolve.outputs.module }}"
           mkdir -p dist
-          case "$m" in
-            strings|math|net)
-              (cd "crates/modules/$m" && cargo build --release)
-              mv "crates/modules/$m/target/release/lib$m.so" "dist/${m}-linux-x86_64.so"
-              ;;
-            *)
-              cc -O2 -shared -fPIC \
-                -o "dist/${m}-linux-x86_64.so" \
-                "crates/modules/${m}/${m}.c" -lm -ldl
-              ;;
-          esac
+          (cd "crates/modules/$m" && cargo build --release)
+          mv "crates/modules/$m/target/release/lib$m.so" "dist/${m}-linux-x86_64.so"
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

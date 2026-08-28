@@ -1,0 +1,15 @@
+# Standalone workspace, like every other module here.
+[workspace]
+
+[package]
+name = "test_math"
+version = "0.1.0"
+edition = "2021"
+description = "The fixture harness's general-purpose `.so` test double: one handler per result shape, plus exported variables covering all six value kinds."
+license = "GPL-3.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../../crates/code-native" }

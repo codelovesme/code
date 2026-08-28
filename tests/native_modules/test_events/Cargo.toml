@@ -1,0 +1,15 @@
+# Standalone workspace, like every other module here.
+[workspace]
+
+[package]
+name = "test_events"
+version = "0.1.0"
+edition = "2021"
+description = "The fixture harness's inbound-emissions test double: a module that speaks first, pushing particles into the program rather than only answering it."
+license = "GPL-3.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../../crates/code-native" }

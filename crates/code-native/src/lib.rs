@@ -336,7 +336,7 @@ pub fn runtime_error(message: &str) -> ! {
 // Slot buffers — for Array/Object construction, which `runtime.c` expects
 // as a `CODE_VALUE_SLOT_SIZE`-strided scratch buffer of already-built
 // elements (see `code_array`/`code_object`'s doc comments in `runtime.c`;
-// `tests/native_modules/test_math.c`'s `factors`/`meta` exported vars are
+// `tests/native_modules/test_math`'s `factors`/`meta` exported vars are
 // the C-side version of the same pattern).
 // ===========================================================================
 

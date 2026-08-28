@@ -105,35 +105,22 @@ enum Expect {
 fn build_native_dynamic_test_modules(tests_dir: &Path) {
     let modules_dir = tests_dir.join("native_modules");
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let sources: &[(&str, &Path)] = &[
-        ("test_math", &modules_dir.join("test_math.c")),
-        ("test_events", &modules_dir.join("test_events.c")),
-        (
-            "terminal",
-            &manifest_dir.join("crates/modules/terminal/terminal.c"),
-        ),
-    ];
-    for (stem, src) in sources {
-        let so = modules_dir.join(format!("{stem}.so"));
-        let status = Command::new("cc")
-            .arg("-shared")
-            .arg("-fPIC")
-            .arg("-o")
-            .arg(&so)
-            .arg(src)
-            .arg("-lm")
-            .arg("-ldl")
-            .status()
-            .unwrap_or_else(|e| panic!("failed to run cc for {}: {e}", src.display()));
-        assert!(status.success(), "cc failed to build {}", src.display());
-    }
-
     // The Rust modules: `cargo build` inside each standalone workspace, then
     // move the cdylib onto the same `native_modules/<stem>.so` convention.
-    for stem in ["strings", "math", "net", "test_panics"] {
+    for stem in [
+        "strings",
+        "math",
+        "net",
+        "terminal",
+        "test_math",
+        "test_events",
+        "test_panics",
+    ] {
         // `test_panics` is a test double rather than a shipped module, so
         // it lives beside the other doubles instead of under crates/modules/.
-        let crate_dir = if stem == "test_panics" {
+        // The `test_*` doubles live beside the fixtures; the shipped
+        // modules live under crates/modules/.
+        let crate_dir = if stem.starts_with("test_") {
             modules_dir.join(stem)
         } else {
             manifest_dir.join("crates/modules").join(stem)
