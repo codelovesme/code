@@ -166,8 +166,6 @@ extern "C" {
     fn code_array(out: *mut CodeValue, items: *mut c_void, len: i64);
     fn code_object(out: *mut CodeValue, keys: *mut *const c_char, values: *mut c_void, len: i64);
     fn code_copy(out: *mut CodeValue, src: *const CodeValue);
-    fn code_field(out: *mut CodeValue, obj: *const CodeValue, field: *const c_char);
-    fn code_index(out: *mut CodeValue, arr: *const CodeValue, index: *const CodeValue);
     fn code_retain(v: *const CodeValue);
     fn code_values_equal(a: *const CodeValue, b: *const CodeValue) -> c_int;
     fn code_runtime_error(message: *const c_char) -> !;
@@ -290,26 +288,61 @@ pub fn retain(v: &CodeValue) {
     unsafe { code_retain(v) }
 }
 
-/// `obj.field` field access, exactly like `.code` source's own semantics: a
-/// *missing* field writes Null into `out`.
+/// `obj.field` field access. **Total**: a missing field, or an `obj` that is
+/// not an Object at all, writes Null into `out`.
 ///
-/// A non-Object `obj` is a different matter — it is a failure, and since
-/// phase 3 (2026-08-28) failures travel by a flag that only the host's
-/// generated code reads. A `.so` module has its own copy of the runtime, so
-/// a failure raised here would set that copy's flag and go nowhere. Check
-/// the tag first, or use [`find_field`], which is plain Rust and cannot
-/// fail. Same for [`index`].
+/// Total is where this differs from the language, and deliberately. `.code`
+/// source treats a non-Object operand as an *error* (`"abc".length` fails,
+/// which the README states as a rule), and `runtime.c` still has a
+/// `code_field` that does exactly that — for the compiler. It is not in
+/// `code_abi.h`, and this no longer calls it.
+///
+/// The reason is that a module cannot use a fallible accessor safely. Since
+/// phase 3 (2026-08-28) a runtime failure travels by a flag that only the
+/// *host's* generated code reads, and a `.so` carries its own copy of the
+/// runtime — so a failure raised inside a module sets the module's flag and
+/// is never seen. One function cannot be both fallible for the language and
+/// total for modules, so the ABI keeps the total one. A module that wants to
+/// refuse a wrong-typed operand says so itself, with [`exception`].
 pub fn field(out: &mut CodeValue, obj: &CodeValue, name: &str) {
-    let c = cstr(name);
-    unsafe { code_field(out, obj, c.as_ptr()) }
+    match find_field(obj, name) {
+        Some(value) => copy(out, value),
+        None => null(out),
+    }
 }
 
-/// `arr[index]` element access, exactly like `.code` source's own
-/// semantics: an out-of-bounds index or non-String key writes Null. A
-/// non-Array, non-Object `arr` fails — see [`field`] for why a module should
-/// not let that happen.
+/// `arr[index]` element access, with the same totality as [`field`]: an
+/// out-of-bounds index, a non-Number index into an Array, a non-String key
+/// into an Object, or an `arr` that is neither, all write Null.
+///
+/// Matches `.code`'s own rules for everything except that last case, for the
+/// reason [`field`] gives.
 pub fn index(out: &mut CodeValue, arr: &CodeValue, i: &CodeValue) {
-    unsafe { code_index(out, arr, i) }
+    match arr.tag {
+        CodeTag::Array => {
+            // The language indexes arrays by Number, and only by a Number
+            // that is a whole one in range — `xs[1.5]` and `xs[99]` are both
+            // null, not errors.
+            let n = if i.tag == CodeTag::Number {
+                i.number
+            } else {
+                f64::NAN
+            };
+            let whole = n as i64;
+            if whole as f64 == n && whole >= 0 && whole < arr.len {
+                copy(out, unsafe { &*slot_at(arr.items, whole) });
+            } else {
+                null(out);
+            }
+        }
+        // An Object is keyed by Str — the same split `loop` uses — so a
+        // computed key is just `find_field` under another name.
+        CodeTag::Object => match read_str(i).and_then(|key| find_field(arr, key)) {
+            Some(value) => copy(out, value),
+            None => null(out),
+        },
+        _ => null(out),
+    }
 }
 
 /// Structural equality, matching `.code` source's `=` operator.
@@ -688,4 +721,134 @@ pub fn guarded(out: &mut CodeValue, source: &str, body: impl FnOnce(&mut CodeVal
         source,
         &format!("module panicked: {detail}"),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `{ "a": 1, "s": "hi" }`.
+    fn sample_object(out: &mut CodeValue) {
+        let mut values = SlotBuffer::new(2);
+        number(values.slot_mut(0), 1.0);
+        owned_str(values.slot_mut(1), "hi");
+        object(out, &[c"a", c"s"], &mut values);
+        values.release_all();
+    }
+
+    /// `[10, 20, 30]`.
+    fn sample_array(out: &mut CodeValue) {
+        let mut items = SlotBuffer::new(3);
+        for (i, v) in [10.0, 20.0, 30.0].into_iter().enumerate() {
+            number(items.slot_mut(i as i64), v);
+        }
+        array(out, &mut items);
+        items.release_all();
+    }
+
+    fn tag_of(f: impl FnOnce(&mut CodeValue)) -> CodeTag {
+        let mut out = CodeValue::zeroed();
+        f(&mut out);
+        let tag = out.tag;
+        release(&mut out);
+        tag
+    }
+
+    #[test]
+    fn field_reads_a_present_member() {
+        let mut obj = CodeValue::zeroed();
+        sample_object(&mut obj);
+        let mut out = CodeValue::zeroed();
+        field(&mut out, &obj, "s");
+        assert_eq!(read_str(&out), Some("hi"));
+        release(&mut out);
+        release(&mut obj);
+    }
+
+    /// The half `field` shares with the language: an absent member is null,
+    /// not a failure. The lookup was fine, it just found nothing.
+    #[test]
+    fn field_answers_null_for_an_absent_member() {
+        let mut obj = CodeValue::zeroed();
+        sample_object(&mut obj);
+        assert_eq!(tag_of(|out| field(out, &obj, "nope")), CodeTag::Null);
+        release(&mut obj);
+    }
+
+    /// The half it does *not* share, and the reason this is Rust rather than
+    /// a call into the ABI. `.code` source treats `"abc".length` as an error;
+    /// a module cannot use a fallible accessor, because a failure raised
+    /// inside a `.so` sets that copy's flag and nobody reads it. Total wins
+    /// here, and the module says so itself with `exception` if it minds.
+    #[test]
+    fn field_answers_null_on_a_non_object() {
+        let mut n = CodeValue::zeroed();
+        number(&mut n, 42.0);
+        assert_eq!(tag_of(|out| field(out, &n, "anything")), CodeTag::Null);
+        release(&mut n);
+    }
+
+    #[test]
+    fn index_reads_an_array_element() {
+        let mut arr = CodeValue::zeroed();
+        sample_array(&mut arr);
+        let mut i = CodeValue::zeroed();
+        number(&mut i, 1.0);
+        let mut out = CodeValue::zeroed();
+        index(&mut out, &arr, &i);
+        assert_eq!(read_number(&out), Some(20.0));
+        release(&mut out);
+        release(&mut arr);
+    }
+
+    /// Every way of missing an array element is null, matching the
+    /// language: out of range, negative, and a whole-number check that
+    /// rejects `1.5` rather than truncating it.
+    #[test]
+    fn index_answers_null_for_every_kind_of_miss() {
+        let mut arr = CodeValue::zeroed();
+        sample_array(&mut arr);
+        for probe in [99.0, -1.0, 1.5] {
+            let mut i = CodeValue::zeroed();
+            number(&mut i, probe);
+            assert_eq!(
+                tag_of(|out| index(out, &arr, &i)),
+                CodeTag::Null,
+                "index {probe} should be null"
+            );
+        }
+        // A non-Number index into an Array is null too, not an error.
+        let mut key = CodeValue::zeroed();
+        owned_str(&mut key, "0");
+        assert_eq!(tag_of(|out| index(out, &arr, &key)), CodeTag::Null);
+        release(&mut key);
+        release(&mut arr);
+    }
+
+    /// An Array is keyed by Number and an Object by Str — the same split
+    /// `loop` uses — so a computed key on an Object is `find_field` under
+    /// another name.
+    #[test]
+    fn index_reads_an_object_by_string_key() {
+        let mut obj = CodeValue::zeroed();
+        sample_object(&mut obj);
+        let mut key = CodeValue::zeroed();
+        owned_str(&mut key, "a");
+        let mut out = CodeValue::zeroed();
+        index(&mut out, &obj, &key);
+        assert_eq!(read_number(&out), Some(1.0));
+        release(&mut out);
+        release(&mut key);
+        release(&mut obj);
+    }
+
+    #[test]
+    fn index_answers_null_on_a_non_container() {
+        let mut n = CodeValue::zeroed();
+        number(&mut n, 42.0);
+        let mut i = CodeValue::zeroed();
+        number(&mut i, 0.0);
+        assert_eq!(tag_of(|out| index(out, &n, &i)), CodeTag::Null);
+        release(&mut n);
+    }
 }

@@ -391,10 +391,28 @@ that changes error semantics needs its own both-mode fixture.
   the contract (`dispatch(particleJson)`) and only worked because the module
   path had no check. They send a real particle now, which is what a JS module
   receives anyway. `emit_non_particle_is_the_senders_mistake.code`.
-- **`code_field`/`code_index` still owe modules an answer.** They are the two
-  fallible helpers left in the module ABI, and a failure raised inside a `.so`
-  sets that copy's flag where nobody reads it. Warned about in `code_abi.h`
-  rather than fixed.
+- ~~**`code_field`/`code_index` still owe modules an answer.**~~ **Closed
+  2026-08-28.** The answer was that one function cannot be both: `.code`
+  source needs them to *fail* (`"abc".length` is an error, which the README
+  states as a rule), and a module needs the opposite, since a failure raised
+  inside a `.so` sets that copy's flag where nobody reads it. So the fallible
+  pair stayed in `runtime.c` for the compiler and left `code_abi.h`, and
+  `code-native`'s `field`/`index` became plain Rust over `CodeValue` —
+  **total**, answering null for a wrong operand kind, which is what their doc
+  comments had claimed all along before phase 3 revealed otherwise. A module
+  that wants to refuse a wrong-typed operand says so itself, with `exception`.
+
+  With those two gone the module ABI has a property worth naming, and
+  `tests/module_abi_cannot_fail.rs` enforces it structurally rather than by a
+  list of names: **nothing declared in `code_abi.h` reaches the failure
+  channel.** Four functions had to be removed to make it true
+  (`code_bool_value`, `code_assert`, `code_field`, `code_index`), every one of
+  them found by reading rather than by anything failing — which is the
+  argument for the test. Verified by mutation: putting `code_field` back in
+  the header names it and says which of the two fixes to apply. `code-native`
+  also gained its first unit tests, seven of them, since `field`/`index` now
+  carry real logic (whole-number and in-range index rules) that nothing else
+  exercises.
 - **A failing `assert` at the top level ends the program**, which is correct
   (non-zero exit is what `return Exception` means from the outermost call) but
   means the top level is the one place an error is not a value. Left as is,
