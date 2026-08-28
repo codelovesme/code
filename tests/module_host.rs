@@ -25,11 +25,31 @@ fn doubler_module(env: &mut Environment, name: &str) {
     env.provide_module(
         name,
         Value::Object(Rc::new(vec![("answer".to_string(), Value::Number(42.0))])),
-        Rc::new(|particle: &Value| match particle {
-            Value::Number(n) => Ok(Value::Number(n * 2.0)),
-            _ => Err("expected a number".to_string()),
+        Rc::new(|particle: &Value| {
+            let Value::Object(fields) = particle else {
+                return Ok(Value::Null);
+            };
+            match fields.iter().find(|(k, _)| k == "value") {
+                Some((_, Value::Number(n))) => Ok(Value::Number(n * 2.0)),
+                _ => Ok(Value::Null),
+            }
         }),
     );
+}
+
+/// `Double { "value": n }` — the emitted particle these tests send.
+///
+/// They emitted a bare `Expr::Number` until 2026-08-28, which was a shortcut
+/// rather than a supported shape: the JsBridge contract is
+/// `dispatch(particleJson)`, and since that date `emit` refuses a
+/// non-particle *before* any target is chosen (see `check_emittable`), so the
+/// shortcut stopped working. Sending a real particle is what a JS module
+/// receives anyway.
+fn double_particle(n: f64) -> Expr {
+    Expr::Object(vec![
+        ("_class".to_string(), Expr::Str("Double".to_string())),
+        ("value".to_string(), Expr::Number(n)),
+    ])
 }
 
 #[test]
@@ -41,7 +61,7 @@ fn dispatches_through_a_provided_closure() {
         statements: vec![
             link_stmt("m", "m"),
             Stmt::Emit {
-                particle: Expr::Number(21.0),
+                particle: double_particle(21.0),
                 target: EmitTarget::Module("m".to_string()),
                 result: Some("n".to_string()),
             },
@@ -81,7 +101,7 @@ fn link_as_can_rename_a_provided_module() {
         statements: vec![
             link_stmt("m", "renamed"),
             Stmt::Emit {
-                particle: Expr::Number(10.0),
+                particle: double_particle(10.0),
                 target: EmitTarget::Module("renamed".to_string()),
                 result: Some("n".to_string()),
             },
@@ -118,7 +138,10 @@ fn emit_to_an_unlinked_alias_is_a_clear_error() {
     let env = Environment::default();
     let program = Program {
         statements: vec![Stmt::Emit {
-            particle: Expr::Null,
+            // A real particle: since 2026-08-28 `emit` checks that before it
+            // looks at the target at all, so a non-particle here would report
+            // *that* and never reach the alias lookup this test is about.
+            particle: double_particle(1.0),
             target: EmitTarget::Module("nope".to_string()),
             result: None,
         }],

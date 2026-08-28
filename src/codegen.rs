@@ -269,6 +269,11 @@ pub fn compile_to_object(
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
+    let fn_check_emittable = module.add_function(
+        "code_check_emittable",
+        void_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_poll_inbound = module.add_function(
         "code_poll_inbound",
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
@@ -452,6 +457,7 @@ pub fn compile_to_object(
         native_links: HashMap::new(),
         static_native_fns,
         fn_check_particle,
+        fn_check_emittable,
         fn_poll_inbound,
         fn_abort_failure,
         fn_take_failure,
@@ -641,6 +647,7 @@ struct Gen<'a, 'm> {
     /// `remove`) the one time each is `link`ed.
     static_native_fns: HashMap<String, StaticModuleFns<'a>>,
     fn_check_particle: FunctionValue<'a>,
+    fn_check_emittable: FunctionValue<'a>,
     /// Where a failed runtime helper lands, and the flag that says one did.
     /// See `check_failed`.
     fn_abort_failure: FunctionValue<'a>,
@@ -1970,6 +1977,14 @@ impl<'a, 'm> Gen<'a, 'm> {
         result: Option<&str>,
     ) -> Result<(), String> {
         let particle_ptr = self.gen_expr(particle)?;
+        // Asked once, before the target is even looked at: whether something
+        // is a particle has nothing to do with where it was being sent. See
+        // `runtime.c`'s `code_check_emittable`, and `interpreter.rs`'s
+        // `check_emittable`, which this must match.
+        self.builder
+            .build_call(self.fn_check_emittable, &[particle_ptr.into()], "")
+            .map_err(|e| e.to_string())?;
+        self.check_failed()?;
         let temp = self.alloc_slot("emit_result")?;
         match target {
             EmitTarget::This => {

@@ -584,13 +584,16 @@ void code_make_exception(CodeValue *out, const char *source, const char *message
 }
 
 void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
+    /* `code_check_emittable` ran at the emit site, so a `_class` is here. A
+     * non-Str one is not a class core knows, and core answers null like any
+     * other recipient. */
     if (particle->tag != CODE_OBJECT) {
-        fail("emit requires a particle (an object with a \"_class\" field)");
+        code_null(out);
         return;
     }
     const CodeValue *class_val = find_field(particle, "_class");
     if (!class_val || class_val->tag != CODE_STR) {
-        fail("emit requires a particle (an object with a \"_class\" field)");
+        code_null(out);
         return;
     }
 
@@ -1070,6 +1073,32 @@ void code_iter_key(CodeValue *out, const CodeValue *v, long long i) {
 
 /* A handler's result must be a particle, so every `get` binding has a class
  * to test with `is`. Same rule the core handlers follow. */
+/* Whether `v` can be emitted at all: emitting is dispatch by `_class`, so a
+ * value carrying none is not a particle and there is nothing to dispatch on.
+ * Deliberately *not* the same question as "does anyone handle this class" —
+ * that one answers null, because sending a particle is not a demand.
+ *
+ * Called once by generated code before the target is chosen (codegen.rs's
+ * `gen_emit`), which is why `code_core_dispatch` below no longer asks: a
+ * non-particle `emit` is the emitting frame's own mistake, not something a
+ * recipient did, and a module could never have asked at all — it reads
+ * `_class`, finds none, and cannot tell "not a particle" from "a class I
+ * don't handle". Must match interpreter.rs's `check_emittable` exactly. */
+void code_check_emittable(const CodeValue *v) {
+    if (v->tag == CODE_OBJECT) {
+        for (long long i = 0; i < v->len; i++) {
+            if (strcmp(v->keys[i], "_class") == 0) {
+                return;
+            }
+        }
+    }
+    char msg[160];
+    snprintf(msg, sizeof msg,
+             "emit requires a particle — an object with a '_class' field — found %s %s",
+             article_for(v), type_name(v));
+    fail(msg);
+}
+
 void code_check_particle(const CodeValue *v) {
     if (v->tag == CODE_OBJECT) {
         for (long long i = 0; i < v->len; i++) {

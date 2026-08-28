@@ -370,13 +370,27 @@ that changes error semantics needs its own both-mode fixture.
   is a fourth field (`code: "division-by-zero"`) rather than reopening the
   one-class decision. Discussed and settled 2026-08-28; revisit only when a
   real program is blocked on it.
-- **A non-particle `emit` is a three-way split, and was left that way.**
-  `emit 5 to this` and `emit 5 to core` end the emitting frame; `emit 5 to
-  <module>` answers null. Not the same question as a *handler* failing (that
-  one is settled — all three answer with an Exception): this is about the
-  emit statement itself being malformed, which is arguably the emitting
-  frame's own mistake rather than anything the recipient did. Measured and
-  recorded 2026-08-28, not decided.
+- ~~**A non-particle `emit` is a three-way split.**~~ **Closed 2026-08-28.**
+  The split was not a decision, it was five copies of one check with a gap:
+  `core` asked twice, `to this` once, in two different wordings, and the
+  module path could not ask at all — a module reads `_class`, finds none, and
+  cannot tell "not a particle" from "a class I don't handle", so it answered
+  null to both. `emit 5 to math` therefore did nothing while `emit 5 to this`
+  failed.
+
+  `emit` asks once now, before the target is looked at, because whether
+  something is a particle has nothing to do with where it was being sent. The
+  four old sites are gone; the three dispatch paths answer null for anything
+  they reach without a Str `_class`, which is the unknown-class rule they
+  already had. A non-particle `emit` is the *sender's* mistake, so the
+  emitting frame ends and returns an `Exception` — the standing rule, not a
+  new one, and nothing is terminated.
+
+  It also cost two hand-built tests in `tests/module_host.rs` their shortcut:
+  they emitted a bare `Expr::Number` to a JsBridge module, which was never
+  the contract (`dispatch(particleJson)`) and only worked because the module
+  path had no check. They send a real particle now, which is what a JS module
+  receives anyway. `emit_non_particle_is_the_senders_mistake.code`.
 - **`code_field`/`code_index` still owe modules an answer.** They are the two
   fallible helpers left in the module ABI, and a failure raised inside a `.so`
   sets that copy's flag where nobody reads it. Warned about in `code_abi.h`

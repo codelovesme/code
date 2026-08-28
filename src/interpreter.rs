@@ -574,6 +574,20 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             result,
         } => {
             let value = eval(particle, env)?;
+            // Asked once, here, before the target is even looked at: whether
+            // something is a particle has nothing to do with where it was
+            // being sent. Until 2026-08-28 each target asked for itself —
+            // five sites across two backends, in two different wordings — and
+            // the module path could not ask at all: a module reads `_class`,
+            // finds none, and cannot tell "not a particle" from "a class I
+            // don't handle", so it answered null to both. `emit 5 to math`
+            // therefore did nothing while `emit 5 to this` failed.
+            //
+            // A non-particle `emit` is the *emitting* frame's own mistake, not
+            // something a recipient did, so it fails here and the frame
+            // returns an `Exception` — no target is dispatched to at all.
+            // Must match codegen.rs's `gen_emit`.
+            check_emittable(&value)?;
             let output = match target {
                 EmitTarget::Core => dispatch_core(&value)?,
                 EmitTarget::This => dispatch_handler(&value, env)?,
@@ -622,6 +636,27 @@ fn class_of(particle: &Value) -> &str {
     }
 }
 
+/// Whether `value` can be emitted at all: emitting is dispatch by `_class`,
+/// so a value that carries none is not a particle and there is nothing to
+/// dispatch on. Deliberately *not* the same question as "does anyone handle
+/// this class" — that one answers null, because sending a particle is not a
+/// demand and whether to act on it is the recipient's business.
+///
+/// Worded to parallel `code_check_particle`'s message for the other half of
+/// the same rule, a handler's `return`. Must match `runtime.c`'s
+/// `code_check_emittable` exactly — `tests/message_parity.rs` compares them.
+fn check_emittable(value: &Value) -> Result<(), String> {
+    if let Value::Object(fields) = value {
+        if fields.iter().any(|(k, _)| k == "_class") {
+            return Ok(());
+        }
+    }
+    Err(format!(
+        "emit requires a particle — an object with a '_class' field — found {}",
+        a_type_name(value)
+    ))
+}
+
 /// `Exception { source, message, innerException }` — a frame's answer when it
 /// could not finish. Must stay byte-identical to `runtime.c`'s
 /// `code_make_exception`, field order included: it is an ordinary value the
@@ -641,12 +676,16 @@ fn exception(message: String) -> Value {
 }
 
 fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, String> {
+    // `check_emittable` ran at the emit site, so a `_class` is here. A
+    // *non-Str* one is not a particle either and takes the same path as an
+    // unknown class: null. There is no third answer to give — this function
+    // is only ever reached through `emit`.
     let class = match particle {
         Value::Object(fields) => fields.iter().find(|(k, _)| k == "_class").map(|(_, v)| v),
         _ => None,
     };
     let Some(Value::Str(class)) = class else {
-        return Err("emit requires a particle — an object with a '_class' field".to_string());
+        return Ok(Value::Null);
     };
     // A class nothing handles answers null rather than ending the program:
     // sending a particle is not a demand, and whether to act on one is the
@@ -890,17 +929,15 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
 /// handler set, same operand-type rules, same error wording where it's worth
 /// keeping in sync.
 fn dispatch_core(particle: &Value) -> Result<Value, String> {
+    // Same as `dispatch_handler`: `check_emittable` ran at the emit site, so
+    // anything that gets here without a Str `_class` is simply a class core
+    // does not know, and core answers null like any other recipient.
     let Value::Object(fields) = particle else {
-        return Err(format!(
-            "emit requires a particle (an object with a \"_class\" field), found {}",
-            a_type_name(particle)
-        ));
+        return Ok(Value::Null);
     };
     let class = match fields.iter().find(|(k, _)| k == "_class") {
         Some((_, Value::Str(class))) => class,
-        _ => {
-            return Err("emit requires a particle (an object with a \"_class\" field)".to_string())
-        }
+        _ => return Ok(Value::Null),
     };
     match class.as_ref() {
         "Timestamp" => {
