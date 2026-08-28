@@ -1,0 +1,31 @@
+-- A failing `assert` inside a handler ends *that frame*, not the program:
+-- the handler's answer becomes an `Exception` and the caller carries on
+-- (phase 4, 2026-08-28, see docs/todo/errors-as-particles.md).
+--
+-- The rule, in the owner's words: "assert fail olması demek şu anlama
+-- gelmeli — return Exception". At the top level there is no frame to return
+-- into, so a failing assert there still ends the program with a non-zero
+-- status; `fail_assert_basic.code` and friends pin that half.
+Check { n } => {
+    assert n = 1
+    return Ok { }
+}
+
+emit Check { "n": 2 } to this get bad
+assert bad is Exception
+
+-- The whole particle, field by field, because the two backends build this
+-- independently (interpreter.rs's `exception`, runtime.c's
+-- `code_take_failure`) and the harness only compares pass/fail — a shape
+-- that drifted between them would otherwise go unnoticed.
+assert bad = {
+    "_class": "Exception",
+    "source": "core",
+    "message": "assertion failed",
+    "innerException": null
+}
+
+-- The same handler still works afterwards: a failed frame leaves nothing
+-- behind, including the re-entry guard its exit block clears.
+emit Check { "n": 1 } to this get good
+assert good is Ok

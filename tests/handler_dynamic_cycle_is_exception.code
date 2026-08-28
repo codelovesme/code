@@ -1,0 +1,24 @@
+-- The cycle a static pass cannot see: the particle comes from a variable, so
+-- nothing at the call site names the handler it will reach.
+-- `handlers::check_cycles` lets this through, and the runtime re-entry guard
+-- catches it instead — which is why both halves exist.
+--
+-- What the guard does changed on 2026-08-28 (phase 4): it answers with an
+-- Exception instead of ending the program. Re-entry is the *emit's* failure,
+-- so the frame that tried to re-enter gets it back, and the invocation
+-- already running is untouched — it carries on and decides for itself.
+-- Was `fail_handler_dynamic_cycle.code`.
+Loopy { n } => {
+    let again = Loopy { "n": n - 1 }
+    emit again to this get r
+    return Ack { "inner": r }
+}
+
+emit Loopy { "n": 2 } to this get top
+
+-- The outer invocation ran to completion: it got the Exception as an ordinary
+-- value and chose to carry it.
+assert top is Ack
+assert top.inner is Exception
+assert top.inner.source = "core"
+assert top.inner.message = "handler 'Loopy' is already running — a handler cannot re-enter one that is already on the call stack"

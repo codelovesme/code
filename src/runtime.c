@@ -99,12 +99,29 @@ static void fail(const char *message) {
     }
 }
 
-/* What every landing block ends in for now. Routed through
- * `code_runtime_error` rather than duplicating its body so the wasm build
- * (which reports through `code_host_error` instead of stderr) keeps working
- * without this file knowing there are two ways to report. */
+/* What a landing block ends in at the *top level*, where there is no frame to
+ * return into: a failure there ends the program with a non-zero status, which
+ * is the same thing `return Exception` from the outermost call means. Routed
+ * through `code_runtime_error` rather than duplicating its body so the wasm
+ * build (which reports through `code_host_error` instead of stderr) keeps
+ * working without this file knowing there are two ways to report. */
 _Noreturn void code_abort_failure(void) {
     code_runtime_error(code_failed ? failure_message : "unknown runtime error");
+}
+
+/* What a landing block ends in *inside a handler*: the frame's result becomes
+ * an `Exception`, and the flag is cleared so the caller carries on. The
+ * caller is under no obligation to look — a returned Exception is an ordinary
+ * value, not a signal that keeps propagating (decided 2026-08-28: "C geriye
+ * Exception döner, B bakmazsa kaldığı yerden devam"). Only the frame where
+ * the failure actually happened unwinds.
+ *
+ * `source` is "core" because that is the language's own name for what runs a
+ * program's own statements; a module's exceptions name the module instead. */
+void code_take_failure(CodeValue *out) {
+    code_make_exception(out, "core",
+                        code_failed ? failure_message : "unknown runtime error", NULL);
+    code_failed = 0;
 }
 
 /* ---- Reference counting -------------------------------------------------

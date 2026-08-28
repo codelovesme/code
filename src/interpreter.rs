@@ -263,6 +263,16 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, String> {
     register_handlers(&program.statements, &mut env)?;
     crate::handlers::check_cycles(program)?;
+    // The same pre-run check `code build` has always run (`verify.rs`, which
+    // is where it moved out of `codegen.rs` on 2026-08-28 so both backends
+    // could share it). Interpreting used to find an undefined name only on
+    // reaching it, which was untidy but harmless while that ended the program
+    // either way. Phase 4 made it matter: an error inside a handler body is
+    // now an `Exception` value, so an undefined name there would leave the
+    // interpreted program running to completion while `code build` refused it
+    // outright — the two modes disagreeing about which programs fail, which is
+    // the one thing they may not do.
+    crate::verify::verify_defined(program)?;
     for (i, stmt) in program.statements.iter().enumerate() {
         // Can only ever be `Flow::Normal` out here: the parser rejects a
         // `break` that isn't inside a loop, so nothing can propagate one up
@@ -612,6 +622,24 @@ fn class_of(particle: &Value) -> &str {
     }
 }
 
+/// `Exception { source, message, innerException }` — a frame's answer when it
+/// could not finish. Must stay byte-identical to `runtime.c`'s
+/// `code_make_exception`, field order included: it is an ordinary value the
+/// program can read, so the two backends building it differently would be a
+/// visible divergence rather than a cosmetic one.
+///
+/// `source` is `"core"` because that is the language's own name for what runs
+/// a program's own statements; a module names itself instead. `inner` is null
+/// here — nothing wraps a language-level failure yet.
+fn exception(message: String) -> Value {
+    Value::Object(Rc::new(vec![
+        ("_class".to_string(), Value::Str("Exception".into())),
+        ("source".to_string(), Value::Str("core".into())),
+        ("message".to_string(), Value::Str(message.into())),
+        ("innerException".to_string(), Value::Null),
+    ]))
+}
+
 fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, String> {
     let class = match particle {
         Value::Object(fields) => fields.iter().find(|(k, _)| k == "_class").map(|(_, v)| v),
@@ -628,11 +656,22 @@ fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, St
     let Some(handler) = env.handlers.get(class.as_ref()).cloned() else {
         return Ok(Value::Null);
     };
+    // Re-entry is the *emit's* failure, so it is this dispatch's answer rather
+    // than an error thrown into the caller's body: the frame that tried to
+    // re-enter gets an Exception back and decides what to do, and the handler
+    // already running is untouched. `codegen.rs` reaches the same shape from
+    // the other side — the re-entered function writes the Exception into its
+    // own `out` and returns without clearing the guard.
+    //
+    // Decided 2026-08-28 (phase 4): a cycle answers rather than aborts, like
+    // every other runtime failure. `handlers::check_cycles` still refuses the
+    // statically visible ones before either backend runs at all; this is only
+    // for the cycles that go through a variable.
     if !env.active.insert(class.to_string()) {
-        return Err(format!(
+        return Ok(exception(format!(
             "handler '{class}' is already running — a handler cannot re-enter one \
              that is already on the call stack"
-        ));
+        )));
     }
 
     // Everything but the top-level frame steps aside for the call.
@@ -661,15 +700,26 @@ fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, St
         Ok(Flow::Normal) => Ok(Value::Null),
         Ok(Flow::Return(value)) => match &value {
             Value::Object(fields) if fields.iter().any(|(k, _)| k == "_class") => Ok(value),
-            other => Err(format!(
+            other => Ok(exception(format!(
                 "a handler must return a particle — an object with a '_class' field — found {}",
                 a_type_name(other)
-            )),
+            ))),
         },
         // The parser rejects `break`/`continue` outside a loop, so neither
         // can escape a body to here.
         Ok(_) => Ok(Value::Null),
-        Err(e) => Err(e),
+        // A runtime error inside the body ends *this frame*, not the program:
+        // the handler's answer becomes an Exception and the caller carries on
+        // (shipped 2026-08-28, phase 4 of docs/todo/errors-as-particles.md).
+        // `codegen.rs`'s `check_failed` does the same thing by branching to
+        // the frame's exit with `code_take_failure` — the two backends have
+        // to agree here, since the result is a value the program can see.
+        //
+        // Only errors raised *by the body* convert. The two above this — a
+        // non-particle `emit` operand and a re-entered handler — happen
+        // before the body runs and belong to the caller, so they still
+        // propagate.
+        Err(e) => Ok(exception(e)),
     };
 
     env.scopes.extend(saved);

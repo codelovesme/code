@@ -2,6 +2,12 @@
 -- is in scope at the emit site but not inside the body, so this is an
 -- undefined variable — which is what makes a handler's meaning independent
 -- of where it happens to be invoked from.
+--
+-- Refused before the program starts, in both output modes: `verify_defined`
+-- (src/verify.rs) is a pre-run pass, not a runtime error. It has to be, since
+-- phase 4 — a runtime error inside a handler body is an `Exception` value
+-- now, so as a runtime error this would have left `code run` completing
+-- happily while `code build` refused to compile it.
 Peek => {
     return Ack { "value": local }
 }

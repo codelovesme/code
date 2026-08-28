@@ -12,6 +12,7 @@ pub mod native;
 pub mod parser;
 pub mod span;
 pub mod value;
+pub mod verify;
 
 use std::path::Path;
 

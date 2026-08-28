@@ -233,18 +233,94 @@ that changes error semantics needs its own both-mode fixture.
    because modules can legitimately want them — both now carry the warning in
    the header, and `code-native`'s `field` doc, which claimed a non-Object
    writes Null, was corrected to say it fails.
-4. **`assert` returns `Exception`**, both backends.
-5. **Every other runtime error returns `Exception`** — arithmetic, division
-   by zero, field access, `loop` operands, non-particle `emit`. This is also
-   where `code_field`/`code_index` owe modules a real answer.
+4. ~~**`assert` returns `Exception`**~~ and
+5. ~~**Every other runtime error returns `Exception`**~~ — **both shipped
+   2026-08-28, as one change.** They were listed as two phases on the
+   assumption that `assert` needed its own mechanism. It does not: every
+   runtime failure already travelled phase 3's channel, so making the landing
+   block frame-aware delivered all of them at once. `assert`, arithmetic,
+   division by zero, field access, `loop` operands, ordering, non-particle
+   `emit` — one behaviour, one code path.
 
-1, 2 and 3 are shipped and the suite is green. 4 is now small.
+   **The landing block now asks whether it is in a frame.** Inside a handler:
+   `code_take_failure` builds the Exception into `frame.out` and branches to
+   `frame.exit`, which is the block that already clears the re-entry guard and
+   releases the invocation's slots — so a failing handler cleans up exactly as
+   a returning one does. At the top level there is no frame, and
+   `code_abort_failure` ends the program with a non-zero status, which is what
+   `return Exception` from the outermost call means anyway.
+
+   The interpreter needed one arm: `Err(e) => Ok(exception(e))` at
+   `dispatch_handler`'s boundary. Everything nested — an arithmetic error deep
+   in an `if` inside a `loop` — already propagated there as `Err`.
+
+   **A returned Exception does not keep propagating.** Only the frame where
+   the failure happened unwinds; the caller gets an ordinary value and may
+   ignore it, inspect it, or pass it on
+   (`handler_failure_does_not_unwind_the_caller.code`).
+
+   **codegen no longer calls `code_runtime_error` anywhere.** The declaration
+   is gone from `Gen`. Every language-level failure goes through the channel;
+   `runtime.c` keeps the function for `code_abort_failure` and the 13
+   deliberately-fatal sites.
+
+   Two decisions came out of the four inverted fixtures, both settled by the
+   owner on 2026-08-28:
+
+   - **A runtime handler cycle answers with an Exception** rather than
+     aborting. It is the *emit's* failure, so the frame that tried to
+     re-enter gets it back and the invocation already running is untouched —
+     which is why the re-entered function returns straight out instead of
+     branching to `exit`, since `exit` would clear a guard belonging to a
+     frame further down the stack. `handlers::check_cycles` still refuses the
+     statically visible cycles before either backend runs.
+     `fail_handler_dynamic_cycle.code` → `handler_dynamic_cycle_is_exception.code`.
+   - **`verify_defined` moved to `src/verify.rs` and now runs in both
+     backends.** It was codegen-only, which made an undefined name a
+     compile-time error under `code build` and a runtime error under `code
+     run`. Untidy but harmless while both ended the program — and then phase 4
+     made a handler body's runtime errors into values, so `code run` would
+     have completed a program `code build` refused. That is the one divergence
+     the two modes may not have, and the fixture harness caught it. An error
+     before the program starts is acceptable, and better than one halfway
+     through, after side effects.
+
+   `fail_handler_return_non_particle` and `fail_handler_return_plain_object`
+   became `handler_return_*_is_exception.code`: a handler whose result is not
+   a particle has failed, and a failed frame answers. Three fixtures were
+   added — `handler_assert_failure_is_exception.code`,
+   `handler_failure_does_not_unwind_the_caller.code`, and
+   `handler_runtime_errors_are_exceptions.code` (one case per failing helper
+   family).
+
+   **New: error message text is now a value the program can read**, via
+   `Exception.message`. The two backends do not always agree on it — `1 + "a"`
+   is *"cannot apply Add to number and string"* interpreted and *"cannot apply
+   '+' to these values"* compiled. Where they do agree the fixtures assert the
+   message in full, precisely because the harness only compares pass/fail and
+   could not otherwise catch a shape or wording that drifted. Unifying the
+   wording is now a correctness matter rather than a cosmetic one — see "Still
+   open".
 
 ## Still open
 
-- **`code run` vs `code build` divergence during phases 1–3.** Modules stop
-  aborting in both modes, but language-level errors still abort in both, so
-  the invariant holds. It only becomes delicate at 4 and 5.
+- **The two backends word the same error differently, and that is now
+  observable.** `Exception.message` is an ordinary string a program can read,
+  compare, or print, so *"cannot apply Add to number and string"* versus
+  *"cannot apply '+' to these values"* is a real difference in what a program
+  computes, not just in what a user sees on stderr. The fixture harness cannot
+  catch it (pass/fail only), and neither can a fixture that asserts a message,
+  since it would simply fail in one mode. `runtime.c` already carries "must
+  match interpreter.rs exactly" comments for `type_name` and `article_for`;
+  the operator messages need the same treatment. Nothing depends on it yet.
+- **`code_field`/`code_index` still owe modules an answer.** They are the two
+  fallible helpers left in the module ABI, and a failure raised inside a `.so`
+  sets that copy's flag where nobody reads it. Warned about in `code_abi.h`
+  rather than fixed.
+- **A failing `assert` at the top level ends the program**, which is correct
+  (non-zero exit is what `return Exception` means from the outermost call) but
+  means the top level is the one place an error is not a value. Left as is,
+  deliberately.
 - **Out of memory, wasm fractional number text, the `CODE_CHECK_LEAKS`
   abort, and a native module failing to load** — noted 2026-08-28 to be
   discussed one at a time; every case that ends a program with an error is

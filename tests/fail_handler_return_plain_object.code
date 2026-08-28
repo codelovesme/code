@@ -1,6 +1,0 @@
--- A plain object is not a particle — no `_class`, so nothing to dispatch
--- or type-test on. Rejected just like a number would be.
-Ping => {
-    return { "x": 1 }
-}
-emit Ping {} to this

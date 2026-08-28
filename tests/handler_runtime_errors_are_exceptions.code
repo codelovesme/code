@@ -1,0 +1,46 @@
+-- `assert` is not a special case. Every runtime failure inside a handler body
+-- ends that frame with an `Exception`, because they all travel the same
+-- channel: runtime.c's helpers set `code_failed`, codegen's `check_failed`
+-- branches to the frame's exit, and the interpreter converts the `Err` at the
+-- same boundary. Phase 5 of docs/todo/errors-as-particles.md turned out to be
+-- the same change as phase 4 rather than a further one.
+--
+-- One per failing helper family, since each is a separate check site:
+-- `code_field`, `code_core_dispatch`, `code_compare`, `code_div`, `code_add`.
+Field { k } => {
+    return R { "v": k.name }
+}
+Core { k } => {
+    emit k to core get z
+    return R { "v": z }
+}
+Order { k } => {
+    return R { "v": 1 < k }
+}
+Divide { k } => {
+    return R { "v": 1 / k }
+}
+Add { k } => {
+    return R { "v": 1 + k }
+}
+
+emit Field { "k": 5 } to this get a
+assert a is Exception
+
+emit Core { "k": 5 } to this get b
+assert b is Exception
+
+emit Order { "k": "x" } to this get c
+assert c is Exception
+
+emit Divide { "k": 0 } to this get d
+assert d is Exception
+assert d.message = "division by zero"
+
+emit Add { "k": true } to this get e
+assert e is Exception
+
+-- Each one answered; none of them ended the program.
+emit Divide { "k": 4 } to this get ok
+assert ok is R
+assert ok.v = 0.25

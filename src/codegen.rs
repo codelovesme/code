@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 
 use inkwell::basic_block::BasicBlock;
@@ -73,160 +73,6 @@ struct StaticModuleFns<'a> {
     vars: Option<FunctionValue<'a>>,
 }
 
-/// Checks every `Expr::Ident` is reachable from an earlier assignment,
-/// mirroring the interpreter's runtime "undefined variable" error as a
-/// compile-time error instead (the language has no forward references or
-/// hoisting, so this is a simple sequential scan) — scope-aware since `if`
-/// bodies get their own scope (see memory `new-code-if-scoping`): a name
-/// first assigned inside an `if` is only "defined" for the rest of that
-/// `if`'s body, not after it, unless it was already defined outside.
-fn verify_defined(program: &Program) -> Result<(), String> {
-    let mut scopes = vec![HashSet::new()];
-    let mut natives = HashSet::new();
-    verify_stmts(&program.statements, &mut scopes, &mut natives)
-}
-
-fn verify_stmts(
-    stmts: &[Stmt],
-    scopes: &mut Vec<HashSet<String>>,
-    natives: &mut HashSet<String>,
-) -> Result<(), String> {
-    for stmt in stmts {
-        match stmt {
-            Stmt::HandlerDef { fields, body, .. } => {
-                let scope: HashSet<String> = fields.iter().cloned().collect();
-                // Only the top level is visible, matching what the body will
-                // actually close over — not whatever scopes happen to be open
-                // where the definition sits (it is top-level only anyway).
-                let enclosing = std::mem::replace(scopes, vec![scope]);
-                scopes.insert(0, enclosing[0].clone());
-                let verified = verify_stmts(body, scopes, natives);
-                *scopes = enclosing;
-                verified?;
-            }
-            Stmt::Return(value) => verify_expr(value, scopes)?,
-            Stmt::Let { name, value, .. } => {
-                verify_expr(value, scopes)?;
-                // Always binds in the current scope, even if `name` is
-                // already defined here or further out — shadowing.
-                scopes.last_mut().unwrap().insert(name.clone());
-            }
-            Stmt::Link { path, .. } => {
-                return Err(format!(
-                    "internal error: link \"{path}\" reached codegen unresolved"
-                ))
-            }
-            Stmt::Import {
-                alias,
-                body,
-                exports,
-            } => {
-                scopes.push(HashSet::new());
-                let result = verify_stmts(body, scopes, natives);
-                scopes.pop();
-                result?;
-                // The module's own scope is gone; only what it exported is
-                // reachable from here.
-                match alias {
-                    Some(alias) => {
-                        scopes.last_mut().unwrap().insert(alias.clone());
-                    }
-                    None => {
-                        for name in exports {
-                            scopes.last_mut().unwrap().insert(name.clone());
-                        }
-                    }
-                }
-            }
-            Stmt::ImportNative { alias, .. } => {
-                // The alias serves two roles, so it is recorded in both
-                // namespaces: in `natives` (a separate namespace from
-                // `scopes`, matching `interpreter::Environment::native_modules`)
-                // so `emit ... to <alias>` can dispatch to the module, and in
-                // `scopes` so `alias.name` — the module's exported variables,
-                // bound as an object — resolves as an ordinary field access.
-                natives.insert(alias.clone());
-                scopes.last_mut().unwrap().insert(alias.clone());
-            }
-            Stmt::Assign { name, value } => {
-                verify_expr(value, scopes)?;
-                if !is_defined(scopes, name) {
-                    return Err(format!(
-                        "undefined variable '{name}' (use 'let {name} = ...' to declare it)"
-                    ));
-                }
-            }
-            Stmt::Assert(expr) => verify_expr(expr, scopes)?,
-            Stmt::If { condition, body } => {
-                verify_expr(condition, scopes)?;
-                scopes.push(HashSet::new());
-                let result = verify_stmts(body, scopes, natives);
-                scopes.pop();
-                result?;
-            }
-            Stmt::Block(body) => {
-                scopes.push(HashSet::new());
-                let result = verify_stmts(body, scopes, natives);
-                scopes.pop();
-                result?;
-            }
-            Stmt::Loop { over, result, body } => {
-                // Both the iterable and the accumulator's initial value are
-                // evaluated in the *enclosing* scope, before the loop
-                // variables exist — so `loop x over x` correctly resolves
-                // the right-hand `x` to an outer binding, or errors if there
-                // isn't one.
-                if let Some(over) = over {
-                    verify_expr(&over.iterable, scopes)?;
-                }
-                if let Some(acc) = result {
-                    verify_expr(&acc.init, scopes)?;
-                    // Declared in the enclosing scope, matching where the
-                    // binding actually lands (see `ast::LoopAccumulator`) —
-                    // which is also what makes it defined *after* the loop.
-                    scopes.last_mut().unwrap().insert(acc.name.clone());
-                }
-                let mut scope = HashSet::new();
-                if let Some(over) = over {
-                    scope.insert(over.value.clone());
-                    if let Some(key) = &over.key {
-                        scope.insert(key.clone());
-                    }
-                }
-                scopes.push(scope);
-                let verified = verify_stmts(body, scopes, natives);
-                scopes.pop();
-                verified?;
-            }
-            Stmt::Emit {
-                particle,
-                target,
-                result,
-            } => {
-                verify_expr(particle, scopes)?;
-                if let EmitTarget::Module(alias) = target {
-                    if !natives.contains(alias) {
-                        return Err(format!(
-                            "'emit ... to {alias}' but no native module is linked as '{alias}'"
-                        ));
-                    }
-                }
-                if let Some(name) = result {
-                    scopes.last_mut().unwrap().insert(name.clone());
-                }
-            }
-            // Nothing to check — the parser already rejected any `break`
-            // or `continue` that isn't inside a loop.
-            Stmt::Break | Stmt::Continue => {}
-        }
-    }
-    Ok(())
-}
-
-fn is_defined(scopes: &[HashSet<String>], name: &str) -> bool {
-    scopes.iter().rev().any(|s| s.contains(name))
-}
-
 fn reject_wasm_native_links(stmts: &[Stmt]) -> Result<(), String> {
     for stmt in stmts {
         match stmt {
@@ -245,42 +91,13 @@ fn reject_wasm_native_links(stmts: &[Stmt]) -> Result<(), String> {
     Ok(())
 }
 
-fn verify_expr(expr: &Expr, scopes: &[HashSet<String>]) -> Result<(), String> {
-    match expr {
-        Expr::Number(_) | Expr::Str(_) | Expr::Bool(_) | Expr::Null => Ok(()),
-        Expr::Interpolated(parts) => parts.iter().try_for_each(|part| verify_expr(part, scopes)),
-        Expr::Ident(name) => {
-            if is_defined(scopes, name) {
-                Ok(())
-            } else {
-                Err(format!("undefined variable '{name}'"))
-            }
-        }
-        Expr::Array(items) => items.iter().try_for_each(|item| verify_expr(item, scopes)),
-        Expr::Object(fields) => fields
-            .iter()
-            .try_for_each(|(_, value)| verify_expr(value, scopes)),
-        Expr::Field(obj, _) => verify_expr(obj, scopes),
-        Expr::Index(arr, index) => {
-            verify_expr(arr, scopes)?;
-            verify_expr(index, scopes)
-        }
-        Expr::Unary(_, e) => verify_expr(e, scopes),
-        Expr::Is(e, _) => verify_expr(e, scopes),
-        Expr::Binary(lhs, _, rhs) => {
-            verify_expr(lhs, scopes)?;
-            verify_expr(rhs, scopes)
-        }
-    }
-}
-
 pub fn compile_to_object(
     program: &Program,
     target: BuildTarget,
     obj_path: &Path,
     release: bool,
 ) -> Result<(), String> {
-    verify_defined(program)?;
+    crate::verify::verify_defined(program)?;
     crate::handlers::check_cycles(program)?;
     if target == BuildTarget::Wasm {
         reject_wasm_native_links(&program.statements)?;
@@ -454,11 +271,6 @@ pub fn compile_to_object(
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
-    let fn_runtime_error = module.add_function(
-        "code_runtime_error",
-        void_ty.fn_type(&[i8_ptr_ty.into()], false),
-        None,
-    );
     // The failure channel (see `runtime.c`'s "The failure channel"). A helper
     // that cannot do its work now returns normally with `code_failed` set,
     // instead of ending the process from inside itself — so the generated
@@ -467,6 +279,26 @@ pub fn compile_to_object(
     // one" structural rather than a rule to remember.
     let fn_abort_failure =
         module.add_function("code_abort_failure", void_ty.fn_type(&[], false), None);
+    let fn_take_failure = module.add_function(
+        "code_take_failure",
+        void_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
+    // Used for the one failure that doesn't travel by the flag: a re-entered
+    // handler, which knows its own message and answers with it directly.
+    let fn_make_exception = module.add_function(
+        "code_make_exception",
+        void_ty.fn_type(
+            &[
+                i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
+            ],
+            false,
+        ),
+        None,
+    );
     // Declared, not defined: no initializer, so this is an `extern int`
     // resolved at link time against the one `runtime.c` owns.
     let global_failed = module.add_global(i32_ty, None, "code_failed");
@@ -612,8 +444,9 @@ pub fn compile_to_object(
         static_native_fns,
         fn_check_particle,
         fn_poll_inbound,
-        fn_runtime_error,
         fn_abort_failure,
+        fn_take_failure,
+        fn_make_exception,
         failed_flag,
         handler_fns: HashMap::new(),
         dispatch_fn: None,
@@ -800,9 +633,10 @@ struct Gen<'a, 'm> {
     /// Where a failed runtime helper lands, and the flag that says one did.
     /// See `check_failed`.
     fn_abort_failure: FunctionValue<'a>,
+    fn_take_failure: FunctionValue<'a>,
+    fn_make_exception: FunctionValue<'a>,
     failed_flag: PointerValue<'a>,
     fn_poll_inbound: FunctionValue<'a>,
-    fn_runtime_error: FunctionValue<'a>,
     /// The generated `_code_drain_inbound`, called after every top-level
     /// statement. Declared up front (the calls are emitted as statements are
     /// generated) and defined last, once every module global exists.
@@ -1011,6 +845,17 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_conditional_branch(is_running, reenter, enter)
             .map_err(|e| e.to_string())?;
 
+        // Re-entry is the *emit's* failure, so this invocation answers with an
+        // Exception and returns — the frame that tried to re-enter gets it
+        // back and decides what to do (phase 4, 2026-08-28; before that this
+        // called `code_runtime_error` and ended the program).
+        //
+        // It returns straight out rather than branching to `exit`, and that is
+        // the point: `exit` clears the re-entry guard, which belongs to the
+        // invocation *already running* further down the stack. Nothing else
+        // needs unwinding — this invocation's slots are still the zeroed
+        // allocas the entry block left, and releasing a zeroed slot is a
+        // no-op. `interpreter.rs`'s `dispatch_handler` mirrors this exactly.
         self.builder.position_at_end(reenter);
         let msg = self.global_str(
             &format!(
@@ -1019,8 +864,18 @@ impl<'a, 'm> Gen<'a, 'm> {
             ),
             "reentry",
         )?;
+        let source = self.global_str("core", "excsource")?;
         self.builder
-            .build_call(self.fn_runtime_error, &[msg.into()], "")
+            .build_call(
+                self.fn_make_exception,
+                &[
+                    out.into(),
+                    source.into(),
+                    msg.into(),
+                    self.i8_ptr_ty.const_null().into(),
+                ],
+                "",
+            )
             .map_err(|e| e.to_string())?;
         self.builder.build_return(None).map_err(|e| e.to_string())?;
 
@@ -1427,14 +1282,34 @@ impl<'a, 'm> Gen<'a, 'm> {
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(unwind);
-        self.builder
-            .build_call(self.fn_abort_failure, &[], "")
-            .map_err(|e| e.to_string())?;
-        // `code_abort_failure` is `_Noreturn`, but nothing in the IR says so;
-        // the terminator is what tells LLVM control stops here.
-        self.builder
-            .build_unreachable()
-            .map_err(|e| e.to_string())?;
+        match self.handler_frame.as_ref().map(|f| (f.out, f.exit)) {
+            // Inside a handler: the frame's result becomes an Exception and
+            // the frame ends — the same two moves `gen_return` makes, with
+            // `code_take_failure` in place of the copy. The exit block clears
+            // the re-entry guard and releases this invocation's slots, so a
+            // failing handler cleans up exactly as a returning one does.
+            Some((out, exit)) => {
+                self.builder
+                    .build_call(self.fn_take_failure, &[out.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(exit)
+                    .map_err(|e| e.to_string())?;
+            }
+            // At the top level there is no frame to return into, and ending
+            // the program with a non-zero status is what `return Exception`
+            // from the outermost call means anyway.
+            None => {
+                self.builder
+                    .build_call(self.fn_abort_failure, &[], "")
+                    .map_err(|e| e.to_string())?;
+                // `code_abort_failure` is `_Noreturn`, but nothing in the IR
+                // says so; the terminator is what tells LLVM control stops.
+                self.builder
+                    .build_unreachable()
+                    .map_err(|e| e.to_string())?;
+            }
+        }
 
         self.builder.position_at_end(ok);
         Ok(())

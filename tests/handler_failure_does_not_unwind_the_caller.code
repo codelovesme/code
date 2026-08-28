@@ -1,0 +1,29 @@
+-- A returned `Exception` is an ordinary value, not a signal that keeps
+-- propagating: only the frame where the failure happened unwinds. The owner's
+-- rule (2026-08-28): "C geriye Exception döner, B bakmazsa kaldığı yerden
+-- devam" — the caller may ignore it, inspect it, or pass it on.
+--
+-- Here `Inner` divides by zero and fails. `Outer` neither checks nor
+-- propagates: it keeps running, and chooses to carry the exception in its own
+-- result.
+Inner { n } => {
+    return Quotient { "v": 100 / n }
+}
+
+Outer { d } => {
+    emit Inner { "n": d } to this get result
+    let reached = true
+    return Report { "reached": reached, "inner": result }
+}
+
+emit Outer { "d": 0 } to this get bad
+assert bad is Report
+assert bad.reached = true
+assert bad.inner is Exception
+assert bad.inner.message = "division by zero"
+
+-- And the undamaged path still answers normally.
+emit Outer { "d": 4 } to this get good
+assert good is Report
+assert good.inner is Quotient
+assert good.inner.v = 25

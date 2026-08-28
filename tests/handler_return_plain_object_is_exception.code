@@ -1,0 +1,13 @@
+-- A plain object is not a particle — no `_class`, so nothing to dispatch or
+-- type-test on. Rejected just like a number, and by the same route: the frame
+-- fails and answers an `Exception`.
+--
+-- Was `fail_handler_return_plain_object.code`.
+Ping { } => {
+    return { "x": 1 }
+}
+
+emit Ping {} to this get r
+assert r is Exception
+assert r.message = "a handler must return a particle — an object with a '_class' field — found an object"
+assert 1 = 1

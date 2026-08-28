@@ -47,14 +47,31 @@ fn a_failing_assert_points_at_its_own_line() {
 
 /// Every other runtime error goes through the same one place, so naming the
 /// thing that went wrong and pointing at it are not alternatives.
+///
+/// A type mismatch rather than the undefined variable this used to use:
+/// since 2026-08-28 `verify::verify_defined` runs before the interpreter
+/// starts (see `interpreter::run_with`), so an undefined name never reaches
+/// the runtime at all. Operand types still can't be known until the program
+/// runs, so this one stays genuinely runtime.
 #[test]
 fn other_runtime_errors_are_located_too() {
-    let err = error_from("let a = 1\na = q\n");
-    assert!(err.contains("undefined variable 'q'"), "{err}");
+    let err = error_from("let a = 1\nlet b = a + \"x\"\n");
+    assert!(err.contains("cannot apply"), "{err}");
     assert!(
         err.contains(":2:1"),
         "expected a line-2 location in:\n{err}"
     );
+}
+
+/// The undefined name that used to be the case above: now refused before a
+/// single statement runs, which is what `code build` has always done. Pinned
+/// because it is a deliberate change of *when* a program fails, not an
+/// accident — and because it is what keeps the two output modes agreeing
+/// about which programs fail once a handler body's errors become values.
+#[test]
+fn an_undefined_name_is_refused_before_the_program_starts() {
+    let err = error_from("emit Noisy {} to this\nlet a = q\n");
+    assert!(err.contains("undefined variable 'q'"), "{err}");
 }
 
 /// The accepted imprecision of the top-level-only design: a failure inside
