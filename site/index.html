@@ -699,6 +699,51 @@ assert result.value = 42</pre>
           </div>
         </div>
       </article>
+
+      <article class="pkg reveal">
+        <div class="pkg-head">
+          <span class="pkg-tag native">template · publish your own</span>
+          <h3>Ship a module other people can install</h3>
+          <p class="pkg-desc">
+            A working module, its fixture, and the CI that publishes it —
+            copy it, rename it, replace the handler. Nothing central to
+            register with and no permission to ask for.
+          </p>
+        </div>
+        <div class="pkg-body">
+          <div>
+            <div class="step-label"><span class="num">1</span> start from the template</div>
+<pre class="codeblock"><span class="cm"># templates/module/ in the repo</span>
+cp -r code/templates/module my-module
+<span class="kw">cd</span> my-module &amp;&amp; cargo build --release</pre>
+          </div>
+          <div>
+            <div class="step-label"><span class="num">2</span> prove it in both output modes</div>
+<pre class="codeblock">cp target/release/libgreet.so tests/greet.so
+code run   tests/greet.code
+code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
+          </div>
+          <div>
+            <div class="step-label"><span class="num">3</span> tag it</div>
+<pre class="codeblock">git tag v1.0.0 &amp;&amp; git push --tags</pre>
+            <p class="pkg-desc">
+              CI builds the artifact, checks it loads through both modes,
+              writes the <code>module.json</code> that <code>code install</code>
+              reads, and attaches it all to a GitHub Release. Share the URL.
+            </p>
+          </div>
+          <p class="pkg-desc">
+            <strong>Modules are GPL-3.0.</strong> Every native module embeds
+            the language's <code>runtime.c</code> — that is how the ABI's
+            value-lifetime contract works — so a module is a derivative work.
+            Worth knowing before you write one, not after.
+          </p>
+          <div class="pkg-links">
+            <a href="https://github.com/codelovesme/code/tree/main/templates/module" target="_blank" rel="noopener">the template ↗</a>
+            <a href="https://github.com/codelovesme/code/blob/main/templates/module/README.md" target="_blank" rel="noopener">publishing guide ↗</a>
+          </div>
+        </div>
+      </article>
     </div>
   </section>
 </main>

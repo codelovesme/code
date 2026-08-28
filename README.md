@@ -765,6 +765,26 @@ null — which is a bug in the module that ignored the vocabulary, not a
 question the language answers. `net` is the reference: see
 [`crates/modules/net`](crates/modules/net/README.md).
 
+### Writing one
+
+[`templates/module/`](templates/module) is a working module — a handler, its
+fixture, and the CI workflow that publishes it. Copy it, rename `greet`,
+replace the handler. `tests/module_template.rs` builds it and runs its
+fixture through both output modes on every CI run, so it cannot quietly stop
+working against the ABI it is written for.
+
+**A module is GPL-3.0, and that is not a free choice**: every native module
+embeds this project's `runtime.c` — that is how the ABI's value-lifetime
+contract works — so it is a derivative work. Fine for most people, but worth
+knowing before writing one rather than after.
+
+Publishing needs nothing central: tag the repo, CI attaches the artifact and
+its `module.json` to a GitHub Release, and a consumer runs `code install
+<url>`. See the [template's README](templates/module/README.md) for the whole
+flow and for what to keep when you replace the handler — `guarded`, null for
+a class you do not handle, and failures returned as values are the three
+rules that make a module unable to break someone else's program.
+
 First-party modules today: `terminal` (print to stdout), `math`, `strings`,
 `net` (HTTP `Get`/`Post`, and `Exception`/`Log` pushed back — see
 [its README](crates/modules/net/README.md)).
@@ -863,6 +883,7 @@ crates/
                 lexer/parser and the same `code format` the CLI runs
   modules/      first-party modules: terminal, math, strings
 site/           the playground; build.py embeds tests/*.code as examples
+templates/      module/ — a working starting point for publishing your own
 docs/todo/      open tasks, one file each, written to be picked up cold
 old/            archived earlier language — reference only, nothing links to it
 ```

@@ -1,0 +1,117 @@
+# Builds the module and attaches it to a GitHub Release, with the
+# `module.json` manifest `code install` reads.
+#
+# Tag to publish:  git tag v1.0.0 && git push --tags
+# Dry run:         the "Run workflow" button — builds and uploads artifacts,
+#                  but creates no Release.
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # Rename in all four places: here, Cargo.toml, src/lib.rs, tests/*.code.
+  MODULE: greet
+
+jobs:
+  build-linux-x86_64:
+    name: Build linux-x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Compile
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cargo build --release
+          mv "target/release/lib${MODULE}.so" "dist/${MODULE}-linux-x86_64.so"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: module-linux-x86_64
+          path: dist/*.so
+
+  # The step worth keeping. It proves the artifact you are about to publish
+  # actually loads and routes a particle — through *both* output modes, which
+  # is the invariant the language holds itself to and which a module is not
+  # exempt from. A module that only works under `code run` is broken.
+  dogfood:
+    name: Dogfood (code run + code build)
+    needs: build-linux-x86_64
+    runs-on: ubuntu-latest
+    env:
+      LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build the code compiler
+        run: cargo install --git https://github.com/codelovesme/code --locked code
+      - uses: actions/download-artifact@v4
+        with:
+          name: module-linux-x86_64
+          path: dogfood
+      - name: Run the fixture through both modes
+        run: |
+          set -euo pipefail
+          mv "dogfood/${MODULE}-linux-x86_64.so" "dogfood/${MODULE}.so"
+          cp tests/*.code dogfood/
+          for f in dogfood/*.code; do
+            code run "$f"
+            code build "$f" -o dogfood/demo
+            CODE_CHECK_LEAKS=1 dogfood/demo
+          done
+
+  publish:
+    name: Create GitHub Release
+    needs: [build-linux-x86_64, dogfood]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Flatten into dist/
+        run: find dist -type f \( -name '*.so' -o -name '*.dylib' \) -exec mv {} dist/ \;
+      - name: Write module.json
+        run: |
+          set -euo pipefail
+          v="${GITHUB_REF_NAME#v}"
+          sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
+          # Keep this list in step with src/lib.rs — it is what `code install`
+          # shows and what an index would list.
+          cat > "dist/${MODULE}.json" <<EOF
+          {
+            "name": "${MODULE}",
+            "version": "${v}",
+            "abi_version": 1,
+            "handlers": ["Greet"],
+            "vars": [],
+            "platforms": {
+              "linux-x86_64": {
+                "asset": "${MODULE}-linux-x86_64.so",
+                "sha256": "$(sum ${MODULE}-linux-x86_64.so)"
+              }
+            }
+          }
+          EOF
+          python3 -m json.tool "dist/${MODULE}.json" >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.ref_name }}
+          path: dist/*
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/*
+          generate_release_notes: true

@@ -1,0 +1,30 @@
+-- The module's own fixture, written in the language it extends. Build the
+-- module, put the `.so` beside this file, then:
+--
+--     code run tests/greet.code
+--     code build tests/greet.code -o /tmp/greet && CODE_CHECK_LEAKS=1 /tmp/greet
+--
+-- Both, always. `code run` interprets and `code build` compiles, and the one
+-- invariant the language holds itself to is that every feature behaves
+-- identically in both — a module is not exempt. The leak check is free proof
+-- that nothing your handler allocated outlived the program.
+link "greet.so" as greet
+
+emit Greet { "name": "ada" } to greet get r
+assert r is GreetResult
+assert r.value = "hello, ada"
+
+-- A class this module does not handle is null, not a failure.
+emit Nobody { } to greet get unknown
+assert unknown = null
+
+-- A failure comes back as a value. The program decides whether to care;
+-- nothing here can end it.
+emit Greet { "name": 42 } to greet get bad
+assert bad is Exception
+assert bad.source = "greet"
+
+-- And a field that was never supplied is simply null, so this is the same
+-- particle as `Greet { "name": null }` and gets the same answer.
+emit Greet { } to greet get missing
+assert missing is Exception

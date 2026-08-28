@@ -208,6 +208,20 @@ fs, json parse/stringify.
 
 ## Community path (phase E)
 
+> **Shipped 2026-08-28 as [`templates/module/`](../../templates/module)**, in
+> the repo rather than as a separate `code-module-template` repo. A directory
+> is copied with `cp -r`; a template repo is forked, which ties someone's
+> module history to ours and needs a second repo kept in step with an ABI
+> that lives here. Nothing is lost — GitHub's "use this template" button is
+> the only thing a separate repo would have added.
+>
+> It is a *working* module, not a skeleton: a `Greet` handler, a fixture that
+> runs in both output modes, and the publish workflow.
+> `tests/module_template.rs` builds it and runs that fixture on every CI run,
+> with `code-native` swapped to a path dependency so the check needs no
+> published version — which also makes it sharper, since it catches a
+> template that has drifted from the ABI *as it stands now*.
+
 - A `code-module-template` repo: CI workflow (matrix + releases), fixture
   harness skeleton, README skeleton, and a prominent license notice.
 - License reality, stated upfront: every native module embeds `runtime.c`
@@ -217,7 +231,13 @@ fs, json parse/stringify.
 - Publish flow: fork the template → implement → tag → CI publishes to your
   releases → share the URL. Nothing central to maintain until the index.
 
-## Website (phase E)
+## Website (phase E) — still open
+
+A third card was added to the Packages section on 2026-08-28, pointing at the
+template and stating the GPL-3.0 consequence, so the publish path is
+discoverable from the site. What is still missing is the listing below, which
+wants a second data source: `modules-index.json` covers first-party modules
+only, and there is no community index for it to render.
 
 A **Modules** page beside the Packages section: renders each module's
 `module.json` (handlers, versions, platforms, install command), sourced from
@@ -231,7 +251,7 @@ the same data `code ls` reads. It doubles as the de-facto index.
 | B | `crates/modules/{terminal,math,strings}` + cross-build CI → GitHub Releases, `console` npm package; dogfood by hand | proof the pipeline works |
 | C | ~~`code install/remove/ls` + resolver fallback chain + lockfile/sha256~~ — shipped 2026-08-23 | users getting modules without copying files |
 | D | ~~`net` module~~ — shipped 2026-08-28 | the flagship community-facing module |
-| E | template repo + publish guide + website Modules page | other people publishing |
+| E | ~~template + publish guide~~ — shipped 2026-08-28 as `templates/module/`, in-tree rather than a separate `code-module-template` repo; website Modules page still open | other people publishing |
 | F | (optional) Windows `.dll` support, name-based community index, artifact signing | wider reach / stronger trust |
 
 ## Still open

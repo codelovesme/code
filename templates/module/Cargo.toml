@@ -1,0 +1,21 @@
+# Standalone workspace, deliberately: a module builds on its own, and the
+# empty `[workspace]` table stops `cargo` walking up into whatever repository
+# happens to contain this directory.
+[workspace]
+
+[package]
+name = "greet"
+version = "0.1.0"
+edition = "2021"
+description = "A native module for the Code programming language."
+# See the licence note in README.md — this is not a free choice.
+license = "GPL-3.0"
+repository = "https://github.com/YOUR-NAME/code-module-greet"
+
+# `cdylib` is what `link "greet.so" as g` loads. Nothing else here produces
+# a loadable module.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = "1"
