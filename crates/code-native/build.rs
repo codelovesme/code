@@ -6,6 +6,15 @@
 //! main `code` repo.
 
 fn main() {
+    // A `.a` module brings no runtime: it links into the host binary, which
+    // already has exactly one. Compiling the vendored copy in as well is a
+    // link error, not a waste — `multiple definition of 'code_release'`, and
+    // forty more. See this crate's README.
+    if std::env::var_os("CARGO_FEATURE_STATIC_MODULE").is_some() {
+        println!("cargo:rerun-if-changed=vendor/runtime.c");
+        println!("cargo:rerun-if-changed=vendor/code_abi.h");
+        return;
+    }
     cc::Build::new()
         .file("vendor/runtime.c")
         .include("vendor")

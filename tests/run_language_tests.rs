@@ -144,35 +144,33 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
 
 /// Compiles `test_math_static.c` and `test_math_static_ambiguous.c` into the
 /// `.a` archives the `buildonly_native_link_static_*`/
-/// `fail_native_link_static_*` fixtures `link` — `cc -c` then `ar rcs`,
-/// mirroring `build_native_dynamic_test_modules`' `cc -shared` for the `.so`
+/// `fail_native_link_static_*` fixtures `link` — a `cargo build` of a
+/// `staticlib` crate, which emits the archive directly, mirroring
+/// `build_native_dynamic_test_modules`' `cargo build` for the `.so`
 /// case.
 fn build_native_static_test_modules(tests_dir: &Path) {
+    let modules_dir = tests_dir.join("native_modules");
     for stem in ["test_math_static", "test_math_static_ambiguous"] {
-        let modules_dir = tests_dir.join("native_modules");
-        let src = modules_dir.join(format!("{stem}.c"));
-        let obj = modules_dir.join(format!("{stem}.o"));
+        let crate_dir = modules_dir.join(stem);
+        // `cargo` emits the archive itself — no `cc -c` and `ar rcs` here,
+        // because `crate-type = ["staticlib"]` is exactly that pair. The
+        // crates take `code-native`'s `static-module` feature, which is what
+        // keeps a second copy of `runtime.c` out of the archive.
+        let status = Command::new("cargo")
+            .args(["build", "--release"])
+            .current_dir(&crate_dir)
+            .status()
+            .unwrap_or_else(|e| panic!("failed to run cargo for {stem}: {e}"));
+        assert!(status.success(), "cargo failed to build {stem}");
+        let built = crate_dir.join(format!("target/release/lib{stem}.a"));
         let archive = modules_dir.join(format!("{stem}.a"));
-
-        let status = Command::new("cc")
-            .arg("-c")
-            .arg("-o")
-            .arg(&obj)
-            .arg(&src)
-            .status()
-            .unwrap_or_else(|e| panic!("failed to run cc for {}: {e}", src.display()));
-        assert!(status.success(), "cc failed to build {}", src.display());
-
-        let _ = fs::remove_file(&archive);
-        let status = Command::new("ar")
-            .arg("rcs")
-            .arg(&archive)
-            .arg(&obj)
-            .status()
-            .unwrap_or_else(|e| panic!("failed to run ar for {}: {e}", obj.display()));
-        assert!(status.success(), "ar failed to build {}", archive.display());
-
-        let _ = fs::remove_file(&obj);
+        fs::copy(&built, &archive).unwrap_or_else(|e| {
+            panic!(
+                "cannot copy {} to {}: {e}",
+                built.display(),
+                archive.display()
+            )
+        });
     }
 }
 

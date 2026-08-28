@@ -205,13 +205,49 @@ the oldest, so a module that outruns the program costs bounded memory.
 
 ## `.a` static modules
 
-Only `.so` is covered above (it's `code_abi.h`'s "primary format" — the one
-artifact both `code run` and `code build` accept). A `.a` static module
-uses a *different*, simpler contract — no deep-copy boundary, no per-module
-`code_release`, but with its own symbol-prefixing requirement since every
-`.a` linked into one program shares a flat symbol table. This crate doesn't
-cover that path yet; see `code_abi.h`'s "`.a` static modules" section and
-`tests/native_modules/test_math_static.c` in the main repo.
+Everything above is the `.so` path — `code_abi.h`'s "primary format", the
+one artifact both `code run` and `code build` accept. A `.a` uses a
+different, simpler contract: it links straight into the host binary, so
+there is no deep-copy boundary, no per-module `code_release`, and exactly
+one runtime — the host's. In exchange it needs a symbol prefix, since every
+`.a` linked into one program shares a flat symbol table.
+
+Two changes to your `Cargo.toml`:
+
+```toml
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+code-native = { version = "1", default-features = false, features = ["static-module"] }
+```
+
+`static-module` is what makes this work: without it this crate compiles the
+vendored `runtime.c` into your archive, and linking that against a host that
+already has one is `multiple definition of 'code_release'` — forty-one
+symbols over. With it, the crate brings no runtime and calls the host's.
+
+Then prefix your exports with a name unique among every `.a` the program
+will link alongside:
+
+```rust
+#[no_mangle]
+pub extern "C" fn mymath_code_module_abi_version() -> u32 { CODE_ABI_VERSION }
+
+#[no_mangle]
+pub unsafe extern "C" fn mymath_code_module_dispatch(
+    out: *mut CodeValue,
+    particle: *const CodeValue,
+) { /* ... */ }
+```
+
+Nothing in the language names the prefix — `code build` finds it by running
+`nm` on the archive, so it only has to be unique. `code_module_vars` takes
+the prefix too if you export it. A working example is
+`tests/native_modules/test_math_static/` in the main repo.
+
+`code run` refuses a `.a` outright (there is no `dlopen` for an archive), so
+fixtures that link one are `buildonly_*`.
 
 ## Safety
 

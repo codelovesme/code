@@ -14,5 +14,20 @@ include = ["src/**", "vendor/**", "build.rs", "README.md", "LICENSE"]
 [lib]
 crate-type = ["rlib"]
 
+[features]
+# `.so` module (the default): this crate compiles the vendored `runtime.c`
+# into your `cdylib`, so the module carries its own `code_release` and every
+# other constructor — what `code_abi.h`'s primary contract requires, since a
+# `.so` is a separate image from the host.
+default = ["shared-module"]
+shared-module = []
+# `.a` module instead: bring *no* runtime. A static archive links straight
+# into the host binary, so there is exactly one copy of the runtime and it is
+# the host's — linking a second copy is a hard error
+# (`multiple definition of 'code_release'`, and forty more). Turn this on
+# with `default-features = false`, name your exports with a prefix unique
+# among every `.a` the program links, and see this crate's README.
+static-module = []
+
 [build-dependencies]
 cc = "1"

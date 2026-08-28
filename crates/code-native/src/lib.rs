@@ -1,5 +1,5 @@
-//! Safe(r) Rust bindings for writing a native `.so` module for the [Code
-//! programming language](https://github.com/codelovesme/code).
+//! Safe(r) Rust bindings for writing a native module — `.so` or `.a` — for
+//! the [Code programming language](https://github.com/codelovesme/code).
 //!
 //! `code_abi.h`'s contract needs two things from a module: agreement on the
 //! `CodeValue` wire layout, and a `code_release` (plus friends) built from
@@ -8,7 +8,9 @@
 //! corrupts memory rather than crashing where you'd notice. This crate's
 //! `build.rs` compiles the vendored `runtime.c` and links it into your
 //! `cdylib` directly, so every function below calls the same code the host
-//! runtime and every C module trust.
+//! runtime and every C module trust. (A `.a` module wants the opposite —
+//! the host already has the one runtime there — which is what the
+//! `static-module` feature turns off; see this crate's README.)
 //!
 //! # Quick start
 //!
@@ -177,7 +179,16 @@ extern "C" {
     // the real name from a function rustc actually treats as part of the
     // crate (not an archive) — see that `#[no_mangle]` fn's own doc comment
     // for why the rename is needed at all.
+    #[cfg(feature = "shared-module")]
     fn code_native_vendored_release(v: *mut CodeValue);
+}
+
+// A `.a` module links against the *host's* runtime, which already defines
+// `code_release` under its real name — so there is nothing to rename and
+// nothing to re-export, and `release` below calls it directly.
+#[cfg(not(feature = "shared-module"))]
+extern "C" {
+    fn code_release(v: *mut CodeValue);
 }
 
 /// The ABI's required `code_release` export. Defined here, as a real Rust
@@ -197,6 +208,7 @@ extern "C" {
 /// calls this on values it deep-copied out of your `code_module_dispatch`
 /// result, so you should never need to call it yourself except via
 /// [`release`].
+#[cfg(feature = "shared-module")]
 #[no_mangle]
 pub unsafe extern "C" fn code_release(v: *mut CodeValue) {
     code_native_vendored_release(v)
