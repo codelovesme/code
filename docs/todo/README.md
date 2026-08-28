@@ -13,7 +13,7 @@ time. Order below is roughly by how likely it is to bite someone.
 | [community-modules.md](community-modules.md) | How native modules reach users: core stays minimal (`Length`, `Timestamp`), first-party modules are per-host (`terminal` native / `console` browser, then `math`, `strings`, `net`) on GitHub Releases + npm via `code install`, and the community publish path — direction decided 2026-08-23, phased A–F |
 | [emit-bare-particle-name.md](emit-bare-particle-name.md) | Shipped 2026-08-24: `emit Timestamp to core` drops the empty `{}` — a parser-only desugar in the `Stmt::Emit` arm, covered by `tests/emit_bare_particle.code` and two `fail_` fixtures |
 | [inbound-emissions-from-native-modules.md](inbound-emissions-from-native-modules.md) | Phases A and B shipped 2026-08-25: a module exports `code_module_set_inbound` and pushes particles, both modes drain between top-level statements and dispatch to the *program's* handlers, bounded at 256 dropping oldest. Still open: the keep-alive loop (daemons, and pushing from a module's own thread), plus the old `emit … to base` — an *upward* edge in the module graph |
-| [errors-as-particles.md](errors-as-particles.md) | Decided 2026-08-28, not yet built: a runtime error ends the *frame*, which returns `Exception { message, innerException }`; the program only ends when there is no frame left. Result-returning, not unwinding — `is Exception` is the whole check. No handler anywhere yields null rather than erroring. Reverses the README's "no catchable asserts". Four fixtures invert; the real cost is giving `runtime.c`'s 34 error sites a channel other than `exit(1)` |
+| [errors-as-particles.md](errors-as-particles.md) | **All five phases shipped 2026-08-28.** A runtime error ends the *frame*, which returns `Exception { source, message, innerException }`; the program only ends when there is no frame left. Result-returning, not unwinding — `is Exception` is the whole check, and a returned Exception does not propagate on its own. All three emit targets answer the same way, and no module can end the program. What remains open is listed at the foot of that file: `code_field`/`code_index` in the module ABI, a non-particle `emit` still splitting three ways, and the deliberately-fatal cases (out of memory, module load failure, the wasm number-text gap) |
 | [formatter.md](formatter.md) | No canonical layout for `.code` source: `code format [--check]`, token-stream based so comments and `+=` survive, with token-equality + idempotence proven over the fixture corpus and a CI gate beside `cargo fmt` |
 | [native-module-linking.md](native-module-linking.md) | Phase 1 (`.so` handlers) + Phase 2 (exported vars) shipped 2026-08-21, Phase 3 (`.a` static modules) + the `code-native` Rust crate shipped 2026-08-22; a *native* `link "x.wasm"`, `code build --lib`, and per-language bundles for anything besides Rust/C still open (a *different* `crates/code-wasm` module-linking story shipped 2026-08-22 too — see that doc) |
 | [runtime-error-locations.md](runtime-error-locations.md) | Option 1 shipped 2026-08-27: under `code run`, a runtime error points at the top-level statement it came from (a nested failure reports the enclosing one). Still open: `code build`, whose errors come from `runtime.c` and stay bare — so the two modes now differ in how well they *report* an error, though not in which programs error |
@@ -67,9 +67,11 @@ Done and removed (git log has the detail):
   out to be wrong and are corrected in the git history: duplicate handlers
   were always an error in `old/` (not "stacked, last non-null wins"), and
   `to base` meant the linking *module*, not an enclosing handler — that half
-  moved to the inbound-emissions entry above. `Exception`/catchable asserts
-  stay unported: making a failed assert catchable is a try/catch design
-  decision of its own, not handler mechanics.
+  moved to the inbound-emissions entry above. ~~`Exception`/catchable asserts
+  stay unported.~~ Reversed 2026-08-28 — see the errors-as-particles entry
+  above. The reasoning here was that catchable asserts meant a try/catch
+  design; what shipped needs no `try` and no `catch`, because a failed frame
+  simply *returns* an `Exception` and `is` already tests it.
 - *no language documentation* — the root `README.md` now documents the
   language as it actually stands, states plainly that `old/` is an archive,
   and covers the deliberate omissions so they don't read as gaps. Every

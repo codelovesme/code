@@ -91,9 +91,12 @@ program that asked for it would always handle. `net`'s `Log`/`Exception` are
 the opposite kind of traffic: the module speaks on its own initiative, so a
 diagnostic nobody asked to hear is not a mistake by the program. Keeping it
 fatal would have meant every program linking a module that *might* report
-something had to handle it. `emit ... to this` is untouched — that is the
-program addressing itself, and a class it does not handle there is still a
-bug. Cost accepted at the time of the decision: a module pushing a mistyped
+something had to handle it. `emit ... to this` was untouched at the time — the reasoning
+being that the program addressing itself and finding no handler was still a
+bug. That half was reversed later the same day (phase 1 of
+`errors-as-particles.md`): all three emit targets now answer null for a class
+nothing handles, so the outbound and inbound directions agree rather than
+contrast. Cost accepted at the time of the decision: a module pushing a mistyped
 class is now invisible rather than loud, and no test can catch that for you.
 `tests/fail_inbound_unhandled.code` became
 `tests/inbound_unhandled_dropped.code`, asserting the opposite.

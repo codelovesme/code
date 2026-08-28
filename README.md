@@ -35,6 +35,7 @@ emit Print { "value": "$name won $rounds rounds" } to term
   - [if and blocks](#if-and-blocks) · [loop](#loop)
   - [Particles](#particles) · [emit](#emit) · [is](#is)
 - [Handlers](#handlers)
+- [Errors](#errors)
 - [Modules](#modules)
 - [What the language deliberately does not have](#what-the-language-deliberately-does-not-have)
 - [The two output modes](#the-two-output-modes)
@@ -211,6 +212,10 @@ Numbers; `and`/`or`/`not` require Bools. A type mismatch is an error, in
 both modes. Division by zero is an error too — the value model is JSON, which
 has no way to spell infinity.
 
+"An error" here means what it means everywhere in this language: the frame
+ends and answers with an `Exception`, rather than the program stopping. See
+[Errors](#errors).
+
 `+` is overloaded by operand kind:
 
 ```
@@ -260,7 +265,8 @@ Two different rules, deliberately:
 
 - **Wrong operand kind is an error.** `.` requires an Object; `[]` requires
   an Array or an Object. `"abc"[0]` and `"abc".length` both fail loudly
-  rather than quietly answering null.
+  rather than quietly answering null — loudly meaning the frame ends with an
+  `Exception` (see [Errors](#errors)), not that the program stops.
 - **An absent member is null.** `obj.nope`, `obj["nope"]`, `nums[99]`, a
   non-Number index into an array, a non-Str key into an object — all null.
   The operand kind was right; the lookup just found nothing.
@@ -273,8 +279,12 @@ An array is keyed by **Number**, an object by **Str** — the same split
 
 ### assert
 
-`assert <expr>` continues if the expression is `true` and aborts the program
-otherwise. A non-Bool is an error, not a falsy value.
+`assert <expr>` continues if the expression is `true` and fails otherwise. A
+non-Bool is an error, not a falsy value.
+
+Failing does not necessarily end the program: inside a handler it ends that
+handler, which returns an `Exception` (see [Errors](#errors)). At the top
+level, where there is no handler to end, it does end the program.
 
 ```
 assert 1 < 2
@@ -515,10 +525,93 @@ cannot run away — where allowing recursion meant a program could overflow it,
 which in a compiled binary arrived as a bare segfault with no message.
 
 Cycles are caught **before the program runs**, in both output modes, and
-reported as the whole path (`handler cycle: A -> B -> C -> A`). Because
-dispatch is by the particle's runtime `_class`, a particle held in a variable
-names a handler no static pass can resolve; those are caught at runtime
-instead, with the same message in both modes.
+reported as the whole path (`handler cycle: A -> B -> C -> A`) — a refusal,
+like any other pre-run error. Because dispatch is by the particle's runtime
+`_class`, a particle held in a variable names a handler no static pass can
+resolve; those are caught at runtime instead, and a runtime catch is an
+answer rather than a refusal: the emit that tried to re-enter gets an
+`Exception` back, and the invocation already running is untouched.
+
+## Errors
+
+A runtime error does not end the program. It ends the **frame** — the handler
+it happened in — which returns an `Exception` instead of whatever it meant to
+return.
+
+```code
+Divide { a, b } => {
+    return Quotient { "value": a / b }
+}
+
+emit Divide { "a": 10, "b": 0 } to this get r
+assert r is Exception
+assert r.message = "division by zero"
+```
+
+`is` is the whole check. There is no `try`, no `catch`, and nothing new to
+learn, because an `Exception` is an ordinary particle:
+
+```
+Exception { source, message, innerException }
+```
+
+`source` names who could not do the work — `"core"` for the language's own
+failures, the module's own name for a module's. It is the one field worth
+branching on; `message` is prose for a person to read. `innerException`
+carries the failure underneath this one, or null.
+
+**Receiving one is not itself an error.** There is no automatic propagation: if
+something you emitted to returns an `Exception` and you do not look, you carry
+on from where you were.
+
+```code
+Outer { } => {
+    emit Divide { "a": 1, "b": 0 } to this get r   -- r is an Exception
+    emit Print { "value": "still here" } to term   -- and this still runs
+    return Report { "inner": r }                   -- pass it on, or don't
+}
+```
+
+Only the frame where the failure happened unwinds — which makes this a
+result-returning model rather than exceptions with unwinding, closer to a
+`Result` than to try/catch.
+
+**All three emit targets answer the same way.** A handler you wrote, a linked
+module, and `core` each return an `Exception` when they cannot do the work.
+None of them can end your program; a module in particular is held to that as a
+hard rule (see [Modules](#modules)).
+
+**At the top level there is no frame to return into**, so a failure there ends
+the program with a non-zero status — which is what "returned an `Exception`
+from the outermost call" amounts to.
+
+```code
+assert 1 = 2        -- error: assertion failed, and the program stops
+```
+
+### Emitting is not filling in a form
+
+No handler is refused over the fields a particle does not carry. A field that
+is not there reads as null — exactly as `.field` does everywhere else — and the
+handler runs and answers on that basis.
+
+```code
+emit Length { } to core get a
+emit Length { "value": null } to core get b
+assert a.message = b.message      -- the same particle, so the same answer
+```
+
+There is no separate "you did not supply it" complaint, because there is
+nothing that could have supplied it: `Length { }` **is**
+`Length { "value": null }`, and null has no length.
+
+### What still ends the program before it starts
+
+Errors found before the first statement runs are refusals, not values: a parse
+error, an undefined name, a `link` that cannot be resolved, a duplicate
+handler, a handler cycle a static pass can see. Both output modes refuse the
+same programs, and refusing early is preferred to failing halfway through,
+after a program has already had effects.
 
 ## Modules
 
@@ -573,6 +666,23 @@ very same library the interpreter does. A `.a` static archive is
 `code build` only, since there is no `dlopen` for an archive; those fixtures
 are named `buildonly_*`.
 
+### A module may never end the program
+
+This is the hard rule modules are held to. Whatever goes wrong inside one —
+bad input, a failed request, a bug in the module itself — the answer is an
+`Exception` handed back to the program (see [Errors](#errors)), never an
+exit. A class the module does not handle is null, not a complaint; a field
+the particle does not carry is null, so there is nothing for a module to
+refuse an emit over.
+
+For a Rust module the rule is *enforced*, not merely asked for: `code-native`
+wraps every dispatch in a catch, so even a panic — an `unwrap` on `None`, an
+index past the end — comes back as an `Exception` and the program keeps
+running. For a C module it is policy only, because a forgotten NULL check
+segfaults and an integer `100 / 0` raises SIGFPE, and nothing can catch
+either. Rust is therefore the recommended path for anything published; C
+remains the ABI's reference implementation.
+
 A module can also **speak first**. If it exports `code_module_set_inbound`,
 the host hands it a queue at link time and it may push particles the program
 never asked for — which is what an event loop is made of. Those go to the
@@ -614,8 +724,13 @@ and two of them are common vocabulary:
 
 ```
 Log       { source, level, message }    -- level: Info | Warn | Error | Debug
-Exception { source, message }
+Exception { source, message, innerException }
 ```
+
+`Exception` is the same particle a failed frame returns (see
+[Errors](#errors)) — pushing one and returning one are the same vocabulary,
+reached two different ways. `Log` has no returned counterpart: it exists only
+to be pushed.
 
 `source` is the module's own name, and it is the module's *data* — not
 something the host adds. It exists so one handler can serve every module

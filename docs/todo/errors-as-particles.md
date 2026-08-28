@@ -1,9 +1,14 @@
 # Errors are values: a frame ends, the program does not
 
-Decided 2026-08-28. This reverses a documented decision — the root README
-lists catchable asserts among what the language deliberately lacks, and
-`inbound-emissions-from-native-modules.md` records `Exception` as
-explicitly unported. That text goes when this lands.
+Decided **and shipped** 2026-08-28, all five phases. This reverses a
+documented decision — `docs/todo/README.md` recorded `Exception`/catchable
+asserts as explicitly unported, on the reasoning that they meant a try/catch
+design. They did not: a failed frame simply *returns* an `Exception`, and `is`
+already tests it. That text is struck, and the root README now has an
+[Errors](../../README.md#errors) section documenting the model as it stands.
+
+The phases below are kept as the record of how it was built and what was
+decided along the way. What is still open is at the foot of the file.
 
 ## The model, in one rule
 
