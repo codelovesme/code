@@ -1,4 +1,5 @@
-//! The two backends must word the same failure identically.
+//! The two backends must report the same failure identically — message and
+//! source location both.
 //!
 //! This is not a style rule. Since phase 2 a module's failure comes back as
 //! `Exception { source, message, innerException }`, and since phase 4 the
@@ -47,6 +48,18 @@ const CASES: &[(&str, &str)] = &[
     ("assert_failed", "assert 1 = 2\n"),
     ("loop_operand", "loop x over 5 {\n    assert true\n}\n"),
     ("field_on_non_object", "let a = 1\nlet b = a.name\n"),
+    // Nested failures, where the location is the *enclosing* top-level
+    // statement rather than the line that failed — the accepted imprecision
+    // of the top-level-only design, and worth pinning because both backends
+    // have to be imprecise in the same place.
+    (
+        "nested_in_loop",
+        "let xs = [1, 2]\nloop x over xs {\n    assert x = 1\n}\n",
+    ),
+    (
+        "nested_in_if",
+        "let a = 1\nif a = 1 {\n    assert a = 2\n}\n",
+    ),
     ("index_non_container", "let a = 1\nlet b = a[0]\n"),
     // `Length`'s operand message is not here for the same reason
     // `code_check_particle`'s is not: since core answers with an Exception
@@ -62,16 +75,16 @@ const CASES: &[(&str, &str)] = &[
     // file gives, reached the other way round.
 ];
 
-/// The message alone: the first stderr line, minus the `error: ` prefix the
-/// two front ends both add. `code run` follows it with a location block
-/// (`--> file:line:col`), which the compiled backend has no equivalent for —
-/// that divergence is known, documented in
-/// `docs/todo/runtime-error-locations.md`, and deliberately not what this
-/// test is about.
-fn message_of(stderr: &[u8]) -> String {
-    let text = String::from_utf8_lossy(stderr);
-    let first = text.lines().next().unwrap_or_default();
-    first.trim_start_matches("error: ").to_string()
+/// All of it, location block included.
+///
+/// This compared only the first line until 2026-08-28, because `code run`
+/// followed the message with a `--> file:line:col` block the compiled
+/// backend had no equivalent for. It has one now
+/// (`docs/todo/runtime-error-locations.md`), so the whole report is
+/// compared — which also makes this the test that the locations agree, line
+/// and column and caret alike, not just that they both exist.
+fn report_of(stderr: &[u8]) -> String {
+    String::from_utf8_lossy(stderr).trim_end().to_string()
 }
 
 fn interpreted(name: &str, path: &Path) -> String {
@@ -86,7 +99,7 @@ fn interpreted(name: &str, path: &Path) -> String {
          here must fail at the *top level*: a failure inside a handler is an Exception \
          value now, and the program carries on."
     );
-    message_of(&output.stderr)
+    report_of(&output.stderr)
 }
 
 fn compiled(name: &str, path: &Path, exe: &Path) -> String {
@@ -97,7 +110,14 @@ fn compiled(name: &str, path: &Path, exe: &Path) -> String {
         !output.status.success(),
         "{name}: expected the compiled binary to fail, but it exited 0"
     );
-    message_of(&output.stderr)
+    report_of(&output.stderr)
+}
+
+fn indent(text: &str) -> String {
+    text.lines()
+        .map(|l| format!("      {l}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]
@@ -113,7 +133,11 @@ fn both_backends_word_every_runtime_failure_identically() {
         let run = interpreted(name, &path);
         let build = compiled(name, &path, &dir.join(name));
         if run != build {
-            mismatches.push(format!("  {name}\n    run:   {run}\n    build: {build}"));
+            mismatches.push(format!(
+                "  {name}\n    run:\n{}\n    build:\n{}",
+                indent(&run),
+                indent(&build)
+            ));
         }
     }
 

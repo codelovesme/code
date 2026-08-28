@@ -1,10 +1,11 @@
 # Runtime errors have no source location
 
-> **Option 1 shipped 2026-08-27**, under `code run`. A runtime error now
-> points at the top-level statement it came from; a failure nested in an
-> `if`/`loop` body reports that enclosing statement. `code build` is
-> unchanged and still prints a bare message — the "Note on the compiled
-> backend" below is the only part of this document still open.
+> **Option 1 shipped 2026-08-27** under `code run`, and **2026-08-28 under
+> `code build`** — both modes now point at the top-level statement a runtime
+> error came from, with byte-identical output; a failure nested in an
+> `if`/`loop` body reports that enclosing statement. Nothing in this document
+> is still open; see the closing note at the foot for why the compiled half
+> turned out to be small.
 
 Parse and lex errors point at the offending line and column
 (`src/span.rs`, shipped 2026-08-23):
@@ -112,15 +113,41 @@ The fixture harness needed no changes and got none: it only ever checks
 pass/fail, never message text (`run_language_tests.rs`), so nothing there was
 silently relaxed.
 
-## Note on the compiled backend — still open
+## Note on the compiled backend — closed 2026-08-28
 
-`code build` still needs its own answer. A compiled
-binary's runtime errors are raised by `runtime.c`
-(`code_runtime_error`), which has no idea what line it came from — passing
-one in would mean threading a location through every call site in the
-generated IR. So the two output modes now differ in how well they
-*report* an error, though not in which programs error — the standing
-run/build invariant is about behaviour, not message text, and the fixture
-harness only checks that both modes agree on pass/fail. That divergence is
-stated in the README's "two output modes" section rather than left to be
-discovered.
+`code build` now points at the failing statement too, with byte-identical
+output to `code run`.
+
+What made it cheap was not this document's problem getting easier but the
+error model changing underneath it. The sketch above worried that
+`code_runtime_error` "has no idea what line it came from — passing one in
+would mean threading a location through every call site in the generated
+IR", and that was true while an error could leave the program from any of
+`runtime.c`'s `_Noreturn` helpers. After phases 3 and 4 of
+`errors-as-particles.md`, a failure inside a handler is a *value*, so the
+only place a compiled program still reports anything is
+`code_abort_failure` — one function, reached only from the top level.
+
+So the location did not need threading anywhere. It needed one global:
+
+- `span::location_block(source, file, at)` was split out of `render` — the
+  same text, minus the message, which is the half that *is* known at compile
+  time.
+- `codegen::gen_locate` bakes one block per top-level statement into the
+  binary and stores a pointer to it in `code_location` before that statement
+  runs. Nothing is emitted at all when the program has no `origin`, leaving
+  the message bare exactly as before.
+- `code_abort_failure` joins message and block in the order `render` would
+  have.
+
+Precision is identical to `code run`, including where it is imprecise: a
+failure nested in an `if` or `loop` body reports the enclosing top-level
+statement, and a failure inside a `link`ed module reports the entry file's
+`link` line. Both are pinned in `tests/message_parity.rs` (`nested_in_loop`,
+`nested_in_if`), which compares the two backends' entire stderr rather than
+just the first line as it did before — verified by mutation: making
+`gen_locate` a no-op reports all 19 cases as divergent.
+
+Option 2 (spans on every statement) stays unbuilt, and is now a decision
+about precision alone rather than about one backend being able to do
+something the other cannot.

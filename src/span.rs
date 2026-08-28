@@ -74,7 +74,21 @@ pub fn render(source: &str, file: &str, at: Option<u32>, msg: &str) -> String {
     let Some(at) = at else {
         return msg.to_string();
     };
+    format!("{msg}\n{}", location_block(source, file, at))
+}
 
+/// Everything `render` puts *after* the message — the `--> file:line:col`
+/// arrow, the rule, the source line and the caret.
+///
+/// Split out (2026-08-28) so `code build` can have locations too. The
+/// compiled backend cannot call `render`: the message is only known once the
+/// program is running, while the location is fixed at compile time. So
+/// codegen bakes one of these per top-level statement into the binary and
+/// stores a pointer to the current one before each statement runs;
+/// `runtime.c`'s `code_abort_failure` joins the two back together in exactly
+/// the order `render` would have. `tests/message_parity.rs` compares the
+/// whole of both backends' stderr, which is what keeps that true.
+pub fn location_block(source: &str, file: &str, at: u32) -> String {
     let chars: Vec<char> = source.chars().collect();
     // Clamped rather than trusted: an offset one past the end is normal (the
     // synthetic `Eof` token points there), and it should render as the last
@@ -106,7 +120,7 @@ pub fn render(source: &str, file: &str, at: Option<u32>, msg: &str) -> String {
     let pad = " ".repeat(num.len());
     let caret = " ".repeat(col - 1);
 
-    format!("{msg}\n{pad}--> {file}:{line_no}:{col}\n{pad} |\n{num} | {line}\n{pad} | {caret}^")
+    format!("{pad}--> {file}:{line_no}:{col}\n{pad} |\n{num} | {line}\n{pad} | {caret}^")
 }
 
 #[cfg(test)]

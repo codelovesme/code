@@ -811,11 +811,13 @@ The fixtures are the specification. Each asserts its own expected values, so
 "what does this construct do" is answered by an executable file rather than
 by prose that can drift.
 
-The invariant is about *behaviour*, not message text, and one difference
-lives in that gap: `code run` locates a runtime error in the source (see
-[assert](#assert)), while a compiled binary raises it from `runtime.c` and
-prints the bare message. Both modes agree on which programs fail — see
-[`docs/todo/runtime-error-locations.md`](docs/todo/runtime-error-locations.md).
+The invariant is written as *behaviour*, but since 2026-08-28 the two modes
+agree on their error **text** as well, down to the line, column and caret —
+[`tests/message_parity.rs`](tests/message_parity.rs) runs failing programs
+through both and compares the whole report. That is not politeness: a failed
+frame returns an `Exception` whose `message` the program can read (see
+[Errors](#errors)), so two backends wording a failure differently would be a
+difference in what a program *computes*.
 
 ## Repository layout
 

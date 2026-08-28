@@ -307,6 +307,12 @@ pub fn compile_to_object(
     let global_failed = module.add_global(i32_ty, None, "code_failed");
     global_failed.set_linkage(Linkage::External);
     let failed_flag = global_failed.as_pointer_value();
+    // Where the top-level statement now running came from. Also declared,
+    // not defined; `runtime.c` owns it and `code_abort_failure` is its only
+    // reader.
+    let global_location = module.add_global(i8_ptr_ty, None, "code_location");
+    global_location.set_linkage(Linkage::External);
+    let location_slot = global_location.as_pointer_value();
     let fn_not = module.add_function(
         "code_not",
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
@@ -451,6 +457,7 @@ pub fn compile_to_object(
         fn_take_failure,
         fn_make_exception,
         failed_flag,
+        location_slot,
         handler_fns: HashMap::new(),
         dispatch_fn: None,
         drain_fn: None,
@@ -466,7 +473,8 @@ pub fn compile_to_object(
     gen.declare_handlers(&program.statements)?;
 
     gen.declare_drain();
-    for stmt in &program.statements {
+    for (i, stmt) in program.statements.iter().enumerate() {
+        gen.gen_locate(program, i)?;
         gen.gen_stmt(stmt)?;
         gen.gen_drain_call()?;
     }
@@ -639,6 +647,7 @@ struct Gen<'a, 'm> {
     fn_take_failure: FunctionValue<'a>,
     fn_make_exception: FunctionValue<'a>,
     failed_flag: PointerValue<'a>,
+    location_slot: PointerValue<'a>,
     fn_poll_inbound: FunctionValue<'a>,
     /// The generated `_code_drain_inbound`, called after every top-level
     /// statement. Declared up front (the calls are emitted as statements are
@@ -1243,6 +1252,33 @@ impl<'a, 'm> Gen<'a, 'm> {
     }
 
     /// Whichever function statements are currently being appended to.
+    /// Emitted before each *top-level* statement: point `code_location` at
+    /// the rendered `--> file:line:col` block for the statement about to run,
+    /// so `code_abort_failure` can say where a failure came from.
+    ///
+    /// Top-level only, which is not a shortcut — it is the same precision
+    /// `code run` has. A failure nested in an `if` or `loop` body reports the
+    /// enclosing top-level statement in both modes, and a failure inside a
+    /// `link`ed module reports the entry file's `link` line, because the
+    /// loader folded that module's statements into a `Stmt::Import` body and
+    /// they are no longer top-level anywhere. See
+    /// `docs/todo/runtime-error-locations.md`.
+    ///
+    /// Nothing is emitted at all when the program has no `origin` — a
+    /// hand-built `Program`, or a module rather than an entry file — leaving
+    /// `code_location` null and the message bare, exactly as before.
+    fn gen_locate(&mut self, program: &Program, index: usize) -> Result<(), String> {
+        let (Some(origin), Some(&at)) = (&program.origin, program.starts.get(index)) else {
+            return Ok(());
+        };
+        let block = crate::span::location_block(&origin.source, &origin.file, at);
+        let text = self.global_str(&block, "loc")?;
+        self.builder
+            .build_store(self.location_slot, text)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// Emitted immediately after every runtime call that can fail: load
     /// `code_failed`, and branch to a landing block if a helper set it.
     ///

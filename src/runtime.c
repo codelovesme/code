@@ -88,6 +88,20 @@ _Noreturn void code_runtime_error(const char *message) {
 int code_failed = 0;
 static char failure_message[256];
 
+/* Where the top-level statement now running came from, as the rendered
+ * `--> file:line:col` block `span.rs`'s `location_block` produces — or NULL
+ * when the program has no source to point into (a `Program` built by hand,
+ * or an entry module the loader kept no text for).
+ *
+ * Written by generated code before each top-level statement (see codegen.rs)
+ * and read only by `code_abort_failure`, which is the single place a
+ * compiled program reports anything. That single place is what made this
+ * cheap: before phases 3 and 4 an error could leave from any of `runtime.c`'s
+ * `_Noreturn` helpers, and giving each of them a location would have meant
+ * threading one through every call site in the generated IR. Now a failure
+ * inside a handler is a value, so only the top level ever prints. */
+const char *code_location = NULL;
+
 /* First failure wins: with a check after every fallible call there is never a
  * second one to lose, but if that ever slips the original cause is the one
  * worth keeping. Copied into a fixed buffer rather than retained by pointer —
@@ -106,7 +120,23 @@ static void fail(const char *message) {
  * build (which reports through `code_host_error` instead of stderr) keeps
  * working without this file knowing there are two ways to report. */
 _Noreturn void code_abort_failure(void) {
-    code_runtime_error(code_failed ? failure_message : "unknown runtime error");
+    const char *message = code_failed ? failure_message : "unknown runtime error";
+    if (code_location) {
+        /* Joined in exactly the order `span::render` joins them, so the two
+         * output modes produce byte-identical stderr. Heap rather than a
+         * fixed buffer because the block quotes a source line of any length,
+         * and a truncated location would be a silent divergence; the
+         * allocation is never freed, which is correct for a function that
+         * ends the process on its next statement. Not `heap_alloc`: this is
+         * not a `CodeValue` block and must not move the leak counter. */
+        size_t n = strlen(message) + 1 + strlen(code_location) + 1;
+        char *located = malloc(n);
+        if (located) {
+            snprintf(located, n, "%s\n%s", message, code_location);
+            code_runtime_error(located);
+        }
+    }
+    code_runtime_error(message);
 }
 
 /* What a landing block ends in *inside a handler*: the frame's result becomes
