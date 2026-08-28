@@ -150,7 +150,11 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
 /// case.
 fn build_native_static_test_modules(tests_dir: &Path) {
     let modules_dir = tests_dir.join("native_modules");
-    for stem in ["test_math_static", "test_math_static_ambiguous"] {
+    for stem in [
+        "test_math_static",
+        "test_math_static_ambiguous",
+        "test_events_static",
+    ] {
         let crate_dir = modules_dir.join(stem);
         // `cargo` emits the archive itself — no `cc -c` and `ar rcs` here,
         // because `crate-type = ["staticlib"]` is exactly that pair. The

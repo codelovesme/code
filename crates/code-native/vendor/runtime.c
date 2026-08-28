@@ -786,6 +786,34 @@ void *code_native_open(const char *path) {
 #endif
 }
 
+/* A queue for a `.a` static module, and nothing else.
+ *
+ * A `.so` gets its ring as part of the `NativeHandle` that `code_native_open`
+ * builds around a `dlopen` result. A `.a` has no such thing — it is linked
+ * straight into this binary, so codegen calls its `<prefix>_code_module_*`
+ * functions directly and never needed a handle at all. Which is why static
+ * modules could not speak first: there was nowhere to queue *into*, not a
+ * decision that they shouldn't.
+ *
+ * So this allocates the same struct with only the ring live. The three
+ * function pointers stay NULL and are never read: dispatch goes direct, there
+ * is no per-module `code_release` (one runtime, the host's), and exported
+ * variables come through `code_static_vars_object`. `code_native_close` frees
+ * it and drains whatever is still queued, exactly as for a `.so`. */
+void *code_static_open(void) {
+    NativeHandle *nh = malloc(sizeof(NativeHandle));
+    if (!nh) {
+        code_runtime_error("out of memory");
+    }
+    nh->dispatch = NULL;
+    nh->release = NULL;
+    nh->vars = NULL;
+    memset(nh->inbound, 0, sizeof nh->inbound);
+    nh->inbound_head = 0;
+    nh->inbound_count = 0;
+    return nh;
+}
+
 /* Builds a fresh heap-owned string value by copying `s`'s bytes — unlike
  * `code_str`, whose caller always passes a program literal it doesn't own.
  * Needed here because a module's own string may become dangling the moment

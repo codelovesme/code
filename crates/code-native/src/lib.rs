@@ -581,6 +581,24 @@ pub fn store_inbound(queue: *mut c_void, emit: CodeEmitFn) {
 /// optional, and the host checks for it rather than requiring it.
 #[macro_export]
 macro_rules! declare_inbound {
+    // A `.a` static module spells its own export name, because every `.a`
+    // linked into one program shares a flat symbol table and the host finds
+    // these by prefix (`nm`, see loader.rs's `static_module_symbols`). It is
+    // spelled out rather than pasted together from a prefix because
+    // `macro_rules!` cannot concatenate identifiers — and spelling it matches
+    // how a static module already writes its other three exports.
+    ($name:ident) => {
+        /// Handed the host's queue and pusher once, at link time.
+        ///
+        /// # Safety
+        ///
+        /// Called by the host with its own queue pointer and pusher; both
+        /// stay valid for as long as the module is loaded.
+        #[no_mangle]
+        pub unsafe extern "C" fn $name(queue: *mut ::std::ffi::c_void, emit: $crate::CodeEmitFn) {
+            $crate::store_inbound(queue, emit);
+        }
+    };
     () => {
         /// Handed the host's queue and pusher once, at link time.
         ///

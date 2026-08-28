@@ -315,7 +315,14 @@ pub enum NativeFormat {
     /// author's chosen unique name for `<prefix>_code_module_dispatch` /
     /// `_code_module_abi_version` / (optionally) `_code_module_vars`. See
     /// `code_abi.h`'s "`.a` static modules" section.
-    Static { prefix: String, has_vars: bool },
+    Static {
+        prefix: String,
+        has_vars: bool,
+        /// Whether the archive exports `<prefix>_code_module_set_inbound` —
+        /// optional, exactly like `has_vars`, and the thing that lets a `.a`
+        /// speak first rather than only answer.
+        has_inbound: bool,
+    },
     /// A `crates/code-wasm`-only format: the alias dispatches to a plain
     /// synchronous JS callback (JSON string in, JSON string out) that the
     /// embedding JS host must have already registered — via

@@ -272,11 +272,15 @@ impl ModuleResolver for FilesystemResolver {
                 #[cfg(feature = "install")]
                 Self::verify_locked_module(base, &canonical)?;
                 let path = canonical.display().to_string();
-                let (prefix, has_vars) = static_module_symbols(&path)?;
+                let (prefix, has_vars, has_inbound) = static_module_symbols(&path)?;
                 return Ok(ResolvedModule::Native {
                     identity: path.clone(),
                     path,
-                    format: NativeFormat::Static { prefix, has_vars },
+                    format: NativeFormat::Static {
+                        prefix,
+                        has_vars,
+                        has_inbound,
+                    },
                 });
             }
             if ext == "wasm" {
@@ -330,7 +334,8 @@ pub fn find_project_code_dir(dir: &Path) -> Option<PathBuf> {
 /// entry points must be uniquely named to survive being linked into one
 /// flat symbol table alongside every other `.a` in the same program (see
 /// `code_abi.h`'s "`.a` static modules" section). Returns the prefix and
-/// whether `<prefix>_code_module_vars` is also present (optional, exactly
+/// whether `<prefix>_code_module_vars` and `<prefix>_code_module_set_inbound`
+/// are also present (both optional, exactly
 /// like `.so`'s `code_module_vars`).
 ///
 /// Read-only introspection, run at `link` time in both output modes (a
@@ -338,7 +343,7 @@ pub fn find_project_code_dir(dir: &Path) -> Option<PathBuf> {
 /// `interpreter.rs` refusing a `Static` `ImportNative`, not from a missing
 /// prefix) — consistent with the project's existing reliance on a system
 /// toolchain (`cc`); `nm` ships with the same binutils.
-fn static_module_symbols(path: &str) -> Result<(String, bool), String> {
+fn static_module_symbols(path: &str) -> Result<(String, bool, bool), String> {
     let output = Command::new("nm")
         .arg("--defined-only")
         .arg("-g")
@@ -389,8 +394,9 @@ fn static_module_symbols(path: &str) -> Result<(String, bool), String> {
         ));
     }
     let has_vars = names.contains(&format!("{prefix}_code_module_vars").as_str());
+    let has_inbound = names.contains(&format!("{prefix}_code_module_set_inbound").as_str());
 
-    Ok((prefix, has_vars))
+    Ok((prefix, has_vars, has_inbound))
 }
 
 /// A resolver for hosts with no module story at all — the wasm playground.

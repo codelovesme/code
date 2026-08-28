@@ -1,0 +1,18 @@
+# Standalone workspace, like every other module here.
+[workspace]
+
+[package]
+name = "test_events_static"
+version = "0.1.0"
+edition = "2021"
+description = "The fixture harness's inbound `.a` double: a static module that speaks first, proving a module linked straight into the host can queue particles too."
+license = "GPL-3.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# `static-module`: bring no runtime of our own. A `.a` links straight into the
+# host binary, which already has exactly one copy — a second is
+# `multiple definition of 'code_release'`, forty-one times over.
+code-native = { path = "../../../crates/code-native", default-features = false, features = ["static-module"] }

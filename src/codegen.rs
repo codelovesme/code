@@ -71,6 +71,9 @@ struct StaticModuleFns<'a> {
     abi_version: FunctionValue<'a>,
     dispatch: FunctionValue<'a>,
     vars: Option<FunctionValue<'a>>,
+    /// `<prefix>_code_module_set_inbound`, when the archive exports it — what
+    /// lets a `.a` speak first rather than only answer.
+    set_inbound: Option<FunctionValue<'a>>,
 }
 
 fn reject_wasm_native_links(stmts: &[Stmt]) -> Result<(), String> {
@@ -227,6 +230,18 @@ pub fn compile_to_object(
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
+    // A `.a` has no `dlopen` handle, so this allocates the one thing it still
+    // needs one for: somewhere to queue what it pushes. Closed by
+    // `code_native_close` like any other.
+    let fn_static_open =
+        module.add_function("code_static_open", i8_ptr_ty.fn_type(&[], false), None);
+    // Passed *to* a module by address, never called from here — it is the
+    // pusher a module holds onto and calls from its own side.
+    let fn_emit_inbound = module.add_function(
+        "code_emit_inbound",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_static_module_check = module.add_function(
         "code_static_module_check",
         void_ty.fn_type(&[i32_ty.into(), i8_ptr_ty.into()], false),
@@ -362,7 +377,12 @@ pub fn compile_to_object(
     for stmt in &program.statements {
         if let Stmt::ImportNative {
             alias,
-            format: NativeFormat::Static { prefix, has_vars },
+            format:
+                NativeFormat::Static {
+                    prefix,
+                    has_vars,
+                    has_inbound,
+                },
             ..
         } = stmt
         {
@@ -383,12 +403,22 @@ pub fn compile_to_object(
                     None,
                 )
             });
+            // `(void *queue, CodeEmitFn emit)` — the same signature a `.so`
+            // exports unprefixed, handed the host's queue once at link time.
+            let set_inbound = has_inbound.then(|| {
+                module.add_function(
+                    &format!("{prefix}_code_module_set_inbound"),
+                    void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+                    None,
+                )
+            });
             static_native_fns.insert(
                 alias.clone(),
                 StaticModuleFns {
                     abi_version,
                     dispatch,
                     vars,
+                    set_inbound,
                 },
             );
         }
@@ -449,6 +479,8 @@ pub fn compile_to_object(
         fn_native_dispatch,
         fn_native_vars_object,
         fn_native_close,
+        fn_static_open,
+        fn_emit_inbound,
         fn_static_module_check,
         fn_static_vars_object,
         env: vec![HashMap::new()],
@@ -602,6 +634,8 @@ struct Gen<'a, 'm> {
     fn_native_dispatch: FunctionValue<'a>,
     fn_native_vars_object: FunctionValue<'a>,
     fn_native_close: FunctionValue<'a>,
+    fn_static_open: FunctionValue<'a>,
+    fn_emit_inbound: FunctionValue<'a>,
     fn_static_module_check: FunctionValue<'a>,
     fn_static_vars_object: FunctionValue<'a>,
     /// Scope stack, innermost last — mirrors `interpreter::Environment`
@@ -698,7 +732,14 @@ enum NativeLink<'a> {
     /// The *global* holding `code_native_open`'s handle, not the handle
     /// itself — see where it is stored for why.
     Dynamic(PointerValue<'a>),
-    Static(FunctionValue<'a>),
+    /// The direct dispatch call, plus the global holding this module's
+    /// inbound queue when it exports one. A `.a` is linked straight in and
+    /// needs no handle to *call*; the queue is the one thing it does need a
+    /// handle for, and `code_static_open` allocates one for exactly that.
+    Static {
+        dispatch: FunctionValue<'a>,
+        inbound: Option<PointerValue<'a>>,
+    },
 }
 
 /// Where a `break`/`continue` inside one enclosing loop branches to. Both
@@ -1036,9 +1077,11 @@ impl<'a, 'm> Gen<'a, 'm> {
             .values()
             .filter_map(|link| match link {
                 NativeLink::Dynamic(slot) => Some(*slot),
-                // A `.a` module is linked straight in and has no handle to
-                // queue against — inbound is a `.so` story for now.
-                NativeLink::Static(_) => None,
+                // A `.a` is here too since 2026-08-28, when it stopped being
+                // a `.so`-only story: it has no handle to *call* through, but
+                // `code_static_open` gave it one to queue into, and from this
+                // function's point of view the two are the same pointer.
+                NativeLink::Static { inbound, .. } => *inbound,
             })
             .collect();
 
@@ -1949,8 +1992,49 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .map_err(|e| e.to_string())?;
                 self.bind(alias, permanent);
 
-                self.native_links
-                    .insert(alias.to_string(), NativeLink::Static(fns.dispatch));
+                // A queue of its own, but only if the archive said it would
+                // push. A module that never speaks first pays for nothing.
+                let inbound = match fns.set_inbound {
+                    None => None,
+                    Some(set_inbound) => {
+                        let handle = self
+                            .builder
+                            .build_call(self.fn_static_open, &[], "static_queue")
+                            .map_err(|e| e.to_string())?
+                            .try_as_basic_value()
+                            .left()
+                            .expect("code_static_open returns i8*, not void")
+                            .into_pointer_value();
+                        // Parked in a global for the same reason a `.so`'s
+                        // handle is: `_code_drain_inbound` is a separate
+                        // function and `main`'s SSA values do not reach it.
+                        let slot = self.module.add_global(
+                            self.i8_ptr_ty,
+                            None,
+                            &format!("_code_static_queue_{alias}"),
+                        );
+                        slot.set_initializer(&self.i8_ptr_ty.const_null());
+                        let slot = slot.as_pointer_value();
+                        self.builder
+                            .build_store(slot, handle)
+                            .map_err(|e| e.to_string())?;
+                        // The pusher handed across is *this* runtime's, which
+                        // for a `.a` is also the module's — there is only one.
+                        let emit = self.fn_emit_inbound.as_global_value().as_pointer_value();
+                        self.builder
+                            .build_call(set_inbound, &[handle.into(), emit.into()], "")
+                            .map_err(|e| e.to_string())?;
+                        Some(slot)
+                    }
+                };
+
+                self.native_links.insert(
+                    alias.to_string(),
+                    NativeLink::Static {
+                        dispatch: fns.dispatch,
+                        inbound,
+                    },
+                );
             }
             // Only ever produced by `crates/code-wasm`'s own resolver, which
             // `code build` never runs — see `ast::NativeFormat::JsBridge`.
@@ -2036,7 +2120,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                             )
                             .map_err(|e| e.to_string())?;
                     }
-                    NativeLink::Static(dispatch) => {
+                    NativeLink::Static { dispatch, .. } => {
                         // Linked straight into this binary — a direct call,
                         // no handle, exactly like `EmitTarget::Core` above.
                         let dispatch = *dispatch;
@@ -2612,14 +2696,21 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .map_err(|e| e.to_string())?;
             }
         }
-        // Every linked `.so`'s handle (see `code_native_open`) — the same
-        // "owns nothing at exit" rule as the `CodeValue` slots above, just a
-        // plain `free` instead of a refcount release. A `.a`'s `NativeLink`
-        // owns no allocation of its own (it's just an extern function
-        // reference into this very binary), so there's nothing to close.
+        // Every linked module's handle — the same "owns nothing at exit" rule
+        // as the `CodeValue` slots above, just a plain `free` instead of a
+        // refcount release, plus a release of anything still queued.
+        //
+        // A `.so`'s handle comes from `code_native_open`. A `.a` has one only
+        // when it pushes (`code_static_open`); one that never speaks first
+        // allocated nothing, since it is an extern function reference into
+        // this very binary and needs no handle to be called through.
         let links = std::mem::take(&mut self.native_links);
         for (_, link) in links {
-            if let NativeLink::Dynamic(slot) = link {
+            let slot = match link {
+                NativeLink::Dynamic(slot) => Some(slot),
+                NativeLink::Static { inbound, .. } => inbound,
+            };
+            if let Some(slot) = slot {
                 let handle = self
                     .builder
                     .build_load(self.i8_ptr_ty, slot, "native_handle")
