@@ -170,8 +170,6 @@ extern "C" {
     fn code_index(out: *mut CodeValue, arr: *const CodeValue, index: *const CodeValue);
     fn code_retain(v: *const CodeValue);
     fn code_values_equal(a: *const CodeValue, b: *const CodeValue) -> c_int;
-    fn code_bool_value(v: *const CodeValue, op: *const c_char) -> c_int;
-    fn code_assert(v: *const CodeValue);
     fn code_runtime_error(message: *const c_char) -> !;
 
     // `build.rs` compiles `runtime.c` with `code_release` renamed to this at
@@ -292,16 +290,24 @@ pub fn retain(v: &CodeValue) {
     unsafe { code_retain(v) }
 }
 
-/// `obj.field` field access, exactly like `.code` source's own semantics:
-/// writes Null into `out` on a non-Object or missing field rather than
-/// erroring — see `code_field`'s doc comment in `code_abi.h`.
+/// `obj.field` field access, exactly like `.code` source's own semantics: a
+/// *missing* field writes Null into `out`.
+///
+/// A non-Object `obj` is a different matter — it is a failure, and since
+/// phase 3 (2026-08-28) failures travel by a flag that only the host's
+/// generated code reads. A `.so` module has its own copy of the runtime, so
+/// a failure raised here would set that copy's flag and go nowhere. Check
+/// the tag first, or use [`find_field`], which is plain Rust and cannot
+/// fail. Same for [`index`].
 pub fn field(out: &mut CodeValue, obj: &CodeValue, name: &str) {
     let c = cstr(name);
     unsafe { code_field(out, obj, c.as_ptr()) }
 }
 
 /// `arr[index]` element access, exactly like `.code` source's own
-/// semantics: writes Null on a non-Array or out-of-bounds index.
+/// semantics: an out-of-bounds index or non-String key writes Null. A
+/// non-Array, non-Object `arr` fails — see [`field`] for why a module should
+/// not let that happen.
 pub fn index(out: &mut CodeValue, arr: &CodeValue, i: &CodeValue) {
     unsafe { code_index(out, arr, i) }
 }
@@ -311,18 +317,14 @@ pub fn values_equal(a: &CodeValue, b: &CodeValue) -> bool {
     unsafe { code_values_equal(a, b) != 0 }
 }
 
-/// Coerce `v` to a `bool` the way a boolean operator does, raising the same
-/// fatal error a type mismatch would in `.code` source itself (`op` is the
-/// operator name, used only for that error message — e.g. `"&&"`).
-pub fn bool_value(v: &CodeValue, op: &str) -> bool {
-    let c = cstr(op);
-    unsafe { code_bool_value(v, c.as_ptr()) != 0 }
-}
-
-/// `assert v` semantics: fatal error (never returns) if `v` isn't `true`.
-pub fn assert_value(v: &CodeValue) {
-    unsafe { code_assert(v) }
-}
+// `bool_value` and `assert_value` used to live here, wrapping
+// `code_bool_value` and `code_assert`. Both are gone as of phase 3
+// (2026-08-28) along with their declarations in `code_abi.h`: they are the
+// compiler's own — one checks an `and`/`or` operand, the other is the
+// `assert` statement — and since phase 3 they report trouble through a flag
+// that only the host's generated code reads, so a module calling one would
+// have had its failure silently swallowed. A module that cannot do its work
+// returns [`exception`] instead; it may never end the application.
 
 /// Raise a fatal module error, taking the whole host process down.
 ///

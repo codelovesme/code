@@ -4,7 +4,7 @@ use std::path::Path;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::module::Module;
+use inkwell::module::{Linkage, Module};
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
@@ -459,6 +459,19 @@ pub fn compile_to_object(
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
+    // The failure channel (see `runtime.c`'s "The failure channel"). A helper
+    // that cannot do its work now returns normally with `code_failed` set,
+    // instead of ending the process from inside itself — so the generated
+    // code has to look. `check_failed` is the one place that does, and
+    // routing every fallible call through it is what makes "look after each
+    // one" structural rather than a rule to remember.
+    let fn_abort_failure =
+        module.add_function("code_abort_failure", void_ty.fn_type(&[], false), None);
+    // Declared, not defined: no initializer, so this is an `extern int`
+    // resolved at link time against the one `runtime.c` owns.
+    let global_failed = module.add_global(i32_ty, None, "code_failed");
+    global_failed.set_linkage(Linkage::External);
+    let failed_flag = global_failed.as_pointer_value();
     let fn_not = module.add_function(
         "code_not",
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
@@ -600,6 +613,8 @@ pub fn compile_to_object(
         fn_check_particle,
         fn_poll_inbound,
         fn_runtime_error,
+        fn_abort_failure,
+        failed_flag,
         handler_fns: HashMap::new(),
         dispatch_fn: None,
         drain_fn: None,
@@ -782,6 +797,10 @@ struct Gen<'a, 'm> {
     /// `remove`) the one time each is `link`ed.
     static_native_fns: HashMap<String, StaticModuleFns<'a>>,
     fn_check_particle: FunctionValue<'a>,
+    /// Where a failed runtime helper lands, and the flag that says one did.
+    /// See `check_failed`.
+    fn_abort_failure: FunctionValue<'a>,
+    failed_flag: PointerValue<'a>,
     fn_poll_inbound: FunctionValue<'a>,
     fn_runtime_error: FunctionValue<'a>,
     /// The generated `_code_drain_inbound`, called after every top-level
@@ -1030,6 +1049,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         "",
                     )
                     .map_err(|e| e.to_string())?;
+                self.check_failed()?;
                 self.bind(name, slot);
             }
 
@@ -1087,6 +1107,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.builder
             .build_call(self.fn_check_particle, &[value_ptr.into()], "")
             .map_err(|e| e.to_string())?;
+        self.check_failed()?;
         let frame = self
             .handler_frame
             .as_ref()
@@ -1364,6 +1385,61 @@ impl<'a, 'm> Gen<'a, 'm> {
     }
 
     /// Whichever function statements are currently being appended to.
+    /// Emitted immediately after every runtime call that can fail: load
+    /// `code_failed`, and branch to a landing block if a helper set it.
+    ///
+    /// This is the whole of phase 3 on the generated side. Today the landing
+    /// block calls `code_abort_failure`, which prints and exits exactly as
+    /// `code_runtime_error` always did — so a program that used to die inside
+    /// `code_div` now dies one block later with byte-identical output, and
+    /// every fixture still agrees with `code run`.
+    ///
+    /// What it buys is that the death is now *in the generated function*,
+    /// where a `HandlerFrame` is in scope. Phase 4 replaces the two lines in
+    /// `unwind` with what `gen_return` already does — write into `frame.out`,
+    /// branch to `frame.exit` — and `assert` starts returning an Exception
+    /// without a single runtime helper changing again.
+    ///
+    /// Splitting the current block is always safe here: nothing in this
+    /// backend carries values across blocks in phi nodes (`gen_and_or`, the
+    /// one place with real control flow, routes its result through an alloca
+    /// precisely so it doesn't have to).
+    fn check_failed(&self) -> Result<(), String> {
+        let flag = self
+            .builder
+            .build_load(self.i32_ty, self.failed_flag, "failed")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let bad = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                flag,
+                self.i32_ty.const_zero(),
+                "hasfailed",
+            )
+            .map_err(|e| e.to_string())?;
+        let function = self.current_function();
+        let unwind = self.context.append_basic_block(function, "unwind");
+        let ok = self.context.append_basic_block(function, "ok");
+        self.builder
+            .build_conditional_branch(bad, unwind, ok)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(unwind);
+        self.builder
+            .build_call(self.fn_abort_failure, &[], "")
+            .map_err(|e| e.to_string())?;
+        // `code_abort_failure` is `_Noreturn`, but nothing in the IR says so;
+        // the terminator is what tells LLVM control stops here.
+        self.builder
+            .build_unreachable()
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(ok);
+        Ok(())
+    }
+
     fn current_function(&self) -> FunctionValue<'a> {
         self.builder
             .get_insert_block()
@@ -1508,6 +1584,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 self.builder
                     .build_call(self.fn_assert, &[ptr.into()], "")
                     .map_err(|e| e.to_string())?;
+                self.check_failed()?;
                 Ok(())
             }
             Stmt::If { condition, body } => self.gen_if(condition, body),
@@ -1739,6 +1816,10 @@ impl<'a, 'm> Gen<'a, 'm> {
             .left()
             .expect("code_iter_len returns i64, not void")
             .into_int_value();
+        // Checked *before* the length is used: a failed `code_iter_len`
+        // answers 0, which would otherwise iterate zero times and swallow the
+        // error rather than report it.
+        self.check_failed()?;
 
         let counter = self
             .entry_builder()
@@ -2002,6 +2083,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         "",
                     )
                     .map_err(|e| e.to_string())?;
+                self.check_failed()?;
             }
             EmitTarget::Module(alias) => {
                 // `verify_defined` already rejected an `alias` that was
@@ -2191,6 +2273,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                     self.builder
                         .build_call(self.fn_add, &[acc.into(), acc.into(), text.into()], "")
                         .map_err(|e| e.to_string())?;
+                    self.check_failed()?;
                 }
                 Ok(acc)
             }
@@ -2291,6 +2374,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         "",
                     )
                     .map_err(|e| e.to_string())?;
+                self.check_failed()?;
                 Ok(out)
             }
             Expr::Index(arr, index) => {
@@ -2304,6 +2388,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         "",
                     )
                     .map_err(|e| e.to_string())?;
+                self.check_failed()?;
                 Ok(out)
             }
             Expr::Unary(op, e) => {
@@ -2316,6 +2401,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 self.builder
                     .build_call(fn_val, &[out.into(), ptr.into()], "")
                     .map_err(|e| e.to_string())?;
+                self.check_failed()?;
                 Ok(out)
             }
             // `expr is ClassName` — a runtime call, like every other
@@ -2366,6 +2452,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 self.builder
                     .build_call(fn_val, &[out.into(), lhs_ptr.into(), rhs_ptr.into()], "")
                     .map_err(|e| e.to_string())?;
+                self.check_failed()?;
                 Ok(out)
             }
         }
@@ -2451,14 +2538,18 @@ impl<'a, 'm> Gen<'a, 'm> {
         op_name: &str,
     ) -> Result<IntValue<'a>, String> {
         let op_name_ptr = self.global_str(op_name, "opname")?;
-        Ok(self
+        let value = self
             .builder
             .build_call(self.fn_bool_value, &[ptr.into(), op_name_ptr.into()], "")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .left()
             .expect("code_bool_value returns i32, not void")
-            .into_int_value())
+            .into_int_value();
+        // Before branching on it: a failed `code_bool_value` answers 0, which
+        // is a perfectly good `false` and would quietly pick a branch.
+        self.check_failed()?;
+        Ok(value)
     }
 
     /// `negate`: `false` for `==`, `true` for `!=` — both go through
@@ -2529,6 +2620,9 @@ impl<'a, 'm> Gen<'a, 'm> {
             .left()
             .expect("code_compare returns i64, not void")
             .into_int_value();
+        // Before the icmp: a failed `code_compare` answers 0, which reads as
+        // "equal" and would make `1 < "a"` quietly false.
+        self.check_failed()?;
         let zero = self.i64_ty.const_int(0, true);
         let predicate = match op {
             BinOp::Lt => IntPredicate::SLT,

@@ -168,12 +168,20 @@ void code_null(CodeValue *out);
 void code_array(CodeValue *out, void *items, long long len);
 void code_object(CodeValue *out, const char **keys, void *values, long long len);
 void code_copy(CodeValue *out, const CodeValue *src);
+/* CAUTION for module authors: these two are the only entries below that can
+ * *fail* (a non-object `obj`, a non-container `arr` — a missing field or an
+ * out-of-range index is still just null, not a failure). Failure goes down
+ * runtime.c's failure channel, which the compiled program checks — and a
+ * `.so` carries its own copy of that runtime, so a failure raised inside one
+ * sets the *module's* flag and the host never looks at it. Feed them only
+ * values you have already checked the tag of, or read fields by walking
+ * `keys`/`items` yourself (they are right there in `CodeValue`). Phase 5 of
+ * docs/todo/errors-as-particles.md owes this a real answer. */
 void code_field(CodeValue *out, const CodeValue *obj, const char *field);
 void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index);
 void code_retain(const CodeValue *v);
 void code_release(CodeValue *v);
 int code_values_equal(const CodeValue *a, const CodeValue *b);
-int code_bool_value(const CodeValue *v, const char *op);
 int code_is_particle(const CodeValue *a, const char *name);
 /* Builds `Exception { source, message, innerException }` — how a module
  * reports that it could not do the work. `inner` may be NULL. A module may
@@ -182,8 +190,17 @@ int code_is_particle(const CodeValue *a, const char *name);
  * `source` and `message` are both copied. */
 void code_make_exception(CodeValue *out, const char *source, const char *message,
                          const CodeValue *inner);
-void code_assert(const CodeValue *v);
 _Noreturn void code_runtime_error(const char *message);
+
+/* `code_bool_value` and `code_assert` used to be declared here. They are
+ * gone as of phase 3 (2026-08-28), not renamed: both still exist in
+ * runtime.c, but they are the compiler's own — one checks an `and`/`or`
+ * operand, the other is the `assert` statement — and neither was ever called
+ * by a module in this tree. Since phase 3 they report trouble by setting a
+ * flag that only generated code reads, so a module calling one would have
+ * had its failure silently swallowed. Nothing replaces them: a module that
+ * cannot do its work returns `code_make_exception`, and a module may never
+ * end the application at all. */
 
 /* Addresses slot `index` of a `CODE_VALUE_SLOT_SIZE`-strided buffer — the
  * same convention `items`/`values` buffers use throughout this header.

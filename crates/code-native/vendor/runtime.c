@@ -59,6 +59,54 @@ _Noreturn void code_runtime_error(const char *message) {
 #endif
 }
 
+/* ---- The failure channel -------------------------------------------------
+ *
+ * `code_runtime_error` is `_Noreturn`: a helper that reaches it cannot tell
+ * its caller anything, because there is no caller left. That is the whole
+ * reason a `.code` program can never respond to its own runtime errors —
+ * `10 / 0` ends the process from inside `code_div`, so no `if r is Exception`
+ * downstream ever runs.
+ *
+ * This is the way back. A helper that cannot do its work calls `fail` and
+ * returns normally; `code_failed` is left set, and the generated code checks
+ * it after every call that can set it (codegen.rs's `check_failed`, which is
+ * the only way those helpers are ever called — see `call_fallible`). The
+ * failing operation therefore reaches a landing block the caller chose,
+ * instead of taking the process with it.
+ *
+ * Phase 3 of docs/todo/errors-as-particles.md builds *only* the channel:
+ * every landing block still ends in `code_abort_failure`, so behaviour is
+ * byte-for-byte what it was. Phases 4 and 5 change what those blocks do —
+ * write an Exception into the frame's `out` and branch to its exit — without
+ * touching anything here.
+ *
+ * Deliberately NOT in code_abi.h. A `.so` module carries its own copy of this
+ * runtime, so a flag set inside one would be set on the *module's* copy and
+ * the host would never look at it — a silently swallowed failure. Modules
+ * report trouble by returning `code_make_exception`, which needs no channel
+ * because a return value already is one. */
+int code_failed = 0;
+static char failure_message[256];
+
+/* First failure wins: with a check after every fallible call there is never a
+ * second one to lose, but if that ever slips the original cause is the one
+ * worth keeping. Copied into a fixed buffer rather than retained by pointer —
+ * most callers build their message in a stack buffer. */
+static void fail(const char *message) {
+    if (!code_failed) {
+        snprintf(failure_message, sizeof failure_message, "%s", message);
+        code_failed = 1;
+    }
+}
+
+/* What every landing block ends in for now. Routed through
+ * `code_runtime_error` rather than duplicating its body so the wasm build
+ * (which reports through `code_host_error` instead of stderr) keeps working
+ * without this file knowing there are two ways to report. */
+_Noreturn void code_abort_failure(void) {
+    code_runtime_error(code_failed ? failure_message : "unknown runtime error");
+}
+
 /* ---- Reference counting -------------------------------------------------
  *
  * Compound values (non-empty arrays/objects, concatenated strings) live in
@@ -324,7 +372,8 @@ void code_field(CodeValue *out, const CodeValue *obj, const char *field) {
         snprintf(msg, sizeof msg,
                  "cannot read field '%s' of %s %s — '.' requires an object", field,
                  article_for(obj), type_name(obj));
-        code_runtime_error(msg);
+        fail(msg);
+        return;
     }
     for (long long i = 0; i < obj->len; i++) {
         if (strcmp(obj->keys[i], field) == 0) {
@@ -377,7 +426,7 @@ void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
     char msg[96];
     snprintf(msg, sizeof msg, "cannot index %s %s — '[]' requires an array or object",
              article_for(arr), type_name(arr));
-    code_runtime_error(msg);
+    fail(msg);
 }
 
 /* `emit <particle> to core [get <name>]`. `class_name` is read from the
@@ -464,11 +513,13 @@ void code_make_exception(CodeValue *out, const char *source, const char *message
 
 void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
     if (particle->tag != CODE_OBJECT) {
-        code_runtime_error("emit requires a particle (an object with a \"_class\" field)");
+        fail("emit requires a particle (an object with a \"_class\" field)");
+        return;
     }
     const CodeValue *class_val = find_field(particle, "_class");
     if (!class_val || class_val->tag != CODE_STR) {
-        code_runtime_error("emit requires a particle (an object with a \"_class\" field)");
+        fail("emit requires a particle (an object with a \"_class\" field)");
+        return;
     }
 
     if (strcmp(class_val->str, "Timestamp") == 0) {
@@ -490,7 +541,8 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
     if (strcmp(class_val->str, "Length") == 0) {
         const CodeValue *value = find_field(particle, "value");
         if (!value) {
-            code_runtime_error("Length { \"value\": ... } requires a 'value' field");
+            fail("Length { \"value\": ... } requires a 'value' field");
+            return;
         }
         /* Zero-initialized for the same reason `code_make_result`'s `slots`
          * is: `code_number` releases `out` before setting it. */
@@ -515,7 +567,8 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
             code_make_result(out, "LengthResult", &count);
             return;
         }
-        code_runtime_error("Length requires an array or string 'value'");
+        fail("Length requires an array or string 'value'");
+        return;
     }
 
     /* Not a core class. Null rather than an error: sending a particle is not
@@ -893,7 +946,8 @@ void code_static_vars_object(const CodeVarList *list, CodeValue *out) {
  * which is what lets `code_iter_at` serve both container kinds unchanged. */
 long long code_iter_len(const CodeValue *v) {
     if (v->tag != CODE_ARRAY && v->tag != CODE_OBJECT) {
-        code_runtime_error("loop requires an array or object");
+        fail("loop requires an array or object");
+        return 0;
     }
     return v->len;
 }
@@ -938,7 +992,7 @@ void code_check_particle(const CodeValue *v) {
     snprintf(msg, sizeof msg,
              "a handler must return a particle — an object with a '_class' field — found %s %s",
              article_for(v), type_name(v));
-    code_runtime_error(msg);
+    fail(msg);
 }
 
 /* ---- Rendering a value as text -------------------------------------------
@@ -1340,15 +1394,22 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         out->len = total;
         return;
     }
-    code_runtime_error("cannot apply '+' to these values");
+    fail("cannot apply '+' to these values");
 }
 
+/* Every failing branch below leaves `out` exactly as it found it, rather than
+ * writing a placeholder. That is safe and deliberate: `out` is either a
+ * zero-initialized slot or still holds its previous value, so it is a valid
+ * `CodeValue` that the frame's cleanup sweep can release exactly once — and
+ * writing null instead would have to reason about `out` aliasing `a` or `b`
+ * (`x = x / x`) for no gain, since the caller branches away without reading
+ * it. */
 void code_sub(CodeValue *out, const CodeValue *a, const CodeValue *b) {
     if (a->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
         code_number(out, a->number - b->number);
         return;
     }
-    code_runtime_error("cannot apply '-' to these values");
+    fail("cannot apply '-' to these values");
 }
 
 void code_mul(CodeValue *out, const CodeValue *a, const CodeValue *b) {
@@ -1356,7 +1417,7 @@ void code_mul(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         code_number(out, a->number * b->number);
         return;
     }
-    code_runtime_error("cannot apply '*' to these values");
+    fail("cannot apply '*' to these values");
 }
 
 void code_div(CodeValue *out, const CodeValue *a, const CodeValue *b) {
@@ -1364,18 +1425,25 @@ void code_div(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         if (b->number == 0.0) {
             /* Not Infinity: the value model is JSON, which has no way to
              * represent that (see ast.rs's BinOp doc comment). */
-            code_runtime_error("division by zero");
+            fail("division by zero");
+            return;
         }
         code_number(out, a->number / b->number);
         return;
     }
-    code_runtime_error("cannot apply '/' to these values");
+    fail("cannot apply '/' to these values");
 }
 
-/* -1/0/1 for two Numbers; aborts for anything else, strings included —
+/* -1/0/1 for two Numbers; fails for anything else, strings included —
  * ordering is Number-only (see ast.rs's BinOp doc comment). codegen.rs turns
  * the result into `<`/`>`/`≤`/`≥` with a plain LLVM icmp against 0 — one
- * runtime function instead of four. */
+ * runtime function instead of four.
+ *
+ * The 0 on the failing path is not an answer, it is a value to return with:
+ * the caller checks `code_failed` before it looks at this at all. Same for
+ * `code_bool_value` and `code_iter_len` below — the three helpers whose
+ * result is a plain integer rather than a `CodeValue*` out-parameter, which
+ * is exactly why the channel is a flag and not a status return. */
 long long code_compare(const CodeValue *a, const CodeValue *b) {
     if (a->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
         if (a->number < b->number) {
@@ -1383,7 +1451,8 @@ long long code_compare(const CodeValue *a, const CodeValue *b) {
         }
         return a->number > b->number ? 1 : 0;
     }
-    code_runtime_error("cannot order these values");
+    fail("cannot order these values");
+    return 0;
 }
 
 void code_neg(CodeValue *out, const CodeValue *a) {
@@ -1391,7 +1460,7 @@ void code_neg(CodeValue *out, const CodeValue *a) {
         code_number(out, -a->number);
         return;
     }
-    code_runtime_error("cannot negate this value");
+    fail("cannot negate this value");
 }
 
 void code_not(CodeValue *out, const CodeValue *a) {
@@ -1399,7 +1468,7 @@ void code_not(CodeValue *out, const CodeValue *a) {
         code_bool(out, !a->boolean);
         return;
     }
-    code_runtime_error("'not' requires a boolean");
+    fail("'not' requires a boolean");
 }
 
 /* `expr is ClassName` — the type test (see ast.rs's `Expr::Is`): 1 when
@@ -1425,7 +1494,8 @@ int code_bool_value(const CodeValue *v, const char *op) {
     if (v->tag != CODE_BOOL) {
         char msg[64];
         snprintf(msg, sizeof msg, "'%s' requires booleans", op);
-        code_runtime_error(msg);
+        fail(msg);
+        return 0;
     }
     return v->boolean;
 }
@@ -1499,13 +1569,17 @@ int code_values_equal(const CodeValue *a, const CodeValue *b) {
 
 /* Silent on success (no output, no return value). Must match
  * interpreter.rs's `Stmt::Assert` eval rule exactly: `v` must be
- * CODE_BOOL, and its value must be true — anything else aborts via
- * code_runtime_error, same as every other operator error here. */
+ * CODE_BOOL, and its value must be true — anything else goes down the
+ * failure channel, same as every other operator error here.
+ *
+ * This is the one phase 4 turns into `return Exception`; nothing about that
+ * change lands in this function, only in the block codegen branches to. */
 void code_assert(const CodeValue *v) {
     if (v->tag != CODE_BOOL) {
-        code_runtime_error("assert requires a boolean");
+        fail("assert requires a boolean");
+        return;
     }
     if (!v->boolean) {
-        code_runtime_error("assertion failed");
+        fail("assertion failed");
     }
 }
