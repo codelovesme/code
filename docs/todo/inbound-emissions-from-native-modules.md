@@ -7,8 +7,8 @@
 >
 > **The keep-alive loop shipped 2026-08-29**, in two halves: a loop iteration
 > became a statement boundary, and then a module gained the right to push
-> from a thread of its own. `loop { }` is how a program says "keep me up",
-> and it waits rather than spins. See "What is still open" at the end for
+> from a thread of its own. Waiting is the *module's* job — the runtime does
+> not sleep on a program's behalf. See "What is still open" at the end for
 > what is left — `emit … to base`, and the two modules/one class collision.
 
 Dispatch is strictly request/response: `emit … to <module>` crosses into
@@ -200,10 +200,34 @@ before the function returns.
     variables, a few KB per thread. `code_values_equal`'s stayed plain
     static: comparison is only reachable from program code.
 
-  - **The sleep**, as designed: `code_idle_wait` (1ms) in `runtime.c`,
-    `IDLE_WAIT` in the interpreter, chosen from the *empty body* at compile
-    time. `_code_drain_inbound` now returns whether it handed anything over,
-    so a round that did skips the wait and a burst drains at full speed.
+  - **The sleep: built, then deleted the same day.** `code_idle_wait` (1ms)
+    and its interpreter twin shipped exactly as designed here — chosen from
+    the *empty body* at compile time, skipped on a round that handed
+    something over. It was then removed at the owner's call, and the reason
+    is worth keeping: **the runtime does not guess how long a program meant
+    to wait.** Rust doesn't (`loop {}` burns a core; waiting is spelled
+    `recv`, `park`, `Condvar::wait`, `epoll`), and neither should this.
+
+    Two things settled it. The sleep was solving nothing measurable — the
+    spinning loop cost 49 CPU ticks per half second and the sleeping one 0–1,
+    but 0–1 was already what a *blocking module* delivered, with no host code
+    at all. And the host's version could only be reached by an empty body,
+    which made `loop { }` and `loop { x }` mean different things to the
+    machine with nothing in the syntax to say so.
+
+    What replaces it needs no language feature, because it already worked
+    before any of this was written: a module blocks inside its own
+    `code_module_dispatch` and returns when it has something. Measured on a
+    throwaway condvar module: `loop { emit Wait { … } to src get w }` handled
+    three pushes 200ms apart in 603ms of wall clock and 2ms of CPU, both
+    output modes, no host involvement. The module owes two things in return —
+    bound the block with a timeout (nothing in the ABI can stop one that
+    blocks forever), and expect a backlog (another module's pushes queue
+    behind yours, and past 256 the oldest are dropped).
+
+    No check was added for an empty `loop { }`, deliberately: it spins, that
+    is a program's own business, and `verify.rs` refusing it would be the
+    same guessing in a different costume.
 
   - **A threaded module to prove it with**:
     `tests/native_modules/test_timer/`, which answers `Start` immediately and
@@ -225,12 +249,14 @@ before the function returns.
   shutdown call in the ABI to do this politely, on purpose: a module that must
   be asked before the program may exit is a module that can hang it.
 
-  **How it is tested that it waits.** Nothing a `.code` fixture can assert
-  distinguishes a sleeping `loop { }` from a spinning one — both produce the
-  same absence of output, forever, and neither ends. `tests/idle_loop.rs`
-  watches the process instead: run it half a second, read `utime + stime`
-  from `/proc/<pid>/stat`, kill it. Sleeping costs 0–1 ticks, spinning 49,
-  so the threshold (10) is not a close call. Linux-only, skipped elsewhere.
+  **What went with the sleep.** `tests/idle_loop.rs` measured it by watching
+  the process (half a second of wall clock, then `utime + stime` from
+  `/proc/<pid>/stat`) because nothing a `.code` fixture can assert
+  distinguishes a sleeping `loop { }` from a spinning one. It is deleted
+  along with the thing it measured; the numbers it produced are quoted above.
+  Checked before deleting: LLVM keeps an empty infinite loop at `-O0` and
+  `--release` both — the IR carries no `mustprogress`, so the C rule that
+  lets a compiler delete a side-effect-free loop does not apply here.
 - **Two modules pushing the same class with different shapes** silently
   mismatch. Examined 2026-08-28 by building it: two modules both pushing
   `Log`, one as `{ source, level, message }` and one as `{ text, ts }`, into

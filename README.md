@@ -734,15 +734,24 @@ Tick { value } => {
 
 emit Start { "value": 3 } to timer get started
 loop {
-}                                       -- ticks arrive here, and keep arriving
+    emit Wait { "timeout_ms": 2000 } to timer get w    -- parks until a push
+}
 ```
 
-An empty `loop { }` waits a millisecond between drains rather than spending a
-core asking the same question a million times a second, and skips the wait on
-a round that did hand something over, so a burst still drains at full speed.
-A loop with a body is doing work each time round and is never slowed. There
-is no way out of an empty `loop { }` — that is the point: such a program is a
-daemon, and ends when something kills it.
+**Waiting is the module's job, never the runtime's.** `loop { }` with an
+empty body spins a core, exactly as `loop {}` does in Rust — nothing here
+sleeps on your behalf or guesses how long you meant to wait. A module that
+is an event source blocks inside its own `code_module_dispatch` (a condvar, a
+`recv`, an `epoll`) and returns when it has something; the program parks
+there at no cost, and the drain at the end of the iteration hands over
+whatever was queued meanwhile. `net` already blocks this way for an HTTP
+round trip.
+
+Two things such a module owes its callers. **Bound the block** — a timeout
+field, as `net` has: nothing in the ABI can stop a module that blocks
+forever, and a module that must be asked before the program may exit is a
+module that can hang it. **Expect a backlog** — while one module is parked,
+another's pushes queue up behind it, and past 256 the oldest are dropped.
 
 The drain stops at a handler's edge. A loop inside a handler does not drain,
 because handing a particle over while a handler is running is re-entry, and

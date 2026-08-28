@@ -1031,25 +1031,6 @@ int code_poll_inbound(void *queue, CodeValue *out) {
     return 1;
 }
 
-/* What an empty `loop { }` does between drains: waits a moment instead of
- * spending a core asking the same question a million times a second.
- *
- * Only an *empty* body gets this. That is the shape a program takes when all
- * it is doing is staying up for whatever its modules push (see
- * docs/todo/inbound-emissions-from-native-modules.md); a loop with a body is
- * doing work each time round and must not be slowed. Codegen decides which
- * is which at compile time, and skips the wait entirely on an iteration that
- * did handle something, so a burst is drained at full speed. */
-void code_idle_wait(void) {
-#ifndef CODE_WASM
-    struct timespec ts;
-    ts.tv_sec = 0;
-    ts.tv_nsec = 1000000L; /* 1ms — 1000 wakeups a second is free, and it
-                            * bounds how long an event waits to be noticed. */
-    nanosleep(&ts, NULL);
-#endif
-}
-
 /* Frees the small `NativeHandle` `code_native_open` allocated — called once
  * per linked module as part of the program's end-of-run cleanup (see
  * codegen.rs's `emit_cleanup`), the same "owns nothing when it exits" rule

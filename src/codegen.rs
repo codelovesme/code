@@ -294,7 +294,6 @@ pub fn compile_to_object(
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
-    let fn_idle_wait = module.add_function("code_idle_wait", void_ty.fn_type(&[], false), None);
     // The failure channel (see `runtime.c`'s "The failure channel"). A helper
     // that cannot do its work now returns normally with `code_failed` set,
     // instead of ending the process from inside itself — so the generated
@@ -492,7 +491,6 @@ pub fn compile_to_object(
         fn_check_particle,
         fn_check_emittable,
         fn_poll_inbound,
-        fn_idle_wait,
         fn_abort_failure,
         fn_take_failure,
         fn_make_exception,
@@ -692,9 +690,6 @@ struct Gen<'a, 'm> {
     failed_flag: PointerValue<'a>,
     location_slot: PointerValue<'a>,
     fn_poll_inbound: FunctionValue<'a>,
-    /// `runtime.c`'s 1ms sleep, called by an empty `loop { }` that drained
-    /// nothing — see `gen_loop`.
-    fn_idle_wait: FunctionValue<'a>,
     /// The generated `_code_drain_inbound`, called after every top-level
     /// statement. Declared up front (the calls are emitted as statements are
     /// generated) and defined last, once every module global exists.
@@ -808,12 +803,10 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// pushed particle has nowhere to go), but it should fail with *that*
     /// error at runtime rather than a missing symbol at link time.
     fn declare_drain(&mut self) {
-        // Returns whether it handed anything over, which is what tells an
-        // empty `loop { }` whether it is waiting or working (`gen_loop`).
-        // Every other caller ignores it.
+        let void_ty = self.context.void_type();
         self.drain_fn = Some(self.module.add_function(
             "_code_drain_inbound",
-            self.i32_ty.fn_type(&[], false),
+            void_ty.fn_type(&[], false),
             None,
         ));
     }
@@ -1053,26 +1046,18 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// statement so the compiled program hands off queued particles at
     /// exactly the points the interpreter does (see
     /// `interpreter::drain_inbound`).
-    /// Answers `None` when no call was emitted at all (nothing to drain
-    /// from), and otherwise the `i32` the drain returned: non-zero if it
-    /// handed a particle over.
-    fn gen_drain_call(&mut self) -> Result<Option<IntValue<'a>>, String> {
+    fn gen_drain_call(&mut self) -> Result<(), String> {
         let Some(drain) = self.drain_fn else {
-            return Ok(None);
+            return Ok(());
         };
         // Nothing to drain from, so don't pay a call per statement.
         if self.native_links.is_empty() {
-            return Ok(None);
+            return Ok(());
         }
-        let handled = self
-            .builder
-            .build_call(drain, &[], "drained")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .left()
-            .expect("_code_drain_inbound returns i32")
-            .into_int_value();
-        Ok(Some(handled))
+        self.builder
+            .build_call(drain, &[], "")
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Defines `_code_drain_inbound`: poll every linked module in turn,
@@ -1105,9 +1090,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.builder.position_at_end(entry);
 
         if handles.is_empty() {
-            self.builder
-                .build_return(Some(&self.i32_ty.const_zero()))
-                .map_err(|e| e.to_string())?;
+            self.builder.build_return(None).map_err(|e| e.to_string())?;
             if let Some(block) = saved_block {
                 self.builder.position_at_end(block);
             }
@@ -1137,15 +1120,6 @@ impl<'a, 'm> Gen<'a, 'm> {
         }
         let progress = alloca_builder
             .build_alloca(self.i32_ty, "drain_progress")
-            .map_err(|e| e.to_string())?;
-        // `progress` is per pass and cleared at the top of each one; this is
-        // the answer for the call as a whole, so it is set once and never
-        // cleared.
-        let handled_any = alloca_builder
-            .build_alloca(self.i32_ty, "drain_handled_any")
-            .map_err(|e| e.to_string())?;
-        alloca_builder
-            .build_store(handled_any, self.i32_ty.const_zero())
             .map_err(|e| e.to_string())?;
 
         let pass = self.context.append_basic_block(drain, "pass");
@@ -1202,9 +1176,6 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.builder
                 .build_store(progress, self.i32_ty.const_int(1, false))
                 .map_err(|e| e.to_string())?;
-            self.builder
-                .build_store(handled_any, self.i32_ty.const_int(1, false))
-                .map_err(|e| e.to_string())?;
             // A pushed particle nothing handles is dropped — the polled
             // value is simply released with the rest of the pass. When the
             // program defines no handler at all there is no chain to walk,
@@ -1248,14 +1219,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.builder
             .build_call(self.fn_release, &[result.into()], "")
             .map_err(|e| e.to_string())?;
-        let answer = self
-            .builder
-            .build_load(self.i32_ty, handled_any, "handled_any")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        self.builder
-            .build_return(Some(&answer))
-            .map_err(|e| e.to_string())?;
+        self.builder.build_return(None).map_err(|e| e.to_string())?;
 
         if let Some(block) = saved_block {
             self.builder.position_at_end(block);
@@ -1775,58 +1739,8 @@ impl<'a, 'm> Gen<'a, 'm> {
         // forbids — the loop would quietly fill with `Exception`s.
         // `interpreter.rs`'s `drain_between_iterations` makes the same test
         // against `env.active`.
-        let handled = if self.handler_frame.is_none() {
-            self.gen_drain_call()?
-        } else {
-            None
-        };
-        // An empty `loop { }` is how a program says "keep me up": it has no
-        // work of its own, only whatever its modules push. Waiting a moment
-        // each time round saves it a whole core, and an iteration that *did*
-        // hand something over skips the wait, so a burst still drains at full
-        // speed. A loop with a body is doing work and is never slowed — which
-        // is why this is decided here, from the body, at compile time.
-        // `interpreter.rs`'s `Stmt::Loop` makes the same test.
-        if over.is_none() && body.is_empty() {
-            match handled {
-                Some(handled) => {
-                    let idle_bb = self
-                        .context
-                        .append_basic_block(self.current_function(), "loop_idle");
-                    let after_idle_bb = self
-                        .context
-                        .append_basic_block(self.current_function(), "loop_idle_done");
-                    let nothing = self
-                        .builder
-                        .build_int_compare(
-                            IntPredicate::EQ,
-                            handled,
-                            self.i32_ty.const_zero(),
-                            "drained_nothing",
-                        )
-                        .map_err(|e| e.to_string())?;
-                    self.builder
-                        .build_conditional_branch(nothing, idle_bb, after_idle_bb)
-                        .map_err(|e| e.to_string())?;
-                    self.builder.position_at_end(idle_bb);
-                    self.builder
-                        .build_call(self.fn_idle_wait, &[], "")
-                        .map_err(|e| e.to_string())?;
-                    self.builder
-                        .build_unconditional_branch(after_idle_bb)
-                        .map_err(|e| e.to_string())?;
-                    self.builder.position_at_end(after_idle_bb);
-                }
-                // No drain here at all — either nothing is linked, or this is
-                // inside a handler, where draining is forbidden. Nothing this
-                // loop can observe will ever change, so there is nothing to
-                // spin for.
-                None => {
-                    self.builder
-                        .build_call(self.fn_idle_wait, &[], "")
-                        .map_err(|e| e.to_string())?;
-                }
-            }
+        if self.handler_frame.is_none() {
+            self.gen_drain_call()?;
         }
         if let Some(cursor) = &iteration {
             let current = self
