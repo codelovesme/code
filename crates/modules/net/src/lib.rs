@@ -32,6 +32,49 @@ const DEFAULT_TIMEOUT_SECONDS: f64 = 10.0;
 /// rather than truncating — see `README.md`.
 const DEFAULT_MAX_BODY_BYTES: f64 = 1_048_576.0;
 
+// The optional inbound export: `net` speaks first, to report what went
+// wrong, rather than only answering. A program that defines no `Exception`
+// or `Log` handler simply never hears it — a pushed class nothing handles is
+// dropped (decided 2026-08-28), which is exactly what makes diagnostics safe
+// to send unasked.
+code_native::declare_inbound!();
+
+/// Push `Exception { source, message }` into the program. Best effort in
+/// both directions: the host may never have taken an inbound channel, and
+/// the program may have no handler — neither is this module's problem, and
+/// neither changes what `Get`/`Post` return.
+fn report_exception(message: &str) {
+    let mut particle = CodeValue::zeroed();
+    let mut buf = SlotBuffer::new(3);
+    borrowed_str(buf.slot_mut(0), c"Exception");
+    borrowed_str(buf.slot_mut(1), c"net");
+    owned_str(buf.slot_mut(2), message);
+    object(&mut particle, &[c"_class", c"source", c"message"], &mut buf);
+    buf.release_all();
+    emit_inbound(&particle);
+    release(&mut particle);
+}
+
+/// Push `Log { source, level, message }` into the program. Same field names
+/// and levels as the `euglena-language` organelles use, so a handler written
+/// against those reads the same here.
+fn report_log(level: &str, message: &str) {
+    let mut particle = CodeValue::zeroed();
+    let mut buf = SlotBuffer::new(4);
+    borrowed_str(buf.slot_mut(0), c"Log");
+    borrowed_str(buf.slot_mut(1), c"net");
+    owned_str(buf.slot_mut(2), level);
+    owned_str(buf.slot_mut(3), message);
+    object(
+        &mut particle,
+        &[c"_class", c"source", c"level", c"message"],
+        &mut buf,
+    );
+    buf.release_all();
+    emit_inbound(&particle);
+    release(&mut particle);
+}
+
 /// The ABI version this module speaks. Must equal `CODE_ABI_VERSION` or the
 /// host refuses to load us.
 #[no_mangle]
@@ -196,12 +239,25 @@ fn request(out: &mut CodeValue, particle: &CodeValue, method: Method) {
         timeout,
         max_body,
     ) {
-        Ok((status, body)) => response(out, true, status, &body),
+        Ok((status, body)) => {
+            // `Info` for a request that completed, whatever the server
+            // thought of it — a 404 is news, not a fault.
+            report_log("Info", &format!("{class} {url} -> {}", status as i64));
+            response(out, true, status, &body)
+        }
         // Everything ureq can fail with lands here as `ok: false` — refused,
         // unresolvable, timed out, malformed URL, TLS rejected. The message
         // rides along in `body` so a program can print it; `status` is 0
         // because there was no HTTP response to have a status.
-        Err(message) => response(out, false, 0.0, &message),
+        //
+        // The `Exception` push is *additional* to that, never instead of it:
+        // a program that ignores diagnostics still gets the whole story from
+        // the value it was handed, which is what keeps checking `ok` a
+        // complete way to use this module.
+        Err(message) => {
+            report_exception(&format!("{class} {url}: {message}"));
+            response(out, false, 0.0, &message)
+        }
     }
 }
 

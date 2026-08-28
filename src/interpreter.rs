@@ -193,7 +193,19 @@ fn drain_inbound(env: &mut Environment) -> Result<(), String> {
             return Ok(());
         }
         for particle in queued {
-            dispatch_handler(&particle, env)?;
+            // A pushed class the program has no handler for is *dropped*,
+            // not an error — decided 2026-08-28, when `net` gained
+            // `Log`/`Exception`. A module speaks first on its own
+            // initiative; a diagnostic nobody asked to hear is not a
+            // mistake by the program, and making it fatal would mean every
+            // program that links a module which *might* report something
+            // has to handle it. `emit ... to this` is unchanged: that is
+            // the program addressing itself, and a class it does not handle
+            // there is still a bug. The cost of this, taken knowingly: a
+            // module pushing a mistyped class now goes unnoticed.
+            if env.handlers.contains_key(class_of(&particle)) {
+                dispatch_handler(&particle, env)?;
+            }
         }
     }
 }
@@ -587,6 +599,19 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
 /// exactly what one invoked from the top of the file would. Cutting rather
 /// than copying keeps top-level *writes* live — a handler reassigning a
 /// top-level binding is the point of `handler_outer_scope.code`.
+/// A particle's `_class`, or `""` for anything that isn't a classed object
+/// — which `dispatch_handler` would reject anyway, and no handler is named
+/// `""`, so an unclassed *pushed* value drops like any other unhandled one.
+fn class_of(particle: &Value) -> &str {
+    match particle {
+        Value::Object(fields) => match fields.iter().find(|(k, _)| k == "_class") {
+            Some((_, Value::Str(class))) => class,
+            _ => "",
+        },
+        _ => "",
+    }
+}
+
 fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, String> {
     let class = match particle {
         Value::Object(fields) => fields.iter().find(|(k, _)| k == "_class").map(|(_, v)| v),

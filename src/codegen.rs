@@ -871,9 +871,20 @@ impl<'a, 'm> Gen<'a, 'm> {
             return Ok(());
         }
         let void_ty = self.context.void_type();
+        // Third parameter: drop rather than error when nothing matches.
+        // One function serves two callers with different answers to "no
+        // handler" — `emit ... to this` errors, the inbound drain drops (see
+        // `interpreter::drain_inbound` for why).
         let dispatch = self.module.add_function(
             "_code_dispatch_this",
-            void_ty.fn_type(&[self.i8_ptr_ty.into(), self.i8_ptr_ty.into()], false),
+            void_ty.fn_type(
+                &[
+                    self.i8_ptr_ty.into(),
+                    self.i8_ptr_ty.into(),
+                    self.i32_ty.into(),
+                ],
+                false,
+            ),
             None,
         );
         self.dispatch_fn = Some(dispatch);
@@ -1234,22 +1245,22 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.builder
                 .build_store(progress, self.i32_ty.const_int(1, false))
                 .map_err(|e| e.to_string())?;
-            match self.dispatch_fn {
-                Some(dispatch) => {
-                    self.builder
-                        .build_call(dispatch, &[result.into(), particle.into()], "")
-                        .map_err(|e| e.to_string())?;
-                }
-                // No handler exists anywhere in the program, so nothing could
-                // ever match. Same message the dispatch chain's fallthrough
-                // gives, since it is the same mistake.
-                None => {
-                    let msg = self
-                        .global_str("no handler defined for this particle's class", "nohandler")?;
-                    self.builder
-                        .build_call(self.fn_runtime_error, &[msg.into()], "")
-                        .map_err(|e| e.to_string())?;
-                }
+            // A pushed particle nothing handles is dropped — the polled
+            // value is simply released with the rest of the pass. When the
+            // program defines no handler at all there is no chain to walk,
+            // so the drop needs no code beyond not calling anything.
+            if let Some(dispatch) = self.dispatch_fn {
+                self.builder
+                    .build_call(
+                        dispatch,
+                        &[
+                            result.into(),
+                            particle.into(),
+                            self.i32_ty.const_int(1, false).into(),
+                        ],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
             }
             // Straight back to the same module: one poll per pass would
             // reorder a burst across modules.
@@ -1343,8 +1354,30 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.builder.position_at_end(next);
         }
 
-        // Nothing matched. A runtime error rather than null, the same answer
-        // `to core` gives an unknown class.
+        // Nothing matched. What that means depends on who asked: for
+        // `emit ... to this` it is a runtime error, the same answer `to
+        // core` gives an unknown class; for the inbound drain the particle
+        // is dropped and the pass carries on.
+        let drop_unmatched = dispatch.get_nth_param(2).unwrap().into_int_value();
+        let dropped = self.context.append_basic_block(dispatch, "dropped");
+        let unhandled = self.context.append_basic_block(dispatch, "unhandled");
+        let should_drop = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                drop_unmatched,
+                self.i32_ty.const_zero(),
+                "shoulddrop",
+            )
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(should_drop, dropped, unhandled)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(dropped);
+        self.builder.build_return(None).map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(unhandled);
         let msg = self.global_str("no handler defined for this particle's class", "nohandler")?;
         self.builder
             .build_call(self.fn_runtime_error, &[msg.into()], "")
@@ -1986,7 +2019,15 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .dispatch_fn
                     .ok_or_else(|| "no handler is defined in this program".to_string())?;
                 self.builder
-                    .build_call(dispatch, &[temp.into(), particle_ptr.into()], "")
+                    .build_call(
+                        dispatch,
+                        &[
+                            temp.into(),
+                            particle_ptr.into(),
+                            self.i32_ty.const_zero().into(),
+                        ],
+                        "",
+                    )
                     .map_err(|e| e.to_string())?;
             }
             EmitTarget::Core => {

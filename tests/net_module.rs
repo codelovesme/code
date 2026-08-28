@@ -126,6 +126,21 @@ fn get_and_post_against_a_real_server() {
     let program = format!(
         r#"link "net.so" as net
 
+-- Every completed request pushes a `Log`; a request that never completed
+-- pushes an `Exception` instead. Both are dispatched to these handlers
+-- between top-level statements. Counted rather than inspected, so the
+-- assertion does not depend on the exact wording of a message.
+let logs = 0
+let exceptions = 0
+
+Log {{ source, level, message }} => {{
+    logs = logs + 1
+}}
+
+Exception {{ source, message }} => {{
+    exceptions = exceptions + 1
+}}
+
 emit Get {{ "url": "http://127.0.0.1:{port}/hello" }} to net get r
 assert r.ok
 assert r.status = 200
@@ -158,6 +173,13 @@ emit Get {{ "url": "http://127.0.0.1:{port}/hello", "max_body_bytes": {} }} to n
 assert not too_big.ok
 assert too_big.status = 0
 assert too_big.body = "response body exceeds max_body_bytes ({})"
+
+-- Exact, because the split is the interesting part: five requests got a
+-- response and logged it — including the 500, which is news rather than a
+-- fault — and only the one that went over the cap raised an Exception,
+-- since that is the only request here that never produced a usable body.
+assert logs = 5
+assert exceptions = 1
 "#,
         HELLO.len(),
         HELLO.len(),

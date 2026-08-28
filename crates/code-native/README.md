@@ -108,6 +108,48 @@ mirrors it field-for-field rather than hiding it, since building the
 `'static`-lifetime buffer correctly is easier to get right by following the
 same shape a C module uses than behind a leaky abstraction.
 
+## Speaking first (inbound emissions)
+
+A module normally only answers an `emit`. To push particles *into* the
+program on its own initiative — an event source, or a module reporting what
+went wrong — take the optional `code_module_set_inbound` export and push:
+
+```rust
+use code_native::*;
+
+// Generates `code_module_set_inbound`. A macro rather than a function in
+// this crate on purpose: a `#[no_mangle]` symbol defined in a *dependency*
+// is not reliably kept in the final cdylib, so the export has to be emitted
+// in your crate.
+code_native::declare_inbound!();
+
+fn report(message: &str) {
+    let mut particle = CodeValue::zeroed();
+    let mut buf = SlotBuffer::new(3);
+    borrowed_str(buf.slot_mut(0), c"Exception");
+    borrowed_str(buf.slot_mut(1), c"mymodule");
+    owned_str(buf.slot_mut(2), message);
+    object(&mut particle, &[c"_class", c"source", c"message"], &mut buf);
+    buf.release_all();
+    emit_inbound(&particle);
+    release(&mut particle);
+}
+```
+
+Pushed particles reach the **program's** handlers (not the module's own),
+dispatched between top-level statements. Two things worth knowing:
+
+- `emit_inbound` returns `false` when the host never took an inbound
+  channel. Pushing is always best-effort, and a module has to stay correct
+  when nobody is listening.
+- A pushed class the program has no handler for is **dropped**. That is what
+  lets a module report something without every program that links it having
+  to handle it. (`emit ... to this` inside a program is the opposite — a
+  class nothing handles there is an error.)
+
+The queue is bounded at `CODE_INBOUND_CAPACITY` (256) per module, dropping
+the oldest, so a module that outruns the program costs bounded memory.
+
 ## `.a` static modules
 
 Only `.so` is covered above (it's `code_abi.h`'s "primary format" — the one

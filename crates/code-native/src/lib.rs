@@ -37,6 +37,24 @@
 //! from `.code` source. See this crate's README for the full walkthrough,
 //! including `.a` static modules and `code_module_vars`.
 //!
+//! To *speak first* rather than only answer — pushing particles into the
+//! program, which is what `Log`/`Exception`/`Tick`-shaped traffic needs —
+//! add [`declare_inbound!`] and call [`emit_inbound`]:
+//!
+//! ```rust,ignore
+//! code_native::declare_inbound!();
+//!
+//! fn report(message: &str) {
+//!     let mut p = CodeValue::zeroed();
+//!     // ... build a particle ...
+//!     emit_inbound(&p);
+//!     release(&mut p);
+//! }
+//! ```
+//!
+//! A pushed class the program has no handler for is dropped, so a module may
+//! report without every program that links it having to listen.
+//!
 //! `code_module_dispatch` and `code_module_abi_version` are the two required
 //! exports — there is no macro generating them here (unlike the *old*
 //! language's `code-native`): the new ABI dropped the descriptor-table
@@ -45,6 +63,7 @@
 //! all — it comes from the linked `runtime.c` object automatically.
 
 use std::ffi::{c_char, c_int, c_void, CStr};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 // ===========================================================================
 // Wire layout — bit-for-bit `code_abi.h`. Only the pointer/int/float shapes
@@ -459,4 +478,90 @@ pub fn make_result(
     object(out, &[c"_class", c"value"], &mut buf);
     buf.release_all();
     release(&mut value);
+}
+
+// ===========================================================================
+// Inbound emissions — speaking first, rather than only answering.
+// ===========================================================================
+
+/// The host's pusher, handed over by `code_module_set_inbound`. `queue` is
+/// opaque — a module only ever passes it straight back. Mirrors
+/// `code_abi.h`'s `CodeEmitFn`.
+pub type CodeEmitFn = unsafe extern "C" fn(queue: *mut c_void, value: *const CodeValue);
+
+/// Where [`declare_inbound!`] parks what the host handed over. Two atomics
+/// rather than a `static mut`: the host sets these once at link time, and a
+/// module with a thread of its own would read them from that thread, so the
+/// access wants to be well-defined even though nothing does that yet.
+pub static INBOUND_QUEUE: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
+/// The `CodeEmitFn` as a raw address — `AtomicPtr` cannot hold a `fn`
+/// pointer directly, and this is only ever written by [`store_inbound`] and
+/// read back by [`emit_inbound`].
+pub static INBOUND_EMIT: AtomicUsize = AtomicUsize::new(0);
+
+/// Record what the host handed over. Called by the export
+/// [`declare_inbound!`] generates; not useful on its own.
+pub fn store_inbound(queue: *mut c_void, emit: CodeEmitFn) {
+    INBOUND_QUEUE.store(queue, Ordering::Release);
+    INBOUND_EMIT.store(emit as usize, Ordering::Release);
+}
+
+/// Generate the optional `code_module_set_inbound` export.
+///
+/// A macro rather than a plain function in this crate, and that is
+/// load-bearing: `#[no_mangle]` symbols defined in a dependency are not
+/// reliably kept in the final `cdylib`, so the export has to be emitted in
+/// *your* crate. One invocation at the top level is all it takes:
+///
+/// ```rust,ignore
+/// code_native::declare_inbound!();
+/// ```
+///
+/// A module that never speaks first simply doesn't invoke it — the export is
+/// optional, and the host checks for it rather than requiring it.
+#[macro_export]
+macro_rules! declare_inbound {
+    () => {
+        /// Handed the host's queue and pusher once, at link time.
+        ///
+        /// # Safety
+        ///
+        /// Called by the host with its own queue pointer and pusher; both
+        /// stay valid for as long as the module is loaded.
+        #[no_mangle]
+        pub unsafe extern "C" fn code_module_set_inbound(
+            queue: *mut ::std::ffi::c_void,
+            emit: $crate::CodeEmitFn,
+        ) {
+            $crate::store_inbound(queue, emit);
+        }
+    };
+}
+
+/// Push a particle into the program, to be dispatched to *its* handlers the
+/// next time the host drains (between top-level statements).
+///
+/// Returns `false` when the host never called `code_module_set_inbound` —
+/// which happens whenever the module was loaded by something that does not
+/// support inbound emissions. Pushing is therefore always best-effort from
+/// the module's side, and a module must stay correct when nobody is
+/// listening.
+///
+/// The particle is deep-copied into the host's heap by the host's own
+/// pusher, so `value` may be released as soon as this returns.
+///
+/// **A pushed class the program has no handler for is a runtime error**, not
+/// a silent drop (`tests/fail_inbound_unhandled.code` pins that). Push only
+/// what the program has agreed to receive.
+pub fn emit_inbound(value: &CodeValue) -> bool {
+    let emit = INBOUND_EMIT.load(Ordering::Acquire);
+    if emit == 0 {
+        return false;
+    }
+    let queue = INBOUND_QUEUE.load(Ordering::Acquire);
+    // SAFETY: `emit` is non-zero only because `store_inbound` wrote a real
+    // `CodeEmitFn` there, and `queue` is whatever the host paired with it.
+    let emit: CodeEmitFn = unsafe { std::mem::transmute::<usize, CodeEmitFn>(emit) };
+    unsafe { emit(queue, value) };
+    true
 }

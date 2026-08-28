@@ -37,6 +37,39 @@ status — refused, unresolvable, timed out, TLS rejected, or larger than
 | `timeout_seconds` | Number | `10` | whole request, connect included |
 | `max_body_bytes` | Number | `1048576` | a longer response fails the request |
 
+## Diagnostics
+
+`net` also speaks first. Every request that gets a response pushes
+
+```
+Log { source: "net", level: "Info", message: "Get <url> -> <status>" }
+```
+
+and every request that never got one pushes
+
+```
+Exception { source: "net", message: "Get <url>: <reason>" }
+```
+
+into the program, dispatched to *its* handlers between top-level statements.
+
+```code
+Exception { source, message } => {
+    emit Print { "value": message } to term
+}
+```
+
+Two properties make this safe to send unasked. A pushed class the program
+has no handler for is **dropped**, so a program that wants none of this
+writes none of it and nothing changes. And the push is **additional, never
+instead of** — the `HttpResponse` still carries the whole story, so checking
+`ok` remains a complete way to use this module. Diagnostics buy you one
+central place to handle failures instead of a check at every call site; they
+are not the only way to learn about them.
+
+A 4xx or 5xx logs at `Info` and does *not* raise an `Exception`: the server
+answered, and what it answered is in `status`.
+
 ## The decisions, and why
 
 **One particle per verb, not `Request { method }`.** Dispatch in this
@@ -98,18 +131,22 @@ it.
   thread pushing inbound particles — the open half of
   `docs/todo/inbound-emissions-from-native-modules.md`. A separate module
   when that lands.
-- **No `Log`/`Exception` emitted upward.** Diagnostics-to-`base` is an
-  upward edge in the module graph that does not exist yet (same ticket).
-  The `ok` field carries what the caller needs to know.
 
 ## Prior art
 
 Modelled on `native-http-client` and `http-client` in the `euglena-language`
 repo, which settled the per-verb shape, the `{ ok, status, body }` response,
-and `headers`/`max_body_bytes`. Three things are deliberately *not* carried
-over: `Sap` (a cell-lifecycle concept — this language has modules, not
-organelles, and there the handler is a no-op that logs), the `Log`/`Exception`
-emissions to `base`, and the JSON variants.
+and `headers`/`max_body_bytes`.
+
+`Log`/`Exception` are carried over too, by a different route: this language
+has no `base`, so they are pushed as inbound emissions and land on the
+*program's* handlers rather than a linking module's. Settling that is what
+made unhandled pushes drop rather than error — see
+`docs/todo/inbound-emissions-from-native-modules.md`.
+
+Two things are deliberately *not* carried over: `Sap` (a cell-lifecycle
+concept — this language has modules, not organelles, and there the handler
+is a no-op that logs), and the JSON variants.
 
 ## Build
 

@@ -586,14 +586,24 @@ emit Start { "value": 3 } to ev get started   -- module queues three Ticks
 ```
 
 Queued particles are dispatched after each top-level statement, in the order
-pushed, and a class the program has no handler for is an error. The queue is
-bounded at 256 per module, dropping the oldest — a module that outruns the
-program costs bounded memory. Continuous draining, which an interactive
-daemon would need, is not built yet (see
+pushed. **A pushed class the program has no handler for is dropped**, not an
+error: the module chose to speak, so a message nobody asked to hear is not a
+mistake by the program. That is what lets a module report a problem without
+every program that links it having to care — `net` pushes `Exception` and
+`Log`, and [`net_unreachable.code`](tests/net_unreachable.code) handles
+neither and passes. (`emit ... to this` is the opposite and unchanged: that
+is the program addressing itself, so a class it does not handle is a bug.
+The cost of the split, accepted deliberately: a module pushing a *mistyped*
+class now goes unnoticed.)
+
+The queue is bounded at 256 per module, dropping the oldest — a module that
+outruns the program costs bounded memory. Continuous draining, which an
+interactive daemon would need, is not built yet (see
 [`docs/todo/inbound-emissions-from-native-modules.md`](docs/todo/inbound-emissions-from-native-modules.md)).
 
 First-party modules today: `terminal` (print to stdout), `math`, `strings`,
-`net` (HTTP `Get`/`Post` — see [its README](crates/modules/net/README.md)).
+`net` (HTTP `Get`/`Post`, and `Exception`/`Log` pushed back — see
+[its README](crates/modules/net/README.md)).
 `code install <name>` fetches one into `./.code/modules/`, pinned by sha256
 in `./.code/lock.json`; `--global` puts it in `~/.code/modules/` instead. A
 `link` reference resolves against a fixed chain — the script's own directory,
