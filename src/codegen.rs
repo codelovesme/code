@@ -248,7 +248,10 @@ pub fn compile_to_object(
     let fn_div = module.add_function("code_div", arith_ty, None);
     let fn_compare = module.add_function(
         "code_compare",
-        i64_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        i64_ty.fn_type(
+            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+            false,
+        ),
         None,
     );
     let fn_neg = module.add_function(
@@ -2059,7 +2062,9 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// merge/phi logic needed (see `env`'s doc comment).
     fn gen_if(&mut self, condition: &Expr, body: &[Stmt]) -> Result<(), String> {
         let cond_ptr = self.gen_expr(condition)?;
-        let cond_bool = self.call_bool_value(cond_ptr, "if")?;
+        // Not "'if' requires booleans": `if` is not an operator, and
+        // interpreter.rs words this one differently for that reason.
+        let cond_bool = self.call_bool_value(cond_ptr, "if requires a boolean")?;
         let cond = self
             .builder
             .build_int_compare(
@@ -2345,7 +2350,15 @@ impl<'a, 'm> Gen<'a, 'm> {
         rhs: &Expr,
         is_and: bool,
     ) -> Result<PointerValue<'a>, String> {
-        let op_name = if is_and { "and" } else { "or" };
+        // The whole clause, not the operator name: `code_bool_value` prints
+        // it verbatim and appends ", found <a type>", so this is what makes
+        // the compiled message identical to the one `interpreter.rs`'s
+        // `'{op}' requires booleans, found {}` arm formats.
+        let op_name = if is_and {
+            "'and' requires booleans"
+        } else {
+            "'or' requires booleans"
+        };
         let result_slot = self
             .entry_builder()
             .build_alloca(self.i32_ty, "logic_result")
@@ -2477,8 +2490,10 @@ impl<'a, 'm> Gen<'a, 'm> {
     }
 
     /// `<`/`>`/`<=`/`>=` all go through one `code_compare` runtime call
-    /// (returns -1/0/1, or aborts for unorderable operands) and then just
-    /// `icmp` the result against 0 — see `runtime.c`'s `code_compare`.
+    /// (returns -1/0/1, or fails for unorderable operands) and then just
+    /// `icmp` the result against 0 — see `runtime.c`'s `code_compare`. The
+    /// operator is passed only so the failure message can name it, which is
+    /// what the interpreter's has always done.
     fn gen_compare(
         &mut self,
         lhs: &Expr,
@@ -2487,9 +2502,14 @@ impl<'a, 'm> Gen<'a, 'm> {
     ) -> Result<PointerValue<'a>, String> {
         let lhs_ptr = self.gen_expr(lhs)?;
         let rhs_ptr = self.gen_expr(rhs)?;
+        let op_ptr = self.global_str(op.symbol(), "cmpop")?;
         let cmp = self
             .builder
-            .build_call(self.fn_compare, &[lhs_ptr.into(), rhs_ptr.into()], "")
+            .build_call(
+                self.fn_compare,
+                &[lhs_ptr.into(), rhs_ptr.into(), op_ptr.into()],
+                "",
+            )
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .left()

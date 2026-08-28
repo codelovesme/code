@@ -383,6 +383,27 @@ static const char *type_name(const CodeValue *v) {
     return "value";
 }
 
+/* The two shapes every operand-type message in this file is built from.
+ *
+ * They exist so the wording lives in one place per shape rather than at each
+ * `fail` site, because it has to match `interpreter.rs` *exactly*:
+ * `Exception.message` is a value a program can read, so two backends wording
+ * the same failure differently is a difference in what a program computes,
+ * not a cosmetic one. `tests/message_parity.rs` runs both backends over the
+ * same failing programs and compares the text. */
+static void fail_operand(const char *requirement, const CodeValue *v) {
+    char msg[192];
+    snprintf(msg, sizeof msg, "%s, found %s %s", requirement, article_for(v), type_name(v));
+    fail(msg);
+}
+
+static void fail_binary(const char *op, const CodeValue *a, const CodeValue *b) {
+    char msg[192];
+    snprintf(msg, sizeof msg, "cannot apply '%s' to %s %s and %s %s", op, article_for(a),
+             type_name(a), article_for(b), type_name(b));
+    fail(msg);
+}
+
 void code_field(CodeValue *out, const CodeValue *obj, const char *field) {
     if (obj->tag != CODE_OBJECT) {
         char msg[128];
@@ -584,7 +605,7 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
             code_make_result(out, "LengthResult", &count);
             return;
         }
-        fail("Length requires an array or string 'value'");
+        fail_operand("Length requires an array or string 'value'", value);
         return;
     }
 
@@ -963,7 +984,7 @@ void code_static_vars_object(const CodeVarList *list, CodeValue *out) {
  * which is what lets `code_iter_at` serve both container kinds unchanged. */
 long long code_iter_len(const CodeValue *v) {
     if (v->tag != CODE_ARRAY && v->tag != CODE_OBJECT) {
-        fail("loop requires an array or object");
+        fail_operand("loop requires an array or object", v);
         return 0;
     }
     return v->len;
@@ -1411,7 +1432,7 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         out->len = total;
         return;
     }
-    fail("cannot apply '+' to these values");
+    fail_binary("+", a, b);
 }
 
 /* Every failing branch below leaves `out` exactly as it found it, rather than
@@ -1426,7 +1447,7 @@ void code_sub(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         code_number(out, a->number - b->number);
         return;
     }
-    fail("cannot apply '-' to these values");
+    fail_binary("-", a, b);
 }
 
 void code_mul(CodeValue *out, const CodeValue *a, const CodeValue *b) {
@@ -1434,7 +1455,7 @@ void code_mul(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         code_number(out, a->number * b->number);
         return;
     }
-    fail("cannot apply '*' to these values");
+    fail_binary("*", a, b);
 }
 
 void code_div(CodeValue *out, const CodeValue *a, const CodeValue *b) {
@@ -1448,7 +1469,7 @@ void code_div(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         code_number(out, a->number / b->number);
         return;
     }
-    fail("cannot apply '/' to these values");
+    fail_binary("/", a, b);
 }
 
 /* -1/0/1 for two Numbers; fails for anything else, strings included —
@@ -1461,14 +1482,19 @@ void code_div(CodeValue *out, const CodeValue *a, const CodeValue *b) {
  * `code_bool_value` and `code_iter_len` below — the three helpers whose
  * result is a plain integer rather than a `CodeValue*` out-parameter, which
  * is exactly why the channel is a flag and not a status return. */
-long long code_compare(const CodeValue *a, const CodeValue *b) {
+long long code_compare(const CodeValue *a, const CodeValue *b, const char *op) {
     if (a->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
         if (a->number < b->number) {
             return -1;
         }
         return a->number > b->number ? 1 : 0;
     }
-    fail("cannot order these values");
+    /* `op` exists only for this message. Ordering still goes through one
+     * runtime call rather than four (codegen turns the result into
+     * `<`/`>`/`≤`/`≥` with an icmp), but "cannot order these values" could
+     * not say which operator the program actually wrote, and
+     * interpreter.rs's version always could. */
+    fail_binary(op, a, b);
     return 0;
 }
 
@@ -1477,7 +1503,9 @@ void code_neg(CodeValue *out, const CodeValue *a) {
         code_number(out, -a->number);
         return;
     }
-    fail("cannot negate this value");
+    char msg[96];
+    snprintf(msg, sizeof msg, "cannot negate %s %s", article_for(a), type_name(a));
+    fail(msg);
 }
 
 void code_not(CodeValue *out, const CodeValue *a) {
@@ -1485,7 +1513,7 @@ void code_not(CodeValue *out, const CodeValue *a) {
         code_bool(out, !a->boolean);
         return;
     }
-    fail("'not' requires a boolean");
+    fail_operand("'not' requires a boolean", a);
 }
 
 /* `expr is ClassName` — the type test (see ast.rs's `Expr::Is`): 1 when
@@ -1505,13 +1533,14 @@ int code_is_particle(const CodeValue *a, const char *name) {
     return strcmp(class_val->str, name) == 0 ? 1 : 0;
 }
 
-/* Used by `and`/`or` codegen to check each operand is actually a bool
- * before branching on it. */
-int code_bool_value(const CodeValue *v, const char *op) {
+/* Used by `and`/`or`/`if` codegen to check an operand is actually a bool
+ * before branching on it. `requirement` is the whole clause, not just the
+ * operator name — `if` is not an operator and wants "if requires a boolean",
+ * not "'if' requires booleans". codegen.rs passes exactly what
+ * interpreter.rs's matching arm formats. */
+int code_bool_value(const CodeValue *v, const char *requirement) {
     if (v->tag != CODE_BOOL) {
-        char msg[64];
-        snprintf(msg, sizeof msg, "'%s' requires booleans", op);
-        fail(msg);
+        fail_operand(requirement, v);
         return 0;
     }
     return v->boolean;
@@ -1593,7 +1622,7 @@ int code_values_equal(const CodeValue *a, const CodeValue *b) {
  * change lands in this function, only in the block codegen branches to. */
 void code_assert(const CodeValue *v) {
     if (v->tag != CODE_BOOL) {
-        fail("assert requires a boolean");
+        fail_operand("assert requires a boolean", v);
         return;
     }
     if (!v->boolean) {

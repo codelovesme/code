@@ -293,26 +293,46 @@ that changes error semantics needs its own both-mode fixture.
    `handler_runtime_errors_are_exceptions.code` (one case per failing helper
    family).
 
-   **New: error message text is now a value the program can read**, via
-   `Exception.message`. The two backends do not always agree on it — `1 + "a"`
-   is *"cannot apply Add to number and string"* interpreted and *"cannot apply
-   '+' to these values"* compiled. Where they do agree the fixtures assert the
-   message in full, precisely because the harness only compares pass/fail and
-   could not otherwise catch a shape or wording that drifted. Unifying the
-   wording is now a correctness matter rather than a cosmetic one — see "Still
-   open".
+   **The two backends now word every failure identically** — fixed the same
+   day, once it was clear what phase 4 had changed. Not readability: a program
+   has been able to read `Exception.message` since phase 2. What changed is
+   *whose* text became readable. A module's message has one implementation
+   (the same `.so` runs under both modes, so it cannot diverge); the
+   language's own errors are the only ones written twice, in `interpreter.rs`
+   and `runtime.c`, and until phase 4 they only ever reached stderr, where
+   nothing compared them.
+
+   Seven of nine pairs had drifted. The two that had not were exactly the two
+   carrying a *"must match interpreter.rs exactly"* comment — the discipline
+   worked, it just had no enforcement. Both sides gave something up: `runtime.c`
+   gained the offending type (`fail_operand`/`fail_binary` build every operand
+   message from two shapes now), and `interpreter.rs` stopped printing
+   `Debug`'s `Add` where the compiled program said `'+'` (`BinOp::symbol`).
+   `code_compare` gained an operator parameter it never had, purely so it could
+   name the operator the program actually wrote; `code_bool_value` now takes
+   the whole requirement clause, because `if` is not an operator and
+   `"'if' requires booleans"` was never the right sentence.
+
+   `tests/message_parity.rs` is the enforcement: 19 failing programs, run
+   through both backends, messages compared. Verified by mutation — shortening
+   one C message to "assert requires a bool" makes it report the pair. One
+   message cannot be reached from the top level at all (`code_check_particle`,
+   since a handler returning a non-particle is now an Exception); it is pinned
+   by `handler_return_non_particle_is_exception.code` instead, which asserts it
+   in full under both backends.
 
 ## Still open
 
-- **The two backends word the same error differently, and that is now
-  observable.** `Exception.message` is an ordinary string a program can read,
-  compare, or print, so *"cannot apply Add to number and string"* versus
-  *"cannot apply '+' to these values"* is a real difference in what a program
-  computes, not just in what a user sees on stderr. The fixture harness cannot
-  catch it (pass/fail only), and neither can a fixture that asserts a message,
-  since it would simply fail in one mode. `runtime.c` already carries "must
-  match interpreter.rs exactly" comments for `type_name` and `article_for`;
-  the operator messages need the same treatment. Nothing depends on it yet.
+- **Should a program be able to tell failure *kinds* apart?** Today it cannot,
+  by choice. `_class` is always `"Exception"` (the owner's rule: `is Exception`
+  is the whole check), `source` says *who* failed — `"core"`, or the module's
+  name, which `net_diagnostics.code` already branches on — and `message` is
+  prose for people. Nothing carries "what kind of failure" in a form worth
+  branching on, and deliberately so: a language that will not add `else` should
+  not grow a speculative field. If something ever genuinely needs it, the shape
+  is a fourth field (`code: "division-by-zero"`) rather than reopening the
+  one-class decision. Discussed and settled 2026-08-28; revisit only when a
+  real program is blocked on it.
 - **`code_field`/`code_index` still owe modules an answer.** They are the two
   fallible helpers left in the module ABI, and a failure raised inside a `.so`
   sets that copy's flag where nobody reads it. Warned about in `code_abi.h`

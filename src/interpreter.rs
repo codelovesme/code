@@ -1036,11 +1036,16 @@ fn apply_binop(op: BinOp, l: Value, r: Value) -> Result<Value, String> {
         (BinOp::Ge, Number(a), Number(b)) => Some(Bool(a >= b)),
         _ => None,
     };
+    // `op.symbol()`, not `{op:?}`: this used to read "cannot apply Add to
+    // number and string" while the compiled program said "cannot apply '+' to
+    // these values" for the very same program. Both now say the same thing,
+    // and `tests/message_parity.rs` keeps it that way.
     result.ok_or_else(|| {
         format!(
-            "cannot apply {op:?} to {} and {}",
-            type_name(&l),
-            type_name(&r)
+            "cannot apply '{}' to {} and {}",
+            op.symbol(),
+            a_type_name(&l),
+            a_type_name(&r)
         )
     })
 }

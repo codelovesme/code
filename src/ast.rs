@@ -482,6 +482,32 @@ pub enum BinOp {
     Or,
 }
 
+impl BinOp {
+    /// How the operator is spelled in source — and, more to the point, in an
+    /// error message. `Exception.message` is a value a program can read
+    /// (since phase 2 for modules, phase 4 for the language itself), so the
+    /// two backends have to word the same failure identically; `runtime.c`
+    /// only ever had the symbol, and this is what lets the interpreter stop
+    /// printing `Debug`'s `Add` where the compiled program said `'+'`.
+    /// `tests/message_parity.rs` is what actually holds them together.
+    pub fn symbol(self) -> &'static str {
+        match self {
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Eq => "=",
+            BinOp::Ne => "≠",
+            BinOp::Lt => "<",
+            BinOp::Gt => ">",
+            BinOp::Le => "≤",
+            BinOp::Ge => "≥",
+            BinOp::And => "and",
+            BinOp::Or => "or",
+        }
+    }
+}
+
 /// `Neg` (`-x`): `Number` only. `Not`: `Bool` only. Both error on any other
 /// operand type.
 #[derive(Debug, Clone, Copy, PartialEq)]
