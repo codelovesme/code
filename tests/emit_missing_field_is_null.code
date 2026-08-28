@@ -1,0 +1,41 @@
+-- Emitting a particle is not filling in a form. A handler is never gated on
+-- the fields it happens to declare: a field the particle does not carry
+-- reads as null, exactly as `.field` does everywhere else in the language,
+-- and the handler runs and answers on that basis.
+--
+-- Owner's rule, 2026-08-28: "handlerları çağırabilmek için bir validasyon
+-- yapmasını istemiyorum". `net` was rewritten around it in phase 2; core and
+-- the other three modules caught up here.
+link "native_modules/strings.so" as strings
+link "native_modules/math.so" as math
+link "native_modules/terminal.so" as term
+
+-- A user-defined handler: `who` is simply null, and the body decides.
+Greet { who } => {
+    return Greeting { "missing": who = null }
+}
+emit Greet { } to this get g
+assert g.missing = true
+
+-- A core handler: `Length { }` and `Length { "value": null }` are the same
+-- particle, so they are the same failure — null has no length. Not two
+-- different complaints, one of them about the shape of the emit. That the
+-- two messages are now identical is pinned by `tests/message_parity.rs`,
+-- which provokes both at the top level under both backends.
+
+-- A module handler with nothing to validate answers rather than refusing:
+-- there is no value `Echo` cannot pass through, or `Print` cannot render.
+emit Echo { } to strings get e
+assert e is EchoResult
+assert e.value = null
+
+emit Print { } to term get p
+assert p is TerminalResult
+assert p.value = 4
+
+-- One that genuinely cannot proceed still fails — on the value, not on its
+-- absence. `Double { }` is `Double { "value": null }`, and null is not a
+-- number. One message now, where there used to be two.
+emit Double { } to math get d
+assert d is Exception
+assert d.message = "Double requires a numeric 'value'"

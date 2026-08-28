@@ -391,9 +391,13 @@ static const char *type_name(const CodeValue *v) {
  * the same failure differently is a difference in what a program computes,
  * not a cosmetic one. `tests/message_parity.rs` runs both backends over the
  * same failing programs and compares the text. */
+static void operand_message(char *buf, size_t n, const char *requirement, const CodeValue *v) {
+    snprintf(buf, n, "%s, found %s %s", requirement, article_for(v), type_name(v));
+}
+
 static void fail_operand(const char *requirement, const CodeValue *v) {
     char msg[192];
-    snprintf(msg, sizeof msg, "%s, found %s %s", requirement, article_for(v), type_name(v));
+    operand_message(msg, sizeof msg, requirement, v);
     fail(msg);
 }
 
@@ -577,10 +581,17 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
     }
 
     if (strcmp(class_val->str, "Length") == 0) {
+        /* A field the particle does not carry is null — the same answer
+         * `.field` gives — so there is no separate "you didn't supply it"
+         * case to report. Emitting a particle is not a form to be validated
+         * before the handler may run: `Length { }` means `Length { "value":
+         * null }`, and null has no length, which is what the type check below
+         * says. (Owner's rule, 2026-08-28; `net` was rewritten around it in
+         * phase 2 and this is core catching up.) */
+        static const CodeValue absent = {.tag = CODE_NULL};
         const CodeValue *value = find_field(particle, "value");
         if (!value) {
-            fail("Length { \"value\": ... } requires a 'value' field");
-            return;
+            value = &absent;
         }
         /* Zero-initialized for the same reason `code_make_result`'s `slots`
          * is: `code_number` releases `out` before setting it. */
@@ -605,7 +616,18 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
             code_make_result(out, "LengthResult", &count);
             return;
         }
-        fail_operand("Length requires an array or string 'value'", value);
+        /* Core answers rather than unwinding its caller, the same as a
+         * module and the same as a handler written in the language: `core` is
+         * a recipient like any other, so `emit Length { } to core get r`
+         * binds `r` instead of ending the frame that emitted (2026-08-28).
+         *
+         * Only failures from *here* — after the particle has been accepted
+         * and dispatched — answer this way. A malformed emit (`emit 5 to
+         * core`) is the emitting frame's own mistake and still fails there,
+         * exactly as `emit 5 to this` does. */
+        char msg[192];
+        operand_message(msg, sizeof msg, "Length requires an array or string 'value'", value);
+        code_make_exception(out, "core", msg, NULL);
         return;
     }
 

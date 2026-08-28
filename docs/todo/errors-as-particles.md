@@ -52,17 +52,24 @@ And "a handler's `return` must yield a particle" still holds unchanged —
 ## `Exception`'s shape
 
 ```
-Exception { message, innerException }
+Exception { source, message, innerException }
 ```
 
-No `source`. A returned value does not need to say who it came from — the
-caller wrote `to net` and knows. `innerException` lets a failure carry the
-one beneath it.
+~~No `source`.~~ Put back the same day, at the owner's call, and it earns its
+place: it is the only *machine-readable* thing an Exception carries. `_class`
+is always `"Exception"` (`is Exception` is the whole check) and `message` is
+prose, so `source` — `"core"` for the language's own failures, the module's
+name for a module's — is what a program can actually branch on, and
+`net_diagnostics.code` does. The argument against it was that the caller
+wrote `to net` and knows; that holds for one emit and stops holding the
+moment an Exception is stored, passed on, or arrives through a handler.
 
-This differs from the `Exception { source, message }` in the root README's
-"Common particles" section, which describes what `net` pushes *today*. Both
-change together when this ships. `Log` keeps its `source`: a *pushed*
-particle has no caller to infer it from, which is exactly the asymmetry.
+`innerException` lets a failure carry the one beneath it. Nothing produces a
+non-null one yet.
+
+This matches the `Exception { source, message }` in the root README's "Common
+particles" section. `Log` keeps its `source` for a different reason: a
+*pushed* particle has no caller to infer it from at all.
 
 Line and column belong inside `message` — `span::render` already produces
 that text for runtime errors, so it comes for free.
@@ -233,6 +240,31 @@ that changes error semantics needs its own both-mode fixture.
    because modules can legitimately want them — both now carry the warning in
    the header, and `code-native`'s `field` doc, which claimed a non-Object
    writes Null, was corrected to say it fails.
+   **Two follow-ups the same day, both from measuring rather than
+   assuming.** First: emitting a particle is not filling in a form, so no
+   handler is gated on the fields it declares. A field the particle does not
+   carry reads as null — as `.field` does everywhere else — and the handler
+   runs on that basis. `net` was rewritten around this in phase 2; `core`'s
+   `Length` and `math`/`strings`/`terminal` had kept their gates, producing
+   two different complaints for `Length { }` and `Length { "value": null }`
+   when the owner's rule says they are the same particle. The gates are gone,
+   `require_value` with them, and `Print { }` now prints "null" rather than
+   refusing — there is no value it cannot render, so it had nothing to
+   validate. `emit_missing_field_is_null.code`.
+
+   Second: `core` was the odd one out among the three emit targets. `to this`
+   and `to <module>` answer a failure with an Exception the emitting frame
+   binds and carries on from; `core`'s failures went down phase 3's flag
+   channel, so they unwound the *caller* instead — `emit Double { } to math
+   get r` bound `r` while `emit Length { } to core get r` ended the frame.
+   Core now answers like the other two, which is what `dispatch_core` already
+   claimed ("core is a recipient like any other") for the class it does not
+   know. Only failures from *inside* core answer this way: a malformed emit
+   (`emit 5 to core`) still fails in the emitting frame, exactly as `emit 5 to
+   this` does. `emit_failure_answers_from_every_target.code`, and
+   `fail_emit_length_non_array.code` became
+   `emit_length_bad_operand_is_exception.code`.
+
 4. ~~**`assert` returns `Exception`**~~ and
 5. ~~**Every other runtime error returns `Exception`**~~ — **both shipped
    2026-08-28, as one change.** They were listed as two phases on the
@@ -333,6 +365,13 @@ that changes error semantics needs its own both-mode fixture.
   is a fourth field (`code: "division-by-zero"`) rather than reopening the
   one-class decision. Discussed and settled 2026-08-28; revisit only when a
   real program is blocked on it.
+- **A non-particle `emit` is a three-way split, and was left that way.**
+  `emit 5 to this` and `emit 5 to core` end the emitting frame; `emit 5 to
+  <module>` answers null. Not the same question as a *handler* failing (that
+  one is settled — all three answer with an Exception): this is about the
+  emit statement itself being malformed, which is arguably the emitting
+  frame's own mistake rather than anything the recipient did. Measured and
+  recorded 2026-08-28, not decided.
 - **`code_field`/`code_index` still owe modules an answer.** They are the two
   fallible helpers left in the module ABI, and a failure raised inside a `.so`
   sets that copy's flag where nobody reads it. Warned about in `code_abi.h`

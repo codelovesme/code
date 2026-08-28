@@ -47,12 +47,15 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             null(out);
             return;
         }
-        let Some(value) = find_field(particle, "value") else {
-            exception(out, "terminal", "Print requires a 'value' field");
-            return;
+        // A field the particle does not carry is null, and null renders as
+        // "null" like any other value — `Print { }` is `Print { "value":
+        // null }`. This module used to refuse it, which was a validation gate
+        // in front of a handler that has nothing to validate: there is no
+        // value it cannot render (owner's rule, 2026-08-28).
+        let line = match find_field(particle, "value") {
+            Some(value) => render(value),
+            None => "null".to_string(),
         };
-
-        let line = render(value);
         // Straight to stdout, newline-terminated, flushed so the line is
         // visible immediately even under pipe buffering. This is the whole
         // module.

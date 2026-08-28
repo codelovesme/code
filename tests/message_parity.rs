@@ -48,11 +48,11 @@ const CASES: &[(&str, &str)] = &[
     ("loop_operand", "loop x over 5 {\n    assert true\n}\n"),
     ("field_on_non_object", "let a = 1\nlet b = a.name\n"),
     ("index_non_container", "let a = 1\nlet b = a[0]\n"),
-    (
-        "core_length_operand",
-        "emit Length { \"value\": 1 } to core get r\n",
-    ),
-    ("core_length_missing", "emit Length { } to core get r\n"),
+    // `Length`'s operand message is not here for the same reason
+    // `code_check_particle`'s is not: since core answers with an Exception
+    // rather than unwinding its caller, it no longer fails at the top level.
+    // `emit_length_bad_operand_is_exception.code` asserts it in full under
+    // both backends instead.
     // `code_check_particle`'s message is the one failure that *cannot* be
     // provoked at the top level: a handler returning a non-particle is a
     // failure of that frame, so since phase 4 it comes back as an Exception

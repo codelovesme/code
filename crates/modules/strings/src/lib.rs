@@ -83,21 +83,22 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
 // and a wrong-typed field are different mistakes, and the errors say which.
 // ---------------------------------------------------------------------------
 
-fn require_value<'a>(particle: &'a CodeValue, class: &str) -> Result<&'a CodeValue, String> {
-    find_field(particle, "value").ok_or_else(|| format!("{class} requires a 'value' field"))
-}
-
+/// A field the particle does not carry is null — the same answer `.field`
+/// gives — so there is no separate "you didn't supply it" case. Emitting a
+/// particle is not a form to be validated before the handler may run
+/// (owner's rule, 2026-08-28); `net` was rewritten around this in phase 2 and
+/// this is the rest of the modules catching up.
 fn require_string<'a>(particle: &'a CodeValue, class: &str) -> Result<&'a str, String> {
-    read_str(require_value(particle, class)?)
+    find_field(particle, "value")
+        .and_then(read_str)
         .ok_or_else(|| format!("{class} requires a string 'value'"))
 }
 
 /// A single-character separator — `Split`/`Join` refuse multi-character
 /// separators outright rather than silently taking the first character.
 fn require_separator(particle: &CodeValue, class: &str) -> Result<char, String> {
-    let sep_field = find_field(particle, "separator")
-        .ok_or_else(|| format!("{class} requires a 'separator' field"))?;
-    let sep = read_str(sep_field)
+    let sep = find_field(particle, "separator")
+        .and_then(read_str)
         .ok_or_else(|| format!("{class} requires a string 'separator' field"))?;
     let mut chars = sep.chars();
     match (chars.next(), chars.next()) {
@@ -132,8 +133,14 @@ fn shout(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 /// something fresh, which every other handler here does. Parity with
 /// `test_math`'s `Echo`.
 fn echo(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
-    let value = require_value(particle, "Echo")?;
-    make_result(out, c"EchoResult", |slot| copy(slot, value));
+    // `Echo { }` echoes null: there is no value this handler cannot pass
+    // through, so it has nothing to validate.
+    make_result(out, c"EchoResult", |slot| {
+        match find_field(particle, "value") {
+            Some(value) => copy(slot, value),
+            None => null(slot),
+        }
+    });
     Ok(())
 }
 
@@ -161,10 +168,9 @@ fn split(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 /// number-formatting policy the language hasn't decided (that belongs to a
 /// future formatting story, not to `Join`).
 fn join(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
-    let items = require_value(particle, "Join")?;
-    if items.tag != CodeTag::Array {
-        return Err("Join requires an array 'value'".to_string());
-    }
+    let items = find_field(particle, "value")
+        .filter(|v| v.tag == CodeTag::Array)
+        .ok_or("Join requires an array 'value'")?;
     let sep = require_separator(particle, "Join")?;
     let parts = array_elems(items)
         .map(read_str)

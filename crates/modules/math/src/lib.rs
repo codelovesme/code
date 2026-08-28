@@ -72,13 +72,16 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
 // explicit, and become the `Exception`'s message.
 // ---------------------------------------------------------------------------
 
-fn require_value<'a>(particle: &'a CodeValue, class: &str) -> Result<&'a CodeValue, String> {
-    find_field(particle, "value").ok_or_else(|| format!("{class} requires a 'value' field"))
-}
-
 /// A Number operand — `Double`'s whole contract.
+///
+/// A field the particle does not carry is null — the same answer `.field`
+/// gives — so there is no separate "you didn't supply it" case. Emitting a
+/// particle is not a form to be validated before the handler may run
+/// (owner's rule, 2026-08-28); `net` was rewritten around this in phase 2 and
+/// this is the rest of the modules catching up.
 fn require_number(particle: &CodeValue, class: &str) -> Result<f64, String> {
-    read_number(require_value(particle, class)?)
+    find_field(particle, "value")
+        .and_then(read_number)
         .ok_or_else(|| format!("{class} requires a numeric 'value'"))
 }
 
@@ -100,10 +103,9 @@ fn double(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 /// elements are refused rather than coerced: inventing a string-to-number
 /// parsing policy here would be worse than saying the input was wrong.
 fn sum(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
-    let items = require_value(particle, "Sum")?;
-    if items.tag != CodeTag::Array {
-        return Err("Sum requires an array 'value'".to_string());
-    }
+    let items = find_field(particle, "value")
+        .filter(|v| v.tag == CodeTag::Array)
+        .ok_or("Sum requires an array 'value'")?;
     let total: f64 = array_elems(items)
         .map(read_number)
         .collect::<Option<Vec<_>>>()

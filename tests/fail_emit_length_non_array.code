@@ -1,2 +1,0 @@
--- Length's own operand-type rule: "value" must be an array or a string.
-emit Length { "value": 5 } to core get n
