@@ -1,0 +1,21 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree. Same convention
+# `strings` and `math` use.
+[workspace]
+
+[package]
+name = "net"
+version = "0.1.0"
+edition = "2021"
+description = "The `net` native module for the Code programming language — Get and Post over HTTP(S). Written in Rust on code-native."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }
+ureq = "3"

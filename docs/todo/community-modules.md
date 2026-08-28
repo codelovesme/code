@@ -168,9 +168,31 @@ Batch 1 (proves the pipeline):
 
 Batch 2 (flagship — proves the pipeline with a non-trivial module):
 
-- **net** — minimal blocking HTTP: `Get`/`Post` particles taking a url plus
-  optional headers, returning `{ status, headers, body }`. Plain blocking
-  sockets via libc, no async dependency.
+- **net** — shipped 2026-08-28: `Get`/`Post` taking a url plus optional
+  `headers`/`timeout_seconds`/`max_body_bytes`, answering
+  `HttpResponse { ok, status, body }`. Blocking, as sketched. Full contract
+  and reasoning in [`crates/modules/net/README.md`](../../crates/modules/net/README.md);
+  the shape was settled by reading `euglena-language`'s `native-http-client`
+  and `http-client` organelles, which is where the per-verb particles and
+  the `ok`/`status` response come from.
+
+  Two deliberate departures from the sketch above:
+
+  - **`ureq` + rustls, not "plain blocking sockets via libc".** The sketch
+    predates the question of TLS. Writing HTTP over raw sockets is an
+    afternoon; writing *HTTPS* is a certificate-verification stack, and
+    getting that subtly wrong is a security bug rather than a bug. A module
+    that could only speak `http://` would not be the flagship. Cost: a
+    ~17 s cold build and a 3 MB `.so` — both paid once per CI run, and the
+    fixtures still need no network.
+  - **No `headers` in the *response*.** Not an omission by choice:
+    `code_object` copies key *pointers*, not key strings
+    (`runtime.c`'s `key_buf[i] = keys[i]`), so every field name in a value
+    must outlive it — which is why `code-native`'s `object()` takes
+    `&'static CStr`. Response header names arrive at runtime and would have
+    to be leaked to satisfy that. Expressing them wants an ABI addition
+    (an owned-keys constructor), which is its own decision and does not
+    belong inside the first module that happens to want it.
 
 Later candidates, only when asked for: rand, date/time formatting (raw
 seconds are core `Timestamp`; human-readable formats belong in a module),
@@ -200,7 +222,7 @@ the same data `code ls` reads. It doubles as the de-facto index.
 | A | core `Timestamp` (both backends, fixtures) | the core-handler pattern proven before any module ships |
 | B | `crates/modules/{terminal,math,strings}` + cross-build CI → GitHub Releases, `console` npm package; dogfood by hand | proof the pipeline works |
 | C | ~~`code install/remove/ls` + resolver fallback chain + lockfile/sha256~~ — shipped 2026-08-23 | users getting modules without copying files |
-| D | `net` module | the flagship community-facing module |
+| D | ~~`net` module~~ — shipped 2026-08-28 | the flagship community-facing module |
 | E | template repo + publish guide + website Modules page | other people publishing |
 | F | (optional) Windows `.dll` support, name-based community index, artifact signing | wider reach / stronger trust |
 
@@ -211,6 +233,10 @@ the same data `code ls` reads. It doubles as the de-facto index.
   fallback chain: stop at the nearest `.code/` directory (shared helper
   `find_project_code_dir` in `src/loader.rs`); git-root detection deferred
   until it earns its complexity.
-- `net` API shape: one particle per verb (`Get`/`Post`) vs one `Request`
-  particle carrying a method field — sketch in the module's README before
-  coding.
+- ~~`net` API shape: one particle per verb (`Get`/`Post`) vs one `Request`
+  particle carrying a method field~~ — decided 2026-08-28: **one particle
+  per verb**, following `euglena-language`'s organelles. Dispatch in this
+  language is already a `_class` switch, so a method field would make the
+  module run a second switch on a string, re-implementing the dispatcher one
+  level down. Sketched in the module's README before coding, as this entry
+  asked.

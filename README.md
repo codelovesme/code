@@ -592,7 +592,8 @@ program costs bounded memory. Continuous draining, which an interactive
 daemon would need, is not built yet (see
 [`docs/todo/inbound-emissions-from-native-modules.md`](docs/todo/inbound-emissions-from-native-modules.md)).
 
-First-party modules today: `terminal` (print to stdout), `math`, `strings`.
+First-party modules today: `terminal` (print to stdout), `math`, `strings`,
+`net` (HTTP `Get`/`Post` — see [its README](crates/modules/net/README.md)).
 `code install <name>` fetches one into `./.code/modules/`, pinned by sha256
 in `./.code/lock.json`; `--global` puts it in `~/.code/modules/` instead. A
 `link` reference resolves against a fixed chain — the script's own directory,

@@ -1,0 +1,13 @@
+-- A refused connection is a value, not a program-ending error: `net` is the
+-- one module where the outside world saying no is normal operation, and this
+-- language has no way to catch an error. Port 1 is privileged and never
+-- bound, so the refusal is immediate and needs no network of its own — this
+-- fixture passes on a machine with the cable pulled out.
+link "native_modules/net.so" as net
+
+emit Get { "url": "http://127.0.0.1:1/" } to net get r
+assert not r.ok
+assert r.status = 0
+
+-- The program is still running, which is the whole point.
+assert 1 + 1 = 2

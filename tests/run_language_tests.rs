@@ -86,17 +86,22 @@ enum Expect {
 }
 
 /// Compiles each dynamic native module into the `.so` the
-/// `native_link_*`/`fail_native_link_*`, `terminal_*`, `strings_*`, and
-/// `math_*` fixtures `link` — checked into git as source, not as a binary
+/// `native_link_*`/`fail_native_link_*`, `terminal_*`, `strings_*`,
+/// `math_*`, and `net_*` fixtures `link` — checked into git as source, not
+/// as a binary
 /// (see `.gitignore`), so it has to be built fresh here before any fixture
 /// that needs it can run either mode. Sources live next to their consumers:
 /// `test_math` is a pure test double (stays in `tests/native_modules/`),
-/// while `terminal`, `strings`, and `math` are real first-party modules
+/// while `terminal`, `strings`, `math`, and `net` are real first-party
+/// modules
 /// that happen to be exercised by fixtures (their canonical homes are under
 /// `crates/modules/`, where the release CI builds them from). The C modules
-/// go straight through `cc`; `strings` and `math` are Rust-on-`code-native`
-/// modules, so they get a `cargo build` instead — same output location,
-/// same stem, the fixtures cannot tell the difference.
+/// go straight through `cc`; `strings`, `math`, and `net` are
+/// Rust-on-`code-native` modules, so they get a `cargo build` instead —
+/// same output location, same stem, the fixtures cannot tell the
+/// difference. `net` is much the slowest of the three to build cold (it
+/// pulls ureq and rustls); nothing here needs a network, though — its
+/// fixtures only ever talk to a refused port on loopback.
 fn build_native_dynamic_test_modules(tests_dir: &Path) {
     let modules_dir = tests_dir.join("native_modules");
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -125,7 +130,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
 
     // The Rust modules: `cargo build` inside each standalone workspace, then
     // move the cdylib onto the same `native_modules/<stem>.so` convention.
-    for stem in ["strings", "math"] {
+    for stem in ["strings", "math", "net"] {
         let crate_dir = manifest_dir.join("crates/modules").join(stem);
         let cargo_status = Command::new("cargo")
             .args(["build", "--release"])

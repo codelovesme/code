@@ -1,0 +1,4 @@
+-- `net` answers Get and Post; anything else names itself and stops.
+link "native_modules/net.so" as net
+
+emit Delete { "url": "http://127.0.0.1:1/" } to net get r
