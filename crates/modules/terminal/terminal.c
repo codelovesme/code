@@ -94,11 +94,13 @@ static void render_value(const CodeValue *v, char **buf, size_t *cap, size_t *le
 
 void code_module_dispatch(CodeValue *out, const CodeValue *particle) {
     if (particle->tag != CODE_OBJECT) {
-        code_runtime_error("terminal: emit requires a particle");
+        code_null(out);
+        return;
     }
     const CodeValue *class_val = find_field(particle, "_class");
     if (!class_val || class_val->tag != CODE_STR) {
-        code_runtime_error("terminal: emit requires a particle");
+        code_null(out);
+        return;
     }
     /* A class this module does not handle answers null rather than ending
      * the program — whether to act on a particle is the recipient's
@@ -110,7 +112,8 @@ void code_module_dispatch(CodeValue *out, const CodeValue *particle) {
 
     const CodeValue *value = find_field(particle, "value");
     if (!value) {
-        code_runtime_error("terminal: Print requires a 'value' field");
+        code_make_exception(out, "terminal", "Print requires a 'value' field", NULL);
+        return;
     }
 
     char *buf = malloc(256);

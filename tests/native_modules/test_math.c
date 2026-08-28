@@ -18,17 +18,20 @@ uint32_t code_module_abi_version(void) {
 
 void code_module_dispatch(CodeValue *out, const CodeValue *particle) {
     if (particle->tag != CODE_OBJECT) {
-        code_runtime_error("test_math: emit requires a particle");
+        code_null(out);
+        return;
     }
     const CodeValue *class_val = find_field(particle, "_class");
     if (!class_val || class_val->tag != CODE_STR) {
-        code_runtime_error("test_math: emit requires a particle");
+        code_null(out);
+        return;
     }
 
     if (strcmp(class_val->str, "Double") == 0) {
         const CodeValue *value = find_field(particle, "value");
         if (!value || value->tag != CODE_NUMBER) {
-            code_runtime_error("Double requires a numeric 'value'");
+            code_make_exception(out, "test_math", "Double requires a numeric 'value'", NULL);
+            return;
         }
         CodeValue doubled = {0};
         code_number(&doubled, value->number * 2.0);
@@ -39,7 +42,8 @@ void code_module_dispatch(CodeValue *out, const CodeValue *particle) {
     if (strcmp(class_val->str, "Shout") == 0) {
         const CodeValue *value = find_field(particle, "value");
         if (!value || value->tag != CODE_STR) {
-            code_runtime_error("Shout requires a string 'value'");
+            code_make_exception(out, "test_math", "Shout requires a string 'value'", NULL);
+            return;
         }
         size_t n = strlen(value->str);
         char *buf = (char *)malloc(n + 2);
@@ -64,13 +68,15 @@ void code_module_dispatch(CodeValue *out, const CodeValue *particle) {
     if (strcmp(class_val->str, "Sum") == 0) {
         const CodeValue *value = find_field(particle, "value");
         if (!value || value->tag != CODE_ARRAY) {
-            code_runtime_error("Sum requires an array 'value'");
+            code_make_exception(out, "test_math", "Sum requires an array 'value'", NULL);
+            return;
         }
         double total = 0.0;
         for (long long i = 0; i < value->len; i++) {
             const CodeValue *elem = slot_at(value->items, i);
             if (elem->tag != CODE_NUMBER) {
-                code_runtime_error("Sum requires an array of numbers");
+                code_make_exception(out, "test_math", "Sum requires an array of numbers", NULL);
+                return;
             }
             total += elem->number;
         }
@@ -83,7 +89,8 @@ void code_module_dispatch(CodeValue *out, const CodeValue *particle) {
     if (strcmp(class_val->str, "Echo") == 0) {
         const CodeValue *value = find_field(particle, "value");
         if (!value) {
-            code_runtime_error("Echo requires a 'value' field");
+            code_make_exception(out, "test_math", "Echo requires a 'value' field", NULL);
+            return;
         }
         /* Unchanged passthrough, including nested Array/Object — exercises
          * a handler that shares structure with its input rather than always

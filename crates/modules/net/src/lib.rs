@@ -9,12 +9,17 @@
 //! Both answer with `HttpResponse { ok, status, body }`.
 //!
 //! The one rule that shapes everything here: **a request that fails is a
-//! value, not an error.** This language has no `try`/`catch` and no
-//! catchable assert, so calling `runtime_error` on a refused connection
-//! would end the program with nothing able to recover. `runtime_error` is
-//! reserved for misuse the program could have avoided — a missing `url`, a
-//! header value that isn't a String — which is a bug, and aborts like every
-//! other module's bugs do.
+//! value, not an error.** As of 2026-08-28 that is the whole rule — there is
+//! no second category. A module may never end the application
+//! (`docs/todo/errors-as-particles.md`), so there is nothing this module can
+//! do but answer.
+//!
+//! In practice that means **no validation pass**. A field the particle does
+//! not carry is null, exactly as `.field` reads an absent member, and a null
+//! url is just a url that cannot be fetched — so the failure comes from
+//! *attempting* the request rather than from a guard refusing to try. The
+//! messages are better for it: `bad uri: 42 is missing scheme` says more
+//! than a hand-written "requires a string 'url'" did.
 //!
 //! `code_release` needs no code here — `code-native` links the vendored
 //! `runtime.c` into the cdylib and re-exports it.
@@ -94,23 +99,19 @@ pub extern "C" fn code_module_abi_version() -> u32 {
 #[no_mangle]
 pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *const CodeValue) {
     let particle = &*particle;
-    if particle.tag != CodeTag::Object {
-        runtime_error("net: emit requires a particle");
-    }
-    let class = match read_field_str(particle, "_class") {
-        Some(c) => c,
-        None => runtime_error("net: emit requires a particle"),
-    };
-    let out = &mut *out;
-
-    match class {
-        "Get" => request(out, particle, Method::Get),
-        "Post" => request(out, particle, Method::Post),
-        // A class this module does not handle answers null rather than
-        // ending the program — whether to act on a particle is the
-        // recipient's business (2026-08-28, docs/todo/errors-as-particles.md).
-        _ => null(out),
-    }
+    // Everything below runs inside `guarded`, so a panic anywhere in this
+    // module — ours or one of ureq's — becomes an `Exception` rather than
+    // taking the host down with it.
+    guarded(&mut *out, "net", |out| {
+        // Not a particle, or a class this module does not handle: null.
+        // Neither is an error — whether to act on a particle is the
+        // recipient's business (docs/todo/errors-as-particles.md).
+        match read_field_str(particle, "_class") {
+            Some("Get") => request(out, particle, Method::Get),
+            Some("Post") => request(out, particle, Method::Post),
+            _ => null(out),
+        }
+    })
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -129,33 +130,57 @@ impl Method {
 }
 
 // ---------------------------------------------------------------------------
-// Operand extraction — a missing field and a wrong-typed field are different
-// mistakes, and the errors say which (the convention `strings` set).
+// Operand extraction.
+//
+// There is deliberately no validation pass here. A field the particle does
+// not carry is null, exactly as `.field` reads an absent member, and a null
+// url is simply a url that cannot be fetched — so the failure comes from
+// *attempting* the request rather than from a guard refusing to try. That
+// keeps this module out of the business of judging its caller, and the
+// message honest: `ureq` says `bad uri: unknown scheme` far better than a
+// hand-written "requires a string 'url'" ever did.
 // ---------------------------------------------------------------------------
 
-fn require_url<'a>(particle: &'a CodeValue, class: &str) -> &'a str {
-    let field = match find_field(particle, "url") {
-        Some(v) => v,
-        None => runtime_error(&format!("net: {class} requires a 'url' field")),
-    };
-    match read_str(field) {
-        Some("") => runtime_error(&format!("net: {class} requires a non-empty 'url'")),
-        Some(s) => s,
-        None => runtime_error(&format!("net: {class} requires a string 'url'")),
+/// The url as text, whatever kind the field turned out to be. A missing or
+/// non-String field renders as the empty string, which is a url the request
+/// stage rejects on its own.
+fn url_text(particle: &CodeValue) -> String {
+    match find_field(particle, "url") {
+        Some(v) => value_text(v),
+        None => String::new(),
     }
 }
 
-/// An optional Number field, floored at zero and refused if present with the
-/// wrong type — absent means "use the default", but present-and-a-String is
-/// a mistake worth naming rather than silently defaulting over.
-fn optional_number(particle: &CodeValue, class: &str, name: &str, default: f64) -> f64 {
-    match find_field(particle, name) {
-        None => default,
-        Some(v) => match read_number(v) {
-            Some(n) if n > 0.0 => n,
-            Some(_) => runtime_error(&format!("net: {class} requires a positive '{name}'")),
-            None => runtime_error(&format!("net: {class} requires a number '{name}'")),
+/// A value as text for the one purpose this module has: naming it in a url
+/// or a header. Non-strings render as themselves rather than as "", so a
+/// `"url": 42` reports `bad uri: '42'` instead of a misleading "no url".
+fn value_text(v: &CodeValue) -> String {
+    match read_str(v) {
+        Some(s) => s.to_string(),
+        None => match read_number(v) {
+            // Integral numbers without a trailing `.0`, matching how the
+            // language itself renders them.
+            Some(n) if n.fract() == 0.0 && n.abs() < 1e15 => format!("{}", n as i64),
+            Some(n) => format!("{n}"),
+            None => match read_bool(v) {
+                Some(b) => b.to_string(),
+                None => String::new(),
+            },
         },
+    }
+}
+
+/// An optional positive Number. Anything else — absent, the wrong kind, zero
+/// or negative — falls back to the default rather than refusing.
+///
+/// The fallback is not politeness: a non-positive duration would panic
+/// inside `Duration::from_secs_f64`, and `guarded` would turn that into an
+/// `Exception` naming a Rust internal rather than anything the caller could
+/// act on. Defaulting says the same thing more usefully.
+fn optional_number(particle: &CodeValue, name: &str, default: f64) -> f64 {
+    match find_field(particle, name).and_then(read_number) {
+        Some(n) if n > 0.0 && n.is_finite() => n,
+        _ => default,
     }
 }
 
@@ -165,12 +190,14 @@ fn optional_number(particle: &CodeValue, class: &str, name: &str, default: f64) 
 /// Walks `keys`/`items` directly — `code-native` exposes `array_elems` for
 /// arrays but no equivalent pairs iterator for objects, and the layout is
 /// public and documented (`keys` is parallel to `items`, both `len` long).
-fn headers(particle: &CodeValue, class: &str) -> Vec<(String, String)> {
+fn headers(particle: &CodeValue) -> Vec<(String, String)> {
     let Some(field) = find_field(particle, "headers") else {
         return Vec::new();
     };
+    // Not an object: no headers. Nothing to refuse — a caller that meant to
+    // send some and did not will see that in the request that arrives.
     if field.tag != CodeTag::Object || field.keys.is_null() {
-        runtime_error(&format!("net: {class} requires an object 'headers'"));
+        return Vec::new();
     }
     let mut out = Vec::new();
     for i in 0..field.len {
@@ -186,12 +213,12 @@ fn headers(particle: &CodeValue, class: &str) -> Vec<(String, String)> {
         if name.is_empty() || name == "_class" {
             continue;
         }
-        let value = unsafe { &*slot_at(field.items, i) };
-        match read_str(value) {
-            Some(v) => out.push((name.to_string(), v.to_string())),
-            None => runtime_error(&format!(
-                "net: {class} requires string header values, but '{name}' is not a string"
-            )),
+        // Rendered rather than required to be a String, for the same reason
+        // the url is: `"X-Count": 3` sends `3`, which is what the caller
+        // plainly meant.
+        let value = value_text(unsafe { &*slot_at(field.items, i) });
+        if !value.is_empty() {
+            out.push((name.to_string(), value));
         }
     }
     out
@@ -203,31 +230,22 @@ fn headers(particle: &CodeValue, class: &str) -> Vec<(String, String)> {
 
 fn request(out: &mut CodeValue, particle: &CodeValue, method: Method) {
     let class = method.class();
-    let url = require_url(particle, class);
-    let timeout = optional_number(particle, class, "timeout_seconds", DEFAULT_TIMEOUT_SECONDS);
-    let max_body =
-        optional_number(particle, class, "max_body_bytes", DEFAULT_MAX_BODY_BYTES) as u64;
-    let headers = headers(particle, class);
+    let url = url_text(particle);
+    let timeout = optional_number(particle, "timeout_seconds", DEFAULT_TIMEOUT_SECONDS);
+    let max_body = optional_number(particle, "max_body_bytes", DEFAULT_MAX_BODY_BYTES) as u64;
+    let headers = headers(particle);
 
-    // Both are `Post`-only, and read only for `Post`: checking them on a
-    // `Get` would reject a field that handler does not have, with a message
-    // naming a handler the program did not emit.
+    // Both are `Post`-only. An absent body is an empty one, which is a legal
+    // request, and an absent content type takes the default.
     let (body, content_type) = match method {
         Method::Get => (String::new(), String::new()),
         Method::Post => {
-            let body = match find_field(particle, "body") {
-                Some(v) => match read_str(v) {
-                    Some(s) => s.to_string(),
-                    None => runtime_error("net: Post requires a string 'body'"),
-                },
-                None => runtime_error("net: Post requires a 'body' field"),
-            };
-            let content_type = match find_field(particle, "content_type") {
-                None => "application/octet-stream".to_string(),
-                Some(v) => match read_str(v) {
-                    Some(s) => s.to_string(),
-                    None => runtime_error("net: Post requires a string 'content_type'"),
-                },
+            let body = find_field(particle, "body")
+                .map(value_text)
+                .unwrap_or_default();
+            let content_type = match find_field(particle, "content_type").map(value_text) {
+                Some(ct) if !ct.is_empty() => ct,
+                _ => "application/octet-stream".to_string(),
             };
             (body, content_type)
         }
@@ -235,7 +253,7 @@ fn request(out: &mut CodeValue, particle: &CodeValue, method: Method) {
 
     match perform(
         method,
-        url,
+        &url,
         &headers,
         &body,
         &content_type,

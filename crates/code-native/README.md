@@ -43,8 +43,8 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             let value = read_field_number(particle, "value").unwrap_or(0.0);
             make_result(&mut *out, c"DoubleResult", |slot| number(slot, value * 2.0));
         }
-        // A class this module does not handle answers null rather than
-        // ending the program — see docs/todo/errors-as-particles.md.
+        // A class this module does not handle answers null — see
+        // docs/todo/errors-as-particles.md.
         _ => null(out),
     }
 }
@@ -109,6 +109,57 @@ See `code_abi.h`'s own doc comment (vendored into this crate at
 mirrors it field-for-field rather than hiding it, since building the
 `'static`-lifetime buffer correctly is easier to get right by following the
 same shape a C module uses than behind a leaky abstraction.
+
+## Failing without ending the program
+
+**A module may never bring the application down.** Report a failure by
+returning an `Exception` — the program receives it as an ordinary value,
+tests it with `is Exception`, and may read `message` or ignore it entirely:
+
+```rust
+exception(out, "mymodule", "cannot open the door");
+```
+
+`code_runtime_error` is deprecated for module use and will leave this crate
+once the C runtime has an error channel of its own.
+
+### `guarded` — and why it cannot live in the host
+
+Wrap your dispatch in `guarded` so a panic becomes an `Exception` too:
+
+```rust
+#[no_mangle]
+pub unsafe extern "C" fn code_module_dispatch(
+    out: *mut CodeValue,
+    particle: *const CodeValue,
+) {
+    let particle = &*particle;
+    guarded(&mut *out, "mymodule", |out| {
+        match read_field_str(particle, "_class").unwrap_or("") {
+            "Double" => { /* ... */ }
+            _ => null(out),
+        }
+    })
+}
+```
+
+This is not something the host could do for you. A panic escaping an
+`extern "C"` function **aborts** the process rather than unwinding, so the
+host's own `catch_unwind` never runs — the catch has to happen on this side
+of the FFI boundary. `tests/native_modules/test_panics` exists to keep that
+true.
+
+It covers what "written wrong" usually means: `unwrap`/`expect`, index and
+slice bounds, arithmetic overflow, explicit `panic!`/`assert!`, and panics
+from inside dependencies. It cannot cover a deliberate `exit`, an infinite
+loop, or undefined behaviour reached through `unsafe`.
+
+**This is why Rust is the recommended path for a third-party module.** In C
+the same guarantee does not exist: a module that forgets a NULL check
+segfaults, and an integer `100 / 0` raises SIGFPE — neither is catchable by
+anything, in any language, from anywhere. (Rust will not even compile the
+latter.) The C path stays as the ABI's reference implementation; production
+modules should take this one.
 
 ## Speaking first (inbound emissions)
 

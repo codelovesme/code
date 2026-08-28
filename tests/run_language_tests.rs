@@ -130,8 +130,14 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
 
     // The Rust modules: `cargo build` inside each standalone workspace, then
     // move the cdylib onto the same `native_modules/<stem>.so` convention.
-    for stem in ["strings", "math", "net"] {
-        let crate_dir = manifest_dir.join("crates/modules").join(stem);
+    for stem in ["strings", "math", "net", "test_panics"] {
+        // `test_panics` is a test double rather than a shipped module, so
+        // it lives beside the other doubles instead of under crates/modules/.
+        let crate_dir = if stem == "test_panics" {
+            modules_dir.join(stem)
+        } else {
+            manifest_dir.join("crates/modules").join(stem)
+        };
         let cargo_status = Command::new("cargo")
             .args(["build", "--release"])
             .current_dir(&crate_dir)

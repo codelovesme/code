@@ -1,5 +1,0 @@
--- Header values must be Strings. A Number here is a mistake worth naming
--- rather than quietly stringifying into a header the server never expected.
-link "native_modules/net.so" as net
-
-emit Get { "url": "http://127.0.0.1:1/", "headers": { "X-Count": 3 } } to net get r

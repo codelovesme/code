@@ -43,45 +43,43 @@ pub extern "C" fn code_module_abi_version() -> u32 {
 #[no_mangle]
 pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *const CodeValue) {
     let particle = &*particle;
-    if particle.tag != CodeTag::Object {
-        runtime_error("math: emit requires a particle");
-    }
-    let class = match read_field_str(particle, "_class") {
-        Some(c) => c,
-        None => runtime_error("math: emit requires a particle"),
-    };
-    let out = &mut *out;
-
-    match class {
-        "Double" => double(out, particle),
-        "Sum" => sum(out, particle),
-        // A class this module does not handle answers null rather than
-        // ending the program — whether to act on a particle is the
-        // recipient's business (2026-08-28, docs/todo/errors-as-particles.md).
-        _ => null(out),
-    }
+    // `guarded` so a panic anywhere below becomes an `Exception` rather than
+    // taking the host down; the `Err` arm turns a handler's own refusal into
+    // the same shape, so both kinds of failure reach the caller as a value.
+    guarded(&mut *out, "math", |out| {
+        let outcome = match read_field_str(particle, "_class").unwrap_or("") {
+            "Double" => double(out, particle),
+            "Sum" => sum(out, particle),
+            // A class this module does not handle answers null — whether to
+            // act on a particle is the recipient's business.
+            _ => {
+                null(out);
+                Ok(())
+            }
+        };
+        if let Err(message) = outcome {
+            exception(out, "math", &message);
+        }
+    })
 }
 
 // ---------------------------------------------------------------------------
 // Shared operand extraction — every handler wants `value` off the particle,
 // typed per-handler. Mirrors `strings`' per-field checks: a missing field
-// and a wrong-typed field are different mistakes, and the errors say which.
+// and a wrong-typed field are different mistakes, and the messages say
+// which. Unlike `net`, there is nothing here to *attempt* and let fail —
+// arithmetic on a non-number has no operation to reach — so these stay
+// explicit, and become the `Exception`'s message.
 // ---------------------------------------------------------------------------
 
-fn require_value<'a>(particle: &'a CodeValue, class: &str) -> &'a CodeValue {
-    match find_field(particle, "value") {
-        Some(v) => v,
-        None => runtime_error(&format!("{class} requires a 'value' field")),
-    }
+fn require_value<'a>(particle: &'a CodeValue, class: &str) -> Result<&'a CodeValue, String> {
+    find_field(particle, "value").ok_or_else(|| format!("{class} requires a 'value' field"))
 }
 
 /// A Number operand — `Double`'s whole contract.
-fn require_number(particle: &CodeValue, class: &str) -> f64 {
-    let v = require_value(particle, class);
-    match read_number(v) {
-        Some(n) => n,
-        None => runtime_error(&format!("{class} requires a numeric 'value'")),
-    }
+fn require_number(particle: &CodeValue, class: &str) -> Result<f64, String> {
+    read_number(require_value(particle, class)?)
+        .ok_or_else(|| format!("{class} requires a numeric 'value'"))
 }
 
 // ---------------------------------------------------------------------------
@@ -91,25 +89,27 @@ fn require_number(particle: &CodeValue, class: &str) -> f64 {
 /// Multiply by two. Byte-for-byte parity with `test_math`'s `Double`
 /// (which this module inherits in the split proposal): one multiply, one
 /// Number back, no surprises.
-fn double(out: &mut CodeValue, particle: &CodeValue) {
-    let n = require_number(particle, "Double");
+fn double(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let n = require_number(particle, "Double")?;
     make_result(out, c"DoubleResult", |slot| number(slot, n * 2.0));
+    Ok(())
 }
 
 /// Sum an array of Numbers. An empty array sums to 0 — the identity of the
 /// operation, and exactly what `test_math`'s accumulator does. Non-number
 /// elements are refused rather than coerced: inventing a string-to-number
 /// parsing policy here would be worse than saying the input was wrong.
-fn sum(out: &mut CodeValue, particle: &CodeValue) {
-    let items = require_value(particle, "Sum");
+fn sum(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let items = require_value(particle, "Sum")?;
     if items.tag != CodeTag::Array {
-        runtime_error("Sum requires an array 'value'");
+        return Err("Sum requires an array 'value'".to_string());
     }
     let total: f64 = array_elems(items)
         .map(read_number)
         .collect::<Option<Vec<_>>>()
-        .unwrap_or_else(|| runtime_error("Sum requires an array of numbers"))
+        .ok_or("Sum requires an array of numbers")?
         .into_iter()
         .sum();
     make_result(out, c"SumResult", |slot| number(slot, total));
+    Ok(())
 }

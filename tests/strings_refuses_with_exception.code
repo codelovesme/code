@@ -1,0 +1,20 @@
+-- `strings` refuses the same way `math` does. A multi-character separator
+-- is almost always a bug in the calling script, and a non-string element
+-- would need a number-formatting policy that belongs to a future formatting
+-- story — neither is a reason to end the program.
+--
+-- Replaces fail_strings_join_non_string and fail_strings_split_bad_separator
+-- (2026-08-28, docs/todo/errors-as-particles.md).
+link "native_modules/strings.so" as s
+
+emit Join { "value": ["a", 2, "c"], "separator": "-" } to s get a
+assert a is Exception
+assert a.source = "strings"
+assert a.message = "Join requires an array of strings"
+
+emit Split { "value": "a::b", "separator": "::" } to s get b
+assert b is Exception
+assert b.message = "Split requires a single-character 'separator' field"
+
+emit Split { "value": "a,b", "separator": "," } to s get ok
+assert ok.value = ["a", "b"]

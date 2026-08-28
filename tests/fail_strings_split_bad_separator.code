@@ -1,5 +1,0 @@
--- `Split` refuses a multi-character separator outright rather than silently
--- taking the first character — a two-character "separator" is almost always
--- a bug in the calling script, and failing loudly finds it faster.
-link "native_modules/strings.so" as s
-emit Split { "value": "a::b", "separator": "::" } to s get n

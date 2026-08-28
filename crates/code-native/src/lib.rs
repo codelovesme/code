@@ -312,10 +312,21 @@ pub fn assert_value(v: &CodeValue) {
     unsafe { code_assert(v) }
 }
 
-/// Raise a fatal module error — mirrors `core`'s own handlers. Never
-/// returns: like `core`, this takes the whole host process down (`code
-/// run` included), the same tradeoff every native-extension mechanism
-/// makes. See `code_abi.h`'s doc comment.
+/// Raise a fatal module error, taking the whole host process down.
+///
+/// **Deprecated as of 2026-08-28, and not for modules to call.** A module
+/// may never end the application — see
+/// `docs/todo/errors-as-particles.md`. Report a failure by returning an
+/// [`exception`] instead, which the program receives as an ordinary value
+/// and may examine or ignore.
+///
+/// Kept only because `runtime.c` itself still uses it internally for
+/// conditions with no frame to return to (out of memory). It will leave
+/// this crate's API entirely once the C runtime has an error channel.
+#[deprecated(
+    since = "1.1.0",
+    note = "a module may not end the application; return `exception(out, source, message)` instead"
+)]
 pub fn runtime_error(message: &str) -> ! {
     let c = cstr(message);
     unsafe { code_runtime_error(c.as_ptr()) }
@@ -566,4 +577,101 @@ pub fn emit_inbound(value: &CodeValue) -> bool {
     let emit: CodeEmitFn = unsafe { std::mem::transmute::<usize, CodeEmitFn>(emit) };
     unsafe { emit(queue, value) };
     true
+}
+
+// ===========================================================================
+// Failing without ending the program.
+// ===========================================================================
+
+/// Build `Exception { source, message, innerException }` into `out` — how a
+/// module reports that it could not do the work.
+///
+/// This is the *only* way a module should fail. A module may never end the
+/// application (`docs/todo/errors-as-particles.md`): the program receives
+/// this as an ordinary value through `get`, and may test it with
+/// `is Exception`, read `message`, or ignore it entirely.
+///
+/// `source` names the module, which a returned value cannot otherwise be
+/// asked — the caller knows what it emitted to, but an `Exception` stored,
+/// passed on, or wrapped as another's `innerException` has lost that.
+///
+/// `innerException` is null here; use [`exception_wrapping`] to carry the
+/// failure underneath this one.
+pub fn exception(out: &mut CodeValue, source: &str, message: &str) {
+    let mut inner = CodeValue::zeroed();
+    null(&mut inner);
+    exception_wrapping(out, source, message, &inner);
+    release(&mut inner);
+}
+
+/// [`exception`], carrying the failure that caused it as `innerException`.
+pub fn exception_wrapping(out: &mut CodeValue, source: &str, message: &str, inner: &CodeValue) {
+    let mut buf = SlotBuffer::new(4);
+    borrowed_str(buf.slot_mut(0), c"Exception");
+    owned_str(buf.slot_mut(1), source);
+    owned_str(buf.slot_mut(2), message);
+    copy(buf.slot_mut(3), inner);
+    object(
+        out,
+        &[c"_class", c"source", c"message", c"innerException"],
+        &mut buf,
+    );
+    buf.release_all();
+}
+
+/// Run a module's dispatch body so that a panic inside it becomes an
+/// [`exception`] rather than killing the host.
+///
+/// **Wrap every `code_module_dispatch` in this.** The guarantee it provides
+/// cannot be provided by the host: a panic escaping an `extern "C"` function
+/// aborts the process rather than unwinding, so the host's own
+/// `catch_unwind` never runs — the catch has to happen on this side of the
+/// FFI boundary, which is here.
+///
+/// What it covers is most of what "a badly written module" means in
+/// practice: `unwrap`/`expect` on `None` or `Err`, slice and index bounds,
+/// arithmetic overflow, explicit `panic!`/`assert!`, and panics raised
+/// inside dependencies. What it cannot cover is a deliberate `exit`, an
+/// infinite loop, or undefined behaviour reached through `unsafe`.
+///
+/// ```rust,ignore
+/// #[no_mangle]
+/// pub unsafe extern "C" fn code_module_dispatch(
+///     out: *mut CodeValue,
+///     particle: *const CodeValue,
+/// ) {
+///     guarded(&mut *out, "mymodule", |out| match read_field_str(&*particle, "_class") {
+///         Some("Double") => { /* ... */ }
+///         _ => null(out),
+///     })
+/// }
+/// ```
+pub fn guarded(out: &mut CodeValue, source: &str, body: impl FnOnce(&mut CodeValue)) {
+    let slot: *mut CodeValue = out;
+    // `AssertUnwindSafe` over the whole closure: `out` is a slot the host
+    // owns, there is no invariant of ours for a panic to leave half-broken,
+    // and whatever the body managed to write is released by the constructor
+    // `exception` runs next.
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // SAFETY: `slot` came from the `&mut` above and outlives this call.
+        body(unsafe { &mut *slot })
+    }));
+    let Err(payload) = result else {
+        return;
+    };
+    // Rust's panic payload is a string for `panic!("...")` and `unwrap`
+    // alike; anything else is reported without a message rather than
+    // guessed at.
+    let detail = payload
+        .downcast_ref::<&str>()
+        .map(|s| (*s).to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "panicked".to_string());
+    // SAFETY: as above — `catch_unwind` returning `Err` means the body
+    // stopped early, not that the slot went away.
+    exception(
+        unsafe { &mut *slot },
+        source,
+        &format!("module panicked: {detail}"),
+    );
 }

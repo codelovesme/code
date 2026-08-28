@@ -39,9 +39,9 @@ pub extern "C" fn code_module_abi_version() -> u32 {
 }
 
 /// The single dispatch point: read the particle's `_class`, route to the
-/// matching handler. Unknown classes raise a fatal error naming the class —
-/// the same wording shape `test_math` uses, so a mis-emitted particle points
-/// at itself in both backends.
+/// matching handler. A class this module does not handle is null; a handler
+/// that cannot do the work returns an `Exception`. Neither ends the program
+/// — see `docs/todo/errors-as-particles.md`.
 ///
 /// # Safety
 ///
@@ -51,28 +51,30 @@ pub extern "C" fn code_module_abi_version() -> u32 {
 #[no_mangle]
 pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *const CodeValue) {
     let particle = &*particle;
-    if particle.tag != CodeTag::Object {
-        runtime_error("strings: emit requires a particle");
-    }
-    let class = match read_field_str(particle, "_class") {
-        Some(c) => c,
-        None => runtime_error("strings: emit requires a particle"),
-    };
-    let out = &mut *out;
-
-    match class {
-        "Shout" => shout(out, particle),
-        "Echo" => echo(out, particle),
-        "Split" => split(out, particle),
-        "Join" => join(out, particle),
-        "Trim" => trim(out, particle),
-        "Upper" => case(out, particle, true),
-        "Lower" => case(out, particle, false),
-        // A class this module does not handle answers null rather than
-        // ending the program — whether to act on a particle is the
-        // recipient's business (2026-08-28, docs/todo/errors-as-particles.md).
-        _ => null(out),
-    }
+    // `guarded` so a panic anywhere below becomes an `Exception` rather than
+    // taking the host down; the `Err` arm turns a handler's own refusal into
+    // the same shape, so both kinds of failure reach the caller as a value.
+    guarded(&mut *out, "strings", |out| {
+        let class = read_field_str(particle, "_class").unwrap_or("");
+        let outcome = match class {
+            "Shout" => shout(out, particle),
+            "Echo" => echo(out, particle),
+            "Split" => split(out, particle),
+            "Join" => join(out, particle),
+            "Trim" => trim(out, particle),
+            "Upper" => case(out, particle, true),
+            "Lower" => case(out, particle, false),
+            // A class this module does not handle answers null — whether to
+            // act on a particle is the recipient's business.
+            _ => {
+                null(out);
+                Ok(())
+            }
+        };
+        if let Err(message) = outcome {
+            exception(out, "strings", &message);
+        }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -81,36 +83,26 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
 // and a wrong-typed field are different mistakes, and the errors say which.
 // ---------------------------------------------------------------------------
 
-fn require_value<'a>(particle: &'a CodeValue, class: &str) -> &'a CodeValue {
-    match find_field(particle, "value") {
-        Some(v) => v,
-        None => runtime_error(&format!("{class} requires a 'value' field")),
-    }
+fn require_value<'a>(particle: &'a CodeValue, class: &str) -> Result<&'a CodeValue, String> {
+    find_field(particle, "value").ok_or_else(|| format!("{class} requires a 'value' field"))
 }
 
-fn require_string<'a>(particle: &'a CodeValue, class: &str) -> &'a str {
-    let v = require_value(particle, class);
-    match read_str(v) {
-        Some(s) => s,
-        None => runtime_error(&format!("{class} requires a string 'value'")),
-    }
+fn require_string<'a>(particle: &'a CodeValue, class: &str) -> Result<&'a str, String> {
+    read_str(require_value(particle, class)?)
+        .ok_or_else(|| format!("{class} requires a string 'value'"))
 }
 
 /// A single-character separator — `Split`/`Join` refuse multi-character
 /// separators outright rather than silently taking the first character.
-fn require_separator(particle: &CodeValue, class: &str) -> char {
-    let sep_field = match find_field(particle, "separator") {
-        Some(v) => v,
-        None => runtime_error(&format!("{class} requires a 'separator' field")),
-    };
-    let sep = match read_str(sep_field) {
-        Some(s) => s,
-        None => runtime_error(&format!("{class} requires a string 'separator' field")),
-    };
+fn require_separator(particle: &CodeValue, class: &str) -> Result<char, String> {
+    let sep_field = find_field(particle, "separator")
+        .ok_or_else(|| format!("{class} requires a 'separator' field"))?;
+    let sep = read_str(sep_field)
+        .ok_or_else(|| format!("{class} requires a string 'separator' field"))?;
     let mut chars = sep.chars();
     match (chars.next(), chars.next()) {
-        (Some(c), None) => c,
-        _ => runtime_error(&format!(
+        (Some(c), None) => Ok(c),
+        _ => Err(format!(
             "{class} requires a single-character 'separator' field"
         )),
     }
@@ -124,32 +116,34 @@ fn require_separator(particle: &CodeValue, class: &str) -> char {
 /// `test_math`'s original `Shout` (which this module inherits in the split
 /// proposal): non-letter bytes pass through untouched, so `"whisper"` →
 /// `"WHISPER!"` but `"café"` → `"CAFÉ!"` (only the ASCII range moves).
-fn shout(out: &mut CodeValue, particle: &CodeValue) {
-    let s = require_string(particle, "Shout");
+fn shout(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let s = require_string(particle, "Shout")?;
     let shouted: String = s
         .chars()
         .map(|c| c.to_ascii_uppercase())
         .collect::<String>()
         + "!";
     make_result(out, c"ShoutResult", |slot| owned_str(slot, &shouted));
+    Ok(())
 }
 
 /// Unchanged passthrough, including nested Array/Object — exercises a
 /// handler that shares structure with its input rather than building
 /// something fresh, which every other handler here does. Parity with
 /// `test_math`'s `Echo`.
-fn echo(out: &mut CodeValue, particle: &CodeValue) {
-    let value = require_value(particle, "Echo");
+fn echo(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let value = require_value(particle, "Echo")?;
     make_result(out, c"EchoResult", |slot| copy(slot, value));
+    Ok(())
 }
 
 /// Split a string on a single-character separator. Empty segments survive
 /// (`"a,,b"` → `["a", "", "b"]`) and a leading/trailing separator yields an
 /// empty first/last segment — the least-surprising semantics, and what
 /// `split` means in every language this user has come from.
-fn split(out: &mut CodeValue, particle: &CodeValue) {
-    let s = require_string(particle, "Split");
-    let sep = require_separator(particle, "Split");
+fn split(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let s = require_string(particle, "Split")?;
+    let sep = require_separator(particle, "Split")?;
     let parts: Vec<&str> = s.split(sep).collect();
     let mut buf = SlotBuffer::new(parts.len());
     for (i, part) in parts.iter().enumerate() {
@@ -159,22 +153,23 @@ fn split(out: &mut CodeValue, particle: &CodeValue) {
         array(slot, &mut buf);
         buf.release_all();
     });
+    Ok(())
 }
 
 /// Join an array of strings with a single-character separator. Non-string
 /// elements are refused — coercing numbers into strings here would invent a
 /// number-formatting policy the language hasn't decided (that belongs to a
 /// future formatting story, not to `Join`).
-fn join(out: &mut CodeValue, particle: &CodeValue) {
-    let items = require_value(particle, "Join");
+fn join(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let items = require_value(particle, "Join")?;
     if items.tag != CodeTag::Array {
-        runtime_error("Join requires an array 'value'");
+        return Err("Join requires an array 'value'".to_string());
     }
-    let sep = require_separator(particle, "Join");
+    let sep = require_separator(particle, "Join")?;
     let parts = array_elems(items)
         .map(read_str)
         .collect::<Option<Vec<_>>>()
-        .unwrap_or_else(|| runtime_error("Join requires an array of strings"));
+        .ok_or("Join requires an array of strings")?;
     let mut joined = String::new();
     for (i, part) in parts.iter().enumerate() {
         if i > 0 {
@@ -183,21 +178,23 @@ fn join(out: &mut CodeValue, particle: &CodeValue) {
         joined.push_str(part);
     }
     make_result(out, c"JoinResult", |slot| owned_str(slot, &joined));
+    Ok(())
 }
 
 /// Remove leading and trailing whitespace (ASCII set). Interior whitespace
 /// is untouched — `Trim` trims, it does not collapse.
-fn trim(out: &mut CodeValue, particle: &CodeValue) {
-    let s = require_string(particle, "Trim");
+fn trim(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let s = require_string(particle, "Trim")?;
     let trimmed = s.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0c' | '\x0b'));
     make_result(out, c"TrimResult", |slot| owned_str(slot, trimmed));
+    Ok(())
 }
 
 /// ASCII case conversion shared by `Upper` and `Lower` — one loop, one flag,
 /// no reason to write it twice.
-fn case(out: &mut CodeValue, particle: &CodeValue, upper: bool) {
+fn case(out: &mut CodeValue, particle: &CodeValue, upper: bool) -> Result<(), String> {
     let class = if upper { "Upper" } else { "Lower" };
-    let s = require_string(particle, class);
+    let s = require_string(particle, class)?;
     let converted: String = s
         .chars()
         .map(|c| {
@@ -217,4 +214,5 @@ fn case(out: &mut CodeValue, particle: &CodeValue, upper: bool) {
         },
         |slot| owned_str(slot, &converted),
     );
+    Ok(())
 }

@@ -437,6 +437,31 @@ static void code_make_result(CodeValue *out, const char *class_name, const CodeV
     code_release(slot_at(slots, 1));
 }
 
+/* Builds `Exception { source, message, innerException }` — how a module (and,
+ * once the C runtime has an error channel, the language itself) reports that
+ * it could not do the work. `inner` may be NULL for the common case of a
+ * failure with nothing beneath it.
+ *
+ * `message` is copied, not borrowed: callers build it into a stack buffer.
+ * See docs/todo/errors-as-particles.md for the model. */
+void code_make_exception(CodeValue *out, const char *source, const char *message,
+                         const CodeValue *inner) {
+    const char *keys[4] = {"_class", "source", "message", "innerException"};
+    _Alignas(8) char slots[4 * CODE_VALUE_SLOT_SIZE] = {0};
+    code_str(slot_at(slots, 0), "Exception");
+    code_str_owned(slot_at(slots, 1), source);
+    code_str_owned(slot_at(slots, 2), message);
+    if (inner) {
+        code_copy(slot_at(slots, 3), inner);
+    } else {
+        code_null(slot_at(slots, 3));
+    }
+    code_object(out, keys, slots, 4);
+    for (int i = 0; i < 4; i++) {
+        code_release(slot_at(slots, i));
+    }
+}
+
 void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
     if (particle->tag != CODE_OBJECT) {
         code_runtime_error("emit requires a particle (an object with a \"_class\" field)");
@@ -618,8 +643,14 @@ void *code_native_open(const char *path) {
 /* Builds a fresh heap-owned string value by copying `s`'s bytes — unlike
  * `code_str`, whose caller always passes a program literal it doesn't own.
  * Needed here because a module's own string may become dangling the moment
- * its `code_release` runs. */
-static void code_str_owned(CodeValue *out, const char *s) {
+ * its `code_release` runs.
+ *
+ * Part of the module-facing ABI since 2026-08-28, when modules started
+ * returning `Exception` particles: an exception message is built at runtime,
+ * usually into a stack buffer, and handing that to `code_str` — which only
+ * borrows the pointer — leaves a dangling read the moment the handler
+ * returns. See code_abi.h. */
+void code_str_owned(CodeValue *out, const char *s) {
     size_t n = strlen(s);
     char *buf = heap_alloc(n + 1);
     memcpy(buf, s, n + 1);

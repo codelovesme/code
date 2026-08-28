@@ -1,5 +1,0 @@
--- `Double` refuses an operand that isn't a Number. Coercing strings into
--- numbers here would invent a parsing policy the language hasn't decided —
--- the error names the mistake instead.
-link "native_modules/math.so" as m
-emit Double { "value": "21" } to m get n

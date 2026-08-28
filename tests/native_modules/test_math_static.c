@@ -22,7 +22,8 @@ uint32_t testmath_code_module_abi_version(void) {
 
 void testmath_code_module_dispatch(CodeValue *out, const CodeValue *particle) {
     if (particle->tag != CODE_OBJECT) {
-        code_runtime_error("test_math_static: emit requires a particle");
+        code_null(out);
+        return;
     }
     const CodeValue *class_val = NULL;
     for (long long i = 0; i < particle->len; i++) {
@@ -32,7 +33,8 @@ void testmath_code_module_dispatch(CodeValue *out, const CodeValue *particle) {
         }
     }
     if (!class_val || class_val->tag != CODE_STR) {
-        code_runtime_error("test_math_static: emit requires a particle");
+        code_null(out);
+        return;
     }
 
     if (strcmp(class_val->str, "Sum") == 0) {
@@ -44,13 +46,15 @@ void testmath_code_module_dispatch(CodeValue *out, const CodeValue *particle) {
             }
         }
         if (!value || value->tag != CODE_ARRAY) {
-            code_runtime_error("Sum requires an array 'value'");
+            code_make_exception(out, "test_math_static", "Sum requires an array 'value'", NULL);
+            return;
         }
         double total = 0.0;
         for (long long i = 0; i < value->len; i++) {
             const CodeValue *elem = code_slot_at(value->items, i);
             if (elem->tag != CODE_NUMBER) {
-                code_runtime_error("Sum requires an array of numbers");
+                code_make_exception(out, "test_math_static", "Sum requires an array of numbers", NULL);
+                return;
             }
             total += elem->number;
         }

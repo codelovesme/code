@@ -136,10 +136,47 @@ that changes error semantics needs its own both-mode fixture.
    (a program with no handler at all — the compiled backend has no dispatch
    chain to fall through there, so the null has to come from elsewhere), and
    `net_unknown_handler_is_null.code`.
-2. **Modules return `Exception` instead of aborting** — remove
-   `code_runtime_error` from the module-facing ABI; rewrite `net`,
-   `strings`, `math`, `terminal` and the test doubles. Independent of the
-   backend redesign, because a module's dispatch already returns a value.
+2. ~~**Modules return `Exception` instead of aborting**~~ — **shipped
+   2026-08-28.** All 44 module-side `code_runtime_error` calls are gone:
+   `net` 12, `strings` 9, `math` 6, `terminal` 3, and the test doubles 14.
+
+   New in the ABI: `code_make_exception(out, source, message, inner)` in
+   `runtime.c`, `exception`/`exception_wrapping` in `code-native`, and
+   `code_str_owned` **promoted from `static` to the module-facing header**.
+   That last one was found by building an `fs` prototype and hitting it:
+   `code_str` only *borrows* its pointer, so an exception message built into
+   a stack buffer dangles the moment the handler returns, and the symptom is
+   a silently truncated string rather than a crash. Every module now builds
+   a dynamic message, so every C module author would have hit it.
+
+   **`guarded` closes the panic hole.** A panic escaping an `extern "C"`
+   function aborts rather than unwinding — measured: the host's
+   `catch_unwind` never runs, the process dies with *"thread caused
+   non-unwinding panic. aborting"*. So the catch cannot live in the host, and
+   `code-native::guarded` puts it on the module's own side of the boundary.
+   `tests/native_modules/test_panics` + `tests/panics_become_exceptions.code`
+   keep it honest: `unwrap` on `None`, an index past the end, and a runtime
+   division by zero all return `Exception` and leave the program running.
+
+   **`net` lost its validation pass entirely**, per the "there is no such
+   thing as misuse" decision: a field the particle does not carry is null,
+   and a null url is a url that cannot be fetched, so the failure comes from
+   attempting the request. Non-String values are rendered rather than
+   refused. The messages improved — `bad uri: 42 is missing scheme` against
+   the old `requires a string 'url'`. `math` and `strings` keep explicit
+   checks, because arithmetic on a non-number has no operation to attempt;
+   theirs became the `Exception`'s message.
+
+   Seven fixtures inverted, as predicted, and no others. They are now
+   `math_refuses_with_exception.code`, `strings_refuses_with_exception.code`
+   and `net_accepts_what_it_can_render.code`.
+
+   **The guarantee is tiered, and the docs say so.** Rust modules: real —
+   panics caught, `runtime_error` deprecated out of the API. C modules:
+   policy only — a forgotten NULL check segfaults and an integer `100 / 0`
+   raises SIGFPE, neither catchable by anything (both measured). Rust is now
+   the recommended path for third-party modules; C stays the ABI's reference
+   implementation.
 3. **The C runtime gains an error channel** — the 34 sites. The prerequisite
    for anything below.
 4. **`assert` returns `Exception`**, both backends.

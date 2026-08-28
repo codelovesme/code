@@ -1,5 +1,0 @@
--- Misuse, not a network condition: the program could have avoided this, so
--- it aborts like any other module's bug rather than answering `ok: false`.
-link "native_modules/net.so" as net
-
-emit Get {} to net get r

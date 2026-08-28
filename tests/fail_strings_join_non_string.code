@@ -1,5 +1,0 @@
--- `Join` refuses an element that isn't a string. Coercing numbers into
--- strings here would invent a number-formatting policy the language hasn't
--- decided — that belongs to a future formatting story, not to `Join`.
-link "native_modules/strings.so" as s
-emit Join { "value": ["a", 2, "c"], "separator": "-" } to s get n

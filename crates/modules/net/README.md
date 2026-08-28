@@ -30,11 +30,11 @@ status — refused, unresolvable, timed out, TLS rejected, or larger than
 
 | Field | Kind | Default | Meaning |
 |---|---|---|---|
-| `url` | String | — | required; empty is an error |
+| `url` | String | — | rendered as text; absent or unfetchable fails the request |
 | `body` | String | — | `Post` only, required |
 | `content_type` | String | `application/octet-stream` | `Post` only |
-| `headers` | Object | none | `{ "Accept": "text/plain" }`; values must be Strings |
-| `timeout_seconds` | Number | `10` | whole request, connect included |
+| `headers` | Object | none | `{ "Accept": "text/plain" }`; values are rendered as text |
+| `timeout_seconds` | Number | `10` | whole request, connect included; a non-positive value takes the default |
 | `max_body_bytes` | Number | `1048576` | a longer response fails the request |
 
 ## Diagnostics
@@ -93,9 +93,13 @@ preference: the language has no `try`/`catch` and no catchable assert, so a
 recover*. Every other module can honestly treat a bad emit as a bug. `net`
 cannot — a network failing is normal operation.
 
-`code_runtime_error` is therefore reserved for genuine misuse the program
-could have avoided: a missing `url`, a `headers` value that isn't a String.
-Those are bugs, and they abort like every other module's bugs do.
+And as of 2026-08-28 that is the *only* answer: nothing here ends the
+program, because no module may. There is no validation pass either — an
+absent `url` is null, which is simply a url that cannot be fetched, so the
+message comes from attempting the request rather than from a guard. A
+non-String `url` or header value is rendered rather than refused, so
+`"url": 42` reports `bad uri: 42 is missing scheme` instead of something
+about types.
 
 **`body` comes back as a String, never a parsed Object.** Tempting to add
 `GetJson`, and the interpreter could do it for free — `parser::parse_expr`

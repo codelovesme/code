@@ -1,0 +1,16 @@
+# Standalone workspace, like every other module here — see
+# crates/modules/strings/Cargo.toml for why.
+[workspace]
+
+[package]
+name = "test_panics"
+version = "0.1.0"
+edition = "2021"
+description = "A deliberately broken module: every handler panics, to prove code-native's `guarded` turns that into an Exception rather than losing the host."
+license = "GPL-3.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../../crates/code-native" }

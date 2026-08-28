@@ -1,0 +1,27 @@
+-- `math` refuses an operand it cannot work with by *returning* an
+-- `Exception`, not by ending the program. Coercing "21" into 21, or summing
+-- a scalar, would invent policies the language has not decided — so the
+-- module says it cannot, and the caller decides what that is worth.
+--
+-- Replaces fail_math_double_non_numeric, fail_math_sum_non_array and
+-- fail_math_sum_non_numbers (2026-08-28, docs/todo/errors-as-particles.md).
+link "native_modules/math.so" as m
+
+emit Double { "value": "21" } to m get a
+assert a is Exception
+assert a.source = "math"
+assert a.message = "Double requires a numeric 'value'"
+assert a.innerException = null
+
+emit Sum { "value": 5 } to m get b
+assert b is Exception
+assert b.message = "Sum requires an array 'value'"
+
+emit Sum { "value": [1, "two", 3] } to m get c
+assert c is Exception
+assert c.message = "Sum requires an array of numbers"
+
+-- The module is not broken afterwards, and never was: refusing is an
+-- ordinary answer.
+emit Double { "value": 21 } to m get ok
+assert ok.value = 42

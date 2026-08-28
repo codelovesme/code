@@ -29,17 +29,20 @@ void code_module_set_inbound(void *queue, CodeEmitFn emit) {
 
 void code_module_dispatch(CodeValue *out, const CodeValue *particle) {
     if (particle->tag != CODE_OBJECT) {
-        code_runtime_error("test_events: emit requires a particle");
+        code_null(out);
+        return;
     }
     const CodeValue *class_val = find_field(particle, "_class");
     if (!class_val || class_val->tag != CODE_STR) {
-        code_runtime_error("test_events: emit requires a particle");
+        code_null(out);
+        return;
     }
 
     if (strcmp(class_val->str, "Start") == 0) {
         const CodeValue *value = find_field(particle, "value");
         if (!value || value->tag != CODE_NUMBER) {
-            code_runtime_error("Start requires a numeric 'value'");
+            code_make_exception(out, "test_events", "Start requires a numeric 'value'", NULL);
+            return;
         }
         long long count = (long long)value->number;
         for (long long i = 0; i < count; i++) {

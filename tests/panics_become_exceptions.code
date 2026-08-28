@@ -1,0 +1,25 @@
+-- A module written wrong — `unwrap` on null, an index past the end, a
+-- division by zero — cannot take the program with it. `code-native`'s
+-- `guarded` catches the panic on the module's own side of the FFI boundary
+-- (the host cannot: a panic escaping `extern "C"` aborts rather than
+-- unwinding) and returns an `Exception` instead.
+--
+-- See docs/todo/errors-as-particles.md. If `guarded` is ever removed, this
+-- fixture does not fail politely — it kills the test runner.
+link "native_modules/test_panics.so" as bad
+
+emit Unwrap {} to bad get a
+assert a is Exception
+assert a.source = "test_panics"
+
+emit Index {} to bad get b
+assert b is Exception
+
+emit Divide {} to bad get c
+assert c is Exception
+
+-- The guard does not swallow the ordinary path, and the module still works
+-- after three panics.
+emit Fine {} to bad get ok
+assert ok is FineResult
+assert ok.value = 1

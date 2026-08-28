@@ -155,7 +155,14 @@ typedef struct CodeVarList {
  * prefix — it just has to be unique. */
 
 void code_number(CodeValue *out, double n);
+/* Borrows `s` — the value keeps the pointer rather than the bytes, so `s`
+ * must outlive it. Correct for a string literal, wrong for anything built at
+ * runtime; use `code_str_owned` for those. */
 void code_str(CodeValue *out, const char *s);
+/* Copies `s`'s bytes into a heap-owned string. What a handler returning a
+ * message built into a stack buffer must use — handing that buffer to
+ * `code_str` leaves a dangling read the moment the handler returns. */
+void code_str_owned(CodeValue *out, const char *s);
 void code_bool(CodeValue *out, int b);
 void code_null(CodeValue *out);
 void code_array(CodeValue *out, void *items, long long len);
@@ -168,6 +175,13 @@ void code_release(CodeValue *v);
 int code_values_equal(const CodeValue *a, const CodeValue *b);
 int code_bool_value(const CodeValue *v, const char *op);
 int code_is_particle(const CodeValue *a, const char *name);
+/* Builds `Exception { source, message, innerException }` — how a module
+ * reports that it could not do the work. `inner` may be NULL. A module may
+ * never end the application, so this replaces `code_runtime_error` for
+ * everything a module can encounter; see docs/todo/errors-as-particles.md.
+ * `source` and `message` are both copied. */
+void code_make_exception(CodeValue *out, const char *source, const char *message,
+                         const CodeValue *inner);
 void code_assert(const CodeValue *v);
 _Noreturn void code_runtime_error(const char *message);
 
