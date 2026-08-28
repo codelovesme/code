@@ -1,5 +1,0 @@
--- Dispatch is still runtime for the bare spelling: no core handler named
--- "Foo" exists, so this must fail exactly like
--- fail_emit_unknown_handler.code does — the desugar happens in the parser,
--- the lookup happens when the program runs.
-emit Foo to core get n

@@ -1,5 +1,0 @@
--- No core handler named "Foo" exists. Checked at runtime, not compile time
--- — even though this particular class name is a literal, dispatch always
--- goes through the same runtime path a stored/variable particle would need
--- (see emit_particle_from_variable.code), so both cases fail identically.
-emit Foo { "x": 1 } to core get n

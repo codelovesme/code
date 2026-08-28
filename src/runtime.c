@@ -493,9 +493,11 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
         code_runtime_error("Length requires an array or string 'value'");
     }
 
-    char msg[96];
-    snprintf(msg, sizeof msg, "unknown core handler '%s'", class_val->str);
-    code_runtime_error(msg);
+    /* Not a core class. Null rather than an error: sending a particle is not
+     * a demand, and whether to act on one is the recipient's business — the
+     * same answer `to this` and a native module give (decided 2026-08-28,
+     * see docs/todo/errors-as-particles.md). */
+    code_null(out);
 }
 
 /* ---- Native modules (`link "x.so" as x`, `emit ... to x [get n]`) --------

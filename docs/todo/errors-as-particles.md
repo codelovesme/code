@@ -117,9 +117,25 @@ that changes error semantics needs its own both-mode fixture.
 
 ## Phasing
 
-1. **No handler yields null** — `to this`, `to core`, `to <alias>`. Re-state
-   the four fixtures above first. No `Exception` semantics needed yet, and
-   `_code_dispatch_this` already has the drop flag from 2026-08-28.
+1. ~~**No handler yields null**~~ — **shipped 2026-08-28.** `to this`, `to
+   core` and `to <alias>` all answer null. Interpreter: `dispatch_handler`
+   and the core arm return `Value::Null`. Codegen: `_code_dispatch_this`
+   writes null on fallthrough, and a program with *no* handlers at all
+   emits a null instead of refusing to compile. `runtime.c`'s core dispatch
+   likewise. Every module — `net`, `strings`, `math`, `terminal`, and the
+   four test doubles — returns null for a class it does not handle instead
+   of calling `code_runtime_error`.
+
+   The drop flag added to `_code_dispatch_this` earlier the same day was
+   removed again: both callers now want the same answer, so the parameter
+   had nothing left to distinguish.
+
+   The four inverted fixtures became three that assert the new rule:
+   `emit_unknown_handler_is_null.code` (all three targets, plus the bare
+   spelling and the no-`get` case), `emit_unknown_handler_is_null_no_handlers.code`
+   (a program with no handler at all — the compiled backend has no dispatch
+   chain to fall through there, so the null has to come from elsewhere), and
+   `net_unknown_handler_is_null.code`.
 2. **Modules return `Exception` instead of aborting** — remove
    `code_runtime_error` from the module-facing ABI; rewrite `net`,
    `strings`, `math`, `terminal` and the test doubles. Independent of the

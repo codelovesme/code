@@ -66,7 +66,10 @@ void testmath_code_module_dispatch(CodeValue *out, const CodeValue *particle) {
         return;
     }
 
-    code_runtime_error("test_math_static: unknown handler");
+    /* A class this module does not handle answers null rather than ending
+     * the program — whether to act on a particle is the recipient's
+     * business (2026-08-28, docs/todo/errors-as-particles.md). */
+    code_null(out);
 }
 
 /* Exported variables (constants) — what `link "x.a" as m` exposes as

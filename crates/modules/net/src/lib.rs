@@ -106,7 +106,10 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
     match class {
         "Get" => request(out, particle, Method::Get),
         "Post" => request(out, particle, Method::Post),
-        other => runtime_error(&format!("net: unknown handler '{other}'")),
+        // A class this module does not handle answers null rather than
+        // ending the program — whether to act on a particle is the
+        // recipient's business (2026-08-28, docs/todo/errors-as-particles.md).
+        _ => null(out),
     }
 }
 

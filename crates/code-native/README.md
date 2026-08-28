@@ -43,7 +43,9 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             let value = read_field_number(particle, "value").unwrap_or(0.0);
             make_result(&mut *out, c"DoubleResult", |slot| number(slot, value * 2.0));
         }
-        other => runtime_error(&format!("unknown handler: {other:?}")),
+        // A class this module does not handle answers null rather than
+        // ending the program — see docs/todo/errors-as-particles.md.
+        _ => null(out),
     }
 }
 ```
@@ -144,8 +146,8 @@ dispatched between top-level statements. Two things worth knowing:
   when nobody is listening.
 - A pushed class the program has no handler for is **dropped**. That is what
   lets a module report something without every program that links it having
-  to handle it. (`emit ... to this` inside a program is the opposite — a
-  class nothing handles there is an error.)
+  to handle it. Since 2026-08-28 the outbound direction agrees: `emit ... to
+  <anything>` with no matching handler is null, not an error.
 
 The queue is bounded at `CODE_INBOUND_CAPACITY` (256) per module, dropping
 the oldest, so a module that outruns the program costs bounded memory.

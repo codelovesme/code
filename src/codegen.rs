@@ -871,20 +871,13 @@ impl<'a, 'm> Gen<'a, 'm> {
             return Ok(());
         }
         let void_ty = self.context.void_type();
-        // Third parameter: drop rather than error when nothing matches.
-        // One function serves two callers with different answers to "no
-        // handler" — `emit ... to this` errors, the inbound drain drops (see
-        // `interpreter::drain_inbound` for why).
+        // Two parameters: both callers now want the same answer to "nothing
+        // matched" — null. `emit ... to this` binds it, the inbound drain
+        // discards it. (A third parameter told them apart between the drop
+        // rule and the error model, both landed 2026-08-28.)
         let dispatch = self.module.add_function(
             "_code_dispatch_this",
-            void_ty.fn_type(
-                &[
-                    self.i8_ptr_ty.into(),
-                    self.i8_ptr_ty.into(),
-                    self.i32_ty.into(),
-                ],
-                false,
-            ),
+            void_ty.fn_type(&[self.i8_ptr_ty.into(), self.i8_ptr_ty.into()], false),
             None,
         );
         self.dispatch_fn = Some(dispatch);
@@ -1251,15 +1244,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             // so the drop needs no code beyond not calling anything.
             if let Some(dispatch) = self.dispatch_fn {
                 self.builder
-                    .build_call(
-                        dispatch,
-                        &[
-                            result.into(),
-                            particle.into(),
-                            self.i32_ty.const_int(1, false).into(),
-                        ],
-                        "",
-                    )
+                    .build_call(dispatch, &[result.into(), particle.into()], "")
                     .map_err(|e| e.to_string())?;
             }
             // Straight back to the same module: one poll per pass would
@@ -1354,33 +1339,11 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.builder.position_at_end(next);
         }
 
-        // Nothing matched. What that means depends on who asked: for
-        // `emit ... to this` it is a runtime error, the same answer `to
-        // core` gives an unknown class; for the inbound drain the particle
-        // is dropped and the pass carries on.
-        let drop_unmatched = dispatch.get_nth_param(2).unwrap().into_int_value();
-        let dropped = self.context.append_basic_block(dispatch, "dropped");
-        let unhandled = self.context.append_basic_block(dispatch, "unhandled");
-        let should_drop = self
-            .builder
-            .build_int_compare(
-                IntPredicate::NE,
-                drop_unmatched,
-                self.i32_ty.const_zero(),
-                "shoulddrop",
-            )
-            .map_err(|e| e.to_string())?;
+        // Nothing matched: write null into `out` and return. One answer for
+        // both callers — `emit ... to this` binds the null, the inbound
+        // drain ignores it.
         self.builder
-            .build_conditional_branch(should_drop, dropped, unhandled)
-            .map_err(|e| e.to_string())?;
-
-        self.builder.position_at_end(dropped);
-        self.builder.build_return(None).map_err(|e| e.to_string())?;
-
-        self.builder.position_at_end(unhandled);
-        let msg = self.global_str("no handler defined for this particle's class", "nohandler")?;
-        self.builder
-            .build_call(self.fn_runtime_error, &[msg.into()], "")
+            .build_call(self.fn_null, &[out.into()], "")
             .map_err(|e| e.to_string())?;
         self.builder.build_return(None).map_err(|e| e.to_string())?;
 
@@ -2015,20 +1978,21 @@ impl<'a, 'm> Gen<'a, 'm> {
         let temp = self.alloc_slot("emit_result")?;
         match target {
             EmitTarget::This => {
-                let dispatch = self
-                    .dispatch_fn
-                    .ok_or_else(|| "no handler is defined in this program".to_string())?;
-                self.builder
-                    .build_call(
-                        dispatch,
-                        &[
-                            temp.into(),
-                            particle_ptr.into(),
-                            self.i32_ty.const_zero().into(),
-                        ],
-                        "",
-                    )
-                    .map_err(|e| e.to_string())?;
+                // No handler anywhere in the program is not an error — there
+                // is simply nothing to match, so the result is null. Before
+                // 2026-08-28 this refused to compile.
+                match self.dispatch_fn {
+                    Some(dispatch) => {
+                        self.builder
+                            .build_call(dispatch, &[temp.into(), particle_ptr.into()], "")
+                            .map_err(|e| e.to_string())?;
+                    }
+                    None => {
+                        self.builder
+                            .build_call(self.fn_null, &[temp.into()], "")
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
             }
             EmitTarget::Core => {
                 self.builder

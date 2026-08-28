@@ -1,0 +1,11 @@
+-- A module answers null for a class it does not handle, rather than ending
+-- the program. `net` does Get and Post; Delete is simply not its business.
+-- Replaces fail_net_unknown_handler.code (2026-08-28).
+link "native_modules/net.so" as net
+
+emit Delete { "url": "http://127.0.0.1:1/" } to net get r
+assert r = null
+
+-- And the module still works afterwards: a miss leaves nothing broken.
+emit Get { "url": "http://127.0.0.1:1/" } to net get ok
+assert not ok.ok

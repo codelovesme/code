@@ -1,0 +1,31 @@
+-- Sending a particle is not a demand. Whether to act on it is the
+-- recipient's business, so a class nothing handles answers null rather than
+-- ending the program — the same answer in all three directions.
+--
+-- Replaces fail_emit_unknown_handler, fail_emit_bare_unknown_handler and
+-- fail_handler_unknown, which asserted the opposite until 2026-08-28. See
+-- docs/todo/errors-as-particles.md.
+
+-- `to core`: core knows Length and Timestamp, nothing else.
+emit Foo { "value": 1 } to core get a
+assert a = null
+
+-- The bare-particle spelling reaches the same place.
+emit Foo to core get b
+assert b = null
+
+-- `to this`: the program defines one handler, and this is not it.
+Known {} => {
+    return Ack {}
+}
+emit Unknown { "x": 1 } to this get c
+assert c = null
+
+-- The handler that does exist still works — a miss is a miss, not a
+-- broken dispatcher.
+emit Known to this get d
+assert d is Ack
+
+-- With no `get` at all, a miss is simply nothing happening.
+emit Unknown { "x": 1 } to this
+assert 1 + 1 = 2

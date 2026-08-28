@@ -28,7 +28,9 @@
 //!             let value = read_field_number(particle, "value").unwrap_or(0.0);
 //!             make_result(&mut *out, "DoubleResult", |slot| code_number(slot, value * 2.0));
 //!         }
-//!         _ => code_runtime_error("unknown handler"),
+//!         // A class this module does not handle answers null — see
+//!         // docs/todo/errors-as-particles.md.
+//!         _ => null(&mut *out),
 //!     }
 //! }
 //! ```

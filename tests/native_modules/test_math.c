@@ -92,9 +92,10 @@ void code_module_dispatch(CodeValue *out, const CodeValue *particle) {
         return;
     }
 
-    char msg[96];
-    snprintf(msg, sizeof msg, "test_math: unknown handler '%s'", class_val->str);
-    code_runtime_error(msg);
+    /* A class this module does not handle answers null rather than ending
+     * the program — whether to act on a particle is the recipient's
+     * business (2026-08-28, docs/todo/errors-as-particles.md). */
+    code_null(out);
 }
 
 /* Exported variables (constants) — what `link "x.so" as m` exposes as

@@ -620,11 +620,14 @@ fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, St
     let Some(Value::Str(class)) = class else {
         return Err("emit requires a particle — an object with a '_class' field".to_string());
     };
-    let handler = env
-        .handlers
-        .get(class.as_ref())
-        .ok_or_else(|| format!("no handler defined for '{class}'"))?
-        .clone();
+    // A class nothing handles answers null rather than ending the program:
+    // sending a particle is not a demand, and whether to act on one is the
+    // recipient's business (decided 2026-08-28, see
+    // docs/todo/errors-as-particles.md). The same answer `to core` and a
+    // native module give.
+    let Some(handler) = env.handlers.get(class.as_ref()).cloned() else {
+        return Ok(Value::Null);
+    };
     if !env.active.insert(class.to_string()) {
         return Err(format!(
             "handler '{class}' is already running — a handler cannot re-enter one \
@@ -871,7 +874,9 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
             )),
             None => Err("Length { \"value\": ... } requires a 'value' field".to_string()),
         },
-        other => Err(format!("unknown core handler '{other}'")),
+        // Not a core class. Null, for the same reason `dispatch_handler`
+        // gives one — core is a recipient like any other.
+        _ => Ok(Value::Null),
     }
 }
 

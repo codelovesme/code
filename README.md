@@ -467,8 +467,12 @@ The rest of the rules:
 - **`return` must yield a particle**, so every result has a class to test
   with `is`. A body that never returns yields null, which is fine: plenty of
   handlers exist for their effect rather than their answer.
-- **No matching handler is an error**, not null — the same answer `to core`
-  gives an unknown class.
+- **No matching handler is null**, not an error — the same answer `to core`
+  and a native module give. Emitting is not a demand: whether to act on a
+  particle is the recipient's business, so a class nothing handles simply
+  produces nothing. This reversed on 2026-08-28; see
+  [`docs/todo/errors-as-particles.md`](docs/todo/errors-as-particles.md) for
+  the model it is the first step of.
 - **The body's enclosing scope is the top level**, never the caller's. It
   reads and reassigns top-level bindings and linked module aliases (it must:
   `link` is top-level too, so otherwise a handler could never print), but a
@@ -591,10 +595,10 @@ error: the module chose to speak, so a message nobody asked to hear is not a
 mistake by the program. That is what lets a module report a problem without
 every program that links it having to care — `net` pushes `Exception` and
 `Log`, and [`net_unreachable.code`](tests/net_unreachable.code) handles
-neither and passes. (`emit ... to this` is the opposite and unchanged: that
-is the program addressing itself, so a class it does not handle is a bug.
-The cost of the split, accepted deliberately: a module pushing a *mistyped*
-class now goes unnoticed.)
+neither and passes. Since 2026-08-28 the outbound direction gives the same
+answer — `emit` with no matching handler is null — so the two agree rather
+than contrast. The cost, accepted deliberately: a module pushing a
+*mistyped* class now goes unnoticed.
 
 The queue is bounded at 256 per module, dropping the oldest — a module that
 outruns the program costs bounded memory. Continuous draining, which an
