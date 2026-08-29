@@ -129,7 +129,7 @@ def main() -> None:
     for asset in sorted(site_dir.glob("*.png")):
         shutil.copy2(asset, dist_dir / asset.name)
 
-    # The first-party module index (`code module install` fetches it from here —
+    # The first-party module index (`code install` fetches it from here —
     # see src/main.rs's MODULE_INDEX_URL). It lives at the repo root because
     # it documents releases across the whole repo, not the playground.
     index_src = repo_root / "modules-index.json"

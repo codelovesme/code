@@ -71,11 +71,11 @@ git push --tags
 ```
 
 It builds the artifact, proves it loads through both output modes, writes the
-`module.json` manifest `code module install` reads, and attaches everything to a
+`module.json` manifest `code install` reads, and attaches everything to a
 GitHub Release. Then share the release URL — a consumer installs it with
 
 ```sh
-code module install https://github.com/YOUR-NAME/code-module-greet/releases/download/v1.0.0/greet.json
+code install https://github.com/YOUR-NAME/code-module-greet/releases/download/v1.0.0/greet.json
 ```
 
 There is nothing central to register with, and nothing to ask permission for.

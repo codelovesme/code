@@ -53,34 +53,33 @@ cargo test --workspace       # runs every tests/*.code fixture in both modes
 ```
 
 ```sh
-code app init                              # scaffold here; `code app init demo` in ./demo
-code run program.code                      # interpret
+code init                                  # scaffold here; `code init demo` in ./demo
+code run program.code                      # interpret a file
+code run                                   # ...or a project: ./main.code
 code build program.code                    # -> ./program, beside the source
+code build                                 # -> ./build/<project>
 code build program.code --target wasm      # -t; exe | shared | static | wasm
 code build program.code -o out/thing        # --output is the same flag
 code build program.code --release          # -r; -O2, the default is unoptimized
 code format src/ program.code              # canonical layout, rewritten in place
 code format --check tests/                 # writes nothing; non-zero if any differ
-code app run demo                          # a directory: runs demo/main.code
-code app build demo                        # -> demo/build/demo
-code module install terminal               # fetch a module into ./.code/modules
-code module ls                             # what's installed
-code module remove terminal
+code install terminal                      # fetch a module into ./.code/modules
+code ls                                    # what's installed
+code remove terminal
 code --help                                # or `code help build`, `code build -h`
 code --version
 ```
 
-`run` and `build` take a **file** and answer beside it; `app run` and
-`app build` take a **directory**, find its `main.code`, and put artifacts in
-`build/`. Two commands rather than one that guesses, because the output
-location would otherwise depend on which kind of argument was passed. Both
-`app` forms default to the current directory.
+`run` and `build` take either a **file** or a **directory**, and default to
+`.`. A directory means its `main.code`, and that is the only thing that
+changes where `build` writes: beside the source for a file, into the
+project's `build/` for a directory.
 
-`code app init` writes three files and nothing else: a `main.code` that **runs
+`code init` writes three files and nothing else: a `main.code` that **runs
 as written** (the obvious template prints, printing needs a module, and a new
 project whose first act is a failed `link` is a bad first minute), an empty
 `.code/lock.json` — `.code/` is what marks the project root that `link` and
-`code module install` resolve against — and a one-line `.gitignore` for the
+`code install` resolve against — and a one-line `.gitignore` for the
 installed binaries and `build/`, keeping the committed lockfile and dropping
 what it can reproduce. An existing file is a
 refusal, never a merge.
@@ -854,7 +853,7 @@ contract works — so it is a derivative work. Fine for most people, but worth
 knowing before writing one rather than after.
 
 Publishing needs nothing central: tag the repo, CI attaches the artifact and
-its `module.json` to a GitHub Release, and a consumer runs `code module install
+its `module.json` to a GitHub Release, and a consumer runs `code install
 <url>`. See the [template's README](templates/module/README.md) for the whole
 flow and for what to keep when you replace the handler — `guarded`, null for
 a class you do not handle, and failures returned as values are the three
@@ -867,7 +866,7 @@ rather than the source — see [its README](crates/modules/env/README.md)),
 see [its README](crates/modules/http_client/README.md)), and `http_server`
 (requests pushed in, answered by what a `Request` handler returns — see
 [its README](crates/modules/http_server/README.md)).
-`code module install <name>` fetches one into `./.code/modules/`, pinned by sha256
+`code install <name>` fetches one into `./.code/modules/`, pinned by sha256
 in `./.code/lock.json`; `--global` puts it in `~/.code/modules/` instead. A
 `link` reference resolves against a fixed chain — the script's own directory,
 then the nearest project's `.code/modules/`, then `$CODE_MODULE_PATH`, then

@@ -1,10 +1,10 @@
-//! The CLI's shape: which command takes a file and which takes a directory,
+//! The CLI's shape: what `run`/`build` do with a file against a directory,
 //! and what asking for help answers.
 //!
-//! `run`/`build` take a file and answer beside it; `app run`/`app build` take
-//! a project, find its `main.code`, and put artifacts in `build/`. Two
-//! commands rather than one that guesses, so the tests are about which of
-//! the two rules applied.
+//! One command each, taking either: a file is itself, a directory is its
+//! `main.code`. The kind decides one thing only — where `build` writes, which
+//! is beside the source for a file and `build/` for a project — so the tests
+//! are about which of those two rules applied.
 
 use std::fs;
 use std::path::PathBuf;
@@ -26,26 +26,26 @@ fn code(dir: &PathBuf, args: &[&str]) -> std::process::Output {
 }
 
 #[test]
-fn app_run_finds_the_entry_point() {
+fn run_finds_a_projects_entry_point() {
     let dir = temp_dir("run");
-    assert!(code(&dir, &["app", "init", "demo"]).status.success());
+    assert!(code(&dir, &["init", "demo"]).status.success());
 
-    let out = code(&dir, &["app", "run", "demo"]);
+    let out = code(&dir, &["run", "demo"]);
     assert!(
         out.status.success(),
-        "code app run failed: {}",
+        "code run failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
 
     // No directory at all means the one you are standing in.
     let project = dir.join("demo");
-    assert!(code(&project, &["app", "run"]).status.success());
+    assert!(code(&project, &["run"]).status.success());
 
     // A directory with no main.code says so, rather than reporting a missing
     // file the user never named.
     let empty = dir.join("empty");
     fs::create_dir_all(&empty).expect("create empty dir");
-    let out = code(&dir, &["app", "run", "empty"]);
+    let out = code(&dir, &["run", "empty"]);
     assert!(!out.status.success());
     assert!(
         String::from_utf8_lossy(&out.stderr).contains("main.code"),
@@ -58,14 +58,14 @@ fn app_run_finds_the_entry_point() {
 
 #[cfg(feature = "llvm")]
 #[test]
-fn app_build_writes_into_build_named_after_the_project() {
+fn building_a_directory_writes_into_build() {
     let dir = temp_dir("build");
-    assert!(code(&dir, &["app", "init", "demo"]).status.success());
+    assert!(code(&dir, &["init", "demo"]).status.success());
 
-    let out = code(&dir, &["app", "build", "demo"]);
+    let out = code(&dir, &["build", "demo"]);
     assert!(
         out.status.success(),
-        "code app build failed: {}",
+        "code build failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     // Named for the project, not for `main` — every app's entry file has the
@@ -87,21 +87,19 @@ fn app_build_writes_into_build_named_after_the_project() {
     // `.` has no name of its own, so the project name comes from the
     // filesystem rather than from the argument.
     let project = dir.join("demo");
-    assert!(code(&project, &["app", "build", "."]).status.success());
+    assert!(code(&project, &["build", "."]).status.success());
     assert!(project.join("build/demo").is_file());
 
     // `-o` still wins, and takes the artifact out of `build/` entirely.
-    assert!(code(&project, &["app", "build", ".", "-o", "elsewhere"])
+    assert!(code(&project, &["build", ".", "-o", "elsewhere"])
         .status
         .success());
     assert!(project.join("elsewhere").is_file());
 
     // `--output` is the same flag spelled long.
-    assert!(
-        code(&project, &["app", "build", ".", "--output", "longform"])
-            .status
-            .success()
-    );
+    assert!(code(&project, &["build", ".", "--output", "longform"])
+        .status
+        .success());
     assert!(project.join("longform").is_file());
 
     let _ = fs::remove_dir_all(&dir);
@@ -117,8 +115,11 @@ fn help_is_an_answer_rather_than_an_error() {
         assert!(out.status.success(), "`code {args:?}` failed");
         let text = String::from_utf8_lossy(&out.stdout);
         assert!(text.contains("code — the Code programming language"));
-        assert!(text.contains("app init [name]"), "help omits app: {text}");
-        assert!(text.contains("module install"), "help omits module: {text}");
+        assert!(text.contains("init [name]"), "help omits app: {text}");
+        assert!(
+            text.contains("install <name-or-url>"),
+            "help omits module: {text}"
+        );
     }
 
     // Per-command help, both spellings — and after the command, since a help
@@ -132,7 +133,7 @@ fn help_is_an_answer_rather_than_an_error() {
         assert!(out.status.success());
         let text = String::from_utf8_lossy(&out.stdout);
         assert!(
-            text.contains("usage: code build <file>"),
+            text.contains("usage: code build [path]"),
             "expected build's help for {args:?}, got: {text}"
         );
     }

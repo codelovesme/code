@@ -12,7 +12,7 @@ Three tiers, distinguished by *where the bytes live*:
 | tier | what | how users get it |
 |---|---|---|
 | **core** | `Length` (shipped), `Timestamp` | compiled into the `code` binary — nothing to install, works everywhere including the wasm playground |
-| **first-party modules** | `terminal`, `console`, `math`, `strings`, `env`, `http_client`, `http_server`, … | native: GitHub Releases + `code module install <name>`; browser: npm |
+| **first-party modules** | `terminal`, `console`, `math`, `strings`, `env`, `http_client`, `http_server`, … | native: GitHub Releases + `code install <name>`; browser: npm |
 | **community modules** | anyone's | the author publishes to *their own* GitHub Releases (a template repo provides the CI); consumers install by URL first, by name once an index exists |
 
 The rule separating tier 1 from tier 2: **fundamentals are core**. Only
@@ -40,7 +40,7 @@ and result shape (`Print`, `Warn`, `Error`, `Debug`); host-only particles
 make no apology (`Read` in `terminal`, `Group`/`GroupEnd` in `console`).
 
 Packaging follows the host: native modules ship as GitHub Release assets
-plus `code module install`; browser modules ship as npm packages exporting a
+plus `code install`; browser modules ship as npm packages exporting a
 `run_with_modules`-shaped object, version-pinned by the site/playground
 exactly like `code-wasm` already is.
 
@@ -102,10 +102,10 @@ and **Windows**, which additionally needs a `LoadLibrary`/`GetProcAddress`
 path in `src/native.rs` and `runtime.c` — real work, tracked as phase F.
 Build on an older-glibc runner image for maximum compatibility.
 
-### Install: `code module install` — shipped 2026-08-23
+### Install: `code install` — shipped 2026-08-23
 
-Subcommands: `code module install <name-or-url> [--global]`, `code module remove <name>`
-(alias `rm`), `code module ls` (installed + available).
+Subcommands: `code install <name-or-url> [--global]`, `code remove <name>`
+(alias `rm`), `code ls` (installed + available).
 
 - Resolution: first-party names hit an index (which starts life as a JSON
   file in this repo, served from the Pages site); community modules install
@@ -143,7 +143,7 @@ agreed shape is now implemented:
 
 plus a fifth lookup that makes installed layouts reachable: a bare filename
 maps through the project lockfile onto `<root>/<name>/<version>/<asset>`
-(the layout `code module install` writes). Without the lockfile entry the layout
+(the layout `code install` writes). Without the lockfile entry the layout
 lookup has nothing to go on — the lockfile is the single source of truth
 for "what is installed here", and flat vendored layouts keep resolving
 through steps 1–4 unchanged. Documented wherever `link` is documented. The
@@ -312,7 +312,7 @@ only, and there is no community index for it to render.
 
 A **Modules** page beside the Packages section: renders each module's
 `module.json` (handlers, versions, platforms, install command), sourced from
-the same data `code module ls` reads. It doubles as the de-facto index.
+the same data `code ls` reads. It doubles as the de-facto index.
 
 ## Phases
 
@@ -320,7 +320,7 @@ the same data `code module ls` reads. It doubles as the de-facto index.
 |---|---|---|
 | A | core `Timestamp` (both backends, fixtures) | the core-handler pattern proven before any module ships |
 | B | `crates/modules/{terminal,math,strings}` + cross-build CI → GitHub Releases, `console` npm package; dogfood by hand | proof the pipeline works |
-| C | ~~`code module install/remove/ls` + resolver fallback chain + lockfile/sha256~~ — shipped 2026-08-23 | users getting modules without copying files |
+| C | ~~`code install/remove/ls` + resolver fallback chain + lockfile/sha256~~ — shipped 2026-08-23 | users getting modules without copying files |
 | D | ~~`net` module~~ — shipped 2026-08-28, renamed `http_client` 2026-08-29 | the flagship community-facing module |
 | E | ~~template + publish guide~~ — shipped 2026-08-28 as `templates/module/`, in-tree rather than a separate `code-module-template` repo; website Modules page still open | other people publishing |
 | F | (optional) Windows `.dll` support, name-based community index, artifact signing | wider reach / stronger trust |

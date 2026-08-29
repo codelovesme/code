@@ -39,17 +39,29 @@ fn main() -> ExitCode {
     let mut args = rest.into_iter();
     match command.as_str() {
         "run" => {
-            let Some(path) = args.next() else {
-                eprintln!("usage: code run <file>");
+            // No path means the directory you are standing in, which is a
+            // project — the same default `build` takes.
+            let path = args.next().unwrap_or_else(|| ".".to_string());
+            if let Some(unknown) = args.next() {
+                eprintln!("code run takes one path, not '{unknown}'");
                 return ExitCode::FAILURE;
-            };
-            run_file(&path)
+            }
+            match entry_point(&path) {
+                Ok(entry) => run_file(&entry),
+                Err(message) => {
+                    eprintln!("{message}");
+                    ExitCode::FAILURE
+                }
+            }
         }
         #[cfg(feature = "llvm")]
         "build" => {
-            let Some(path) = args.next() else {
-                eprintln!("{}", help_for("build"));
-                return ExitCode::FAILURE;
+            // The path is optional and defaults to `.`, like `run`'s. A flag
+            // in first position is not a path.
+            let mut args = args.peekable();
+            let path = match args.peek() {
+                Some(first) if !first.starts_with('-') => args.next().unwrap_or_default(),
+                _ => ".".to_string(),
             };
             let mut out: Option<PathBuf> = None;
             let mut target = BuildTarget::Exe;
@@ -81,12 +93,39 @@ fn main() -> ExitCode {
                     }
                 }
             }
-            let out = out.unwrap_or_else(|| default_output_path(&path, target));
-            build_file(&path, target, &out, release)
+            let entry = match entry_point(&path) {
+                Ok(entry) => entry,
+                Err(message) => {
+                    eprintln!("{message}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            // Where the artifact goes is the one thing that turns on which
+            // kind of path was given: a file answers beside itself, a project
+            // owns `build/`. Both are what someone naming that path meant.
+            let out = out.unwrap_or_else(|| match project_dir(&path) {
+                Some(dir) => dir
+                    .join(BUILD_DIR)
+                    .join(project_artifact_name(&dir, target)),
+                None => default_output_path(&entry, target),
+            });
+            if let Some(parent) = out.parent() {
+                if !parent.as_os_str().is_empty() {
+                    if let Err(e) = std::fs::create_dir_all(parent) {
+                        eprintln!("cannot create '{}': {e}", parent.display());
+                        return ExitCode::FAILURE;
+                    }
+                }
+            }
+            build_file(&entry, target, &out, release)
         }
-        "app" => cmd_app(args.collect()),
+        "init" => cmd_init(args.collect()),
         #[cfg(feature = "install")]
-        "module" => cmd_module(args.collect()),
+        "install" => cmd_install(args.collect()),
+        #[cfg(feature = "install")]
+        "remove" | "rm" => cmd_remove(args.collect()),
+        #[cfg(feature = "install")]
+        "ls" => cmd_ls(),
         "format" => cmd_format(args.collect()),
         // Global flags rather than subcommands, so they take no feature gate
         // and work even in the wasm-only interpreter build.
@@ -117,10 +156,10 @@ fn main() -> ExitCode {
 /// gains a flag and a command that gains a line of help are the same edit.
 fn help_for(command: &str) -> &'static str {
     match command {
-        "run" => "usage: code run <file>\n\nInterprets one file. `link` resolves relative to it.",
+        "run" => "usage: code run [path]\n\nInterprets a file, or a project's main.code. Defaults to `.`. `link` \
+resolves relative to the file doing the linking.",
         "build" => BUILD_HELP,
-        "app" => APP_HELP,
-        "module" => MODULE_HELP,
+        "install" | "remove" | "rm" | "ls" | "module" => MODULE_HELP,
         // Reachable as `code help init` too: someone who knows the command
         // exists but not where it lives should still find it.
         "init" => INIT_HELP,
@@ -136,51 +175,38 @@ usage:
   code <command> [arguments]
 
 commands:
-  run <file>                     interpret one file
-  build <file> [options]         compile it; the artifact lands beside it
-  app init [name]                scaffold a project here, or in <name>
-  app run [dir]                  interpret <dir>/main.code
-  app build [dir] [options]      compile it into <dir>/build/
-  module install <name-or-url>   fetch a module into ./.code/modules
-  module remove <name>           delete it, and its lock entry
-  module ls                      what is installed, and what is available
+  init [name]                    scaffold a project here, or in <name>
+  run [path]                     interpret a file, or a project's main.code
+  build [path] [options]         compile one; artifact beside it, or in build/
+  install <name-or-url>          fetch a module into ./.code/modules
+  remove <name>                  delete it, and its lock entry
+  ls                             what is installed, and what is available
   format [--check] <path>...     the canonical layout, rewritten in place
 
   -h, --help [command]           this, or one command's own help
   -v, --version                  which build this is
 
-`run`/`build` take a file, `app run`/`app build` take a directory. That is
-the whole difference: a file answers beside itself, a project owns build/.";
+`run` and `build` take either a file or a directory, and default to `.`. A
+directory means its main.code, and is the only thing that changes where
+`build` writes: beside a file, or into the project's build/.";
 
 const BUILD_HELP: &str = "\
-usage: code build <file> [options]
+usage: code build [path] [options]
 
-Compiles one file. Without -o the artifact lands beside the source, named
-for it: `code build src/x.code` writes `src/x`.
+Compiles a file, or a project's main.code. Defaults to `.`. Without -o the
+artifact lands beside the source when a file was named — `code build
+src/x.code` writes `src/x` — and in the project's build/ when a directory
+was, named for the project rather than for main.
 
 options:
   -t, --target exe|shared|static|wasm   default exe
   -r, --release                         -O2; the default is unoptimized
   -o, --output <path>                   where to write it";
 
-const APP_HELP: &str = "\
-usage: code app init [name]
-       code app run [dir]
-       code app build [dir] [options]
-
-Takes a directory rather than a file. `init` scaffolds one; the entry point
-is <dir>/main.code, and `build` puts artifacts in <dir>/build/, named for the
-project rather than for the entry file. `run` and `build` default to `.`.
-
-options (build):
-  -t, --target exe|shared|static|wasm   default exe
-  -r, --release                         -O2; the default is unoptimized
-  -o, --output <path>                   overrides build/ entirely";
-
 const MODULE_HELP: &str = "\
-usage: code module install <name-or-url> [--global]
-       code module remove <name>
-       code module ls
+usage: code install <name-or-url> [--global]
+       code remove <name>
+       code ls
 
 A first-party module installs by name, from the index; anything else installs
 by the URL of its manifest. Bytes land in ./.code/modules and are pinned by
@@ -188,7 +214,7 @@ sha256 in ./.code/lock.json — `--global` puts them in ~/.code/modules and
 records the same lock entry.";
 
 const INIT_HELP: &str = "\
-usage: code app init [name]
+usage: code init [name]
 
 Scaffolds a project in the current directory, or in <name>. Writes main.code
 (which runs as written, with nothing installed), an empty .code/lock.json —
@@ -202,123 +228,51 @@ Rewrites .code files in the one canonical layout. A path may be a directory,
 walked for *.code. --check writes nothing and exits non-zero if anything
 would change. A file that does not parse is reported and skipped.";
 
-/// `code app run|build [dir]` — a *directory* where `run`/`build` take a
-/// file.
+/// The directory `path` names, when it names one. A project is a directory
+/// with a `main.code` in it; anything else is a file, or a mistake the caller
+/// hears about from `entry_point`.
+fn project_dir(path: &str) -> Option<PathBuf> {
+    let path = PathBuf::from(path);
+    path.is_dir().then_some(path)
+}
+
+/// The `.code` file `path` means: itself when it is a file, and its
+/// `main.code` when it is a directory.
 ///
-/// Two commands rather than one that guesses, because they answer different
-/// questions. A file is a file: `code build x.code` writes `x` beside it and
-/// is done. A directory is a project, so it has an entry point by convention
-/// (`main.code`, which `code app init` writes) and its artifacts belong somewhere
-/// deletable in one go (`build/`). Letting `build` take both would make the
-/// output location depend on which kind of argument was passed — one command
-/// quietly doing two things.
-fn cmd_app(mut args: Vec<String>) -> ExitCode {
-    let sub = if args.first().map(|a| !a.starts_with('-')).unwrap_or(false) {
-        args.remove(0)
-    } else {
-        String::new()
-    };
-    match sub.as_str() {
-        // Scaffolding is an app thing too, and it is the one that writes the
-        // `main.code` the other two go looking for.
-        "init" => return cmd_init(args),
-        "run" | "build" => {}
-        "" => {
-            eprintln!("usage: code app init|run|build [name-or-dir]");
-            return ExitCode::FAILURE;
-        }
-        other => {
-            eprintln!("unknown app command '{other}' (expected init, run or build)");
-            return ExitCode::FAILURE;
-        }
-    }
-
-    // The directory is optional and defaults to `.` — a project you are
-    // already standing in is the common case.
-    let dir = match args.first() {
-        Some(first) if !first.starts_with('-') => PathBuf::from(args.remove(0)),
-        _ => PathBuf::from("."),
-    };
-    if !dir.is_dir() {
-        eprintln!("'{}' is not a directory", dir.display());
-        return ExitCode::FAILURE;
-    }
-    let entry = dir.join(APP_ENTRY);
-    if !entry.is_file() {
-        eprintln!(
-            "no {APP_ENTRY} in '{}' — an app's entry point is {APP_ENTRY} (see code app init)",
-            dir.display()
-        );
-        return ExitCode::FAILURE;
-    }
-    let entry_path = entry.to_string_lossy().into_owned();
-
-    if sub == "run" {
-        if let Some(unknown) = args.first() {
-            eprintln!("code app run takes a directory, not '{unknown}'");
-            return ExitCode::FAILURE;
-        }
-        return run_file(&entry_path);
-    }
-    cmd_app_build(&dir, &entry_path, args)
-}
-
-#[cfg(not(feature = "llvm"))]
-fn cmd_app_build(_dir: &Path, _entry: &str, _args: Vec<String>) -> ExitCode {
-    eprintln!("this build has no compiler (built without the `llvm` feature)");
-    ExitCode::FAILURE
-}
-
-#[cfg(feature = "llvm")]
-fn cmd_app_build(dir: &Path, entry: &str, args: Vec<String>) -> ExitCode {
-    let mut out: Option<PathBuf> = None;
-    let mut target = BuildTarget::Exe;
-    let mut release = false;
-    let mut rest = args.into_iter();
-    while let Some(arg) = rest.next() {
-        match arg.as_str() {
-            "-o" | "--output" => out = rest.next().map(PathBuf::from),
-            "-r" | "--release" => release = true,
-            "-t" | "--target" => {
-                let Some(value) = rest.next() else {
-                    eprintln!("--target takes a value (exe|shared|static|wasm)");
-                    return ExitCode::FAILURE;
-                };
-                match BuildTarget::parse(&value) {
-                    Some(t) => target = t,
-                    None => {
-                        eprintln!("unknown target '{value}' (expected exe|shared|static|wasm)");
-                        return ExitCode::FAILURE;
-                    }
-                }
-            }
-            other => {
-                eprintln!("unknown argument '{other}'");
-                return ExitCode::FAILURE;
+/// One command rather than two, decided by the argument — `code run x.code`
+/// and `code run .` are the same question about different things, and a
+/// second command spelling would only make the caller say which kind of path
+/// they had just typed. What *is* decided by the kind is where `build` puts
+/// the artifact: beside a file, in `build/` for a project.
+fn entry_point(path: &str) -> Result<String, String> {
+    match project_dir(path) {
+        Some(dir) => {
+            let entry = dir.join(PROJECT_ENTRY);
+            if entry.is_file() {
+                Ok(entry.to_string_lossy().into_owned())
+            } else {
+                Err(format!(
+                    "no {PROJECT_ENTRY} in '{}' — a project's entry point is {PROJECT_ENTRY} (see code init)",
+                    dir.display()
+                ))
             }
         }
+        None if Path::new(path).is_file() => Ok(path.to_string()),
+        None => Err(format!("no such file or directory: '{path}'")),
     }
-    let out = out.unwrap_or_else(|| dir.join(APP_BUILD_DIR).join(app_artifact_name(dir, target)));
-    if let Some(parent) = out.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            eprintln!("cannot create '{}': {e}", parent.display());
-            return ExitCode::FAILURE;
-        }
-    }
-    build_file(entry, target, &out, release)
 }
 
-/// An app's entry point. `code app init` writes this name, and `code app` is the
-/// only thing that assumes it.
-const APP_ENTRY: &str = "main.code";
-/// Where `code app build` puts artifacts: one directory, deletable in one go.
+/// A project's entry point — the file `code init` writes, and the one thing
+/// `run`/`build` assume about a directory.
+const PROJECT_ENTRY: &str = "main.code";
+/// Where a project's artifacts go: one directory, deletable in one go.
 #[cfg(feature = "llvm")]
-const APP_BUILD_DIR: &str = "build";
+const BUILD_DIR: &str = "build";
 
 /// `build/<project>` rather than `build/main`: the artifact is named after
-/// the thing being built, and every app's entry file has the same name.
+/// the thing being built, and every project's entry file has the same name.
 #[cfg(feature = "llvm")]
-fn app_artifact_name(dir: &Path, target: BuildTarget) -> String {
+fn project_artifact_name(dir: &Path, target: BuildTarget) -> String {
     // `.` and `..` have no name of their own, so ask the filesystem which
     // directory they actually are.
     let name = dir
@@ -332,32 +286,7 @@ fn app_artifact_name(dir: &Path, target: BuildTarget) -> String {
     artifact_name(&name, target)
 }
 
-/// `code module install|remove|ls` — everything to do with modules under one
-/// noun, because they are one subject and `code ls` never said what it was
-/// listing.
-#[cfg(feature = "install")]
-fn cmd_module(mut args: Vec<String>) -> ExitCode {
-    let sub = if args.is_empty() {
-        String::new()
-    } else {
-        args.remove(0)
-    };
-    match sub.as_str() {
-        "install" => cmd_install(args),
-        "remove" | "rm" => cmd_remove(args),
-        "ls" => cmd_ls(),
-        "" => {
-            eprintln!("usage: code module install <name-or-url> [--global] | remove <name> | ls");
-            ExitCode::FAILURE
-        }
-        other => {
-            eprintln!("unknown module command '{other}' (expected install, remove or ls)");
-            ExitCode::FAILURE
-        }
-    }
-}
-
-/// `code app init [name]` — a project that runs before anything is installed.
+/// `code init [name]` — a project that runs before anything is installed.
 ///
 /// Three files, and the reasoning for each is that a fourth would be
 /// decoration:
@@ -379,7 +308,7 @@ fn cmd_module(mut args: Vec<String>) -> ExitCode {
 /// Nothing is ever overwritten: an existing file is a refusal, not a merge.
 fn cmd_init(args: Vec<String>) -> ExitCode {
     if let Some(unknown) = args.iter().find(|a| a.starts_with('-')) {
-        eprintln!("code app init takes a directory name, not '{unknown}'");
+        eprintln!("code init takes a directory name, not '{unknown}'");
         return ExitCode::FAILURE;
     }
     // No name means "here", which is what a directory you have already made
@@ -421,10 +350,10 @@ fn cmd_init(args: Vec<String>) -> ExitCode {
         None => String::new(),
     };
     println!();
-    println!("  {where_to}code app run");
+    println!("  {where_to}code run");
     println!();
     println!("Printing lives in a module rather than the language:");
-    println!("  code module install terminal");
+    println!("  code install terminal");
     println!("  then: link \"terminal.so\" as term");
     println!("        emit Print {{ \"value\": \"hello\" }} to term");
     ExitCode::SUCCESS
@@ -435,7 +364,7 @@ fn cmd_init(args: Vec<String>) -> ExitCode {
 const MAIN_TEMPLATE: &str = r#"-- A new Code program. `code run main.code` runs this as written.
 --
 -- There is no print statement: writing to a terminal is a module's job, not
--- the language's. `code module install terminal` gets you one.
+-- the language's. `code install terminal` gets you one.
 
 let name = "world"
 let scores = [88, 94, 71]
@@ -467,10 +396,10 @@ const LOCKFILE_TEMPLATE: &str = "{\n  \"modules\": {}\n}\n";
 
 const GITIGNORE_TEMPLATE: &str = "\
 # Installed module binaries. The lockfile beside them pins what they are,
-# so a checkout can reproduce them with `code module install`.
+# so a checkout can reproduce them with `code install`.
 .code/modules/
 
-# Where `code app build` puts artifacts.
+# Where `code build <directory>` puts artifacts.
 build/
 ";
 
@@ -581,9 +510,9 @@ fn default_output_path(input: &str, target: BuildTarget) -> PathBuf {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "a.out".to_string());
     // Beside the source, not in the working directory: `code build x.code`
-    // answers with `x`, and `code build src/x.code` with `src/x`. Building a
-    // *file* leaves one artifact next to it and nothing else — owning a
-    // directory is `code app build`'s job.
+    // answers with `x`, and `code build src/x.code` with `src/x`. Naming a
+    // *file* leaves one artifact next to it and nothing else; naming a
+    // directory is what asks for `build/`.
     match input.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent.join(artifact_name(&stem, target)),
         _ => PathBuf::from(artifact_name(&stem, target)),
