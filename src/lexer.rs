@@ -88,6 +88,10 @@ pub enum Token {
     /// defines itself. A keyword rather than an ordinary name, so it can
     /// never also be a variable.
     This,
+    /// `base` — the `emit ... to base` target: the handlers defined by
+    /// whoever `link`ed the module this statement sits in. Reserved for the
+    /// same reason `this` is — it must never be a variable name.
+    Base,
     /// `return` — a handler body's early exit with a result.
     Return,
     /// Statement separator — a newline or `;`. Blank lines never produce one
@@ -345,6 +349,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                 "get" => Token::Get,
                 "is" => Token::Is,
                 "this" => Token::This,
+                "base" => Token::Base,
                 "return" => Token::Return,
                 _ => Token::Ident(text),
             };

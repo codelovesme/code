@@ -1,0 +1,5 @@
+-- A linked module that sends upward: `to base` reaches whoever linked
+-- *this* file — the test below — and answers from that file's own
+-- top-level handlers. Nothing here is visible outside unless exported.
+emit Ping { value = 1 } to base get reply
+export let answer = reply.value

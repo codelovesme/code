@@ -1,0 +1,16 @@
+-- Three levels deep: each `to base` lands exactly one level up.
+--
+--   this file (level 0)  handles Ping
+--   modules/base_chain_leaf   handles Pong, asks base for Ping
+--   modules/base_chain_mid    asks base for Pong
+--
+-- If a `to base` ever skipped a level or fell through to the root,
+-- one of these asserts would see null instead of a number.
+Ping { value } => {
+    return Ping { value = value + 10 }
+}
+
+link "modules/base_chain_leaf" as leaf
+
+assert leaf.got = 11
+assert leaf.up = 11

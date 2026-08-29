@@ -1,0 +1,5 @@
+-- Asks its parent for a class the parent does not handle. Sending a
+-- particle is not a demand: the answer is null, not a failure — the
+-- same answer `to this` gives for an unhandled class.
+emit Pong { seen = true } to base get reply
+export let reply = reply

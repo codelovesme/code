@@ -1,0 +1,14 @@
+-- A handler defined INSIDE a linked module sends upward. Its `to
+-- base` must mean the module's own parent — whoever linked it — even
+-- though the handler runs later, from whatever frame emitted here.
+-- Resolving against the caller's depth instead would send the
+-- particle to the wrong level (or nowhere) and this assert would
+-- fail.
+Ping { value } => {
+    return Ping { value = value + 10 }
+}
+
+link "modules/base_handler_child" as h
+
+emit Ask {} to this get done
+assert done.got = 11

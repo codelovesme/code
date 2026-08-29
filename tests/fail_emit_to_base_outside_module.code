@@ -1,0 +1,3 @@
+-- `to base` outside a linked module has no parent to send to. Both
+-- backends share this refusal through verify.rs, so both fail here.
+emit Ping { value = 1 } to base get tmp

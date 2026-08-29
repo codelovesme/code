@@ -54,6 +54,21 @@ pub struct Environment {
     /// starts, so a handler can emit to one defined further down the file,
     /// which is what lets a handler emit to one defined further down.
     handlers: HashMap<String, Rc<HandlerBody>>,
+    /// One table per level of the module graph, filled by
+    /// `register_handlers` before anything runs: index `i` holds the
+    /// handlers defined at depth `i` (top level is `0`). Sibling modules
+    /// never collide in one table because the duplicate-handler rule is
+    /// program-wide, so depth alone identifies a table. `emit … to base`
+    /// looks up `module_depth - 1` — the *direct* parent, never the whole
+    /// program. Empty at the top level, where `to base` is illegal anyway
+    /// (`verify.rs` refuses it before either backend starts).
+    handler_tables: Vec<HashMap<String, Rc<HandlerBody>>>,
+    /// How many `Stmt::Import` bodies are currently open while executing —
+    /// the depth of the statement being run. Incremented and decremented
+    /// by the `Import` arm of `exec`; a plain counter is enough because a
+    /// handler body can never contain a `link` (top-level only) and the
+    /// inbound drain only runs between top-level statements.
+    module_depth: usize,
     /// One drain per linked module that can speak first — each returns
     /// whatever that module has queued since it was last called. A closure
     /// rather than the queue itself for the same reason `ModuleDispatch` is
@@ -67,12 +82,15 @@ pub struct Environment {
     active: HashSet<String>,
 }
 
-/// A registered handler: the fields to seed its scope with, and the body to
-/// run. `Rc` so invoking one doesn't clone the statements.
+/// A registered handler: the fields to seed its scope with, the body to
+/// run, and the level of the module graph the definition sits at — restored
+/// as `module_depth` for the duration of the call, so a `to base` inside
+/// the body means *this* handler's parent, whoever invoked it.
 #[derive(Debug)]
 struct HandlerBody {
     fields: Vec<String>,
     body: Vec<Stmt>,
+    defining_depth: usize,
 }
 
 /// Derived `Debug` doesn't work once a field holds a `dyn Fn` (no `Debug`
@@ -98,6 +116,8 @@ impl Default for Environment {
             modules: HashMap::new(),
             available_modules: HashMap::new(),
             handlers: HashMap::new(),
+            handler_tables: Vec::new(),
+            module_depth: 0,
             inbound: Vec::new(),
             active: HashSet::new(),
         }
@@ -268,7 +288,11 @@ pub type InboundReply = Rc<dyn Fn(&Value, &Value)>;
 /// level too, so its handlers join the same program-wide table) and nothing
 /// else: the parser already rejects a definition inside an `if`, a block, or
 /// a loop.
-fn register_handlers(stmts: &[Stmt], env: &mut Environment) -> Result<(), String> {
+fn register_handlers(
+    stmts: &[Stmt],
+    env: &mut Environment,
+    depth: usize,
+) -> Result<(), String> {
     for stmt in stmts {
         match stmt {
             Stmt::HandlerDef {
@@ -281,15 +305,22 @@ fn register_handlers(stmts: &[Stmt], env: &mut Environment) -> Result<(), String
                         "duplicate handler for '{class_name}': only one handler per class"
                     ));
                 }
-                env.handlers.insert(
-                    class_name.clone(),
-                    Rc::new(HandlerBody {
-                        fields: fields.clone(),
-                        body: body.clone(),
-                    }),
-                );
+                let handler = Rc::new(HandlerBody {
+                    fields: fields.clone(),
+                    body: body.clone(),
+                    defining_depth: depth,
+                });
+                // Every level joins the program-wide table — that is what
+                // `to this` and the inbound drain dispatch against — and
+                // also its own depth's table, which is what a child's
+                // `emit … to base` will look up.
+                env.handlers.insert(class_name.clone(), Rc::clone(&handler));
+                if env.handler_tables.len() <= depth {
+                    env.handler_tables.resize_with(depth + 1, HashMap::new);
+                }
+                env.handler_tables[depth].insert(class_name.clone(), handler);
             }
-            Stmt::Import { body, .. } => register_handlers(body, env)?,
+            Stmt::Import { body, .. } => register_handlers(body, env, depth + 1)?,
             _ => {}
         }
     }
@@ -307,7 +338,7 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 /// a `JsBridge`-formatted `ImportNative` only ever checks an alias is
 /// already present, never resolves one itself (see that arm below).
 pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, String> {
-    register_handlers(&program.statements, &mut env)?;
+    register_handlers(&program.statements, &mut env, 0)?;
     crate::handlers::check_cycles(program)?;
     // The same pre-run check `code build` has always run (`verify.rs`, which
     // is where it moved out of `codegen.rs` on 2026-08-28 so both backends
@@ -498,7 +529,12 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             // the pairs from a descriptor instead of from a body, and reuse
             // the binding half unchanged (see `ast::Stmt::Import`).
             env.push_scope();
+            // Depth bookkeeping for `emit … to base`: statements in the
+            // body sit one level further out in the module graph. Decrement
+            // on every path — the body may fail.
+            env.module_depth += 1;
             let result = exec_body(body, env);
+            env.module_depth -= 1;
             let pairs = result.and_then(|_| {
                 exports
                     .iter()
@@ -644,6 +680,22 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             let output = match target {
                 EmitTarget::Core => dispatch_core(&value)?,
                 EmitTarget::This => dispatch_handler(&value, env)?,
+                EmitTarget::Base => {
+                    // `verify_defined` refused a `to base` outside a linked
+                    // module, so `module_depth >= 1` here. The parent's
+                    // level may define no handlers at all — then it has no
+                    // slot in `handler_tables` either — and that answers
+                    // null, the same answer a table lacking the class gives.
+                    // Mirrors codegen's `base_dispatches[..] == None`.
+                    //
+                    // The handler is cloned out of the table *before*
+                    // `run_handler` takes `env` mutably — holding the table
+                    // borrow across the call would fight the borrow checker
+                    // for no reason, since the `Rc` keeps everything alive.
+                    let parent = env.handler_tables.get(env.module_depth - 1);
+                    let handler = parent.and_then(|table| resolve_handler(table, &value));
+                    run_handler(&value, env, handler)?
+                }
                 EmitTarget::Module(alias) => {
                     let dispatch = env
                         .modules
@@ -728,7 +780,23 @@ fn exception(message: String) -> Value {
     ]))
 }
 
+/// `emit <particle> to this` — runs the handler registered for the
+/// particle's own `_class` in the program-wide table.
 fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, String> {
+    let handler = resolve_handler(&env.handlers, particle);
+    run_handler(particle, env, handler)
+}
+
+/// The shared front half of every dispatch path: read the particle's
+/// `_class` and look it up in `table`. `None` covers both "not a particle"
+/// (no usable class) and "handled by nobody" — both answer null, so one
+/// branch serves both. Cloning the `Rc` out here means the caller can drop
+/// its borrow of the table before running the body, which may mutate the
+/// very environment the table lives in.
+fn resolve_handler(
+    table: &HashMap<String, Rc<HandlerBody>>,
+    particle: &Value,
+) -> Option<Rc<HandlerBody>> {
     // `check_emittable` ran at the emit site, so a `_class` is here. A
     // *non-Str* one is not a particle either and takes the same path as an
     // unknown class: null. There is no third answer to give — this function
@@ -738,16 +806,30 @@ fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, St
         _ => None,
     };
     let Some(Value::Str(class)) = class else {
-        return Ok(Value::Null);
+        return None;
     };
     // A class nothing handles answers null rather than ending the program:
     // sending a particle is not a demand, and whether to act on one is the
     // recipient's business (decided 2026-08-28, see
     // docs/todo/errors-as-particles.md). The same answer `to core` and a
-    // native module give.
-    let Some(handler) = env.handlers.get(class.as_ref()).cloned() else {
+    // native module give — including here, where the parent simply does not
+    // handle the class the child asked about.
+    table.get(class.as_ref()).cloned()
+}
+
+/// Runs a resolved handler — the back half of `dispatch_handler` and the
+/// `to base` arm alike.
+fn run_handler(
+    particle: &Value,
+    env: &mut Environment,
+    handler: Option<Rc<HandlerBody>>,
+) -> Result<Value, String> {
+    let Some(handler) = handler else {
         return Ok(Value::Null);
     };
+    // Resolution succeeded, so the particle carried a real class — reading
+    // it back is how the re-entry guard below knows what to key on.
+    let class = class_of(particle);
     // Re-entry is the *emit's* failure, so it is this dispatch's answer rather
     // than an error thrown into the caller's body: the frame that tried to
     // re-enter gets an Exception back and decides what to do, and the handler
@@ -766,8 +848,11 @@ fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, St
         )));
     }
 
-    // Everything but the top-level frame steps aside for the call.
+    // Everything but the top-level frame steps aside for the call — and so
+    // does the depth counter: a `to base` inside the body must mean this
+    // handler's own parent, not the caller's, no matter who emitted here.
     let saved: Vec<HashMap<String, Value>> = env.scopes.drain(1..).collect();
+    let saved_depth = std::mem::replace(&mut env.module_depth, handler.defining_depth);
 
     // A listed field the particle doesn't carry is null — the same answer
     // `.field` gives for an absent member.
@@ -815,7 +900,8 @@ fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, St
     };
 
     env.scopes.extend(saved);
-    env.active.remove(class.as_ref());
+    env.module_depth = saved_depth;
+    env.active.remove(class);
     result
 }
 

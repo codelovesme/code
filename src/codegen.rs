@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::rc::Rc;
 
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
@@ -203,6 +204,11 @@ pub fn compile_to_object(
     );
     let fn_release = module.add_function(
         "code_release",
+        void_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_clear = module.add_function(
+        "code_clear",
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
@@ -507,6 +513,7 @@ pub fn compile_to_object(
         fn_iter_at,
         fn_iter_key,
         fn_release,
+        fn_clear,
         fn_core_dispatch,
         fn_native_open,
         fn_native_dispatch,
@@ -519,6 +526,7 @@ pub fn compile_to_object(
         env: vec![HashMap::new()],
         loop_blocks: Vec::new(),
         slots: Vec::new(),
+        temps: Vec::new(),
         native_links: HashMap::new(),
         static_native_fns,
         fn_check_particle,
@@ -533,7 +541,10 @@ pub fn compile_to_object(
         failed_flag,
         location_slot,
         handler_fns: HashMap::new(),
+        handler_depths: HashMap::new(),
         dispatch_fn: None,
+        base_dispatches: Vec::new(),
+        dispatch_depth: 0,
         drain_fn: None,
         handler_frame: None,
         global_count: 0,
@@ -545,6 +556,10 @@ pub fn compile_to_object(
     // a chain of handler calls resolve at all, whatever order they are
     // written in.
     gen.declare_handlers(&program.statements)?;
+    // After the declarations above (every handler function must exist for
+    // the chains to branch to) and before any body below (a module's
+    // `emit ... to base` calls its parent's chain).
+    gen.gen_base_dispatches(&program.statements)?;
 
     gen.declare_drain();
     for (i, stmt) in program.statements.iter().enumerate() {
@@ -558,6 +573,7 @@ pub fn compile_to_object(
     gen.emit_cleanup(fn_check_leaks)?;
     // Last, once every handler function exists to be dispatched to.
     gen.gen_dispatch_body()?;
+    gen.gen_base_dispatch_bodies(&program.statements)?;
     builder
         .build_return(Some(&i32_ty.const_int(0, false)))
         .map_err(|e| e.to_string())?;
@@ -665,6 +681,7 @@ struct Gen<'a, 'm> {
     fn_iter_at: FunctionValue<'a>,
     fn_iter_key: FunctionValue<'a>,
     fn_release: FunctionValue<'a>,
+    fn_clear: FunctionValue<'a>,
     fn_core_dispatch: FunctionValue<'a>,
     fn_native_open: FunctionValue<'a>,
     fn_native_dispatch: FunctionValue<'a>,
@@ -702,8 +719,28 @@ struct Gen<'a, 'm> {
     /// spans (1 for `alloc_slot`, `len` for `alloc_buffer`). Used only by
     /// `emit_cleanup`, which releases all of them as the program's last act
     /// so that a finished program owns nothing — see `code_check_leaks` in
-    /// `runtime.c` for why that is worth the extra calls.
+    /// `runtime.c` for why that is worth the extra calls. A slot that was
+    /// already cleared by `gen_stmt` is swept here too, and the sweep is a
+    /// no-op on it; the list stays complete so that "every slot is released
+    /// exactly once at exit" needs no exceptions.
     slots: Vec<(PointerValue<'a>, u64)>,
+    /// The slots allocated by the statement currently being generated that
+    /// nothing reads once it ends — a stack, because statements nest.
+    ///
+    /// `slots` above is every slot there is, and the exit sweep is what
+    /// finally releases them; this is the subset that need not wait that
+    /// long. A slot only ever drops what it holds when it is *next written*,
+    /// so a `let a = [1]` chain keeps every intermediate array alive at once
+    /// — one per statement, each in a slot no later statement touches. The
+    /// entries here are cleared at the end of the statement that allocated
+    /// them instead (see `gen_stmt`), which is what bounds a chain's peak by
+    /// its largest value rather than by their sum.
+    ///
+    /// Membership is opt-in, through `alloc_temp` rather than `alloc_slot`,
+    /// because the safe answer for a slot nobody classified is the old one:
+    /// hold it to the end. A binding's slot must never appear here — it is
+    /// read by every later statement in its scope.
+    temps: Vec<(PointerValue<'a>, u64)>,
     /// What `link "x" as x` bound `x` to for `emit ... to x` dispatch, by
     /// alias. A raw SSA value either way, not a `CodeValue` slot (see
     /// `alloc_slot`'s doc comment; this never needs to survive a
@@ -741,11 +778,34 @@ struct Gen<'a, 'm> {
     /// Every `ClassName => { ... }` in the program, by class name, declared
     /// up front and defined as its statement is reached.
     handler_fns: HashMap<String, FunctionValue<'a>>,
+    /// Each handler's level in the module graph, recorded where its
+    /// declaration is collected — restored as `dispatch_depth` while its
+    /// body is generated, so a `to base` inside the body means *its*
+    /// parent, whoever invoked it. Mirrors
+    /// `interpreter::HandlerBody::defining_depth`; without it the body
+    /// would inherit whatever depth the definition site happened to sit
+    /// at, and the two backends would disagree.
+    handler_depths: HashMap<String, usize>,
     /// The generated `_code_dispatch_this`: one `if code_is_particle(p, "N")`
     /// chain over `handler_fns`, ending in a runtime error. Every
     /// `emit ... to this` calls it, so reaching another handler is an
     /// ordinary call rather than anything the emit site has to know about.
     dispatch_fn: Option<FunctionValue<'a>>,
+    /// The generated `_code_dispatch_base_<depth>` chain, one per level of
+    /// the module graph that defines at least one handler — index `d` is
+    /// the target of `emit … to base` from inside a module at depth `d + 1`
+    /// (its *direct* parent, never the whole program). `None` entries are
+    /// levels that define nothing: their children's `to base` answers null
+    /// straight at the emit site, exactly like a `to this` in a program
+    /// with no handlers at all. Built once, after every handler function
+    /// exists — see `gen_base_dispatches`.
+    base_dispatches: Vec<Option<Rc<FunctionValue<'a>>>>,
+    /// How many `Stmt::Import` bodies are currently open while generating —
+    /// mirrors `interpreter::Environment::module_depth`. Bumped and
+    /// unbumped around `gen_import`'s body generation; a plain counter is
+    /// safe because a handler body can never contain a `link` (top-level
+    /// only) and the inbound drain lives in `main`.
+    dispatch_depth: usize,
     /// Set while a handler body is being generated — see `HandlerFrame`.
     /// `None` means the statement stream belongs to `main`.
     handler_frame: Option<HandlerFrame<'a>>,
@@ -828,7 +888,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// `interpreter::register_handlers` — a linked module's top level is a
     /// top level, so its handlers join the same program-wide table.
     fn declare_handlers(&mut self, stmts: &[Stmt]) -> Result<(), String> {
-        self.collect_handler_decls(stmts)?;
+        self.collect_handler_decls(stmts, 0)?;
         if self.handler_fns.is_empty() {
             return Ok(());
         }
@@ -846,6 +906,37 @@ impl<'a, 'm> Gen<'a, 'm> {
         Ok(())
     }
 
+    /// Declares one `_code_dispatch_base_<depth>` per level of the module
+    /// graph that defines at least one handler — the compiled counterpart
+    /// of `interpreter::Environment::handler_tables`. Called after every
+    /// handler function exists (like `gen_dispatch_body`) but before any
+    /// body is generated, so a module's `emit ... to base` can call its
+    /// parent's chain even when the parent's handler is defined later in
+    /// the parent's file.
+    ///
+    /// Levels that define nothing get `None` rather than a function: there
+    /// would be no branches in the chain and the tail would just write
+    /// null, so the emit site does that directly — the same shape as a
+    /// `to this` in a program with no handlers at all.
+    fn gen_base_dispatches(&mut self, stmts: &[Stmt]) -> Result<(), String> {
+        let void_ty = self.context.void_type();
+        let mut tables: Vec<Vec<String>> = Vec::new();
+        Self::collect_handler_classes(stmts, 0, &mut tables);
+        for (depth, classes) in tables.iter().enumerate() {
+            if classes.is_empty() {
+                self.base_dispatches.push(None);
+                continue;
+            }
+            let f = self.module.add_function(
+                &format!("_code_dispatch_base_{depth}"),
+                void_ty.fn_type(&[self.i8_ptr_ty.into(), self.i8_ptr_ty.into()], false),
+                None,
+            );
+            self.base_dispatches.push(Some(Rc::new(f)));
+        }
+        Ok(())
+    }
+
     /// Declares `_code_drain_inbound`. Separate from `declare_handlers`
     /// because a program can link a module that speaks first without
     /// defining any handler of its own — that program is still wrong (the
@@ -860,7 +951,11 @@ impl<'a, 'm> Gen<'a, 'm> {
         ));
     }
 
-    fn collect_handler_decls(&mut self, stmts: &[Stmt]) -> Result<(), String> {
+    fn collect_handler_decls(
+        &mut self,
+        stmts: &[Stmt],
+        depth: usize,
+    ) -> Result<(), String> {
         for stmt in stmts {
             match stmt {
                 Stmt::HandlerDef { class_name, .. } => {
@@ -876,12 +971,32 @@ impl<'a, 'm> Gen<'a, 'm> {
                         None,
                     );
                     self.handler_fns.insert(class_name.clone(), f);
+                    self.handler_depths.insert(class_name.clone(), depth);
                 }
-                Stmt::Import { body, .. } => self.collect_handler_decls(body)?,
+                Stmt::Import { body, .. } => self.collect_handler_decls(body, depth + 1)?,
                 _ => {}
             }
         }
         Ok(())
+    }
+
+    /// Which class names are handled at each level of the module graph —
+    /// the data `gen_base_dispatches` turns into one chain per non-empty
+    /// level. Free function rather than a method: it reads the tree, not
+    /// the generator.
+    fn collect_handler_classes(stmts: &[Stmt], depth: usize, tables: &mut Vec<Vec<String>>) {
+        if tables.len() <= depth {
+            tables.resize_with(depth + 1, Vec::new);
+        }
+        for stmt in stmts {
+            match stmt {
+                Stmt::HandlerDef { class_name, .. } => {
+                    tables[depth].push(class_name.clone());
+                }
+                Stmt::Import { body, .. } => Self::collect_handler_classes(body, depth + 1, tables),
+                _ => {}
+            }
+        }
     }
 
     /// Fills in one handler's body.
@@ -912,10 +1027,22 @@ impl<'a, 'm> Gen<'a, 'm> {
         // Everything but `main`'s builder position, scope stack, loop stack
         // and slot list steps aside for the duration.
         let saved_block = self.builder.get_insert_block();
+        // A handler body is a different LLVM function, and its slots are
+        // allocas in it — so the list has to be swapped out too, or the
+        // enclosing statement in `main` would emit clears naming memory that
+        // belongs to another frame.
+        let saved_temps = std::mem::take(&mut self.temps);
         let saved_env = std::mem::replace(&mut self.env, vec![HashMap::new()]);
         self.env.insert(0, saved_env[0].clone());
         self.env.truncate(2);
         let saved_loops = std::mem::take(&mut self.loop_blocks);
+        // Same reason as the interpreter restoring `defining_depth`: a `to
+        // base` in the body must mean this handler's parent, not whatever
+        // level the definition site sat at when its body is generated.
+        let saved_depth = std::mem::replace(
+            &mut self.dispatch_depth,
+            self.handler_depths[class_name],
+        );
         let saved_frame = self.handler_frame.replace(HandlerFrame {
             out,
             exit,
@@ -1058,7 +1185,9 @@ impl<'a, 'm> Gen<'a, 'm> {
 
         self.handler_frame = saved_frame;
         self.env = saved_env;
+        self.temps = saved_temps;
         self.loop_blocks = saved_loops;
+        self.dispatch_depth = saved_depth;
         if let Some(block) = saved_block {
             self.builder.position_at_end(block);
         }
@@ -1309,27 +1438,70 @@ impl<'a, 'm> Gen<'a, 'm> {
         Ok(())
     }
 
-    /// The `if code_is_particle(p, "N") { handler_N(out, p); return; }` chain,
-    /// ending in a runtime error for a class nothing handles. Generated last,
-    /// once every handler function exists.
+    /// Fills in `_code_dispatch_this` over the whole program's handlers.
+    /// Generated last, once every handler function exists.
     fn gen_dispatch_body(&mut self) -> Result<(), String> {
         let Some(dispatch) = self.dispatch_fn else {
             return Ok(());
         };
-        let entry = self.context.append_basic_block(dispatch, "entry");
+        let names: Vec<String> = self.handler_fns.keys().cloned().collect();
+        self.gen_dispatch_chain(&dispatch, &names)
+    }
+
+    /// Fills in every declared `_code_dispatch_base_<depth>` over just that
+    /// level's own handlers — the compiled counterpart of
+    /// `interpreter::Environment::handler_tables`. Same order as
+    /// `gen_dispatch_body`, for the same reason: the chains call handler
+    /// functions, which have to exist first.
+    fn gen_base_dispatch_bodies(
+        &mut self,
+        stmts: &[Stmt],
+    ) -> Result<(), String> {
+        let mut tables: Vec<Vec<String>> = Vec::new();
+        Self::collect_handler_classes(stmts, 0, &mut tables);
+        // Clone the `Rc`s out before touching `self` again: filling a chain
+        // generates IR through the builder, and holding the iterator over
+        // `base_dispatches` across that would fight the borrow checker.
+        let chains: Vec<(Rc<FunctionValue<'a>>, Vec<String>)> = self
+            .base_dispatches
+            .iter()
+            .zip(tables.iter())
+            .filter_map(|(chain, classes)| {
+                chain.clone().map(|chain| (chain, classes.clone()))
+            })
+            .collect();
+        for (chain, classes) in chains {
+            self.gen_dispatch_chain(&chain, &classes)?;
+        }
+        Ok(())
+    }
+
+    /// The `if code_is_particle(p, "N") { handler_N(out, p); return; }`
+    /// chain over exactly the named classes, ending in null for a class
+    /// none of them handle. Shared by `_code_dispatch_this` (the whole
+    /// program's table) and the per-level `_code_dispatch_base_*` chains
+    /// (one level's table): the difference between `to this` and `to base`
+    /// is *which* set of handlers a miss falls through, not how a hit is
+    /// answered.
+    fn gen_dispatch_chain(
+        &mut self,
+        dispatch: &FunctionValue<'a>,
+        class_names: &[String],
+    ) -> Result<(), String> {
+        let entry = self.context.append_basic_block(*dispatch, "entry");
         let saved_block = self.builder.get_insert_block();
         self.builder.position_at_end(entry);
 
         let out = dispatch.get_nth_param(0).unwrap().into_pointer_value();
         let particle = dispatch.get_nth_param(1).unwrap().into_pointer_value();
 
-        let mut names: Vec<String> = self.handler_fns.keys().cloned().collect();
+        let mut names: Vec<&String> = class_names.iter().collect();
         names.sort();
         for class_name in names {
-            let function = self.handler_fns[&class_name];
-            let matched = self.context.append_basic_block(dispatch, "matched");
-            let next = self.context.append_basic_block(dispatch, "next");
-            let name_ptr = self.global_str(&class_name, "hclass")?;
+            let function = self.handler_fns[class_name];
+            let matched = self.context.append_basic_block(*dispatch, "matched");
+            let next = self.context.append_basic_block(*dispatch, "next");
+            let name_ptr = self.global_str(class_name, "hclass")?;
             let is = self
                 .builder
                 .build_call(
@@ -1360,8 +1532,8 @@ impl<'a, 'm> Gen<'a, 'm> {
         }
 
         // Nothing matched: write null into `out` and return. One answer for
-        // both callers — `emit ... to this` binds the null, the inbound
-        // drain ignores it.
+        // every caller — `emit ... to this` and `emit ... to base` bind the
+        // null, the inbound drain ignores it.
         self.builder
             .build_call(self.fn_null, &[out.into()], "")
             .map_err(|e| e.to_string())?;
@@ -1509,9 +1681,40 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// `runtime.c`'s constructors all release whatever `out` held first, and
     /// an all-zero `CodeValue` reads as a payload-less `CODE_NUMBER` whose
     /// `heap` flag is 0, so that release is a no-op.
+    ///
+    /// This is the slot for anything a later statement can still read — a
+    /// binding. An intermediate value goes in an `alloc_temp` slot, which is
+    /// this plus a clear when its statement ends.
     fn alloc_slot(&mut self, hint: &str) -> Result<PointerValue<'a>, String> {
         let ptr = self.alloc_zeroed(VALUE_SIZE, hint)?;
         self.record_slot(ptr, 1);
+        Ok(ptr)
+    }
+
+    /// A slot whose value is dead as soon as the statement that produced it
+    /// is over — every intermediate `gen_expr` computes into one. It is an
+    /// ordinary slot in every other respect (same allocation, same exit
+    /// sweep); the only difference is that `gen_stmt` also clears it on the
+    /// way out, so what it holds is dropped there rather than at the next
+    /// write to that slot, which for a slot written once is program exit.
+    ///
+    /// Use `alloc_slot` instead for anything a later statement can still
+    /// name: a `let`/`emit ... get` binding, a loop's variable, key,
+    /// accumulator or container, a handler's field bindings, a module
+    /// object. Clearing one of those would blank a live variable.
+    fn alloc_temp(&mut self, hint: &str) -> Result<PointerValue<'a>, String> {
+        let ptr = self.alloc_slot(hint)?;
+        self.temps.push((ptr, 1));
+        Ok(ptr)
+    }
+
+    /// `alloc_buffer`'s temporary counterpart — an array's or object's
+    /// scratch elements, which `code_array`/`code_object` copy *and retain*
+    /// into the finished block, so the scratch slots hold a reference of
+    /// their own until something drops it.
+    fn alloc_temp_buffer(&mut self, len: u64, hint: &str) -> Result<PointerValue<'a>, String> {
+        let ptr = self.alloc_buffer(len, hint)?;
+        self.temps.push((ptr, len));
         Ok(ptr)
     }
 
@@ -1602,7 +1805,41 @@ impl<'a, 'm> Gen<'a, 'm> {
             .map_err(|e| e.to_string())
     }
 
+    /// One statement, then its temporaries — the values it computed on the
+    /// way to its result, which nothing can name afterwards.
+    ///
+    /// Releasing them here rather than at exit is the whole of
+    /// `docs/todo/temp-slots-pin-intermediates.md`. Statements nest, so the
+    /// list is a stack and this takes a watermark: an inner statement clears
+    /// its own range and truncates back, leaving the enclosing statement's
+    /// entries untouched below it.
+    ///
+    /// The clears land wherever the builder ended up, which is the right
+    /// place in each case: after a loop's exit block for a loop, inside the
+    /// body block for a statement *within* one (so every iteration drops its
+    /// own intermediates), and in an unreachable block after a `break` or a
+    /// `return` — dropped by LLVM, and harmless, since the exit sweep still
+    /// covers those slots. Clearing a slot that was never written is a
+    /// no-op: it is zeroed, which reads as a payload-less number.
     fn gen_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
+        let mark = self.temps.len();
+        let result = self.gen_stmt_inner(stmt);
+        if result.is_ok() {
+            for i in mark..self.temps.len() {
+                let (buf, count) = self.temps[i];
+                for j in 0..count {
+                    let slot = self.slot_at(buf, j, "temp")?;
+                    self.builder
+                        .build_call(self.fn_clear, &[slot.into()], "")
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        self.temps.truncate(mark);
+        result
+    }
+
+    fn gen_stmt_inner(&mut self, stmt: &Stmt) -> Result<(), String> {
         match stmt {
             Stmt::HandlerDef {
                 class_name,
@@ -1618,7 +1855,15 @@ impl<'a, 'm> Gen<'a, 'm> {
                 alias,
                 body,
                 exports,
-            } => self.gen_import(alias.as_deref(), body, exports),
+            } => {
+                // Depth bookkeeping for `emit ... to base`: the body's
+                // statements sit one level further out in the module graph.
+                // Decrement on every path — the body may fail.
+                self.dispatch_depth += 1;
+                let result = self.gen_import(alias.as_deref(), body, exports);
+                self.dispatch_depth -= 1;
+                result
+            }
             Stmt::ImportNative {
                 alias,
                 path,
@@ -2166,7 +2411,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_call(self.fn_check_emittable, &[particle_ptr.into()], "")
             .map_err(|e| e.to_string())?;
         self.check_failed()?;
-        let temp = self.alloc_slot("emit_result")?;
+        let temp = self.alloc_temp("emit_result")?;
         match target {
             EmitTarget::This => {
                 // No handler anywhere in the program is not an error — there
@@ -2176,6 +2421,25 @@ impl<'a, 'm> Gen<'a, 'm> {
                     Some(dispatch) => {
                         self.builder
                             .build_call(dispatch, &[temp.into(), particle_ptr.into()], "")
+                            .map_err(|e| e.to_string())?;
+                    }
+                    None => {
+                        self.builder
+                            .build_call(self.fn_null, &[temp.into()], "")
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+            }
+            EmitTarget::Base => {
+                // `verify_defined` refused a `to base` outside a linked
+                // module, so `dispatch_depth >= 1` here and the parent's
+                // level was indexed. A parent that handles nothing gets
+                // `None` — null straight from the emit site, the same shape
+                // as the `to this` arm above with no handlers at all.
+                match self.base_dispatches[self.dispatch_depth - 1].clone() {
+                    Some(dispatch) => {
+                        self.builder
+                            .build_call(*dispatch, &[temp.into(), particle_ptr.into()], "")
                             .map_err(|e| e.to_string())?;
                     }
                     None => {
@@ -2344,7 +2608,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn gen_expr(&mut self, expr: &Expr) -> Result<PointerValue<'a>, String> {
         match expr {
             Expr::Number(n) => {
-                let slot = self.alloc_slot("num")?;
+                let slot = self.alloc_temp("num")?;
                 let arg = self.f64_ty.const_float(*n);
                 self.builder
                     .build_call(self.fn_number, &[slot.into(), arg.into()], "")
@@ -2352,7 +2616,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 Ok(slot)
             }
             Expr::Str(s) => {
-                let slot = self.alloc_slot("str")?;
+                let slot = self.alloc_temp("str")?;
                 let g = self.global_str(s, "strlit")?;
                 self.builder
                     .build_call(self.fn_str, &[slot.into(), g.into()], "")
@@ -2366,7 +2630,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             // are strings already, and routing them through it would heap-copy
             // every constant segment for nothing.
             Expr::Interpolated(parts) => {
-                let acc = self.alloc_slot("interp")?;
+                let acc = self.alloc_temp("interp")?;
                 let empty = self.global_str("", "interpempty")?;
                 self.builder
                     .build_call(self.fn_str, &[acc.into(), empty.into()], "")
@@ -2376,7 +2640,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                     let text = if matches!(part, Expr::Str(_)) {
                         ptr
                     } else {
-                        let slot = self.alloc_slot("interptext")?;
+                        let slot = self.alloc_temp("interptext")?;
                         self.builder
                             .build_call(self.fn_to_text, &[slot.into(), ptr.into()], "")
                             .map_err(|e| e.to_string())?;
@@ -2390,7 +2654,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 Ok(acc)
             }
             Expr::Bool(b) => {
-                let slot = self.alloc_slot("bool")?;
+                let slot = self.alloc_temp("bool")?;
                 let arg = self.i32_ty.const_int(*b as u64, false);
                 self.builder
                     .build_call(self.fn_bool, &[slot.into(), arg.into()], "")
@@ -2398,7 +2662,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 Ok(slot)
             }
             Expr::Null => {
-                let slot = self.alloc_slot("null")?;
+                let slot = self.alloc_temp("null")?;
                 self.builder
                     .build_call(self.fn_null, &[slot.into()], "")
                     .map_err(|e| e.to_string())?;
@@ -2409,7 +2673,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .ok_or_else(|| format!("undefined variable '{name}'")),
             Expr::Array(items) => {
                 let len = items.len() as u64;
-                let buf = self.alloc_buffer(len, "arrbuf")?;
+                let buf = self.alloc_temp_buffer(len, "arrbuf")?;
                 for (i, item) in items.iter().enumerate() {
                     let item_ptr = self.gen_expr(item)?;
                     let dest = self.slot_at(buf, i as u64, "arrelem")?;
@@ -2417,7 +2681,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         .build_call(self.fn_copy, &[dest.into(), item_ptr.into()], "")
                         .map_err(|e| e.to_string())?;
                 }
-                let out = self.alloc_slot("arr")?;
+                let out = self.alloc_temp("arr")?;
                 let len_val = self.i64_ty.const_int(len, false);
                 self.builder
                     .build_call(self.fn_array, &[out.into(), buf.into(), len_val.into()], "")
@@ -2434,7 +2698,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .entry_builder()
                     .build_array_alloca(self.i8_ptr_ty, key_count, "objkeys")
                     .map_err(|e| e.to_string())?;
-                let values_buf = self.alloc_buffer(len, "objvals")?;
+                let values_buf = self.alloc_temp_buffer(len, "objvals")?;
 
                 for (i, (key, value)) in fields.iter().enumerate() {
                     let key_ptr = match key {
@@ -2480,7 +2744,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         .map_err(|e| e.to_string())?;
                 }
 
-                let out = self.alloc_slot("obj")?;
+                let out = self.alloc_temp("obj")?;
                 let len_val = self.i64_ty.const_int(len, false);
                 self.builder
                     .build_call(
@@ -2499,7 +2763,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             Expr::Field(obj, field) => {
                 let obj_ptr = self.gen_expr(obj)?;
                 let field_ptr = self.global_str(field, "fieldname")?;
-                let out = self.alloc_slot("field")?;
+                let out = self.alloc_temp("field")?;
                 self.builder
                     .build_call(
                         self.fn_field,
@@ -2513,7 +2777,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             Expr::Index(arr, index) => {
                 let arr_ptr = self.gen_expr(arr)?;
                 let index_ptr = self.gen_expr(index)?;
-                let out = self.alloc_slot("index")?;
+                let out = self.alloc_temp("index")?;
                 self.builder
                     .build_call(
                         self.fn_index,
@@ -2530,7 +2794,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                     UnOp::Neg => self.fn_neg,
                     UnOp::Not => self.fn_not,
                 };
-                let out = self.alloc_slot("unary")?;
+                let out = self.alloc_temp("unary")?;
                 self.builder
                     .build_call(fn_val, &[out.into(), ptr.into()], "")
                     .map_err(|e| e.to_string())?;
@@ -2564,7 +2828,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .left()
                 .expect("the is-check returns i32, not void")
                 .into_int_value();
-                let out = self.alloc_slot("is")?;
+                let out = self.alloc_temp("is")?;
                 self.builder
                     .build_call(self.fn_bool, &[out.into(), flag.into()], "")
                     .map_err(|e| e.to_string())?;
@@ -2592,7 +2856,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                     BinOp::Eq | BinOp::Ne | BinOp::And | BinOp::Or => unreachable!("handled above"),
                     BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => unreachable!("handled above"),
                 };
-                let out = self.alloc_slot("binop")?;
+                let out = self.alloc_temp("binop")?;
                 self.builder
                     .build_call(fn_val, &[out.into(), lhs_ptr.into(), rhs_ptr.into()], "")
                     .map_err(|e| e.to_string())?;
@@ -2677,7 +2941,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_load(self.i32_ty, result_slot, "logic_final")
             .map_err(|e| e.to_string())?
             .into_int_value();
-        let out = self.alloc_slot("logic")?;
+        let out = self.alloc_temp("logic")?;
         self.builder
             .build_call(self.fn_bool, &[out.into(), final_bool.into()], "")
             .map_err(|e| e.to_string())?;
@@ -2746,7 +3010,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .builder
             .build_int_z_extend(result, self.i32_ty, "eq_as_i32")
             .map_err(|e| e.to_string())?;
-        let out = self.alloc_slot("eq")?;
+        let out = self.alloc_temp("eq")?;
         self.builder
             .build_call(self.fn_bool, &[out.into(), as_i32.into()], "")
             .map_err(|e| e.to_string())?;
@@ -2798,7 +3062,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .builder
             .build_int_z_extend(result, self.i32_ty, "cmp_as_i32")
             .map_err(|e| e.to_string())?;
-        let out = self.alloc_slot("cmp")?;
+        let out = self.alloc_temp("cmp")?;
         self.builder
             .build_call(self.fn_bool, &[out.into(), as_i32.into()], "")
             .map_err(|e| e.to_string())?;
@@ -2879,6 +3143,32 @@ mod tests {
         assert_eq!(BuildTarget::parse("ir"), None);
         assert_eq!(BuildTarget::parse("EXE"), None);
         assert_eq!(BuildTarget::parse(""), None);
+    }
+
+    /// A statement clearing its own temporaries changes nothing a program
+    /// prints — only how much memory it holds while it runs — so every other
+    /// test in the suite passes just as well with the sweep deleted. This is
+    /// the one that would not: the object names every runtime function it
+    /// calls, and `code_clear` has exactly one caller.
+    ///
+    /// What it cannot check is the *size* of the win, which is not
+    /// deterministic enough to assert on. That was measured instead, and the
+    /// numbers are in `docs/todo/temp-slots-pin-intermediates.md`.
+    #[test]
+    fn a_statement_releases_its_own_temporaries() {
+        let dir = std::env::temp_dir().join(format!("code-clear-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let obj = dir.join("prog.o");
+        compile_to_object(&trivial_program(), BuildTarget::Exe, &obj, false).expect("codegen");
+        let bytes = fs::read(&obj).expect("read object");
+        assert!(
+            bytes
+                .windows(b"code_clear".len())
+                .any(|w| w == b"code_clear"),
+            "the compiled object never calls code_clear — a statement's \
+             intermediates are being held to program exit again"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

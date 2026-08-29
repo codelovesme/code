@@ -193,10 +193,16 @@ impl<'a> Parser<'a> {
             let target = match self.advance() {
                 Token::Core => EmitTarget::Core,
                 Token::This => EmitTarget::This,
+                // Where `base` is *legal* is decided against the loaded
+                // tree, not here: every file is parsed on its own, so this
+                // parser cannot tell whether the statement sits inside a
+                // `link`ed module. `verify.rs` checks it once both backends
+                // share the resolved program.
+                Token::Base => EmitTarget::Base,
                 Token::Ident(name) => EmitTarget::Module(name),
                 other => {
                     return Err(format!(
-                        "expected 'core', 'this', or a linked module's name after 'to', \
+                        "expected 'core', 'this', 'base', or a linked module's name after 'to', \
                          found {other:?}"
                     ))
                 }
@@ -929,7 +935,7 @@ impl<'a> Parser<'a> {
 
 /// The six kind names are not available as particle classes.
 ///
-/// `x is Number` has to mean one thing. If a program could tag a particle
+/// `x ∈ Number` has to mean one thing. If a program could tag a particle
 /// `Number`, the same expression would ask which of the six kinds a value is
 /// *and* what it is tagged — and since a particle is an Object, the kind
 /// answer would win for every particle ever built. Refusing the name is a
@@ -939,7 +945,7 @@ fn reject_kind_as_class(name: &str) -> Result<(), String> {
     if ValueKind::parse(name).is_some() {
         return Err(format!(
             "'{name}' is one of the six value kinds, so it cannot name a particle — \
-             `is {name}` asks what kind a value is"
+             `∈ {name}` asks what kind a value is"
         ));
     }
     Ok(())

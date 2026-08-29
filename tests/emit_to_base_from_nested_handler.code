@@ -1,0 +1,20 @@
+-- Stricter than emit_to_base_from_a_handler: the module's handler is
+-- invoked from INSIDE another handler's body. Handlers live in one
+-- program-wide table, so `to this` reaches it from anywhere — but its
+-- own `to base` must still land at ITS parent (this file), not at
+-- whatever depth the caller happened to sit at. Resolving against the
+-- caller's depth instead would look one level too high (or off the
+-- stack entirely) and this assert would fail.
+Ping { value } => {
+    return Ping { value = value + 10 }
+}
+
+link "modules/base_handler_child" as h
+
+Wrap => {
+    emit Ask {} to this get inner
+    return Wrap { got = inner.got }
+}
+
+emit Wrap {} to this get w
+assert w.got = 11

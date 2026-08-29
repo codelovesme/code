@@ -354,6 +354,22 @@ pub enum EmitTarget {
     /// `emit` states where it is going, the same way `link` makes a native
     /// module name itself with `as`.
     This,
+    /// `to base` — the handlers defined by whoever `link`ed the module this
+    /// statement sits in: an *upward* edge in the module graph, the old
+    /// language's `base` target revived (see
+    /// `docs/todo/inbound-emissions-from-native-modules.md`). Legality is
+    /// checked in `verify.rs` rather than the parser, because every file is
+    /// lexed and parsed on its own — the parser cannot tell whether the
+    /// statement will end up inside a `Stmt::Import` body, which only the
+    /// loader knows. By the time either backend sees it, the parent is
+    /// known: the interpreter carries a stack of per-module handler tables,
+    /// codegen a matching stack of per-depth dispatch functions.
+    /// Dispatch goes to the direct parent's own top-level definitions only
+    /// — not the whole program table — which is also what keeps a child's
+    /// question from being answered by some unrelated handler that happens
+    /// to share the class name. Nothing handles the class → null, the same
+    /// answer `to this` gives.
+    Base,
 }
 
 #[derive(Debug, Clone, PartialEq)]

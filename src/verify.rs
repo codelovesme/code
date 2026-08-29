@@ -29,16 +29,22 @@ use crate::ast::{EmitTarget, Expr, FieldKey, Program, Stmt};
 /// bodies get their own scope (see memory `new-code-if-scoping`): a name
 /// first assigned inside an `if` is only "defined" for the rest of that
 /// `if`'s body, not after it, unless it was already defined outside.
+///
+/// Also refuses an `emit … to base` outside a linked module: the parser
+/// cannot see the `link` (every file is parsed on its own), so the resolved
+/// tree is the earliest place the question is answerable, and this is the
+/// one check both backends share — see this file's header.
 pub fn verify_defined(program: &Program) -> Result<(), String> {
     let mut scopes = vec![HashSet::new()];
     let mut natives = HashSet::new();
-    verify_stmts(&program.statements, &mut scopes, &mut natives)
+    verify_stmts(&program.statements, &mut scopes, &mut natives, 0)
 }
 
 fn verify_stmts(
     stmts: &[Stmt],
     scopes: &mut Vec<HashSet<String>>,
     natives: &mut HashSet<String>,
+    depth: usize,
 ) -> Result<(), String> {
     for stmt in stmts {
         match stmt {
@@ -49,7 +55,10 @@ fn verify_stmts(
                 // where the definition sits (it is top-level only anyway).
                 let enclosing = std::mem::replace(scopes, vec![scope]);
                 scopes.insert(0, enclosing[0].clone());
-                let verified = verify_stmts(body, scopes, natives);
+                // A handler keeps the depth of the level it is defined at:
+                // a `to base` inside its body means *its* parent, matching
+                // `interpreter::HandlerBody::defining_depth`.
+                let verified = verify_stmts(body, scopes, natives, depth);
                 *scopes = enclosing;
                 verified?;
             }
@@ -71,7 +80,9 @@ fn verify_stmts(
                 exports,
             } => {
                 scopes.push(HashSet::new());
-                let result = verify_stmts(body, scopes, natives);
+                // One level further out in the module graph — where `to
+                // base` becomes legal, and where its parent lives.
+                let result = verify_stmts(body, scopes, natives, depth + 1);
                 scopes.pop();
                 result?;
                 // The module's own scope is gone; only what it exported is
@@ -109,13 +120,13 @@ fn verify_stmts(
             Stmt::If { condition, body } => {
                 verify_expr(condition, scopes)?;
                 scopes.push(HashSet::new());
-                let result = verify_stmts(body, scopes, natives);
+                let result = verify_stmts(body, scopes, natives, depth);
                 scopes.pop();
-                result?;
+                result?
             }
             Stmt::Block(body) => {
                 scopes.push(HashSet::new());
-                let result = verify_stmts(body, scopes, natives);
+                let result = verify_stmts(body, scopes, natives, depth);
                 scopes.pop();
                 result?;
             }
@@ -143,7 +154,7 @@ fn verify_stmts(
                     }
                 }
                 scopes.push(scope);
-                let verified = verify_stmts(body, scopes, natives);
+                let verified = verify_stmts(body, scopes, natives, depth);
                 scopes.pop();
                 verified?;
             }
@@ -159,6 +170,13 @@ fn verify_stmts(
                             "'emit ... to {alias}' but no native module is linked as '{alias}'"
                         ));
                     }
+                }
+                if matches!(target, EmitTarget::Base) && depth == 0 {
+                    return Err(
+                        "'emit ... to base' outside a linked module — there is no \
+                         parent to send it to"
+                            .to_string(),
+                    );
                 }
                 if let Some(name) = result {
                     scopes.last_mut().unwrap().insert(name.clone());

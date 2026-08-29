@@ -8,8 +8,9 @@
 > **The keep-alive loop shipped 2026-08-29**, in two halves: a loop iteration
 > became a statement boundary, and then a module gained the right to push
 > from a thread of its own. Waiting is the *module's* job — the runtime does
-> not sleep on a program's behalf. See "What is still open" at the end for
-> what is left — `emit … to base`, and the two modules/one class collision.
+> not sleep on a program's behalf. **`emit … to base` closed the last open
+> piece the same day** — see its section near the end. What remains is the
+> two modules/one class collision, accepted as a convention.
 
 Dispatch is strictly request/response: `emit … to <module>` crosses into
 native code and waits for one answer. The old implementation added the other
@@ -375,7 +376,7 @@ in both output modes.
 - **wasm** needs nothing — `reject_wasm_native_links` refuses a native link
   at compile time, so no queue can exist.
 
-## Related: the old `base` target
+## `emit … to base` (shipped 2026-08-29)
 
 Found 2026-08-25 while porting user-defined handlers. `docs/todo`'s
 now-removed `user-defined-handlers.md` described `emit ... to base` as
@@ -389,9 +390,46 @@ now-removed `user-defined-handlers.md` described `emit ... to base` as
 scope) — and `base_target_multi.code` shows one shared child reaching several
 different linking parents.
 
-So `base` is an *upward* edge in the module graph, which puts it here rather
+So `base` is an *upward* edge in the module graph, which put it here rather
 than with handler mechanics: it is the same "a module needs to talk back to
 whoever loaded it" problem this document already covers, for `.code` modules
-instead of native ones. Worth designing the two together — if inbound
-emissions get a shape, `base` should either reuse it or be dropped in favour
-of it, not reinvented alongside.
+instead of native ones.
+
+**What shipped:** the old semantics, directly. A linked module's
+`emit p to base` crosses up exactly one level of the module graph and is
+answered by the *direct* parent's own top-level handlers — never skipping a
+level, never falling through to a grandparent. A class the parent does not
+handle answers null, the same answer `to this` gives, since sending a
+particle is not a demand. The old "several different linking parents" case
+falls out for free: each `link` folds the child inline into its own parent,
+so every copy of a shared child has exactly one parent to send to.
+
+Where the legality check had to go: the parser never sees a `link` (every
+file is lexed and parsed on its own, and the loader builds the import tree
+afterwards), so "is this statement inside a linked module?" is unanswerable
+at parse time. `verify.rs` asks it once, against the resolved tree, and both
+backends share the refusal: `to base` at the top level of the entry file is
+an error before anything runs.
+
+The interpreter keeps one handler table per level of the module graph plus a
+counter for how many levels deep execution currently is; a `to base` looks
+up exactly one level down. Handlers additionally remember the level they
+were *defined* at, and restore it around their body: a handler runs whenever
+someone emits to it, possibly from inside another handler's body, and its
+`to base` must still mean its own parent. Codegen bakes the same fact into
+IR — one small dispatch function per level
+(`_code_dispatch_base_<depth>`, none where a level defines nothing),
+generated next to the handlers, and a handler's body is emitted with its
+defining depth restored.
+
+Covered by `emit_to_base_basic.code`, `emit_to_base_three_levels.code`
+(each hop lands exactly one level up),
+`emit_to_base_unknown_class_is_null.code`,
+`emit_to_base_from_a_handler.code`,
+`emit_to_base_from_nested_handler.code` (the handler-invoked-from-a-handler
+case), `fail_emit_to_base_outside_module.code`, and the five
+`modules/base_*.code` files they link.
+
+One cost worth naming: `base` is now a reserved word, like `this` and
+`core`. It collided with one existing fixture (`object_merge.code` used it
+as a variable name); the rename is the whole migration.

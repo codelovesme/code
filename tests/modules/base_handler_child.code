@@ -1,0 +1,10 @@
+-- A handler defined inside a linked module sending upward. The `to
+-- base` must mean THIS module's parent — the file that linked us —
+-- even though the handler runs later, from whatever frame emitted
+-- here. If it resolved against the caller's depth instead, the
+-- particle would go to the wrong level (or nowhere) and the test's
+-- assert would fail.
+Ask => {
+    emit Ping { value = 1 } to base get up
+    return Ask { got = up.value }
+}

@@ -1,0 +1,19 @@
+-- Middle of a three-level chain: the test links THIS file, and this
+-- file links base_chain_mid. Two different classes travel upward so
+-- neither level violates the one-handler-per-class rule:
+--
+--   test (level 0)  handles Ping
+--   this file       handles Pong, and asks base for Ping
+--   base_chain_mid  asks base for Pong
+--
+-- Each `to base` must land exactly one level up — never skipping to
+-- the root, never falling through to a grandparent.
+link "base_chain_mid" as mid
+
+Pong { value } => {
+    return Pong { value = value + 10 }
+}
+
+emit Ping { value = 1 } to base get got
+export let got = got.value
+export let up = mid.up

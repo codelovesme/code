@@ -1,0 +1,6 @@
+-- A particle whose class the parent does not handle answers null —
+-- sending a particle is not a demand, and whether to act on one is
+-- the recipient's business. Same answer `to this` gives.
+link "modules/base_unhandled_child" as c
+
+assert c.reply = null
