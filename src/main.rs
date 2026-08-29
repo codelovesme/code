@@ -25,9 +25,20 @@ const MODULE_INDEX_URL: &str = "https://codelovesme.github.io/code/modules-index
 /// standalone executable via the system `cc`. Both are meant to run every
 /// language feature identically (see memory `new-language-rewrite`).
 fn main() -> ExitCode {
-    let mut args = std::env::args().skip(1);
-    match args.next().as_deref() {
-        Some("run") => {
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    let command = argv.first().cloned().unwrap_or_default();
+    let rest: Vec<String> = argv.into_iter().skip(1).collect();
+    // `-h`/`--help` anywhere after the command asks about *that* command, so
+    // it is answered before the command's own arguments are parsed — a help
+    // flag should never have to be in the right position, and asking for help
+    // is never an error (stdout, exit 0).
+    if rest.iter().any(|a| a == "-h" || a == "--help") {
+        println!("{}", help_for(&command));
+        return ExitCode::SUCCESS;
+    }
+    let mut args = rest.into_iter();
+    match command.as_str() {
+        "run" => {
             let Some(path) = args.next() else {
                 eprintln!("usage: code run <file>");
                 return ExitCode::FAILURE;
@@ -35,11 +46,9 @@ fn main() -> ExitCode {
             run_file(&path)
         }
         #[cfg(feature = "llvm")]
-        Some("build") => {
+        "build" => {
             let Some(path) = args.next() else {
-                eprintln!(
-                    "usage: code build <file> [-t|--target exe|shared|static|wasm] [-r|--release] [-o|--output <path>]"
-                );
+                eprintln!("{}", help_for("build"));
                 return ExitCode::FAILURE;
             };
             let mut out: Option<PathBuf> = None;
@@ -75,29 +84,121 @@ fn main() -> ExitCode {
             let out = out.unwrap_or_else(|| default_output_path(&path, target));
             build_file(&path, target, &out, release)
         }
-        Some("app") => cmd_app(args.collect()),
-        Some("init") => cmd_init(args.collect()),
+        "app" => cmd_app(args.collect()),
+        "init" => cmd_init(args.collect()),
         #[cfg(feature = "install")]
-        Some("module") => cmd_module(args.collect()),
-        Some("format") => cmd_format(args.collect()),
-        // A global flag rather than a subcommand, so it takes no feature gate
-        // and works even in the wasm-only interpreter build.
-        Some("--version") | Some("-v") => {
+        "module" => cmd_module(args.collect()),
+        "format" => cmd_format(args.collect()),
+        // Global flags rather than subcommands, so they take no feature gate
+        // and work even in the wasm-only interpreter build.
+        "--version" | "-v" => {
             println!("{VERSION}");
             ExitCode::SUCCESS
         }
-        Some(other) => {
-            eprintln!("unknown command '{other}' ({USAGE})");
+        "--help" | "-h" | "help" => {
+            // `code help build` answers about `build`, like `git help`.
+            println!("{}", help_for(args.next().unwrap_or_default().as_str()));
+            ExitCode::SUCCESS
+        }
+        "" => {
+            // No command at all is a usage error, not a request for help —
+            // but printing the help is still the most useful thing to say.
+            eprintln!("{HELP}");
             ExitCode::FAILURE
         }
-        None => {
-            eprintln!("usage: code {USAGE}");
+        other => {
+            eprintln!("unknown command '{other}' — run `code --help`");
             ExitCode::FAILURE
         }
     }
 }
 
-const USAGE: &str = "init [name] | run <file> | build <file> [-t|--target exe|shared|static|wasm] [-r|--release] [-o|--output <path>] | app run|build [dir] | module install <name-or-url> [--global] | module remove <name> | module ls | format [--check] <path>...";
+/// The help text for one command, or the whole tool when the command is not
+/// one that has its own. Kept beside `main`'s dispatch so a command that
+/// gains a flag and a command that gains a line of help are the same edit.
+fn help_for(command: &str) -> &'static str {
+    match command {
+        "run" => "usage: code run <file>\n\nInterprets one file. `link` resolves relative to it.",
+        "build" => BUILD_HELP,
+        "app" => APP_HELP,
+        "module" => MODULE_HELP,
+        "init" => INIT_HELP,
+        "format" => FORMAT_HELP,
+        _ => HELP,
+    }
+}
+
+const HELP: &str = "\
+code — the Code programming language
+
+usage:
+  code <command> [arguments]
+
+commands:
+  init [name]                    scaffold a project here, or in <name>
+  run <file>                     interpret one file
+  build <file> [options]         compile it; the artifact lands beside it
+  app run [dir]                  interpret <dir>/main.code
+  app build [dir] [options]      compile it into <dir>/build/
+  module install <name-or-url>   fetch a module into ./.code/modules
+  module remove <name>           delete it, and its lock entry
+  module ls                      what is installed, and what is available
+  format [--check] <path>...     the canonical layout, rewritten in place
+
+  -h, --help [command]           this, or one command's own help
+  -v, --version
+
+`run`/`build` take a file, `app run`/`app build` take a directory. That is
+the whole difference: a file answers beside itself, a project owns build/.";
+
+const BUILD_HELP: &str = "\
+usage: code build <file> [options]
+
+Compiles one file. Without -o the artifact lands beside the source, named
+for it: `code build src/x.code` writes `src/x`.
+
+options:
+  -t, --target exe|shared|static|wasm   default exe
+  -r, --release                         -O2; the default is unoptimized
+  -o, --output <path>                   where to write it";
+
+const APP_HELP: &str = "\
+usage: code app run [dir]
+       code app build [dir] [options]
+
+Takes a directory rather than a file. The entry point is <dir>/main.code —
+the name `code init` writes — and `build` puts artifacts in <dir>/build/,
+named for the project rather than for the entry file. Defaults to `.`.
+
+options (build):
+  -t, --target exe|shared|static|wasm   default exe
+  -r, --release                         -O2; the default is unoptimized
+  -o, --output <path>                   overrides build/ entirely";
+
+const MODULE_HELP: &str = "\
+usage: code module install <name-or-url> [--global]
+       code module remove <name>
+       code module ls
+
+A first-party module installs by name, from the index; anything else installs
+by the URL of its manifest. Bytes land in ./.code/modules and are pinned by
+sha256 in ./.code/lock.json — `--global` puts them in ~/.code/modules and
+records the same lock entry.";
+
+const INIT_HELP: &str = "\
+usage: code init [name]
+
+Scaffolds a project in the current directory, or in <name>. Writes main.code
+(which runs as written, with nothing installed), an empty .code/lock.json —
+.code/ is what marks the project root — and a .gitignore. An existing file is
+a refusal, never a merge.";
+
+const FORMAT_HELP: &str = "\
+usage: code format [--check] <path>...
+
+Rewrites .code files in the one canonical layout. A path may be a directory,
+walked for *.code. --check writes nothing and exits non-zero if anything
+would change. A file that does not parse is reported and skipped.";
 
 /// `code app run|build [dir]` — a *directory* where `run`/`build` take a
 /// file.

@@ -1,4 +1,5 @@
-//! `code app run|build [dir]` — the directory-shaped half of the CLI.
+//! The CLI's shape: which command takes a file and which takes a directory,
+//! and what asking for help answers.
 //!
 //! `run`/`build` take a file and answer beside it; `app run`/`app build` take
 //! a project, find its `main.code`, and put artifacts in `build/`. Two
@@ -102,6 +103,49 @@ fn app_build_writes_into_build_named_after_the_project() {
             .success()
     );
     assert!(project.join("longform").is_file());
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn help_is_an_answer_rather_than_an_error() {
+    let dir = temp_dir("help");
+
+    // Asking is never a failure: stdout, exit 0.
+    for args in [&["--help"][..], &["-h"][..], &["help"][..]] {
+        let out = code(&dir, args);
+        assert!(out.status.success(), "`code {args:?}` failed");
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(text.contains("code — the Code programming language"));
+        assert!(text.contains("app run [dir]"), "help omits app: {text}");
+        assert!(text.contains("module install"), "help omits module: {text}");
+    }
+
+    // Per-command help, both spellings — and after the command, since a help
+    // flag should not have to be in the right position.
+    for args in [
+        &["build", "--help"][..],
+        &["help", "build"][..],
+        &["build", "x.code", "-h"][..],
+    ] {
+        let out = code(&dir, args);
+        assert!(out.status.success());
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            text.contains("usage: code build <file>"),
+            "expected build's help for {args:?}, got: {text}"
+        );
+    }
+
+    // No command at all is still a usage error, and an unknown one says where
+    // to look rather than dumping everything.
+    let out = code(&dir, &[]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("usage:"));
+
+    let out = code(&dir, &["bogus"]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("code --help"));
 
     let _ = fs::remove_dir_all(&dir);
 }

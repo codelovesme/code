@@ -66,6 +66,7 @@ code app build demo                        # -> demo/build/demo
 code module install terminal               # fetch a module into ./.code/modules
 code module ls                             # what's installed
 code module remove terminal
+code --help                                # or `code help build`, `code build -h`
 code --version
 ```
 
