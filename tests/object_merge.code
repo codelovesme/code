@@ -31,12 +31,12 @@ let edited = base + { text = "bye" }
 assert edited.text = "bye"
 assert edited.recipient = "ada"
 assert edited._class = "Reply"
-assert edited is Reply
+assert edited ∈ Reply
 
 -- `_class` is an ordinary field, so a merge can re-tag a particle too. The
 -- particle sugar puts `_class` first, and the override keeps that position.
 let retagged = base + Draft {}
-assert retagged is Draft
+assert retagged ∈ Draft
 assert retagged.text = "hi"
 
 -- `+=` is `x = x + x`'s sugar, so it inherits all of the above.

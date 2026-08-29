@@ -8,6 +8,6 @@ Ping {} => {
 }
 
 emit Ping {} to this get r
-assert r is Exception
+assert r ∈ Exception
 assert r.message = "a handler must return a particle — an object with a '_class' field — found an object"
 assert 1 = 1

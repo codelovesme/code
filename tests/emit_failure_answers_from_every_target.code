@@ -33,13 +33,13 @@ emit Viamodule {} to this get b
 emit Viahandler {} to this get c
 
 -- The point: every one of them got past the emit.
-assert a is Reached
-assert b is Reached
-assert c is Reached
+assert a ∈ Reached
+assert b ∈ Reached
+assert c ∈ Reached
 
-assert a.r is Exception
-assert b.r is Exception
-assert c.r is Exception
+assert a.r ∈ Exception
+assert b.r ∈ Exception
+assert c.r ∈ Exception
 
 -- And they name who could not do it, which is the one thing that differs.
 assert a.r.source = "core"

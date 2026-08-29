@@ -25,22 +25,22 @@ Add { k } => {
 }
 
 emit Field { k = 5 } to this get a
-assert a is Exception
+assert a ∈ Exception
 
 emit Core { k = 5 } to this get b
-assert b is Exception
+assert b ∈ Exception
 
 emit Order { k = "x" } to this get c
-assert c is Exception
+assert c ∈ Exception
 
 emit Divide { k = 0 } to this get d
-assert d is Exception
+assert d ∈ Exception
 assert d.message = "division by zero"
 
 emit Add { k = true } to this get e
-assert e is Exception
+assert e ∈ Exception
 
 -- Each one answered; none of them ended the program.
 emit Divide { k = 4 } to this get ok
-assert ok is R
+assert ok ∈ R
 assert ok.v = 0.25

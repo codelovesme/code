@@ -33,7 +33,7 @@ emit Print { value = "$name won $rounds rounds" } to term
   - [Strings and interpolation](#strings-and-interpolation) · [Operators](#operators)
   - [Reading members](#reading-members) · [assert](#assert)
   - [if and blocks](#if-and-blocks) · [loop](#loop)
-  - [Particles](#particles) · [emit](#emit) · [is](#is)
+  - [Particles](#particles) · [emit](#emit) · [∈](#-1)
 - [Handlers](#handlers)
 - [Errors](#errors)
 - [Modules](#modules)
@@ -168,6 +168,29 @@ let nums = [
 `let` is **mandatory** for a name's first binding. A bare `name = expr` is
 reassignment only, and is an error if the name was never declared.
 
+A declaration may carry a kind, and so may an object field or a handler's
+field list:
+
+```
+let port ∈ Number = 8080
+let request = { url ∈ String = "https://example.com", retries ∈ Number = 3 }
+
+Greet { who ∈ String } => {
+    return Greeting { text ∈ String = "hello, $who" }
+}
+```
+
+**Nothing checks it.** `let port ∈ Number = "8080"` runs, and `port` is a
+String — the annotation is read, required to be a name, and dropped, and the
+value's own kind is the only one that decides anything (owner's call,
+2026-08-29). It is there for whoever reads the line, which means it can be
+wrong the way a comment can be wrong, and nothing will ever say so. Use `∈`
+as an *expression* when you want an answer:
+
+```
+assert port ∈ Number
+```
+
 ```
 let x = 5
 x = 6            -- reassigns
@@ -235,7 +258,7 @@ assert "$whole" = "3"          -- numbers: shortest form that round-trips
 | `and` | `and` | short-circuits, binds tighter than `or` |
 | `not` | `not` | prefix |
 | comparison | `=` `≠` `<` `>` `≤` `≥` | **non-associative** |
-| `is` | `is` | see [is](#is) |
+| `∈` | `∈` | see [∈](#-1) |
 | additive | `+` `-` | |
 | multiplicative | `*` `/` | |
 | unary | `-` | negation |
@@ -477,20 +500,20 @@ to core` is exactly `emit Timestamp {} to core`.
 Note `get` is not `as`: `get` names the *result of an emit*, while `as` names
 a *linked module*.
 
-### is
+### ∈
 
-`expr is Name` asks one of two questions, told apart by the name.
+`expr ∈ Name` asks one of two questions, told apart by the name.
 
 **Which kind** — the six of them, and the only place the language names a
 type at all:
 
 ```
-assert 3 is Number
-assert "hi" is String
-assert true is Boolean
-assert null is Null
-assert [1] is Array
-assert { a = 1 } is Object
+assert 3 ∈ Number
+assert "hi" ∈ String
+assert true ∈ Boolean
+assert null ∈ Null
+assert [1] ∈ Array
+assert { a = 1 } ∈ Object
 ```
 
 **What a particle is tagged** — true when `expr` is an object whose `_class`
@@ -498,15 +521,15 @@ field holds that name:
 
 ```
 emit Timestamp to core get t
-assert t is TimestampResult
+assert t ∈ TimestampResult
 ```
 
-A particle is an Object, so both are true of the same value: `t is Object`
-and `t is TimestampResult`. And because that would make a particle *named*
+A particle is an Object, so both are true of the same value: `t ∈ Object`
+and `t ∈ TimestampResult`. And because that would make a particle *named*
 after a kind unanswerable, **the six names cannot name a particle** — a
 handler or literal called `Number` is refused before the program runs.
 
-`is` is never an error. A wrong class, a missing `_class`, a non-object, the
+`∈` is never an error. A wrong class, a missing `_class`, a non-object, the
 wrong kind — all simply answer false, the same spirit as `=` being
 well-defined across mismatched kinds. The right side is a bare name, not an
 expression: which question is being asked is a lexical fact.
@@ -523,7 +546,7 @@ Greet { who } => {
 }
 
 emit Greet { who = "ada" } to this get r
-assert r is Greeting
+assert r ∈ Greeting
 assert r.text = "hi ada"
 ```
 
@@ -611,7 +634,7 @@ Divide { a, b } => {
 }
 
 emit Divide { a = 10, b = 0 } to this get r
-assert r is Exception
+assert r ∈ Exception
 assert r.message = "division by zero"
 ```
 

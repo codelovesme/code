@@ -12,6 +12,6 @@ Greet { who } => {
 }
 
 emit Greet { who = "ada" } to this get r
-assert r is Greeting
+assert r ∈ Greeting
 assert r.text = "hi ada"
 assert r = { _class = "Greeting", text = "hi ada" }

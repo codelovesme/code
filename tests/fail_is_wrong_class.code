@@ -3,5 +3,5 @@
 -- any other false assertion.
 {
     emit Timestamp to core get t
-    assert t is Foo
+    assert t ∈ Foo
 }

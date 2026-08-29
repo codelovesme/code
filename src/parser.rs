@@ -360,6 +360,12 @@ impl<'a> Parser<'a> {
                     ))
                 }
             };
+            // `let a ∈ String = "12"` — an optional annotation, and
+            // deliberately nothing more: it is read, checked to be a name,
+            // and dropped. The runtime kind is the one that counts, so a
+            // wrong annotation is wrong the way a wrong comment is wrong.
+            // Owner's call 2026-08-29; the README says so in as many words.
+            self.skip_annotation()?;
             match self.advance() {
                 Token::Equals => {}
                 other => return Err(format!("expected '=' after 'let {name}', found {other:?}")),
@@ -531,6 +537,7 @@ impl<'a> Parser<'a> {
                 Token::Ident(name) => name,
                 other => return Err(format!("expected a field name, found {other:?}")),
             };
+            self.skip_annotation()?;
             if fields.contains(&name) {
                 return Err(format!("field '{name}' is listed twice"));
             }
@@ -658,7 +665,14 @@ impl<'a> Parser<'a> {
     /// fine — chaining tests is nonsense anyway.
     fn is_expr(&mut self) -> Result<Expr, String> {
         let e = self.additive()?;
-        if !matches!(self.peek(), Token::Is) {
+        if matches!(self.peek(), Token::Is) {
+            self.err_here();
+            return Err(
+                "the membership operator is '∈' — `is` was its spelling until 2026-08-29"
+                    .to_string(),
+            );
+        }
+        if !matches!(self.peek(), Token::In) {
             return Ok(e);
         }
         self.advance();
@@ -670,7 +684,7 @@ impl<'a> Parser<'a> {
             Token::Null => IsTest::Kind(ValueKind::Null),
             other => {
                 return Err(format!(
-                    "expected a kind or a class name after 'is', found {other:?}"
+                    "expected a kind or a class name after '∈', found {other:?}"
                 ))
             }
         };
@@ -885,6 +899,7 @@ impl<'a> Parser<'a> {
                     ))
                 }
             };
+            self.skip_annotation()?;
             match self.advance() {
                 Token::Equals => {}
                 // Every program written before 2026-08-29 hits exactly this,
@@ -928,4 +943,28 @@ fn reject_kind_as_class(name: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+impl Parser<'_> {
+    /// Reads an optional `∈ Name` annotation and throws it away.
+    ///
+    /// `let a ∈ String = "12"` and `{ a ∈ Number = 12 }` mean exactly what
+    /// they mean without it — the annotation is for whoever reads the line,
+    /// and the value's kind at run time is the only one that decides
+    /// anything (owner's call, 2026-08-29). It is still *parsed* rather than
+    /// skipped as text, so a name has to be there and the formatter keeps it
+    /// where it was.
+    fn skip_annotation(&mut self) -> Result<(), String> {
+        if !matches!(self.peek(), Token::In) {
+            return Ok(());
+        }
+        self.advance();
+        match self.advance() {
+            Token::Ident(_) => Ok(()),
+            Token::Null => Ok(()),
+            other => Err(format!(
+                "expected a kind or a class name after '∈', found {other:?}"
+            )),
+        }
+    }
 }

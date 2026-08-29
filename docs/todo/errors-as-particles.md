@@ -33,7 +33,7 @@ try/catch.
 
 ```code
 emit Greet { who = "ada" } to this get r
-if r is Exception {
+if r ∈ Exception {
     emit Print { value = r.message } to term
 }
 ```
@@ -62,7 +62,7 @@ Exception { source, message, innerException }
 
 ~~No `source`.~~ Put back the same day, at the owner's call, and it earns its
 place: it is the only *machine-readable* thing an Exception carries. `_class`
-is always `"Exception"` (`is Exception` is the whole check) and `message` is
+is always `"Exception"` (`∈ Exception` is the whole check) and `message` is
 prose, so `source` — `"core"` for the language's own failures, the module's
 name for a module's — is what a program can actually branch on, and
 `net_diagnostics.code` does. The argument against it was that the caller
@@ -361,7 +361,7 @@ that changes error semantics needs its own both-mode fixture.
 ## Still open
 
 - **Should a program be able to tell failure *kinds* apart?** Today it cannot,
-  by choice. `_class` is always `"Exception"` (the owner's rule: `is Exception`
+  by choice. `_class` is always `"Exception"` (the owner's rule: `∈ Exception`
   is the whole check), `source` says *who* failed — `"core"`, or the module's
   name, which `net_diagnostics.code` already branches on — and `message` is
   prose for people. Nothing carries "what kind of failure" in a form worth

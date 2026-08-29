@@ -4,9 +4,9 @@
 -- being well-defined for mismatched kinds.
 {
     emit Timestamp to core get t
-    assert t is TimestampResult
-    assert not (t is LengthResult)
-    assert not (t._class is TimestampResult)  -- a string is not a particle
-    assert not (1 is TimestampResult)  -- neither is a number
-    assert not ({ x = 1 } is TimestampResult)  -- nor an object without _class
+    assert t ∈ TimestampResult
+    assert not (t ∈ LengthResult)
+    assert not (t._class ∈ TimestampResult)  -- a string is not a particle
+    assert not (1 ∈ TimestampResult)  -- neither is a number
+    assert not ({ x = 1 } ∈ TimestampResult)  -- nor an object without _class
 }

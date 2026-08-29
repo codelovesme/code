@@ -9,17 +9,17 @@
 link "native_modules/test_panics.so" as bad
 
 emit Unwrap {} to bad get a
-assert a is Exception
+assert a ∈ Exception
 assert a.source = "test_panics"
 
 emit Index {} to bad get b
-assert b is Exception
+assert b ∈ Exception
 
 emit Divide {} to bad get c
-assert c is Exception
+assert c ∈ Exception
 
 -- The guard does not swallow the ordinary path, and the module still works
 -- after three panics.
 emit Fine {} to bad get ok
-assert ok is FineResult
+assert ok ∈ FineResult
 assert ok.value = 1

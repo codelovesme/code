@@ -11,7 +11,7 @@ Ping {} => {
 }
 
 emit Ping {} to this get r
-assert r is Exception
+assert r ∈ Exception
 assert r.source = "core"
 assert r.innerException = null
 

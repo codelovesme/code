@@ -18,7 +18,7 @@ emit Loopy { n = 2 } to this get top
 
 -- The outer invocation ran to completion: it got the Exception as an ordinary
 -- value and chose to carry it.
-assert top is Ack
-assert top.inner is Exception
+assert top ∈ Ack
+assert top.inner ∈ Exception
 assert top.inner.source = "core"
 assert top.inner.message = "handler 'Loopy' is already running — a handler cannot re-enter one that is already on the call stack"

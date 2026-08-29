@@ -53,7 +53,7 @@ hand back the wrong kind in the meantime.)
 a numeric default is a deployment mistake; quietly listening on 8080 instead
 would hide it until someone wondered why nothing was reaching the service.
 The program can still decide what that means — an `Exception` is a value, and
-`is Exception` is the whole check.
+`∈ Exception` is the whole check.
 
 ## `Require`
 
@@ -62,7 +62,7 @@ cannot run without:
 
 ```code
 emit Require { name = "DATABASE_URL" } to env get db
-if db is Exception {
+if db ∈ Exception {
     -- say so and stop, rather than starting half-configured
 }
 ```

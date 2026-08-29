@@ -17,13 +17,13 @@ Outer { d } => {
 }
 
 emit Outer { d = 0 } to this get bad
-assert bad is Report
+assert bad ∈ Report
 assert bad.reached = true
-assert bad.inner is Exception
+assert bad.inner ∈ Exception
 assert bad.inner.message = "division by zero"
 
 -- And the undamaged path still answers normally.
 emit Outer { d = 4 } to this get good
-assert good is Report
-assert good.inner is Quotient
+assert good ∈ Report
+assert good.inner ∈ Quotient
 assert good.inner.v = 25

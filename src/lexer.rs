@@ -49,6 +49,8 @@ pub enum Token {
     Minus,
     Star,
     Slash,
+    /// `∈`
+    In,
     /// `≠`
     NotEq,
     Lt,
@@ -209,6 +211,10 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
             '<' => Some(Token::Lt),
             '>' => Some(Token::Gt),
             '≠' => Some(Token::NotEq),
+            // The membership operator: `x ∈ String` asks, and
+            // `let a ∈ String = …` says. One character, like every other
+            // operator in the language.
+            '∈' => Some(Token::In),
             '≤' => Some(Token::Le),
             '≥' => Some(Token::Ge),
             _ => None,

@@ -113,7 +113,7 @@ fn a_variable_that_cannot_be_read_as_its_default_is_an_exception() {
         r#"link "env.so" as env
 
 emit Get { name = "CODE_TEST_PORT", default = 8080 } to env get port
-assert port is Exception
+assert port ∈ Exception
 assert port.source = "env"
 
 -- And the program is still running, which is the whole point of an

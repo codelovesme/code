@@ -1,0 +1,4 @@
+-- `is` was the membership operator until 2026-08-29. Every program written
+-- before then hits this, so the error names the character to type.
+let x = 1
+assert x is Number

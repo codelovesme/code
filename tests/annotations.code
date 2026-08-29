@@ -1,0 +1,35 @@
+-- A declaration may carry a kind. Nothing checks it: the annotation is read,
+-- required to be a name, and dropped, and the value's own kind at run time is
+-- the only one that decides anything. It is for whoever reads the line —
+-- which means it can be wrong the way a comment can be wrong.
+let port ∈ Number = 8080
+assert port = 8080
+assert port ∈ Number
+
+-- Wrong, and nothing says so. This is the decision, not an oversight.
+let mislabelled ∈ Number = "8080"
+assert mislabelled ∈ String
+
+-- Object fields take one too, and mean exactly what they mean without it.
+let request = { url ∈ String = "https://example.com", retries ∈ Number = 3 }
+assert request = { url = "https://example.com", retries = 3 }
+
+-- A computed key can be annotated as well — the annotation sits between the
+-- name and the `=`, wherever the name came from.
+let field = "Accept"
+let headers = { "$field" ∈ String = "text/plain" }
+assert headers["Accept"] = "text/plain"
+
+-- And a handler's field list.
+Greet { who ∈ String } => {
+    return Greeting { text ∈ String = "hello, $who" }
+}
+
+emit Greet { who = "ada" } to this get r
+assert r.text = "hello, ada"
+assert r ∈ Greeting
+
+-- A class name is a name too, so an annotation may say what a binding is
+-- expected to be tagged.
+let reply ∈ Greeting = r
+assert reply ∈ Greeting

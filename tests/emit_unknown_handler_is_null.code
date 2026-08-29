@@ -24,7 +24,7 @@ assert c = null
 -- The handler that does exist still works — a miss is a miss, not a
 -- broken dispatcher.
 emit Known to this get d
-assert d is Ack
+assert d ∈ Ack
 
 -- With no `get` at all, a miss is simply nothing happening.
 emit Unknown { x = 1 } to this

@@ -67,7 +67,7 @@ fn classify(tok: &Token, prev_dot: bool) -> Option<Kind> {
         | Continue | Link | As | Export | Emit | To | Core | Get | Is | This | Return => {
             Kind::Keyword
         }
-        Equals | Plus | PlusEq | Minus | Star | Slash | NotEq | Lt | Gt | Le | Ge | Arrow => {
+        Equals | Plus | PlusEq | Minus | Star | Slash | NotEq | Lt | Gt | Le | Ge | Arrow | In => {
             Kind::Operator
         }
         Ident(name) if prev_dot => {

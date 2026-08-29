@@ -15,18 +15,18 @@
 -- keeps the two backends' wording identical for them, since it runs under
 -- both.
 emit Length { value = 5 } to core get n
-assert n is Exception
+assert n ∈ Exception
 assert n.source = "core"
 assert n.message = "Length requires an array or string 'value', found a number"
 
 emit Length { value = null } to core get a
 emit Length {} to core get b
-assert a is Exception
-assert b is Exception
+assert a ∈ Exception
+assert b ∈ Exception
 assert a.message = b.message
 assert a.message = "Length requires an array or string 'value', found a null"
 
 -- The working path is untouched.
 emit Length { value = [1, 2, 3] } to core get ok
-assert ok is LengthResult
+assert ok ∈ LengthResult
 assert ok.value = 3

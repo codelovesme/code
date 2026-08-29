@@ -24,7 +24,7 @@ assert missing.value = null
 -- `Require` is the other half: something the program cannot run without says
 -- so, as an Exception, rather than carrying on with a default it invented.
 emit Require { name = "CODE_NO_SUCH_VARIABLE" } to env get needed
-assert needed is Exception
+assert needed ∈ Exception
 assert needed.source = "env"
 
 -- A class this module does not handle is null, like every module.

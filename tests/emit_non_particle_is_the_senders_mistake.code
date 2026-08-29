@@ -29,9 +29,9 @@ emit Viathis {} to this get a
 emit Viacore {} to this get b
 emit Viamodule {} to this get c
 
-assert a is Exception
-assert b is Exception
-assert c is Exception
+assert a ∈ Exception
+assert b ∈ Exception
+assert c ∈ Exception
 
 -- One question, so one answer: the same message from all three.
 assert a.message = b.message
@@ -45,7 +45,7 @@ Plain {} => {
     return Reached {}
 }
 emit Plain {} to this get d
-assert d is Exception
+assert d ∈ Exception
 assert d.message = "emit requires a particle — an object with a '_class' field — found an object"
 
 -- And this is a different question from "nobody handles that class", which

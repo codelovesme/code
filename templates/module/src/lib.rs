@@ -36,7 +36,7 @@ pub extern "C" fn code_module_abi_version() -> u32 {
 ///    particle is not a demand, and whether to act on one is the recipient's
 ///    business. A program may link several modules and emit to all of them.
 /// 3. **Failures come back as values.** `exception(out, …)` returns an
-///    `Exception` particle the program can inspect with `is Exception` —
+///    `Exception` particle the program can inspect with `∈ Exception` —
 ///    or ignore, which is its right.
 ///
 /// # Safety

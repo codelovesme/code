@@ -8,12 +8,12 @@
 link "native_modules/strings.so" as s
 
 emit Join { value = ["a", 2, "c"], separator = "-" } to s get a
-assert a is Exception
+assert a ∈ Exception
 assert a.source = "strings"
 assert a.message = "Join requires an array of strings"
 
 emit Split { value = "a::b", separator = " =:" } to s get b
-assert b is Exception
+assert b ∈ Exception
 assert b.message = "Split requires a single-character 'separator' field"
 
 emit Split { value = "a,b", separator = "," } to s get ok
