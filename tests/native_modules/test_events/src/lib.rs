@@ -9,6 +9,7 @@
 //! does not invoke that macro.
 
 use code_native::*;
+use std::sync::Mutex;
 
 #[no_mangle]
 pub extern "C" fn code_module_abi_version() -> u32 {
@@ -16,6 +17,24 @@ pub extern "C" fn code_module_abi_version() -> u32 {
 }
 
 declare_inbound!();
+declare_inbound_reply!(answered);
+
+/// What the program answered to the last `Tick` this module pushed, and how
+/// many answers have arrived. A pushed particle's answer is the handler's
+/// return value, handed back through `code_module_inbound_reply` — see
+/// `code_abi.h`. Kept here so a fixture can ask for it and prove the answer
+/// crossed back.
+static ANSWERS: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
+
+/// The host, telling this module what the program returned. `result` is a
+/// null value when nothing handled the push.
+fn answered(_particle: &CodeValue, result: &CodeValue) {
+    let value = find_field(result, "value").and_then(read_number).unwrap_or(-1.0);
+    let mut answers = ANSWERS.lock().unwrap_or_else(|e| e.into_inner());
+    answers.0 += 1.0;
+    answers.1 = value;
+}
+
 
 /// # Safety
 ///
@@ -25,6 +44,17 @@ declare_inbound!();
 pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *const CodeValue) {
     let particle = &*particle;
     guarded(&mut *out, "test_events", |out| {
+        // What the program answered to the pushes so far: `{ count, last }`.
+        if read_field_str(particle, "_class") == Some("Answers") {
+            let (count, last) = *ANSWERS.lock().unwrap_or_else(|e| e.into_inner());
+            let mut buf = SlotBuffer::new(3);
+            borrowed_str(buf.slot_mut(0), c"AnswersResult");
+            number(buf.slot_mut(1), count);
+            number(buf.slot_mut(2), last);
+            object(out, &[c"_class", c"count", c"last"], &mut buf);
+            buf.release_all();
+            return;
+        }
         if read_field_str(particle, "_class") != Some("Start") {
             // Including `Tick`, which this module pushes but never answers.
             null(out);

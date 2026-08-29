@@ -57,7 +57,7 @@ pub struct Environment {
     /// rather than the queue itself for the same reason `ModuleDispatch` is
     /// one: it keeps this field free of any `native-modules`-only type, so
     /// `crates/code-wasm` compiles with the feature off.
-    inbound: Vec<Rc<dyn Fn() -> Vec<Value>>>,
+    inbound: Vec<InboundSource>,
     /// Handlers currently on the call stack. `handlers::check_cycles` already
     /// rejects every cycle it can see, but dispatch is by the particle's
     /// runtime `_class`, so a particle held in a variable names a handler no
@@ -129,8 +129,8 @@ impl Environment {
     /// Registers a linked module's inbound queue, so `drain_inbound` will
     /// pick up whatever it pushes. Separate from `link_module` because most
     /// modules never speak first — `code_module_set_inbound` is optional.
-    pub fn link_inbound(&mut self, drain: Rc<dyn Fn() -> Vec<Value>>) {
-        self.inbound.push(drain);
+    pub fn link_inbound(&mut self, drain: Rc<dyn Fn() -> Vec<Value>>, reply: InboundReply) {
+        self.inbound.push(InboundSource { drain, reply });
     }
 
     pub fn provide_module(&mut self, name: &str, vars: Value, dispatch: ModuleDispatch) {
@@ -207,15 +207,18 @@ fn drain_between_iterations(env: &mut Environment) -> Result<(), String> {
 
 fn drain_inbound(env: &mut Environment) -> Result<(), String> {
     loop {
-        let drains = env.inbound.clone();
-        let mut queued = Vec::new();
-        for drain in &drains {
-            queued.extend(drain());
+        let sources = env.inbound.clone();
+        // Kept per source rather than pooled: the answer has to go back to
+        // the module that asked, and once the particles are in one list
+        // there is nothing left to say which module that was.
+        let mut queued: Vec<(usize, Value)> = Vec::new();
+        for (i, source) in sources.iter().enumerate() {
+            queued.extend((source.drain)().into_iter().map(|v| (i, v)));
         }
         if queued.is_empty() {
             return Ok(());
         }
-        for particle in queued {
+        for (source, particle) in queued {
             // A pushed class the program has no handler for is *dropped*,
             // not an error — decided 2026-08-28, when `net` gained
             // `Log`/`Exception`. A module speaks first on its own
@@ -226,12 +229,30 @@ fn drain_inbound(env: &mut Environment) -> Result<(), String> {
             // the program addressing itself, and a class it does not handle
             // there is still a bug. The cost of this, taken knowingly: a
             // module pushing a mistyped class now goes unnoticed.
-            if env.handlers.contains_key(class_of(&particle)) {
-                dispatch_handler(&particle, env)?;
-            }
+            // Null when nothing handled it, which the module is told as
+            // plainly as it is told an answer: "nobody replied" is an answer
+            // an HTTP server has to turn into a status.
+            let answer = if env.handlers.contains_key(class_of(&particle)) {
+                dispatch_handler(&particle, env)?
+            } else {
+                Value::Null
+            };
+            (sources[source].reply)(&particle, &answer);
         }
     }
 }
+
+/// One linked module's half of the inbound conversation: what it has queued,
+/// and where the program's answer goes.
+#[derive(Clone)]
+struct InboundSource {
+    drain: Rc<dyn Fn() -> Vec<Value>>,
+    reply: InboundReply,
+}
+
+/// Hands one module the answer to a particle it pushed — the pushed particle
+/// and the handler's return value, which is null when nothing handled it.
+pub type InboundReply = Rc<dyn Fn(&Value, &Value)>;
 
 /// Collects every `Stmt::HandlerDef` into `env.handlers` before a single
 /// statement runs. Hoisting is what lets a handler emit to one defined later
@@ -448,9 +469,14 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     // Taken before the module moves into the closure below;
                     // the queue outlives both (it was leaked at `open`).
                     let inbound = module.inbound_handle();
-                    let dispatch: ModuleDispatch = Rc::new(move |v| module.dispatch(v));
+                    let module = Rc::new(module);
+                    let dispatching = Rc::clone(&module);
+                    let dispatch: ModuleDispatch = Rc::new(move |v| dispatching.dispatch(v));
                     env.link_module(alias, Value::Object(Rc::new(vars)), dispatch);
-                    env.link_inbound(Rc::new(move || inbound.take()));
+                    env.link_inbound(
+                        Rc::new(move || inbound.take()),
+                        Rc::new(move |particle, answer| module.reply(particle, answer)),
+                    );
                     Ok(Flow::Normal)
                 }
                 #[cfg(not(feature = "native-modules"))]

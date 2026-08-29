@@ -746,6 +746,11 @@ typedef pthread_mutex_t CodeMutex;
 typedef struct {
     void (*dispatch)(CodeValue *out, const CodeValue *particle);
     void (*release)(CodeValue *v);
+    /* Optional: what the module wants told about the answer to a particle
+     * it pushed — the program's handler's return value. NULL when the module
+     * does not export `code_module_inbound_reply`, which is most of them: a
+     * module that only announces things has no use for the answer. */
+    CodeInboundReplyFn reply;
     /* Optional: the module's exported variables (constants). NULL when the
      * module doesn't export `code_module_vars` (a Phase 1, handlers-only
      * module) — in which case `code_native_vars_object` binds an empty
@@ -830,6 +835,8 @@ void *code_native_open(const char *path) {
     }
     /* Optional — a module without it simply has no exported variables. */
     nh->vars = (const CodeVarList *(*)(void))dlsym(handle, "code_module_vars");
+    /* Also optional: only a module that wants an answer to what it pushed. */
+    nh->reply = (CodeInboundReplyFn)dlsym(handle, "code_module_inbound_reply");
 
     /* Also optional: a module that never speaks first doesn't export it.
      * The pusher handed across is *this* runtime's, not the module's own
@@ -871,6 +878,10 @@ void *code_static_open(void) {
     nh->dispatch = NULL;
     nh->release = NULL;
     nh->vars = NULL;
+    /* A `.a`'s reply export is called directly by generated code, by its
+     * prefixed name, exactly as its dispatch is — there is no pointer to
+     * keep here. */
+    nh->reply = NULL;
     memset(nh->inbound, 0, sizeof nh->inbound);
     nh->inbound_head = 0;
     nh->inbound_count = 0;
@@ -1029,6 +1040,25 @@ int code_poll_inbound(void *queue, CodeValue *out) {
     nh->inbound_count--;
     code_mutex_unlock(&nh->lock);
     return 1;
+}
+
+/* Hands a module the answer to a particle it pushed: whatever the program's
+ * handler returned, or null when nothing handled it. Called by the generated
+ * drain after each dispatch (see codegen.rs's `gen_drain_body`), and a no-op
+ * for the modules — most of them — that export no
+ * `code_module_inbound_reply`.
+ *
+ * `particle` and `result` stay the host's. The module reads what it needs
+ * during the call and copies it out; nothing is retained across the return,
+ * which is the same boundary rule every other crossing here follows. */
+void code_native_reply(void *handle, const CodeValue *particle, const CodeValue *result) {
+    if (!handle) {
+        return;
+    }
+    NativeHandle *nh = (NativeHandle *)handle;
+    if (nh->reply) {
+        nh->reply(particle, result);
+    }
 }
 
 /* Frees the small `NativeHandle` `code_native_open` allocated — called once

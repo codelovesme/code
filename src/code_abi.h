@@ -32,6 +32,23 @@
  *      rather than only answering a dispatch. Optional for the same reason
  *      as `code_module_vars`: a module that never initiates simply doesn't
  *      export it, and the ABI version doesn't move.
+ *   7. *Optionally* export `void code_module_inbound_reply(const CodeValue
+ *      *particle, const CodeValue *result)`. After the host dispatches a
+ *      particle this module pushed, it calls this with the particle it
+ *      pushed and whatever the program's handler returned — `CODE_NULL` when
+ *      no handler matched. That is how a push gets an *answer*: a module
+ *      that asks the program a question (an HTTP request needing a response)
+ *      gets one back, without the program having to emit anything.
+ *
+ *      Both pointers are the host's and are valid only for the duration of
+ *      the call: read what you need and copy it out. Optional, and additive,
+ *      for the same reason as the two above — a module that only announces
+ *      things does not export it, and the ABI version does not move.
+ *
+ *      Correlation is the module's own business. Nothing identifies *which*
+ *      push is being answered beyond the particle handed back, so a module
+ *      with more than one outstanding push has to carry its own key in the
+ *      particle it pushed and read it back here.
  *
  * Why `emit` is a function *pointer* the host supplies, rather than a
  * `code_emit_inbound` a module could call directly: a `.so` carries its own
@@ -104,6 +121,11 @@ typedef struct CodeValue {
 /* What `code_module_set_inbound` hands a module: the host's own pusher.
  * `queue` is opaque to the module — it only ever passes it straight back. */
 typedef void (*CodeEmitFn)(void *queue, const CodeValue *value);
+
+/* `code_module_inbound_reply` — see the numbered list above. Declared as a
+ * type here because the host stores one per module; a module writes the
+ * function itself. */
+typedef void (*CodeInboundReplyFn)(const CodeValue *particle, const CodeValue *result);
 
 /* How many pushed particles a module may have outstanding before the oldest
  * starts being dropped. Bounded on purpose: a module that pushes faster than

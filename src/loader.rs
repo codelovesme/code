@@ -272,7 +272,7 @@ impl ModuleResolver for FilesystemResolver {
                 #[cfg(feature = "install")]
                 Self::verify_locked_module(base, &canonical)?;
                 let path = canonical.display().to_string();
-                let (prefix, has_vars, has_inbound) = static_module_symbols(&path)?;
+                let (prefix, has_vars, has_inbound, has_reply) = static_module_symbols(&path)?;
                 return Ok(ResolvedModule::Native {
                     identity: path.clone(),
                     path,
@@ -280,6 +280,7 @@ impl ModuleResolver for FilesystemResolver {
                         prefix,
                         has_vars,
                         has_inbound,
+                        has_reply,
                     },
                 });
             }
@@ -343,7 +344,7 @@ pub fn find_project_code_dir(dir: &Path) -> Option<PathBuf> {
 /// `interpreter.rs` refusing a `Static` `ImportNative`, not from a missing
 /// prefix) — consistent with the project's existing reliance on a system
 /// toolchain (`cc`); `nm` ships with the same binutils.
-fn static_module_symbols(path: &str) -> Result<(String, bool, bool), String> {
+fn static_module_symbols(path: &str) -> Result<(String, bool, bool, bool), String> {
     let output = Command::new("nm")
         .arg("--defined-only")
         .arg("-g")
@@ -395,8 +396,9 @@ fn static_module_symbols(path: &str) -> Result<(String, bool, bool), String> {
     }
     let has_vars = names.contains(&format!("{prefix}_code_module_vars").as_str());
     let has_inbound = names.contains(&format!("{prefix}_code_module_set_inbound").as_str());
+    let has_reply = names.contains(&format!("{prefix}_code_module_inbound_reply").as_str());
 
-    Ok((prefix, has_vars, has_inbound))
+    Ok((prefix, has_vars, has_inbound, has_reply))
 }
 
 /// A resolver for hosts with no module story at all — the wasm playground.

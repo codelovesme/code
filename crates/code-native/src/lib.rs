@@ -616,6 +616,64 @@ macro_rules! declare_inbound {
     };
 }
 
+/// Generate the optional `code_module_inbound_reply` export, which is how a
+/// module hears what the program answered to something it pushed.
+///
+/// Takes the function to hand it to — `fn(particle: &CodeValue, result:
+/// &CodeValue)`. `result` is a `CODE_NULL` value when no handler matched;
+/// both references are the host's and are only valid for the duration of the
+/// call, so read what you need and copy it out.
+///
+/// ```rust,ignore
+/// fn answered(particle: &CodeValue, result: &CodeValue) { /* ... */ }
+/// code_native::declare_inbound_reply!(answered);
+/// ```
+///
+/// A macro rather than a plain function for the same reason as
+/// [`declare_inbound!`]: a `#[no_mangle]` symbol defined in a dependency is
+/// not reliably kept in the final `cdylib`.
+#[macro_export]
+macro_rules! declare_inbound_reply {
+    // A `.a` static module spells its own export name — see
+    // [`declare_inbound!`] for why.
+    ($name:ident, $handler:path) => {
+        /// Called by the host after a particle this module pushed was
+        /// dispatched.
+        ///
+        /// # Safety
+        ///
+        /// Both pointers are the host's and valid for this call only.
+        #[no_mangle]
+        pub unsafe extern "C" fn $name(
+            particle: *const $crate::CodeValue,
+            result: *const $crate::CodeValue,
+        ) {
+            if particle.is_null() || result.is_null() {
+                return;
+            }
+            $handler(&*particle, &*result);
+        }
+    };
+    ($handler:path) => {
+        /// Called by the host after a particle this module pushed was
+        /// dispatched.
+        ///
+        /// # Safety
+        ///
+        /// Both pointers are the host's and valid for this call only.
+        #[no_mangle]
+        pub unsafe extern "C" fn code_module_inbound_reply(
+            particle: *const $crate::CodeValue,
+            result: *const $crate::CodeValue,
+        ) {
+            if particle.is_null() || result.is_null() {
+                return;
+            }
+            $handler(&*particle, &*result);
+        }
+    };
+}
+
 /// Push a particle into the program, to be dispatched to *its* handlers the
 /// next time the host drains (between top-level statements).
 ///

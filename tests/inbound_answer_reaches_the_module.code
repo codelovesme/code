@@ -1,0 +1,22 @@
+-- A pushed particle gets an *answer*: whatever the program's handler
+-- returned, handed back to the module that pushed it
+-- (`code_module_inbound_reply`, see code_abi.h).
+--
+-- That is what lets a module ask a question rather than only announce
+-- something — an HTTP server pushing a `Request` and needing a response is
+-- the case it was built for. Nothing new is written on this side: a handler
+-- answers a pushed particle exactly as it answers any other, by returning
+-- one.
+link "native_modules/test_events.so" as ev
+
+Tick { value } => {
+    return Ack { "value": value + 100 }
+}
+
+emit Start { "value": 3 } to ev get started
+assert started.value = 3
+
+-- The three ticks have been handled by here, and each answer went back.
+emit Answers {} to ev get a
+assert a.count = 3
+assert a.last = 102

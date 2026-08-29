@@ -322,6 +322,9 @@ pub enum NativeFormat {
         /// optional, exactly like `has_vars`, and the thing that lets a `.a`
         /// speak first rather than only answer.
         has_inbound: bool,
+        /// Whether it exports `<prefix>_code_module_inbound_reply` — the
+        /// other half of speaking first: hearing what the program answered.
+        has_reply: bool,
     },
     /// A `crates/code-wasm`-only format: the alias dispatches to a plain
     /// synchronous JS callback (JSON string in, JSON string out) that the

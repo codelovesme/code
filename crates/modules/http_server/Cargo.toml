@@ -1,0 +1,20 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree. Same convention
+# `http_client`, `strings` and `math` use.
+[workspace]
+
+[package]
+name = "http_server"
+version = "0.1.0"
+edition = "2021"
+description = "The `http_server` native module for the Code programming language — accepts HTTP requests, pushes them to the program as particles, and answers what the program sends back. Written in Rust on code-native."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }

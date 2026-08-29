@@ -234,6 +234,8 @@ pub struct NativeModule {
     /// Whether the module took the inbound channel — the one thing that can
     /// give it a life of its own past a dispatch call.
     has_inbound: bool,
+    /// Whether it also wants to hear what the program answered.
+    has_reply: bool,
     /// Where this module's pushed particles land until the program drains
     /// them. Leaked at `open`, so the raw pointer the module keeps stays
     /// valid for as long as the module is loaded.
@@ -275,6 +277,9 @@ type ReleaseFn = unsafe extern "C" fn(*mut CodeValueFfi);
 type VersionFn = unsafe extern "C" fn() -> u32;
 type VarsFn = unsafe extern "C" fn() -> *const CodeVarListFfi;
 type SetInboundFn = unsafe extern "C" fn(*mut c_void, EmitFn);
+/// `code_module_inbound_reply` — see `code_abi.h`. Optional, and most
+/// modules do not export it.
+type InboundReplyFn = unsafe extern "C" fn(*const CodeValueFfi, *const CodeValueFfi);
 /// The host function a module calls to speak first — see `code_abi.h`'s
 /// `CodeEmitFn`. Handed across as a pointer because a `.so` has its own copy
 /// of the runtime, so a direct call would reach the wrong queue.
@@ -379,10 +384,15 @@ impl NativeModule {
             }
         }
 
+        // Optional and additive: only a module that pushes *questions* wants
+        // the answer. Looked up once here rather than per reply.
+        let has_reply = unsafe { lib.get::<InboundReplyFn>(b"code_module_inbound_reply") }.is_ok();
+
         Ok(NativeModule {
             lib: ManuallyDrop::new(lib),
             path: path.to_string(),
             has_inbound,
+            has_reply,
             inbound,
         })
     }
@@ -391,6 +401,28 @@ impl NativeModule {
     /// dispatch closure — `'static` because it was leaked at `open`.
     pub fn inbound_handle(&self) -> &'static InboundQueue {
         self.inbound
+    }
+
+    /// Tell the module what the program's handler answered to a particle it
+    /// pushed — `result` is null when nothing handled it. A no-op for a
+    /// module that exports no `code_module_inbound_reply`.
+    ///
+    /// Both values are built into a fresh arena and freed when it drops: the
+    /// module reads what it needs during the call and copies it out, which is
+    /// the same boundary rule `dispatch` follows in the other direction.
+    pub fn reply(&self, particle: &Value, result: &Value) {
+        if !self.has_reply {
+            return;
+        }
+        let mut arena = Arena::default();
+        let particle_ffi = arena.build(particle);
+        let result_ffi = arena.build(result);
+        unsafe {
+            let Ok(reply) = self.lib.get::<InboundReplyFn>(b"code_module_inbound_reply") else {
+                return;
+            };
+            reply(&particle_ffi, &result_ffi);
+        }
     }
 
     /// Dispatch `particle` and return the module's (deep-copied, host-owned)

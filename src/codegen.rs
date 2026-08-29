@@ -74,6 +74,9 @@ struct StaticModuleFns<'a> {
     /// `<prefix>_code_module_set_inbound`, when the archive exports it — what
     /// lets a `.a` speak first rather than only answer.
     set_inbound: Option<FunctionValue<'a>>,
+    /// `<prefix>_code_module_inbound_reply`, when the archive exports it —
+    /// hearing what the program answered to what it pushed.
+    inbound_reply: Option<FunctionValue<'a>>,
 }
 
 fn reject_wasm_native_links(stmts: &[Stmt]) -> Result<(), String> {
@@ -294,6 +297,14 @@ pub fn compile_to_object(
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_native_reply = module.add_function(
+        "code_native_reply",
+        void_ty.fn_type(
+            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+            false,
+        ),
+        None,
+    );
     // The failure channel (see `runtime.c`'s "The failure channel"). A helper
     // that cannot do its work now returns normally with `code_failed` set,
     // instead of ending the process from inside itself — so the generated
@@ -382,6 +393,7 @@ pub fn compile_to_object(
                     prefix,
                     has_vars,
                     has_inbound,
+                    has_reply,
                 },
             ..
         } = stmt
@@ -412,6 +424,15 @@ pub fn compile_to_object(
                     None,
                 )
             });
+            // `(const CodeValue *particle, const CodeValue *result)` — how a
+            // module that pushed a question hears the program's answer.
+            let inbound_reply = has_reply.then(|| {
+                module.add_function(
+                    &format!("{prefix}_code_module_inbound_reply"),
+                    void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+                    None,
+                )
+            });
             static_native_fns.insert(
                 alias.clone(),
                 StaticModuleFns {
@@ -419,6 +440,7 @@ pub fn compile_to_object(
                     dispatch,
                     vars,
                     set_inbound,
+                    inbound_reply,
                 },
             );
         }
@@ -491,6 +513,7 @@ pub fn compile_to_object(
         fn_check_particle,
         fn_check_emittable,
         fn_poll_inbound,
+        fn_native_reply,
         fn_abort_failure,
         fn_take_failure,
         fn_make_exception,
@@ -690,6 +713,9 @@ struct Gen<'a, 'm> {
     failed_flag: PointerValue<'a>,
     location_slot: PointerValue<'a>,
     fn_poll_inbound: FunctionValue<'a>,
+    /// `runtime.c`'s `code_native_reply` — hands a `.so` the answer to a
+    /// particle it pushed. A `.a`'s reply is called directly instead.
+    fn_native_reply: FunctionValue<'a>,
     /// The generated `_code_drain_inbound`, called after every top-level
     /// statement. Declared up front (the calls are emitted as statements are
     /// generated) and defined last, once every module global exists.
@@ -739,6 +765,11 @@ enum NativeLink<'a> {
     Static {
         dispatch: FunctionValue<'a>,
         inbound: Option<PointerValue<'a>>,
+        /// `<prefix>_code_module_inbound_reply`, when the archive exports
+        /// one. A `.so`'s equivalent is a pointer the runtime dlsym'd and
+        /// calls through `code_native_reply`; an archive is linked straight
+        /// in, so the call is direct — the same split as `dispatch`.
+        reply: Option<FunctionValue<'a>>,
     },
 }
 
@@ -1072,16 +1103,24 @@ impl<'a, 'm> Gen<'a, 'm> {
         let Some(drain) = self.drain_fn else {
             return Ok(());
         };
-        let handles: Vec<PointerValue<'a>> = self
+        // The handle to poll, and how this module hears the answer. Kept
+        // together because the answer has to go back to the module that
+        // asked, and a pooled list of particles no longer says which that was.
+        let handles: Vec<(PointerValue<'a>, Option<FunctionValue<'a>>)> = self
             .native_links
             .values()
             .filter_map(|link| match link {
-                NativeLink::Dynamic(slot) => Some(*slot),
+                // A `.so` replies through the runtime, which holds the
+                // dlsym'd pointer; `None` here means "use `code_native_reply`
+                // with this handle", which is a no-op for a module that
+                // exports none.
+                NativeLink::Dynamic(slot) => Some((*slot, None)),
                 // A `.a` is here too since 2026-08-28, when it stopped being
                 // a `.so`-only story: it has no handle to *call* through, but
                 // `code_static_open` gave it one to queue into, and from this
-                // function's point of view the two are the same pointer.
-                NativeLink::Static { inbound, .. } => *inbound,
+                // function's point of view the two are the same pointer. Its
+                // reply, like its dispatch, is a direct call.
+                NativeLink::Static { inbound, reply, .. } => inbound.map(|slot| (slot, *reply)),
             })
             .collect();
 
@@ -1133,7 +1172,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_store(progress, self.i32_ty.const_zero())
             .map_err(|e| e.to_string())?;
 
-        for handle_slot in handles {
+        for (handle_slot, static_reply) in handles {
             let poll = self.context.append_basic_block(drain, "poll");
             let handle_body = self.context.append_basic_block(drain, "handle");
             let next = self.context.append_basic_block(drain, "poll_next");
@@ -1180,10 +1219,35 @@ impl<'a, 'm> Gen<'a, 'm> {
             // value is simply released with the rest of the pass. When the
             // program defines no handler at all there is no chain to walk,
             // so the drop needs no code beyond not calling anything.
+            //
+            // Null first, then dispatch over it. A zeroed slot is *not* null
+            // — tag 0 is `CODE_NUMBER` (see `code_abi.h`) — so a program with
+            // no handlers at all would otherwise hand every module the number
+            // zero as its answer. Found by an http_server test expecting a
+            // 404 and getting 200.
+            self.builder
+                .build_call(self.fn_null, &[result.into()], "")
+                .map_err(|e| e.to_string())?;
             if let Some(dispatch) = self.dispatch_fn {
                 self.builder
                     .build_call(dispatch, &[result.into(), particle.into()], "")
                     .map_err(|e| e.to_string())?;
+            }
+            match static_reply {
+                Some(reply) => {
+                    self.builder
+                        .build_call(reply, &[particle.into(), result.into()], "")
+                        .map_err(|e| e.to_string())?;
+                }
+                None => {
+                    self.builder
+                        .build_call(
+                            self.fn_native_reply,
+                            &[handle.into(), particle.into(), result.into()],
+                            "",
+                        )
+                        .map_err(|e| e.to_string())?;
+                }
             }
             // Straight back to the same module: one poll per pass would
             // reorder a burst across modules.
@@ -2047,6 +2111,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                     NativeLink::Static {
                         dispatch: fns.dispatch,
                         inbound,
+                        reply: fns.inbound_reply,
                     },
                 );
             }

@@ -140,6 +140,54 @@ top-level statement, which polls every module and loops until a full pass
 finds nothing, so a handler that causes further pushes is still serviced
 before the function returns.
 
+## A push can be answered (2026-08-29)
+
+The drain used to throw the handler's return value away. There was nowhere to
+send it: a push arrives from the module's own thread, so there is no call site
+and no `get` to bind it to. That made every pushed particle an announcement —
+fine for `Log`, useless for a module that has a *question*, which is what an
+HTTP server pushing a request has.
+
+**What shipped:** one optional export, `code_module_inbound_reply(const
+CodeValue *particle, const CodeValue *result)`. After dispatching a pushed
+particle, the host calls it with the particle and whatever the handler
+returned — null when nothing handled it. Additive, so `CODE_ABI_VERSION`
+stays at 1 and the four already-published modules keep loading: a module that
+does not export it hears nothing, exactly as before.
+
+Deliberately *not* an id-and-callback pair. `code_emit_inbound` could have
+returned a token for the host to hand back, but that changes `CodeEmitFn`'s
+signature, which is an ABI break for every module built against the old
+header — and hours after publishing four of them. Handing the particle back
+costs nothing (it is a pointer the host already holds) and lets a module that
+needs correlation carry its own key in what it pushed. `http_server` needs
+none: its accept loop is serial, so there is exactly one request outstanding
+when an answer arrives.
+
+Where it landed: `runtime.c` (a `reply` pointer per `NativeHandle`, plus
+`code_native_reply`), `native.rs` (`NativeModule::reply`), both drains, and
+`code-native`'s `declare_inbound_reply!`. A `.a` is called directly by its
+prefixed name, the same split its dispatch already has, which `loader.rs`
+detects with the `nm` pass it was already doing.
+
+Two things this cost, both worth keeping:
+
+- **A zeroed slot is not null.** `CODE_NUMBER` is tag 0, so a program with no
+  handlers at all handed every module the number zero as its answer. The
+  compiled drain nulls `result` before dispatching now. Found by an
+  `http_server` test expecting a 404 and getting 200.
+- **A module can answer itself into a loop.** `http_server` logged a warning
+  when an answer arrived with no request waiting — and a `Log` is a push,
+  which gets an answer, which found no request waiting, which logged. The fix
+  is one line (only replies to `Request` count), but the shape is worth
+  naming: with answers, a module's own diagnostics are on the same channel as
+  its questions.
+
+Covered by `inbound_answer_reaches_the_module.code` (`.so`),
+`buildonly_native_link_static_answer.code` (`.a`), and
+`tests/http_server_module.rs`, which drives a real client against a program
+in both output modes.
+
 ## What is still open
 
 - **The keep-alive loop.** Two halves, and the first one shipped 2026-08-29.

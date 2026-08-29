@@ -12,7 +12,7 @@ Three tiers, distinguished by *where the bytes live*:
 | tier | what | how users get it |
 |---|---|---|
 | **core** | `Length` (shipped), `Timestamp` | compiled into the `code` binary — nothing to install, works everywhere including the wasm playground |
-| **first-party modules** | `terminal`, `console`, `math`, `strings`, `http_client`, … | native: GitHub Releases + `code module install <name>`; browser: npm |
+| **first-party modules** | `terminal`, `console`, `math`, `strings`, `http_client`, `http_server`, … | native: GitHub Releases + `code module install <name>`; browser: npm |
 | **community modules** | anyone's | the author publishes to *their own* GitHub Releases (a template repo provides the CI); consumers install by URL first, by name once an index exists |
 
 The rule separating tier 1 from tier 2: **fundamentals are core**. Only
@@ -211,6 +211,23 @@ Batch 2 (flagship — proves the pipeline with a non-trivial module):
     to be leaked to satisfy that. Expressing them wants an ABI addition
     (an owned-keys constructor), which is its own decision and does not
     belong inside the first module that happens to want it.
+
+- **http_server** — shipped 2026-08-29, and the reason the inbound *answer*
+  path exists at all. `Listen { port? }` binds and spawns an accept thread;
+  every request is pushed to the program as `Request { method, path, query,
+  body }`, and **whatever the `Request` handler returns is the response**.
+  Serial by design (the program is single-threaded, so concurrency would only
+  queue work it cannot start sooner), which is also why the pending request is
+  one slot rather than a map — no correlation, no id in the program's hands.
+  Full contract in [`crates/modules/http_server/README.md`](../../crates/modules/http_server/README.md).
+
+  Modelled on `euglena-language`'s `server` organelle, minus what a cell
+  runtime needs and this language does not have: no `Impulse` routing, no JWT,
+  no per-app public-class policy. `Sap` became `Listen`, since configuration
+  here is a particle the program sends rather than something a manifest
+  delivers — and `Respond { request_id, … }`, which euglena needs because its
+  answer has nowhere else to go, was built here and then thrown away when the
+  handler's return value could carry it.
 
 Later candidates, only when asked for: rand, date/time formatting (raw
 seconds are core `Timestamp`; human-readable formats belong in a module),

@@ -723,7 +723,24 @@ emit Start { "value": 3 } to ev get started   -- module queues three Ticks
 
 Queued particles are dispatched after each top-level statement — and after
 each *loop iteration*, which is a statement boundary too — in the order
-pushed. **A pushed class the program has no handler for is dropped**, not an
+pushed. **The handler's return value goes back to the module that pushed**,
+so a module can ask a question rather than only announce something:
+
+```
+link "http_server.so" as srv
+
+Request { method, path } => {
+    return Response { "status": 200, "body": "hi from $path" }
+}
+
+emit Listen { "port": 8080 } to srv get l
+loop {
+}
+```
+
+Nothing new is written on this side — a pushed particle is answered exactly
+as any other, by returning one. A module that wants the answer exports
+`code_module_inbound_reply`; most do not, and hear nothing. **A pushed class the program has no handler for is dropped**, not an
 error: the module chose to speak, so a message nobody asked to hear is not a
 mistake by the program. That is what lets a module report a problem without
 every program that links it having to care — `http_client` pushes `Exception` and
@@ -845,7 +862,9 @@ rules that make a module unable to break someone else's program.
 
 First-party modules today: `terminal` (print to stdout), `math`, `strings`,
 `http_client` (the seven HTTP methods, and `Exception`/`Log` pushed back —
-see [its README](crates/modules/http_client/README.md)).
+see [its README](crates/modules/http_client/README.md)), and `http_server`
+(requests pushed in, answered by what a `Request` handler returns — see
+[its README](crates/modules/http_server/README.md)).
 `code module install <name>` fetches one into `./.code/modules/`, pinned by sha256
 in `./.code/lock.json`; `--global` puts it in `~/.code/modules/` instead. A
 `link` reference resolves against a fixed chain — the script's own directory,

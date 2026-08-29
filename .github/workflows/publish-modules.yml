@@ -40,8 +40,8 @@ jobs:
           fi
           # Allowlist: only modules whose source lives under crates/modules/.
           case "$module" in
-            terminal|strings|math|http_client) ;;
-            *) echo "::error::unknown module '$module' (allowed: terminal, strings, math, http_client)"; exit 1 ;;
+            terminal|strings|math|http_client|http_server) ;;
+            *) echo "::error::unknown module '$module' (allowed: terminal, strings, math, http_client, http_server)"; exit 1 ;;
           esac
           echo "module=$module" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -120,6 +120,11 @@ jobs:
             math)
               printf 'emit Double { "value": 21 } to mod get r\nassert r.value = 42\n' >> dogfood/demo.code
               ;;
+            http_server)
+              # Binds an OS-chosen port on loopback and never serves anything:
+              # the artifact loads, routes, and reports the port it got.
+              printf 'emit Listen { "port": 0 } to mod get l\nassert l.ok\nassert l.port > 0\n' >> dogfood/demo.code
+              ;;
             http_client)
               # Nothing is listening on port 1, so this needs no network —
               # it proves the artifact loads and routes, and that a refused
@@ -162,6 +167,7 @@ jobs:
             strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower"]' ;;
             math) handlers='["Double", "Sum"]' ;;
             http_client) handlers='["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"]' ;;
+            http_server) handlers='["Listen"]' ;;
             # `set -u` would fail on the unbound variable below anyway; this
             # says *why* instead of pointing at the heredoc.
             *) echo "::error::no handler list for '$m' — add one here when a module is added"; exit 1 ;;

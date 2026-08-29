@@ -1,0 +1,15 @@
+-- The same answer path for a `.a`, where the reply is a direct call to
+-- `<prefix>_code_module_inbound_reply` rather than a pointer the runtime
+-- dlsym'd — the same split the dispatch itself already has.
+link "native_modules/test_events_static.a" as ev
+
+Tick { value } => {
+    return Ack { "value": value + 100 }
+}
+
+emit Start { "value": 2 } to ev get started
+assert started.value = 2
+
+emit Answers {} to ev get a
+assert a.count = 2
+assert a.last = 101
