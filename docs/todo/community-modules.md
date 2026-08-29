@@ -57,15 +57,41 @@ under both `code run` and `code build`.
 
 ## Distribution (phases B–D)
 
+### One version for everything — decided 2026-08-29
+
+Reverses the per-module cadence this document originally described (one
+`modules/<name>/v<semver>` tag per module, each shipping on its own
+schedule). That was convenient for whoever cut the release and useless for
+whoever consumed it: a user holding `code v0.7.0` and `terminal 1.0.0` had no
+way to tell whether the two were built against the same ABI without reading
+the repository.
+
+So a single `v<semver>` tag now publishes the CLI, every first-party module,
+`code-native` on crates.io and the `code-wasm` npm package, all at that
+number, onto one release page. `tests/one_version.rs` holds every manifest in
+the repo to it, and the publish workflow refuses a tag that disagrees with
+`Cargo.toml`.
+
+The cost, taken knowingly: an unchanged module still gets a new version on
+every release, so a version bump no longer means "this module changed". The
+thing it buys is that a version *match* means something, which is the
+question users actually ask. `CODE_ABI_VERSION` is untouched and still says
+whether a module can be loaded at all — it moves only when the ABI breaks.
+
+The first unified version is **1.1.0**, not 1.0.0: `code-native`, the npm
+package and four modules were already published at 1.0.0, and a shared line
+has to start above everything already on it.
+
 ### Hosting: GitHub Releases
 
 No registry server. Provenance is free (source and CI are visible per
 artifact), and it is where the community lives anyway. Per release:
 
-- one asset per platform: `math-linux-x86_64.so`, … (the extension follows
-  the platform; the loader already keys off suffix)
-- one `module.json`: name, version, ABI version, handler list, exported
-  vars, supported platforms, sha256 per asset
+- one asset per platform per module: `math-linux-x86_64.so`, … (the extension
+  follows the platform; the loader already keys off suffix)
+- one `module.json` per module: name, version, ABI version, handler list,
+  exported vars, supported platforms, sha256 per asset — all attached to the
+  same release as the CLI tarball for that version
 - everything built from source in CI (cross-compilation matrix), never
   uploaded by hand
 

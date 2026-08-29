@@ -1,11 +1,12 @@
 name: Publish modules
 
 on:
-  # Per-module versioning: `modules/terminal/v1.0.0` cuts a release for
-  # `terminal` at 1.0.0 without touching anything else. Each first-party
-  # module ships on its own cadence (docs/todo/community-modules.md).
+  # One version for everything this repo publishes (2026-08-29, reversing the
+  # per-module cadence this used to have): a `v*` tag releases the CLI *and*
+  # every module at the same number, so a user holding `code v1.1.0` and
+  # `terminal 1.1.0` never has to ask whether the two match.
   push:
-    tags: ["modules/*/v*"]
+    tags: ["v*"]
   # Manual dry-run: builds every platform artifact and uploads them as
   # Actions artifacts, but creates no GitHub Release (guarded below), so
   # the pipeline can be exercised without cutting a tag.
@@ -19,31 +20,28 @@ env:
 
 jobs:
   resolve:
-    name: Resolve module + version
+    name: Resolve version
     runs-on: ubuntu-latest
     outputs:
-      module: ${{ steps.parse.outputs.module }}
       version: ${{ steps.parse.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
       - id: parse
         run: |
           set -euo pipefail
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            # modules/<name>/v<semver> -> name, semver
-            ref="${GITHUB_REF_NAME}"
-            module="$(cut -d/ -f2 <<<"$ref")"
-            version="${ref##*/}"
-            version="${version#v}"
+            version="${GITHUB_REF_NAME#v}"
           else
-            module="terminal"
             version="dev-${GITHUB_SHA}"
           fi
-          # Allowlist: only modules whose source lives under crates/modules/.
-          case "$module" in
-            terminal|strings|math|http_client|http_server) ;;
-            *) echo "::error::unknown module '$module' (allowed: terminal, strings, math, http_client, http_server)"; exit 1 ;;
-          esac
-          echo "module=$module" >> "$GITHUB_OUTPUT"
+          # The tag and the source must agree. `tests/one_version.rs` already
+          # holds every manifest to the repository's version; this holds the
+          # tag to it too, so the three cannot drift apart silently.
+          repo_version="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          if [[ "${{ github.ref_type }}" == "tag" && "$version" != "$repo_version" ]]; then
+            echo "::error::tag says $version but Cargo.toml says $repo_version"
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   # Every build job compiles the same way — one self-contained crate, no
@@ -56,22 +54,29 @@ jobs:
   # promise is only keepable in Rust. Asset names follow the distribution
   # doc: <module>-<platform><ext>.
   build-linux-x86_64:
-    name: Build linux-x86_64
+    name: Build ${{ matrix.module }} (linux-x86_64)
     needs: resolve
     runs-on: ubuntu-latest
+    strategy:
+      # Every module, every release. Keep this list in step with
+      # crates/modules/ — the dogfood step below fails loudly on a module it
+      # has no demo for, which is what catches an addition here that was made
+      # without one.
+      matrix:
+        module: [terminal, strings, math, http_client, http_server]
     steps:
       - uses: actions/checkout@v4
       - name: Compile
         run: |
           set -euo pipefail
-          m="${{ needs.resolve.outputs.module }}"
+          m="${{ matrix.module }}"
           mkdir -p dist
           (cd "crates/modules/$m" && cargo build --release)
           mv "crates/modules/$m/target/release/lib$m.so" "dist/${m}-linux-x86_64.so"
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: module-${{ needs.resolve.outputs.module }}-linux-x86_64
+          name: module-${{ matrix.module }}-linux-x86_64
           path: "dist/*.so"
 
   # Proof the artifact actually loads: build the real `code` binary and run
@@ -79,9 +84,12 @@ jobs:
   # same parity invariant the fixture harness enforces, applied to the
   # shipped artifact rather than the test-tree build.
   dogfood:
-    name: Dogfood (load artifact via code run + code build)
+    name: Dogfood ${{ matrix.module }} (code run + code build)
     needs: [resolve, build-linux-x86_64]
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [terminal, strings, math, http_client, http_server]
     env:
       LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
     steps:
@@ -97,12 +105,12 @@ jobs:
       - name: Download linux-x86_64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: module-${{ needs.resolve.outputs.module }}-linux-x86_64
+          name: module-${{ matrix.module }}-linux-x86_64
           path: dogfood
       - name: Run through both output modes
         run: |
           set -euo pipefail
-          m="${{ needs.resolve.outputs.module }}"
+          m="${{ matrix.module }}"
           # One small dispatch per module — proof the artifact loads and
           # routes a particle, in both output modes. `Print` writes to
           # stdout and reports 13; `Echo` hands its operand back unchanged,
@@ -132,14 +140,18 @@ jobs:
               # program (which is the whole contract of this module).
               printf 'emit Get { "url": "http://127.0.0.1:1/" } to mod get r\nassert not r.ok\nassert r.status = 0\n' >> dogfood/demo.code
               ;;
+            *) echo "::error::no dogfood demo for '$m' — add one when a module is added"; exit 1 ;;
           esac
           mv "dogfood/${m}-linux-x86_64.so" "dogfood/${m}.so"
           ./target/release/code run dogfood/demo.code
           ./target/release/code build dogfood/demo.code -o dogfood/demo
           CODE_CHECK_LEAKS=1 ./dogfood/demo
 
+  # Attaches every module's artifact to the CLI's own release for this tag
+  # (release.yml creates it from the same `v*` push). One release page, one
+  # version, everything that version consists of.
   publish:
-    name: Create GitHub Release
+    name: Attach modules to the release
     needs:
       [
         resolve,
@@ -154,25 +166,25 @@ jobs:
           path: dist
       - name: Flatten into dist/
         run: find dist -type f \( -name '*.so' -o -name '*.dylib' \) -exec mv {} dist/ \;
-      - name: Write module.json
+      - name: Write one module.json per module
         run: |
           set -euo pipefail
-          m="${{ needs.resolve.outputs.module }}"
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          # Handlers live with their module — keep this in sync when a
-          # module gains one (the index consumers show it in docs/help).
-          case "$m" in
-            terminal) handlers='["Print"]' ;;
-            strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower"]' ;;
-            math) handlers='["Double", "Sum"]' ;;
-            http_client) handlers='["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"]' ;;
-            http_server) handlers='["Listen"]' ;;
-            # `set -u` would fail on the unbound variable below anyway; this
-            # says *why* instead of pointing at the heredoc.
-            *) echo "::error::no handler list for '$m' — add one here when a module is added"; exit 1 ;;
-          esac
-          cat > "dist/${m}.json" <<EOF
+          for m in terminal strings math http_client http_server; do
+            # Handlers live with their module — keep this in sync when a
+            # module gains one (the index consumers show it in docs/help).
+            case "$m" in
+              terminal) handlers='["Print"]' ;;
+              strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower"]' ;;
+              math) handlers='["Double", "Sum"]' ;;
+              http_client) handlers='["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"]' ;;
+              http_server) handlers='["Listen"]' ;;
+              # `set -u` would fail on the unbound variable below anyway; this
+              # says *why* instead of pointing at the heredoc.
+              *) echo "::error::no handler list for '$m' — add one here when a module is added"; exit 1 ;;
+            esac
+            cat > "dist/${m}.json" <<EOF
           {
             "name": "${m}",
             "version": "${v}",
@@ -184,16 +196,16 @@ jobs:
             }
           }
           EOF
-          python3 -m json.tool "dist/${m}.json" >/dev/null # validate
+            python3 -m json.tool "dist/${m}.json" >/dev/null # validate
+          done
       - name: Upload build artifacts (always — usable as a dry-run record)
         uses: actions/upload-artifact@v4
         with:
-          name: module-${{ needs.resolve.outputs.module }}-${{ needs.resolve.outputs.version }}
+          name: modules-${{ needs.resolve.outputs.version }}
           path: dist/*
-      - name: Create GitHub Release
+      - name: Attach to the release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: dist/*
-          generate_release_notes: true

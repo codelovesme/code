@@ -286,11 +286,15 @@ straight to its **Settings → Trusted Publishing** page and add:
 - Workflow filename: `publish-crates-native.yml`
 - Environment: leave blank
 
-**Every release after that** is just:
+**Every release after that** is the repository's own release tag — there is
+no separate one. Everything published from this repo shares one version, so
+`code v1.1.0`, `code-native 1.1.0` and every module at 1.1.0 ship together
+and a consumer never has to check whether they match (`tests/one_version.rs`
+holds every manifest to it):
 
 ```bash
-git tag code-native-v1.0.0   # whatever the new version is — no `v` prefix elsewhere
-git push origin code-native-v1.0.0
+git tag v1.1.0   # whatever the new version is
+git push origin v1.1.0
 ```
 
 The workflow sets `Cargo.toml`'s version from the tag itself, verifies the

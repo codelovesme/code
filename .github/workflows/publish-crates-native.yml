@@ -7,16 +7,17 @@ name: Publish crates.io (code-native)
 # repo + workflow filename (crates.io → package settings → Trusted
 # Publishing) — see crates/code-native/README.md's "Releasing" section.
 #
-# Trigger: a `code-native-v*` tag (deliberately separate from the CLI's own
-# `v*` release tags in release.yml, and from code-wasm's `code-wasm-v*` —
-# each published artifact's version tracks its own history, not the CLI's).
+# Trigger: the repository's own `v*` release tag. Everything published from
+# here shares one version (2026-08-29, reversing the per-artifact cadence this
+# used to have) so a user never has to ask whether their `code` and their
+# `code-native` match — see tests/one_version.rs.
 # `workflow_dispatch` is a dry run: builds and verifies the exact package
 # that *would* be published, but the publish step itself is gated to real
 # tags only.
 
 on:
   push:
-    tags: ["code-native-v*"]
+    tags: ["v*"]
   workflow_dispatch: {}
 
 permissions:
@@ -37,14 +38,14 @@ jobs:
         if: github.ref_type == 'tag'
 
       # On a real release tag, set Cargo.toml's version from the tag itself
-      # (`code-native-v0.2.0` -> `0.2.0`) rather than trusting it was
-      # hand-bumped beforehand — one source of truth for what's published.
+      # (`v1.1.0` -> `1.1.0`) rather than trusting it was hand-bumped
+      # beforehand — one source of truth for what's published.
       - name: Set crate version from tag
         if: github.ref_type == 'tag'
         working-directory: crates/code-native
         run: |
           set -euo pipefail
-          v="${GITHUB_REF_NAME#code-native-v}"
+          v="${GITHUB_REF_NAME#v}"
           sed -i "0,/^version = \".*\"/s//version = \"$v\"/" Cargo.toml
           grep -m1 '^version = ' Cargo.toml
 

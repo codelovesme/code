@@ -8,15 +8,17 @@ name: Publish npm (code-wasm)
 # filename (npmjs.com → package settings → Trusted Publisher → GitHub
 # Actions) — see crates/code-wasm/npm/README.md's "Releasing" section.
 #
-# Trigger: a `code-wasm-v*` tag (deliberately separate from the CLI's own
-# `v*` release tags in release.yml — the npm package's version doesn't need
-# to track the CLI's). `workflow_dispatch` is a dry run: builds and smoke-
+# Trigger: the repository's own `v*` release tag. Everything published from
+# here shares one version (2026-08-29, reversing the per-artifact cadence this
+# used to have) so a user never has to ask whether their `code` and the npm
+# package match — see tests/one_version.rs. `workflow_dispatch` is a dry run:
+# builds and smoke-
 # tests the exact package that *would* be published, but the publish step
 # itself is gated to real tags only (mirrors release.yml's dry-run pattern).
 
 on:
   push:
-    tags: ["code-wasm-v*"]
+    tags: ["v*"]
   workflow_dispatch: {}
 
 permissions:
@@ -52,14 +54,14 @@ jobs:
         run: bash crates/code-wasm/npm/build.sh
 
       # On a real release tag, set package.json's version from the tag
-      # itself (`code-wasm-v0.2.0` → `0.2.0`) rather than trusting it was
+      # itself (`v1.1.0` → `1.1.0`) rather than trusting it was
       # hand-bumped and committed correctly beforehand — one source of
       # truth for what's about to be published.
       - name: Set package version from tag
         if: github.ref_type == 'tag'
         working-directory: crates/code-wasm/npm
         run: |
-          version="${GITHUB_REF_NAME#code-wasm-v}"
+          version="${GITHUB_REF_NAME#v}"
           npm version "$version" --no-git-tag-version --allow-same-version
 
       # Same verification as crates/code-wasm/npm/README.md's "Releasing"
