@@ -1,5 +1,6 @@
 use crate::ast::{
-    BinOp, EmitTarget, Expr, FieldKey, LoopAccumulator, LoopOver, Program, Stmt, UnOp,
+    BinOp, EmitTarget, Expr, FieldKey, IsTest, LoopAccumulator, LoopOver, Program, Stmt, UnOp,
+    ValueKind,
 };
 use crate::lexer::{Lexed, StringPart, Token};
 use crate::span::Located;
@@ -180,10 +181,13 @@ impl<'a> Parser<'a> {
             // identifier everywhere else. Lowercase names fall through
             // untouched: they stay variable reads.
             let particle = match particle {
-                Expr::Ident(name) if starts_uppercase(&name) => Expr::Object(vec![(
-                    FieldKey::Literal("_class".to_string()),
-                    Expr::Str(name),
-                )]),
+                Expr::Ident(name) if starts_uppercase(&name) => {
+                    reject_kind_as_class(&name)?;
+                    Expr::Object(vec![(
+                        FieldKey::Literal("_class".to_string()),
+                        Expr::Str(name),
+                    )])
+                }
                 other => other,
             };
             let target = match self.advance() {
@@ -291,6 +295,7 @@ impl<'a> Parser<'a> {
                 )
             {
                 let class_name = name.clone();
+                reject_kind_as_class(&class_name)?;
                 self.advance();
                 if self.block_depth > 0 {
                     return Err(format!(
@@ -657,11 +662,19 @@ impl<'a> Parser<'a> {
             return Ok(e);
         }
         self.advance();
-        let class = match self.advance() {
-            Token::Ident(name) => name,
-            other => return Err(format!("expected a class name after 'is', found {other:?}")),
+        let test = match self.advance() {
+            Token::Ident(name) => match ValueKind::parse(&name) {
+                Some(kind) => IsTest::Kind(kind),
+                None => IsTest::Class(name),
+            },
+            Token::Null => IsTest::Kind(ValueKind::Null),
+            other => {
+                return Err(format!(
+                    "expected a kind or a class name after 'is', found {other:?}"
+                ))
+            }
         };
-        Ok(Expr::Is(Box::new(e), class))
+        Ok(Expr::Is(Box::new(e), test))
     }
 
     fn additive(&mut self) -> Result<Expr, String> {
@@ -783,6 +796,7 @@ impl<'a> Parser<'a> {
                 Token::Ident(name)
                     if starts_uppercase(&name) && matches!(self.peek(), Token::LBrace) =>
                 {
+                    reject_kind_as_class(&name)?;
                     let mut fields = self.object_fields()?;
                     fields.insert(
                         0,
@@ -896,4 +910,22 @@ impl<'a> Parser<'a> {
         }
         Ok(fields)
     }
+}
+
+/// The six kind names are not available as particle classes.
+///
+/// `x is Number` has to mean one thing. If a program could tag a particle
+/// `Number`, the same expression would ask which of the six kinds a value is
+/// *and* what it is tagged — and since a particle is an Object, the kind
+/// answer would win for every particle ever built. Refusing the name is a
+/// rule someone can read; a silent precedence is one they would have to
+/// discover.
+fn reject_kind_as_class(name: &str) -> Result<(), String> {
+    if ValueKind::parse(name).is_some() {
+        return Err(format!(
+            "'{name}' is one of the six value kinds, so it cannot name a particle — \
+             `is {name}` asks what kind a value is"
+        ));
+    }
+    Ok(())
 }

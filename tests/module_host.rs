@@ -9,7 +9,7 @@
 
 use std::rc::Rc;
 
-use code::ast::{EmitTarget, Expr, NativeFormat, Program, Stmt, FieldKey};
+use code::ast::{EmitTarget, Expr, FieldKey, NativeFormat, Program, Stmt};
 use code::interpreter::{self, Environment};
 use code::value::Value;
 
@@ -47,7 +47,10 @@ fn doubler_module(env: &mut Environment, name: &str) {
 /// receives anyway.
 fn double_particle(n: f64) -> Expr {
     Expr::Object(vec![
-        (FieldKey::Literal("_class".to_string()), Expr::Str("Double".to_string())),
+        (
+            FieldKey::Literal("_class".to_string()),
+            Expr::Str("Double".to_string()),
+        ),
         (FieldKey::Literal("value".to_string()), Expr::Number(n)),
     ])
 }

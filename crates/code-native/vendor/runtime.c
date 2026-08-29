@@ -1802,6 +1802,15 @@ void code_not(CodeValue *out, const CodeValue *a) {
  * operand simply answers 0, mirroring how `find_field` reports absence as
  * null and equality turns that into false. Must match interpreter.rs's
  * `Expr::Is` arm exactly. */
+/* `x is String` and its five siblings. The kinds are exactly `CodeTag`, so
+ * this is one integer compare — codegen passes the tag rather than a name,
+ * since which six exist is settled at compile time and a string comparison
+ * would be answering a question nobody asked. A particle is an Object, so
+ * `p is Object` and `p is Reply` are both true of the same value. */
+int code_is_kind(const CodeValue *a, int tag) {
+    return a->tag == (CodeTag)tag ? 1 : 0;
+}
+
 int code_is_particle(const CodeValue *a, const char *name) {
     if (a->tag != CODE_OBJECT) {
         return 0;

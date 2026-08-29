@@ -1,0 +1,37 @@
+-- `is` asks one of two questions, told apart by the name: which of the six
+-- kinds a value is, or what a particle is tagged.
+assert 3 is Number
+assert 2.5 is Number
+assert "hi" is String
+assert true is Boolean
+assert false is Boolean
+assert null is Null
+assert [1, 2] is Array
+assert { a = 1 } is Object
+
+-- False rather than an error, wherever true is not the answer. `is` is a
+-- question, and every value has an answer to it.
+assert not (3 is String)
+assert not ("3" is Number)
+assert not (null is Object)
+assert not ([] is Object)
+assert not ({} is Array)
+
+-- A particle is an Object, so both questions are true of the same value.
+let reply = Reply { status = 200 }
+assert reply is Object
+assert reply is Reply
+assert not (reply is Request)
+
+-- And an object with no `_class` is an Object and nothing else.
+assert not ({ a = 1 } is Reply)
+
+-- The kinds a core handler answers with are the same six.
+emit Length { value = [1, 2, 3] } to core get n
+assert n is Object
+assert n.value is Number
+
+-- Kinds work on anything an expression produces, not just on bindings.
+assert (1 + 1) is Number
+assert ("a" + "b") is String
+assert (1 = 1) is Boolean

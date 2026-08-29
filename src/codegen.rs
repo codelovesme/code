@@ -15,7 +15,8 @@ use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
 use crate::ast::{
-    BinOp, EmitTarget, Expr, FieldKey, LoopAccumulator, LoopOver, NativeFormat, Program, Stmt, UnOp,
+    BinOp, EmitTarget, Expr, FieldKey, IsTest, LoopAccumulator, LoopOver, NativeFormat, Program,
+    Stmt, UnOp,
 };
 
 /// Byte size of one runtime `CodeValue` slot (`src/runtime.c`; 64 bytes on
@@ -297,6 +298,11 @@ pub fn compile_to_object(
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_is_kind = module.add_function(
+        "code_is_kind",
+        i32_ty.fn_type(&[i8_ptr_ty.into(), i32_ty.into()], false),
+        None,
+    );
     let fn_str_text = module.add_function(
         "code_str_text",
         i8_ptr_ty.fn_type(&[i8_ptr_ty.into()], false),
@@ -520,6 +526,7 @@ pub fn compile_to_object(
         fn_poll_inbound,
         fn_native_reply,
         fn_str_text,
+        fn_is_kind,
         fn_abort_failure,
         fn_take_failure,
         fn_make_exception,
@@ -719,6 +726,8 @@ struct Gen<'a, 'm> {
     failed_flag: PointerValue<'a>,
     location_slot: PointerValue<'a>,
     fn_poll_inbound: FunctionValue<'a>,
+    /// `runtime.c`'s `code_is_kind` — `x is String` and its five siblings.
+    fn_is_kind: FunctionValue<'a>,
     /// `runtime.c`'s `code_str_text` — the characters of a Str, for a
     /// computed object key.
     fn_str_text: FunctionValue<'a>,
@@ -2533,17 +2542,28 @@ impl<'a, 'm> Gen<'a, 'm> {
             // `code_is_particle` returns 0/1, which becomes a bool via the
             // same `code_bool` constructor every other bool-producing site
             // uses.
-            Expr::Is(e, class) => {
+            Expr::Is(e, test) => {
                 let ptr = self.gen_expr(e)?;
-                let class_ptr = self.global_str(class, "isclass")?;
-                let flag = self
-                    .builder
-                    .build_call(self.fn_is_particle, &[ptr.into(), class_ptr.into()], "")
-                    .map_err(|e| e.to_string())?
-                    .try_as_basic_value()
-                    .left()
-                    .expect("code_is_particle returns i32, not void")
-                    .into_int_value();
+                let flag = match test {
+                    // One integer compare in the runtime — the six kinds are
+                    // the `CodeTag` an already-built value carries.
+                    IsTest::Kind(kind) => {
+                        let tag = self.i32_ty.const_int(kind.tag(), false);
+                        self.builder
+                            .build_call(self.fn_is_kind, &[ptr.into(), tag.into()], "")
+                            .map_err(|e| e.to_string())?
+                    }
+                    IsTest::Class(class) => {
+                        let class_ptr = self.global_str(class, "isclass")?;
+                        self.builder
+                            .build_call(self.fn_is_particle, &[ptr.into(), class_ptr.into()], "")
+                            .map_err(|e| e.to_string())?
+                    }
+                }
+                .try_as_basic_value()
+                .left()
+                .expect("the is-check returns i32, not void")
+                .into_int_value();
                 let out = self.alloc_slot("is")?;
                 self.builder
                     .build_call(self.fn_bool, &[out.into(), flag.into()], "")

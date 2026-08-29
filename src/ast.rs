@@ -430,13 +430,89 @@ pub enum Expr {
     /// doesn't want to answer. The parser desugars `Name {}` particles
     /// elsewhere but keeps `is`'s operand as a plain identifier here.
     ///
-    /// Semantically this is `expr._class = "ClassName"` with two
-    /// differences: reading a missing `_class` yields null (which compares
-    /// unequal, so the result is the same), and the spelling says what it
-    /// means. Both backends evaluate it through their ordinary equality
-    /// machinery — see `interpreter.rs`'s `eval` and `codegen.rs`'s
-    /// `gen_is`.
-    Is(Box<Expr>, String),
+    /// Two questions, one word, told apart by the name (see [`IsTest`]):
+    /// `x is String` asks which of the six kinds a value is, and
+    /// `r is Exception` asks what a particle is tagged. Neither can fail —
+    /// `is` answers false where `.field` would answer null.
+    ///
+    /// The class form is semantically `expr._class = "ClassName"`, with the
+    /// difference that reading a missing `_class` yields null (which
+    /// compares unequal, so the answer is the same) and the spelling says
+    /// what it means. A particle is an `Object`, so `p is Object` and
+    /// `p is Reply` are both true of the same value.
+    Is(Box<Expr>, IsTest),
+}
+
+/// What the name after `is` turned out to mean.
+///
+/// Decided by the parser rather than at run time, because the two answer
+/// different questions and only one of them can be wrong before the program
+/// starts: a kind is a fixed set of six, a class is whatever the program
+/// tags its particles with. Splitting here is also what lets `verify` refuse
+/// a particle *named* after a kind — with one string there would be nothing
+/// to compare against.
+#[derive(Debug, Clone, PartialEq)]
+pub enum IsTest {
+    /// One of the six value kinds: `x is String`.
+    Kind(ValueKind),
+    /// A particle's `_class`: `r is Exception`.
+    Class(String),
+}
+
+/// The six kinds a value can be — exactly JSON's, which is a commitment
+/// rather than a coincidence (see the README).
+///
+/// Named as the error messages already name them, so the language has one
+/// vocabulary for a kind rather than two: what `is` tests, what a type
+/// mismatch reports, and what the README lists are the same six words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueKind {
+    Number,
+    String,
+    Boolean,
+    Null,
+    Array,
+    Object,
+}
+
+impl ValueKind {
+    /// The name written in source, which is also the name in an error
+    /// message. `None` for anything else — that is a particle class.
+    pub fn parse(name: &str) -> Option<ValueKind> {
+        Some(match name {
+            "Number" => ValueKind::Number,
+            "String" => ValueKind::String,
+            "Boolean" => ValueKind::Boolean,
+            "Null" => ValueKind::Null,
+            "Array" => ValueKind::Array,
+            "Object" => ValueKind::Object,
+            _ => return None,
+        })
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            ValueKind::Number => "Number",
+            ValueKind::String => "String",
+            ValueKind::Boolean => "Boolean",
+            ValueKind::Null => "Null",
+            ValueKind::Array => "Array",
+            ValueKind::Object => "Object",
+        }
+    }
+
+    /// The tag `runtime.c`'s `CodeTag` gives this kind — the two are one
+    /// enum in two languages, and `code_is_kind` reads this number.
+    pub fn tag(self) -> u64 {
+        match self {
+            ValueKind::Number => 0,
+            ValueKind::String => 1,
+            ValueKind::Boolean => 2,
+            ValueKind::Null => 3,
+            ValueKind::Array => 4,
+            ValueKind::Object => 5,
+        }
+    }
 }
 
 /// Operand type rules (decided 2026-08-21, do not re-propose alternatives):

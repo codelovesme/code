@@ -2,7 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 
-use crate::ast::{BinOp, EmitTarget, Expr, FieldKey, NativeFormat, Program, Stmt, UnOp};
+use crate::ast::{
+    BinOp, EmitTarget, Expr, FieldKey, IsTest, NativeFormat, Program, Stmt, UnOp, ValueKind,
+};
 #[cfg(feature = "native-modules")]
 use crate::native::NativeModule;
 use crate::value::Value;
@@ -953,16 +955,22 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                 )),
             }
         }
-        // `expr is ClassName` — a type test, not a lookup: true exactly
-        // when `expr` is a particle of that class, false otherwise (an
-        // object without a `"_class"` field, a wrong class, or any
-        // non-object value). Never an error — see `Expr::Is`'s doc comment.
-        Expr::Is(e, class) => {
+        // `expr is X` — a test, not a lookup, and never an error: false is
+        // the answer wherever true is not. `X` is one of the six kinds
+        // (`String`, `Number`, …) or a particle class; the parser decided
+        // which (see `ast::IsTest`).
+        Expr::Is(e, test) => {
             let v = eval(e, env)?;
-            let is_particle_of_class = matches!(&v, Value::Object(fields)
-                if fields.iter().any(|(k, val)| k == "_class"
-                    && matches!(val, Value::Str(s) if **s == *class)));
-            Ok(Value::Bool(is_particle_of_class))
+            let answer = match test {
+                IsTest::Kind(kind) => kind_of(&v) == *kind,
+                // A particle is an object whose `_class` is that name. An
+                // object without one, a wrong class, or any non-object value
+                // is false rather than an error.
+                IsTest::Class(class) => matches!(&v, Value::Object(fields)
+                    if fields.iter().any(|(k, val)| k == "_class"
+                        && matches!(val, Value::Str(s) if **s == *class))),
+            };
+            Ok(Value::Bool(answer))
         }
         // `and`/`or` short-circuit: the right side is only evaluated (and
         // only needs to be a bool) when the left side didn't already
@@ -1085,6 +1093,19 @@ fn a_type_name(v: &Value) -> String {
         _ => "a",
     };
     format!("{article} {name}")
+}
+
+/// Which of the six kinds a value is — what `is` compares against, and the
+/// same enum the error messages name.
+fn kind_of(v: &Value) -> ValueKind {
+    match v {
+        Value::Number(_) => ValueKind::Number,
+        Value::Str(_) => ValueKind::String,
+        Value::Bool(_) => ValueKind::Boolean,
+        Value::Null => ValueKind::Null,
+        Value::Array(_) => ValueKind::Array,
+        Value::Object(_) => ValueKind::Object,
+    }
 }
 
 fn type_name(v: &Value) -> &'static str {

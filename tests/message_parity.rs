@@ -62,10 +62,7 @@ const CASES: &[(&str, &str)] = &[
     ),
     ("index_non_container", "let a = 1\nlet b = a[0]\n"),
     ("emit_non_particle", "emit 5 to core get r\n"),
-    (
-        "emit_missing_class",
-        "emit { value = 1 } to core get r\n",
-    ),
+    ("emit_missing_class", "emit { value = 1 } to core get r\n"),
     // `Length`'s operand message is not here for the same reason
     // `code_check_particle`'s is not: since core answers with an Exception
     // rather than unwinding its caller, it no longer fails at the top level.

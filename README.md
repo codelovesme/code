@@ -105,9 +105,12 @@ let x = 1 - 2
 
 ### Values
 
-Six kinds, exactly JSON's: **Number** (an f64), **Str**, **Bool**, **Null**,
-**Array**, **Object**. There are no type keywords and no declarations of
-type; a binding holds whatever it was last assigned.
+Six kinds, exactly JSON's: **Number** (an f64), **String**, **Boolean**,
+**Null**, **Array**, **Object**. There are no type keywords and no
+declarations of type; a binding holds whatever it was last assigned. Those
+six names are the language's whole vocabulary for a kind — they are what
+`is` tests, what a type mismatch reports, and the only names a particle
+may not be given.
 
 That correspondence is a commitment, not a coincidence: **the set is closed,
 and it stays JSON's.** New capability is expressed *with* these six rather
@@ -211,7 +214,7 @@ runs to the first character that cannot continue an identifier, and it is a
 bare *variable*, never an expression: `"$box.lid"` interpolates `box` and
 leaves `.lid` as literal text.
 
-A **Str** splices in bare; every other kind renders as compact JSON, which
+A **String** splices in bare; every other kind renders as compact JSON, which
 means a string *nested* inside an interpolated array or object keeps its
 quotes. Interpolation is total — no value is uninterpolable.
 
@@ -319,7 +322,7 @@ Two different rules, deliberately:
 That second half is load-bearing: reading a name a module chose not to export
 goes through its alias object as a missing field, and answers null.
 
-An array is keyed by **Number**, an object by **Str** — the same split
+An array is keyed by **Number**, an object by **String** — the same split
 `loop` uses.
 
 ### assert
@@ -476,18 +479,37 @@ a *linked module*.
 
 ### is
 
-`expr is ClassName` is true exactly when `expr` is an object whose `_class`
-field holds that name. It is never an error — a wrong class, a missing
-`_class`, or a non-object all simply answer false, the same spirit as `=`
-being well-defined across mismatched kinds.
+`expr is Name` asks one of two questions, told apart by the name.
+
+**Which kind** — the six of them, and the only place the language names a
+type at all:
+
+```
+assert 3 is Number
+assert "hi" is String
+assert true is Boolean
+assert null is Null
+assert [1] is Array
+assert { a = 1 } is Object
+```
+
+**What a particle is tagged** — true when `expr` is an object whose `_class`
+field holds that name:
 
 ```
 emit Timestamp to core get t
 assert t is TimestampResult
 ```
 
-The right side is a bare name, not an expression: a class name is a lexical
-fact.
+A particle is an Object, so both are true of the same value: `t is Object`
+and `t is TimestampResult`. And because that would make a particle *named*
+after a kind unanswerable, **the six names cannot name a particle** — a
+handler or literal called `Number` is refused before the program runs.
+
+`is` is never an error. A wrong class, a missing `_class`, a non-object, the
+wrong kind — all simply answer false, the same spirit as `=` being
+well-defined across mismatched kinds. The right side is a bare name, not an
+expression: which question is being asked is a lexical fact.
 
 ## Handlers
 
