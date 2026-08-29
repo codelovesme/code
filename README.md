@@ -57,7 +57,7 @@ code init                                  # scaffold here; `code init demo` in 
 code run program.code                      # interpret
 code build program.code                    # -> ./program, beside the source
 code build program.code --target wasm      # exe | shared | static | wasm
-code build program.code -o out/thing
+code build program.code -o out/thing        # --output is the same flag
 code build program.code --release          # -O2; the default is unoptimized
 code format src/ program.code              # canonical layout, rewritten in place
 code format --check tests/                 # writes nothing; non-zero if any differ

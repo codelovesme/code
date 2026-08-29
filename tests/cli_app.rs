@@ -95,5 +95,13 @@ fn app_build_writes_into_build_named_after_the_project() {
         .success());
     assert!(project.join("elsewhere").is_file());
 
+    // `--output` is the same flag spelled long.
+    assert!(
+        code(&project, &["app", "build", ".", "--output", "longform"])
+            .status
+            .success()
+    );
+    assert!(project.join("longform").is_file());
+
     let _ = fs::remove_dir_all(&dir);
 }

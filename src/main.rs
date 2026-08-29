@@ -38,7 +38,7 @@ fn main() -> ExitCode {
         Some("build") => {
             let Some(path) = args.next() else {
                 eprintln!(
-                    "usage: code build <file> [--target exe|shared|static|wasm] [--release] [-o <output>]"
+                    "usage: code build <file> [--target exe|shared|static|wasm] [--release] [-o|--output <path>]"
                 );
                 return ExitCode::FAILURE;
             };
@@ -47,7 +47,9 @@ fn main() -> ExitCode {
             let mut release = false;
             while let Some(arg) = args.next() {
                 match arg.as_str() {
-                    "-o" => out = args.next().map(PathBuf::from),
+                    // `--output` too: the long form is what a reader
+                    // expects beside `--target` and `--release`.
+                    "-o" | "--output" => out = args.next().map(PathBuf::from),
                     "--release" => release = true,
                     "--target" => {
                         let Some(value) = args.next() else {
@@ -95,7 +97,7 @@ fn main() -> ExitCode {
     }
 }
 
-const USAGE: &str = "init [name] | run <file> | build <file> [--target exe|shared|static|wasm] [--release] [-o <output>] | app run|build [dir] | module install <name-or-url> [--global] | module remove <name> | module ls | format [--check] <path>...";
+const USAGE: &str = "init [name] | run <file> | build <file> [--target exe|shared|static|wasm] [--release] [-o|--output <path>] | app run|build [dir] | module install <name-or-url> [--global] | module remove <name> | module ls | format [--check] <path>...";
 
 /// `code app run|build [dir]` — a *directory* where `run`/`build` take a
 /// file.
@@ -169,7 +171,7 @@ fn cmd_app_build(dir: &Path, entry: &str, args: Vec<String>) -> ExitCode {
     let mut rest = args.into_iter();
     while let Some(arg) = rest.next() {
         match arg.as_str() {
-            "-o" => out = rest.next().map(PathBuf::from),
+            "-o" | "--output" => out = rest.next().map(PathBuf::from),
             "--release" => release = true,
             "--target" => {
                 let Some(value) = rest.next() else {
