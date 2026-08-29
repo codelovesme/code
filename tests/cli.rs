@@ -28,7 +28,7 @@ fn code(dir: &PathBuf, args: &[&str]) -> std::process::Output {
 #[test]
 fn app_run_finds_the_entry_point() {
     let dir = temp_dir("run");
-    assert!(code(&dir, &["init", "demo"]).status.success());
+    assert!(code(&dir, &["app", "init", "demo"]).status.success());
 
     let out = code(&dir, &["app", "run", "demo"]);
     assert!(
@@ -60,7 +60,7 @@ fn app_run_finds_the_entry_point() {
 #[test]
 fn app_build_writes_into_build_named_after_the_project() {
     let dir = temp_dir("build");
-    assert!(code(&dir, &["init", "demo"]).status.success());
+    assert!(code(&dir, &["app", "init", "demo"]).status.success());
 
     let out = code(&dir, &["app", "build", "demo"]);
     assert!(
@@ -117,7 +117,7 @@ fn help_is_an_answer_rather_than_an_error() {
         assert!(out.status.success(), "`code {args:?}` failed");
         let text = String::from_utf8_lossy(&out.stdout);
         assert!(text.contains("code — the Code programming language"));
-        assert!(text.contains("app run [dir]"), "help omits app: {text}");
+        assert!(text.contains("app init [name]"), "help omits app: {text}");
         assert!(text.contains("module install"), "help omits module: {text}");
     }
 

@@ -1,4 +1,4 @@
-//! `code init` — the scaffold has to run before anything is installed.
+//! `code app init` — the scaffold has to run before anything is installed.
 //!
 //! The property worth testing is not which files appear but that the program
 //! it writes *works with nothing installed*: the obvious template prints
@@ -28,8 +28,8 @@ fn code(dir: &PathBuf, args: &[&str]) -> std::process::Output {
 #[test]
 fn the_scaffolded_program_runs_with_nothing_installed() {
     let dir = temp_dir("runs");
-    let out = code(&dir, &["init", "demo"]);
-    assert!(out.status.success(), "code init failed: {out:?}");
+    let out = code(&dir, &["app", "init", "demo"]);
+    assert!(out.status.success(), "code app init failed: {out:?}");
 
     let project = dir.join("demo");
     for expected in ["main.code", ".gitignore"] {
@@ -67,7 +67,7 @@ fn an_existing_file_is_a_refusal_not_a_merge() {
     let dir = temp_dir("refuses");
     fs::write(dir.join("main.code"), "let mine = 1\n").expect("write main.code");
 
-    let out = code(&dir, &["init"]);
+    let out = code(&dir, &["app", "init"]);
     assert!(!out.status.success(), "init overwrote an existing project");
     assert_eq!(
         fs::read_to_string(dir.join("main.code")).expect("read main.code"),

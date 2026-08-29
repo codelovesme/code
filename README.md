@@ -53,7 +53,7 @@ cargo test --workspace       # runs every tests/*.code fixture in both modes
 ```
 
 ```sh
-code init                                  # scaffold here; `code init demo` in ./demo
+code app init                              # scaffold here; `code app init demo` in ./demo
 code run program.code                      # interpret
 code build program.code                    # -> ./program, beside the source
 code build program.code --target wasm      # -t; exe | shared | static | wasm
@@ -76,7 +76,7 @@ code --version
 location would otherwise depend on which kind of argument was passed. Both
 `app` forms default to the current directory.
 
-`code init` writes three files and nothing else: a `main.code` that **runs
+`code app init` writes three files and nothing else: a `main.code` that **runs
 as written** (the obvious template prints, printing needs a module, and a new
 project whose first act is a failed `link` is a bad first minute), an empty
 `.code/lock.json` — `.code/` is what marks the project root that `link` and

@@ -85,7 +85,6 @@ fn main() -> ExitCode {
             build_file(&path, target, &out, release)
         }
         "app" => cmd_app(args.collect()),
-        "init" => cmd_init(args.collect()),
         #[cfg(feature = "install")]
         "module" => cmd_module(args.collect()),
         "format" => cmd_format(args.collect()),
@@ -122,6 +121,8 @@ fn help_for(command: &str) -> &'static str {
         "build" => BUILD_HELP,
         "app" => APP_HELP,
         "module" => MODULE_HELP,
+        // Reachable as `code help init` too: someone who knows the command
+        // exists but not where it lives should still find it.
         "init" => INIT_HELP,
         "format" => FORMAT_HELP,
         _ => HELP,
@@ -135,9 +136,9 @@ usage:
   code <command> [arguments]
 
 commands:
-  init [name]                    scaffold a project here, or in <name>
   run <file>                     interpret one file
   build <file> [options]         compile it; the artifact lands beside it
+  app init [name]                scaffold a project here, or in <name>
   app run [dir]                  interpret <dir>/main.code
   app build [dir] [options]      compile it into <dir>/build/
   module install <name-or-url>   fetch a module into ./.code/modules
@@ -163,12 +164,13 @@ options:
   -o, --output <path>                   where to write it";
 
 const APP_HELP: &str = "\
-usage: code app run [dir]
+usage: code app init [name]
+       code app run [dir]
        code app build [dir] [options]
 
-Takes a directory rather than a file. The entry point is <dir>/main.code —
-the name `code init` writes — and `build` puts artifacts in <dir>/build/,
-named for the project rather than for the entry file. Defaults to `.`.
+Takes a directory rather than a file. `init` scaffolds one; the entry point
+is <dir>/main.code, and `build` puts artifacts in <dir>/build/, named for the
+project rather than for the entry file. `run` and `build` default to `.`.
 
 options (build):
   -t, --target exe|shared|static|wasm   default exe
@@ -186,7 +188,7 @@ sha256 in ./.code/lock.json — `--global` puts them in ~/.code/modules and
 records the same lock entry.";
 
 const INIT_HELP: &str = "\
-usage: code init [name]
+usage: code app init [name]
 
 Scaffolds a project in the current directory, or in <name>. Writes main.code
 (which runs as written, with nothing installed), an empty .code/lock.json —
@@ -206,7 +208,7 @@ would change. A file that does not parse is reported and skipped.";
 /// Two commands rather than one that guesses, because they answer different
 /// questions. A file is a file: `code build x.code` writes `x` beside it and
 /// is done. A directory is a project, so it has an entry point by convention
-/// (`main.code`, which `code init` writes) and its artifacts belong somewhere
+/// (`main.code`, which `code app init` writes) and its artifacts belong somewhere
 /// deletable in one go (`build/`). Letting `build` take both would make the
 /// output location depend on which kind of argument was passed — one command
 /// quietly doing two things.
@@ -217,13 +219,16 @@ fn cmd_app(mut args: Vec<String>) -> ExitCode {
         String::new()
     };
     match sub.as_str() {
+        // Scaffolding is an app thing too, and it is the one that writes the
+        // `main.code` the other two go looking for.
+        "init" => return cmd_init(args),
         "run" | "build" => {}
         "" => {
-            eprintln!("usage: code app run|build [dir]");
+            eprintln!("usage: code app init|run|build [name-or-dir]");
             return ExitCode::FAILURE;
         }
         other => {
-            eprintln!("unknown app command '{other}' (expected run or build)");
+            eprintln!("unknown app command '{other}' (expected init, run or build)");
             return ExitCode::FAILURE;
         }
     }
@@ -241,7 +246,7 @@ fn cmd_app(mut args: Vec<String>) -> ExitCode {
     let entry = dir.join(APP_ENTRY);
     if !entry.is_file() {
         eprintln!(
-            "no {APP_ENTRY} in '{}' — an app's entry point is {APP_ENTRY} (see code init)",
+            "no {APP_ENTRY} in '{}' — an app's entry point is {APP_ENTRY} (see code app init)",
             dir.display()
         );
         return ExitCode::FAILURE;
@@ -303,7 +308,7 @@ fn cmd_app_build(dir: &Path, entry: &str, args: Vec<String>) -> ExitCode {
     build_file(entry, target, &out, release)
 }
 
-/// An app's entry point. `code init` writes this name, and `code app` is the
+/// An app's entry point. `code app init` writes this name, and `code app` is the
 /// only thing that assumes it.
 const APP_ENTRY: &str = "main.code";
 /// Where `code app build` puts artifacts: one directory, deletable in one go.
@@ -352,7 +357,7 @@ fn cmd_module(mut args: Vec<String>) -> ExitCode {
     }
 }
 
-/// `code init [name]` — a project that runs before anything is installed.
+/// `code app init [name]` — a project that runs before anything is installed.
 ///
 /// Three files, and the reasoning for each is that a fourth would be
 /// decoration:
@@ -374,7 +379,7 @@ fn cmd_module(mut args: Vec<String>) -> ExitCode {
 /// Nothing is ever overwritten: an existing file is a refusal, not a merge.
 fn cmd_init(args: Vec<String>) -> ExitCode {
     if let Some(unknown) = args.iter().find(|a| a.starts_with('-')) {
-        eprintln!("code init takes a directory name, not '{unknown}'");
+        eprintln!("code app init takes a directory name, not '{unknown}'");
         return ExitCode::FAILURE;
     }
     // No name means "here", which is what a directory you have already made
@@ -416,7 +421,7 @@ fn cmd_init(args: Vec<String>) -> ExitCode {
         None => String::new(),
     };
     println!();
-    println!("  {where_to}code run main.code");
+    println!("  {where_to}code app run");
     println!();
     println!("Printing lives in a module rather than the language:");
     println!("  code module install terminal");
