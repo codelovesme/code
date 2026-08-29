@@ -73,14 +73,11 @@ fn main() -> ExitCode {
             let out = out.unwrap_or_else(|| default_output_path(&path, target));
             build_file(&path, target, &out, release)
         }
+        Some("app") => cmd_app(args.collect()),
         Some("init") => cmd_init(args.collect()),
+        #[cfg(feature = "install")]
+        Some("module") => cmd_module(args.collect()),
         Some("format") => cmd_format(args.collect()),
-        #[cfg(feature = "install")]
-        Some("install") => cmd_install(args.collect()),
-        #[cfg(feature = "install")]
-        Some("remove") | Some("rm") => cmd_remove(args.collect()),
-        #[cfg(feature = "install")]
-        Some("ls") => cmd_ls(),
         // A global flag rather than a subcommand, so it takes no feature gate
         // and works even in the wasm-only interpreter build.
         Some("--version") | Some("-v") => {
@@ -98,7 +95,159 @@ fn main() -> ExitCode {
     }
 }
 
-const USAGE: &str = "init [name] | run <file> | build <file> [--target exe|shared|static|wasm] [--release] [-o <output>] | format [--check] <path>... | install <name-or-url> [--global] | remove <name> | ls";
+const USAGE: &str = "init [name] | run <file> | build <file> [--target exe|shared|static|wasm] [--release] [-o <output>] | app run|build [dir] | module install <name-or-url> [--global] | module remove <name> | module ls | format [--check] <path>...";
+
+/// `code app run|build [dir]` — a *directory* where `run`/`build` take a
+/// file.
+///
+/// Two commands rather than one that guesses, because they answer different
+/// questions. A file is a file: `code build x.code` writes `x` beside it and
+/// is done. A directory is a project, so it has an entry point by convention
+/// (`main.code`, which `code init` writes) and its artifacts belong somewhere
+/// deletable in one go (`build/`). Letting `build` take both would make the
+/// output location depend on which kind of argument was passed — one command
+/// quietly doing two things.
+fn cmd_app(mut args: Vec<String>) -> ExitCode {
+    let sub = if args.first().map(|a| !a.starts_with('-')).unwrap_or(false) {
+        args.remove(0)
+    } else {
+        String::new()
+    };
+    match sub.as_str() {
+        "run" | "build" => {}
+        "" => {
+            eprintln!("usage: code app run|build [dir]");
+            return ExitCode::FAILURE;
+        }
+        other => {
+            eprintln!("unknown app command '{other}' (expected run or build)");
+            return ExitCode::FAILURE;
+        }
+    }
+
+    // The directory is optional and defaults to `.` — a project you are
+    // already standing in is the common case.
+    let dir = match args.first() {
+        Some(first) if !first.starts_with('-') => PathBuf::from(args.remove(0)),
+        _ => PathBuf::from("."),
+    };
+    if !dir.is_dir() {
+        eprintln!("'{}' is not a directory", dir.display());
+        return ExitCode::FAILURE;
+    }
+    let entry = dir.join(APP_ENTRY);
+    if !entry.is_file() {
+        eprintln!(
+            "no {APP_ENTRY} in '{}' — an app's entry point is {APP_ENTRY} (see code init)",
+            dir.display()
+        );
+        return ExitCode::FAILURE;
+    }
+    let entry_path = entry.to_string_lossy().into_owned();
+
+    if sub == "run" {
+        if let Some(unknown) = args.first() {
+            eprintln!("code app run takes a directory, not '{unknown}'");
+            return ExitCode::FAILURE;
+        }
+        return run_file(&entry_path);
+    }
+    cmd_app_build(&dir, &entry_path, args)
+}
+
+#[cfg(not(feature = "llvm"))]
+fn cmd_app_build(_dir: &Path, _entry: &str, _args: Vec<String>) -> ExitCode {
+    eprintln!("this build has no compiler (built without the `llvm` feature)");
+    ExitCode::FAILURE
+}
+
+#[cfg(feature = "llvm")]
+fn cmd_app_build(dir: &Path, entry: &str, args: Vec<String>) -> ExitCode {
+    let mut out: Option<PathBuf> = None;
+    let mut target = BuildTarget::Exe;
+    let mut release = false;
+    let mut rest = args.into_iter();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "-o" => out = rest.next().map(PathBuf::from),
+            "--release" => release = true,
+            "--target" => {
+                let Some(value) = rest.next() else {
+                    eprintln!("--target takes a value (exe|shared|static|wasm)");
+                    return ExitCode::FAILURE;
+                };
+                match BuildTarget::parse(&value) {
+                    Some(t) => target = t,
+                    None => {
+                        eprintln!("unknown target '{value}' (expected exe|shared|static|wasm)");
+                        return ExitCode::FAILURE;
+                    }
+                }
+            }
+            other => {
+                eprintln!("unknown argument '{other}'");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    let out = out.unwrap_or_else(|| dir.join(APP_BUILD_DIR).join(app_artifact_name(dir, target)));
+    if let Some(parent) = out.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!("cannot create '{}': {e}", parent.display());
+            return ExitCode::FAILURE;
+        }
+    }
+    build_file(entry, target, &out, release)
+}
+
+/// An app's entry point. `code init` writes this name, and `code app` is the
+/// only thing that assumes it.
+const APP_ENTRY: &str = "main.code";
+/// Where `code app build` puts artifacts: one directory, deletable in one go.
+#[cfg(feature = "llvm")]
+const APP_BUILD_DIR: &str = "build";
+
+/// `build/<project>` rather than `build/main`: the artifact is named after
+/// the thing being built, and every app's entry file has the same name.
+#[cfg(feature = "llvm")]
+fn app_artifact_name(dir: &Path, target: BuildTarget) -> String {
+    // `.` and `..` have no name of their own, so ask the filesystem which
+    // directory they actually are.
+    let name = dir
+        .canonicalize()
+        .ok()
+        .as_deref()
+        .and_then(Path::file_name)
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "app".to_string());
+    artifact_name(&name, target)
+}
+
+/// `code module install|remove|ls` — everything to do with modules under one
+/// noun, because they are one subject and `code ls` never said what it was
+/// listing.
+#[cfg(feature = "install")]
+fn cmd_module(mut args: Vec<String>) -> ExitCode {
+    let sub = if args.is_empty() {
+        String::new()
+    } else {
+        args.remove(0)
+    };
+    match sub.as_str() {
+        "install" => cmd_install(args),
+        "remove" | "rm" => cmd_remove(args),
+        "ls" => cmd_ls(),
+        "" => {
+            eprintln!("usage: code module install <name-or-url> [--global] | remove <name> | ls");
+            ExitCode::FAILURE
+        }
+        other => {
+            eprintln!("unknown module command '{other}' (expected install, remove or ls)");
+            ExitCode::FAILURE
+        }
+    }
+}
 
 /// `code init [name]` — a project that runs before anything is installed.
 ///
@@ -167,7 +316,7 @@ fn cmd_init(args: Vec<String>) -> ExitCode {
     println!("  {where_to}code run main.code");
     println!();
     println!("Printing lives in a module rather than the language:");
-    println!("  code install terminal");
+    println!("  code module install terminal");
     println!("  then: link \"terminal.so\" as term");
     println!("        emit Print {{ \"value\": \"hello\" }} to term");
     ExitCode::SUCCESS
@@ -178,7 +327,7 @@ fn cmd_init(args: Vec<String>) -> ExitCode {
 const MAIN_TEMPLATE: &str = r#"-- A new Code program. `code run main.code` runs this as written.
 --
 -- There is no print statement: writing to a terminal is a module's job, not
--- the language's. `code install terminal` gets you one.
+-- the language's. `code module install terminal` gets you one.
 
 let name = "world"
 let scores = [88, 94, 71]
@@ -208,10 +357,14 @@ assert greeting.text = "hello, world"
 
 const LOCKFILE_TEMPLATE: &str = "{\n  \"modules\": {}\n}\n";
 
-const GITIGNORE_TEMPLATE: &str =
-    "# Installed module binaries. The lockfile beside them pins what they are,\n\
-                                  # so a checkout can reproduce them with `code install`.\n\
-                                  .code/modules/\n";
+const GITIGNORE_TEMPLATE: &str = "\
+# Installed module binaries. The lockfile beside them pins what they are,
+# so a checkout can reproduce them with `code module install`.
+.code/modules/
+
+# Where `code app build` puts artifacts.
+build/
+";
 
 /// `code format <path>...` rewrites in place; `--check` writes nothing and
 /// exits non-zero if anything would change. A path may be a directory, walked
@@ -313,19 +466,32 @@ fn collect_code_files(path: &Path, out: &mut Vec<PathBuf>) {
 
 #[cfg(feature = "llvm")]
 fn default_output_path(input: &str, target: BuildTarget) -> PathBuf {
-    let stem = Path::new(input)
+    let input = Path::new(input);
+    let stem = input
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "a.out".to_string());
-    // Without `-o`, the extension follows the target rather than always
-    // being the bare file stem: an executable has none, but a library
-    // should look like one.
+    // Beside the source, not in the working directory: `code build x.code`
+    // answers with `x`, and `code build src/x.code` with `src/x`. Building a
+    // *file* leaves one artifact next to it and nothing else — owning a
+    // directory is `code app build`'s job.
+    match input.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.join(artifact_name(&stem, target)),
+        _ => PathBuf::from(artifact_name(&stem, target)),
+    }
+}
+
+/// The filename an artifact takes when `-o` is not given. The extension
+/// follows the target rather than always being the bare stem: an executable
+/// has none, but a library should look like one.
+#[cfg(feature = "llvm")]
+fn artifact_name(stem: &str, target: BuildTarget) -> String {
     match target {
-        BuildTarget::Exe => PathBuf::from(stem),
-        BuildTarget::Shared => PathBuf::from(format!("lib{stem}.so")),
-        BuildTarget::Static => PathBuf::from(format!("lib{stem}.a")),
-        BuildTarget::Wasm => PathBuf::from(format!("{stem}.wasm")),
+        BuildTarget::Exe => stem.to_string(),
+        BuildTarget::Shared => format!("lib{stem}.so"),
+        BuildTarget::Static => format!("lib{stem}.a"),
+        BuildTarget::Wasm => format!("{stem}.wasm"),
     }
 }
 

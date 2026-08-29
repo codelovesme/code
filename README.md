@@ -55,24 +55,33 @@ cargo test --workspace       # runs every tests/*.code fixture in both modes
 ```sh
 code init                                  # scaffold here; `code init demo` in ./demo
 code run program.code                      # interpret
-code build program.code                    # -> ./program (native executable)
+code build program.code                    # -> ./program, beside the source
 code build program.code --target wasm      # exe | shared | static | wasm
 code build program.code -o out/thing
 code build program.code --release          # -O2; the default is unoptimized
 code format src/ program.code              # canonical layout, rewritten in place
 code format --check tests/                 # writes nothing; non-zero if any differ
-code install terminal                      # fetch a module into ./.code/modules
-code ls                                    # what's installed
-code remove terminal
+code app run demo                          # a directory: runs demo/main.code
+code app build demo                        # -> demo/build/demo
+code module install terminal               # fetch a module into ./.code/modules
+code module ls                             # what's installed
+code module remove terminal
 code --version
 ```
+
+`run` and `build` take a **file** and answer beside it; `app run` and
+`app build` take a **directory**, find its `main.code`, and put artifacts in
+`build/`. Two commands rather than one that guesses, because the output
+location would otherwise depend on which kind of argument was passed. Both
+`app` forms default to the current directory.
 
 `code init` writes three files and nothing else: a `main.code` that **runs
 as written** (the obvious template prints, printing needs a module, and a new
 project whose first act is a failed `link` is a bad first minute), an empty
 `.code/lock.json` — `.code/` is what marks the project root that `link` and
-`code install` resolve against — and a one-line `.gitignore` splitting the
-committed lockfile from the downloaded binaries. An existing file is a
+`code module install` resolve against — and a one-line `.gitignore` for the
+installed binaries and `build/`, keeping the committed lockfile and dropping
+what it can reproduce. An existing file is a
 refusal, never a merge.
 
 The LLVM backend is a Cargo feature (`llvm`, on by default). Without it you
@@ -827,7 +836,7 @@ contract works — so it is a derivative work. Fine for most people, but worth
 knowing before writing one rather than after.
 
 Publishing needs nothing central: tag the repo, CI attaches the artifact and
-its `module.json` to a GitHub Release, and a consumer runs `code install
+its `module.json` to a GitHub Release, and a consumer runs `code module install
 <url>`. See the [template's README](templates/module/README.md) for the whole
 flow and for what to keep when you replace the handler — `guarded`, null for
 a class you do not handle, and failures returned as values are the three
@@ -836,7 +845,7 @@ rules that make a module unable to break someone else's program.
 First-party modules today: `terminal` (print to stdout), `math`, `strings`,
 `http_client` (the seven HTTP methods, and `Exception`/`Log` pushed back —
 see [its README](crates/modules/http_client/README.md)).
-`code install <name>` fetches one into `./.code/modules/`, pinned by sha256
+`code module install <name>` fetches one into `./.code/modules/`, pinned by sha256
 in `./.code/lock.json`; `--global` puts it in `~/.code/modules/` instead. A
 `link` reference resolves against a fixed chain — the script's own directory,
 then the nearest project's `.code/modules/`, then `$CODE_MODULE_PATH`, then

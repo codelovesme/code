@@ -158,6 +158,30 @@ fn cli_default_output_name_follows_the_target() {
         dir.display()
     );
 
+    // And "beside the source" means the source's directory, not the working
+    // one — the two are the same above, which is why this second case exists:
+    // it is the only shape that tells the old rule from the new one.
+    let nested = dir.join("src");
+    fs::create_dir_all(&nested).expect("create src/");
+    let nested_src = nested.join("deep.code");
+    fs::copy(fixture("arithmetic_basic.code"), &nested_src).expect("copy fixture");
+    let status = Command::new(env!("CARGO_BIN_EXE_code"))
+        .arg("build")
+        .arg("src/deep.code")
+        .current_dir(&dir)
+        .status()
+        .expect("spawn code build");
+    assert!(status.success(), "code build src/deep.code failed");
+    assert!(
+        nested.join("deep").is_file(),
+        "expected src/deep beside its source in {}",
+        dir.display()
+    );
+    assert!(
+        !dir.join("deep").exists(),
+        "the artifact landed in the working directory rather than beside the source"
+    );
+
     // An unparseable target value is a usage error, reported as such.
     let output = Command::new(env!("CARGO_BIN_EXE_code"))
         .arg("build")

@@ -1,5 +1,5 @@
 # Builds the module and attaches it to a GitHub Release, with the
-# `module.json` manifest `code install` reads.
+# `module.json` manifest `code module install` reads.
 #
 # Tag to publish:  git tag v1.0.0 && git push --tags
 # Dry run:         the "Run workflow" button — builds and uploads artifacts,
@@ -86,7 +86,7 @@ jobs:
           set -euo pipefail
           v="${GITHUB_REF_NAME#v}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          # Keep this list in step with src/lib.rs — it is what `code install`
+          # Keep this list in step with src/lib.rs — it is what `code module install`
           # shows and what an index would list.
           cat > "dist/${MODULE}.json" <<EOF
           {
