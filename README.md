@@ -53,6 +53,7 @@ cargo test --workspace       # runs every tests/*.code fixture in both modes
 ```
 
 ```sh
+code init                                  # scaffold here; `code init demo` in ./demo
 code run program.code                      # interpret
 code build program.code                    # -> ./program (native executable)
 code build program.code --target wasm      # exe | shared | static | wasm
@@ -65,6 +66,14 @@ code ls                                    # what's installed
 code remove terminal
 code --version
 ```
+
+`code init` writes three files and nothing else: a `main.code` that **runs
+as written** (the obvious template prints, printing needs a module, and a new
+project whose first act is a failed `link` is a bad first minute), an empty
+`.code/lock.json` — `.code/` is what marks the project root that `link` and
+`code install` resolve against — and a one-line `.gitignore` splitting the
+committed lockfile from the downloaded binaries. An existing file is a
+refusal, never a merge.
 
 The LLVM backend is a Cargo feature (`llvm`, on by default). Without it you
 get an interpreter-only build — which is what

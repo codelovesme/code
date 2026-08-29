@@ -73,6 +73,7 @@ fn main() -> ExitCode {
             let out = out.unwrap_or_else(|| default_output_path(&path, target));
             build_file(&path, target, &out, release)
         }
+        Some("init") => cmd_init(args.collect()),
         Some("format") => cmd_format(args.collect()),
         #[cfg(feature = "install")]
         Some("install") => cmd_install(args.collect()),
@@ -97,7 +98,120 @@ fn main() -> ExitCode {
     }
 }
 
-const USAGE: &str = "run <file> | build <file> [--target exe|shared|static|wasm] [--release] [-o <output>] | format [--check] <path>... | install <name-or-url> [--global] | remove <name> | ls";
+const USAGE: &str = "init [name] | run <file> | build <file> [--target exe|shared|static|wasm] [--release] [-o <output>] | format [--check] <path>... | install <name-or-url> [--global] | remove <name> | ls";
+
+/// `code init [name]` — a project that runs before anything is installed.
+///
+/// Three files, and the reasoning for each is that a fourth would be
+/// decoration:
+///
+/// - `main.code`, which **runs as written**. The obvious template prints
+///   something, and printing needs the `terminal` module, which is not
+///   installed yet — so the first thing a new project would do is fail. This
+///   one uses only the language and a core handler, and the next-steps text
+///   says how to get printing.
+/// - `.code/lock.json`, empty. Not ceremony: `.code/` is what marks the
+///   project root, and `link` resolves an installed module by walking up to
+///   the nearest one (`loader::find_project_code_dir`). Creating it is what
+///   makes `code install` put modules *here* rather than in some ancestor
+///   that happens to have a `.code/` of its own.
+/// - `.gitignore`, one line. The lockfile is committed and the downloaded
+///   binaries are not, which is the same split every lockfile ecosystem
+///   makes and is easier to state now than to explain later.
+///
+/// Nothing is ever overwritten: an existing file is a refusal, not a merge.
+fn cmd_init(args: Vec<String>) -> ExitCode {
+    if let Some(unknown) = args.iter().find(|a| a.starts_with('-')) {
+        eprintln!("code init takes a directory name, not '{unknown}'");
+        return ExitCode::FAILURE;
+    }
+    // No name means "here", which is what a directory you have already made
+    // and `cd`ed into wants.
+    let root = match args.first() {
+        Some(name) => Path::new(name).to_path_buf(),
+        None => Path::new(".").to_path_buf(),
+    };
+
+    let files = [
+        (root.join("main.code"), MAIN_TEMPLATE),
+        (root.join(".code").join("lock.json"), LOCKFILE_TEMPLATE),
+        (root.join(".gitignore"), GITIGNORE_TEMPLATE),
+    ];
+    // Checked before anything is written, so a refusal leaves the directory
+    // exactly as it was rather than half-initialized.
+    for (path, _) in &files {
+        if path.exists() {
+            eprintln!("'{}' already exists — leaving it alone", path.display());
+            return ExitCode::FAILURE;
+        }
+    }
+    for (path, contents) in &files {
+        if let Some(parent) = path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                eprintln!("cannot create '{}': {e}", parent.display());
+                return ExitCode::FAILURE;
+            }
+        }
+        if let Err(e) = std::fs::write(path, contents) {
+            eprintln!("cannot write '{}': {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+        println!("created {}", path.display());
+    }
+
+    let where_to = match args.first() {
+        Some(name) => format!("cd {name} && "),
+        None => String::new(),
+    };
+    println!();
+    println!("  {where_to}code run main.code");
+    println!();
+    println!("Printing lives in a module rather than the language:");
+    println!("  code install terminal");
+    println!("  then: link \"terminal.so\" as term");
+    println!("        emit Print {{ \"value\": \"hello\" }} to term");
+    ExitCode::SUCCESS
+}
+
+/// Every construct here is one a reader will need on their first day, and
+/// nothing here needs a module — see `cmd_init`.
+const MAIN_TEMPLATE: &str = r#"-- A new Code program. `code run main.code` runs this as written.
+--
+-- There is no print statement: writing to a terminal is a module's job, not
+-- the language's. `code install terminal` gets you one.
+
+let name = "world"
+let scores = [88, 94, 71]
+
+-- `emit` sends a particle to a recipient. `core` is compiled in, so this
+-- works with nothing installed.
+emit Length { "value": scores } to core get n
+assert n.value = 3
+
+-- The only loop form there is. `get` declares a result that survives it.
+loop score over scores get best = 0 {
+    if score > best {
+        best = score
+    }
+}
+assert best = 94
+
+-- Handlers are how a program answers its own particles. There are no
+-- functions.
+Greet { who } => {
+    return Greeting { "text": "hello, $who" }
+}
+
+emit Greet { "who": name } to this get greeting
+assert greeting.text = "hello, world"
+"#;
+
+const LOCKFILE_TEMPLATE: &str = "{\n  \"modules\": {}\n}\n";
+
+const GITIGNORE_TEMPLATE: &str =
+    "# Installed module binaries. The lockfile beside them pins what they are,\n\
+                                  # so a checkout can reproduce them with `code install`.\n\
+                                  .code/modules/\n";
 
 /// `code format <path>...` rewrites in place; `--check` writes nothing and
 /// exits non-zero if anything would change. A path may be a directory, walked
