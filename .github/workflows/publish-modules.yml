@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [terminal, strings, math, http_client, http_server]
+        module: [terminal, strings, math, env, http_client, http_server]
     steps:
       - uses: actions/checkout@v4
       - name: Compile
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [terminal, strings, math, http_client, http_server]
+        module: [terminal, strings, math, env, http_client, http_server]
     env:
       LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
     steps:
@@ -127,6 +127,11 @@ jobs:
               ;;
             math)
               printf 'emit Double { "value": 21 } to mod get r\nassert r.value = 42\n' >> dogfood/demo.code
+              ;;
+            env)
+              # PATH is set on every runner, and reading it needs nothing
+              # arranged — proof the artifact loads and routes.
+              printf 'emit Get { "name": "PATH" } to mod get r\nassert r.found\n' >> dogfood/demo.code
               ;;
             http_server)
               # Binds an OS-chosen port on loopback and never serves anything:
@@ -171,13 +176,14 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in terminal strings math http_client http_server; do
+          for m in terminal strings math env http_client http_server; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
               terminal) handlers='["Print"]' ;;
               strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower"]' ;;
               math) handlers='["Double", "Sum"]' ;;
+            env) handlers='["Get", "Require"]' ;;
               http_client) handlers='["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"]' ;;
               http_server) handlers='["Listen"]' ;;
               # `set -u` would fail on the unbound variable below anyway; this

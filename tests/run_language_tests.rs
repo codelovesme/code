@@ -111,6 +111,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         "strings",
         "math",
         "http_client",
+        "env",
         "terminal",
         "test_math",
         "test_events",

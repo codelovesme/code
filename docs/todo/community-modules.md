@@ -12,7 +12,7 @@ Three tiers, distinguished by *where the bytes live*:
 | tier | what | how users get it |
 |---|---|---|
 | **core** | `Length` (shipped), `Timestamp` | compiled into the `code` binary — nothing to install, works everywhere including the wasm playground |
-| **first-party modules** | `terminal`, `console`, `math`, `strings`, `http_client`, `http_server`, … | native: GitHub Releases + `code module install <name>`; browser: npm |
+| **first-party modules** | `terminal`, `console`, `math`, `strings`, `env`, `http_client`, `http_server`, … | native: GitHub Releases + `code module install <name>`; browser: npm |
 | **community modules** | anyone's | the author publishes to *their own* GitHub Releases (a template repo provides the CI); consumers install by URL first, by name once an index exists |
 
 The rule separating tier 1 from tier 2: **fundamentals are core**. Only
@@ -237,6 +237,24 @@ Batch 2 (flagship — proves the pipeline with a non-trivial module):
     to be leaked to satisfy that. Expressing them wants an ABI addition
     (an owned-keys constructor), which is its own decision and does not
     belong inside the first module that happens to want it.
+
+- **env** — shipped 2026-08-29, and the answer to a question `http_server`
+  asked by existing: where does the port come from? `Get { name, default? }`
+  and `Require { name }`, with the **default's kind deciding how the variable
+  is read** — a Number default parses a number, so `Listen { "port":
+  p.value }` is one emit rather than a string the language cannot convert.
+  A variable set but unreadable as that kind is an `Exception` rather than a
+  silent fallback. Full contract in
+  [`crates/modules/env/README.md`](../../crates/modules/env/README.md).
+
+  This is deliberately *not* euglena's answer. There, configuration lives in
+  the app's `manifest.json` under `organelles.<alias>.sap` and the host
+  delivers it — which makes it a security boundary, since the host can
+  override an untrusted app's. A module reading the environment is not that:
+  it is the program asking, so a program could ask for anything. The stronger
+  version needs an app manifest, which is a concept this language does not
+  have and should not grow for one field. Revisit if untrusted programs ever
+  run here.
 
 - **http_server** — shipped 2026-08-29, and the reason the inbound *answer*
   path exists at all. `Listen { port? }` binds and spawns an accept thread;

@@ -26,7 +26,8 @@ fn repo(path: &str) -> PathBuf {
 /// The first `version = "..."` in a Cargo.toml — the package's own, since it
 /// precedes every dependency's.
 fn cargo_version(path: &Path) -> String {
-    let text = fs::read_to_string(path).unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
+    let text =
+        fs::read_to_string(path).unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
     text.lines()
         .find_map(|line| {
             let rest = line.trim().strip_prefix("version")?.trim_start();
@@ -37,9 +38,10 @@ fn cargo_version(path: &Path) -> String {
 }
 
 fn json_version(path: &Path) -> String {
-    let text = fs::read_to_string(path).unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
-    let value: serde_json::Value = serde_json::from_str(&text)
-        .unwrap_or_else(|e| panic!("parsing {}: {e}", path.display()));
+    let text =
+        fs::read_to_string(path).unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
+    let value: serde_json::Value =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("parsing {}: {e}", path.display()));
     value["version"]
         .as_str()
         .unwrap_or_else(|| panic!("no version in {}", path.display()))

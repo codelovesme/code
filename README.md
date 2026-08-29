@@ -861,6 +861,8 @@ a class you do not handle, and failures returned as values are the three
 rules that make a module unable to break someone else's program.
 
 First-party modules today: `terminal` (print to stdout), `math`, `strings`,
+`env` (the environment, so a port or a secret comes from the deployment
+rather than the source — see [its README](crates/modules/env/README.md)),
 `http_client` (the seven HTTP methods, and `Exception`/`Log` pushed back —
 see [its README](crates/modules/http_client/README.md)), and `http_server`
 (requests pushed in, answered by what a `Request` handler returns — see
