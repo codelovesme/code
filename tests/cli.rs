@@ -149,3 +149,18 @@ fn help_is_an_answer_rather_than_an_error() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn version_answers_to_all_three_spellings() {
+    let dir = temp_dir("version");
+    for args in [&["--version"][..], &["-v"][..], &["version"][..]] {
+        let out = code(&dir, args);
+        assert!(out.status.success(), "`code {args:?}` failed");
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            text.starts_with("Code v"),
+            "expected a version line for {args:?}, got: {text}"
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

@@ -91,7 +91,7 @@ fn main() -> ExitCode {
         "format" => cmd_format(args.collect()),
         // Global flags rather than subcommands, so they take no feature gate
         // and work even in the wasm-only interpreter build.
-        "--version" | "-v" => {
+        "--version" | "-v" | "version" => {
             println!("{VERSION}");
             ExitCode::SUCCESS
         }
@@ -146,7 +146,7 @@ commands:
   format [--check] <path>...     the canonical layout, rewritten in place
 
   -h, --help [command]           this, or one command's own help
-  -v, --version
+  -v, --version                  which build this is
 
 `run`/`build` take a file, `app run`/`app build` take a directory. That is
 the whole difference: a file answers beside itself, a project owns build/.";
