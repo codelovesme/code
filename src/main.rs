@@ -38,7 +38,7 @@ fn main() -> ExitCode {
         Some("build") => {
             let Some(path) = args.next() else {
                 eprintln!(
-                    "usage: code build <file> [--target exe|shared|static|wasm] [--release] [-o|--output <path>]"
+                    "usage: code build <file> [-t|--target exe|shared|static|wasm] [-r|--release] [-o|--output <path>]"
                 );
                 return ExitCode::FAILURE;
             };
@@ -50,8 +50,8 @@ fn main() -> ExitCode {
                     // `--output` too: the long form is what a reader
                     // expects beside `--target` and `--release`.
                     "-o" | "--output" => out = args.next().map(PathBuf::from),
-                    "--release" => release = true,
-                    "--target" => {
+                    "-r" | "--release" => release = true,
+                    "-t" | "--target" => {
                         let Some(value) = args.next() else {
                             eprintln!("--target takes a value (exe|shared|static|wasm)");
                             return ExitCode::FAILURE;
@@ -97,7 +97,7 @@ fn main() -> ExitCode {
     }
 }
 
-const USAGE: &str = "init [name] | run <file> | build <file> [--target exe|shared|static|wasm] [--release] [-o|--output <path>] | app run|build [dir] | module install <name-or-url> [--global] | module remove <name> | module ls | format [--check] <path>...";
+const USAGE: &str = "init [name] | run <file> | build <file> [-t|--target exe|shared|static|wasm] [-r|--release] [-o|--output <path>] | app run|build [dir] | module install <name-or-url> [--global] | module remove <name> | module ls | format [--check] <path>...";
 
 /// `code app run|build [dir]` — a *directory* where `run`/`build` take a
 /// file.
@@ -172,8 +172,8 @@ fn cmd_app_build(dir: &Path, entry: &str, args: Vec<String>) -> ExitCode {
     while let Some(arg) = rest.next() {
         match arg.as_str() {
             "-o" | "--output" => out = rest.next().map(PathBuf::from),
-            "--release" => release = true,
-            "--target" => {
+            "-r" | "--release" => release = true,
+            "-t" | "--target" => {
                 let Some(value) = rest.next() else {
                     eprintln!("--target takes a value (exe|shared|static|wasm)");
                     return ExitCode::FAILURE;

@@ -182,6 +182,18 @@ fn cli_default_output_name_follows_the_target() {
         "the artifact landed in the working directory rather than beside the source"
     );
 
+    // Every flag has a short form: `-t`, `-r`, `-o`. Checked together, since
+    // one argument loop parses them and a rewrite would drop them together.
+    let status = Command::new(env!("CARGO_BIN_EXE_code"))
+        .arg("build")
+        .arg("src/deep.code")
+        .args(["-t", "static", "-r", "-o", "short.a"])
+        .current_dir(&dir)
+        .status()
+        .expect("spawn code build");
+    assert!(status.success(), "short flags were not accepted");
+    assert!(dir.join("short.a").is_file());
+
     // An unparseable target value is a usage error, reported as such.
     let output = Command::new(env!("CARGO_BIN_EXE_code"))
         .arg("build")
