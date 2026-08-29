@@ -295,15 +295,22 @@ pub fn release_asset_base(release_url: &str) -> Result<String, String> {
     ))
 }
 
-/// The manifest URL for a source URL: a GitHub Releases *tag* page serves
-/// HTML, so the manifest lives at `{page}/{name}.json` beside the assets;
-/// any other URL is taken to be the manifest itself (community installs pass
-/// the manifest URL directly).
+/// The manifest URL for a source URL: an indexed module's source is its
+/// release *tag page*, which serves HTML — the manifest is an asset, so the
+/// URL has to cross over to `/releases/download/` first (`release_asset_base`)
+/// before `{name}.json` is appended. Any other URL is taken to be the
+/// manifest itself, which is how a community module installs.
+///
+/// Appending to the tag page directly is what this did until 2026-08-29, and
+/// it is why `code install <name>` never once worked: GitHub answers
+/// `…/releases/tag/TAG/terminal.json` with **200 and an HTML page** rather
+/// than a 404, so the failure surfaced as `malformed module manifest:
+/// expected value at line 8 column 1` — the eighth line of GitHub's markup.
 pub fn manifest_url_for(source: &str, name: &str) -> String {
-    if source.contains("/releases/tag/") {
-        format!("{source}/{name}.json")
-    } else {
-        source.to_string()
+    match release_asset_base(source) {
+        Ok(base) => format!("{base}/{name}.json"),
+        // Not a tag page, so it is the manifest.
+        Err(_) => source.to_string(),
     }
 }
 
@@ -572,10 +579,13 @@ mod tests {
 
     #[test]
     fn manifest_url_for_distinguishes_pages_from_direct_urls() {
-        let tag_page = "https://github.com/o/r/releases/tag/v1.0.0";
+        // The manifest is an asset, so a tag page has to cross over to
+        // `/releases/download/` — appending to the page itself gets HTML back
+        // with a 200, which is exactly how this was broken until 2026-08-29.
+        let tag_page = "https://github.com/o/r/releases/tag/modules/terminal/v1.0.0";
         assert_eq!(
             manifest_url_for(tag_page, "terminal"),
-            "https://github.com/o/r/releases/tag/v1.0.0/terminal.json"
+            "https://github.com/o/r/releases/download/modules/terminal/v1.0.0/terminal.json"
         );
         // A download URL pointing straight at the manifest is itself the
         // manifest — appending `{name}.json` to it would 404.
