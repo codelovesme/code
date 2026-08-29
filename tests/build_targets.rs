@@ -137,9 +137,9 @@ fn wasm_target_produces_a_runnable_module() {
 #[test]
 fn cli_default_output_name_follows_the_target() {
     let dir = temp_dir("cli");
-    // Copy the fixture in rather than pointing at tests/: the default
-    // output name derives from the input's file stem, and building beside
-    // the source tree would leave an artifact among the fixtures.
+    // Copy the fixture in rather than pointing at tests/: the default output
+    // path derives from the input, and building would leave a `build/`
+    // directory among the fixtures.
     let src = dir.join("arith.code");
     fs::copy(fixture("arithmetic_basic.code"), &src).expect("copy fixture");
 
@@ -153,14 +153,14 @@ fn cli_default_output_name_follows_the_target() {
         .expect("spawn code build");
     assert!(status.success(), "code build --target shared failed");
     assert!(
-        dir.join("libarith.so").is_file(),
-        "expected libarith.so alongside the source in {}",
+        dir.join("build/libarith.so").is_file(),
+        "expected build/libarith.so beside the source in {}",
         dir.display()
     );
 
-    // And "beside the source" means the source's directory, not the working
-    // one — the two are the same above, which is why this second case exists:
-    // it is the only shape that tells the old rule from the new one.
+    // And the `build/` is beside the *source*, not in the working directory —
+    // the two are the same above, which is why this second case exists: it is
+    // the only shape that tells them apart.
     let nested = dir.join("src");
     fs::create_dir_all(&nested).expect("create src/");
     let nested_src = nested.join("deep.code");
@@ -173,13 +173,13 @@ fn cli_default_output_name_follows_the_target() {
         .expect("spawn code build");
     assert!(status.success(), "code build src/deep.code failed");
     assert!(
-        nested.join("deep").is_file(),
-        "expected src/deep beside its source in {}",
+        nested.join("build/deep").is_file(),
+        "expected src/build/deep beside its source in {}",
         dir.display()
     );
     assert!(
-        !dir.join("deep").exists(),
-        "the artifact landed in the working directory rather than beside the source"
+        !dir.join("build/deep").exists(),
+        "the artifact landed in the working directory's build/ rather than beside the source"
     );
 
     // Every flag has a short form: `-t`, `-r`, `-o`. Checked together, since

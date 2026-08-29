@@ -100,15 +100,7 @@ fn main() -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             };
-            // Where the artifact goes is the one thing that turns on which
-            // kind of path was given: a file answers beside itself, a project
-            // owns `build/`. Both are what someone naming that path meant.
-            let out = out.unwrap_or_else(|| match project_dir(&path) {
-                Some(dir) => dir
-                    .join(BUILD_DIR)
-                    .join(project_artifact_name(&dir, target)),
-                None => default_output_path(&entry, target),
-            });
+            let out = out.unwrap_or_else(|| default_output_path(&path, target));
             if let Some(parent) = out.parent() {
                 if !parent.as_os_str().is_empty() {
                     if let Err(e) = std::fs::create_dir_all(parent) {
@@ -177,7 +169,7 @@ usage:
 commands:
   init [name]                    scaffold a project here, or in <name>
   run [path]                     interpret a file, or a project's main.code
-  build [path] [options]         compile one; artifact beside it, or in build/
+  build [path] [options]         compile one, into a build/ beside it
   install <name-or-url>          fetch a module into ./.code/modules
   remove <name>                  delete it, and its lock entry
   ls                             what is installed, and what is available
@@ -187,16 +179,19 @@ commands:
   -v, --version                  which build this is
 
 `run` and `build` take either a file or a directory, and default to `.`. A
-directory means its main.code, and is the only thing that changes where
-`build` writes: beside a file, or into the project's build/.";
+directory means its main.code. Artifacts always go in a build/ beside what
+you named.";
 
 const BUILD_HELP: &str = "\
 usage: code build [path] [options]
 
 Compiles a file, or a project's main.code. Defaults to `.`. Without -o the
-artifact lands beside the source when a file was named — `code build
-src/x.code` writes `src/x` — and in the project's build/ when a directory
-was, named for the project rather than for main.
+artifact goes in a build/ directory beside what you named, called after it:
+
+  code build              -> build/<this directory>
+  code build demo         -> demo/build/demo
+  code build x.code       -> build/x
+  code build src/x.code   -> src/build/x
 
 options:
   -t, --target exe|shared|static|wasm   default exe
@@ -269,21 +264,18 @@ const PROJECT_ENTRY: &str = "main.code";
 #[cfg(feature = "llvm")]
 const BUILD_DIR: &str = "build";
 
-/// `build/<project>` rather than `build/main`: the artifact is named after
-/// the thing being built, and every project's entry file has the same name.
+/// What a directory is called, for naming its artifact. `.` and `..` have no
+/// name of their own, so ask the filesystem which directory they actually
+/// are.
 #[cfg(feature = "llvm")]
-fn project_artifact_name(dir: &Path, target: BuildTarget) -> String {
-    // `.` and `..` have no name of their own, so ask the filesystem which
-    // directory they actually are.
-    let name = dir
-        .canonicalize()
+fn directory_name(dir: &Path) -> String {
+    dir.canonicalize()
         .ok()
         .as_deref()
         .and_then(Path::file_name)
         .map(|n| n.to_string_lossy().into_owned())
         .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| "app".to_string());
-    artifact_name(&name, target)
+        .unwrap_or_else(|| "app".to_string())
 }
 
 /// `code init [name]` — a project that runs before anything is installed.
@@ -502,21 +494,44 @@ fn collect_code_files(path: &Path, out: &mut Vec<PathBuf>) {
 }
 
 #[cfg(feature = "llvm")]
+/// Where an artifact goes when `-o` is not given: **always a `build/`
+/// directory beside what was named**, holding a file named after it.
+///
+/// ```text
+/// code build                -> build/<this directory>
+/// code build demo           -> demo/build/demo
+/// code build x.code         -> build/x
+/// code build src/x.code     -> src/build/x
+/// ```
+///
+/// One rule for both kinds of path, which is what makes it predictable: the
+/// artifact is never dropped loose next to the source, and `build/` is always
+/// where you just looked. Deleting a build is deleting one directory, and
+/// `code init`'s `.gitignore` already ignores every one of them (a bare
+/// `build/` pattern matches at any depth).
 fn default_output_path(input: &str, target: BuildTarget) -> PathBuf {
-    let input = Path::new(input);
-    let stem = input
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "a.out".to_string());
-    // Beside the source, not in the working directory: `code build x.code`
-    // answers with `x`, and `code build src/x.code` with `src/x`. Naming a
-    // *file* leaves one artifact next to it and nothing else; naming a
-    // directory is what asks for `build/`.
-    match input.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent.join(artifact_name(&stem, target)),
-        _ => PathBuf::from(artifact_name(&stem, target)),
-    }
+    let path = Path::new(input);
+    let (dir, stem) = match project_dir(input) {
+        // A directory: its own `build/`, named for the directory.
+        Some(dir) => {
+            let name = directory_name(&dir);
+            (dir, name)
+        }
+        // A file: the `build/` beside it, named for the file.
+        None => {
+            let stem = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "a.out".to_string());
+            let dir = match path.parent() {
+                Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+                _ => PathBuf::from("."),
+            };
+            (dir, stem)
+        }
+    };
+    dir.join(BUILD_DIR).join(artifact_name(&stem, target))
 }
 
 /// The filename an artifact takes when `-o` is not given. The extension

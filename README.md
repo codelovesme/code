@@ -56,8 +56,8 @@ cargo test --workspace       # runs every tests/*.code fixture in both modes
 code init                                  # scaffold here; `code init demo` in ./demo
 code run program.code                      # interpret a file
 code run                                   # ...or a project: ./main.code
-code build program.code                    # -> ./program, beside the source
-code build                                 # -> ./build/<project>
+code build program.code                    # -> ./build/program
+code build                                 # -> ./build/<this directory>
 code build program.code --target wasm      # -t; exe | shared | static | wasm
 code build program.code -o out/thing        # --output is the same flag
 code build program.code --release          # -r; -O2, the default is unoptimized
@@ -71,9 +71,11 @@ code --version
 ```
 
 `run` and `build` take either a **file** or a **directory**, and default to
-`.`. A directory means its `main.code`, and that is the only thing that
-changes where `build` writes: beside the source for a file, into the
-project's `build/` for a directory.
+`.`. A directory means its `main.code`. Artifacts always go in a `build/`
+directory beside what you named, called after it — `code build src/x.code`
+writes `src/build/x`, `code build demo` writes `demo/build/demo` — so a build
+is never loose next to the source and deleting one is deleting one
+directory.
 
 `code init` writes three files and nothing else: a `main.code` that **runs
 as written** (the obvious template prints, printing needs a module, and a new
