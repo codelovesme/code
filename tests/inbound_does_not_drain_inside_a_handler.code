@@ -17,14 +17,14 @@ Tick { value } => {
     -- Only the first tick asks for more, or this would never end.
     if ticks = 1 {
         loop y over [1] {
-            emit Start { "value": 2 } to ev get s
+            emit Start { value = 2 } to ev get s
             asked += 1
         }
     }
     return Ack {}
 }
 
-emit Start { "value": 1 } to ev get started
+emit Start { value = 1 } to ev get started
 assert started.value = 1
 
 -- One tick from the top-level `Start`, then the two its handler asked for —

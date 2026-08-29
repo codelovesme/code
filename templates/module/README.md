@@ -53,7 +53,7 @@ program, which is free proof and worth keeping in the loop.
   Nothing you return can end their program.
 - **Do not validate the particle's shape before running.** A field that is
   not there reads as null, exactly as `.field` does in the language, so
-  `Greet {}` is the same particle as `Greet { "name": null }`. Ask one
+  `Greet {}` is the same particle as `Greet { name = null }`. Ask one
   question about the value, not two about whether it was supplied.
 
 Rust is the recommended language for a module precisely because of the first

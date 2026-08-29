@@ -7,7 +7,7 @@
 -- docs/todo/errors-as-particles.md.
 
 -- `to core`: core knows Length and Timestamp, nothing else.
-emit Foo { "value": 1 } to core get a
+emit Foo { value = 1 } to core get a
 assert a = null
 
 -- The bare-particle spelling reaches the same place.
@@ -18,7 +18,7 @@ assert b = null
 Known {} => {
     return Ack {}
 }
-emit Unknown { "x": 1 } to this get c
+emit Unknown { x = 1 } to this get c
 assert c = null
 
 -- The handler that does exist still works — a miss is a miss, not a
@@ -27,5 +27,5 @@ emit Known to this get d
 assert d is Ack
 
 -- With no `get` at all, a miss is simply nothing happening.
-emit Unknown { "x": 1 } to this
+emit Unknown { x = 1 } to this
 assert 1 + 1 = 2

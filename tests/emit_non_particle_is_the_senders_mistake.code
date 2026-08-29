@@ -41,7 +41,7 @@ assert a.message = "emit requires a particle — an object with a '_class' field
 -- Not just numbers: a plain object is not a particle either, since there is
 -- no `_class` to dispatch on.
 Plain {} => {
-    emit { "value": 1 } to math get r
+    emit { value = 1 } to math get r
     return Reached {}
 }
 emit Plain {} to this get d

@@ -16,5 +16,5 @@ assert "trailing $a" = "trailing one"
 -- `.` and `[` do not chain inside a string: the name stops at `$user`,
 -- and the rest is literal text. Interpolation takes a bare variable, not
 -- an expression.
-let box = { "lid": "shut" }
+let box = { lid = "shut" }
 assert "$box.lid" = "{\"lid\":\"shut\"}.lid"

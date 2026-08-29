@@ -2,5 +2,5 @@
 -- correctly (CODE_VALUE_SLOT_SIZE-strided, not sizeof(CodeValue)-strided —
 -- see code_abi.h) for a reduction like this to see the right numbers.
 link "native_modules/test_math.so" as m
-emit Sum { "value": [1, 2, 3, 4, 5] } to m get n
-assert n = { "_class": "SumResult", "value": 15 }
+emit Sum { value = [1, 2, 3, 4, 5] } to m get n
+assert n = { _class = "SumResult", value = 15 }

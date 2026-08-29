@@ -5,7 +5,7 @@
 -- fixture passes on a machine with the cable pulled out.
 link "native_modules/http_client.so" as http
 
-emit Get { "url": "http://127.0.0.1:1/" } to http get r
+emit Get { url = "http://127.0.0.1:1/" } to http get r
 assert not r.ok
 assert r.status = 0
 

@@ -154,23 +154,23 @@ Exception {{ source, message }} => {{
     exceptions = exceptions + 1
 }}
 
-emit Get {{ "url": "http://127.0.0.1:{port}/hello" }} to http get r
+emit Get {{ url = "http://127.0.0.1:{port}/hello" }} to http get r
 assert r.ok
 assert r.status = 200
 assert r.body = "{HELLO}"
 
-emit Post {{ "url": "http://127.0.0.1:{port}/echo", "body": "ping", "content_type": "text/plain" }} to http get p
+emit Post {{ url = "http://127.0.0.1:{port}/echo", body = "ping", content_type = "text/plain" }} to http get p
 assert p.ok
 assert p.status = 201
 assert p.body = "echo:ping ct=text/plain"
 
 -- Headers reach the server as headers.
-emit Get {{ "url": "http://127.0.0.1:{port}/probe", "headers": {{ "X-Probe": "seen" }} }} to http get h
+emit Get {{ url = "http://127.0.0.1:{port}/probe", headers = {{ "X-Probe" = "seen" }} }} to http get h
 assert h.ok
 assert h.body = "seen"
 
 -- A 500 arrived, so `ok` is true; `status` is what went wrong.
-emit Get {{ "url": "http://127.0.0.1:{port}/boom" }} to http get b
+emit Get {{ url = "http://127.0.0.1:{port}/boom" }} to http get b
 assert b.ok
 assert b.status = 500
 assert b.body = "boom"
@@ -178,25 +178,25 @@ assert b.body = "boom"
 -- One particle per HTTP method, and the server echoes the verb it actually
 -- received — so this proves the routing, not just that a request happened.
 -- The three body-carrying methods send one; the four others do not.
-emit Put {{ "url": "http://127.0.0.1:{port}/method", "body": "p" }} to http get put
+emit Put {{ url = "http://127.0.0.1:{port}/method", body = "p" }} to http get put
 assert put.ok
 assert put.body = "PUT:p"
 
-emit Patch {{ "url": "http://127.0.0.1:{port}/method", "body": "q" }} to http get patch
+emit Patch {{ url = "http://127.0.0.1:{port}/method", body = "q" }} to http get patch
 assert patch.ok
 assert patch.body = "PATCH:q"
 
-emit Delete {{ "url": "http://127.0.0.1:{port}/method" }} to http get del
+emit Delete {{ url = "http://127.0.0.1:{port}/method" }} to http get del
 assert del.ok
 assert del.body = "DELETE:"
 
-emit Options {{ "url": "http://127.0.0.1:{port}/method" }} to http get opts
+emit Options {{ url = "http://127.0.0.1:{port}/method" }} to http get opts
 assert opts.ok
 assert opts.body = "OPTIONS:"
 
 -- HEAD gets the status and the headers, never a body. Empty is the right
 -- answer, not a lost one.
-emit Head {{ "url": "http://127.0.0.1:{port}/hello" }} to http get head
+emit Head {{ url = "http://127.0.0.1:{port}/hello" }} to http get head
 assert head.ok
 assert head.status = 200
 assert head.body = ""
@@ -204,11 +204,11 @@ assert head.body = ""
 -- The cap is exact: {} bytes is fine, one fewer is not, and going over
 -- fails the request rather than handing back a truncated body that looks
 -- whole.
-emit Get {{ "url": "http://127.0.0.1:{port}/hello", "max_body_bytes": {} }} to http get exact
+emit Get {{ url = "http://127.0.0.1:{port}/hello", max_body_bytes = {} }} to http get exact
 assert exact.ok
 assert exact.body = "{HELLO}"
 
-emit Get {{ "url": "http://127.0.0.1:{port}/hello", "max_body_bytes": {} }} to http get too_big
+emit Get {{ url = "http://127.0.0.1:{port}/hello", max_body_bytes = {} }} to http get too_big
 assert not too_big.ok
 assert too_big.status = 0
 assert too_big.body = "response body exceeds max_body_bytes ({})"

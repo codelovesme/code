@@ -8,10 +8,10 @@
 -- listing them mirrors the literal that constructs the particle.
 Greet { who } => {
     assert who = "ada"
-    return Greeting { "text": "hi $who" }
+    return Greeting { text = "hi $who" }
 }
 
-emit Greet { "who": "ada" } to this get r
+emit Greet { who = "ada" } to this get r
 assert r is Greeting
 assert r.text = "hi ada"
-assert r = { "_class": "Greeting", "text": "hi ada" }
+assert r = { _class = "Greeting", text = "hi ada" }

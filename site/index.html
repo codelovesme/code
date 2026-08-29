@@ -491,7 +491,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 10l-5 3.4L16.2 20 12 16.4 7.8 20 9 13.4 4 10l6.1-1.2z"/></svg>
         </div>
         <h3>Particles</h3>
-        <p><code>Point { "x": 1 }</code> is an object with a <code>_class</code> tag — dispatched by <code>emit</code>, no schema required.</p>
+        <p><code>Point { x = 1 }</code> is an object with a <code>_class</code> tag — dispatched by <code>emit</code>, no schema required.</p>
       </div>
       <div class="feat reveal">
         <div class="ico" style="background:rgba(94,234,212,0.1); color:var(--teal)">
@@ -620,7 +620,7 @@ console.log(run(<span class="st">"let a = 5\nassert a = 5\n"</span>));
   },
 };
 run_with_modules(
-  <span class="st">'link "math" as m\nemit Double { "value": 21 } to m get r\n'</span> +
+  <span class="st">'link "math" as m\nemit Double { value = 21 } to m get r\n'</span> +
   <span class="st">"assert r.value = 42\n"</span>,
   modules,
 );</pre>
@@ -956,7 +956,7 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
     },
     {
       file: "point.code",
-      code: 'let p = Point { "x": 1, "y": 2 }\nassert p._class = "Point"\nassert p.x = 1',
+      code: 'let p = Point { x = 1, y = 2 }\nassert p._class = "Point"\nassert p.x = 1',
       out: 'p = {"_class":"Point","x":1,"y":2}',
     },
   ];

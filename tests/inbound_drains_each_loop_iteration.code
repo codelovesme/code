@@ -16,7 +16,7 @@ Tick { value } => {
 }
 
 loop x over [1, 2] {
-    emit Start { "value": 1 } to ev get s
+    emit Start { value = 1 } to ev get s
     order += x
 }
 

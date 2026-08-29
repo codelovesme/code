@@ -46,8 +46,8 @@ exactly like `code-wasm` already is.
 
 ### Core addition (phase A)
 
-- `Timestamp` — `emit { "_class": "Timestamp" } to core` →
-  `{ "_class": "TimestampResult", "value": <unix seconds> }`. Revived from
+- `Timestamp` — `emit { _class = "Timestamp" } to core` →
+  `{ _class = "TimestampResult", value = <unix seconds> }`. Revived from
   the old language, which had exactly this.
 
 Lands in `src/interpreter.rs::dispatch_core` **and**
@@ -241,7 +241,7 @@ Batch 2 (flagship — proves the pipeline with a non-trivial module):
 - **env** — shipped 2026-08-29, and the answer to a question `http_server`
   asked by existing: where does the port come from? `Get { name, default? }`
   and `Require { name }`, with the **default's kind deciding how the variable
-  is read** — a Number default parses a number, so `Listen { "port":
+  is read** — a Number default parses a number, so `Listen { port =
   p.value }` is one emit rather than a string the language cannot convert.
   A variable set but unreadable as that kind is an `Exception` rather than a
   silent fallback. Full contract in

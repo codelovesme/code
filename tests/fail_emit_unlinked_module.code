@@ -1,3 +1,3 @@
 -- `emit ... to <alias>` where <alias> was never `link`ed — a compile-time
 -- error (`verify_defined`), same rule as an undefined variable.
-emit Length { "value": [] } to nosuchmodule
+emit Length { value = [] } to nosuchmodule

@@ -7,21 +7,21 @@
 -- fail_math_sum_non_numbers (2026-08-28, docs/todo/errors-as-particles.md).
 link "native_modules/math.so" as m
 
-emit Double { "value": "21" } to m get a
+emit Double { value = "21" } to m get a
 assert a is Exception
 assert a.source = "math"
 assert a.message = "Double requires a numeric 'value'"
 assert a.innerException = null
 
-emit Sum { "value": 5 } to m get b
+emit Sum { value = 5 } to m get b
 assert b is Exception
 assert b.message = "Sum requires an array 'value'"
 
-emit Sum { "value": [1, "two", 3] } to m get c
+emit Sum { value = [1, "two", 3] } to m get c
 assert c is Exception
 assert c.message = "Sum requires an array of numbers"
 
 -- The module is not broken afterwards, and never was: refusing is an
 -- ordinary answer.
-emit Double { "value": 21 } to m get ok
+emit Double { value = 21 } to m get ok
 assert ok.value = 42

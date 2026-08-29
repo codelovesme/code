@@ -1,2 +1,2 @@
-let point = { "x": 1 }
+let point = { x = 1 }
 let bad = point.

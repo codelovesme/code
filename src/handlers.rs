@@ -96,8 +96,8 @@ fn literal_class(particle: &Expr) -> Option<String> {
         Expr::Object(fields) => {
             fields
                 .iter()
-                .find_map(|(key, value)| match (key.as_str(), value) {
-                    ("_class", Expr::Str(name)) => Some(name.clone()),
+                .find_map(|(key, value)| match (key.as_literal(), value) {
+                    (Some("_class"), Expr::Str(name)) => Some(name.clone()),
                     _ => None,
                 })
         }

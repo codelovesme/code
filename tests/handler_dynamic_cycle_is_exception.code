@@ -9,12 +9,12 @@
 -- already running is untouched — it carries on and decides for itself.
 -- Was `fail_handler_dynamic_cycle.code`.
 Loopy { n } => {
-    let again = Loopy { "n": n - 1 }
+    let again = Loopy { n = n - 1 }
     emit again to this get r
-    return Ack { "inner": r }
+    return Ack { inner = r }
 }
 
-emit Loopy { "n": 2 } to this get top
+emit Loopy { n = 2 } to this get top
 
 -- The outer invocation ran to completion: it got the Exception as an ordinary
 -- value and chose to carry it.

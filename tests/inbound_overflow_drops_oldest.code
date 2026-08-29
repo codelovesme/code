@@ -13,10 +13,10 @@ Tick { value } => {
     return Ack {}
 }
 
-emit Start { "value": 300 } to ev get started
+emit Start { value = 300 } to ev get started
 assert started.value = 300
 
-emit Length { "value": seen } to core get n
+emit Length { value = seen } to core get n
 assert n.value = 256
 assert seen[0] = 44
 assert seen[255] = 299

@@ -386,7 +386,7 @@ pub enum Expr {
     /// Insertion-ordered `key: value` pairs — keys are always string
     /// literals, values are any expression (which may itself reference a
     /// variable, unlike strict JSON).
-    Object(Vec<(String, Expr)>),
+    Object(Vec<(FieldKey, Expr)>),
     /// `expr.field` — reading a field, not writing one; there is no
     /// `expr.field = ...` assignment form (yet — see memory
     /// `new-code-memory-management` on why mutation is a separate, deferred
@@ -459,9 +459,9 @@ pub enum Expr {
 ///     compares fields pairwise in order. There is no one-object-operand
 ///     case to match the array one: an array can absorb a bare value as an
 ///     element, but an object has no key to file it under, so
-///     `{"a": 1} + 3` stays an error. With one array operand and one
+///     `{a = 1} + 3` stays an error. With one array operand and one
 ///     object, the array case above still wins and the object is a single
-///     element (`[1] + {"k": 2}` is `[1, {"k": 2}]`).
+///     element (`[1] + {k = 2}` is `[1, {k = 2}]`).
 ///   - Everything else, including mixed non-array kinds like `Number+Str`,
 ///     is a runtime type error.
 ///
@@ -524,4 +524,30 @@ impl BinOp {
 pub enum UnOp {
     Neg,
     Not,
+}
+
+/// An object literal's field name: `{ a = 1 }`, `{ "a" = 1 }`, or
+/// `{ "$name" = 1 }`.
+///
+/// Two shapes rather than one `Expr`, because the difference is what codegen
+/// needs to know: a name written down is a constant the compiled program can
+/// point at, and a name built from a string interpolation has to be produced
+/// while the program runs. The interpreter treats them the same.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldKey {
+    /// Written down: a bare identifier, or a string with nothing to splice.
+    Literal(String),
+    /// An interpolated string — evaluated, and required to be a Str.
+    Computed(Expr),
+}
+
+impl FieldKey {
+    /// The name when it is known without running anything. `None` for a
+    /// computed key.
+    pub fn as_literal(&self) -> Option<&str> {
+        match self {
+            FieldKey::Literal(name) => Some(name),
+            FieldKey::Computed(_) => None,
+        }
+    }
 }

@@ -24,7 +24,7 @@ Done and removed (git log has the detail):
 
 - *object spread* — **decided against, 2026-08-26**, the same day `obj + obj`
   started merging. Spread existed to spell "copy this object, change a few
-  fields"; `source + {"k": v}` now spells it, and `base + Reply {}` re-tags a
+  fields"; `source + {k = v}` now spells it, and `base + Reply {}` re-tags a
   particle since `_class` is an ordinary field. What was left was a second
   syntax for something the operator already does, so it goes. Nested spread
   (`{ ...a, ...b }`) has no `+` equivalent, but that was already out of scope

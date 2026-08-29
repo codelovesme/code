@@ -1,0 +1,40 @@
+-- A field name is a *name*, and there are three ways to write one.
+--
+-- Bare, when it looks like an identifier — which is nearly always, and is
+-- what the language reads as by 2026-08-29.
+let person = { name = "ada", score = 94 }
+assert person.name = "ada"
+assert person.score = 94
+
+-- Quoted, when it does not. A header name is the reason this exists.
+let headers = { "Content-Type" = "text/plain", "X-Count" = 3 }
+assert headers["Content-Type"] = "text/plain"
+assert headers["X-Count"] = 3
+
+-- Built while the program runs: a quoted key that interpolates. This is what
+-- makes an object with a name nobody wrote down possible — a response header,
+-- a field named after a loop variable.
+let field = "Content-Type"
+let built = { "$field" = "application/json" }
+assert built["Content-Type"] = "application/json"
+
+-- The interpolation is an ordinary one, so it may be part of a longer name.
+let n = 2
+let numbered = { "field$n" = "second" }
+assert numbered["field2"] = "second"
+
+-- Keys collected in a loop, which is the shape that wanted this.
+let names = ["a", "b"]
+let collected = {}
+loop k over names {
+    collected = collected + { "$k" = k + "!" }
+}
+assert collected = { a = "a!", b = "b!" }
+
+-- Particle sugar takes the same fields, and `_class` is an ordinary name.
+let tagged = Reply { status = 200 }
+assert tagged = { _class = "Reply", status = 200 }
+
+-- Rendering is still JSON: what a value prints as and what its source looks
+-- like are two different languages now, and only the source changed.
+assert "$person" = "{\"name\":\"ada\",\"score\":94}"

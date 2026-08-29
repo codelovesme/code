@@ -32,9 +32,9 @@ try/catch.
 **Nothing new to write.** `is` already does the check the model needs:
 
 ```code
-emit Greet { "who": "ada" } to this get r
+emit Greet { who = "ada" } to this get r
 if r is Exception {
-    emit Print { "value": r.message } to term
+    emit Print { value = r.message } to term
 }
 ```
 
@@ -251,7 +251,7 @@ that changes error semantics needs its own both-mode fixture.
    carry reads as null — as `.field` does everywhere else — and the handler
    runs on that basis. `net` was rewritten around this in phase 2; `core`'s
    `Length` and `math`/`strings`/`terminal` had kept their gates, producing
-   two different complaints for `Length { }` and `Length { "value": null }`
+   two different complaints for `Length { }` and `Length { value = null }`
    when the owner's rule says they are the same particle. The gates are gone,
    `require_value` with them, and `Print { }` now prints "null" rather than
    refusing — there is no value it cannot render, so it had nothing to

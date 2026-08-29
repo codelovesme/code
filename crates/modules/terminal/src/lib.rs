@@ -3,7 +3,7 @@
 //!
 //! Handlers:
 //!
-//! - `Print` — `{ "value": … }`, renders one line to stdout and answers
+//! - `Print` — `{ value = … }`, renders one line to stdout and answers
 //!   `TerminalResult` carrying how many characters landed on the wire, so a
 //!   program can `assert` that the print happened.
 //!
@@ -48,7 +48,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             return;
         }
         // A field the particle does not carry is null, and null renders as
-        // "null" like any other value — `Print { }` is `Print { "value":
+        // "null" like any other value — `Print { }` is `Print { value =
         // null }`. This module used to refuse it, which was a validation gate
         // in front of a handler that has nothing to validate: there is no
         // value it cannot render (owner's rule, 2026-08-28).

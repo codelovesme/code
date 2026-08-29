@@ -11,7 +11,7 @@ Tick { value } => {
     return Ack {}
 }
 
-emit Start { "value": 3 } to ev get started
+emit Start { value = 3 } to ev get started
 assert started.value = 3
 
 -- Queued particles are dispatched after the top-level statement that caused

@@ -1,0 +1,3 @@
+-- `{ "a": 1 }` was the syntax until 2026-08-29. Every program written before
+-- then hits this, so the error says what to write rather than what it found.
+let old = { "a": 1 }

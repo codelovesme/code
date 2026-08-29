@@ -68,7 +68,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
 /// language itself, and emitting is not filling in a form — a handler is
 /// never refused over the fields it happens to declare. So there is one
 /// question to ask (is it a string?) rather than two, and `Greet {}` gets the
-/// same answer as `Greet { "name": null }`.
+/// same answer as `Greet { name = null }`.
 fn greet(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let name = find_field(particle, "name")
         .and_then(read_str)

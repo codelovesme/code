@@ -6,7 +6,7 @@ loop k, v over arr {
     assert arr[k] = v
 }
 
-let obj = { "a": 1, "b": 2, "c": 3 }
+let obj = { a = 1, b = 2, c = 3 }
 loop k, v over obj {
     assert obj[k] = v
 }

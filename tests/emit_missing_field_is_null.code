@@ -12,12 +12,12 @@ link "native_modules/terminal.so" as term
 
 -- A user-defined handler: `who` is simply null, and the body decides.
 Greet { who } => {
-    return Greeting { "missing": who = null }
+    return Greeting { missing = who = null }
 }
 emit Greet {} to this get g
 assert g.missing = true
 
--- A core handler: `Length { }` and `Length { "value": null }` are the same
+-- A core handler: `Length { }` and `Length { value = null }` are the same
 -- particle, so they are the same failure — null has no length. Not two
 -- different complaints, one of them about the shape of the emit. That the
 -- two messages are now identical is pinned by `tests/message_parity.rs`,
@@ -34,7 +34,7 @@ assert p is TerminalResult
 assert p.value = 4
 
 -- One that genuinely cannot proceed still fails — on the value, not on its
--- absence. `Double { }` is `Double { "value": null }`, and null is not a
+-- absence. `Double { }` is `Double { value = null }`, and null is not a
 -- number. One message now, where there used to be two.
 emit Double {} to math get d
 assert d is Exception

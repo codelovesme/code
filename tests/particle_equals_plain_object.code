@@ -3,6 +3,6 @@
 -- object literal that happens to have the same fields in the same order —
 -- there is no hidden tag distinguishing a "real" particle from a
 -- hand-written object that looks like one.
-assert Log { "x": 1 } = { "_class": "Log", "x": 1 }
-assert Log { "x": 1 } ≠ Log { "x": 2 }
-assert Log { "x": 1 } ≠ Warn { "x": 1 }
+assert Log { x = 1 } = { _class = "Log", x = 1 }
+assert Log { x = 1 } ≠ Log { x = 2 }
+assert Log { x = 1 } ≠ Warn { x = 1 }

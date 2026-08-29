@@ -8,5 +8,5 @@
     assert not (t is LengthResult)
     assert not (t._class is TimestampResult)  -- a string is not a particle
     assert not (1 is TimestampResult)  -- neither is a number
-    assert not ({ "x": 1 } is TimestampResult)  -- nor an object without _class
+    assert not ({ x = 1 } is TimestampResult)  -- nor an object without _class
 }

@@ -8,39 +8,39 @@
 -- One per failing helper family, since each is a separate check site:
 -- `code_field`, `code_core_dispatch`, `code_compare`, `code_div`, `code_add`.
 Field { k } => {
-    return R { "v": k.name }
+    return R { v = k.name }
 }
 Core { k } => {
     emit k to core get z
-    return R { "v": z }
+    return R { v = z }
 }
 Order { k } => {
-    return R { "v": 1 < k }
+    return R { v = 1 < k }
 }
 Divide { k } => {
-    return R { "v": 1 / k }
+    return R { v = 1 / k }
 }
 Add { k } => {
-    return R { "v": 1 + k }
+    return R { v = 1 + k }
 }
 
-emit Field { "k": 5 } to this get a
+emit Field { k = 5 } to this get a
 assert a is Exception
 
-emit Core { "k": 5 } to this get b
+emit Core { k = 5 } to this get b
 assert b is Exception
 
-emit Order { "k": "x" } to this get c
+emit Order { k = "x" } to this get c
 assert c is Exception
 
-emit Divide { "k": 0 } to this get d
+emit Divide { k = 0 } to this get d
 assert d is Exception
 assert d.message = "division by zero"
 
-emit Add { "k": true } to this get e
+emit Add { k = true } to this get e
 assert e is Exception
 
 -- Each one answered; none of them ended the program.
-emit Divide { "k": 4 } to this get ok
+emit Divide { k = 4 } to this get ok
 assert ok is R
 assert ok.v = 0.25

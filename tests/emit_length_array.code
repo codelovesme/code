@@ -2,6 +2,6 @@
 -- chosen at runtime by the particle's own "_class" field. What comes back
 -- is a particle too, not a bare value — a fresh one, tagged "LengthResult",
 -- symmetric with what went in.
-emit Length { "value": [1, 2, 3, 4] } to core get n
-assert n = { "_class": "LengthResult", "value": 4 }
+emit Length { value = [1, 2, 3, 4] } to core get n
+assert n = { _class = "LengthResult", value = 4 }
 assert n.value = 4

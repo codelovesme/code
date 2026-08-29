@@ -14,7 +14,7 @@ real one.
 ```code
 link "http_client.so" as http
 
-emit Get { "url": "https://example.com" } to http get r
+emit Get { url = "https://example.com" } to http get r
 assert r.ok
 assert r.status = 200
 ```
@@ -60,7 +60,7 @@ status — refused, unresolvable, timed out, TLS rejected, or larger than
 | `url` | String | — | rendered as text; absent or unfetchable fails the request |
 | `body` | String | — | `Post`/`Put`/`Patch` only |
 | `content_type` | String | `application/octet-stream` | `Post`/`Put`/`Patch` only |
-| `headers` | Object | none | `{ "Accept": "text/plain" }`; values are rendered as text |
+| `headers` | Object | none | `{ Accept = "text/plain" }`; values are rendered as text |
 | `timeout_seconds` | Number | `10` | whole request, connect included; a non-positive value takes the default |
 | `max_body_bytes` | Number | `1048576` | a longer response fails the request |
 
@@ -82,7 +82,7 @@ into the program, dispatched to *its* handlers between top-level statements.
 
 ```code
 Exception { source, message } => {
-    emit Print { "value": message } to term
+    emit Print { value = message } to term
 }
 ```
 
@@ -131,7 +131,7 @@ program, because no module may. There is no validation pass either — an
 absent `url` is null, which is simply a url that cannot be fetched, so the
 message comes from attempting the request rather than from a guard. A
 non-String `url` or header value is rendered rather than refused, so
-`"url": 42` reports `bad uri: 42 is missing scheme` instead of something
+`url = 42` reports `bad uri: 42 is missing scheme` instead of something
 about types.
 
 **`body` comes back as a String, never a parsed Object.** Tempting to add

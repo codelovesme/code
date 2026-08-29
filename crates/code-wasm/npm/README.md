@@ -105,7 +105,7 @@ const modules = {
 
 run_with_modules(
   'link "math" as m\n' +
-    'emit Double { "_class": "Double", "value": 21 } to m get n\n' +
+    'emit Double { _class = "Double", value = 21 } to m get n\n' +
     "assert n.value = 42\n",
   modules,
 );

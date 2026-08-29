@@ -1,5 +1,5 @@
 -- `get <name>` is optional — without it the handler still runs, its result
 -- is just discarded, and the program keeps going normally.
-emit Length { "value": [1, 2] } to core
+emit Length { value = [1, 2] } to core
 let ok = true
 assert ok

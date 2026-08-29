@@ -28,7 +28,7 @@ pretty-printer would silently destroy:
 |---|---|---|
 | `-- why this test exists` | nothing at all — `lexer.rs` skips comments | **deleted** |
 | `n += 1` | `Stmt::Assign(n, n + 1)` (`parser.rs` rewrites it) | `n = n + 1` |
-| `Timestamp {}` | `Expr::Object([("_class", "Timestamp")])` | `{ "_class": "Timestamp" }` |
+| `Timestamp {}` | `Expr::Object([("_class", "Timestamp")])` | `{ _class = "Timestamp" }` |
 | `5.0`, `1.50` | `f64` | `5`, `1.5` |
 | `a; b` | one `Newline` token | two lines |
 | a blank line | nothing (`tokenize` collapses separators) | gone |
@@ -71,7 +71,7 @@ additive.
 ## Layout rules — v1
 
 **Hard line breaks are the author's.** The formatter never decides to split
-or join a line; there is no max width and no re-flow. A `{ "x": 1 }` written
+or join a line; there is no max width and no re-flow. A `{ x = 1 }` written
 inline stays inline, and `multiline_literal.code`'s array stays multi-line.
 This is the rule that keeps the whole thing small — it also dissolves the
 one genuinely awkward question in the grammar, which is that `{` opens both
@@ -87,8 +87,8 @@ Everything else is normalized:
    produce.
 2. **Spacing** — exactly one space between tokens, except: none after an
    opener or before a closer for `[` `]` `(` `)`; none before `,` or `:`;
-   none either side of `.`; one space inside inline braces (`{ "x": 1 }`,
-   `Log { "x": 1 }` — the existing style); none after unary `-` or `not`'s
+   none either side of `.`; one space inside inline braces (`{ x = 1 }`,
+   `Log { x = 1 }` — the existing style); none after unary `-` or `not`'s
    operand side (`-3.5`, per `unary_negation.code`). Unary vs binary `-` is
    decided by the preceding token: an operator, opener, `,`, `:`, `=`,
    keyword, or line start means unary.
@@ -215,7 +215,7 @@ canonical, and this is the same trade `cargo fmt` makes next door.
 
 ### The diff, which was the style review
 
-22 files, 69 lines, in four groups: `{ }` to `{}` (32), `{"a": 1}` to
-`{ "a": 1 }` (the minority spelling, 51 occurrences against 229), the three
+22 files, 69 lines, in four groups: `{ }` to `{}` (32), `{a = 1}` to
+`{ a = 1 }` (the minority spelling, 51 occurrences against 229), the three
 aligned comments above, and `multiline_literal.code`'s two-space body going
 to four — the one diff this document predicted by name.

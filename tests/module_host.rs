@@ -9,7 +9,7 @@
 
 use std::rc::Rc;
 
-use code::ast::{EmitTarget, Expr, NativeFormat, Program, Stmt};
+use code::ast::{EmitTarget, Expr, NativeFormat, Program, Stmt, FieldKey};
 use code::interpreter::{self, Environment};
 use code::value::Value;
 
@@ -37,7 +37,7 @@ fn doubler_module(env: &mut Environment, name: &str) {
     );
 }
 
-/// `Double { "value": n }` — the emitted particle these tests send.
+/// `Double { value = n }` — the emitted particle these tests send.
 ///
 /// They emitted a bare `Expr::Number` until 2026-08-28, which was a shortcut
 /// rather than a supported shape: the JsBridge contract is
@@ -47,8 +47,8 @@ fn doubler_module(env: &mut Environment, name: &str) {
 /// receives anyway.
 fn double_particle(n: f64) -> Expr {
     Expr::Object(vec![
-        ("_class".to_string(), Expr::Str("Double".to_string())),
-        ("value".to_string(), Expr::Number(n)),
+        (FieldKey::Literal("_class".to_string()), Expr::Str("Double".to_string())),
+        (FieldKey::Literal("value".to_string()), Expr::Number(n)),
     ])
 }
 

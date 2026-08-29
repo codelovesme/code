@@ -1,7 +1,7 @@
 -- A non-Str index against an object is null, not an error — the container
 -- kind is right, only the key's own kind doesn't match how objects are
 -- keyed. Mirrors the array side's non-Number-index case.
-let o = { "a": 1 }
+let o = { a = 1 }
 assert o[42] = null
 assert o[true] = null
 assert o[null] = null

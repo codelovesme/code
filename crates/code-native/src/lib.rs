@@ -519,7 +519,7 @@ pub fn array_elems(v: &CodeValue) -> impl Iterator<Item = &CodeValue> {
     (0..len).map(move |i| unsafe { &*slot_at(items, i) })
 }
 
-/// Build a `{ "_class": <class_name>, "value": <fill's result> }` particle
+/// Build a `{ _class = <class_name>, value = <fill's result> }` particle
 /// into `out` — the shape `emit ... to <alias> get x` expects a handler's
 /// result to have. Mirrors `runtime.c`'s own `code_make_result`, which a
 /// C module reaches via `#include "runtime.c"` but isn't exported for a
@@ -803,7 +803,7 @@ pub fn guarded(out: &mut CodeValue, source: &str, body: impl FnOnce(&mut CodeVal
 mod tests {
     use super::*;
 
-    /// `{ "a": 1, "s": "hi" }`.
+    /// `{ a = 1, s = "hi" }`.
     fn sample_object(out: &mut CodeValue) {
         let mut values = SlotBuffer::new(2);
         number(values.slot_mut(0), 1.0);

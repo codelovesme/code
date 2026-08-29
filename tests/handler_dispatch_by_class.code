@@ -3,19 +3,19 @@
 -- follow (see emit_particle_from_variable.code). So a particle held in a
 -- variable reaches the same handler a literal would.
 Double { value } => {
-    return DoubleResult { "value": value * 2 }
+    return DoubleResult { value = value * 2 }
 }
 
-emit Double { "value": 21 } to this get direct
+emit Double { value = 21 } to this get direct
 assert direct.value = 42
 
-let held = Double { "value": 5 }
+let held = Double { value = 5 }
 emit held to this get indirect
 assert indirect.value = 10
 
 -- Built by one handler, dispatched by another, still on `_class`.
 Make => {
-    return Double { "value": 7 }
+    return Double { value = 7 }
 }
 emit Make to this get made
 emit made to this get chained

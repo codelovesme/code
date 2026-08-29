@@ -20,7 +20,7 @@
 
 use std::collections::HashSet;
 
-use crate::ast::{EmitTarget, Expr, Program, Stmt};
+use crate::ast::{EmitTarget, Expr, FieldKey, Program, Stmt};
 
 /// Checks every `Expr::Ident` is reachable from an earlier assignment,
 /// mirroring the interpreter's runtime "undefined variable" error as a
@@ -188,9 +188,15 @@ fn verify_expr(expr: &Expr, scopes: &[HashSet<String>]) -> Result<(), String> {
             }
         }
         Expr::Array(items) => items.iter().try_for_each(|item| verify_expr(item, scopes)),
-        Expr::Object(fields) => fields
-            .iter()
-            .try_for_each(|(_, value)| verify_expr(value, scopes)),
+        // A computed key (`{ "$name" = v }`) reads a variable like anything
+        // else, so it is checked like anything else — otherwise `code build`
+        // would refuse a program `code run` accepted, or the reverse.
+        Expr::Object(fields) => fields.iter().try_for_each(|(key, value)| {
+            if let FieldKey::Computed(expr) = key {
+                verify_expr(expr, scopes)?;
+            }
+            verify_expr(value, scopes)
+        }),
         Expr::Field(obj, _) => verify_expr(obj, scopes),
         Expr::Index(arr, index) => {
             verify_expr(arr, scopes)?;

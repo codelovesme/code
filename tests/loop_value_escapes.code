@@ -18,8 +18,8 @@ assert seen = [[1, 10], [2, 20], [3, 30]]
 -- value that also escapes.
 let boxes = []
 loop x over ["a", "b"] {
-    let inner = { "k": x }
-    boxes = boxes + [{ "wrapped": inner }]
+    let inner = { k = x }
+    boxes = boxes + [{ wrapped = inner }]
 }
 assert boxes[0].wrapped.k = "a"
 assert boxes[1].wrapped.k = "b"

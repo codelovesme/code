@@ -17,7 +17,7 @@ Tick { value } => {
     return Ack {}
 }
 
-emit Start { "value": 3 } to timer get started
+emit Start { value = 3 } to timer get started
 assert started.value = 3
 
 -- The event loop. Nothing in this body causes a push — the ticks arrive
@@ -26,7 +26,7 @@ assert started.value = 3
 -- hands them over.
 loop get spins = 0 {
     spins = spins + 1
-    emit Length { "value": seen } to core get n
+    emit Length { value = seen } to core get n
     if n.value = 3 {
         break
     }

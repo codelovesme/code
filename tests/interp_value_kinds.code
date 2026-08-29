@@ -9,7 +9,7 @@ let frac = 2.5
 let yes = true
 let nothing = null
 let arr = [1, "a"]
-let obj = { "k": 1 }
+let obj = { k = 1 }
 
 assert "$s" = "hi"
 assert "$whole" = "3"
@@ -20,7 +20,7 @@ assert "$arr" = "[1,\"a\"]"
 assert "$obj" = "{\"k\":1}"
 
 -- Nesting and negatives, still JSON.
-let nested = { "items": [1, [2]], "name": "ada" }
+let nested = { items = [1, [2]], name = "ada" }
 assert "$nested" = "{\"items\":[1,[2]],\"name\":\"ada\"}"
 
 let neg = -4

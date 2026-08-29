@@ -1,6 +1,6 @@
 -- Containers nest freely: an object of arrays, and an array of objects,
 -- each walked with the same `loop k, v over` form.
-let byCity = { "nyc": [1, 2], "sf": [3] }
+let byCity = { nyc = [1, 2], sf = [3] }
 let allValues = []
 loop city, nums over byCity {
     loop i, n over nums {
@@ -9,7 +9,7 @@ loop city, nums over byCity {
 }
 assert allValues = [1, 2, 3]
 
-let people = [{ "name": "a" }, { "name": "b" }]
+let people = [{ name = "a" }, { name = "b" }]
 let names = []
 loop i, person over people {
     names = names + [person.name]

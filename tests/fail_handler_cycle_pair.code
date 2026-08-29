@@ -1,11 +1,11 @@
 -- Two handlers calling each other. Reported as the whole path, not just
 -- "there is a cycle somewhere".
 Even { n } => {
-    emit Odd { "n": n - 1 } to this get r
-    return Answer { "value": 0 }
+    emit Odd { n = n - 1 } to this get r
+    return Answer { value = 0 }
 }
 Odd { n } => {
-    emit Even { "n": n - 1 } to this get r
-    return Answer { "value": 1 }
+    emit Even { n = n - 1 } to this get r
+    return Answer { value = 1 }
 }
-emit Even { "n": 4 } to this
+emit Even { n = 4 } to this

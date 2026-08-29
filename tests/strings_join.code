@@ -2,7 +2,7 @@
 -- single-character separator between elements. An empty array joins to the
 -- empty string (there is nothing to separate).
 link "native_modules/strings.so" as s
-emit Join { "value": ["a", "b", "c"], "separator": "-" } to s get n
-assert n = { "_class": "JoinResult", "value": "a-b-c" }
-emit Join { "value": [], "separator": "-" } to s get e
-assert e = { "_class": "JoinResult", "value": "" }
+emit Join { value = ["a", "b", "c"], separator = "-" } to s get n
+assert n = { _class = "JoinResult", value = "a-b-c" }
+emit Join { value = [], separator = "-" } to s get e
+assert e = { _class = "JoinResult", value = "" }

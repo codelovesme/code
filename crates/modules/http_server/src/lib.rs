@@ -31,10 +31,10 @@
 //! link "http_server.so" as srv
 //!
 //! Request { method, path } => {
-//!     return Response { "status": 200, "body": "hi from $path" }
+//!     return Response { status = 200, body = "hi from $path" }
 //! }
 //!
-//! emit Listen { "port": 8080 } to srv get l
+//! emit Listen { port = 8080 } to srv get l
 //! assert l.ok
 //! loop {
 //! }
@@ -173,7 +173,7 @@ fn handle_listen(out: &mut CodeValue, particle: &CodeValue) {
         Some(h) if !h.is_empty() => h.to_string(),
         // Loopback by default. A module that opened a program to the network
         // the moment it was linked would be making that decision for its
-        // caller; saying `"host": "0.0.0.0"` is how a caller makes it.
+        // caller; saying `host = "0.0.0.0"` is how a caller makes it.
         _ => "127.0.0.1".to_string(),
     };
     // Port 0 asks the OS for a free one, and `ListenResult` reports which —

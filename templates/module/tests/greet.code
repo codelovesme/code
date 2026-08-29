@@ -10,7 +10,7 @@
 -- that nothing your handler allocated outlived the program.
 link "greet.so" as greet
 
-emit Greet { "name": "ada" } to greet get r
+emit Greet { name = "ada" } to greet get r
 assert r is GreetResult
 assert r.value = "hello, ada"
 
@@ -20,11 +20,11 @@ assert unknown = null
 
 -- A failure comes back as a value. The program decides whether to care;
 -- nothing here can end it.
-emit Greet { "name": 42 } to greet get bad
+emit Greet { name = 42 } to greet get bad
 assert bad is Exception
 assert bad.source = "greet"
 
 -- And a field that was never supplied is simply null, so this is the same
--- particle as `Greet { "name": null }` and gets the same answer.
+-- particle as `Greet { name = null }` and gets the same answer.
 emit Greet { } to greet get missing
 assert missing is Exception

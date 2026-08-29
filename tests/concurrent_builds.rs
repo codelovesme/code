@@ -21,7 +21,7 @@ use std::thread;
 fn program(seed: usize) -> String {
     let mut src = format!("let a = {seed}\n");
     for k in 0..120 {
-        src.push_str(&format!("let v{k} = [{k}, \"s{k}\", {{\"f\": {k}}}]\n"));
+        src.push_str(&format!("let v{k} = [{k}, \"s{k}\", {{ f = {k} }}]\n"));
     }
     src.push_str(&format!("assert a = {seed}\n"));
     src

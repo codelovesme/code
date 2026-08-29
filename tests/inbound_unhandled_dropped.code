@@ -11,7 +11,7 @@
 -- invisible rather than loud.
 link "native_modules/test_events.so" as ev
 
-emit Start { "value": 3 } to ev get started
+emit Start { value = 3 } to ev get started
 assert started.value = 3
 
 -- Three Ticks were queued and all three went nowhere. Reaching here at all

@@ -1,7 +1,7 @@
 -- One name binds the *value*, not the key — loop variable names
 -- right-align against `(key, value)`, so a lone name always means the same
 -- slot regardless of whether `over` is iterating an array or an object.
-let scores = { "alice": 10, "bob": 20 }
+let scores = { alice = 10, bob = 20 }
 let total = 0
 loop score over scores get total = 0 {
     total = total + score

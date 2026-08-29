@@ -8,6 +8,6 @@ Tick { value } => {
     return Ack {}
 }
 
-emit Start { "value": 0 } to ev get started
+emit Start { value = 0 } to ev get started
 assert started.value = 0
 assert seen = []

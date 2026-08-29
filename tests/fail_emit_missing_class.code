@@ -1,4 +1,4 @@
 -- A plain object with no "_class" field isn't a particle — `emit` requires
 -- one, and this is a runtime error rather than treated as a valid,
 -- unaddressable value.
-emit { "value": [1] } to core get n
+emit { value = [1] } to core get n

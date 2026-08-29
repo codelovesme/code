@@ -9,7 +9,7 @@
 -- now, so as a runtime error this would have left `code run` completing
 -- happily while `code build` refused to compile it.
 Peek => {
-    return Ack { "value": local }
+    return Ack { value = local }
 }
 {
     let local = 1

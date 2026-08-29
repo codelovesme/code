@@ -7,10 +7,10 @@ Note { text } => {
     seen = seen + 1
 }
 
-emit Note { "text": "first" } to this get nothing
+emit Note { text = "first" } to this get nothing
 assert nothing = null
 assert seen = 1
 
 -- `get` is optional, exactly as it is for core and module targets.
-emit Note { "text": "second" } to this
+emit Note { text = "second" } to this
 assert seen = 2

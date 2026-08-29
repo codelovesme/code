@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 
-use crate::ast::{BinOp, EmitTarget, Expr, NativeFormat, Program, Stmt, UnOp};
+use crate::ast::{BinOp, EmitTarget, Expr, FieldKey, NativeFormat, Program, Stmt, UnOp};
 #[cfg(feature = "native-modules")]
 use crate::native::NativeModule;
 use crate::value::Value;
@@ -863,7 +863,25 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
         Expr::Object(fields) => {
             let mut values = Vec::with_capacity(fields.len());
             for (key, value) in fields {
-                values.push((key.clone(), eval(value, env)?));
+                // A computed key (`{ "$name" = v }`) is an interpolation,
+                // and interpolation is total — every value renders — so this
+                // is always a Str and never a failure.
+                let key = match key {
+                    FieldKey::Literal(name) => name.clone(),
+                    FieldKey::Computed(expr) => {
+                        let rendered = eval(expr, env)?;
+                        match &rendered {
+                            Value::Str(text) => text.to_string(),
+                            other => {
+                                return Err(format!(
+                                    "a field name must be text, found {}",
+                                    a_type_name(other)
+                                ))
+                            }
+                        }
+                    }
+                };
+                values.push((key, eval(value, env)?));
             }
             Ok(Value::Object(Rc::new(values)))
         }
@@ -1004,7 +1022,7 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
         // A field the particle does not carry is null — the same answer
         // `.field` gives — so an absent `value` is not a separate case to
         // report. Emitting a particle is not a form to be validated before
-        // the handler may run: `Length { }` means `Length { "value": null }`,
+        // the handler may run: `Length { }` means `Length { value = null }`,
         // and null has no length. Must match runtime.c's `Length` arm.
         "Length" => match fields
             .iter()
@@ -1036,7 +1054,7 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
     }
 }
 
-/// `{ "_class": class_name, "value": n }` — the shape every core handler's
+/// `{ _class = class_name, value = n }` — the shape every core handler's
 /// result takes, matching the old language's `<Name>Result` convention:
 /// what goes into `emit` is a particle, so what comes back out is one too,
 /// not a bare scalar. Must match `runtime.c`'s `code_make_result` exactly.

@@ -139,15 +139,15 @@ fn a_handlers_return_value_is_the_http_response() {
 
 Request { method, path, query, body } => {
     if path = "/echo" {
-        return Response { "status": 201, "body": body }
+        return Response { status = 201, body = body }
     }
     if path = "/query" {
-        return Response { "status": 200, "body": query }
+        return Response { status = 200, body = query }
     }
-    return Response { "status": 200, "body": "$method $path" }
+    return Response { status = 200, body = "$method $path" }
 }
 
-emit Listen { "port": PORT } to srv get l
+emit Listen { port = PORT } to srv get l
 assert l.ok
 assert l.port = PORT
 
@@ -182,7 +182,7 @@ fn no_handler_is_a_404_rather_than_a_hang() {
     // the status that means "nobody claimed this".
     let program = r#"link "http_server.so" as srv
 
-emit Listen { "port": PORT } to srv get l
+emit Listen { port = PORT } to srv get l
 assert l.ok
 
 loop {

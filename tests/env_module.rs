@@ -75,23 +75,23 @@ fn the_default_decides_how_a_set_variable_is_read() {
         "kinds",
         r#"link "env.so" as env
 
-emit Get { "name": "CODE_TEST_PORT", "default": 8080 } to env get port
+emit Get { name = "CODE_TEST_PORT", default = 8080 } to env get port
 assert port.found
 assert port.value = 9090
 
-emit Get { "name": "CODE_TEST_DEBUG", "default": false } to env get debug
+emit Get { name = "CODE_TEST_DEBUG", default = false } to env get debug
 assert debug.value
 
 -- No default: the string as it stands.
-emit Get { "name": "CODE_TEST_NAME" } to env get name
+emit Get { name = "CODE_TEST_NAME" } to env get name
 assert name.value = "ada"
 
 -- A default that is a string does not turn the value into anything else.
-emit Get { "name": "CODE_TEST_PORT", "default": "none" } to env get text
+emit Get { name = "CODE_TEST_PORT", default = "none" } to env get text
 assert text.value = "9090"
 
 -- Set, so `Require` is satisfied.
-emit Require { "name": "CODE_TEST_NAME" } to env get needed
+emit Require { name = "CODE_TEST_NAME" } to env get needed
 assert needed.value = "ada"
 "#,
         &[
@@ -112,7 +112,7 @@ fn a_variable_that_cannot_be_read_as_its_default_is_an_exception() {
         "unparseable",
         r#"link "env.so" as env
 
-emit Get { "name": "CODE_TEST_PORT", "default": 8080 } to env get port
+emit Get { name = "CODE_TEST_PORT", default = 8080 } to env get port
 assert port is Exception
 assert port.source = "env"
 

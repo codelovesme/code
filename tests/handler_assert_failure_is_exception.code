@@ -11,7 +11,7 @@ Check { n } => {
     return Ok {}
 }
 
-emit Check { "n": 2 } to this get bad
+emit Check { n = 2 } to this get bad
 assert bad is Exception
 
 -- The whole particle, field by field, because the two backends build this
@@ -19,13 +19,13 @@ assert bad is Exception
 -- `code_take_failure`) and the harness only compares pass/fail — a shape
 -- that drifted between them would otherwise go unnoticed.
 assert bad = {
-    "_class": "Exception",
-    "source": "core",
-    "message": "assertion failed",
-    "innerException": null
+    _class = "Exception",
+    source = "core",
+    message = "assertion failed",
+    innerException = null
 }
 
 -- The same handler still works afterwards: a failed frame leaves nothing
 -- behind, including the re-entry guard its exit block clears.
-emit Check { "n": 1 } to this get good
+emit Check { n = 1 } to this get good
 assert good is Ok

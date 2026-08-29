@@ -3,9 +3,9 @@
 -- no Unicode story yet, so the module says what it does instead of
 -- pretending.
 link "native_modules/strings.so" as s
-emit Upper { "value": "mixed CASE 123" } to s get u
-assert u = { "_class": "UpperResult", "value": "MIXED CASE 123" }
-emit Lower { "value": "MiXeD CaSe 123" } to s get l
-assert l = { "_class": "LowerResult", "value": "mixed case 123" }
-emit Upper { "value": "already" } to s get a
-assert a = { "_class": "UpperResult", "value": "ALREADY" }
+emit Upper { value = "mixed CASE 123" } to s get u
+assert u = { _class = "UpperResult", value = "MIXED CASE 123" }
+emit Lower { value = "MiXeD CaSe 123" } to s get l
+assert l = { _class = "LowerResult", value = "mixed case 123" }
+emit Upper { value = "already" } to s get a
+assert a = { _class = "UpperResult", value = "ALREADY" }

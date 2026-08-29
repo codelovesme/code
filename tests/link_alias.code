@@ -4,4 +4,4 @@ link "modules/shared_values" as shared
 
 assert shared.greeting = "hello"
 assert shared.n = 42
-assert shared = { "greeting": "hello", "n": 42 }
+assert shared = { greeting = "hello", n = 42 }

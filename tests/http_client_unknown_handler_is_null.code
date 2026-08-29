@@ -7,9 +7,9 @@
 -- 2026-08-29 when the other five methods landed.
 link "native_modules/http_client.so" as http
 
-emit Ping { "url": "http://127.0.0.1:1/" } to http get r
+emit Ping { url = "http://127.0.0.1:1/" } to http get r
 assert r = null
 
 -- And the module still works afterwards: a miss leaves nothing broken.
-emit Get { "url": "http://127.0.0.1:1/" } to http get ok
+emit Get { url = "http://127.0.0.1:1/" } to http get ok
 assert not ok.ok

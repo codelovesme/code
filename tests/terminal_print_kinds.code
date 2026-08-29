@@ -9,19 +9,19 @@
 -- past its initial capacity mid-render — the realloc path, exercised for free.
 link "native_modules/terminal.so" as term
 
-emit Print { "value": 42 } to term get r1
+emit Print { value = 42 } to term get r1
 assert r1.value = 2
 
-emit Print { "value": true } to term get r2
+emit Print { value = true } to term get r2
 assert r2.value = 4
 
-emit Print { "value": null } to term get r3
+emit Print { value = null } to term get r3
 assert r3.value = 4
 
-emit Print { "value": [1, 2, 3] } to term get r4
+emit Print { value = [1, 2, 3] } to term get r4
 assert r4.value = 9
 
 let long_line = "a" + "b" + "c" + "d" + "e" + "f" + "g" + "h" + "i" + "j"
 long_line = long_line + long_line + long_line + long_line
-emit Print { "value": long_line } to term get r5
+emit Print { value = long_line } to term get r5
 assert r5.value = 40

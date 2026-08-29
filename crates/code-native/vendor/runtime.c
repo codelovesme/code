@@ -389,15 +389,42 @@ void code_array(CodeValue *out, void *items, long long len) {
 /* One allocation for both arrays: `[keys...][values...]`. The key pointers
  * themselves are string literals in read-only data, so only the array of
  * pointers is copied, never the characters. */
+/* Owns its key *characters*, not just the pointers, since 2026-08-29.
+ *
+ * They used to be borrowed, which made every field name in a value something
+ * that had to outlive it — fine while keys were only ever program literals,
+ * and the reason `code-native`'s `object()` demanded `&'static CStr`. Two
+ * things wanted otherwise at once: `{ "$name" = v }` builds a key at run
+ * time, and a module that wants to hand back HTTP headers has names that
+ * arrived over a socket. Copying is one path instead of two, costs a few
+ * bytes and one `memcpy` per field, and deletes the restriction rather than
+ * documenting an exception to it.
+ *
+ * The bytes live in the same allocation as the key pointers and the value
+ * slots — [pointers][slots][characters] — so an object is still one block,
+ * one refcount, one free. */
 void code_object(CodeValue *out, const char **keys, void *values, long long len) {
     const char **key_buf = NULL;
     void *value_buf = NULL;
     if (len > 0) {
         size_t keys_bytes = (size_t)len * sizeof(const char *);
-        key_buf = heap_alloc(keys_bytes + (size_t)len * CODE_VALUE_SLOT_SIZE);
-        value_buf = (char *)key_buf + keys_bytes;
+        size_t slots_bytes = (size_t)len * CODE_VALUE_SLOT_SIZE;
+        size_t chars_bytes = 0;
         for (long long i = 0; i < len; i++) {
-            key_buf[i] = keys[i];
+            chars_bytes += (keys[i] ? strlen(keys[i]) : 0) + 1;
+        }
+        key_buf = heap_alloc(keys_bytes + slots_bytes + chars_bytes);
+        value_buf = (char *)key_buf + keys_bytes;
+        char *chars = (char *)value_buf + slots_bytes;
+        for (long long i = 0; i < len; i++) {
+            size_t n = (keys[i] ? strlen(keys[i]) : 0) + 1;
+            if (keys[i]) {
+                memcpy(chars, keys[i], n);
+            } else {
+                chars[0] = '\0';
+            }
+            key_buf[i] = chars;
+            chars += n;
             const CodeValue *src = slot_at(values, i);
             code_retain(src);
             *slot_at(value_buf, i) = *src;
@@ -409,6 +436,17 @@ void code_object(CodeValue *out, const char **keys, void *values, long long len)
     out->keys = key_buf;
     out->items = value_buf;
     out->len = len;
+}
+
+/* The characters of a Str, for use as an object key by generated code.
+ *
+ * Infallible on purpose: the only thing that reaches it is a computed key
+ * (`{ "$name" = v }`), which is an interpolation, and interpolation renders
+ * every value — so it is always a Str. A non-Str would be a codegen bug
+ * rather than a program error, and answering "" says so without inventing a
+ * failure path for a case that cannot happen. */
+const char *code_str_text(const CodeValue *v) {
+    return v->tag == CODE_STR && v->str ? v->str : "";
 }
 
 /* Retain before release, never the other way round. The two can name the

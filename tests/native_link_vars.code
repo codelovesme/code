@@ -9,4 +9,4 @@ assert m.name = "test_math"
 assert m.enabled = true
 assert m.nothing = null
 assert m.factors = [2, 3, 5]
-assert m.meta = { "version": 1, "owner": "test" }
+assert m.meta = { version = 1, owner = "test" }

@@ -8,7 +8,7 @@
 //! exercised in production — if the ABI ever drifts, a C module and Rust
 //! modules fail differently, which is exactly the diagnostic you want.
 //!
-//! Handlers (each takes `{ "value": … }`, returns `<Name>Result`):
+//! Handlers (each takes `{ value = … }`, returns `<Name>Result`):
 //!
 //! - `Shout`   — uppercase ASCII letters, append `!` (parity with
 //!   `test_math`'s original `Shout`; the split proposal moved it here)

@@ -9,8 +9,8 @@ contains them has leaked them.
 link "env.so" as env
 link "http_server.so" as srv
 
-emit Get { "name": "PORT", "default": 8080 } to env get p
-emit Listen { "port": p.value } to srv get l
+emit Get { name = "PORT", default = 8080 } to env get p
+emit Listen { port = p.value } to srv get l
 assert l.ok
 ```
 
@@ -61,7 +61,7 @@ The program can still decide what that means — an `Exception` is a value, and
 cannot run without:
 
 ```code
-emit Require { "name": "DATABASE_URL" } to env get db
+emit Require { name = "DATABASE_URL" } to env get db
 if db is Exception {
     -- say so and stop, rather than starting half-configured
 }

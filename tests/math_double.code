@@ -3,9 +3,9 @@
 -- through unchanged: the result is whatever IEEE 754 says, no formatting
 -- policy invented along the way.
 link "native_modules/math.so" as m
-emit Double { "value": 21 } to m get n
-assert n = { "_class": "DoubleResult", "value": 42 }
-emit Double { "value": 1.5 } to m get h
-assert h = { "_class": "DoubleResult", "value": 3 }
-emit Double { "value": 0 } to m get z
-assert z = { "_class": "DoubleResult", "value": 0 }
+emit Double { value = 21 } to m get n
+assert n = { _class = "DoubleResult", value = 42 }
+emit Double { value = 1.5 } to m get h
+assert h = { _class = "DoubleResult", value = 3 }
+emit Double { value = 0 } to m get z
+assert z = { _class = "DoubleResult", value = 0 }

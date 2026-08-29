@@ -15,7 +15,7 @@ use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
 use crate::ast::{
-    BinOp, EmitTarget, Expr, LoopAccumulator, LoopOver, NativeFormat, Program, Stmt, UnOp,
+    BinOp, EmitTarget, Expr, FieldKey, LoopAccumulator, LoopOver, NativeFormat, Program, Stmt, UnOp,
 };
 
 /// Byte size of one runtime `CodeValue` slot (`src/runtime.c`; 64 bytes on
@@ -297,6 +297,11 @@ pub fn compile_to_object(
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_str_text = module.add_function(
+        "code_str_text",
+        i8_ptr_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_native_reply = module.add_function(
         "code_native_reply",
         void_ty.fn_type(
@@ -514,6 +519,7 @@ pub fn compile_to_object(
         fn_check_emittable,
         fn_poll_inbound,
         fn_native_reply,
+        fn_str_text,
         fn_abort_failure,
         fn_take_failure,
         fn_make_exception,
@@ -713,6 +719,9 @@ struct Gen<'a, 'm> {
     failed_flag: PointerValue<'a>,
     location_slot: PointerValue<'a>,
     fn_poll_inbound: FunctionValue<'a>,
+    /// `runtime.c`'s `code_str_text` — the characters of a Str, for a
+    /// computed object key.
+    fn_str_text: FunctionValue<'a>,
     /// `runtime.c`'s `code_native_reply` — hands a `.so` the answer to a
     /// particle it pushed. A `.a`'s reply is called directly instead.
     fn_native_reply: FunctionValue<'a>,
@@ -1922,7 +1931,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             Some(_) => {
                 let fields = exports
                     .iter()
-                    .map(|name| (name.clone(), Expr::Ident(name.clone())))
+                    .map(|name| (FieldKey::Literal(name.clone()), Expr::Ident(name.clone())))
                     .collect();
                 Some(self.gen_expr(&Expr::Object(fields))?)
             }
@@ -2419,7 +2428,28 @@ impl<'a, 'm> Gen<'a, 'm> {
                 let values_buf = self.alloc_buffer(len, "objvals")?;
 
                 for (i, (key, value)) in fields.iter().enumerate() {
-                    let key_ptr = self.global_str(key, "keylit")?;
+                    let key_ptr = match key {
+                        // Written down: a pointer to a program literal, the
+                        // same as every other constant here.
+                        FieldKey::Literal(name) => self.global_str(name, "keylit")?,
+                        // Built while the program runs (`{ "$name" = v }`).
+                        // Always a Str — it is an interpolation, and
+                        // interpolation is total — so there is nothing to
+                        // check, only the characters to fetch. Safe to pass
+                        // straight to `code_object` because objects copy
+                        // their key characters (see `runtime.c`), so the
+                        // slot this borrows from may be reused afterwards.
+                        FieldKey::Computed(expr) => {
+                            let slot = self.gen_expr(expr)?;
+                            self.builder
+                                .build_call(self.fn_str_text, &[slot.into()], "keytext")
+                                .map_err(|e| e.to_string())?
+                                .try_as_basic_value()
+                                .left()
+                                .expect("code_str_text returns a pointer")
+                                .into_pointer_value()
+                        }
+                    };
                     let key_slot = unsafe {
                         self.builder
                             .build_gep(

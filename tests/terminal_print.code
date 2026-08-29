@@ -10,5 +10,5 @@
 -- so a program can prove the print happened without the harness having to
 -- capture and compare stdout.
 link "native_modules/terminal.so" as term
-emit Print { "value": "hello, terminal" } to term get r
-assert r = { "_class": "TerminalResult", "value": 15 }
+emit Print { value = "hello, terminal" } to term get r
+assert r = { _class = "TerminalResult", value = 15 }

@@ -10,7 +10,7 @@ let d = 3 ≥ 5
 let e = 1 = 1
 let f = 1 = "1"
 let g = [1, 2] = [1, 2]
-let h = { "x": 1 } = { "x": 1 }
+let h = { x = 1 } = { x = 1 }
 
 -- `=` inside an expression is equality; the `=` that follows a name at the
 -- start of a statement is the assignment separator. Both appear here.

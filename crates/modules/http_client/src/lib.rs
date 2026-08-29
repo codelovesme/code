@@ -186,7 +186,7 @@ fn url_text(particle: &CodeValue) -> String {
 
 /// A value as text for the one purpose this module has: naming it in a url
 /// or a header. Non-strings render as themselves rather than as "", so a
-/// `"url": 42` reports `bad uri: '42'` instead of a misleading "no url".
+/// `url = 42` reports `bad uri: '42'` instead of a misleading "no url".
 fn value_text(v: &CodeValue) -> String {
     match read_str(v) {
         Some(s) => s.to_string(),
@@ -247,7 +247,7 @@ fn headers(particle: &CodeValue) -> Vec<(String, String)> {
             continue;
         }
         // Rendered rather than required to be a String, for the same reason
-        // the url is: `"X-Count": 3` sends `3`, which is what the caller
+        // the url is: `"X-Count" = 3` sends `3`, which is what the caller
         // plainly meant.
         let value = value_text(unsafe { &*slot_at(field.items, i) });
         if !value.is_empty() {

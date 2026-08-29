@@ -5,16 +5,16 @@ and two output modes that are required to behave identically: `code run`
 interprets, `code build` compiles through LLVM to a native binary.
 
 ```
-let user = { "name": "ada", "wins": [1, 2, 3] }
+let user = { name = "ada", wins = [1, 2, 3] }
 
-emit Length { "value": user.wins } to core get n
+emit Length { value = user.wins } to core get n
 assert n.value = 3
 
 let name = user.name
 let rounds = n.value
 
 link "native_modules/terminal.so" as term
-emit Print { "value": "$name won $rounds rounds" } to term
+emit Print { value = "$name won $rounds rounds" } to term
 ```
 
 > **`old/` is an archive.** The directory `old/` holds a *different*,
@@ -124,12 +124,34 @@ let s = "hi"
 let b = true
 let z = null
 let xs = [1, "two", [3]]
-let obj = { "x": 1, "nested": { "y": 2 } }
+let obj = { x = 1, nested = { y = 2 } }
 ```
 
-Object keys are string literals; values are any expression, so unlike strict
-JSON an object literal can reference variables. Objects keep **insertion
-order** — iteration and equality both depend on it. Literals may span lines:
+An object field is written `name = value`. The name is bare when it looks
+like an identifier, quoted when it does not, and **built while the program
+runs** when the quotes contain an interpolation:
+
+```
+let header = "Content-Type"
+let request = {
+  url = "https://example.com",
+  "X-Count" = 3,
+  "$header" = "application/json"
+}
+assert request["Content-Type"] = "application/json"
+```
+
+One rule underneath the three spellings: a key is a *name*, and a name is
+text. Values are any expression, so unlike strict JSON an object literal can
+reference variables — and since 2026-08-29 so can a key.
+
+The value model is still exactly JSON's, but the *syntax* is no longer JSON's:
+`"$obj"` renders `{"name":"ada"}`, which is what a JSON reader wants and no
+longer what this parser reads. That was the trade — an object literal reads
+like the record it is rather than like a wire format quoted into source.
+
+Objects keep **insertion order** — iteration and equality both depend on it.
+Literals may span lines:
 
 ```
 let nums = [
@@ -247,8 +269,8 @@ assert "a" + "b" = "ab"
 assert [1] + [2] = [1, 2]        -- two arrays concatenate
 assert [1, 2] + 3 = [1, 2, 3]    -- one array: the other side is an element
 assert 0 + [1, 2] = [0, 1, 2]    -- appended or prepended by which side it's on
-assert {"a": 1} + {"b": 2} = {"a": 1, "b": 2}      -- two objects merge
-assert {"a": 1, "b": 2} + {"a": 9} = {"a": 9, "b": 2}   -- right wins, in place
+assert {a = 1} + {b = 2} = {a = 1, b = 2}      -- two objects merge
+assert {a = 1, b = 2} + {a = 9} = {a = 9, b = 2}   -- right wins, in place
 ```
 
 The two containers each combine with themselves, and neither borrows the
@@ -257,14 +279,14 @@ other's rule. A field both objects name takes the **right** value in the
 compares fields pairwise in order — and merging is one level deep, never
 recursive. There is no one-object-operand form to match the array one:
 an array can absorb any value as an element, but an object has no key to
-file a bare value under, so `{"a": 1} + 3` is an error. With one array and
+file a bare value under, so `{a = 1} + 3` is an error. With one array and
 one object, the array rule wins and the object is simply an element.
 
 Merging is how you copy a particle and change a field, which is the shape
 most handler chains want:
 
 ```
-let edited = received + {"text": "ok"}
+let edited = received + {text = "ok"}
 ```
 
 `name += expr` is exactly `name = name + expr`, so it means whatever `+`
@@ -277,7 +299,7 @@ assignment it needs an existing binding.
 exist.
 
 ```
-let point = { "x": 1 }
+let point = { x = 1 }
 let nums = [10, 20]
 assert point.x = 1
 assert nums[0] = 10
@@ -364,7 +386,7 @@ and an object yields its field name:
 loop i, color over ["red", "green"] {   -- i = 0, 1
     ...
 }
-loop name, score over {"alice": 10} {   -- name = "alice"
+loop name, score over {alice = 10} {   -- name = "alice"
     ...
 }
 ```
@@ -413,9 +435,9 @@ error.
 prepended. No new value kind, no schema, no validation.
 
 ```
-let log = Log { "message": "hi" }
+let log = Log { message = "hi" }
 assert log._class = "Log"
-assert log = { "_class": "Log", "message": "hi" }
+assert log = { _class = "Log", message = "hi" }
 ```
 
 Because it is only sugar, a particle is structurally equal to a hand-written
@@ -428,7 +450,7 @@ The way a program reaches the outside world is to `emit` a particle to a
 handler:
 
 ```
-emit Length { "value": [1, 2, 3] } to core get n
+emit Length { value = [1, 2, 3] } to core get n
 assert n._class = "LengthResult"
 assert n.value = 3
 ```
@@ -475,10 +497,10 @@ provides its own; and a program can define its own with `=>`:
 
 ```
 Greet { who } => {
-    return Greeting { "text": "hi $who" }
+    return Greeting { text = "hi $who" }
 }
 
-emit Greet { "who": "ada" } to this get r
+emit Greet { who = "ada" } to this get r
 assert r is Greeting
 assert r.text = "hi ada"
 ```
@@ -519,15 +541,15 @@ is already running**: not itself, and not around a longer loop.
 
 ```
 Third { n } => {
-    return Done { "value": n + 1 }
+    return Done { value = n + 1 }
 }
 Second { n } => {
-    emit Third { "n": n } to this get t
-    return Done { "value": t.value }
+    emit Third { n = n } to this get t
+    return Done { value = t.value }
 }
 First { n } => {
-    emit Second { "n": n } to this get s
-    return Done { "value": s.value }
+    emit Second { n = n } to this get s
+    return Done { value = s.value }
 }
 ```
 
@@ -537,8 +559,8 @@ rejected is a cycle:
 
 ```
 Down { n } => {
-    emit Down { "n": n - 1 } to this get inner   -- error, before it runs:
-    return Done { "value": 0 }                   -- handler cycle: Down -> Down
+    emit Down { n = n - 1 } to this get inner   -- error, before it runs:
+    return Done { value = 0 }                   -- handler cycle: Down -> Down
 }
 ```
 
@@ -563,10 +585,10 @@ return.
 
 ```code
 Divide { a, b } => {
-    return Quotient { "value": a / b }
+    return Quotient { value = a / b }
 }
 
-emit Divide { "a": 10, "b": 0 } to this get r
+emit Divide { a = 10, b = 0 } to this get r
 assert r is Exception
 assert r.message = "division by zero"
 ```
@@ -589,9 +611,9 @@ on from where you were.
 
 ```code
 Outer { } => {
-    emit Divide { "a": 1, "b": 0 } to this get r   -- r is an Exception
-    emit Print { "value": "still here" } to term   -- and this still runs
-    return Report { "inner": r }                   -- pass it on, or don't
+    emit Divide { a = 1, b = 0 } to this get r   -- r is an Exception
+    emit Print { value = "still here" } to term   -- and this still runs
+    return Report { inner = r }                   -- pass it on, or don't
 }
 ```
 
@@ -620,13 +642,13 @@ handler runs and answers on that basis.
 
 ```code
 emit Length { } to core get a
-emit Length { "value": null } to core get b
+emit Length { value = null } to core get b
 assert a.message = b.message      -- the same particle, so the same answer
 ```
 
 There is no separate "you did not supply it" complaint, because there is
 nothing that could have supplied it: `Length { }` **is**
-`Length { "value": null }`, and null has no length.
+`Length { value = null }`, and null has no length.
 
 ### What still ends the program before it starts
 
@@ -666,11 +688,11 @@ alias, and are reached by `emit`:
 
 ```
 link "native_modules/terminal.so" as term
-emit Print { "value": "hello" } to term get r
+emit Print { value = "hello" } to term get r
 assert r.value = 5                -- bytes written
 
 link "native_modules/math.so" as m
-emit Sum { "value": [1, 2, 3] } to m get n
+emit Sum { value = [1, 2, 3] } to m get n
 assert n.value = 6
 ```
 
@@ -718,7 +740,7 @@ Tick { value } => {
     ...
 }
 
-emit Start { "value": 3 } to ev get started   -- module queues three Ticks
+emit Start { value = 3 } to ev get started   -- module queues three Ticks
 -- by here they have all been handled
 ```
 
@@ -731,10 +753,10 @@ so a module can ask a question rather than only announce something:
 link "http_server.so" as srv
 
 Request { method, path } => {
-    return Response { "status": 200, "body": "hi from $path" }
+    return Response { status = 200, body = "hi from $path" }
 }
 
-emit Listen { "port": 8080 } to srv get l
+emit Listen { port = 8080 } to srv get l
 loop {
 }
 ```
@@ -769,9 +791,9 @@ Tick { value } => {
     ...
 }
 
-emit Start { "value": 3 } to timer get started
+emit Start { value = 3 } to timer get started
 loop {
-    emit Wait { "timeout_ms": 2000 } to timer get w    -- parks until a push
+    emit Wait { timeout_ms = 2000 } to timer get w    -- parks until a push
 }
 ```
 
@@ -817,7 +839,7 @@ without naming any of them:
 
 ```code
 Log { source, level, message } => {
-    emit Print { "value": "[$source] $message" } to term
+    emit Print { value = "[$source] $message" } to term
 }
 ```
 
@@ -938,7 +960,7 @@ Working from tokens, every piece of output is a slice of the input, so
 literals keep their spelling and comments survive verbatim.
 
 Hard line breaks stay yours. There is no maximum width and no re-flow: a
-`{ "x": 1 }` written inline stays inline, and a multi-line array stays
+`{ x = 1 }` written inline stays inline, and a multi-line array stays
 multi-line. What gets normalized is indentation, spacing between tokens, and
 runs of blank lines.
 

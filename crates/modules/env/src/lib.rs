@@ -12,8 +12,8 @@
 //! link "env.so" as env
 //! link "http_server.so" as srv
 //!
-//! emit Get { "name": "PORT", "default": 8080 } to env get p
-//! emit Listen { "port": p.value } to srv get l
+//! emit Get { name = "PORT", default = 8080 } to env get p
+//! emit Listen { port = p.value } to srv get l
 //! ```
 //!
 //! **The default says how to read it.** There are no type keywords in this

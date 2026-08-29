@@ -1,4 +1,4 @@
-let point = { "x": 1, "y": 2 }
+let point = { x = 1, y = 2 }
 
 assert point.x = 1
 assert point.y = 2

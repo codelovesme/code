@@ -1,4 +1,6 @@
-use crate::ast::{BinOp, EmitTarget, Expr, LoopAccumulator, LoopOver, Program, Stmt, UnOp};
+use crate::ast::{
+    BinOp, EmitTarget, Expr, FieldKey, LoopAccumulator, LoopOver, Program, Stmt, UnOp,
+};
 use crate::lexer::{Lexed, StringPart, Token};
 use crate::span::Located;
 
@@ -178,9 +180,10 @@ impl<'a> Parser<'a> {
             // identifier everywhere else. Lowercase names fall through
             // untouched: they stay variable reads.
             let particle = match particle {
-                Expr::Ident(name) if starts_uppercase(&name) => {
-                    Expr::Object(vec![("_class".to_string(), Expr::Str(name))])
-                }
+                Expr::Ident(name) if starts_uppercase(&name) => Expr::Object(vec![(
+                    FieldKey::Literal("_class".to_string()),
+                    Expr::Str(name),
+                )]),
                 other => other,
             };
             let target = match self.advance() {
@@ -781,7 +784,10 @@ impl<'a> Parser<'a> {
                     if starts_uppercase(&name) && matches!(self.peek(), Token::LBrace) =>
                 {
                     let mut fields = self.object_fields()?;
-                    fields.insert(0, ("_class".to_string(), Expr::Str(name)));
+                    fields.insert(
+                        0,
+                        (FieldKey::Literal("_class".to_string()), Expr::Str(name)),
+                    );
                     Ok(Expr::Object(fields))
                 }
                 Token::Ident(name) => Ok(Expr::Ident(name)),
@@ -825,12 +831,19 @@ impl<'a> Parser<'a> {
         Ok(Expr::Object(self.object_fields()?))
     }
 
-    /// `{ "key": expr, ... }`'s body, from just after the `{` — shared by
+    /// `{ name = expr, ... }`'s body, from just after the `{` — shared by
     /// `object()` and particle construction (see `primary`'s `Token::Ident`
     /// case), which is why particle fields accept exactly the same syntax
-    /// and reject exactly the same malformed input (trailing comma, a bare
-    /// identifier as a key, ...) as a plain object literal does.
-    fn object_fields(&mut self) -> Result<Vec<(String, Expr)>, String> {
+    /// and reject exactly the same malformed input (a trailing comma, a
+    /// missing `=`, ...) as a plain object literal does.
+    ///
+    /// Three spellings of a key, and they are one rule rather than three: a
+    /// key is a *name*, and a name can be written bare when it looks like an
+    /// identifier, quoted when it does not (`"Content-Type"`), and built
+    /// while the program runs when the quotes contain an interpolation
+    /// (`"$header"`). The last is why a key is a `FieldKey` rather than a
+    /// `String`.
+    fn object_fields(&mut self) -> Result<Vec<(FieldKey, Expr)>, String> {
         self.advance(); // '{'
         self.skip_newlines();
         let mut fields = Vec::new();
@@ -840,12 +853,36 @@ impl<'a> Parser<'a> {
         }
         loop {
             let key = match self.advance() {
-                Token::Str(s) => s,
-                other => return Err(format!("expected a string key, found {other:?}")),
+                Token::Ident(name) => FieldKey::Literal(name),
+                Token::Str(s) => FieldKey::Literal(s),
+                Token::InterpStr(parts) => FieldKey::Computed(Expr::Interpolated(
+                    parts
+                        .into_iter()
+                        .map(|part| match part {
+                            StringPart::Lit(s) => Expr::Str(s),
+                            StringPart::Var(name) => Expr::Ident(name),
+                        })
+                        .collect(),
+                )),
+                other => {
+                    return Err(format!(
+                        "expected a field name, found {other:?} (a key is a name: `a`, \
+                         `\"Content-Type\"`, or `\"$variable\"`)"
+                    ))
+                }
             };
             match self.advance() {
-                Token::Colon => {}
-                other => return Err(format!("expected ':' after key, found {other:?}")),
+                Token::Equals => {}
+                // Every program written before 2026-08-29 hits exactly this,
+                // so it says what to do rather than what it found.
+                Token::Colon => {
+                    return Err(
+                        "expected '=' after a field name, found ':'. An object field is \
+                         written `name = value`"
+                            .to_string(),
+                    )
+                }
+                other => return Err(format!("expected '=' after a field name, found {other:?}")),
             }
             self.skip_newlines();
             let value = self.expr()?;

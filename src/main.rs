@@ -347,7 +347,7 @@ fn cmd_init(args: Vec<String>) -> ExitCode {
     println!("Printing lives in a module rather than the language:");
     println!("  code install terminal");
     println!("  then: link \"terminal.so\" as term");
-    println!("        emit Print {{ \"value\": \"hello\" }} to term");
+    println!("        emit Print {{ value = \"hello\" }} to term");
     ExitCode::SUCCESS
 }
 
@@ -363,7 +363,7 @@ let scores = [88, 94, 71]
 
 -- `emit` sends a particle to a recipient. `core` is compiled in, so this
 -- works with nothing installed.
-emit Length { "value": scores } to core get n
+emit Length { value = scores } to core get n
 assert n.value = 3
 
 -- The only loop form there is. `get` declares a result that survives it.
@@ -377,10 +377,10 @@ assert best = 94
 -- Handlers are how a program answers its own particles. There are no
 -- functions.
 Greet { who } => {
-    return Greeting { "text": "hello, $who" }
+    return Greeting { text = "hello, $who" }
 }
 
-emit Greet { "who": name } to this get greeting
+emit Greet { who = name } to this get greeting
 assert greeting.text = "hello, world"
 "#;
 

@@ -17,15 +17,15 @@ Bad {} => {
 
 Viacore {} => {
     emit Length {} to core get r
-    return Reached { "r": r }
+    return Reached { r = r }
 }
 Viamodule {} => {
     emit Double {} to math get r
-    return Reached { "r": r }
+    return Reached { r = r }
 }
 Viahandler {} => {
     emit Bad {} to this get r
-    return Reached { "r": r }
+    return Reached { r = r }
 }
 
 emit Viacore {} to this get a

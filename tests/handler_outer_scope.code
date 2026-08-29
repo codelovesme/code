@@ -11,15 +11,15 @@ Shout { text } => {
     calls = calls + 1
     let local = text + suffix
     last = local
-    return Shouted { "value": local }
+    return Shouted { value = local }
 }
 
-emit Shout { "text": "hi" } to this get a
+emit Shout { text = "hi" } to this get a
 assert a.value = "hi!"
 assert calls = 1
 assert last = "hi!"
 
-emit Shout { "text": "bye" } to this get b
+emit Shout { text = "bye" } to this get b
 assert b.value = "bye!"
 assert calls = 2
 assert last = "bye!"

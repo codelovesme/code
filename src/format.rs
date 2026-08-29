@@ -17,7 +17,7 @@
 //! `tests/format_fixtures.rs` provable rather than hoped for.
 //!
 //! **Hard line breaks are the author's.** There is no max width and no
-//! re-flow: a `{ "x": 1 }` written inline stays inline, a multi-line array
+//! re-flow: a `{ x = 1 }` written inline stays inline, a multi-line array
 //! stays multi-line. That is the rule keeping this small, and it also
 //! dissolves the one genuinely awkward question in the grammar — `{` opens
 //! both a block and an object literal, and the token stream cannot always
@@ -130,9 +130,11 @@ impl Formatter<'_> {
     }
 
     /// One space between tokens, with the exceptions the corpus already
-    /// follows. Braces are the odd ones: `{ "x": 1 }` and `Log { "x": 1 }`
+    /// follows. Braces are the odd ones: `{ x = 1 }` and `Log { x = 1 }`
     /// keep an inner space, where `[1, 2]` and `f(x)` do not — which is the
-    /// majority style in `tests/` by 229 to 51.
+    /// majority style in `tests/` by 229 to 51. A field's `=` takes a space
+    /// on both sides, like every other `=`, which falls out of the default
+    /// rather than needing a rule.
     fn space_before(&self, next: &Token) -> bool {
         let Some(prev) = &self.prev else {
             return false;
@@ -140,7 +142,7 @@ impl Formatter<'_> {
         match (prev, next) {
             // `.` binds its two sides together: `point.x`, never `point . x`.
             (Token::Dot, _) | (_, Token::Dot) => false,
-            (_, Token::Comma) | (_, Token::Colon) => false,
+            (_, Token::Comma) => false,
             (Token::LBracket | Token::LParen, _) => false,
             (_, Token::RBracket | Token::RParen) => false,
             // `[` opens a literal (`let xs = [1, 2]`) or subscripts one

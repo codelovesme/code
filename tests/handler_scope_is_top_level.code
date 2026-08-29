@@ -5,26 +5,26 @@ let total = 0
 
 Bump { by } => {
     total = total + by
-    return Bumped { "total": total }
+    return Bumped { total = total }
 }
 
-emit Bump { "by": 1 } to this get a
+emit Bump { by = 1 } to this get a
 assert a.total = 1
 
 {
-    emit Bump { "by": 1 } to this get b
+    emit Bump { by = 1 } to this get b
     assert b.total = 2
 }
 
 loop x over [10, 20] {
-    emit Bump { "by": x } to this
+    emit Bump { by = x } to this
 }
 assert total = 32
 
 Twice => {
-    emit Bump { "by": 1 } to this
-    emit Bump { "by": 1 } to this
-    return Ack { "total": total }
+    emit Bump { by = 1 } to this
+    emit Bump { by = 1 } to this
+    return Ack { total = total }
 }
 emit Twice to this get t
 assert t.total = 34

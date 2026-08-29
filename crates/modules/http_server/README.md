@@ -7,10 +7,10 @@ a question; this lets the world ask one of your program.
 link "http_server.so" as srv
 
 Request { method, path } => {
-    return Response { "status": 200, "body": "hi from $path" }
+    return Response { status = 200, body = "hi from $path" }
 }
 
-emit Listen { "port": 8080 } to srv get l
+emit Listen { port = 8080 } to srv get l
 assert l.ok
 
 loop {
@@ -53,9 +53,9 @@ way every particle in this language is answered — by returning one:
 ```code
 Request { method, path } => {
     if path = "/health" {
-        return Response { "status": 200, "body": "ok" }
+        return Response { status = 200, body = "ok" }
     }
-    return Response { "status": 404, "body": "no" }
+    return Response { status = 404, body = "no" }
 }
 ```
 
@@ -108,14 +108,14 @@ handles them.
 
 **Loopback by default.** A module that opened a program to the network the
 moment it was linked would be making that decision for its caller. Saying
-`"host": "0.0.0.0"` is how a caller makes it.
+`host = "0.0.0.0"` is how a caller makes it.
 
 **A JSON body needs no support here.** String interpolation renders any value
 as compact JSON, in both output modes:
 
 ```code
-let payload = { "ok": true, "items": [1, 2] }
-return Response { "status": 200, "body": "$payload", "content_type": "application/json" }
+let payload = { ok = true, items = [1, 2] }
+return Response { status = 200, body = "$payload", content_type = "application/json" }
 ```
 
 ## Deliberately not here

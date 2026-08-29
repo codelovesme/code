@@ -4,10 +4,10 @@
 link "native_modules/test_events_static.a" as ev
 
 Tick { value } => {
-    return Ack { "value": value + 100 }
+    return Ack { value = value + 100 }
 }
 
-emit Start { "value": 2 } to ev get started
+emit Start { value = 2 } to ev get started
 assert started.value = 2
 
 emit Answers {} to ev get a

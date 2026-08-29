@@ -1,7 +1,7 @@
 -- `Length` also accepts a string, counting its bytes.
-emit Length { "value": "hello world" } to core get n
+emit Length { value = "hello world" } to core get n
 assert n._class = "LengthResult"
 assert n.value = 11
 
-emit Length { "value": "" } to core get empty
+emit Length { value = "" } to core get empty
 assert empty.value = 0

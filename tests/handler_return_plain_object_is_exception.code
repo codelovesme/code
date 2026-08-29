@@ -4,7 +4,7 @@
 --
 -- Was `fail_handler_return_plain_object.code`.
 Ping {} => {
-    return { "x": 1 }
+    return { x = 1 }
 }
 
 emit Ping {} to this get r

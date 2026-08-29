@@ -1,7 +1,7 @@
 -- `loop k, v over obj { }` binds an object's field name (a Str) as the key
 -- and its value second — same shape as an array, different key kind. See
 -- ast.rs's `Stmt::Loop` for the law: `X[k] = v`, for either container.
-let scores = { "alice": 10, "bob": 20 }
+let scores = { alice = 10, bob = 20 }
 let names = []
 let totals = []
 loop name, score over scores {

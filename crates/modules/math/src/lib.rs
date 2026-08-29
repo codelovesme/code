@@ -6,7 +6,7 @@
 //! `Shout`/`Echo` moved to `strings`. `test_math` itself stays a pure test
 //! double with all four handlers, so the split costs it nothing.
 //!
-//! Handlers (each takes `{ "value": … }`, returns `<Name>Result`):
+//! Handlers (each takes `{ value = … }`, returns `<Name>Result`):
 //!
 //! - `Double` — `value * 2`, a Number back
 //! - `Sum`    — the sum of an Array of Numbers; an empty array sums to 0

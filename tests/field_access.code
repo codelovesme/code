@@ -1,4 +1,4 @@
-let point = { "x": 1, "y": 2 }
+let point = { x = 1, y = 2 }
 let x = point.x
 let y = point.y
 

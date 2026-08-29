@@ -34,8 +34,8 @@ fn env_guard() -> MutexGuard<'static, ()> {
 }
 
 const MAIN_CODE: &str = r#"link "test_math.so" as m
-emit Double { "value": 21 } to m get n
-assert n = { "_class": "DoubleResult", "value": 42 }
+emit Double { value = 21 } to m get n
+assert n = { _class = "DoubleResult", value = 42 }
 "#;
 
 fn fixture_dir(name: &str) -> PathBuf {

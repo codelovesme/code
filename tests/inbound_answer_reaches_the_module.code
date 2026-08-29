@@ -10,10 +10,10 @@
 link "native_modules/test_events.so" as ev
 
 Tick { value } => {
-    return Ack { "value": value + 100 }
+    return Ack { value = value + 100 }
 }
 
-emit Start { "value": 3 } to ev get started
+emit Start { value = 3 } to ev get started
 assert started.value = 3
 
 -- The three ticks have been handled by here, and each answer went back.

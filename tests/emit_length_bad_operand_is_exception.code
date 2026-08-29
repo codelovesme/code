@@ -5,7 +5,7 @@
 -- the old behaviour).
 --
 -- A field the particle does not carry is null, so `Length { }` is the same
--- particle as `Length { "value": null }` and produces the same failure. There
+-- particle as `Length { value = null }` and produces the same failure. There
 -- is no separate "you didn't supply it" complaint: emitting is not filling in
 -- a form.
 --
@@ -14,12 +14,12 @@
 -- level, where these now answer instead of failing. This fixture is what
 -- keeps the two backends' wording identical for them, since it runs under
 -- both.
-emit Length { "value": 5 } to core get n
+emit Length { value = 5 } to core get n
 assert n is Exception
 assert n.source = "core"
 assert n.message = "Length requires an array or string 'value', found a number"
 
-emit Length { "value": null } to core get a
+emit Length { value = null } to core get a
 emit Length {} to core get b
 assert a is Exception
 assert b is Exception
@@ -27,6 +27,6 @@ assert a.message = b.message
 assert a.message = "Length requires an array or string 'value', found a null"
 
 -- The working path is untouched.
-emit Length { "value": [1, 2, 3] } to core get ok
+emit Length { value = [1, 2, 3] } to core get ok
 assert ok is LengthResult
 assert ok.value = 3

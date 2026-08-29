@@ -4,5 +4,5 @@
 -- to live in `test_math`, and the split proposal hands it over here. Same
 -- contract byte-for-byte: uppercase the ASCII letters, append `!`.
 link "native_modules/strings.so" as s
-emit Shout { "value": "whisper" } to s get n
-assert n = { "_class": "ShoutResult", "value": "WHISPER!" }
+emit Shout { value = "whisper" } to s get n
+assert n = { _class = "ShoutResult", value = "WHISPER!" }

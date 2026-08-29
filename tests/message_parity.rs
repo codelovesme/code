@@ -64,7 +64,7 @@ const CASES: &[(&str, &str)] = &[
     ("emit_non_particle", "emit 5 to core get r\n"),
     (
         "emit_missing_class",
-        "emit { \"value\": 1 } to core get r\n",
+        "emit { value = 1 } to core get r\n",
     ),
     // `Length`'s operand message is not here for the same reason
     // `code_check_particle`'s is not: since core answers with an Exception
