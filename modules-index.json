@@ -1,4 +1,16 @@
 {
+  "http_client": {
+    "version": "1.0.0",
+    "url": "https://github.com/codelovesme/code/releases/tag/modules/http_client/v1.0.0"
+  },
+  "math": {
+    "version": "1.0.0",
+    "url": "https://github.com/codelovesme/code/releases/tag/modules/math/v1.0.0"
+  },
+  "strings": {
+    "version": "1.0.0",
+    "url": "https://github.com/codelovesme/code/releases/tag/modules/strings/v1.0.0"
+  },
   "terminal": {
     "version": "1.0.0",
     "url": "https://github.com/codelovesme/code/releases/tag/modules/terminal/v1.0.0"
