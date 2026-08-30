@@ -2,6 +2,26 @@
 .vscode-test/**
 src/**
 node_modules/**
+# ...except exactly the production runtime closure of `out/extension.js`
+# (verified with `npm ls --omit=dev` plus reading its compiled requires):
+# vscode-languageclient pulls vscode-languageserver-protocol
+# (which pulls vscode-jsonrpc) and, at its pinned versions, its private
+# copies of minimatch/brace-expansion/balanced-match resolve to these
+# hoisted roots. Without them the packaged .vsix fails to load the
+# language client on a fresh install, because VS Code resolves the entry's
+# `require("vscode-languageclient/node")` inside the extracted folder
+# alone. Everything else under node_modules stays excluded: the toolchain
+# (vsce, typescript, every `@types/*`) and the dev-time dep forest.
+# Adding a new production dependency means adding one line here; forgetting
+# to breaks first activation of a freshly installed extension, the silent
+# kind, so watch for `Cannot find module` errors in the extension host log.
+!node_modules/vscode-languageclient/**
+!node_modules/vscode-languageserver-protocol/**
+!node_modules/vscode-jsonrpc/**
+!node_modules/minimatch/**
+!node_modules/semver/**
+!node_modules/brace-expansion/**
+!node_modules/balanced-match/**
 .gitignore
 tsconfig.json
 **/*.ts
