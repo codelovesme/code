@@ -969,8 +969,10 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
     if (scroll) document.getElementById("playground").scrollIntoView({ behavior: "smooth" });
   }
   resetBtn.addEventListener("click", () => {
-    if (currentExample) loadExample(currentExample);
-    else { source.value = ""; syncEditor(); doRun(); }
+    // A saved draft is not an example, but Reset must never strand the
+    // editor blank — the fallback is the same example a fresh visit opens.
+    if (!EXAMPLES.length) { source.value = ""; syncEditor(); doRun(); return; }
+    loadExample(currentExample || EXAMPLES[0].name);
   });
   copyOutBtn.addEventListener("click", async () => {
     const text = output.textContent;
@@ -1117,7 +1119,12 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
     } catch {}
     return EXAMPLES.length ? EXAMPLES[0].code : "";
   }
-  source.value = initialSource();
+  // When a restored draft happens to be an unchanged example, remember it,
+  // so Reset ("restore the current example") means what its label says.
+  const bootSource = initialSource();
+  source.value = bootSource;
+  const bootedExample = EXAMPLES.find((e) => e.code === bootSource);
+  if (bootedExample) currentExample = bootedExample.name;
   syncEditor();
   demoLoop();
 
