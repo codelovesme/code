@@ -278,10 +278,10 @@ rather than quietly grouping as `(1 < 2) < 3`.
 
 **Operand rules.** Ordering (`< > ≤ ≥`) is Number-only — strings included,
 comparing them is an error. Equality (`= ≠`) is the opposite: defined for any
-two values, so mismatched kinds are simply unequal. Arithmetic requires
-Numbers; `and`/`or`/`not` require Bools. A type mismatch is an error, in
-both modes. Division by zero is an error too — the value model is JSON, which
-has no way to spell infinity.
+two values, so mismatched kinds are simply unequal. `- * /` require Numbers;
+`and`/`or`/`not` require Bools; a type mismatch is an error, in both modes.
+`+` is the exception — see below. Division by zero is an error too — the
+value model is JSON, which has no way to spell infinity.
 
 "An error" here means what it means everywhere in this language: the frame
 ends and answers with an `Exception`, rather than the program stopping. See
@@ -292,12 +292,21 @@ ends and answers with an `Exception`, rather than the program stopping. See
 ```
 assert 1 + 2 = 3
 assert "a" + "b" = "ab"
+assert "n=" + 3 = "n=3"          -- a string on either side: the other operand
+assert 3 + "!" = "3!"            -- renders as it would inside "$…", and joins
+assert "x" + null = "xnull"
 assert [1] + [2] = [1, 2]        -- two arrays concatenate
 assert [1, 2] + 3 = [1, 2, 3]    -- one array: the other side is an element
 assert 0 + [1, 2] = [0, 1, 2]    -- appended or prepended by which side it's on
 assert {a = 1} + {b = 2} = {a = 1, b = 2}      -- two objects merge
 assert {a = 1, b = 2} + {a = 9} = {a = 9, b = 2}   -- right wins, in place
 ```
+
+A `Str` on either side wins over everything except a container: `"x" + [1]`
+is still `["x", 1]` (the array-element rule below), and `"x" + {a = 1}` is
+still an error — an object has no bare form to splice in. Otherwise the
+non-string operand is rendered exactly as `"$it"` would render it and the
+two are joined.
 
 The two containers each combine with themselves, and neither borrows the
 other's rule. A field both objects name takes the **right** value in the

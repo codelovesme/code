@@ -23,6 +23,10 @@ loop x over [1, 2, 3] {
 }
 assert acc = [10, 20, 30]
 
--- Non-array mixed kinds are still a type error, unchanged.
+-- A string operand still absorbs into an array as one element rather than
+-- being concatenated — the array rule is checked first.
+assert "x" + [1, 2] = ["x", 1, 2]
+assert [1, 2] + "x" = [1, 2, "x"]
+
 assert 1 + 2 = 3
 assert "a" + "b" = "ab"

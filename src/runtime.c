@@ -1786,6 +1786,36 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         out->len = total;
         return;
     }
+    /* A string on either side makes `+` string concatenation: the other
+     * operand is rendered exactly as `code_to_text` (string interpolation)
+     * renders it. The array branch above already returned for every
+     * string-and-array pairing, and string-and-object stays a type error —
+     * both container kinds are excluded here and fall through to
+     * `fail_binary`. Mirrors interpreter.rs's `Str`-on-either-side arms. */
+    if ((a->tag == CODE_STR || b->tag == CODE_STR)
+        && a->tag != CODE_ARRAY && b->tag != CODE_ARRAY
+        && a->tag != CODE_OBJECT && b->tag != CODE_OBJECT) {
+        CodeValue ta = {0};
+        CodeValue tb = {0};
+        code_to_text(&ta, a);
+        code_to_text(&tb, b);
+        size_t la = strlen(ta.str);
+        size_t lb = strlen(tb.str);
+        char *buf = heap_alloc(la + lb + 1);
+        memcpy(buf, ta.str, la);
+        memcpy(buf + la, tb.str, lb);
+        buf[la + lb] = '\0';
+        code_release(&ta);
+        code_release(&tb);
+        /* `ta`/`tb` are independent copies, so `buf` holds no reference into
+         * the operands — releasing `out` here is safe even when `out` is `a`
+         * or `b` (`s = s + 1`), the same ordering point as the cases above. */
+        code_release(out);
+        out->tag = CODE_STR;
+        out->heap = 1;
+        out->str = buf;
+        return;
+    }
     fail_binary("+", a, b);
 }
 

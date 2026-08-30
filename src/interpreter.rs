@@ -1241,6 +1241,19 @@ fn apply_binop(op: BinOp, l: Value, r: Value) -> Result<Value, String> {
             items.extend(b.iter().cloned());
             Some(Array(Rc::new(items)))
         }
+        // A string on either side makes `+` string concatenation: the other
+        // operand is rendered exactly as string interpolation would render
+        // it (`"n=" + 1` is `"n=1"`, `"ok? " + true` is `"ok? true"`,
+        // `"x" + null` is `"xnull"`). The array arms above have already
+        // claimed every string-and-array pairing, and string-and-object
+        // stays a type error — an object has no bare form to splice — so the
+        // guard on each arm excludes both container kinds.
+        (BinOp::Add, Str(a), b) if !matches!(b, Array(_) | Object(_)) => {
+            Some(Str(Rc::from(format!("{a}{b}").as_str())))
+        }
+        (BinOp::Add, a, Str(b)) if !matches!(a, Array(_) | Object(_)) => {
+            Some(Str(Rc::from(format!("{a}{b}").as_str())))
+        }
         // Two objects merge, the way two arrays concatenate. Arrays have no
         // duplicate keys to reconcile and objects do, so this arm has the
         // one extra rule: a field both sides name takes the *right* value

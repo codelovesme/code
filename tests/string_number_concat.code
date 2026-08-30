@@ -1,0 +1,35 @@
+-- A `Str` on either side of `+` makes it string concatenation. The other
+-- operand is rendered exactly as string interpolation would render it, so
+-- this stays in step with `interp_value_kinds.code`.
+
+assert "n=" + 3 = "n=3"
+assert 3 + "!" = "3!"
+assert "" + 42 = "42"
+assert "half " + 2.5 = "half 2.5"
+assert "-" + -4 = "--4"
+
+-- booleans and null render by name, same as inside "$…"
+assert "ok? " + true = "ok? true"
+assert false + " is off" = "false is off"
+assert "x" + null = "xnull"
+
+-- both sides can be non-literal, and += inherits the rule
+let label = "count"
+let n = 7
+assert label + ": " + n = "count: 7"
+
+let line = "items"
+line += " = "
+line += 3
+assert line = "items = 3"
+
+-- Str + Str is unchanged, and Str still absorbs into an array as an element
+-- rather than concatenating — the array rule is checked first.
+assert "a" + "b" = "ab"
+assert "x" + [1, 2] = ["x", 1, 2]
+
+-- Accumulating a string across a loop, which is what this is for.
+loop item over [1, 2, 3] get out = "" {
+    out += item
+}
+assert out = "123"

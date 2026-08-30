@@ -531,12 +531,20 @@ impl ValueKind {
     }
 }
 
-/// Operand type rules (decided 2026-08-21, do not re-propose alternatives):
+/// Operand type rules:
 /// - `Sub`/`Mul`/`Div`: `Number` only. `Div` by zero is a runtime error,
 ///   not `Infinity` — the value model is JSON, which has no way to
 ///   represent that.
 /// - `Add` is the one overloaded operator:
 ///   - `Number + Number` adds, `Str + Str` concatenates.
+///   - A `Str` on *either* side (opposite a non-container) is string
+///     concatenation: the other operand renders exactly as string
+///     interpolation would render it, so `"n=" + 1` is `"n=1"`,
+///     `1 + "!"` is `"1!"`, `"x" + null` is `"xnull"`. `Str` opposite an
+///     `Array` or `Object` is *not* this case — the array-element rule
+///     below claims the array pairing, and `Str + Object` stays a type
+///     error (an object has no bare form to splice). Restores what the old
+///     language did; the strict-only rule from 2026-08-21 is reverted.
 ///   - `Array + Array` concatenates.
 ///   - With exactly *one* array operand, the other is a single element:
 ///     `[1,2] + 3` is `[1,2,3]` and `0 + [1,2]` is `[0,1,2]`. Any value
@@ -554,8 +562,8 @@ impl ValueKind {
 ///     `{a = 1} + 3` stays an error. With one array operand and one
 ///     object, the array case above still wins and the object is a single
 ///     element (`[1] + {k = 2}` is `[1, {k = 2}]`).
-///   - Everything else, including mixed non-array kinds like `Number+Str`,
-///     is a runtime type error.
+///   - Everything else — `Number + Bool`, `Bool + Null`, `Str + Object`,
+///     and so on — is a runtime type error.
 ///
 /// `name += expr` is sugar for `name = name + expr`, rewritten by the
 /// parser (see `Stmt::Assign`), so it inherits every rule above and needs
