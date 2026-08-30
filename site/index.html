@@ -268,8 +268,6 @@
   .tok-k { color: var(--violet); font-weight: 600; }
   .tok-b { color: var(--amber); }
   .tok-p { color: var(--pink); font-weight: 600; }
-  .out-name { color: var(--teal); }
-  .out-eq { color: var(--muted-2); }
   .out-err { color: var(--red); }
 
   /* ---------- examples ---------- */
@@ -855,17 +853,14 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
     out += esc(src.slice(last));
     return out;
   }
+  // The engine answers "" or "error: …" and nothing else. It used to answer
+  // a dump of the program's final bindings, one `name = value` per line,
+  // which is what the `name = value` splitting here used to be for — the
+  // dump is gone, so the splitting only waited to mangle the first output
+  // line that happened to contain " = ".
   function renderOutput(text) {
     if (text.startsWith("error:")) return `<span class="out-err">${esc(text)}</span>`;
-    return text
-      .split("\n")
-      .filter((l) => l.length)
-      .map((line) => {
-        const i = line.indexOf(" = ");
-        if (i < 0) return `<span>${esc(line)}</span>`;
-        return `<span class="out-name">${esc(line.slice(0, i))}</span> <span class="out-eq">=</span> ${highlight(line.slice(i + 3))}`;
-      })
-      .join("\n");
+    return `<span>${esc(text)}</span>`;
   }
 
   /* ---------- editor ---------- */
@@ -907,7 +902,12 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
     }
     const ms = Math.max(1, Math.round(performance.now() - t0));
     const isError = result.startsWith("error:");
-    output.innerHTML = result ? renderOutput(result) : "(no bindings)";
+    // A program that ran and said nothing is the normal case here, not an
+    // empty result: printing is a module's job and the playground has no
+    // modules, so this says why rather than reporting an absence.
+    output.innerHTML = result
+      ? renderOutput(result)
+      : "(no output — a program is silent unless it emits to a module)";
     output.classList.toggle("error", isError);
     status.textContent = isError ? "error" : `ran in ${ms} ms`;
     status.classList.toggle("err", isError);
