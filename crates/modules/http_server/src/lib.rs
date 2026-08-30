@@ -17,7 +17,9 @@
 //!
 //! Pushed into the program (its own handlers, between statements):
 //!
-//! - `Request { method, path, query, body }`
+//! - `Request { method, path, query, body, headers }` — `headers` is an
+//!   object keyed by lowercased header name: `req.headers.host`, or
+//!   `req.headers["content-type"]` for a hyphenated one
 //! - `Log { source, level, message }` and `Exception { source, message }`,
 //!   the common particles — see the root README.
 //!
@@ -162,7 +164,9 @@ fn answered(particle: &CodeValue, result: &CodeValue) {
     } else {
         Reply {
             status: optional_number(result, "status", 200.0) as u16,
-            body: find_field(result, "body").map(value_text).unwrap_or_default(),
+            body: find_field(result, "body")
+                .map(value_text)
+                .unwrap_or_default(),
             content_type: match find_field(result, "content_type").map(value_text) {
                 Some(ct) if !ct.is_empty() => ct,
                 _ => "text/plain; charset=utf-8".to_string(),
@@ -214,7 +218,11 @@ fn handle_config(out: &mut CodeValue, particle: &CodeValue) {
         match read_number(v) {
             Some(n) if n.fract() == 0.0 && (0.0..=65535.0).contains(&n) => cfg.port = n as u16,
             _ => {
-                exception(out, "http_server", "'port' must be a whole number in 0..=65535");
+                exception(
+                    out,
+                    "http_server",
+                    "'port' must be a whole number in 0..=65535",
+                );
                 return;
             }
         }
@@ -223,7 +231,11 @@ fn handle_config(out: &mut CodeValue, particle: &CodeValue) {
         match read_number(v) {
             Some(n) if n.fract() == 0.0 && n >= 0.0 => cfg.max_body = n as usize,
             _ => {
-                exception(out, "http_server", "'max_body_bytes' must be a whole number, 0 or more");
+                exception(
+                    out,
+                    "http_server",
+                    "'max_body_bytes' must be a whole number, 0 or more",
+                );
                 return;
             }
         }
@@ -340,6 +352,10 @@ struct Request {
     path: String,
     query: String,
     body: String,
+    /// Header name (lowercased — HTTP names are case-insensitive) to value,
+    /// in arrival order. A name that repeats is joined with `", "`, the
+    /// field-value merge RFC 9110 §5.3 allows.
+    headers: Vec<(String, String)>,
 }
 
 /// Deliberately not a complete HTTP parser: the request line, the one header
@@ -369,21 +385,31 @@ fn read_request(stream: &mut TcpStream, max_body: usize) -> Result<Request, Stri
     };
 
     let mut content_length = 0usize;
+    let mut headers: Vec<(String, String)> = Vec::new();
     loop {
         let mut line = String::new();
         let read = reader.read_line(&mut line).map_err(|e| e.to_string())?;
         if read == 0 || line == "\r\n" || line == "\n" {
             break;
         }
-        let lower = line.to_ascii_lowercase();
-        if let Some(v) = lower.strip_prefix("content-length:") {
-            content_length = v.trim().parse().unwrap_or(0);
+        let Some((name, value)) = line.split_once(':') else {
+            continue; // a continuation line or garbage — not a header we can name
+        };
+        let name = name.trim().to_ascii_lowercase();
+        let value = value.trim().to_string();
+        if name == "content-length" {
+            content_length = value.parse().unwrap_or(0);
+        }
+        match headers.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, existing)) => {
+                existing.push_str(", ");
+                existing.push_str(&value);
+            }
+            None => headers.push((name, value)),
         }
     }
     if content_length > max_body {
-        return Err(format!(
-            "request body exceeds max_body_bytes ({max_body})"
-        ));
+        return Err(format!("request body exceeds max_body_bytes ({max_body})"));
     }
 
     let mut body = vec![0u8; content_length];
@@ -397,6 +423,7 @@ fn read_request(stream: &mut TcpStream, max_body: usize) -> Result<Request, Stri
         // Lossy rather than refusing: this language's only string is UTF-8,
         // and a request that is nearly text should still reach the program.
         body: String::from_utf8_lossy(&body).to_string(),
+        headers,
     })
 }
 
@@ -425,28 +452,41 @@ fn write_response(stream: &mut TcpStream, status: u16, content_type: &str, body:
 // Particles pushed into the program
 // ---------------------------------------------------------------------------
 
-/// `Request { method, path, query, body }`.
+/// `Request { method, path, query, body, headers }`.
 ///
-/// No `headers`. Not an omission by choice: `code_object` copies key
-/// *pointers* rather than key strings, so every field name in a value must
-/// outlive it — which is why `object()` takes `&'static CStr`. Header names
-/// arrive at runtime. `http_client` is missing response headers for exactly
-/// the same reason; both want an owned-keys constructor in the ABI, which is
-/// a decision bigger than either module.
+/// `headers` is an object — lowercased name to value (`req.headers.host`,
+/// `req.headers."content-type"`) — so an app reads a bearer token or a
+/// content type without this module having to know which headers matter.
+/// Its keys are built at run time, which `code_object` has owned the bytes
+/// of since 2026-08-29; the same fix is what lets `http_client` grow
+/// response headers when it needs them.
 fn push_request(request: &Request) {
+    let mut headers = CodeValue::zeroed();
+    {
+        let mut hbuf = SlotBuffer::new(request.headers.len());
+        for (i, (_, value)) in request.headers.iter().enumerate() {
+            owned_str(hbuf.slot_mut(i as i64), value);
+        }
+        let names: Vec<&str> = request.headers.iter().map(|(n, _)| n.as_str()).collect();
+        object_dyn(&mut headers, &names, &mut hbuf);
+        hbuf.release_all();
+    }
+
     let mut particle = CodeValue::zeroed();
-    let mut buf = SlotBuffer::new(5);
+    let mut buf = SlotBuffer::new(6);
     borrowed_str(buf.slot_mut(0), c"Request");
     owned_str(buf.slot_mut(1), &request.method);
     owned_str(buf.slot_mut(2), &request.path);
     owned_str(buf.slot_mut(3), &request.query);
     owned_str(buf.slot_mut(4), &request.body);
+    copy(buf.slot_mut(5), &headers);
     object(
         &mut particle,
-        &[c"_class", c"method", c"path", c"query", c"body"],
+        &[c"_class", c"method", c"path", c"query", c"body", c"headers"],
         &mut buf,
     );
     buf.release_all();
+    release(&mut headers);
     emit_inbound(&particle);
     release(&mut particle);
 }

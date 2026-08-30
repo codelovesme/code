@@ -44,10 +44,16 @@ One `Listen` per program: a second one answers `ok: false`.
 ## Pushed into the program
 
 ```
-Request { method, path, query, body }
+Request { method, path, query, body, headers }
 Log { source, level, message }
 Exception { source, message }
 ```
+
+`headers` is an object keyed by **lowercased** header name — HTTP names are
+case-insensitive. Read a simple name with a dot (`req.headers.authorization`)
+and a hyphenated one by index (`req.headers["content-type"]`). A header that
+appears twice is joined with `", "`. `query` and `body` are still raw
+strings; parsing either is a `url` or `json` module's job.
 
 `Log` and `Exception` are the language's **common particles** — same shape
 `http_client` pushes, so one handler serves both. A pushed class the program
@@ -102,16 +108,15 @@ that cannot start until the request finishes. A property of a single-threaded
 program rather than a bug here, and the reason
 `tests/http_server_module.rs` makes its requests from outside the process.
 
-**No request headers.** `code_object` copies key *pointers*, not key strings,
-so every field name in a value must outlive it — which is why `object()`
-takes `&'static CStr`. Header names arrive at runtime. `http_client` is
-missing *response* headers for exactly the same reason; both want an
-owned-keys constructor in the ABI, which is a decision bigger than either
-module.
+**No response headers.** A `Response` sets `status`, `body` and
+`content_type`, nothing else. `http_client` has the same gap on its side;
+both want more of the ABI's owned-key support wired through, which is a
+larger change than either module. (Request headers arrived once
+`code_object` began owning its key bytes, 2026-08-29.)
 
-**No TLS, no keep-alive, no chunked bodies, no HTTP/2.** The parser reads a
-request line, the one header that says how many body bytes follow, and those
-bytes. Everything else is what a reverse proxy in front of this is for, and
+**No TLS, no keep-alive, no chunked bodies, no HTTP/2.** The parser reads the
+request line, the headers, and the body length one of them declares.
+Everything else is what a reverse proxy in front of this is for, and
 saying so is more honest than a half-implementation that looks like it
 handles them.
 

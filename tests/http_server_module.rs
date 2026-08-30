@@ -48,12 +48,27 @@ fn free_port() -> u16 {
 /// One request, one response, spoken by hand — a dependency-free client for a
 /// server that promises `Connection: close` and nothing else.
 fn request(port: u16, method: &str, path: &str, body: &str) -> String {
+    request_with(port, method, path, &[], body)
+}
+
+/// `request`, plus extra header lines (`("Authorization", "Bearer x")`).
+fn request_with(
+    port: u16,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> String {
     let deadline = Instant::now() + Duration::from_secs(10);
+    let extra: String = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect();
     loop {
         match TcpStream::connect(("127.0.0.1", port)) {
             Ok(mut stream) => {
                 let request = format!(
-                    "{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    "{method} {path} HTTP/1.1\r\nHost: localhost\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 );
                 stream.write_all(request.as_bytes()).expect("write request");
@@ -174,6 +189,86 @@ loop {
         // request only.
         let r = request(port, "GET", "/again", "");
         assert_eq!(body_of(&r), "GET /again");
+    });
+}
+
+#[test]
+fn request_headers_reach_the_handler_by_lowercased_name() {
+    // A gateway pattern: read a bearer token off the request and answer
+    // differently for it. Header names are lowercased; a repeat is joined.
+    let program = r#"link "http_server.so" as srv
+
+Request { method, path, headers } => {
+    if path = "/whoami" {
+        if headers.authorization = "Bearer let-me-in" {
+            return Response { status = 200, body = "welcome" }
+        }
+        return Response { status = 401, body = "no" }
+    }
+    if path = "/type" {
+        if headers["content-type"] = "application/json" {
+            return Response { status = 200, body = "json" }
+        }
+        return Response { status = 200, body = "other" }
+    }
+    if path = "/accept" {
+        if headers.accept = "text/html, application/json" {
+            return Response { status = 200, body = "joined" }
+        }
+        return Response { status = 200, body = "not joined" }
+    }
+    return Response { status = 200, body = "ok" }
+}
+
+emit Config { port = PORT } to srv get c
+emit Listen { } to srv get l
+assert l.ok
+
+loop {
+}
+"#;
+    serving("headers", program, |port| {
+        let r = request_with(
+            port,
+            "GET",
+            "/whoami",
+            &[("Authorization", "Bearer let-me-in")],
+            "",
+        );
+        assert_eq!(status_of(&r), 200);
+        assert_eq!(body_of(&r), "welcome");
+
+        // Same header, name sent in a different case — still found.
+        let r = request_with(
+            port,
+            "GET",
+            "/whoami",
+            &[("AUTHORIZATION", "Bearer nope")],
+            "",
+        );
+        assert_eq!(status_of(&r), 401);
+
+        let r = request_with(port, "GET", "/whoami", &[], "");
+        assert_eq!(status_of(&r), 401);
+
+        let r = request_with(
+            port,
+            "POST",
+            "/type",
+            &[("Content-Type", "application/json")],
+            "{}",
+        );
+        assert_eq!(body_of(&r), "json");
+
+        // A header sent twice is joined with ", ".
+        let r = request_with(
+            port,
+            "GET",
+            "/accept",
+            &[("Accept", "text/html"), ("Accept", "application/json")],
+            "",
+        );
+        assert_eq!(body_of(&r), "joined");
     });
 }
 
