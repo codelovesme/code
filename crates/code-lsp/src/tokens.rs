@@ -64,8 +64,7 @@ fn classify(tok: &Token, prev_dot: bool) -> Option<Kind> {
         InterpStr(_) => Kind::String,
         Number(_) => Kind::Number,
         True | False | Null | And | Or | Not | Assert | If | Let | Loop | Over | Break
-        | Continue | Link | As | Export | Emit | To | Core | Get | Is | This | Base
-        | Return => {
+        | Continue | Link | As | Export | Emit | To | Core | Get | Is | This | Base | Return => {
             Kind::Keyword
         }
         Equals | Plus | PlusEq | Minus | Star | Slash | NotEq | Lt | Gt | Le | Ge | Arrow | In => {

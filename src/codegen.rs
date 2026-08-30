@@ -1111,11 +1111,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         ));
     }
 
-    fn collect_handler_decls(
-        &mut self,
-        stmts: &[Stmt],
-        depth: usize,
-    ) -> Result<(), String> {
+    fn collect_handler_decls(&mut self, stmts: &[Stmt], depth: usize) -> Result<(), String> {
         for stmt in stmts {
             match stmt {
                 Stmt::HandlerDef { class_name, .. } => {
@@ -1199,10 +1195,8 @@ impl<'a, 'm> Gen<'a, 'm> {
         // Same reason as the interpreter restoring `defining_depth`: a `to
         // base` in the body must mean this handler's parent, not whatever
         // level the definition site sat at when its body is generated.
-        let saved_depth = std::mem::replace(
-            &mut self.dispatch_depth,
-            self.handler_depths[class_name],
-        );
+        let saved_depth =
+            std::mem::replace(&mut self.dispatch_depth, self.handler_depths[class_name]);
         let saved_frame = self.handler_frame.replace(HandlerFrame {
             out,
             exit,
@@ -1613,10 +1607,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// `interpreter::Environment::handler_tables`. Same order as
     /// `gen_dispatch_body`, for the same reason: the chains call handler
     /// functions, which have to exist first.
-    fn gen_base_dispatch_bodies(
-        &mut self,
-        stmts: &[Stmt],
-    ) -> Result<(), String> {
+    fn gen_base_dispatch_bodies(&mut self, stmts: &[Stmt]) -> Result<(), String> {
         let mut tables: Vec<Vec<String>> = Vec::new();
         Self::collect_handler_classes(stmts, 0, &mut tables);
         // Clone the `Rc`s out before touching `self` again: filling a chain
@@ -1626,9 +1617,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .base_dispatches
             .iter()
             .zip(tables.iter())
-            .filter_map(|(chain, classes)| {
-                chain.clone().map(|chain| (chain, classes.clone()))
-            })
+            .filter_map(|(chain, classes)| chain.clone().map(|chain| (chain, classes.clone())))
             .collect();
         for (chain, classes) in chains {
             self.gen_dispatch_chain(&chain, &classes)?;
@@ -2007,7 +1996,11 @@ impl<'a, 'm> Gen<'a, 'm> {
                 body,
             } => self.gen_handler(class_name, fields, body),
             Stmt::Return(value) => self.gen_return(value),
-            Stmt::Let { name, value, exported } => self.gen_let(name, value, *exported),
+            Stmt::Let {
+                name,
+                value,
+                exported,
+            } => self.gen_let(name, value, *exported),
             Stmt::Link { path, .. } => Err(format!(
                 "internal error: link \"{path}\" reached codegen unresolved"
             )),

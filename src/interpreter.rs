@@ -288,11 +288,7 @@ pub type InboundReply = Rc<dyn Fn(&Value, &Value)>;
 /// level too, so its handlers join the same program-wide table) and nothing
 /// else: the parser already rejects a definition inside an `if`, a block, or
 /// a loop.
-fn register_handlers(
-    stmts: &[Stmt],
-    env: &mut Environment,
-    depth: usize,
-) -> Result<(), String> {
+fn register_handlers(stmts: &[Stmt], env: &mut Environment, depth: usize) -> Result<(), String> {
     for stmt in stmts {
         match stmt {
             Stmt::HandlerDef {

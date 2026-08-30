@@ -172,11 +172,9 @@ fn verify_stmts(
                     }
                 }
                 if matches!(target, EmitTarget::Base) && depth == 0 {
-                    return Err(
-                        "'emit ... to base' outside a linked module — there is no \
+                    return Err("'emit ... to base' outside a linked module — there is no \
                          parent to send it to"
-                            .to_string(),
-                    );
+                        .to_string());
                 }
                 if let Some(name) = result {
                     scopes.last_mut().unwrap().insert(name.clone());
