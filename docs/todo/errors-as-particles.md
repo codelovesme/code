@@ -3,7 +3,7 @@
 Decided **and shipped** 2026-08-28, all five phases. This reverses a
 documented decision — `docs/todo/README.md` recorded `Exception`/catchable
 asserts as explicitly unported, on the reasoning that they meant a try/catch
-design. They did not: a failed frame simply *returns* an `Exception`, and `is`
+design. They did not: a failed frame simply *returns* an `Exception`, and `∈`
 already tests it. That text is struck, and the root README now has an
 [Errors](../../README.md#errors) section documenting the model as it stands.
 
@@ -29,7 +29,7 @@ look, B carries on from where it was. This is a result-returning model, not
 exceptions with unwinding — closer to Go or Rust's `Result` than to
 try/catch.
 
-**Nothing new to write.** `is` already does the check the model needs:
+**Nothing new to write.** `∈` already does the check the model needs:
 
 ```code
 emit Greet { who = "ada" } to this get r

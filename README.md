@@ -106,11 +106,11 @@ let x = 1 - 2
 ### Values
 
 Six kinds, exactly JSON's: **Number** (an f64), **String**, **Boolean**,
-**Null**, **Array**, **Object**. There are no type keywords and no
-declarations of type; a binding holds whatever it was last assigned. Those
-six names are the language's whole vocabulary for a kind — they are what
-`is` tests, what a type mismatch reports, and the only names a particle
-may not be given.
+**Null**, **Array**, **Object**. There are no type keywords, and nothing a
+declaration says about a kind is checked; a binding holds whatever it was
+last assigned. Those six names are the language's whole vocabulary for a
+kind — they are what `∈` tests, what a type mismatch reports, and the only
+names a particle may not be given.
 
 That correspondence is a commitment, not a coincidence: **the set is closed,
 and it stays JSON's.** New capability is expressed *with* these six rather
@@ -565,7 +565,7 @@ The rest of the rules:
   a linked module's handlers join it. A second definition of the same class
   is an error.
 - **`return` must yield a particle**, so every result has a class to test
-  with `is`. A body that never returns yields null, which is fine: plenty of
+  with `∈`. A body that never returns yields null, which is fine: plenty of
   handlers exist for their effect rather than their answer.
 - **No matching handler is null**, not an error — the same answer `to core`
   and a native module give. Emitting is not a demand: whether to act on a
@@ -638,7 +638,7 @@ assert r ∈ Exception
 assert r.message = "division by zero"
 ```
 
-`is` is the whole check. There is no `try`, no `catch`, and nothing new to
+`∈` is the whole check. There is no `try`, no `catch`, and nothing new to
 learn, because an `Exception` is an ordinary particle:
 
 ```
@@ -953,7 +953,10 @@ Each of these is a decision, not an omission waiting to be filled:
 - **No `while`.** `loop { }` with `break` is the unbounded loop.
 - **No mutation of a constructed value.** `.field`/`[index]` read only;
   rebuild the value instead.
-- **No type keywords, annotations, or declarations of type.**
+- **No type checking.** There are no type keywords, and a declaration that
+  names a kind (`let port ∈ Number = 8080`) is read and dropped — it is there
+  for whoever reads the line, and it can be wrong the way a comment can be
+  wrong.
 - **No core I/O.** Reaching the outside world goes through a module, which
   keeps the runtime itself small and the dependency explicit in the source.
 

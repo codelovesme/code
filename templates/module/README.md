@@ -49,7 +49,7 @@ program, which is free proof and worth keeping in the loop.
   business — a program may link six modules and emit the same particle to all
   of them.
 - **Failures come back as values.** `exception(out, "greet", "…")` returns an
-  `Exception` particle the caller can test with `is Exception`, or ignore.
+  `Exception` particle the caller can test with `∈ Exception`, or ignore.
   Nothing you return can end their program.
 - **Do not validate the particle's shape before running.** A field that is
   not there reads as null, exactly as `.field` does in the language, so

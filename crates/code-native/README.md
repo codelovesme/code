@@ -114,7 +114,7 @@ same shape a C module uses than behind a leaky abstraction.
 
 **A module may never bring the application down.** Report a failure by
 returning an `Exception` — the program receives it as an ordinary value,
-tests it with `is Exception`, and may read `message` or ignore it entirely:
+tests it with `∈ Exception`, and may read `message` or ignore it entirely:
 
 ```rust
 exception(out, "mymodule", "cannot open the door");

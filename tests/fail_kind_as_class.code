@@ -1,4 +1,4 @@
--- The six kind names cannot name a particle: `is Number` has to mean one
+-- The six kind names cannot name a particle: `∈ Number` has to mean one
 -- thing, and since a particle is an Object the kind answer would win for
 -- every particle ever tagged this way.
 emit Number { value = 1 } to core get r

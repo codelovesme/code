@@ -128,3 +128,25 @@ fn a_failure_inside_a_linked_module_reports_the_link_line() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// The six kind names are refused as particle classes, and the refusal has
+/// to *say* how to ask the question instead — which means naming the
+/// membership operator, which was spelled `is` until 2026-08-29.
+///
+/// `tests/fail_kind_as_class.code` already covers that this program is
+/// refused, but a fixture only checks pass or fail, so the wording of the
+/// one message the rule exists to deliver went unread by anything. It had
+/// drifted: the rename reached the operator everywhere it is *parsed* and
+/// missed the sentence explaining it.
+#[test]
+fn refusing_a_kind_as_a_class_names_the_operator_by_its_current_spelling() {
+    let err = error_from("emit Number { value = 1 } to core get r\n");
+    assert!(
+        err.contains("'Number' is one of the six value kinds"),
+        "expected the kind-as-class refusal, got:\n{err}"
+    );
+    assert!(
+        err.contains("`∈ Number` asks what kind a value is"),
+        "the refusal should spell the operator `∈`, got:\n{err}"
+    );
+}
