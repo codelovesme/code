@@ -23,7 +23,7 @@ risk of the refcounting subtly drifting from what the host trusts.
 crate-type = ["cdylib"]
 
 [dependencies]
-code-native = "0.1"
+code-native = "1"
 ```
 
 ```rust

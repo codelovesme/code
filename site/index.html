@@ -320,6 +320,7 @@
   }
   .pkg-tag.wasm { color: var(--violet); background: rgba(167,139,250,0.08); }
   .pkg-tag.native { color: var(--amber); background: rgba(251,191,36,0.08); }
+  .pkg-tag.core { color: var(--teal); background: rgba(94,234,212,0.08); }
   .pkg h3 { margin: 0 0 0.3rem; font-size: 1.12rem; font-weight: 700; display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap; }
   .pkg h3 code { font-family: var(--mono); font-size: 0.95rem; color: var(--text); }
   .pkg-desc { margin: 0; font-size: 0.88rem; color: var(--muted); }
@@ -576,9 +577,10 @@
       <div class="overline">take it with you</div>
       <h2>Beyond this page</h2>
       <p class="section-sub">
-        The playground is the same interpreter you can ship yourself. Two
-        packages cover the two directions: embed <code>code</code> in your web app,
-        or give your native program handlers written in Rust.
+        The playground is the same interpreter you can ship yourself. Embed
+        <code>code</code> in a web app, build a native module without leaving the
+        language, write one in Rust, or in anything else that produces a C-ABI
+        shared library.
       </p>
     </div>
     <div class="pkg-grid">
@@ -605,7 +607,9 @@ import init, { run } from "https://esm.sh/code-wasm";</pre>
             <div class="step-label"><span class="num">2</span> run programs</div>
 <pre class="codeblock"><span class="kw">await</span> init();
 console.log(run(<span class="st">"let a = 5\nassert a = 5\n"</span>));
-<span class="cm">// "a = 5\n" — final bindings, like `code run` stdout</span></pre>
+<span class="cm">// "" — success is the empty string; a failed assert or parse</span>
+<span class="cm">// error returns "error: ..." instead. No core I/O means no dump</span>
+<span class="cm">// of bindings — a program's output is whatever it emits itself.</span></pre>
           </div>
           <div>
             <div class="step-label"><span class="num">3</span> link modules from your app</div>
@@ -640,6 +644,52 @@ run_with_modules(
 
       <article class="pkg reveal">
         <div class="pkg-head">
+          <span class="pkg-tag core">code build --target shared|static</span>
+          <h3>Write the module in <code>code</code> itself</h3>
+          <p class="pkg-desc">
+            No second language. Asking for the container is asking for the
+            library — a file's handlers become <code>code_module_dispatch</code>,
+            its <code>export let</code>s become <code>code_module_vars</code>, and
+            another <code>code</code> program links the result exactly like a
+            native one.
+          </p>
+        </div>
+        <div class="pkg-body">
+          <div>
+            <div class="step-label"><span class="num">1</span> write it</div>
+<pre class="codeblock"><span class="cm">-- greet.code</span>
+<span class="kw">export</span> <span class="kw">let</span> answer = 21 + 21
+
+Greet { who } =&gt; {
+    <span class="kw">return</span> Reply { text = <span class="st">"hello "</span> + who }
+}</pre>
+          </div>
+          <div>
+            <div class="step-label"><span class="num">2</span> build it as a library</div>
+<pre class="codeblock">code build greet.code --target shared -o libgreet.so
+<span class="cm"># --target static -o libgreet.a for an archive instead</span></pre>
+          </div>
+          <div>
+            <div class="step-label"><span class="num">3</span> link it from another program</div>
+<pre class="codeblock">link <span class="st">"libgreet.so"</span> <span class="kw">as</span> g
+assert g.answer = 42
+emit Greet { who = <span class="st">"ada"</span> } <span class="kw">to</span> g <span class="kw">get</span> r
+assert r.text = <span class="st">"hello ada"</span></pre>
+          </div>
+          <p class="pkg-note">
+            Whatever a <code>let</code> at the top level doesn't <code>export</code>
+            stays private, the same rule a source <code>link</code> follows. The
+            result works from <code>code run</code> or <code>code build</code> on the
+            consuming side, no different from a module written in Rust or C.
+          </p>
+          <div class="pkg-links">
+            <a href="https://github.com/codelovesme/code#modules" target="_blank" rel="noopener">docs ↗</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="pkg reveal">
+        <div class="pkg-head">
           <span class="pkg-tag native">crates.io · rust → .so</span>
           <h3><code>code-native</code> — write native modules in Rust</h3>
           <p class="pkg-desc">
@@ -656,7 +706,7 @@ run_with_modules(
 crate-type = [<span class="st">"cdylib"</span>]
 
 [dependencies]
-code-native = <span class="st">"1.0"</span></pre>
+code-native = <span class="st">"1"</span></pre>
           </div>
           <div>
             <div class="step-label"><span class="num">2</span> implement two exports</div>
@@ -684,7 +734,7 @@ pub <span class="kw">unsafe extern</span> <span class="st">"C"</span> <span clas
 
 <span class="cm">-- my_script.code</span>
 link <span class="st">"libmymodule.so"</span> <span class="kw">as</span> m
-emit Double { <span class="st">"value"</span>: 21 } <span class="kw">to</span> m <span class="kw">get</span> result
+emit Double { value = 21 } <span class="kw">to</span> m <span class="kw">get</span> result
 assert result.value = 42</pre>
           </div>
           <p class="pkg-note">
