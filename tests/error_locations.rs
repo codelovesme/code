@@ -55,7 +55,9 @@ fn a_failing_assert_points_at_its_own_line() {
 /// runs, so this one stays genuinely runtime.
 #[test]
 fn other_runtime_errors_are_located_too() {
-    let err = error_from("let a = 1\nlet b = a + \"x\"\n");
+    // `-` is Number-only — unlike `+`, which concatenates when either side
+    // is a string.
+    let err = error_from("let a = 1\nlet b = a - \"x\"\n");
     assert!(err.contains("cannot apply"), "{err}");
     assert!(
         err.contains(":2:1"),
