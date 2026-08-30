@@ -1090,11 +1090,7 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
             // Whole seconds since the Unix epoch — the old language's
             // `Timestamp` did exactly this, and human-readable formatting
             // belongs in a module, not core (see docs/todo/community-modules.md).
-            let secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as f64;
-            Ok(core_result("TimestampResult", secs))
+            Ok(core_result("TimestampResult", unix_seconds()))
         }
         // A field the particle does not carry is null — the same answer
         // `.field` gives — so an absent `value` is not a separate case to
@@ -1162,6 +1158,34 @@ fn a_type_name(v: &Value) -> String {
         _ => "a",
     };
     format!("{article} {name}")
+}
+
+/// Whole seconds since the Unix epoch.
+///
+/// Split by target because `SystemTime::now()` *panics* on
+/// `wasm32-unknown-unknown` — there is no clock in the platform, and the
+/// playground is that platform. Every `emit Timestamp to core` example on
+/// the front page answered `RuntimeError: unreachable` from the day
+/// `Timestamp` shipped until 2026-08-30, because nothing ran those examples
+/// through the engine the page loads (`site/check_examples.mjs` does now).
+///
+/// The browser has a clock and hands it over through the same `Date.now()`
+/// every other page uses; `js-sys` is a wasm-only dependency, so a native
+/// build is untouched by this.
+#[cfg(not(target_arch = "wasm32"))]
+fn unix_seconds() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as f64
+}
+
+#[cfg(target_arch = "wasm32")]
+fn unix_seconds() -> f64 {
+    // Milliseconds, and fractional across the epoch boundary the same way
+    // `as_secs` truncates — floor, so the two backends agree on which second
+    // it is rather than differing by rounding.
+    (js_sys::Date::now() / 1000.0).floor()
 }
 
 /// Which of the six kinds a value is — what `is` compares against, and the

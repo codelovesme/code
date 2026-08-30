@@ -124,6 +124,12 @@ def main() -> None:
     dist_dir.mkdir(parents=True, exist_ok=True)
     (dist_dir / "index.html").write_text(page)
 
+    # The same list, on its own, for `site/check_examples.mjs` to run through
+    # the engine the page will actually load. The page embeds it rather than
+    # fetching it, so this file is for the deploy's own check — not something
+    # the playground reads.
+    (dist_dir / "examples.json").write_text(json.dumps(examples, indent=2) + "\n")
+
     # Static assets (logo, favicon) live next to index.html in site/ and are
     # copied through verbatim — the page references them by relative path.
     for asset in sorted(site_dir.glob("*.png")):

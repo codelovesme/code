@@ -72,9 +72,10 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "code"
-version = "1.1.2"
+version = "1.1.3"
 dependencies = [
  "inkwell",
+ "js-sys",
  "libloading",
  "serde",
  "serde_json",
@@ -82,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "code-lsp"
-version = "1.1.2"
+version = "1.1.3"
 dependencies = [
  "code",
  "tokio",
@@ -91,14 +92,14 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "1.1.2"
+version = "1.1.3"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "code-wasm"
-version = "1.1.2"
+version = "1.1.3"
 dependencies = [
  "code",
  "js-sys",
