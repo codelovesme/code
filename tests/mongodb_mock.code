@@ -1,0 +1,62 @@
+-- `mongodb_mock` — a drop-in for `mongodb` backed by in-memory collections.
+-- The key/value trio and the document operations all round-trip.
+link "native_modules/mongodb_mock.so" as db
+
+emit Fetch { key = "k" } to db get early
+assert early ∈ Exception
+assert early.source = "mongodb_mock"
+
+emit Config { url = "mock://localhost", database = "app" } to db get c
+assert c ∈ ConfigResult
+assert c.ok
+
+-- Key/value: the value keeps its shape.
+emit Store { key = "settings", value = { theme = "dark", count = 3 } } to db get st
+assert st ∈ StoreResult
+assert st.key = "settings"
+
+emit Fetch { key = "settings" } to db get f
+assert f.found
+assert f.value = { theme = "dark", count = 3 }
+
+emit Store { key = "settings", value = { theme = "light", count = 4 } } to db get _
+emit Fetch { key = "settings" } to db get f2
+assert f2.value = { theme = "light", count = 4 }
+
+emit Fetch { key = "absent" } to db get miss
+assert miss.found = false
+assert miss.value = null
+
+emit Delete { key = "settings" } to db get d
+assert d.existed
+emit Delete { key = "settings" } to db get d2
+assert d2.existed = false
+
+-- Documents.
+emit Insert { collection = "events", doc = { kind = "signup", user = "u1" } } to db get i1
+assert i1 ∈ InsertResult
+emit Insert { collection = "events", doc = { kind = "signup", user = "u2" } } to db get _
+emit Insert { collection = "events", doc = { kind = "login", user = "u1" } } to db get _
+
+emit Count { collection = "events" } to db get all
+assert all.count = 3
+emit Count { collection = "events", filter = { kind = "signup" } } to db get signups
+assert signups.count = 2
+
+emit Find { collection = "events", filter = { kind = "signup" }, sort = { user = -1 }, limit = 1 } to db get top
+assert top.count = 1
+assert top.items[0].user = "u2"
+assert top.items[0].kind = "signup"
+
+emit InsertMany { collection = "events", docs = [{ kind = "logout", user = "u1" }, { kind = "logout", user = "u2" }] } to db get many
+assert many.count = 2
+emit Count { collection = "events" } to db get all2
+assert all2.count = 5
+
+emit Drop { collection = "events" } to db get dr
+assert dr.dropped
+emit Count { collection = "events" } to db get gone
+assert gone.count = 0
+
+emit Aggregate {} to db get u
+assert u = null

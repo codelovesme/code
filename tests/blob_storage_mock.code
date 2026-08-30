@@ -1,0 +1,42 @@
+-- `blob_storage_mock` — a drop-in for `blob_storage` backed by an in-memory
+-- map. A full put/get/list/delete round trip works; nothing leaves memory.
+link "native_modules/blob_storage_mock.so" as blobs
+
+emit Put { key = "x", data = "y" } to blobs get early
+assert early ∈ Exception
+assert early.source = "blob_storage_mock"
+
+emit Config { bucket = "b", access_key = "k", secret_key = "s", endpoint = "ignored" } to blobs get c
+assert c ∈ ConfigResult
+assert c.ok
+
+emit Put { key = "notes/a.txt", data = "first", content_type = "text/plain" } to blobs get p
+assert p ∈ PutResult
+assert p.key = "notes/a.txt"
+
+emit Put { key = "notes/b.bin", data = "aGVsbG8=", base64 = true } to blobs get _
+
+emit Get { key = "notes/a.txt" } to blobs get g
+assert g.found
+assert g.data = "first"
+assert g.content_type = "text/plain"
+
+emit Get { key = "notes/b.bin" } to blobs get gb
+assert gb.data = "hello"
+emit Get { key = "notes/b.bin", base64 = true } to blobs get gb64
+assert gb64.data = "aGVsbG8="
+
+emit Get { key = "missing" } to blobs get miss
+assert miss.found = false
+
+emit List { prefix = "notes/" } to blobs get l
+assert l.count = 2
+assert l.keys = ["notes/a.txt", "notes/b.bin"]
+
+emit Delete { key = "notes/a.txt" } to blobs get d
+assert d.existed
+emit Delete { key = "notes/a.txt" } to blobs get d2
+assert d2.existed = false
+
+emit Presign {} to blobs get u
+assert u = null

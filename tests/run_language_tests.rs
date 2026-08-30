@@ -87,21 +87,20 @@ enum Expect {
 
 /// Compiles each dynamic native module into the `.so` the
 /// `native_link_*`/`fail_native_link_*`, `terminal_*`, `strings_*`,
-/// `math_*`, and `http_client_*` fixtures `link` — checked into git as source, not
+/// `math_*`, `json_*`, `json_store*`, `crypto_*`, `jwt_*`, `markdown_*`, `fs_*`, `process_*`, `git_*`, `mailer_*`, `oauth_*`, `mongodb_*`, `blob_storage_*`, `cloud_drive_*`, `localai_*`, `*_mock_*`, and `http_client_*` fixtures `link` — checked into git as source, not
 /// as a binary
 /// (see `.gitignore`), so it has to be built fresh here before any fixture
 /// that needs it can run either mode. Sources live next to their consumers:
 /// `test_math` is a pure test double (stays in `tests/native_modules/`),
-/// while `terminal`, `strings`, `math`, and `http_client` are real first-party
-/// modules
+/// while `terminal`, `strings`, `math`, `env`, `json`, and `http_client` are
+/// real first-party modules
 /// that happen to be exercised by fixtures (their canonical homes are under
 /// `crates/modules/`, where the release CI builds them from). The C modules
-/// go straight through `cc`; `strings`, `math`, and `http_client` are
-/// Rust-on-`code-native` modules, so they get a `cargo build` instead —
-/// same output location, same stem, the fixtures cannot tell the
-/// difference. `http_client` is much the slowest of the three to build cold (it
-/// pulls ureq and rustls); nothing here needs a network, though — its
-/// fixtures only ever talk to a refused port on loopback.
+/// go straight through `cc`; the rest are Rust-on-`code-native` modules, so
+/// they get a `cargo build` instead — same output location, same stem, the
+/// fixtures cannot tell the difference. `http_client` is much the slowest to
+/// build cold (it pulls ureq and rustls); nothing here needs a network,
+/// though — its fixtures only ever talk to a refused port on loopback.
 fn build_native_dynamic_test_modules(tests_dir: &Path) {
     let modules_dir = tests_dir.join("native_modules");
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -113,6 +112,27 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         "http_client",
         "env",
         "terminal",
+        "json",
+        "crypto",
+        "jwt",
+        "markdown",
+        "fs",
+        "json_store",
+        "process",
+        "git",
+        "mailer",
+        "oauth",
+        "mongodb",
+        "blob_storage",
+        "cloud_drive",
+        "localai",
+        "mailer_mock",
+        "oauth_mock",
+        "mongodb_mock",
+        "blob_storage_mock",
+        "cloud_drive_mock",
+        "git_mock",
+        "localai_mock",
         "test_math",
         "test_events",
         "test_timer",

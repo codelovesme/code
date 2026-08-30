@@ -1,0 +1,40 @@
+-- `localai_mock` — a drop-in for `localai` with canned, deterministic
+-- replies and no model server.
+link "native_modules/localai_mock.so" as ai
+
+emit Chat { user = "hi" } to ai get early
+assert early ∈ Exception
+assert early.source = "localai_mock"
+
+emit Config { endpoint = "mock", model = "tiny", max_tokens = 100, temperature = 0.1 } to ai get c
+assert c ∈ ConfigResult
+assert c.ok
+
+-- Chat echoes the last user message, tagged with the model.
+emit Chat { system = "be terse", user = "what is 2+2?" } to ai get r
+assert r ∈ ChatResult
+assert r.content = "[mock tiny] what is 2+2?"
+
+-- messages works too — the last user turn wins.
+emit Chat { messages = [
+        { role = "system", content = "s" },
+        { role = "user", content = "first" },
+        { role = "assistant", content = "ok" },
+        { role = "user", content = "second" }
+    ] } to ai get multi
+assert multi.content = "[mock tiny] second"
+
+-- ChatJson returns valid JSON, so a downstream Parse succeeds.
+emit ChatJson { user = "give me json" } to ai get j
+assert j.content = "{}"
+
+emit Transcribe { audio_base64 = "aGVsbG8=", language = "en" } to ai get t
+assert t ∈ TranscribeResult
+assert t.text = "[mock transcript]"
+assert t.language = "en"
+
+emit TranscribeWithOptions { audio_base64 = "aGVsbG8=" } to ai get t2
+assert t2.text = "[mock transcript]"
+
+emit Embed {} to ai get u
+assert u = null

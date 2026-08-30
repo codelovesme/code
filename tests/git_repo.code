@@ -1,0 +1,67 @@
+-- `git` — a local repository worked through the system `git` binary. Links
+-- `fs` to put a file in the repo and `process` to start each run from a
+-- clean directory (the fixture path persists between run and build modes).
+link "native_modules/git.so" as git
+link "native_modules/fs.so" as fs
+link "native_modules/process.so" as proc
+
+emit Run { command = "rm", args = ["-rf", "/tmp/code-git-fixture"] } to proc get _
+
+-- Nothing works before Config.
+emit Status {} to git get early
+assert early ∈ Exception
+
+emit Config { repo_path = "/tmp/code-git-fixture" } to git get c
+assert c ∈ ConfigResult
+assert c.ok
+emit Config { base_path = "/tmp/code-git-fixture" } to fs get _
+
+emit Init {} to git get i
+assert i ∈ InitResult
+assert i.path = "/tmp/code-git-fixture"
+
+-- A brand-new repo with nothing staged: clean, empty porcelain.
+emit Status {} to git get s0
+assert s0 ∈ StatusResult
+assert s0.clean
+assert s0.output = ""
+
+-- Write a file, and now status is not clean.
+emit WriteFile { path = "note.txt", content = "first line\n" } to fs get _
+emit Status {} to git get s1
+assert s1.clean = false
+assert s1.output = "?? note.txt"
+
+-- Stage and commit it.
+emit Add { pattern = "." } to git get a
+assert a.pattern = "."
+
+emit Commit { message = "add note", author_name = "Ada", author_email = "ada@example.com" } to git get cm
+assert cm ∈ CommitResult
+assert cm.message = "add note"
+
+emit Status {} to git get s2
+assert s2.clean
+
+-- SetRemote masks a credential in the URL it echoes back.
+emit SetRemote { name = "origin", url = "https://user:secret@example.invalid/r.git" } to git get sr
+assert sr ∈ SetRemoteResult
+assert sr.name = "origin"
+assert sr.url = "https://****@example.invalid/r.git"
+
+-- Push to a remote that can't be reached is an Exception, not a hang.
+emit Push { branch = "main" } to git get p
+assert p ∈ Exception
+assert p.source = "git"
+
+-- Missing required fields are Exceptions.
+emit Commit {} to git get nomsg
+assert nomsg ∈ Exception
+emit Clone {} to git get nourl
+assert nourl ∈ Exception
+
+-- A class this module does not handle is null.
+emit Rebase {} to git get u
+assert u = null
+
+emit Run { command = "rm", args = ["-rf", "/tmp/code-git-fixture"] } to proc get _

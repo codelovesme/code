@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [terminal, strings, math, env, http_client, http_server]
+        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, oauth_mock]
     steps:
       - uses: actions/checkout@v4
       - name: Compile
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [terminal, strings, math, env, http_client, http_server]
+        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, oauth_mock]
     env:
       LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
     steps:
@@ -134,9 +134,10 @@ jobs:
               printf 'emit Get { name = "PATH" } to mod get r\nassert r.found\n' >> dogfood/demo.code
               ;;
             http_server)
-              # Binds an OS-chosen port on loopback and never serves anything:
-              # the artifact loads, routes, and reports the port it got.
-              printf 'emit Listen { port = 0 } to mod get l\nassert l.ok\nassert l.port > 0\n' >> dogfood/demo.code
+              # Config then Listen — binds an OS-chosen port on loopback and
+              # never serves anything: the artifact loads, routes both
+              # particles, and reports the port it got.
+              printf 'emit Config { port = 0 } to mod get _\nemit Listen { } to mod get l\nassert l.ok\nassert l.port > 0\n' >> dogfood/demo.code
               ;;
             http_client)
               # Nothing is listening on port 1, so this needs no network —
@@ -144,6 +145,104 @@ jobs:
               # connection comes back as a value rather than killing the
               # program (which is the whole contract of this module).
               printf 'emit Get { url = "http://127.0.0.1:1/" } to mod get r\nassert not r.ok\nassert r.status = 0\n' >> dogfood/demo.code
+              ;;
+            json)
+              # Round-trips a value through JSON text and back — proof the
+              # artifact loads, routes, and that Parse and Stringify agree.
+              printf 'emit Stringify { value = { a = 1 } } to mod get s\nemit Parse { text = s.value } to mod get p\nassert p.value = { a = 1 }\n' >> dogfood/demo.code
+              ;;
+            crypto)
+              # Cost 4 keeps this quick. Hash then verify — proof the artifact
+              # loads, routes, and that the two agree on a real bcrypt string.
+              printf 'emit Hash { password = "pw", cost = 4 } to mod get h\nemit Verify { password = "pw", hash = h.hash } to mod get v\nassert v.valid\n' >> dogfood/demo.code
+              ;;
+            jwt)
+              # Configure a secret, sign, decode — proof the artifact loads, routes,
+              # and that Sign and Decode agree on a real HS256 token.
+              printf 'emit Config { secret = "k" } to mod get _\nemit Sign { sub = "u" } to mod get t\nemit Decode { token = t.token } to mod get d\nassert d.valid\nassert d.sub = "u"\n' >> dogfood/demo.code
+              ;;
+            markdown)
+              # Render a heading — proof the artifact loads, routes, and that
+              # the toc/title come back off a real parse.
+              printf 'emit RenderMarkdown { src = "# Hi" } to mod get r\nassert r ∈ RenderedMarkdown\nassert r.title = "Hi"\nassert r.slug = "hi"\n' >> dogfood/demo.code
+              ;;
+            fs)
+              # Configure a temp base, write and read a file back — proof the
+              # artifact loads, routes, and that WriteFile/ReadFile agree.
+              printf 'emit Config { base_path = "/tmp/code-dogfood-fs" } to mod get _\nemit WriteFile { path = "f", content = "hi" } to mod get w\nemit ReadFile { path = "f" } to mod get r\nassert r.content = "hi"\n' >> dogfood/demo.code
+              ;;
+            json_store)
+              # Configure a temp base, store and fetch a value — proof the artifact
+              # loads, routes, and that a value keeps its shape on disk.
+              printf 'emit Config { base_dir = "/tmp/code-dogfood-jstore" } to mod get _\nemit Store { key = "k", value = { n = 1 } } to mod get w\nemit Fetch { key = "k" } to mod get f\nassert f.value = { n = 1 }\n' >> dogfood/demo.code
+              ;;
+            process)
+              # Run a command and read its output back — proof the artifact
+              # loads, routes, and captures stdout.
+              printf 'emit Run { command = "echo", args = ["ok"] } to mod get r\nassert r.success\nassert r.stdout = "ok\\n"\n' >> dogfood/demo.code
+              ;;
+            git)
+              # Config a fresh temp repo, init it, and read a clean status
+              # back — proof the artifact loads, routes, and drives real git.
+              printf 'emit Config { repo_path = "/tmp/code-dogfood-git" } to mod get _\nemit Init { } to mod get i\nassert i ∈ InitResult\nemit Status { } to mod get s\nassert s.clean\n' >> dogfood/demo.code
+              ;;
+            mailer)
+              # Config a transport, then Send to a port nothing answers on:
+              # proof the artifact loads, routes both particles, and that a
+              # failed send comes back as a value rather than killing the
+              # program.
+              printf 'emit Config { host = "127.0.0.1", port = 1, from = "s@example.com", tls = "none" } to mod get c\nassert c.ok\nemit Send { recipient = "r@example.com", text = "x" } to mod get s\nassert s ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            oauth)
+              # Config a provider, build the auth URL (pure), then ExchangeCode
+              # to a token endpoint nothing answers — proof both routing and
+              # that a failed exchange is a value, not a crash.
+              printf 'emit Config { client_id = "c", client_secret = "s", redirect_uri = "https://a/cb", auth_url = "https://a/auth", token_url = "http://127.0.0.1:1/t" } to mod get _\nemit AuthUrl { state = "x" } to mod get a\nassert a ∈ AuthUrlResult\nemit ExchangeCode { code = "z" } to mod get e\nassert e ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            mongodb)
+              # No MongoDB here — Config against a port nothing answers on,
+              # with a short server-selection timeout. Proof the artifact
+              # loads, routes, and that an unreachable database is a value.
+              printf 'emit Config { url = "mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=500", database = "d" } to mod get c\nassert c ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            blob_storage)
+              # No object store here — Config succeeds (it just builds a
+              # client), then any operation against a refused endpoint is an
+              # Exception. Proof the artifact loads and routes.
+              printf 'emit Config { bucket = "b", access_key = "k", secret_key = "s", endpoint = "http://127.0.0.1:1" } to mod get c\nassert c.ok\nemit Put { key = "k", data = "d" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            cloud_drive)
+              # No Google here — Config succeeds, AuthUrl is pure (proof of
+              # routing), and an operation against a refused endpoint is an
+              # Exception.
+              printf 'emit Config { client_id = "c", client_secret = "s", redirect_uri = "https://a/cb", token_url = "http://127.0.0.1:1/t", api_base = "http://127.0.0.1:1" } to mod get c\nassert c.ok\nemit AuthUrl { state = "x" } to mod get a\nassert a ∈ AuthUrlResult\nemit GetQuota { access_token = "t" } to mod get q\nassert q ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            localai)
+              # No model server here — Config succeeds, then a chat against a
+              # refused endpoint is an Exception. Proof the artifact loads
+              # and routes.
+              printf 'emit Config { endpoint = "http://127.0.0.1:1" } to mod get c\nassert c.ok\nemit Chat { user = "hi" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            mailer_mock)
+              printf 'emit Config { host = "mock", from = "me@x.test" } to mod get c\nassert c.ok\nemit Send { recipient = "you@x.test", subject = "hi", text = "yo" } to mod get s\nassert s.ok\nemit Outbox { } to mod get o\nassert o.count = 1\n' >> dogfood/demo.code
+              ;;
+            oauth_mock)
+              printf 'emit Config { client_id = "c", client_secret = "s", redirect_uri = "https://a/cb", auth_url = "https://a/auth", token_url = "https://a/tok" } to mod get c\nassert c.ok\nemit ExchangeCode { code = "abc" } to mod get i\nassert i ∈ Identity\nassert i.email = "abc@mock.test"\n' >> dogfood/demo.code
+              ;;
+            mongodb_mock)
+              printf 'emit Config { url = "mock", database = "d" } to mod get c\nassert c.ok\nemit Store { key = "k", value = { n = 1 } } to mod get _\nemit Fetch { key = "k" } to mod get f\nassert f.value = { n = 1 }\n' >> dogfood/demo.code
+              ;;
+            blob_storage_mock)
+              printf 'emit Config { bucket = "b", access_key = "k", secret_key = "s" } to mod get c\nassert c.ok\nemit Put { key = "x", data = "hi" } to mod get _\nemit Get { key = "x" } to mod get g\nassert g.found\nassert g.data = "hi"\n' >> dogfood/demo.code
+              ;;
+            cloud_drive_mock)
+              printf 'emit Config { client_id = "c", client_secret = "s" } to mod get c\nassert c.ok\nemit ExchangeCode { code = "u" } to mod get t\nassert t ∈ Tokens\nemit UploadFile { access_token = "x", file_name = "f.txt", data = "hi" } to mod get f\nassert f ∈ RemoteFile\nemit DownloadFile { access_token = "x", file_id = f.file_id } to mod get d\nassert d.data = "hi"\n' >> dogfood/demo.code
+              ;;
+            git_mock)
+              printf 'emit Config { repo_path = "/tmp/gitmock" } to mod get c\nassert c.ok\nemit Add { } to mod get _\nemit Commit { message = "m" } to mod get cm\nassert cm ∈ CommitResult\nemit Status { } to mod get s\nassert s.clean\n' >> dogfood/demo.code
+              ;;
+            localai_mock)
+              printf 'emit Config { endpoint = "mock" } to mod get c\nassert c.ok\nemit Chat { user = "ping" } to mod get r\nassert r.content = "[mock mock-model] ping"\n' >> dogfood/demo.code
               ;;
             *) echo "::error::no dogfood demo for '$m' — add one when a module is added"; exit 1 ;;
           esac
@@ -176,7 +275,7 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in terminal strings math env http_client http_server; do
+          for m in terminal strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock oauth_mock; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
@@ -185,10 +284,39 @@ jobs:
               math) handlers='["Double", "Sum"]' ;;
             env) handlers='["Get", "Require"]' ;;
               http_client) handlers='["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"]' ;;
-              http_server) handlers='["Listen"]' ;;
+              http_server) handlers='["Config", "Listen"]' ;;
+              json) handlers='["Parse", "Stringify"]' ;;
+              crypto) handlers='["Hash", "Verify", "RandomCode"]' ;;
+              jwt) handlers='["Config", "Sign", "Decode"]' ;;
+              markdown) handlers='["RenderMarkdown", "SplitByHeading"]' ;;
+              fs) handlers='["Config", "ReadFile", "WriteFile", "DeleteFile", "CreateDir", "RemoveDir", "ListDir", "Exists"]' ;;
+              json_store) handlers='["Config", "Store", "Fetch", "Delete", "Remove"]' ;;
+              process) handlers='["Run", "Spawn", "Status", "Wait", "WaitFor", "Kill", "List"]' ;;
+              git) handlers='["Config", "Stash", "StashPop", "Init", "Clone", "Add", "Commit", "Push", "SetRemote", "Status"]' ;;
+              mailer) handlers='["Config", "Send"]' ;;
+              oauth) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
+              mongodb) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;
+              blob_storage) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
+              cloud_drive) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode", "RefreshToken", "GetQuota", "ListFiles", "UploadFile", "DownloadFile", "DeleteFile"]' ;;
+              localai) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions"]' ;;
+              mailer_mock) handlers='["Config", "Send", "Outbox"]' ;;
+              oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
+              mongodb_mock) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;
+              blob_storage_mock) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
+              cloud_drive_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode", "RefreshToken", "GetQuota", "ListFiles", "UploadFile", "DownloadFile", "DeleteFile"]' ;;
+              git_mock) handlers='["Config", "Stash", "StashPop", "Init", "Clone", "Add", "Commit", "Push", "SetRemote", "Status"]' ;;
+              localai_mock) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions"]' ;;
               # `set -u` would fail on the unbound variable below anyway; this
               # says *why* instead of pointing at the heredoc.
               *) echo "::error::no handler list for '$m' — add one here when a module is added"; exit 1 ;;
+            esac
+            # `setup`: the handler a stateful module must be sent first. A
+            # consumer (euglena) reads it to know what a manifest's config
+            # block should emit. Stateless modules have none.
+            case "$m" in
+              http_server) setup='"setup": "Config",' ;;
+              jwt|fs|json_store|git|mailer|oauth|mongodb|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
+              *) setup='' ;;
             esac
             cat > "dist/${m}.json" <<EOF
           {
@@ -197,6 +325,7 @@ jobs:
             "abi_version": 1,
             "handlers": ${handlers},
             "vars": [],
+            ${setup}
             "platforms": {
               "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" }
             }

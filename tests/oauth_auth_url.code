@@ -1,0 +1,54 @@
+-- `oauth` — the parts that need no provider on the network. `AuthUrl` is
+-- pure; the full `ExchangeCode` → `Identity` round trip is in
+-- tests/oauth_module.rs.
+link "native_modules/oauth.so" as oauth
+
+-- Nothing works before Config.
+emit AuthUrl { state = "s" } to oauth get early
+assert early ∈ Exception
+assert early.source = "oauth"
+
+emit Config { client_id = "cid" } to oauth get short
+assert short ∈ Exception
+
+emit Config {
+    client_id = "my-client",
+    client_secret = "shh",
+    redirect_uri = "https://app.example/callback",
+    auth_url = "https://accounts.example/o/oauth2/v2/auth",
+    token_url = "https://oauth2.example/token",
+    scope = "openid email profile"
+} to oauth get c
+assert c ∈ ConfigResult
+assert c.ok
+
+-- The authorization URL, exactly. `state` and every reserved character are
+-- percent-encoded.
+emit AuthUrl { state = "abc/123" } to oauth get a
+assert a ∈ AuthUrlResult
+assert a.url = "https://accounts.example/o/oauth2/v2/auth?response_type=code&client_id=my-client&redirect_uri=https%3A%2F%2Fapp.example%2Fcallback&state=abc%2F123&scope=openid%20email%20profile"
+
+-- `extra` appends provider-specific parameters in order.
+emit AuthUrl { state = "s", extra = { access_type = "offline", prompt = "consent" } } to oauth get g
+assert g.url = "https://accounts.example/o/oauth2/v2/auth?response_type=code&client_id=my-client&redirect_uri=https%3A%2F%2Fapp.example%2Fcallback&state=s&scope=openid%20email%20profile&access_type=offline&prompt=consent"
+
+-- Missing required fields are Exceptions.
+emit AuthUrl {} to oauth get nostate
+assert nostate ∈ Exception
+emit ExchangeCode {} to oauth get nocode
+assert nocode ∈ Exception
+
+-- ExchangeCode against a token endpoint nothing answers on: an Exception,
+-- not a hang.
+emit Config {
+    client_id = "c", client_secret = "s",
+    redirect_uri = "https://a/cb",
+    auth_url = "https://a/auth",
+    token_url = "http://127.0.0.1:1/token"
+} to oauth get _
+emit ExchangeCode { code = "the-code" } to oauth get refused
+assert refused ∈ Exception
+
+-- A class this module does not handle is null.
+emit Revoke {} to oauth get u
+assert u = null

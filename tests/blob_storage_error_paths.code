@@ -1,0 +1,38 @@
+-- `blob_storage` — the paths that need no object store. The full round trip
+-- is in tests/blob_storage_module.rs, run against the CI job's MinIO.
+link "native_modules/blob_storage.so" as blobs
+
+-- Nothing works before Config.
+emit Put { key = "x", data = "y" } to blobs get early
+assert early ∈ Exception
+assert early.source = "blob_storage"
+
+emit List {} to blobs get early2
+assert early2 ∈ Exception
+
+-- Config validates required fields.
+emit Config { bucket = "b", access_key = "k" } to blobs get short
+assert short ∈ Exception
+
+-- A well-formed Config against an endpoint nothing answers on.
+emit Config {
+    bucket = "b",
+    access_key = "k",
+    secret_key = "s",
+    endpoint = "http://127.0.0.1:1"
+} to blobs get c
+assert c ∈ ConfigResult
+assert c.ok
+
+-- Any operation now is an Exception (connection refused), not a hang.
+emit Put { key = "k", data = "d" } to blobs get refused
+assert refused ∈ Exception
+
+-- `base64 = true` on data that isn't base64 is caught before the network.
+emit Config { bucket = "b", access_key = "k", secret_key = "s", endpoint = "http://127.0.0.1:1" } to blobs get _
+emit Put { key = "k", data = "!!! not base64 !!!", base64 = true } to blobs get badb64
+assert badb64 ∈ Exception
+
+-- A class this module does not handle is null.
+emit Presign {} to blobs get u
+assert u = null

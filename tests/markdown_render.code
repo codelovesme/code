@@ -1,0 +1,41 @@
+-- `markdown.RenderMarkdown { src }` → HTML, a table of contents, a link
+-- list, and the first heading's text/slug. Every heading in the HTML gets
+-- `id="<slug>"`, and a repeated heading is disambiguated GitHub-style.
+link "native_modules/markdown.so" as md
+
+emit RenderMarkdown {
+    src = "# Hello World\n\nSome **bold** and a [docs](https://example.com/d).\n\n## Notes\n\ntext\n\n## Notes\n"
+} to md get r
+assert r ∈ RenderedMarkdown
+
+assert r.title = "Hello World"
+assert r.slug = "hello-world"
+
+assert r.toc = [
+    { _class = "HeadingEntry", level = 1, text = "Hello World", slug = "hello-world" },
+    { _class = "HeadingEntry", level = 2, text = "Notes", slug = "notes" },
+    { _class = "HeadingEntry", level = 2, text = "Notes", slug = "notes-1" }
+]
+
+assert r.links = [{ _class = "LinkEntry", text = "docs", href = "https://example.com/d" }]
+
+-- The slug from the toc is the `id` in the HTML.
+emit RenderMarkdown { src = "## A Heading\n" } to md get h
+assert h.html = "<h2 id=\"a-heading\">A Heading</h2>\n"
+
+-- An empty document renders to empty — not an error.
+emit RenderMarkdown { src = "" } to md get empty
+assert empty ∈ RenderedMarkdown
+assert empty.html = ""
+assert empty.toc = []
+assert empty.links = []
+assert empty.title = ""
+
+-- A missing / non-string `src` is a program mistake → Exception.
+emit RenderMarkdown {} to md get miss
+assert miss ∈ Exception
+assert miss.source = "markdown"
+
+-- A class this module does not handle is null.
+emit Unrender {} to md get u
+assert u = null

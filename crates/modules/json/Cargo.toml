@@ -1,0 +1,23 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree.
+[workspace]
+
+[package]
+name = "json"
+version = "1.1.4"
+edition = "2021"
+description = "The `json` native module for the Code programming language — Parse and Stringify, the one way in and out of JSON text that string interpolation cannot do."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }
+# `preserve_order` so an object's fields come out in the order the program
+# wrote them — the same thing string interpolation does. Without it serde_json
+# sorts keys, and `Stringify` would disagree with `"$value"`.
+serde_json = { version = "1", features = ["preserve_order"] }

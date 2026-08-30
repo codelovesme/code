@@ -53,6 +53,13 @@ pub struct Manifest {
     pub handlers: Vec<String>,
     #[serde(default)]
     pub vars: Vec<String>,
+    /// The handler a stateful module must be sent before its others will
+    /// work — `"Config"` for `fs`/`jwt`/…, `"Listen"` for `http_server`.
+    /// Absent for a stateless module (`strings`, `crypto`, `json`, …). A
+    /// consumer (euglena) reads this to know what to emit for a manifest's
+    /// config block; `code` itself does not act on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setup: Option<String>,
     /// Keyed by platform triple, e.g. `linux-x86_64`.
     pub platforms: BTreeMap<String, PlatformAsset>,
 }
@@ -80,10 +87,31 @@ impl Manifest {
 /// forgotten in the others — which is exactly how the index it replaces came
 /// to be missing two.
 pub const FIRST_PARTY: &[&str] = &[
+    "blob_storage",
+    "blob_storage_mock",
+    "cloud_drive",
+    "cloud_drive_mock",
+    "crypto",
     "env",
+    "fs",
+    "git",
+    "git_mock",
     "http_client",
     "http_server",
+    "json",
+    "json_store",
+    "jwt",
+    "localai",
+    "localai_mock",
+    "mailer",
+    "mailer_mock",
+    "markdown",
     "math",
+    "mongodb",
+    "mongodb_mock",
+    "oauth",
+    "oauth_mock",
+    "process",
     "strings",
     "terminal",
 ];
@@ -112,6 +140,12 @@ pub struct LockEntry {
     pub asset: String,
     /// Lowercase hex sha256 of the installed bytes. Re-checked at load time.
     pub sha256: String,
+    /// The module's setup handler, copied from its `module.json` — the
+    /// particle a stateful module needs before its others work. `None` for a
+    /// stateless module. Recorded so a consumer (euglena) has it locally
+    /// without re-fetching the manifest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setup: Option<String>,
     /// `true` when the module lives in `~/.code/modules/` rather than the
     /// project-local directory.
     #[serde(default)]
@@ -490,6 +524,7 @@ pub fn install(
             source: source.clone(),
             asset: asset.asset.clone(),
             sha256: asset.sha256.clone(),
+            setup: manifest.setup.clone(),
             global: scope == InstallScope::Global,
         },
     );
@@ -568,6 +603,8 @@ mod tests {
         assert_eq!(m.version, "1.0.0");
         assert_eq!(m.abi_version, 1);
         assert_eq!(m.handlers, vec!["echo"]);
+        // No `setup` key in the sample — a stateless module.
+        assert_eq!(m.setup, None);
         let asset = m.platform(current_platform());
         if current_platform() == "linux-x86_64" {
             assert!(
@@ -591,6 +628,43 @@ mod tests {
     }
 
     #[test]
+    fn manifest_carries_a_setup_handler_when_present() {
+        let text = r#"{
+          "name": "fs", "version": "1.0.0", "abi_version": 1,
+          "handlers": ["Config", "ReadFile"], "vars": [], "setup": "Config",
+          "platforms": { "linux-x86_64": { "asset": "fs-linux-x86_64.so", "sha256": "0" } }
+        }"#;
+        assert_eq!(
+            Manifest::parse(text).unwrap().setup.as_deref(),
+            Some("Config")
+        );
+    }
+
+    #[test]
+    fn lockfile_round_trips_a_setup_handler() {
+        let mut lock = Lockfile::default();
+        lock.modules.insert(
+            "fs".to_string(),
+            LockEntry {
+                name: "fs".to_string(),
+                version: "1.1.4".to_string(),
+                source: "https://example.org/r".to_string(),
+                asset: "fs-linux-x86_64.so".to_string(),
+                sha256: "cd".repeat(32),
+                setup: Some("Config".to_string()),
+                global: false,
+            },
+        );
+        let back = Lockfile::parse(&lock.render()).unwrap();
+        assert_eq!(back, lock);
+        assert_eq!(
+            back.modules["fs"].setup.as_deref(),
+            Some("Config"),
+            "the setup handler must survive a lockfile write/read"
+        );
+    }
+
+    #[test]
     fn lockfile_round_trips() {
         let mut lock = Lockfile::default();
         lock.modules.insert(
@@ -601,6 +675,7 @@ mod tests {
                 source: "https://example.org/release".to_string(),
                 asset: "terminal-linux-x86_64.so".to_string(),
                 sha256: "ab".repeat(32),
+                setup: None,
                 global: false,
             },
         );

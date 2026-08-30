@@ -1,0 +1,27 @@
+-- `mongodb` — the paths that need no running database. The CRUD round trip
+-- is in tests/mongodb_module.rs, gated on a MONGO_URI.
+link "native_modules/mongodb.so" as db
+
+-- Nothing works before Config.
+emit Fetch { key = "x" } to db get early
+assert early ∈ Exception
+assert early.source = "mongodb"
+
+emit Count { collection = "c" } to db get early2
+assert early2 ∈ Exception
+
+-- Config validates the URL and the fields.
+emit Config { url = "mongodb://127.0.0.1:27017" } to db get nodb
+assert nodb ∈ Exception
+
+emit Config { url = "definitely not a uri", database = "x" } to db get badurl
+assert badurl ∈ Exception
+
+-- A well-formed URL pointing at a port nothing answers on: the connect
+-- times out into an Exception, not a hang or a crash.
+emit Config { url = "mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=500", database = "app" } to db get refused
+assert refused ∈ Exception
+
+-- A class this module does not handle is null.
+emit Aggregate {} to db get u
+assert u = null

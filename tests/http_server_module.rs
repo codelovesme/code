@@ -147,7 +147,9 @@ Request { method, path, query, body } => {
     return Response { status = 200, body = "$method $path" }
 }
 
-emit Listen { port = PORT } to srv get l
+emit Config { port = PORT } to srv get c
+assert c.ok
+emit Listen { } to srv get l
 assert l.ok
 assert l.port = PORT
 
@@ -182,7 +184,8 @@ fn no_handler_is_a_404_rather_than_a_hang() {
     // the status that means "nobody claimed this".
     let program = r#"link "http_server.so" as srv
 
-emit Listen { port = PORT } to srv get l
+emit Config { port = PORT } to srv get c
+emit Listen { } to srv get l
 assert l.ok
 
 loop {
@@ -191,5 +194,33 @@ loop {
     serving("unhandled", program, |port| {
         let r = request(port, "GET", "/anything", "");
         assert_eq!(status_of(&r), 404);
+    });
+}
+
+#[test]
+fn config_is_frozen_once_listening() {
+    // A `Config` sent *after* `Listen` is an `Exception`, not a silent no-op
+    // — the socket is already bound, so the new config would be a lie. The
+    // program `assert`s that itself, so a regression fails the run before any
+    // request is made.
+    let program = r#"link "http_server.so" as srv
+
+Request { method, path } => {
+    return Response { status = 200, body = "up" }
+}
+
+emit Config { port = PORT } to srv get c
+assert c.ok
+emit Listen { } to srv get l
+assert l.ok
+
+emit Config { port = 1 } to srv get late
+assert late ∈ Exception
+
+loop {
+}
+"#;
+    serving("config-frozen", program, |port| {
+        assert_eq!(status_of(&request(port, "GET", "/", "")), 200);
     });
 }

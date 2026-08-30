@@ -1,0 +1,44 @@
+-- `mailer_mock` — a drop-in for `mailer` that files messages in an
+-- in-memory outbox instead of sending them.
+link "native_modules/mailer_mock.so" as mailer
+
+-- Nothing works before Config.
+emit Send { recipient = "a@x.test", text = "hi" } to mailer get early
+assert early ∈ Exception
+assert early.source = "mailer_mock"
+
+emit Config { host = "mock", port = 587, from = "me@x.test" } to mailer get c
+assert c ∈ ConfigResult
+assert c.ok
+
+-- Send files into the outbox and reports ok, same shape as `mailer`.
+emit Send {
+    recipient = ["you@x.test", "cc-real@x.test"],
+    cc = "boss@x.test",
+    subject = "Report",
+    html = "<b>done</b>"
+} to mailer get s
+assert s ∈ SendResult
+assert s.ok
+
+emit Send { recipient = "second@x.test", text = "plain" } to mailer get _
+
+-- The outbox is readable — this is the point of a mock.
+emit Outbox {} to mailer get box
+assert box.count = 2
+assert box.messages[0].recipient = "you@x.test, cc-real@x.test"
+assert box.messages[0].cc = "boss@x.test"
+assert box.messages[0].subject = "Report"
+assert box.messages[0].body = "<b>done</b>"
+assert box.messages[0].from = "me@x.test"
+assert box.messages[1].body = "plain"
+
+-- `clear = true` empties it after reading.
+emit Outbox { clear = true } to mailer get drained
+assert drained.count = 2
+emit Outbox {} to mailer get after
+assert after.count = 0
+
+-- A class this module does not handle is null.
+emit Verify {} to mailer get u
+assert u = null

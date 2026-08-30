@@ -137,7 +137,17 @@ impl FilesystemResolver {
             let text = fs::read_to_string(&lock_path).ok()?;
             let lock: crate::module_install::Lockfile = serde_json::from_str(&text).ok()?;
             for entry in lock.modules.values() {
-                if entry.asset != file_name {
+                // `link` may name the pinned asset outright
+                // (`terminal-linux-x86_64.so`) or, more cleanly, just the
+                // module with a native extension (`terminal.so` / `terminal.a`):
+                // the lockfile already says which asset that is on this
+                // platform, so the platform suffix need not be written by hand.
+                let asset_ext = Path::new(&entry.asset)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or_default();
+                let by_module_name = format!("{}.{asset_ext}", entry.name);
+                if entry.asset != file_name && by_module_name != file_name {
                     continue;
                 }
                 for root in [
@@ -147,7 +157,10 @@ impl FilesystemResolver {
                 .into_iter()
                 .flatten()
                 {
-                    let candidate = root.join(&entry.name).join(&entry.version).join(file_name);
+                    let candidate = root
+                        .join(&entry.name)
+                        .join(&entry.version)
+                        .join(&entry.asset);
                     if let Ok(canonical) = fs::canonicalize(&candidate) {
                         return Some(canonical);
                     }

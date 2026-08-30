@@ -1,0 +1,53 @@
+-- `cloud_drive_mock` — a drop-in for `cloud_drive` with an in-memory file
+-- store and no Google. A full upload/list/download/delete round trip works.
+link "native_modules/cloud_drive_mock.so" as drive
+
+emit GetQuota { access_token = "t" } to drive get early
+assert early ∈ Exception
+assert early.source = "cloud_drive_mock"
+
+emit Config {
+    client_id = "cid", client_secret = "secret",
+    redirect_uri = "https://app.example/cb",
+    auth_url = "https://mock-provider.local/auth",
+    scope = "openid email"
+} to drive get c
+assert c ∈ ConfigResult
+assert c.ok
+
+emit AuthUrl { state = "s" } to drive get a
+assert a.url = "https://mock-provider.local/auth?response_type=code&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=s&scope=openid%20email"
+
+emit ExchangeCode { code = "user-1" } to drive get t
+assert t ∈ Tokens
+assert t.account_email = "user-1@drive.test"
+assert t.access_token = "mock-access"
+
+-- A non-google provider is refused, as in the real module.
+emit UploadFile { provider = "onedrive", access_token = "t", file_name = "f", data = "x" } to drive get wrong
+assert wrong ∈ Exception
+
+emit UploadFile { access_token = "t", file_name = "hello.txt", data = "hi there", content_type = "text/plain" } to drive get up
+assert up ∈ RemoteFile
+assert up.file_name = "hello.txt"
+assert up.size = 8
+
+emit ListFiles { access_token = "t" } to drive get l
+assert l.count = 1
+assert l.files[0].file_name = "hello.txt"
+
+emit DownloadFile { access_token = "t", file_id = up.file_id } to drive get d
+assert d ∈ FileContent
+assert d.data = "hi there"
+
+emit GetQuota { access_token = "t" } to drive get q
+assert q.used = 8
+assert q.total > q.used
+
+emit DeleteFile { access_token = "t", file_id = up.file_id } to drive get del
+assert del.existed
+emit DeleteFile { access_token = "t", file_id = up.file_id } to drive get del2
+assert del2.existed = false
+
+emit Presign {} to drive get u
+assert u = null

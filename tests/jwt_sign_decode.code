@@ -1,0 +1,53 @@
+-- `jwt` — Sign then Decode, HS256. The secret comes from `Config`; there is no
+-- per-call secret, because a signing key is deployment config.
+link "native_modules/jwt.so" as jwt
+
+-- No secret yet: Sign and Decode both refuse.
+emit Sign { sub = "u" } to jwt get early
+assert early ∈ Exception
+emit Decode { token = "x.y.z" } to jwt get early2
+assert early2 ∈ Exception
+
+emit Config { secret = "a-signing-secret", expires_in = 3600 } to jwt get s
+assert s ∈ ConfigResult
+assert s.ok
+
+emit Sign { sub = "user-42", role = "admin" } to jwt get signed
+assert signed ∈ SignResult
+assert signed.token ≠ ""
+
+emit Decode { token = signed.token } to jwt get d
+assert d ∈ DecodeResult
+assert d.valid
+assert d.sub = "user-42"
+assert d.role = "admin"
+assert d.exp > 0
+
+-- `role` defaults to "" when Sign doesn't carry one.
+emit Sign { sub = "anon" } to jwt get plain
+emit Decode { token = plain.token } to jwt get pd
+assert pd.valid
+assert pd.role = ""
+
+-- A garbled token, a tampered one, and a token signed with another secret
+-- are all `valid = false` — the answer Decode exists to give, not an error.
+emit Decode { token = "not-a-token" } to jwt get garbage
+assert garbage.valid = false
+assert garbage.sub = ""
+
+emit Decode { token = signed.token + "tampered" } to jwt get bad
+assert bad.valid = false
+
+emit Config { secret = "a-different-secret" } to jwt get s2
+emit Decode { token = signed.token } to jwt get wrongkey
+assert wrongkey.valid = false
+
+-- Missing / wrong-typed fields are an Exception, not a silent answer.
+emit Sign {} to jwt get m1
+assert m1 ∈ Exception
+emit Decode {} to jwt get m2
+assert m2 ∈ Exception
+
+-- A class this module does not handle is null.
+emit Refresh {} to jwt get u
+assert u = null

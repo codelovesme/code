@@ -1,0 +1,39 @@
+-- `oauth_mock` — a drop-in for `oauth` that recovers the identity from the
+-- code itself, no provider on the network.
+link "native_modules/oauth_mock.so" as oauth
+
+emit AuthUrl { state = "s" } to oauth get early
+assert early ∈ Exception
+assert early.source = "oauth_mock"
+
+emit Config {
+    client_id = "cid",
+    client_secret = "shh",
+    redirect_uri = "https://app.example/callback",
+    auth_url = "https://mock-provider.local/choose",
+    token_url = "https://mock-provider.local/token",
+    scope = "openid email"
+} to oauth get c
+assert c ∈ ConfigResult
+assert c.ok
+
+-- AuthUrl points at the configured (mock) provider page.
+emit AuthUrl { state = "abc/123" } to oauth get a
+assert a ∈ AuthUrlResult
+assert a.url = "https://mock-provider.local/choose?response_type=code&state=abc%2F123&redirect_uri=https%3A%2F%2Fapp.example%2Fcallback&scope=openid%20email"
+
+-- A code that isn't base64-JSON becomes a deterministic identity.
+emit ExchangeCode { code = "tester-7" } to oauth get id
+assert id ∈ Identity
+assert id.sub = "mock|tester-7"
+assert id.email = "tester-7@mock.test"
+assert id.access_token = "mock-access-mock|tester-7"
+
+-- A base64 of `{ sub, email, name }` is decoded back.
+emit ExchangeCode { code = "eyJzdWIiOiJ1LTkiLCJlbWFpbCI6ImFkYUBleC5jb20iLCJuYW1lIjoiQWRhIn0" } to oauth get id2
+assert id2.sub = "u-9"
+assert id2.email = "ada@ex.com"
+assert id2.name = "Ada"
+
+emit Revoke {} to oauth get u
+assert u = null

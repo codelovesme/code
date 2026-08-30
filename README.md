@@ -829,7 +829,8 @@ Request { method, path } => {
     return Response { status = 200, body = "hi from $path" }
 }
 
-emit Listen { port = 8080 } to srv get l
+emit Config { port = 8080 } to srv get _
+emit Listen { } to srv get l
 loop {
 }
 ```
@@ -959,15 +960,51 @@ rules that make a module unable to break someone else's program.
 First-party modules today: `terminal` (print to stdout), `math`, `strings`,
 `env` (the environment, so a port or a secret comes from the deployment
 rather than the source — see [its README](crates/modules/env/README.md)),
-`http_client` (the seven HTTP methods, and `Exception`/`Log` pushed back —
-see [its README](crates/modules/http_client/README.md)), and `http_server`
+`json` (parse JSON text, or pretty-print it — the two things string
+interpolation's compact rendering can't do; see
+[its README](crates/modules/json/README.md)), `crypto` (bcrypt password
+hashing and verification, and random codes — see
+[its README](crates/modules/crypto/README.md)), `jwt` (sign and verify
+HS256 JSON Web Tokens — see [its README](crates/modules/jwt/README.md)),
+`markdown` (CommonMark + GFM to HTML, with a table of contents and a
+split-by-heading — see [its README](crates/modules/markdown/README.md)),
+`fs` (files and directories under a sandboxed base directory — see
+[its README](crates/modules/fs/README.md)), `json_store` (a file-backed
+key-value store, one readable JSON file per key — see
+[its README](crates/modules/json_store/README.md)), `process` (run a command
+and capture its output, or spawn and track a child — see
+[its README](crates/modules/process/README.md)), `git` (init, clone, commit,
+push and status over the system `git`, with a `Config` that checks the
+repository's state first — see [its README](crates/modules/git/README.md)),
+`mailer` (send email over SMTP, any provider — see
+[its README](crates/modules/mailer/README.md)), `oauth` (the OAuth 2.0
+authorization-code flow for one provider — see
+[its README](crates/modules/oauth/README.md)), `mongodb` (documents and a
+key/value layer over a MongoDB collection — see
+[its README](crates/modules/mongodb/README.md)), `blob_storage` (put, get,
+list and delete objects in S3-compatible storage — see
+[its README](crates/modules/blob_storage/README.md)), `cloud_drive` (Google
+Drive: the OAuth flow, quota, upload, download, list, delete — see
+[its README](crates/modules/cloud_drive/README.md)), `localai` (chat
+completions and audio transcription over an OpenAI-compatible endpoint — see
+[its README](crates/modules/localai/README.md)), `http_client` (the seven HTTP
+methods, and `Exception`/`Log` pushed back — see
+[its README](crates/modules/http_client/README.md)), and `http_server`
 (requests pushed in, answered by what a `Request` handler returns — see
 [its README](crates/modules/http_server/README.md)).
+Seven of these ship a `<name>_mock` twin — `mailer_mock`, `oauth_mock`,
+`mongodb_mock`, `blob_storage_mock`, `cloud_drive_mock`, `git_mock`,
+`localai_mock` — same particles and results, but no SMTP server, no
+provider, no database, no object store, no Google, no `git`, no model
+server: state lives in memory for the life of the process. Link one in place
+of the real module to run an app with zero credentials.
 `code install <name>` fetches one into `./.code/modules/`, pinned by sha256
-in `./.code/lock.json`; `--global` puts it in `~/.code/modules/` instead. A
-`link` reference resolves against a fixed chain — the script's own directory,
-then the nearest project's `.code/modules/`, then `$CODE_MODULE_PATH`, then
-`~/.code/modules/` — so where a module came from is always answerable.
+in `./.code/lock.json`; `--global` puts it in `~/.code/modules/` instead. An
+installed module is linked by name — `link "terminal.so" as term` — and the
+lockfile maps that to the platform asset it pinned; `link` also resolves
+against a fixed chain — the script's own directory, then the nearest
+project's `.code/modules/`, then `$CODE_MODULE_PATH`, then `~/.code/modules/`
+— so where a module came from is always answerable.
 
 ## What the language deliberately does not have
 
@@ -1059,7 +1096,11 @@ crates/
   code-native/  the crate for writing native modules in Rust (crates.io)
   code-lsp/     diagnostics, semantic tokens and formatting, over the real
                 lexer/parser and the same `code format` the CLI runs
-  modules/      first-party modules: terminal, math, strings
+  modules/      first-party modules: terminal, math, strings, env, json,
+                json_store, crypto, jwt, markdown, fs, process, git, mailer,
+                oauth, mongodb, blob_storage, cloud_drive, localai,
+                http_client, http_server — plus <name>_mock twins for
+                mailer, oauth, mongodb, blob_storage, cloud_drive, git, localai
 site/           the playground; build.py embeds tests/*.code as examples
 templates/      module/ — a working starting point for publishing your own
 docs/todo/      open tasks, one file each, written to be picked up cold

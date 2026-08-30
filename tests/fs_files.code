@@ -1,0 +1,80 @@
+-- `fs` — files and directories under a sandboxed base. Every path resolves
+-- inside the base `Config` sets; `..` that would climb out is an Exception.
+link "native_modules/fs.so" as fs
+
+-- Nothing works before Config.
+emit ReadFile { path = "a" } to fs get early
+assert early ∈ Exception
+
+emit Config { base_path = "/tmp/code-fs-fixture" } to fs get s
+assert s ∈ ConfigResult
+assert s.ok
+
+-- Fresh slate each run: the base persists between run/build modes.
+emit RemoveDir { path = "work" } to fs get _clean
+emit CreateDir { path = "work" } to fs get _mk
+
+emit Exists { path = "work/a.txt" } to fs get e0
+assert e0.exists = false
+
+emit WriteFile { path = "work/a.txt", content = "hello" } to fs get w
+assert w ∈ WriteResult
+assert w.bytes = 5
+
+emit ReadFile { path = "work/a.txt" } to fs get r
+assert r ∈ FileContent
+assert r.content = "hello"
+assert r.path = "work/a.txt"
+
+emit Exists { path = "work/a.txt" } to fs get e1
+assert e1.exists
+assert e1.is_file
+assert e1.is_dir = false
+
+-- WriteFile creates parent directories and is a full overwrite.
+emit WriteFile { path = "work/sub/deep/b.txt", content = "bee" } to fs get w2
+emit ReadFile { path = "work/sub/deep/b.txt" } to fs get r2
+assert r2.content = "bee"
+
+emit WriteFile { path = "work/a.txt", content = "replaced" } to fs get w3
+emit ReadFile { path = "work/a.txt" } to fs get r3
+assert r3.content = "replaced"
+
+-- ListDir entries are sorted, with a dir flag.
+emit ListDir { path = "work" } to fs get l
+assert l ∈ DirListing
+assert l.entries = [
+    { _class = "DirEntry", name = "a.txt", is_dir = false },
+    { _class = "DirEntry", name = "sub", is_dir = true }
+]
+
+-- Delete and RemoveDir are idempotent — an absent target is existed = false,
+-- not an error.
+emit DeleteFile { path = "work/a.txt" } to fs get d1
+assert d1.existed
+emit DeleteFile { path = "work/a.txt" } to fs get d2
+assert d2.existed = false
+
+emit RemoveDir { path = "work/sub" } to fs get rd1
+assert rd1.existed
+emit RemoveDir { path = "work/sub" } to fs get rd2
+assert rd2.existed = false
+
+-- Sandbox containment: a leading `/` is base-relative, and `..` out is refused.
+emit ReadFile { path = "../../etc/hostname" } to fs get escape
+assert escape ∈ Exception
+
+emit ReadFile { path = "work/missing.txt" } to fs get notfound
+assert notfound ∈ Exception
+
+emit WriteFile { path = "work/x" } to fs get nocontent
+assert nocontent ∈ Exception
+
+emit ListDir { path = "work/nope" } to fs get nodir
+assert nodir ∈ Exception
+
+-- A class this module does not handle is null.
+emit Chmod {} to fs get u
+assert u = null
+
+emit RemoveDir { path = "work" } to fs get _teardown

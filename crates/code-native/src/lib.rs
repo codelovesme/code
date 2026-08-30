@@ -435,10 +435,12 @@ pub fn array(out: &mut CodeValue, elems: &mut SlotBuffer) {
 }
 
 /// Write an Object into `out` from parallel `keys` and `values` (a
-/// [`SlotBuffer`] built the same way [`array`] expects). `keys` must
-/// outlive nothing in particular — `code_object` copies the pointers, and
-/// C-string field names are expected to be `'static` (string literals),
-/// matching `code_abi.h`'s own "key pointers are read-only data" note.
+/// [`SlotBuffer`] built the same way [`array`] expects). `code_object` copies
+/// both the key *pointers* and the key *bytes* into the value's own storage
+/// (since 2026-08-29), so the `&'static CStr` bound is stricter than the ABI
+/// needs — it is the ergonomic path for the common case of literal field
+/// names (`c"status"`, `c"body"`). For names built at runtime — a parsed
+/// JSON object, a database row — use [`object_dyn`].
 pub fn object(out: &mut CodeValue, keys: &[&'static CStr], values: &mut SlotBuffer) {
     debug_assert_eq!(keys.len() as i64, values.len);
     let mut key_ptrs: Vec<*const c_char> = keys.iter().map(|k| k.as_ptr()).collect();
@@ -450,6 +452,25 @@ pub fn object(out: &mut CodeValue, keys: &[&'static CStr], values: &mut SlotBuff
             values.len,
         )
     }
+}
+
+/// [`object`], for keys that are not `'static` — built from a parsed
+/// document, a database row, an HTTP form. `code_object` copies each key's
+/// bytes into the new value's own block, so the `&str`s only have to live
+/// for the duration of this call.
+pub fn object_dyn(out: &mut CodeValue, keys: &[&str], values: &mut SlotBuffer) {
+    debug_assert_eq!(keys.len() as i64, values.len);
+    let c_keys: Vec<std::ffi::CString> = keys.iter().map(|k| cstr(k)).collect();
+    let mut key_ptrs: Vec<*const c_char> = c_keys.iter().map(|k| k.as_ptr()).collect();
+    unsafe {
+        code_object(
+            out,
+            key_ptrs.as_mut_ptr(),
+            values.as_items_ptr(),
+            values.len,
+        )
+    }
+    // `c_keys` drops here: safe, `code_object` copied the bytes it needed.
 }
 
 // ===========================================================================
@@ -517,6 +538,26 @@ pub fn array_elems(v: &CodeValue) -> impl Iterator<Item = &CodeValue> {
         (std::ptr::null_mut(), 0)
     };
     (0..len).map(move |i| unsafe { &*slot_at(items, i) })
+}
+
+/// Iterate an Object's fields as `(key, value)` pairs, in stored order —
+/// the read counterpart to [`object`]/[`object_dyn`], for a handler that has
+/// to walk every field rather than name one ([`find_field`]). A field whose
+/// key is not valid UTF-8 is skipped. Not an Object: an empty iterator.
+pub fn object_entries(v: &CodeValue) -> impl Iterator<Item = (&str, &CodeValue)> {
+    let (keys, items, len) = if v.tag == CodeTag::Object && !v.keys.is_null() {
+        (v.keys, v.items, v.len)
+    } else {
+        (std::ptr::null_mut(), std::ptr::null_mut(), 0)
+    };
+    (0..len).filter_map(move |i| {
+        let key = unsafe { *keys.offset(i as isize) };
+        if key.is_null() {
+            return None;
+        }
+        let key = unsafe { CStr::from_ptr(key) }.to_str().ok()?;
+        Some((key, unsafe { &*slot_at(items, i) }))
+    })
 }
 
 /// Build a `{ _class = <class_name>, value = <fill's result> }` particle
@@ -828,6 +869,52 @@ mod tests {
         let tag = out.tag;
         release(&mut out);
         tag
+    }
+
+    #[test]
+    fn object_dyn_builds_with_runtime_keys() {
+        // Keys owned by this scope, not `'static` — the case `object` can't
+        // take. `code_object` copies the bytes, so the built value outlives
+        // them.
+        let mut values = SlotBuffer::new(2);
+        number(values.slot_mut(0), 1.0);
+        number(values.slot_mut(1), 2.0);
+        let mut obj = CodeValue::zeroed();
+        {
+            let names: Vec<String> = vec!["one".into(), "two".into()];
+            let key_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+            object_dyn(&mut obj, &key_refs, &mut values);
+            // `names`/`key_refs` drop at the end of this block — the built
+            // `obj` must not depend on them any more.
+        }
+        values.release_all();
+
+        assert_eq!(read_field_number(&obj, "one"), Some(1.0));
+        assert_eq!(read_field_number(&obj, "two"), Some(2.0));
+        release(&mut obj);
+    }
+
+    #[test]
+    fn object_entries_walks_every_field_in_order() {
+        let mut obj = CodeValue::zeroed();
+        sample_object(&mut obj); // { a = 1, s = "hi" }
+        let seen: Vec<(String, CodeTag)> = object_entries(&obj)
+            .map(|(k, v)| (k.to_owned(), v.tag))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                ("a".to_owned(), CodeTag::Number),
+                ("s".to_owned(), CodeTag::Str),
+            ]
+        );
+        release(&mut obj);
+
+        // Not an Object: empty, not a panic.
+        let mut n = CodeValue::zeroed();
+        number(&mut n, 5.0);
+        assert_eq!(object_entries(&n).count(), 0);
+        release(&mut n);
     }
 
     #[test]

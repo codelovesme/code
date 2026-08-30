@@ -615,14 +615,19 @@ fn cmd_install(mut args: Vec<String>) -> ExitCode {
             );
             println!("  {}", installed.path.display());
             // The bytes land under modules/<name>/<version>/ keeping their
-            // release asset name, so the link line uses that name — the
-            // fallback chain finds it without any further configuration.
-            let asset_name = installed
+            // platform-suffixed release asset name, but `link` can name the
+            // module itself — the resolver maps `<name>.so` back to the
+            // pinned asset through .code/lock.json. Both spellings resolve;
+            // this is the tidy one.
+            let ext = installed
                 .path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            println!("link it with:  link \"{asset_name}\" as <alias>");
+                .extension()
+                .map(|e| e.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "so".to_string());
+            println!(
+                "link it with:  link \"{}.{ext}\" as <alias>",
+                installed.name
+            );
             ExitCode::SUCCESS
         }
         Err(e) => {

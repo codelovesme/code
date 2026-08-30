@@ -154,9 +154,13 @@ agreed shape is now implemented:
 3. `$CODE_MODULE_PATH` (colon-separated, for unusual setups)
 4. `~/.code/modules/` (globally installed)
 
-plus a fifth lookup that makes installed layouts reachable: a bare filename
-maps through the project lockfile onto `<root>/<name>/<version>/<asset>`
-(the layout `code install` writes). Without the lockfile entry the layout
+plus a fifth lookup that makes installed layouts reachable: the `link`
+reference maps through the project lockfile onto
+`<root>/<name>/<version>/<asset>` (the layout `code install` writes). Both
+spellings resolve there — the pinned asset outright
+(`terminal-linux-x86_64.so`) or, more cleanly, the module with a native
+extension (`terminal.so` / `terminal.a`), since the lockfile already says
+which asset that is on this platform. Without the lockfile entry the layout
 lookup has nothing to go on — the lockfile is the single source of truth
 for "what is installed here", and flat vendored layouts keep resolving
 through steps 1–4 unchanged. Documented wherever `link` is documented. The
@@ -270,25 +274,208 @@ Batch 2 (flagship — proves the pipeline with a non-trivial module):
   run here.
 
 - **http_server** — shipped 2026-08-29, and the reason the inbound *answer*
-  path exists at all. `Listen { port? }` binds and spawns an accept thread;
-  every request is pushed to the program as `Request { method, path, query,
-  body }`, and **whatever the `Request` handler returns is the response**.
-  Serial by design (the program is single-threaded, so concurrency would only
-  queue work it cannot start sooner), which is also why the pending request is
-  one slot rather than a map — no correlation, no id in the program's hands.
-  Full contract in [`crates/modules/http_server/README.md`](../../crates/modules/http_server/README.md).
+  path exists at all. `Config { port?, … }` (optional) sets what to bind;
+  `Listen {}` binds and spawns an accept thread. Every request is pushed to
+  the program as `Request { method, path, query, body }`, and **whatever the
+  `Request` handler returns is the response**. Serial by design (the program
+  is single-threaded, so concurrency would only queue work it cannot start
+  sooner), which is also why the pending request is one slot rather than a
+  map — no correlation, no id in the program's hands. Full contract in
+  [`crates/modules/http_server/README.md`](../../crates/modules/http_server/README.md).
 
   Modelled on `euglena-language`'s `server` organelle, minus what a cell
   runtime needs and this language does not have: no `Impulse` routing, no JWT,
-  no per-app public-class policy. `Sap` became `Listen`, since configuration
-  here is a particle the program sends rather than something a manifest
-  delivers — and `Respond { request_id, … }`, which euglena needs because its
-  answer has nowhere else to go, was built here and then thrown away when the
-  handler's return value could carry it.
+  no per-app public-class policy. `Sap` became `Config` (the universal
+  setup-particle rule), and `Listen {}` is a *separate* action — config vs.
+  running are different states, and a euglena manifest can deliver `Config`
+  while the app's own gene decides when to `Listen`. `Respond { request_id,
+  … }`, which euglena needs because its answer has nowhere else to go, was
+  built here and then thrown away when the handler's return value could carry
+  it.
 
-Later candidates, only when asked for: rand, date/time formatting (raw
-seconds are core `Timestamp`; human-readable formats belong in a module),
-fs, json parse/stringify.
+`json` — shipped: `Parse` (JSON text → value) and `Stringify` (value → text,
+with `pretty`). The compact form matches interpolation exactly; `Parse` and
+`pretty` are what interpolation cannot do. Ported from `euglena-language`'s
+`json` organelle — the old `Error` particle became an `Exception`, and
+`Stringify` now drops only `_class` rather than every `_`-prefixed key
+(`_id` survives). Full contract in
+[`crates/modules/json/README.md`](../../crates/modules/json/README.md).
+
+### Module config: no `Sap`
+
+`Sap` is euglena's mechanism for delivering an organelle's configuration
+from a `manifest.json` at cell startup. Outside euglena it means nothing, so
+no `code` module handles it. Instead:
+
+- **Stateless where the config is trivial** — a `cost`, a `length` — is a
+  per-call parameter with a default. `crypto`, `json`, `strings`, `math`,
+  `env`, `terminal`, `markdown`.
+- **A `Config { … }` setup particle where state is genuinely needed** — a
+  directory, a secret, a bind address. It returns `ConfigResult { ok }`, and
+  every other handler is an `Exception` until it has run (`jwt`, `fs`,
+  `json_store`, `git`, `mailer`, `oauth`, `mongodb`, `blob_storage`,
+  `cloud_drive`, `localai`). `Config` is **not** an
+  action: `http_server` keeps `Config` for the port/host and adds `Listen {}`
+  as the separate "start serving" action, since binding a socket has its own
+  failure and its own timing.
+
+A module's `module.json` names its setup handler in a `setup` field (absent
+for a stateless module), and `code install` copies that into
+`.code/lock.json`. That is the seam euglena's codegen will read to turn a
+manifest config block into `emit <Setup> { … } to <alias>` — the only place
+`Sap` still conceptually lives is euglena's own manifest format, and even
+there the emitted particle is the module's own.
+
+`crypto` — shipped: `Hash`/`Verify` (bcrypt) and `RandomCode`. Ported from
+`euglena-language`'s `crypto` organelle. Stateless — the organelle's
+`Sap { salt_rounds }` is gone; `Hash { cost }` is a per-call parameter,
+default 12. Failures are `Exception`s, not the old `Error` particle; a
+malformed hash in `Verify` is an `Exception` while a wrong password is just
+`valid = false`.
+
+`jwt` — shipped: `Config` (the setup particle: `secret`, `expires_in`), then
+`Sign`/`Decode` for HS256 tokens. Ported from `euglena-language`'s `jwt`
+organelle (`Sap` → `Config`). HS256 is small enough to do over `hmac`/`sha2`
+directly rather than pull `jsonwebtoken`; a bad signature or an expired token
+is `valid = false` (Decode's whole purpose), while a missing secret or field
+is an `Exception`.
+
+`markdown` — shipped: `RenderMarkdown` (CommonMark + GFM → HTML, with a flat
+table of contents, a link list, and heading `id`s) and `SplitByHeading`.
+Ported from `euglena-language`'s `markdown` organelle. The heading-id
+injection is now real event rewriting rather than a string search on the
+output, repeated headings get GitHub-style `-1`/`-2` slugs, and an empty
+`src` renders to empty rather than erroring.
+
+`fs` — shipped: `Config` (the setup particle: `base_path`), then
+`ReadFile`/`WriteFile`/`DeleteFile`/`CreateDir`/`RemoveDir`/`ListDir`/
+`Exists`, all resolved inside the base. Ported from `euglena-language`'s `fs`
+organelle (`Sap` → `Config`), with the containment bug fixed: the organelle
+let an absolute path or a `../` escape `base_path` entirely; this resolves
+*every* path inside the base — a `..` that would climb out is an `Exception`.
+`WriteFile` is atomic (temp + rename) as before; failures are `Exception`s,
+and delete/remove of an absent target is `existed = false` rather than an
+error.
+
+`json_store` — shipped: `Config` (the setup particle: `base_dir`), then
+`Store`/`Fetch`/`Delete` over one JSON file per key. Ported from
+`euglena-language`'s `json_store` organelle (`Sap` → `Config`). The organelle
+double-wrapped the value (a JSON string inside a JSON object) and rewrote
+unsafe key characters to `_` — which silently collided `a/b` and `a_b`. This
+stores the value directly (readable file), keeps its shape and field order on
+`Fetch`, and refuses a key that isn't `[A-Za-z0-9._:@-]`.
+
+`process` — shipped: `Run` (one-shot, blocks, captures `stdout`/`stderr`/
+`code`) and `Spawn`/`Status`/`Wait`/`Kill`/`List` (a long-running child
+tracked under a caller `id`). Ported from `euglena-language`'s `process`
+organelle. The organelle's `Sap` (which only allocated an empty map) is
+gone — there is no configuration, just a table that fills as you `Spawn`.
+`Run` is new: the organelle only had spawn-and-track, and most callers of a
+subprocess want its output, not a handle. A non-zero exit is a `RunResult`,
+not an `Exception`; a command that won't start is an `Exception`. `git` is
+built on this.
+
+`git` — shipped: `Config`/`Init`/`Clone`/`Add`/`Commit`/`Push`/`SetRemote`/
+`Status`, plus `Stash`/`StashPop`, all over the system `git` binary. Ported
+from `euglena-language`'s `git` organelle (`Sap` → `Config`), and `Config`
+does more than store a path: it refuses a folder that is inside — or is a
+checkout of — a *different* repository, and it will not silently proceed on
+a dirty working tree (`on_dirty` is `"error"`, `"stash"` or `"ignore"`, and
+`ConfigResult` reports `dirty` / `stashed` / `branch` / `head` so an app can
+decide). A `git` command that fails is an `Exception` with its stderr, and a
+`user:pass@` in any URL is masked out of every message and result.
+
+`mailer` — shipped: `Config` (the SMTP transport: host, port, auth, `from`,
+`tls`) then `Send { recipient, subject?, text?, html?, cc?, bcc? }`. Ported
+from `euglena-language`'s `mailer` organelle, which spoke Azure
+Communication Services' signed REST API directly — SMTP over `lettre`
+reaches the same providers (Azure included) with no vendor code. A message
+the server rejects is an `Exception` carrying its reply; a bad address or a
+missing transport is an `Exception` too. Tested against a real SMTP server
+in `tests/mailer_module.rs` (a `.code` fixture only reaches the error
+paths).
+
+`oauth` — shipped: `Config` (one provider's endpoints + client credentials),
+`AuthUrl { state, extra? }` (the redirect URL, pure), `ExchangeCode { code }`
+→ `Identity { sub, email, name, picture, access_token, refresh_token }`
+(token exchange, then userinfo if `userinfo_url` is set). Ported from
+`euglena-language`'s `oauth` organelle. The organelle hard-coded Google's
+`access_type=offline&prompt=select_account`; here they're `extra` params the
+caller passes. `access_token`/`refresh_token` are surfaced now (the organelle
+dropped them). Percent-encoding is a small RFC-3986 loop, no dep. A provider
+error is an `Exception` carrying `error_description`; `AuthUrl` and the error
+paths are a `.code` fixture, the exchange round trip is `tests/oauth_module.rs`.
+
+`mongodb` — shipped: `Config { url, database }`, then two layers over one
+connection — documents (`Insert`, `InsertMany`, `Find`, `Count`, `Drop`) and
+a key/value trio (`Store`/`Fetch`/`Delete` by string key into a `state`
+collection). Ported from `euglena-language`'s `mongodb` organelle. `Find`
+returns a real array of objects rather than a JSON string (the old ABI
+couldn't), `ObjectId`/`DateTime` come back as strings, and a failed
+operation is an `Exception` rather than `{ ok: false }`. `Drop` is new — it
+makes a test's collection reproducible. Error paths are a `.code` fixture;
+the CRUD round trip is `tests/mongodb_module.rs`, run against the CI job's
+`mongo:7` service and skipped without a `MONGO_URI`.
+
+`blob_storage` — shipped: `Config { bucket, access_key, secret_key,
+endpoint?, region?, path_style?, create? }`, then `Put`/`Get`/`Delete`/`List`
+(`Upload`/`Download` aliases). Ported from `euglena-language`'s
+`blob-storage` organelle, which spoke Azure Blob's SharedKey REST API
+directly; this speaks S3 (over `rust-s3`), the interface every object store
+— AWS, MinIO, R2, B2, Spaces, and Azure via its S3 gateway — now exposes.
+`base64` flags on `Put`/`Get` move bytes the language can't hold; `Get` on a
+missing key is `GetResult { found = false }`, not an `Exception`; `List`
+returns a real array. Error paths are a `.code` fixture; the CRUD round trip
+is `tests/blob_storage_module.rs`, run against the CI job's `bitnami/minio`
+service and skipped without `S3_ENDPOINT`.
+
+`cloud_drive` — shipped: `Config { client_id, client_secret, redirect_uri?,
+scope?, auth_url?, token_url?, api_base? }` (the three URL fields default to
+Google's), then the OAuth pair (`AuthUrl`/`BuildAuthUrl`, `ExchangeCode`,
+`RefreshToken`) and five file operations (`GetQuota`, `ListFiles`,
+`UploadFile`, `DownloadFile`, `DeleteFile`). Ported from `euglena-language`'s
+`cloud-drive` organelle, which carried OneDrive and Yandex stubs that only
+ever returned `ProviderUnavailable`; this module is Google Drive and a
+`provider` other than `"google"` is an `Exception`. `AuthUrl` is pure;
+`base64` flags on `UploadFile`/`DownloadFile` move bytes; `DeleteFile` on a
+404 is `{ existed = false }`, not an `Exception`. Error/pure paths are a
+`.code` fixture; the OAuth-and-files round trip is
+`tests/cloud_drive_module.rs`, against a fake Drive stood up on loopback (no
+service, no env var).
+
+`localai` — shipped: `Config { endpoint, model?, max_tokens?, temperature?,
+timeout_seconds? }`, then `Chat` / `ChatJson` (OpenAI-compatible
+`/v1/chat/completions`) and `Transcribe` / `TranscribeWithOptions` (Whisper
+`/v1/audio/transcriptions`). Ported from `euglena-language`'s `localai`
+organelle. `<think>…</think>` blocks are stripped from every reply; `Chat`
+keeps a code fence, `ChatJson` strips it and validates the payload as JSON
+(and Exceptions if it isn't). New: a `messages` array on `Chat` for
+multi-turn, where the organelle only took `system` + `user`. A failed call
+is an `Exception`, not `{ ok: false }`. Error/guard paths are a `.code`
+fixture; the chat/transcribe round trips are `tests/localai_module.rs`,
+against a fake OpenAI endpoint on loopback (no service, no env var).
+
+### Mock twins
+
+`mailer_mock`, `oauth_mock`, `mongodb_mock`, `blob_storage_mock`,
+`cloud_drive_mock`, `git_mock`, `localai_mock` — one per module that talks to
+a service. Each presents the real module's exact particle and result surface
+but keeps state in memory (or synthesises it): no SMTP server, no OAuth
+provider, no MongoDB, no object store, no Google, no `git` subprocess, no
+model server. Ported from `euglena-language`'s `*-mock` organelles, updated
+to the `Config`/`Exception` conventions and the new result classes.
+
+They are first-party and published like any other module, so `code install
+mongodb_mock` works and a euglena manifest can overlay `<name>_mock.so` by
+filename. Round-trip fidelity where it's cheap — `blob_storage_mock` and
+`mongodb_mock` really store and query; `oauth_mock`/`cloud_drive_mock`
+recover an identity from a base64-JSON code; `mailer_mock` exposes an
+`Outbox` handler so a test can assert what would have been sent. Covered by
+`.code` fixtures only — a mock never touches a network, so there is nothing
+an integration test would add.
+
+Later candidates, only when asked for: date/time formatting (raw seconds are
+core `Timestamp`; human-readable formats belong in a module).
 
 ## Community path (phase E)
 

@@ -123,6 +123,52 @@ fn resolves_from_project_modules_dir() {
 }
 
 #[test]
+fn resolves_module_name_spelling_against_lockfile() {
+    // `code install` lays the bytes down under their platform-suffixed
+    // release asset name, but a program may `link` the module by name —
+    // `link "test_math.so"` — and the lockfile maps that to the real asset.
+    let _env = env_guard();
+    let dir = fixture_dir("name-spelling");
+    let script = dir.join("proj");
+    fs::create_dir_all(&script).unwrap();
+    fs::write(script.join("main.code"), MAIN_CODE).unwrap();
+
+    let installed = dir
+        .join(".code")
+        .join("modules")
+        .join("test_math")
+        .join("0.0.0");
+    fs::create_dir_all(&installed).unwrap();
+    let so = installed.join("test_math-linux-x86_64.so");
+    build_test_math(&so);
+
+    let digest = code::module_install::sha256_of(&so).unwrap();
+    let lock = serde_json::json!({
+        "modules": {
+            "test_math": {
+                "name": "test_math",
+                "version": "0.0.0",
+                "source": "https://example.invalid/test_math",
+                "asset": "test_math-linux-x86_64.so",
+                "sha256": digest,
+                "global": false
+            }
+        }
+    });
+    fs::write(
+        dir.join(".code").join("lock.json"),
+        serde_json::to_string_pretty(&lock).unwrap(),
+    )
+    .unwrap();
+
+    assert!(
+        run_with_env(&script, None, None),
+        "`link \"test_math.so\"` must resolve to the platform-suffixed asset via the lockfile"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn resolves_from_code_module_path() {
     let _env = env_guard();
     let dir = fixture_dir("envpath");

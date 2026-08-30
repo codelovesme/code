@@ -1,19 +1,19 @@
 //! The `http_server` native module — the other half of `http_client`.
 //!
 //! Modelled on `euglena-language`'s `server` organelle, which settled the
-//! shape: a `Sap` particle binds the port, every request becomes a particle
-//! pushed *up* into the program, and the program answers with a `Respond`
-//! carrying the request's id while the connection waits. Renamed to fit this
-//! language (`Sap` is a cell metaphor, and configuration here is a particle
-//! the program sends rather than something a manifest delivers), and cut down
-//! to what a language without cells needs: no JWT, no impulse routing, no
-//! per-app public-class policy — those are a gateway's business, and a
-//! gateway can be written in this language on top of this module.
+//! shape: every request becomes a particle pushed *up* into the program, and
+//! the program answers it. Cut down to what a language without cells needs:
+//! no JWT, no impulse routing, no per-app public-class policy — those are a
+//! gateway's business, and a gateway can be written in this language on top
+//! of this module.
 //!
-//! One handler:
+//! Two handlers — configuration and the action are separate:
 //!
-//! - `Listen { port?, host?, max_body_bytes?, response_timeout_seconds? }`
-//!   → `ListenResult { ok, port, message }`
+//! - `Config { port?, host?, max_body_bytes?, response_timeout_seconds? }`
+//!   → `ConfigResult { ok }` — the setup particle. Optional (the defaults
+//!   are loopback, an OS-chosen port); an `Exception` if sent after `Listen`.
+//! - `Listen {}` → `ListenResult { ok, port, message }` — binds the socket
+//!   and starts serving. Takes no fields.
 //!
 //! Pushed into the program (its own handlers, between statements):
 //!
@@ -34,7 +34,8 @@
 //!     return Response { status = 200, body = "hi from $path" }
 //! }
 //!
-//! emit Listen { port = 8080 } to srv get l
+//! emit Config { port = 8080 } to srv get _
+//! emit Listen { } to srv get l
 //! assert l.ok
 //! loop {
 //! }
@@ -85,6 +86,33 @@ static PENDING: Mutex<Option<Sender<Reply>>> = Mutex::new(None);
 
 /// One `Listen` per module, because there is one program to serve.
 static LISTENING: OnceLock<()> = OnceLock::new();
+
+/// What the server binds and serves as. Set (optionally) by `Config`, read
+/// once by `Listen`. `None` means "nobody sent `Config`" — the defaults
+/// below apply.
+static CONFIG: Mutex<Option<ServerConfig>> = Mutex::new(None);
+
+#[derive(Clone)]
+struct ServerConfig {
+    host: String,
+    port: u16,
+    max_body: usize,
+    timeout: f64,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        // Loopback: a module that opened a program to the network the moment
+        // it was linked would be making that decision for its caller. Port 0
+        // asks the OS for a free one, and `ListenResult.port` reports which.
+        ServerConfig {
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            max_body: DEFAULT_MAX_BODY_BYTES as usize,
+            timeout: DEFAULT_RESPONSE_TIMEOUT_SECONDS,
+        }
+    }
+}
 
 struct Reply {
     status: u16,
@@ -153,7 +181,8 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
     let particle = &*particle;
     guarded(&mut *out, "http_server", |out| {
         match read_field_str(particle, "_class") {
-            Some("Listen") => handle_listen(out, particle),
+            Some("Config") => handle_config(out, particle),
+            Some("Listen") => handle_listen(out),
             // Including `Request`, which this module pushes but never answers.
             _ => null(out),
         }
@@ -164,45 +193,96 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
 // Handlers
 // ---------------------------------------------------------------------------
 
-fn handle_listen(out: &mut CodeValue, particle: &CodeValue) {
+/// `Config { port?, host?, max_body_bytes?, response_timeout_seconds? }` →
+/// `ConfigResult { ok }`. Optional — `Listen` uses [`ServerConfig::default`]
+/// if nobody sends it — but every field it does carry is validated here
+/// rather than silently coerced later. Sending it after `Listen` is an
+/// `Exception`: the socket is already bound, so the config would be a lie.
+fn handle_config(out: &mut CodeValue, particle: &CodeValue) {
+    if LISTENING.get().is_some() {
+        exception(out, "http_server", "Config has no effect after Listen");
+        return;
+    }
+    let mut cfg = ServerConfig::default();
+
+    if let Some(host) = find_field(particle, "host").and_then(read_str) {
+        if !host.is_empty() {
+            cfg.host = host.to_string();
+        }
+    }
+    if let Some(v) = find_field(particle, "port") {
+        match read_number(v) {
+            Some(n) if n.fract() == 0.0 && (0.0..=65535.0).contains(&n) => cfg.port = n as u16,
+            _ => {
+                exception(out, "http_server", "'port' must be a whole number in 0..=65535");
+                return;
+            }
+        }
+    }
+    if let Some(v) = find_field(particle, "max_body_bytes") {
+        match read_number(v) {
+            Some(n) if n.fract() == 0.0 && n >= 0.0 => cfg.max_body = n as usize,
+            _ => {
+                exception(out, "http_server", "'max_body_bytes' must be a whole number, 0 or more");
+                return;
+            }
+        }
+    }
+    if let Some(v) = find_field(particle, "response_timeout_seconds") {
+        match read_number(v) {
+            Some(n) if n.is_finite() && n > 0.0 => cfg.timeout = n,
+            _ => {
+                exception(
+                    out,
+                    "http_server",
+                    "'response_timeout_seconds' must be a positive number",
+                );
+                return;
+            }
+        }
+    }
+
+    *CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = Some(cfg);
+
+    let mut buf = SlotBuffer::new(2);
+    borrowed_str(buf.slot_mut(0), c"ConfigResult");
+    boolean(buf.slot_mut(1), true);
+    object(out, &[c"_class", c"ok"], &mut buf);
+    buf.release_all();
+}
+
+/// `Listen {}` → `ListenResult { ok, port, message }`. The "start serving"
+/// action, distinct from `Config` — it takes no fields: whatever the server
+/// binds and serves as comes from `Config` (or its defaults). Binds the
+/// socket and spawns the accept thread.
+fn handle_listen(out: &mut CodeValue) {
     if LISTENING.set(()).is_err() {
         listen_result(out, false, 0, "already listening");
         return;
     }
-    let host = match find_field(particle, "host").and_then(read_str) {
-        Some(h) if !h.is_empty() => h.to_string(),
-        // Loopback by default. A module that opened a program to the network
-        // the moment it was linked would be making that decision for its
-        // caller; saying `host = "0.0.0.0"` is how a caller makes it.
-        _ => "127.0.0.1".to_string(),
-    };
-    // Port 0 asks the OS for a free one, and `ListenResult` reports which —
-    // which is what lets a test run without picking a number and hoping.
-    let port = optional_number(particle, "port", 0.0) as u16;
-    let max_body = optional_number(particle, "max_body_bytes", DEFAULT_MAX_BODY_BYTES) as usize;
-    let timeout = optional_number(
-        particle,
-        "response_timeout_seconds",
-        DEFAULT_RESPONSE_TIMEOUT_SECONDS,
-    );
+    let cfg = CONFIG
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .unwrap_or_default();
 
-    let listener = match TcpListener::bind((host.as_str(), port)) {
+    let listener = match TcpListener::bind((cfg.host.as_str(), cfg.port)) {
         Ok(l) => l,
         Err(e) => {
-            let message = format!("cannot listen on {host}:{port}: {e}");
+            let message = format!("cannot listen on {}:{}: {e}", cfg.host, cfg.port);
             report_exception(&message);
             listen_result(out, false, 0, &message);
             return;
         }
     };
-    let bound = listener.local_addr().map(|a| a.port()).unwrap_or(port);
+    let bound = listener.local_addr().map(|a| a.port()).unwrap_or(cfg.port);
 
     // The thread outlives this call, which is the whole point: a server that
     // only ran while the program was inside `emit` would never accept
     // anything. Nothing joins it — the process ending is what stops it, and
     // the host leaves a module that can push loaded for exactly that reason.
-    std::thread::spawn(move || accept_loop(listener, max_body, timeout));
-    report_log("Info", &format!("listening on {host}:{bound}"));
+    std::thread::spawn(move || accept_loop(listener, cfg.max_body, cfg.timeout));
+    report_log("Info", &format!("listening on {}:{bound}", cfg.host));
     listen_result(out, true, bound, "");
 }
 

@@ -1,0 +1,34 @@
+-- `json.Parse { text }` -> `ParseResult { value }`: JSON text back to a
+-- value. Every JSON kind maps onto the language's own six.
+link "native_modules/json.so" as j
+
+emit Parse { text = "42" } to j get n
+assert n ∈ ParseResult
+assert n.value = 42
+
+emit Parse { text = "\"hi\"" } to j get s
+assert s.value = "hi"
+
+emit Parse { text = "[1, 2, 3]" } to j get a
+assert a.value = [1, 2, 3]
+
+emit Parse { text = "{\"a\": 1, \"b\": {\"c\": [true, false, null]}}" } to j get o
+assert o.value.a = 1
+assert o.value.b.c = [true, false, null]
+
+-- `1` and `1.0` are the same number here — the value model is JSON's.
+emit Parse { text = "1.0" } to j get whole
+assert whole.value = 1
+
+-- Invalid JSON is a value the program can inspect, not a crash.
+emit Parse { text = "{ oops" } to j get bad
+assert bad ∈ Exception
+assert bad.source = "json"
+
+-- A missing / wrong-typed field is the same as any other bad input.
+emit Parse {} to j get missing
+assert missing ∈ Exception
+
+-- A class this module does not handle is null.
+emit Encode {} to j get unknown
+assert unknown = null

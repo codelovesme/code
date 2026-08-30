@@ -1,0 +1,25 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree.
+[workspace]
+
+[package]
+name = "mongodb_mock"
+version = "1.1.4"
+edition = "2021"
+description = "The `mongodb_mock` native module for the Code programming language — a drop-in for `mongodb` backed by in-memory collections, no server."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme"
+
+[lib]
+name = "mongodb_mock"
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }
+# `preserve_order` so a stored object comes back with its fields in the same
+# order — `code` object equality is order-sensitive, and the real `mongodb`
+# module keeps order too (BSON documents are ordered). Same reason the `json`
+# module sets this.
+serde_json = { version = "1", features = ["preserve_order"] }

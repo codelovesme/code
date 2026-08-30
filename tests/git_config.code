@@ -1,0 +1,67 @@
+-- `git.Config` checks what state a repository is in before any handler
+-- runs: whose repo it is, and whether the working tree is dirty. `process`
+-- gives each mode a clean start; `fs` writes files into the repo.
+link "native_modules/git.so" as git
+link "native_modules/fs.so" as fs
+link "native_modules/process.so" as proc
+
+emit Run { command = "rm", args = ["-rf", "/tmp/code-git-cfg", "/tmp/code-git-other"] } to proc get _
+
+-- A fresh directory: Config inits it, reports clean.
+emit Config { repo_path = "/tmp/code-git-cfg" } to git get c0
+assert c0 ∈ ConfigResult
+assert c0.ok
+assert c0.dirty = false
+assert c0.stashed = false
+assert c0.branch ≠ ""
+
+emit Config { base_path = "/tmp/code-git-cfg" } to fs get _
+
+-- Commit a file so there is history to protect.
+emit WriteFile { path = "a.txt", content = "one\n" } to fs get _
+emit Add { pattern = "." } to git get _
+emit Commit { message = "first" } to git get _
+
+-- Dirty the tree, then re-Config. Default on_dirty = "error".
+emit WriteFile { path = "a.txt", content = "one\ntwo\n" } to fs get _
+emit Config { repo_path = "/tmp/code-git-cfg" } to git get err
+assert err ∈ Exception
+
+-- on_dirty = "ignore": proceed, report dirty.
+emit Config { repo_path = "/tmp/code-git-cfg", on_dirty = "ignore" } to git get ign
+assert ign.ok
+assert ign.dirty
+
+-- on_dirty = "stash": stash it away, tree is clean after.
+emit Config { repo_path = "/tmp/code-git-cfg", on_dirty = "stash" } to git get st
+assert st.stashed
+assert st.dirty = false
+emit Status {} to git get after_stash
+assert after_stash.clean
+
+-- StashPop brings it back; manual Stash then reports nothing-left.
+emit StashPop {} to git get pop
+assert pop ∈ StashResult
+assert pop.changed
+emit Stash {} to git get man
+assert man.changed
+emit Stash {} to git get man2
+assert man2.changed = false
+
+-- A bad on_dirty value is refused.
+emit WriteFile { path = "a.txt", content = "x\n" } to fs get _
+emit Config { repo_path = "/tmp/code-git-cfg", on_dirty = "yolo" } to git get badmode
+assert badmode ∈ Exception
+
+-- Pointing Config at a subdirectory of a *different* repo is an Exception.
+emit Run { command = "git", args = ["init", "-q", "/tmp/code-git-other"] } to proc get _
+emit Run { command = "mkdir", args = ["/tmp/code-git-other/inside"] } to proc get _
+emit Config { repo_path = "/tmp/code-git-other/inside" } to git get inside
+assert inside ∈ Exception
+
+-- And a repo whose origin is not the one we were told to expect.
+emit Run { command = "git", args = ["-C", "/tmp/code-git-other", "remote", "add", "origin", "https://example.invalid/theirs.git"] } to proc get _
+emit Config { repo_path = "/tmp/code-git-other", remote_url = "https://example.invalid/ours.git" } to git get mismatch
+assert mismatch ∈ Exception
+
+emit Run { command = "rm", args = ["-rf", "/tmp/code-git-cfg", "/tmp/code-git-other"] } to proc get _

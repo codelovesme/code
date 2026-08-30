@@ -1,0 +1,25 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree.
+[workspace]
+
+[package]
+name = "jwt"
+version = "1.1.4"
+edition = "2021"
+description = "The `jwt` native module for the Code programming language — sign and verify HS256 JSON Web Tokens."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }
+# HS256 is HMAC-SHA256 over two base64url segments — small enough to do
+# directly rather than pull `jsonwebtoken` and its `ring`/`aws-lc` backend.
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+serde_json = "1"

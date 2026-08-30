@@ -10,7 +10,8 @@ Request { method, path } => {
     return Response { status = 200, body = "hi from $path" }
 }
 
-emit Listen { port = 8080 } to srv get l
+emit Config { port = 8080 } to srv get _
+emit Listen { } to srv get l
 assert l.ok
 
 loop {
@@ -20,16 +21,24 @@ loop {
 ## Handlers
 
 ```
-Listen { port?, host?, max_body_bytes?, response_timeout_seconds? } → ListenResult { ok, port, message }
+Config { port?, host?, max_body_bytes?, response_timeout_seconds? } → ConfigResult { ok }
+Listen { }                                                          → ListenResult { ok, port, message }
 ```
 
-| Field | Kind | Default | Meaning |
+**Configuration and the action are separate.** `Config` sets what the server
+binds and serves as; `Listen` binds the socket and starts serving, and takes
+no fields. `Config` is optional — `Listen` uses the defaults below if nobody
+sends it — but sending `Config` *after* `Listen` is an `Exception`: the
+socket is already bound.
+
+| `Config` field | Kind | Default | Meaning |
 |---|---|---|---|
-| `port` | Number | `0` | 0 asks the OS for a free one; `ListenResult.port` says which |
-| `host` | String | `127.0.0.1` | loopback unless you say otherwise |
+| `port` | Number | `0` | 0 asks the OS for a free one; `ListenResult.port` says which. Must be a whole number in `0..=65535` |
+| `host` | String | `127.0.0.1` | loopback unless you say otherwise (`"0.0.0.0"` opens it to the network) |
 | `max_body_bytes` | Number | `1048576` | a larger request body is refused with 400 |
 | `response_timeout_seconds` | Number | `10` | how long a connection waits for the program before answering 504 itself |
 
+A bad value in any `Config` field is an `Exception`, not a silent coercion.
 One `Listen` per program: a second one answers `ok: false`.
 
 ## Pushed into the program
@@ -109,6 +118,14 @@ handles them.
 **Loopback by default.** A module that opened a program to the network the
 moment it was linked would be making that decision for its caller. Saying
 `host = "0.0.0.0"` is how a caller makes it.
+
+**`Config` and `Listen` are separate.** Every stateful first-party module has
+a `Config` setup particle (`jwt`, `fs`, `json_store`); this one adds `Listen`
+because starting to serve is an *action* with its own failure mode (the port
+is taken) distinct from *what* to serve as. It also means a euglena manifest
+can deliver `Config` at cell startup while the app's own gene decides when to
+`Listen` — configured is not the same as running. `Listen` earlier carried
+the config fields directly; splitting them was worth the extra particle.
 
 **A JSON body needs no support here.** String interpolation renders any value
 as compact JSON, in both output modes:

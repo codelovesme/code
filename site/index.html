@@ -351,6 +351,12 @@
   .pkg-links a:hover { border-color: var(--border-2); background: var(--panel-2); text-decoration: none; }
   .pkg-note { font-size: 0.8rem; color: var(--muted-2); margin: 0; }
   .pkg-note b { color: var(--muted); font-weight: 600; }
+  .plat-note {
+    font-size: 0.82rem; color: var(--muted); max-width: 62ch;
+    border: 1px solid var(--border); border-left: 2px solid var(--teal);
+    border-radius: 8px; padding: 0.7rem 0.9rem; margin: 0 0 2.4rem;
+  }
+  .plat-note b { color: var(--text); font-weight: 600; }
 
   /* ---------- footer ---------- */
   footer { border-top: 1px solid var(--border); margin-top: 2rem; }
@@ -579,6 +585,12 @@
         <code>code</code> in a web app, build a native module without leaving the
         language, write one in Rust, or in anything else that produces a C-ABI
         shared library.
+      </p>
+      <p class="plat-note">
+        <b>Platform:</b> the playground and <code>code-wasm</code> run anywhere.
+        The prebuilt <code>code</code> CLI and the first-party modules
+        (<code>code install</code>) are <b>Linux&nbsp;x86_64</b>, for now — from
+        source you need Rust and LLVM&nbsp;17.
       </p>
     </div>
     <div class="pkg-grid">

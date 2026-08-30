@@ -1,0 +1,66 @@
+-- `json_store` — a file-backed key-value store, one JSON file per key under
+-- the base `Config` sets. Values keep their shape across Store/Fetch.
+link "native_modules/json_store.so" as store
+
+emit Fetch { key = "x" } to store get early
+assert early ∈ Exception
+
+emit Config { base_dir = "/tmp/code-json-store-fixture" } to store get s
+assert s ∈ ConfigResult
+assert s.ok
+
+-- Fresh slate: the base persists between run and build modes.
+emit Delete { key = "prefs" } to store get _c1
+emit Delete { key = "count" } to store get _c2
+emit Delete { key = "cleared" } to store get _c3
+
+-- Absent key: exists = false, value = null.
+emit Fetch { key = "prefs" } to store get f0
+assert f0 ∈ FetchResult
+assert f0.exists = false
+assert f0.value = null
+
+-- A structured value round-trips unchanged, field order included.
+emit Store {
+    key = "prefs",
+    value = { theme = "dark", size = 14, tags = ["a", "b"], nested = { on = true } }
+} to store get w
+assert w ∈ StoreResult
+assert w.key = "prefs"
+
+emit Fetch { key = "prefs" } to store get f1
+assert f1.exists
+assert f1.value = { theme = "dark", size = 14, tags = ["a", "b"], nested = { on = true } }
+
+-- Scalars too — a number stays a number, not "42".
+emit Store { key = "count", value = 42 } to store get _w2
+emit Fetch { key = "count" } to store get f2
+assert f2.value = 42
+
+-- `Store { key }` with no value writes null (distinct from Delete).
+emit Store { key = "cleared" } to store get _w3
+emit Fetch { key = "cleared" } to store get f3
+assert f3.exists
+assert f3.value = null
+
+-- Delete / Remove are the same handler, and idempotent.
+emit Delete { key = "prefs" } to store get d1
+assert d1 ∈ DeleteResult
+assert d1.existed
+emit Remove { key = "prefs" } to store get d2
+assert d2.existed = false
+
+-- A key that isn't filename-safe is refused, not silently rewritten.
+emit Store { key = "a/b", value = 1 } to store get slash
+assert slash ∈ Exception
+emit Fetch { key = ".." } to store get dots
+assert dots ∈ Exception
+emit Store {} to store get nokey
+assert nokey ∈ Exception
+
+-- A class this module does not handle is null.
+emit Purge {} to store get u
+assert u = null
+
+emit Delete { key = "count" } to store get _t1
+emit Delete { key = "cleared" } to store get _t2
