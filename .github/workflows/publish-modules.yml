@@ -120,30 +120,30 @@ jobs:
           EOF
           case "$m" in
             terminal)
-              printf 'emit Print { "value": "phase B works" } to mod get r\nassert r.value = 13\n' >> dogfood/demo.code
+              printf 'emit Print { value = "phase B works" } to mod get r\nassert r.value = 13\n' >> dogfood/demo.code
               ;;
             strings)
-              printf 'emit Echo { "value": 13 } to mod get r\nassert r.value = 13\n' >> dogfood/demo.code
+              printf 'emit Echo { value = 13 } to mod get r\nassert r.value = 13\n' >> dogfood/demo.code
               ;;
             math)
-              printf 'emit Double { "value": 21 } to mod get r\nassert r.value = 42\n' >> dogfood/demo.code
+              printf 'emit Double { value = 21 } to mod get r\nassert r.value = 42\n' >> dogfood/demo.code
               ;;
             env)
               # PATH is set on every runner, and reading it needs nothing
               # arranged — proof the artifact loads and routes.
-              printf 'emit Get { "name": "PATH" } to mod get r\nassert r.found\n' >> dogfood/demo.code
+              printf 'emit Get { name = "PATH" } to mod get r\nassert r.found\n' >> dogfood/demo.code
               ;;
             http_server)
               # Binds an OS-chosen port on loopback and never serves anything:
               # the artifact loads, routes, and reports the port it got.
-              printf 'emit Listen { "port": 0 } to mod get l\nassert l.ok\nassert l.port > 0\n' >> dogfood/demo.code
+              printf 'emit Listen { port = 0 } to mod get l\nassert l.ok\nassert l.port > 0\n' >> dogfood/demo.code
               ;;
             http_client)
               # Nothing is listening on port 1, so this needs no network —
               # it proves the artifact loads and routes, and that a refused
               # connection comes back as a value rather than killing the
               # program (which is the whole contract of this module).
-              printf 'emit Get { "url": "http://127.0.0.1:1/" } to mod get r\nassert not r.ok\nassert r.status = 0\n' >> dogfood/demo.code
+              printf 'emit Get { url = "http://127.0.0.1:1/" } to mod get r\nassert not r.ok\nassert r.status = 0\n' >> dogfood/demo.code
               ;;
             *) echo "::error::no dogfood demo for '$m' — add one when a module is added"; exit 1 ;;
           esac
