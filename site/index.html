@@ -812,7 +812,7 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
 
 <script id="examples-data" type="application/json">__EXAMPLES__</script>
 <script type="module">
-  import init, { run } from "./pkg/code_wasm.js";
+  import init, { run_with_modules } from "./pkg/code_wasm.js";
 
   const EXAMPLES = JSON.parse(document.getElementById("examples-data").textContent);
   const byName = Object.fromEntries(EXAMPLES.map((e) => [e.name, e]));
@@ -891,23 +891,66 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
     }
   });
 
+  /* ---------- the console module ----------
+   *
+   * A browser module is whatever object the host hands over — see
+   * `run_with_modules` in crates/code-wasm. So the page does not *capture*
+   * anything: it supplies its own `console`, whose `dispatch` writes into the
+   * panel below instead of the browser's devtools. A program cannot tell the
+   * difference, and should not be able to: `terminal` writes to stdout on the
+   * native side without caring whether stdout is a terminal or a pipe.
+   *
+   * The particle contract is `terminal`'s, so a program written here runs
+   * unchanged against the real thing: `Print { value }` in, and
+   * `TerminalResult { value }` back carrying how many characters were
+   * written. A String prints as itself and every other kind renders as
+   * compact JSON — the same rule string interpolation follows.
+   */
+  let printed = [];
+
+  function renderPrinted(value) {
+    return typeof value === "string" ? value : JSON.stringify(value);
+  }
+
+  const consoleModule = {
+    dispatch(particleJson) {
+      const particle = JSON.parse(particleJson);
+      if (particle._class !== "Print") {
+        // A class this module does not handle is null, like every module.
+        return "null";
+      }
+      const text = renderPrinted(particle.value);
+      printed.push(text);
+      return JSON.stringify({ _class: "TerminalResult", value: text.length });
+    },
+  };
+
   /* ---------- run ---------- */
   function doRun() {
     const t0 = performance.now();
     let result;
+    printed = [];
     try {
-      result = run(source.value);
+      result = run_with_modules(source.value, { console: consoleModule });
     } catch (e) {
       result = "error: " + e;
     }
     const ms = Math.max(1, Math.round(performance.now() - t0));
     const isError = result.startsWith("error:");
-    // A program that ran and said nothing is the normal case here, not an
-    // empty result: printing is a module's job and the playground has no
-    // modules, so this says why rather than reporting an absence.
-    output.innerHTML = result
-      ? renderOutput(result)
-      : "(no output — a program is silent unless it emits to a module)";
+    // What the program said, then how it ended. An error after some output is
+    // the interesting case — the printing that happened before it still
+    // happened, and hiding it would lose the half of the story that says
+    // where the program got to.
+    const said = printed.join("\n");
+    output.innerHTML = [
+      said ? renderOutput(said) : "",
+      result ? renderOutput(result) : "",
+      said || result
+        ? ""
+        : '(no output — a program is silent unless it emits to a module)',
+    ]
+      .filter((part) => part.length)
+      .join("\n");
     output.classList.toggle("error", isError);
     status.textContent = isError ? "error" : `ran in ${ms} ms`;
     status.classList.toggle("err", isError);
@@ -951,6 +994,7 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
     "Assertions": "#86efac",
     "Particles": "#f87171",
     "Errors": "#f87171",
+    "Printing": "#60a5fa",
   };
   const catColor = (c) => CAT_COLORS[c] || "#9aa3b5";
   const cats = [...new Set(EXAMPLES.map((e) => e.category))];

@@ -1,0 +1,9 @@
+-- Printing is a module's job, not the language's. In a browser that module
+-- is `console`, and the playground hands it to the program before it starts.
+link "console" as out
+
+emit Print { value = "hello from the playground" } to out get r
+
+-- Like `terminal` on the native side, it answers how many characters landed.
+assert r ∈ TerminalResult
+assert r.value = 25

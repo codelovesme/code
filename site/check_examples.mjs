@@ -20,14 +20,29 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const dist = resolve(process.argv[2] ?? "dist");
-const { default: init, run } = await import(`${dist}/pkg/code_wasm.js`);
+const { default: init, run_with_modules } = await import(`${dist}/pkg/code_wasm.js`);
 await init({ module_or_path: readFileSync(`${dist}/pkg/code_wasm_bg.wasm`) });
+
+// The same `console` the page supplies, in its smallest honest form: the
+// site's own examples `link "console"`, and an engine handed no such module
+// would refuse them for a reason that has nothing to do with the language.
+const consoleModule = {
+  dispatch(particleJson) {
+    const particle = JSON.parse(particleJson);
+    if (particle._class !== "Print") return "null";
+    const text =
+      typeof particle.value === "string"
+        ? particle.value
+        : JSON.stringify(particle.value);
+    return JSON.stringify({ _class: "TerminalResult", value: text.length });
+  },
+};
 
 const examples = JSON.parse(readFileSync(`${dist}/examples.json`, "utf8"));
 const failures = [];
 for (const example of examples) {
   try {
-    run(example.code);
+    run_with_modules(example.code, { console: consoleModule });
   } catch (error) {
     failures.push(`${example.name}: ${String(error).split("\n")[0]}`);
   }

@@ -1,0 +1,13 @@
+-- A String prints as itself; every other kind renders as compact JSON, which
+-- is the same rule string interpolation follows.
+link "console" as out
+
+emit Print { value = "text, as written" } to out
+emit Print { value = 42 } to out
+emit Print { value = true } to out
+emit Print { value = null } to out
+emit Print { value = [1, "two", [3]] } to out
+emit Print { value = { name = "ada", scores = [88, 94] } } to out
+
+-- Particles are objects, so they print as objects — `_class` and all.
+emit Print { value = Reply { status = 200 } } to out

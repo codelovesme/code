@@ -93,6 +93,24 @@ def main() -> None:
     site_dir = repo_root / "site"
 
     examples = []
+
+    # The playground's own examples come first, because they are the only
+    # ones that *say* anything: every fixture in tests/ is silent, since
+    # printing needs a module and a fixture that links one is held back
+    # below. These link `console`, which the page supplies (see index.html's
+    # `consoleModule`) — so they are playground-only by nature, not by
+    # exception, and `site/check_examples.mjs` runs them like the rest.
+    for path in sorted(site_dir.glob("examples/*.code")):
+        source = path.read_text()
+        examples.append(
+            {
+                "name": path.stem,
+                "category": "Printing",
+                "description": truncate(first_comment(source)),
+                "code": source,
+            }
+        )
+
     for path in sorted(tests_dir.glob("*.code")):
         name = path.stem
         if name.startswith("fail_") and name != "fail_undefined_variable":
