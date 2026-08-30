@@ -50,12 +50,28 @@ jobs:
       # Installed into a scratch directory, well outside the repo checkout,
       # so nothing from `npm install` (a node_modules tree, a lockfile) ever
       # risks being picked up by anything else in this job.
+      # Retried, because the release that publishes a version and the commit
+      # that pins it arrive together: pushing `main` and its `v*` tag fires
+      # this workflow and the npm publish at the same moment, and npm takes a
+      # couple of minutes. Failing instantly there is what happened on
+      # 2026-08-30 — the deploy was red for a version that existed three
+      # minutes later.
       - name: Fetch code-wasm@${{ env.PLAYGROUND_CODE_WASM_VERSION }} from npm
         run: |
           set -euo pipefail
           mkdir -p /tmp/code-wasm-pkg
           cd /tmp/code-wasm-pkg
-          npm install --no-save "code-wasm@${PLAYGROUND_CODE_WASM_VERSION}"
+          for attempt in 1 2 3 4 5 6; do
+            if npm install --no-save "code-wasm@${PLAYGROUND_CODE_WASM_VERSION}"; then
+              exit 0
+            fi
+            echo "code-wasm@${PLAYGROUND_CODE_WASM_VERSION} is not on npm yet (attempt $attempt/6)"
+            sleep 30
+          done
+          echo "::error::code-wasm@${PLAYGROUND_CODE_WASM_VERSION} never appeared on npm. \
+          PLAYGROUND_CODE_WASM_VERSION must name a release that is published — tag it first, \
+          or point the pin at a version that exists."
+          exit 1
 
       - name: Assemble site
         run: |
