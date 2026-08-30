@@ -318,6 +318,25 @@ void code_release(CodeValue *v) {
     }
 }
 
+/* `code_release`, plus blanking the slot afterwards.
+ *
+ * Every other release is immediately followed by a write to the same slot,
+ * which is why `code_release` can leave `heap` alone (see its comment). One
+ * caller is different: a compiled statement releases its temporaries the
+ * moment the statement ends, and then leaves those slots sitting there —
+ * for the next execution of the same statement to overwrite, or for the
+ * exit sweep to release again. Either would be a second release of a block
+ * already freed. Blanking closes both: an all-zero slot is a payload-less
+ * number, exactly what a slot looks like before its first write, so
+ * releasing it again is a no-op and writing to it is safe.
+ *
+ * Not in `code_abi.h`, unlike the constructors: no module ever calls this.
+ * It exists for `gen_stmt` in `src/codegen.rs`. */
+void code_clear(CodeValue *v) {
+    code_release(v);
+    memset(v, 0, sizeof *v);
+}
+
 /* The last thing a compiled program does, after codegen has released every
  * slot it allocated. Silent unless CODE_CHECK_LEAKS is set, so it costs a
  * normal run one getenv and never changes its behaviour — the test harness
@@ -386,6 +405,22 @@ void code_array(CodeValue *out, void *items, long long len) {
     out->len = len;
 }
 
+/* Appends `key`'s characters (a NULL key reads as empty, the same answer
+ * `code_object` has always given it) to the block's own character run and
+ * answers where they landed, advancing the cursor past them. Shared by the
+ * two places that build an object: the constructor and `+`'s merge. */
+static const char *copy_key(char **chars, const char *key) {
+    size_t n = (key ? strlen(key) : 0) + 1;
+    if (key) {
+        memcpy(*chars, key, n);
+    } else {
+        (*chars)[0] = '\0';
+    }
+    const char *placed = *chars;
+    *chars += n;
+    return placed;
+}
+
 /* One allocation for both arrays: `[keys...][values...]`. The key pointers
  * themselves are string literals in read-only data, so only the array of
  * pointers is copied, never the characters. */
@@ -417,14 +452,7 @@ void code_object(CodeValue *out, const char **keys, void *values, long long len)
         value_buf = (char *)key_buf + keys_bytes;
         char *chars = (char *)value_buf + slots_bytes;
         for (long long i = 0; i < len; i++) {
-            size_t n = (keys[i] ? strlen(keys[i]) : 0) + 1;
-            if (keys[i]) {
-                memcpy(chars, keys[i], n);
-            } else {
-                chars[0] = '\0';
-            }
-            key_buf[i] = chars;
-            chars += n;
+            key_buf[i] = copy_key(&chars, keys[i]);
             const CodeValue *src = slot_at(values, i);
             code_retain(src);
             *slot_at(value_buf, i) = *src;
@@ -1664,10 +1692,20 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
      * `find_field` compares key text, never pointers: two literals spelling
      * the same name are separate objects in read-only data, and a module's
      * keys live in its own storage entirely. Layout and key ownership match
-     * `code_object` exactly — one allocation holding `[keys...][values...]`,
-     * with the key *pointers* copied and the characters borrowed from
-     * whichever operand supplied them (both outlive this call, and their
-     * storage outlives the program). */
+     * `code_object` exactly — one allocation holding
+     * `[keys...][values...][characters...]`, with the key characters copied
+     * in rather than borrowed from the operand that supplied them.
+     *
+     * Copied, not borrowed, since 2026-08-29: this used to keep the
+     * operand's pointers, on the reasoning that a key's storage outlives the
+     * program. That was true while every key was a program literal in
+     * read-only data, and stopped being true the day `{ "$name" = v }` began
+     * building one at run time — `code_object` started copying then, and
+     * this was missed. What it cost: `acc = acc + { "$k" = v }` in a loop
+     * left `acc` naming characters inside the literal's block, which the
+     * next iteration released, so the merged object's field names were read
+     * out of freed memory. It survived on borrowed time, reading bytes that
+     * happened not to have been handed out again yet. */
     if (a->tag == CODE_OBJECT && b->tag == CODE_OBJECT) {
         long long total = a->len;
         for (long long j = 0; j < b->len; j++) {
@@ -1679,13 +1717,24 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         void *value_buf = NULL;
         if (total > 0) {
             size_t keys_bytes = (size_t)total * sizeof(const char *);
-            key_buf = heap_alloc(keys_bytes + (size_t)total * CODE_VALUE_SLOT_SIZE);
+            size_t slots_bytes = (size_t)total * CODE_VALUE_SLOT_SIZE;
+            size_t chars_bytes = 0;
+            for (long long i = 0; i < a->len; i++) {
+                chars_bytes += (a->keys[i] ? strlen(a->keys[i]) : 0) + 1;
+            }
+            for (long long j = 0; j < b->len; j++) {
+                if (find_field(a, b->keys[j]) == NULL) {
+                    chars_bytes += (b->keys[j] ? strlen(b->keys[j]) : 0) + 1;
+                }
+            }
+            key_buf = heap_alloc(keys_bytes + slots_bytes + chars_bytes);
             value_buf = (char *)key_buf + keys_bytes;
+            char *chars = (char *)value_buf + slots_bytes;
             long long n = 0;
             for (long long i = 0; i < a->len; i++) {
                 const CodeValue *override_val = find_field(b, a->keys[i]);
                 const CodeValue *src = override_val ? override_val : slot_at(a->items, i);
-                key_buf[n] = a->keys[i];
+                key_buf[n] = copy_key(&chars, a->keys[i]);
                 code_retain(src);
                 *slot_at(value_buf, n) = *src;
                 n++;
@@ -1694,7 +1743,7 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
                 if (find_field(a, b->keys[j]) != NULL) {
                     continue;
                 }
-                key_buf[n] = b->keys[j];
+                key_buf[n] = copy_key(&chars, b->keys[j]);
                 const CodeValue *src = slot_at(b->items, j);
                 code_retain(src);
                 *slot_at(value_buf, n) = *src;

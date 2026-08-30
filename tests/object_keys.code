@@ -31,6 +31,21 @@ loop k over names {
 }
 assert collected = { a = "a!", b = "b!" }
 
+-- And it still holds after the heap has been handed out again. `+` builds a
+-- merged object out of two others, and until 2026-08-29 the compiled backend
+-- kept the operands' key *pointers* rather than copying the characters —
+-- fine while every field name was a literal in read-only data, wrong the day
+-- one could be built at run time, because the literal above is released by
+-- the next iteration. The assert five lines up passed anyway: the names were
+-- read out of freed memory that nothing had claimed yet. The loop below
+-- claims it, allocating objects of exactly the shape just released.
+let churn = {}
+loop i over [1, 2, 3, 4, 5, 6, 7, 8] {
+    churn = { "$i" = "x" }
+}
+assert churn = { "8" = "x" }
+assert collected = { a = "a!", b = "b!" }
+
 -- Particle sugar takes the same fields, and `_class` is an ordinary name.
 let tagged = Reply { status = 200 }
 assert tagged = { _class = "Reply", status = 200 }
