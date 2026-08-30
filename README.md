@@ -756,6 +756,25 @@ very same library the interpreter does. A `.a` static archive is
 `code build` only, since there is no `dlopen` for an archive; those fixtures
 are named `buildonly_*`.
 
+A native module does not have to be written in another language. `code build
+--target shared` (or `static`) builds a `.code` file *as* one: its handlers
+become `code_module_dispatch`, its `export let`s become `code_module_vars`,
+and another program links the result exactly as it links a C or Rust module.
+
+```
+code build greet.code --target shared     -- -> build/libgreet.so
+```
+
+```
+link "libgreet.so" as g
+assert g.answer = 42
+emit Greet { who = "ada" } to g get r
+```
+
+Asking for the container is asking for the library — there is no separate
+flag. What the module keeps private stays private: only `export let` crosses,
+the same rule a source `link` follows.
+
 ### A module may never end the program
 
 This is the hard rule modules are held to. Whatever goes wrong inside one —

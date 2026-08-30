@@ -9,7 +9,7 @@ use inkwell::module::{Linkage, Module};
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
-use inkwell::types::{IntType, PointerType};
+use inkwell::types::{BasicType, IntType, PointerType};
 use inkwell::values::{FunctionValue, IntValue, PointerValue};
 use inkwell::AddressSpace;
 use inkwell::IntPredicate;
@@ -31,19 +31,23 @@ use crate::ast::{
 const VALUE_SIZE: u64 = 80;
 const VALUE_ALIGN: u32 = 8;
 
-/// What container `code build` wraps the generated object in (the CLI flag
-/// is `--target`; see `docs/todo/build-targets.md`). `Exe` is today's
-/// behaviour — `cc` links a standalone executable. `Shared` and `Static`
-/// emit the same byte-identical PIC object (codegen already asks for
-/// `RelocMode::PIC`, which `-shared` needs anyway) but differ purely in the
-/// link step that runs after codegen: `cc -shared` vs `ar rcs`. They are
-/// deliberately *not* module-ABI libraries — a `.so` whose only entry point
-/// is `main` has no consumer, and the useful version of that artifact is
-/// the separate `--lib` feature (blocked on handler syntax, tracked in
-/// `docs/todo/native-module-linking.md`). `Wasm` is planned (phase 2 of the
-/// same doc): it will target `wasm32-unknown-unknown` with a freestanding
-/// libc shim, and until then it fails with a clear message rather than
-/// pretending to work.
+/// The module-ABI generation a library build reports from
+/// `code_module_abi_version`. `code_abi.h`'s `CODE_ABI_VERSION` is the
+/// source of truth; a host refuses a module whose answer differs from its
+/// own, so the end-to-end library tests are what would catch this drifting.
+const MODULE_ABI_VERSION: u64 = 1;
+
+/// What `code build` wraps the generated object in (the CLI flag is
+/// `--target`; see `docs/todo/build-targets.md`).
+///
+/// **Format determines content** (decided 2026-08-30): `Shared` and
+/// `Static` are *module-ABI libraries* — the object additionally carries
+/// the exports `code_abi.h` asks for (`code_module_abi_version`,
+/// `code_module_dispatch`, `code_module_vars`), so another `.code` program
+/// can `link "x.so" as x` / `link "x.a" as x` and use it. There is no
+/// separate `--lib` flag; asking for the container is asking for the
+/// library. `Exe` is a standalone program (today's behaviour); `Wasm`
+/// stays application-only until a consumer for wasm libraries exists.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BuildTarget {
     Exe,
@@ -62,6 +66,71 @@ impl BuildTarget {
             "static" => Some(Self::Static),
             "wasm" => Some(Self::Wasm),
             _ => None,
+        }
+    }
+
+    /// Whether this target's object must carry the module-ABI exports —
+    /// `Shared` and `Static` do (see the enum's doc comment).
+    fn is_library(self) -> bool {
+        matches!(self, Self::Shared | Self::Static)
+    }
+}
+
+/// How much of the module-ABI surface a library build emits, and under what
+/// names. `Shared` exports the unprefixed `code_module_*` names — a `.so`
+/// has its own symbol namespace, so nothing needs disambiguating. `Static`
+/// prefixes every one of them with the source file's stem: every `.a`
+/// linked into one program shares a flat symbol table, and `nm`'s
+/// discovery of `<prefix>_code_module_dispatch` (`loader.rs`) depends on
+/// that being the *unique* such symbol in the archive.
+#[derive(Clone)]
+enum LibraryMode {
+    Shared,
+    Static { prefix: String },
+}
+
+/// Everything a `.a` module defines that is not one of its ABI entry points
+/// becomes internal to it.
+///
+/// A static module is linked into a program that already has a runtime, its
+/// own top-level slots, its own dispatch chain and its own `main` — and both
+/// sides generate those names the same way, `_code_slot_3_var`,
+/// `_code_dispatch_this`, `_code_init`. With external linkage the archive
+/// collides with its host on the first name they share, and two archives
+/// collide with each other. `code_abi.h`'s prefix rule makes the *entry
+/// points* unique; this is the other half of the same problem, and it is
+/// also what keeps `loader.rs`'s "exactly one symbol ends in
+/// `_code_module_dispatch`" true of a compiled archive.
+///
+/// Only definitions are touched. The runtime functions the object calls —
+/// `code_copy`, `code_release`, and the rest — are declarations, with no body
+/// and no initializer, and they must stay external: resolving them against
+/// the host's single runtime is the whole point of a `.a` module.
+fn hide_internal_symbols(module: &Module<'_>, prefix: &str) {
+    let exports = [
+        format!("{prefix}_code_module_abi_version"),
+        format!("{prefix}_code_module_dispatch"),
+        format!("{prefix}_code_module_vars"),
+    ];
+    let exported = |name: &std::ffi::CStr| {
+        name.to_str()
+            .map(|name| exports.iter().any(|e| e == name))
+            .unwrap_or(false)
+    };
+
+    let mut next = module.get_first_function();
+    while let Some(f) = next {
+        next = f.get_next_function();
+        if f.count_basic_blocks() > 0 && !exported(f.get_name()) {
+            f.set_linkage(Linkage::Internal);
+        }
+    }
+
+    let mut next = module.get_first_global();
+    while let Some(g) = next {
+        next = g.get_next_global();
+        if g.get_initializer().is_some() && !exported(g.get_name()) {
+            g.set_linkage(Linkage::Internal);
         }
     }
 }
@@ -119,6 +188,30 @@ pub fn compile_to_object(
     let builder = context.create_builder();
     let alloca_builder = context.create_builder();
     let module = context.create_module("code");
+
+    // `Shared`/`Static` objects carry the module-ABI exports (see
+    // `BuildTarget`'s doc comment). The prefix comes from the source file's
+    // name — the same name `default_output_path` calls the artifact —
+    // because two archives built from two different files may be linked into
+    // one program, and `nm`'s discovery of
+    // `<prefix>_code_module_dispatch` requires that symbol to be unique.
+    let lib_mode = match target {
+        BuildTarget::Shared => Some(LibraryMode::Shared),
+        BuildTarget::Static => {
+            let file = program
+                .origin
+                .as_ref()
+                .map(|o| o.file.as_str())
+                .unwrap_or("module");
+            let prefix = Path::new(file)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("module")
+                .to_string();
+            Some(LibraryMode::Static { prefix })
+        }
+        _ => None,
+    };
 
     let i8_ty = context.i8_type();
     let i32_ty = context.i32_type();
@@ -463,16 +556,39 @@ pub fn compile_to_object(
         }
     }
 
-    let main_fn = module.add_function("main", i32_ty.fn_type(&[], false), None);
+    // `main` — except for a `Static` build, whose archive is linked into a
+    // host that already has one (two `main`s in one binary is a link error).
+    // A standalone smoke run of a `.a` is not a supported path; the `.so`
+    // keeps its `main` and can be run directly.
+    let main_fn: Option<FunctionValue> = match target {
+        BuildTarget::Static => None,
+        _ => Some(module.add_function("main", i32_ty.fn_type(&[], false), None)),
+    };
+    // Where the top-level statements live. For `Exe` and `Wasm` that is
+    // `main` itself, exactly as before. For a library build it is a private
+    // `_code_init` instead: the host never calls `main` on a module it loads
+    // or links, and running the whole program twice (once here, once in the
+    // host) would double-run side effects and double-free the globals at the
+    // second exit. Lazy initialization — the first of `main` or
+    // `code_module_dispatch` runs the stream, guarded by a global — is what
+    // makes both entry points safe.
+    let stream_fn = match &lib_mode {
+        Some(_) => module.add_function(
+            "_code_init",
+            void_ty.fn_type(&[], false),
+            Some(Linkage::Private),
+        ),
+        None => main_fn.expect("non-library targets always define main"),
+    };
     // Two blocks, not one: `entry` collects *every* alloca in the program
     // (see `Gen::alloca_builder`) and nothing else, then falls through to
     // `start` where the actual statements go. Allocas have to be gathered
     // somewhere that runs exactly once — an alloca left inside a loop body
     // would be executed per iteration and LLVM reclaims none of them until
-    // `main` returns, which is precisely the unbounded stack growth this
-    // arrangement exists to prevent.
-    let entry = context.append_basic_block(main_fn, "entry");
-    let start = context.append_basic_block(main_fn, "start");
+    // the function returns, which is precisely the unbounded stack growth
+    // this arrangement exists to prevent.
+    let entry = context.append_basic_block(stream_fn, "entry");
+    let start = context.append_basic_block(stream_fn, "start");
 
     alloca_builder.position_at_end(entry);
     builder.position_at_end(start);
@@ -482,7 +598,6 @@ pub fn compile_to_object(
         module: &module,
         builder: &builder,
         alloca_builder: &alloca_builder,
-        main_fn,
         i8_ty,
         i32_ty,
         i64_ty,
@@ -548,6 +663,9 @@ pub fn compile_to_object(
         drain_fn: None,
         handler_frame: None,
         global_count: 0,
+        stream_fn,
+        lib_mode: lib_mode.clone(),
+        exported_lets: Vec::new(),
     };
 
     // Handler functions are declared before any body is generated, so a
@@ -570,13 +688,36 @@ pub fn compile_to_object(
     // Before `emit_cleanup`, which takes `native_links` — the drain body is
     // generated from exactly those handles.
     gen.gen_drain_body()?;
-    gen.emit_cleanup(fn_check_leaks)?;
+    // A library sweeps nothing, and this is the ABI contract rather than an
+    // optimization: `code_abi.h` says a module owns its exported values "for
+    // the module's whole lifetime", and the host — which reads them at `link`
+    // time and again never — is promised they stay valid. The sweep belongs
+    // to a *process* ending, and `_code_init` returning is not that. It would
+    // also be a use-after-free on the spot: `_code_init` runs before
+    // `code_module_vars` copies anything out, so a swept `export let` is read
+    // after its block is freed. Private top-level `let`s stay for the same
+    // reason a handler may name one. `Exe` and `Wasm` are unchanged.
+    if !target.is_library() {
+        gen.emit_cleanup(fn_check_leaks)?;
+    }
     // Last, once every handler function exists to be dispatched to.
     gen.gen_dispatch_body()?;
     gen.gen_base_dispatch_bodies(&program.statements)?;
-    builder
-        .build_return(Some(&i32_ty.const_int(0, false)))
-        .map_err(|e| e.to_string())?;
+    // The stream's last act: hand back control wherever it came from. In a
+    // library build the stream is `_code_init` (void, called from `main` or
+    // from the lazy-init guard below); otherwise it is `main` itself, which
+    // answers 0 exactly as before.
+    if lib_mode.is_some() {
+        builder.build_return(None).map_err(|e| e.to_string())?;
+    } else {
+        builder
+            .build_return(Some(&i32_ty.const_int(0, false)))
+            .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(lib_mode) = &lib_mode {
+        gen.define_library_exports(lib_mode, main_fn)?;
+    }
 
     // Closed only now: every alloca and its zero-init had to be appended to
     // `entry` first, and a block stops accepting instructions once it has a
@@ -584,6 +725,12 @@ pub fn compile_to_object(
     alloca_builder
         .build_unconditional_branch(start)
         .map_err(|e| e.to_string())?;
+
+    // After every definition exists, and before verification — an archive's
+    // internals stop being visible to whatever links it.
+    if let Some(LibraryMode::Static { prefix }) = &lib_mode {
+        hide_internal_symbols(&module, prefix);
+    }
 
     module.verify().map_err(|e| e.to_string())?;
 
@@ -650,7 +797,6 @@ struct Gen<'a, 'm> {
     /// lands inside a loop body — see `gen_loop`'s comment for why that
     /// matters, and `alloc_slot` for why reusing a slot is safe.
     alloca_builder: &'a Builder<'a>,
-    main_fn: FunctionValue<'a>,
     i8_ty: inkwell::types::IntType<'a>,
     i32_ty: IntType<'a>,
     i64_ty: IntType<'a>,
@@ -811,6 +957,20 @@ struct Gen<'a, 'm> {
     handler_frame: Option<HandlerFrame<'a>>,
     /// Names the globals that back `main`'s slots apart. See `alloc_zeroed`.
     global_count: usize,
+    /// The function the top-level statements are generated into — `main`
+    /// for `Exe`/`Wasm`, the private `_code_init` for a library build (see
+    /// where it is created in `compile_to_object`).
+    stream_fn: FunctionValue<'a>,
+    /// Present when this build is a module-ABI library, which is the whole
+    /// of what `Gen` needs to know: an `export let` is worth recording only
+    /// then. Which *kind* of library it is decides the ABI names and the
+    /// hidden-symbol rule, and both of those are read from
+    /// `compile_to_object`'s own copy rather than from here.
+    lib_mode: Option<LibraryMode>,
+    /// Each top-level `export let`'s slot global, in declaration order —
+    /// what `code_module_vars` reports. Collected while the stream is
+    /// generated, consumed once by `define_library_exports`.
+    exported_lets: Vec<(String, PointerValue<'a>)>,
 }
 
 /// What a handler body needs that `main` doesn't: somewhere to put a
@@ -1662,7 +1822,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.builder
             .get_insert_block()
             .and_then(|b| b.get_parent())
-            .unwrap_or(self.main_fn)
+            .expect("codegen always positions the builder inside a function")
     }
 
     /// One `CodeValue` slot, allocated in `entry` and zeroed there once.
@@ -1847,7 +2007,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 body,
             } => self.gen_handler(class_name, fields, body),
             Stmt::Return(value) => self.gen_return(value),
-            Stmt::Let { name, value, .. } => self.gen_let(name, value),
+            Stmt::Let { name, value, exported } => self.gen_let(name, value, *exported),
             Stmt::Link { path, .. } => Err(format!(
                 "internal error: link \"{path}\" reached codegen unresolved"
             )),
@@ -2515,12 +2675,20 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// overwrites that scope's map entry, still correct). See `env`'s doc
     /// comment for why every assignment copies rather than ever adopting
     /// `gen_expr`'s pointer directly.
-    fn gen_let(&mut self, name: &str, value: &Expr) -> Result<(), String> {
+    fn gen_let(&mut self, name: &str, value: &Expr, exported: bool) -> Result<(), String> {
         let value_ptr = self.gen_expr(value)?;
         let permanent = self.alloc_slot("var")?;
         self.builder
             .build_call(self.fn_copy, &[permanent.into(), value_ptr.into()], "")
             .map_err(|e| e.to_string())?;
+        // Top level only — the parser rejects `export` anywhere else — and
+        // only in a library build does the marker mean anything: these are
+        // the values `code_module_vars` reports. The slot is a global either
+        // way (it is `main`'s scope), so the list can address it from any
+        // other function.
+        if exported && self.handler_frame.is_none() && self.lib_mode.is_some() {
+            self.exported_lets.push((name.to_string(), permanent));
+        }
         self.bind(name, permanent);
         Ok(())
     }
@@ -3118,6 +3286,266 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_call(fn_check_leaks, &[], "")
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    /// Defines the module-ABI surface a `Shared`/`Static` build owes its
+    /// consumers (`code_abi.h`): `code_module_abi_version`,
+    /// `code_module_dispatch`, and — when the source said `export let` —
+    /// `code_module_vars`. `Static` prefixes every one of them with the
+    /// source file's stem (see `LibraryMode`); `Shared` does not.
+    ///
+    /// Deliberately *not* exported: `code_module_set_inbound` and
+    /// `code_module_inbound_reply`. Both belong to a module that speaks
+    /// first, and a compiled `.code` library has no way to. The only
+    /// unprompted send in the language is `emit … to base`, which `verify.rs`
+    /// permits only inside a module the compiler itself linked and which
+    /// `gen_emit` turns into a direct call on the parent's chain — never a
+    /// push onto a host queue. Exporting `set_inbound` anyway would not be
+    /// merely inert: `native.rs` reads its presence as "this module may have
+    /// spawned a thread" and skips the `dlclose`, so the library would stay
+    /// mapped for the life of every process that loaded it, buying nothing.
+    /// Both are optional in the ABI for exactly this case.
+    ///
+    /// Called after the stream is fully generated and closed, and before
+    /// `entry`'s terminator is appended — a `Shared` build's `main` gets its
+    /// body here, so `main` must still accept blocks.
+    fn define_library_exports(
+        &mut self,
+        lib_mode: &LibraryMode,
+        main_fn: Option<FunctionValue<'a>>,
+    ) -> Result<(), String> {
+        let prefix = match lib_mode {
+            LibraryMode::Shared => String::new(),
+            LibraryMode::Static { prefix } => format!("{prefix}_"),
+        };
+
+        // First, because all three entry points below call it and it defines
+        // the guard global they share.
+        let lazy_init = self.lazy_init_fn()?;
+
+        // Required: the ABI generation. A constant — the host compares it
+        // against its own `CODE_ABI_VERSION` at open time and refuses a
+        // mismatch, which is also what would catch this number drifting from
+        // the header's.
+        let abi_version = self.module.add_function(
+            &format!("{prefix}code_module_abi_version"),
+            self.i32_ty.fn_type(&[], false),
+            None,
+        );
+        let entry = self.context.append_basic_block(abi_version, "entry");
+        self.builder.position_at_end(entry);
+        self.builder
+            .build_return(Some(&self.i32_ty.const_int(MODULE_ABI_VERSION, false)))
+            .map_err(|e| e.to_string())?;
+
+        // Required: the dispatch entry. A thin wrapper over the internal
+        // `_code_dispatch_this` chain — the chain keeps its internal name
+        // because `emit ... to this` and the inbound drain call it too, and
+        // the ABI name is what a *consumer* resolves.
+        let dispatch = self.module.add_function(
+            &format!("{prefix}code_module_dispatch"),
+            self.context
+                .void_type()
+                .fn_type(&[self.i8_ptr_ty.into(), self.i8_ptr_ty.into()], false),
+            None,
+        );
+        let entry = self.context.append_basic_block(dispatch, "entry");
+        self.builder.position_at_end(entry);
+        self.builder
+            .build_call(lazy_init, &[], "")
+            .map_err(|e| e.to_string())?;
+        let out = dispatch.get_nth_param(0).unwrap().into_pointer_value();
+        let particle = dispatch.get_nth_param(1).unwrap().into_pointer_value();
+        match self.dispatch_fn {
+            Some(chain) => {
+                self.builder
+                    .build_call(chain, &[out.into(), particle.into()], "")
+                    .map_err(|e| e.to_string())?;
+            }
+            // A module with no handler at all answers null to everything —
+            // the same answer a consumer gets when nothing matches, which is
+            // not an error (see the README's handler rules).
+            None => {
+                self.builder
+                    .build_call(self.fn_null, &[out.into()], "")
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        self.builder.build_return(None).map_err(|e| e.to_string())?;
+
+        // Optional: the `export let` values, when there are any.
+        //
+        // `CodeVarList.values` is a *contiguous* run of `count` slots at
+        // `CODE_VALUE_SLOT_SIZE` stride, not a table of pointers, so the
+        // exported slots — separate globals, wherever `alloc_slot` put them —
+        // have to be gathered into one buffer. Both that buffer and the
+        // descriptor pointing at it are globals, which is what the ABI's "the
+        // module owns this memory for its whole lifetime" asks for: building
+        // the descriptor on the stack would hand the host a pointer into a
+        // frame that has already returned.
+        if !self.exported_lets.is_empty() {
+            let entries = self.exported_lets.clone();
+            let count = entries.len();
+
+            let vars = self.module.add_function(
+                &format!("{prefix}code_module_vars"),
+                self.i8_ptr_ty.fn_type(&[], false),
+                None,
+            );
+            let entry = self.context.append_basic_block(vars, "entry");
+            self.builder.position_at_end(entry);
+
+            // The names: a constant array of string pointers, read-only for
+            // the module's whole life and never written again.
+            let mut name_ptrs: Vec<PointerValue<'a>> = Vec::with_capacity(count);
+            for (name, _) in &entries {
+                name_ptrs.push(self.global_str(name, "var_name")?);
+            }
+            let names_ty = self.i8_ptr_ty.array_type(count as u32);
+            let names_table = self.module.add_global(names_ty, None, "_code_var_names");
+            names_table.set_initializer(&self.i8_ptr_ty.const_array(&name_ptrs));
+            names_table.set_constant(true);
+
+            // The value buffer. Zeroed, which is a `CodeValue` with a null
+            // `heap` — so the `code_copy` below finds something `code_release`
+            // is willing to no-op on, exactly as every other slot in the
+            // program does on its first write.
+            let values_ty = self.i8_ty.array_type((VALUE_SIZE * count as u64) as u32);
+            let values_global = self.module.add_global(values_ty, None, "_code_var_values");
+            values_global.set_initializer(&values_ty.const_zero());
+            values_global.set_alignment(VALUE_ALIGN);
+            let values = values_global.as_pointer_value();
+
+            // The descriptor. Every field is a constant, so it is an
+            // initialized global rather than anything built at run time.
+            let list_ty = self.context.struct_type(
+                &[
+                    self.i64_ty.as_basic_type_enum(),
+                    self.i8_ptr_ptr_ty().as_basic_type_enum(),
+                    self.i8_ptr_ty.as_basic_type_enum(),
+                ],
+                false,
+            );
+            let list = self.module.add_global(list_ty, None, "_code_var_list");
+            list.set_initializer(&list_ty.const_named_struct(&[
+                self.i64_ty.const_int(count as u64, false).into(),
+                names_table.as_pointer_value().into(),
+                values.into(),
+            ]));
+
+            // `export let x = <expr>` is an arbitrary expression, so the
+            // values exist only once the stream has run — and a consumer
+            // reads `vars` at `link` time, before it has dispatched anything.
+            // This is the call that makes the two orders agree.
+            self.builder
+                .build_call(lazy_init, &[], "")
+                .map_err(|e| e.to_string())?;
+            for (i, (_, slot)) in entries.iter().enumerate() {
+                let dest = self.slot_at(values, i as u64, "var_slot")?;
+                self.builder
+                    .build_call(self.fn_copy, &[dest.into(), (*slot).into()], "")
+                    .map_err(|e| e.to_string())?;
+            }
+            self.builder
+                .build_return(Some(&list.as_pointer_value()))
+                .map_err(|e| e.to_string())?;
+        }
+
+        // A `.so` keeps a runnable `main` — a standalone smoke run of the
+        // artifact, and the reason `--target shared` stays loadable on its
+        // own. It is nothing but the guard: run the stream once, answer 0.
+        // (`Static` has no `main` at all; the archive is linked into a host
+        // that already has one.)
+        if let Some(main) = main_fn {
+            let entry = self.context.append_basic_block(main, "entry");
+            self.builder.position_at_end(entry);
+            self.builder
+                .build_call(lazy_init, &[], "")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_return(Some(&self.i32_ty.const_int(0, false)))
+                .map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }
+
+    /// The lazy-init trampoline: run the top-level stream once, guarded by
+    /// `_code_module_initialized`.
+    ///
+    /// Shared by every entry point that could be the first one reached — a
+    /// `.so`'s `main`, `code_module_dispatch`, and `code_module_vars` —
+    /// because whichever a consumer calls first must find the module's `let`s
+    /// already computed, and the ones called after must not compute them
+    /// again. A library's stream lives in `_code_init` rather than in `main`
+    /// for the same reason: running it twice would double every side effect
+    /// and re-enter every `export let`.
+    ///
+    /// Defines the guard global itself, so no call site has to have created
+    /// it first.
+    fn lazy_init_fn(&mut self) -> Result<FunctionValue<'a>, String> {
+        if let Some(existing) = self.module.get_function("_code_lazy_init") {
+            return Ok(existing);
+        }
+        let flag = self
+            .module
+            .add_global(self.i32_ty, None, "_code_module_initialized");
+        flag.set_initializer(&self.i32_ty.const_zero());
+        let f = self.module.add_function(
+            "_code_lazy_init",
+            self.context.void_type().fn_type(&[], false),
+            Some(Linkage::Private),
+        );
+
+        // Every caller is part-way through a function of its own, and this
+        // one is built out of three fresh blocks — so where the builder was
+        // is restored before returning.
+        let resume = self.builder.get_insert_block();
+        let check_bb = self.context.append_basic_block(f, "check");
+        let init_bb = self.context.append_basic_block(f, "init");
+        let done_bb = self.context.append_basic_block(f, "done");
+        self.builder.position_at_end(check_bb);
+        let initialized = self
+            .builder
+            .build_load(self.i32_ty, flag.as_pointer_value(), "initialized")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let needs_init = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                initialized,
+                self.i32_ty.const_zero(),
+                "needs_init",
+            )
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(needs_init, init_bb, done_bb)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(init_bb);
+        // Set *before* the stream runs, not after: a handler reached during
+        // initialization would otherwise re-enter this and recurse forever.
+        self.builder
+            .build_store(flag.as_pointer_value(), self.i32_ty.const_int(1, false))
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_call(self.stream_fn, &[], "")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(done_bb)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(done_bb);
+        self.builder.build_return(None).map_err(|e| e.to_string())?;
+        if let Some(resume) = resume {
+            self.builder.position_at_end(resume);
+        }
+        Ok(f)
+    }
+
+    /// `i8**` — the type of `CodeVarList.names`. Small helper kept next to
+    /// its single use rather than threaded through `Gen`.
+    fn i8_ptr_ptr_ty(&self) -> PointerType<'a> {
+        self.i8_ptr_ty.ptr_type(AddressSpace::default())
     }
 }
 

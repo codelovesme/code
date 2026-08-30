@@ -25,8 +25,9 @@ remaining blocker.
 `link` today resolves `.code` and native `.so`/`.a` modules. The owner wants
 it to also link modules compiled by languages other than `code` itself (a
 `.so`/`.a` module is already language-agnostic — any C-ABI producer works —
-so that half is actually done; only `.wasm` (format) and `code build --lib`
-(direction) below are still open). Native resolution is no longer
+so that half is actually done; `code build --lib` (direction) closed on
+2026-08-30 as `--target shared|static`, leaving only `.wasm` (format) open
+below). Native resolution is no longer
 script-directory-only: the fallback chain shipped with the install tooling
 (2026-08-23) searches the script directory, the nearest ancestor
 `.code/modules/`, `$CODE_MODULE_PATH`, and `~/.code/modules/`, and additionally
@@ -159,13 +160,18 @@ See `tests/native_modules/test_math_static.c` for a worked example, and
 for the fixture coverage (a new `buildonly_` fixture prefix in
 `run_language_tests.rs`, for the first feature that must succeed under
 `code build` and fail under `code run`).
-- **`code build --lib`.** `code build` still only emits a `main`-having
-  executable. A program *written in `code`* can't itself become a linkable
-  native module yet — moot today anyway, since a `code`-authored module
-  would only ever export values (no functions to export as handlers), and
-  there's no `code`-side syntax to *declare* a module's exported vars yet
-  (Phase 2 reads them from a native module's `code_module_vars`, it doesn't
-  let a `code` program define one).
+- ~~**`code build --lib`.**~~ **Shipped 2026-08-30, and not under that
+  name.** A program written in `code` *is* a linkable native module now:
+  `code build --target shared|static` emits one, handlers becoming
+  `code_module_dispatch` and `export let`s becoming `code_module_vars`. Both
+  halves of the objection above dissolved rather than being worked around —
+  the language gained handler syntax, so there are functions to export; and
+  `export let` is the declaration this entry says is missing, already
+  understood by source `link`. There is no `--lib` flag: asking for the
+  container turned out to be asking for the library. The write-up, including
+  the two bugs the work uncovered, is in
+  [build-targets.md](build-targets.md#that-recommendation-was-reversed-2026-08-30);
+  the coverage is `tests/library_targets.rs`.
 - **A published `code-native`-equivalent crate/header bundle — shipped
   2026-08-22 for Rust.** `crates/code-native` is a Rust crate (`cargo add
   code-native`, published to crates.io) that compiles the vendored

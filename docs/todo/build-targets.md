@@ -27,6 +27,13 @@ Native `.so`/`.a` links are refused in a wasm build. Modules must instead be
 given by the host when the wasm module is created, which is the same approach
 used by `crates/code-wasm`.
 
+**Phase 3 shipped 2026-08-30:** `--target shared|static` emits a module-ABI
+library rather than a program in a library's clothing. A `.code` file's
+handlers become `code_module_dispatch`, its `export let`s become
+`code_module_vars`, and another `.code` program links the result exactly as
+it links a C or Rust module. This reverses the recommendation below; the
+reasoning is under "That recommendation was reversed, 2026-08-30".
+
 `code build` produced exactly one thing before that — a native executable —
 with no flag to ask for anything else. The archived language had
 `code build --target ir|exe|shared|static|wasm` (`old/src/main.rs`); the
@@ -97,6 +104,64 @@ in phase 1 so the flag is complete, and treat the module-ABI library as the
 separate `--lib` feature it already is in the todo — *not* as something
 `--target shared` silently becomes. Two flags, two meanings: `--target`
 says what container to produce, `--lib` would say what to put in it.
+
+### That recommendation was reversed, 2026-08-30
+
+`--target shared|static` now *is* the module-ABI library, and there is no
+`--lib`. What changed is the premise the recommendation rested on: the
+paragraph above says "this language has no handler-definition syntax", and
+since then it has one — `ClassName { fields } => { ... }`, the thing
+`gen_dispatch_body` already turns into a chain for `emit … to this`. The
+"impossible half" was the only reason to keep two flags. With handlers
+compiling, a library build is not a different *kind* of artifact from what
+`--target shared` already produced; it is the same object with the three
+`code_abi.h` symbols on the front of it, and a flag whose only job is to say
+"and mean it" is a flag nobody would remember to pass.
+
+The obstacle this document did identify is real and was answered the way it
+predicted. `CodeVarList` is static and `export let x = <expr>` is not, so
+"today's `main` would become an initializer plus a `main` that calls it" —
+which is exactly what shipped, with one addition the sketch did not have.
+The stream moved into a private `_code_init`, and every entry point that
+could be reached *first* — a `.so`'s `main`, `code_module_dispatch`, and
+`code_module_vars` — goes through one guarded `_code_lazy_init`. The guard
+is not decoration: a consumer reads `code_module_vars` at `link` time,
+before it has dispatched anything, so without it the values it copies out
+would still be zero.
+
+Two things that fell out of building it, neither obvious from here:
+
+- **A library sweeps nothing.** `emit_cleanup` releases every top-level slot
+  as the program's last act, and for a library that act is `_code_init`
+  returning — which is *before* `code_module_vars` copies anything out. So an
+  exported value was read after its block was freed. Arrays survived it
+  silently, a heap string aborted the interpreter in glibc's allocator, and
+  a two-value module simply answered wrong. The fix is not a smaller sweep
+  but no sweep: `code_abi.h` says a module owns its values for its whole
+  lifetime, and a private top-level `let` has to outlive `_code_init` too,
+  because a handler may name one.
+- **An archive has to hide its own internals.** Both sides of a static link
+  generate the same names — `_code_init`, `_code_dispatch_this`,
+  `_code_slot_0_num` — so with external linkage a `.a` collides with the
+  host it is linked into, and two `.a`s collide with each other. The prefix
+  rule in `code_abi.h` makes the *entry points* unique; internal linkage on
+  everything else is the other half, and it is also what keeps `loader.rs`'s
+  "exactly one symbol ends in `_code_module_dispatch`" true.
+
+**One characteristic, accepted rather than fixed.** A `.a` module shares the
+host's single runtime, so the blocks behind its exported values are counted
+by the host's `code_check_leaks` and reported when the host exits under
+`CODE_CHECK_LEAKS=1`. That is the `.a` contract showing through — the module
+is *required* to still own them — and a C module meets the requirement the
+same way, with `static` storage;
+`tests/native_modules/test_math_static` only escapes it by exporting a single
+number. It is why `tests/library_targets.rs` leak-checks the `.so` half and
+not the `.a` half. Making it go away needs a "the host is done reading vars"
+point in the ABI, which is a bigger change than the problem.
+
+Covered by `tests/library_targets.rs`, which is a *consumer*: it builds a
+module from `.code`, links it from another `.code` program in both output
+modes, and lets that program's asserts be the result.
 
 ## `wasm`: the real work
 
@@ -221,10 +286,10 @@ rustup-managed toolchain") rather than as a failed subprocess.
 
 - **`--target ir`** (dump the `.ll`). Old had it; nobody asked for it back,
   and it is one `module.print_to_file` call whenever someone does.
-- **`--lib` / module-ABI output.** See the semantics section — it is a real
-  feature with a real blocker (no handler syntax), tracked in
-  [native-module-linking.md](native-module-linking.md), not smuggled in
-  under `--target shared`.
+- ~~**`--lib` / module-ABI output.**~~ **Shipped 2026-08-30, without the
+  flag** — `--target shared|static` is the module-ABI library. The blocker
+  named here (no handler syntax) stopped existing; see "That recommendation
+  was reversed" above.
 - **wasm32-wasi.** A second wasm target with a real libc, which would make
   the shim unnecessary but adds a sysroot dependency. Only worth it if the
   freestanding shim starts growing.
