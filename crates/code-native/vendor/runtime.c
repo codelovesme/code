@@ -1388,10 +1388,39 @@ static void text_push_str(TextBuf *t, const char *s) { text_push(t, s, strlen(s)
  * against Rust's own output over 205k values, random bit patterns included.
  *
  * Integral values short-circuit through `%lld`: it is the overwhelmingly
- * common case, it is exact, and it is the only path the wasm shim (which has
- * no float formatting and no `strtod`) can offer at all. A fractional number
- * on wasm is a loud error rather than a string that silently disagrees with
- * the other two modes — see docs/todo/wasm-fractional-number-text.md. */
+ * common case, and it is exact.
+ *
+ * The fractional path needs exactly two things a freestanding build cannot
+ * compute for itself — the exact expansion, and reading a candidate back —
+ * and they are the two helpers below. Everything between them, the rounding
+ * rule included, is the same code on every target, so wasm and native agree
+ * by construction rather than by two implementations happening to match.
+ * Until 2026-08-29 wasm had no answer for either and a fractional number was
+ * a loud error there; see docs/todo/wasm-fractional-number-text.md. */
+
+/* The exact decimal expansion, to 41 significant digits. */
+static void number_exact(char *out, size_t cap, double d) {
+#ifdef CODE_WASM
+    int written = code_host_number_exact(d, out, (unsigned int)cap);
+    if (written < 0 || (size_t)written >= cap) {
+        code_runtime_error("the host could not render a number as text");
+    }
+    out[written] = '\0';
+#else
+    snprintf(out, cap, "%.40e", d);
+#endif
+}
+
+/* Reading one back — the round-trip half of "shortest that round-trips". */
+static double number_parse(const char *text, size_t len) {
+#ifdef CODE_WASM
+    return code_host_number_parse(text, (unsigned int)len);
+#else
+    (void)len;
+    return strtod(text, NULL);
+#endif
+}
+
 static void text_push_number(TextBuf *t, double d) {
     char tmp[512];
     if (d == (double)(long long)d && d >= -9007199254740992.0 && d <= 9007199254740992.0) {
@@ -1406,13 +1435,10 @@ static void text_push_number(TextBuf *t, double d) {
         text_push_str(t, tmp);
         return;
     }
-#ifdef CODE_WASM
-    code_runtime_error("rendering a fractional number as text is not supported on wasm yet");
-#else
     /* 41 significant digits: more than the 17 any double needs to round-trip,
      * so `full` is the exact expansion as far as the rounding below can care. */
     char exact[80];
-    snprintf(exact, sizeof exact, "%.40e", d);
+    number_exact(exact, sizeof exact, d);
     const char *p = exact;
     int negative = (*p == '-');
     if (negative) {
@@ -1468,7 +1494,7 @@ static void text_push_number(TextBuf *t, double d) {
         }
         o += (size_t)snprintf(sci + o, sizeof sci - o, "e%d", exp10);
         sci[o] = '\0';
-        if (strtod(sci, NULL) == d) {
+        if (number_parse(sci, o) == d) {
             break;
         }
     }
@@ -1507,7 +1533,6 @@ static void text_push_number(TextBuf *t, double d) {
         out += n;
     }
     text_push(t, tmp, out);
-#endif
 }
 
 static void text_push_json_string(TextBuf *t, const char *s) {

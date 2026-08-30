@@ -18,6 +18,31 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
+/// The four functions a wasm build expects from whatever runs it. Two are the
+/// clock and the error sink; the other two are how a number becomes text —
+/// the exact expansion of a double and reading one back, which a freestanding
+/// build cannot compute for itself and JavaScript answers in one call each
+/// (see `src/wasm_shim.h`). Written once here because both wasm tests need
+/// the same host.
+const WASM_HOST_JS: &str = "\
+  const dec = new TextDecoder(), enc = new TextEncoder();\n\
+  let memory;\n\
+  const env = {\n\
+    code_host_error(ptr, len) {\n\
+      throw new Error('wasm error: ' + dec.decode(new Uint8Array(memory.buffer, ptr, len)));\n\
+    },\n\
+    code_host_now() { return Date.now() / 1000; },\n\
+    code_host_number_exact(value, ptr, cap) {\n\
+      const b = enc.encode(value.toExponential(40));\n\
+      if (b.length >= cap) return -1;\n\
+      new Uint8Array(memory.buffer).set(b, ptr);\n\
+      return b.length;\n\
+    },\n\
+    code_host_number_parse(ptr, len) {\n\
+      return Number(dec.decode(new Uint8Array(memory.buffer, ptr, len)));\n\
+    },\n\
+  };\n";
+
 /// One private directory per test; the tag distinguishes tests within this
 /// process, the pid distinguishes processes (the same convention as
 /// `concurrent_builds.rs`).
@@ -105,18 +130,48 @@ fn wasm_target_produces_a_runnable_module() {
     .expect("build --target wasm");
     assert!(out.is_file(), "expected a wasm file at {}", out.display());
 
+    run_wasm_under_node(&dir, &out);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Rendering a number as text has to spell it the same way whichever mode
+/// produced the program — the interpreter, a native binary, or a wasm module.
+/// The interpreter and the native binary are held to that by the fixture
+/// harness; wasm is held to it here, by building the *same* fixture and
+/// running it. Its asserts are the check: a disagreement ends the program,
+/// which reaches the host as an error rather than a clean exit.
+///
+/// This was the one place a feature did not behave identically everywhere.
+/// Until 2026-08-29 a fractional number had no spelling on wasm at all and
+/// interpolating one was a loud error, because the freestanding build has no
+/// float formatting; the host supplies the two missing pieces now.
+#[test]
+fn wasm_spells_numbers_the_way_the_other_modes_do() {
+    let dir = temp_dir("wasm-numbers");
+    let out = dir.join("numbers.wasm");
+    code::compile_file(
+        &fixture("interp_number_text.code"),
+        code::BuildTarget::Wasm,
+        &out,
+        false,
+    )
+    .expect("build interp_number_text.code --target wasm");
+
+    run_wasm_under_node(&dir, &out);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Instantiate `module` under Node with the host above and run its `main`,
+/// failing the test with whatever Node reported if it does not come back 0.
+fn run_wasm_under_node(dir: &Path, module: &Path) {
     let probe = dir.join("run-wasm.mjs");
     fs::write(
         &probe,
         format!(
             "import {{ readFileSync }} from 'node:fs';\n\
-             const bytes = readFileSync({out:?});\n\
-             const {{ instance }} = await WebAssembly.instantiate(bytes, {{\n\
-               env: {{\n\
-                 code_host_error(ptr, len) {{ throw new Error(`wasm error ${{ptr}} ${{len}}`); }},\n\
-                 code_host_now() {{ return Date.now() / 1000; }}\n\
-               }}\n\
-             }});\n\
+             {WASM_HOST_JS}\
+             const {{ instance }} = await WebAssembly.instantiate(readFileSync({module:?}), {{ env }});\n\
+             memory = instance.exports.memory;\n\
              if (typeof instance.exports.main !== 'function') throw new Error('main was not exported');\n\
              if (instance.exports.main() !== 0) throw new Error('main returned an error');\n"
         ),
@@ -131,7 +186,6 @@ fn wasm_target_produces_a_runnable_module() {
         "node could not run wasm: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]

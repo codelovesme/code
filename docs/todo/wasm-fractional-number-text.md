@@ -1,5 +1,9 @@
 # Rendering a fractional number as text is unsupported on wasm
 
+> **Shipped 2026-08-29 — by neither route below.** What follows is the
+> original write-up, kept because its measurements are what ruled both routes
+> out. "What shipped" at the foot records the third one.
+
 String interpolation (`"$x"`) has to turn a number back into characters, and
 that spelling must be byte-identical across every output mode or the same
 program asserts differently depending on how it was built. Two of the three
@@ -99,3 +103,53 @@ that layout is a third copy of logic the native path already has, in portable
 C, which is an argument for moving it rather than duplicating it. This
 alternative is still cheaper than the bignum work, but "agrees for free" was
 wrong and the estimate should not rest on it.
+
+## What shipped
+
+Neither route, because both answered the wrong question. Each proposed a
+*second* implementation of "how does a double become text" — one in portable
+C, one split between JS and C — and then had to argue that it would agree
+with the first. The agreement was the whole point, so building a second
+implementation was the mistake.
+
+The algorithm never moved. It reads as one function on every target, rounding
+rule included. What moved is the two things it asks the outside world for:
+
+| | native | wasm |
+|---|---|---|
+| the exact expansion, to 41 significant digits | `snprintf("%.40e")` | `code_host_number_exact` |
+| reading a candidate back | `strtod` | `code_host_number_parse` |
+
+Those two *are* the parts a freestanding build cannot compute — the
+exact-arithmetic-over-hundreds-of-digits half, and the only reason the bignum
+estimate above was as large as it was. Everything the modes have to agree on
+stayed in one place, so they agree by construction rather than by inspection.
+In JavaScript the two are `value.toExponential(40)` and `Number(text)`, one
+call each; the exponent's zero-padding differs from C's and does not matter,
+since it is read back as a number.
+
+This is why the measurement that killed the cheap route does not touch this
+one. That route asked JS for the *finished string* and inherited JS's layout
+rule, exponential outside `[1e-6, 1e21)`. This asks JS only for digits that
+the C side then rounds and lays out itself — and the tie-breaking rule that
+made `printf`'s own rounding unusable in the first place (glibc to even, Rust
+away from zero — and JS is to even as well) is the C side's, unchanged.
+
+**Verified differentially**, at the scale the native path was: 205,000 random
+double bit patterns rendered through both a native and a wasm build of
+`runtime.c`, byte-identical, plus the fixture's own edge cases (denormals,
+`f64::MAX`, `0.1 + 0.2`, an exact tie, `-0`). `tests/build_targets.rs` keeps
+it honest from here by building `interp_number_text.code` — the same fixture
+the other two modes are held to — for wasm and running it under Node.
+
+The shim grew the three small things the algorithm needs and it did not have:
+`memmove`, a base-10 `strtol`, and `%d` in its `snprintf`. A few lines each,
+as the estimate above said.
+
+**The cost, taken knowingly:** the wasm target asks its host for four
+functions now rather than two. There is no making one optional — a weak
+undefined symbol is dropped by the linker rather than imported, so it could
+never be supplied at all — and a host that omits them fails at instantiation,
+naming what is missing. Acceptable because the target already required a
+clock and an error sink, and because nothing outside this repository hosts a
+`code` wasm module yet. Worth a line in the release notes all the same.

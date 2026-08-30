@@ -14,6 +14,24 @@ typedef long long time_t;
 extern void code_host_error(const char *ptr, unsigned int len);
 extern double code_host_now(void);
 
+/* Turning a double back into text needs two things this environment cannot
+ * compute for itself: the *exact* decimal expansion of a double, and reading
+ * a decimal string back to the nearest double. Both are the hard parts of a
+ * C library's float formatting — exact arithmetic over hundreds of digits —
+ * and both are one built-in call in any plausible host.
+ *
+ * The algorithm that uses them (`text_push_number` in runtime.c) is the same
+ * on every target; only where these two answers come from differs. That is
+ * deliberate: the rounding rule that has to match Rust's `Display` lives in
+ * one place rather than being reimplemented per host.
+ *
+ * `code_host_number_exact` writes what `printf("%.40e", value)` writes and
+ * returns its length; in JavaScript that is `value.toExponential(40)` (the
+ * exponent's zero-padding does not matter, it is parsed as a number).
+ * `code_host_number_parse` is `strtod`; in JavaScript, `Number(text)`. */
+extern int code_host_number_exact(double value, char *out, unsigned int cap);
+extern double code_host_number_parse(const char *ptr, unsigned int len);
+
 static unsigned char code_wasm_heap[16 * 1024 * 1024];
 static size_t code_wasm_heap_used;
 
@@ -70,6 +88,21 @@ static void *memcpy(void *dest, const void *source, size_t count) {
     return dest;
 }
 
+static void *memmove(void *dest, const void *source, size_t count) {
+    unsigned char *d = dest;
+    const unsigned char *s = source;
+    if (d < s) {
+        for (size_t i = 0; i < count; i++) {
+            d[i] = s[i];
+        }
+    } else {
+        for (size_t i = count; i > 0; i--) {
+            d[i - 1] = s[i - 1];
+        }
+    }
+    return dest;
+}
+
 void *memset(void *dest, int value, size_t count) {
     unsigned char *d = dest;
     for (size_t i = 0; i < count; i++) {
@@ -92,6 +125,30 @@ static int strcmp(const char *left, const char *right) {
         right++;
     }
     return (unsigned char)*left - (unsigned char)*right;
+}
+
+/* Base 10 only, which is the only base runtime.c asks for — it reads the
+ * exponent out of an expansion this shim's own `snprintf` never produced. */
+static long strtol(const char *text, char **end, int base) {
+    (void)base;
+    const char *p = text;
+    while (*p == ' ' || *p == '\t' || *p == '\n') {
+        p++;
+    }
+    int negative = 0;
+    if (*p == '+' || *p == '-') {
+        negative = (*p == '-');
+        p++;
+    }
+    long value = 0;
+    while (*p >= '0' && *p <= '9') {
+        value = value * 10 + (*p - '0');
+        p++;
+    }
+    if (end) {
+        *end = (char *)p;
+    }
+    return negative ? -value : value;
 }
 
 static void code_wasm_append(char *out, size_t limit, size_t *used, char ch) {
@@ -139,6 +196,17 @@ static int snprintf(char *out, size_t limit, const char *format, ...) {
         } else if (*format == 'u') {
             code_wasm_append_unsigned(out, limit, &used,
                                       (unsigned long long)va_arg(args, unsigned int));
+            format++;
+        } else if (*format == 'd') {
+            int value = va_arg(args, int);
+            unsigned long long magnitude = (unsigned long long)value;
+            if (value < 0) {
+                code_wasm_append(out, limit, &used, '-');
+                /* Through unsigned, so the most negative int has no negation
+                 * to overflow. */
+                magnitude = -(unsigned long long)value;
+            }
+            code_wasm_append_unsigned(out, limit, &used, magnitude);
             format++;
         } else if (*format == 'l' && format[1] == 'l' && format[2] == 'd') {
             long long value = va_arg(args, long long);
