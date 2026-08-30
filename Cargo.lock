@@ -102,6 +102,7 @@ version = "1.1.0"
 dependencies = [
  "code",
  "js-sys",
+ "serde_json",
  "wasm-bindgen",
 ]
 

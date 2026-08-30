@@ -12,3 +12,8 @@ crate-type = ["cdylib"]
 code = { path = "../..", default-features = false }
 wasm-bindgen = "0.2"
 js-sys = "0.3"
+# For decode_json in lib.rs: a module's `vars()`/`dispatch()` return real
+# JSON ("key": value), which diverged from this language's own object-literal
+# grammar (name = value) once computed keys landed — see decode_json's doc
+# comment.
+serde_json = "1"

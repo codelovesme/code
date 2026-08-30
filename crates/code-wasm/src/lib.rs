@@ -120,17 +120,45 @@ fn run_with_modules_inner(src: &str, modules: Object) -> Result<Environment, Str
     interpreter::run_with(&program, env)
 }
 
-/// Decodes a JSON string into a `Value` by reusing the language's own
-/// lexer/parser/interpreter rather than a second JSON parser: the literal
-/// grammar (object/array/string/number/bool/null) already *is* JSON's — see
-/// `parser::parse_expr`'s doc comment.
+/// Decodes a JSON string into a `Value` — a real `serde_json` parse, not
+/// this language's own literal grammar. The two used to coincide (a JSON
+/// object and a `.code` object literal were both `"key": value`), which is
+/// why this went through `code::parser` originally; they diverged the day
+/// object literals became `key = value` (computed keys), and reusing the
+/// `.code` parser here started rejecting every real JSON string a module
+/// returns — `{"answer": 42}` no longer parses as a `.code` expression at
+/// all. JSON's own grammar hasn't changed, so this decodes it directly and
+/// converts the result, rather than trying to keep two grammars in sync by
+/// convention.
 fn decode_json(json: &str) -> Result<Value, String> {
-    // The message alone, not `span::render`'s source block: this text is a
-    // JS callback's return value, not a `.code` file the user wrote, so
-    // there's no file or line worth pointing them at.
-    let lexed = code::lexer::tokenize(json).map_err(|e| e.msg)?;
-    let expr = code::parser::parse_expr(&lexed).map_err(|e| e.msg)?;
-    interpreter::eval_literal(&expr)
+    let value: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("invalid JSON: {e}"))?;
+    Ok(json_to_value(value))
+}
+
+/// `serde_json::Value` and this language's `Value` are both JSON's six
+/// kinds, so the conversion is a straight structural walk with no room for
+/// it to fail. `serde_json`'s `Number` covers ints and floats in one variant
+/// (`f64` losslessly round-trips anything this language can represent — its
+/// own `Value::Number` is an `f64` too); `null` is folded into `0.0` only if
+/// `as_f64` somehow refuses a `Number`, which the `Number` variant's own
+/// invariant rules out.
+fn json_to_value(value: serde_json::Value) -> Value {
+    match value {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(b) => Value::Bool(b),
+        serde_json::Value::Number(n) => Value::Number(n.as_f64().unwrap_or(0.0)),
+        serde_json::Value::String(s) => Value::Str(Rc::from(s.as_str())),
+        serde_json::Value::Array(items) => {
+            Value::Array(Rc::new(items.into_iter().map(json_to_value).collect()))
+        }
+        serde_json::Value::Object(fields) => Value::Object(Rc::new(
+            fields
+                .into_iter()
+                .map(|(k, v)| (k, json_to_value(v)))
+                .collect(),
+        )),
+    }
 }
 
 /// Resolves `link "<alias>"` to whichever of `aliases` the JS caller
@@ -166,5 +194,48 @@ impl ModuleResolver for PreloadedModules {
                 "cannot link '{module_ref}': no such module was provided to run_with_modules"
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The regression this file shipped once: `decode_json` used to reuse
+    /// the `.code` object-literal parser, on the assumption that grammar
+    /// and JSON's were the same. They diverged when object literals became
+    /// `key = value` (computed keys), and nothing in `cargo test` exercised
+    /// `decode_json` with real JSON — `"key": value` — to notice. It broke
+    /// silently until an actual release ran `crates/code-wasm/npm/smoke-test.mjs`
+    /// against the built package, which only a `v*` tag push does.
+    #[test]
+    fn decodes_the_json_a_real_module_returns() {
+        assert_eq!(decode_json("42").unwrap(), Value::Number(42.0));
+        assert_eq!(decode_json("true").unwrap(), Value::Bool(true));
+        assert_eq!(decode_json("null").unwrap(), Value::Null);
+        assert_eq!(
+            decode_json(r#""a:b""#).unwrap(),
+            Value::Str(Rc::from("a:b"))
+        );
+        assert_eq!(
+            decode_json(r#"{"answer": 42}"#).unwrap(),
+            Value::Object(Rc::new(vec![("answer".to_string(), Value::Number(42.0))]))
+        );
+        assert_eq!(
+            decode_json(r#"{"_class": "DoubleResult", "value": 42}"#).unwrap(),
+            Value::Object(Rc::new(vec![
+                ("_class".to_string(), Value::Str(Rc::from("DoubleResult"))),
+                ("value".to_string(), Value::Number(42.0)),
+            ]))
+        );
+        assert_eq!(
+            decode_json(r#"[1, "two", null]"#).unwrap(),
+            Value::Array(Rc::new(vec![
+                Value::Number(1.0),
+                Value::Str(Rc::from("two")),
+                Value::Null,
+            ]))
+        );
+        assert!(decode_json("not json").is_err());
     }
 }

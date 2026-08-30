@@ -901,19 +901,6 @@ fn run_handler(
     result
 }
 
-/// Evaluates a literal expression with no variables to resolve — the other
-/// half of `parser::parse_expr`'s JSON-decoding trick: a JSON literal
-/// (object/array/string/number/bool/null) is exactly this language's own
-/// literal grammar, and `eval` already turns any `Expr` into a `Value`.
-/// Bare `eval` is private and needs an `Environment` because a general
-/// expression *can* reference variables; a literal never does, so a
-/// throwaway empty one is always enough here — an identifier in `expr`
-/// would still correctly fail as "undefined variable", exactly as it should
-/// for something that's supposed to be pure JSON.
-pub fn eval_literal(expr: &Expr) -> Result<Value, String> {
-    eval(expr, &Environment::default())
-}
-
 fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
     match expr {
         Expr::Number(n) => Ok(Value::Number(*n)),

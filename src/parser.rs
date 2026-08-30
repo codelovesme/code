@@ -17,31 +17,6 @@ pub fn parse(lexed: &Lexed) -> Result<Program, Located> {
     p.program().map_err(|msg| p.locate(msg))
 }
 
-/// Parses a single expression from `tokens` rather than a whole program — a
-/// thin wrapper around the same `Parser::expr()` that already parses every
-/// literal (`Number`/`Str`/`Bool`/`Null`/`Array`/`Object`) inside a real
-/// `.code` program. Exists to decode JSON text into a `Value`
-/// (`interpreter::eval_literal`) without a second JSON parser: the
-/// language's own literal grammar already *is* JSON's — see `value.rs`'s
-/// `Display` impl, which emits the other direction for free. Used by
-/// `crates/code-wasm` to turn a JS callback's returned JSON string back into
-/// a `Value`. Errors if anything besides the one expression (plus
-/// surrounding newlines) remains.
-pub fn parse_expr(lexed: &Lexed) -> Result<Expr, Located> {
-    let mut p = Parser::new(lexed);
-    let parsed = (|| {
-        p.skip_newlines();
-        let expr = p.expr()?;
-        p.skip_newlines();
-        if !matches!(p.peek(), Token::Eof) {
-            p.err_here();
-            return Err(format!("expected end of input, found {:?}", p.peek()));
-        }
-        Ok(expr)
-    })();
-    parsed.map_err(|msg| p.locate(msg))
-}
-
 struct Parser<'a> {
     tokens: &'a [Token],
     /// Parallel to `tokens` — see `Lexed`. Only ever read by `locate`.
