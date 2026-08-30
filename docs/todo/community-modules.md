@@ -107,14 +107,27 @@ Build on an older-glibc runner image for maximum compatibility.
 Subcommands: `code install <name-or-url> [--global]`, `code remove <name>`
 (alias `rm`), `code ls` (installed + available).
 
-- Resolution: first-party names hit an index (which starts life as a JSON
-  file in this repo, served from the Pages site); community modules install
-  by full URL until a name-based community index exists (phase F).
-  Shipped form: the index maps name → latest release-tag page, and the
-  manifest URL is derived from it (`…/releases/tag/TAG` →
-  `…/releases/download/TAG/<name>.json`); a by-URL reference is the
-  manifest URL itself. The default index URL is overridable via
-  `CODE_MODULE_INDEX`.
+- Resolution: a first-party name resolves to **this binary's own release**;
+  community modules install by full URL until a name-based community index
+  exists (phase F). The manifest URL is derived from the release tag page
+  (`…/releases/tag/TAG` → `…/releases/download/TAG/<name>.json`); a by-URL
+  reference is the manifest URL itself. The release is overridable via
+  `CODE_MODULE_RELEASE`, which is how the flow is exercised before a tag
+  exists.
+
+  **The index is gone (2026-08-29)**, one day after "one version for
+  everything" removed its reason to exist. It mapped a name to that module's
+  *latest* version and release page — and once every module ships at the
+  CLI's version, on the CLI's release, a name plus `env!("CARGO_PKG_VERSION")`
+  is already the whole address. What it cost while it lived: it was
+  hand-maintained, so `env` and `http_server` shipped without entries and
+  `code install env` answered "unknown module", and it still pointed at
+  `modules/<name>/v1.0.0` tags that the unified release no longer produces.
+  Its replacement is `module_install::FIRST_PARTY`, a compiled-in list that
+  `tests/first_party_modules.rs` holds to `crates/modules/` *and* to the
+  publish workflow's matrix — the drift that broke the index is now a failing
+  test. A wrong name is answered locally rather than by a 404, and `code ls`
+  needs no network.
 - Storage: project-local `.code/modules/<name>/<version>/` plus
   `.code/lock.json` recording name, version, source URL, and sha256;
   `--global` installs to `~/.code/modules/` but records the same project
@@ -307,8 +320,9 @@ fs, json parse/stringify.
 A third card was added to the Packages section on 2026-08-28, pointing at the
 template and stating the GPL-3.0 consequence, so the publish path is
 discoverable from the site. What is still missing is the listing below, which
-wants a second data source: `modules-index.json` covers first-party modules
-only, and there is no community index for it to render.
+now wants a data source of its own: the first-party set is a list compiled
+into the CLI (`module_install::FIRST_PARTY`) rather than a JSON document the
+site could render, and there is no community index at all.
 
 A **Modules** page beside the Packages section: renders each module's
 `module.json` (handlers, versions, platforms, install command), sourced from

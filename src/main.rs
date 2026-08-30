@@ -13,14 +13,6 @@ use code::codegen::BuildTarget;
 /// reports the release version here.
 const VERSION: &str = concat!("Code v", env!("CARGO_PKG_VERSION"));
 
-/// Where the first-party module index lives — the JSON file served from the
-/// Pages site (`docs/todo/community-modules.md`: "starts life as a JSON file
-/// in this repo, served from the Pages site"). Overridable for offline work
-/// and pre-deploy dogfooding: point `CODE_MODULE_INDEX` at any URL serving
-/// the same shape.
-#[cfg(feature = "install")]
-const MODULE_INDEX_URL: &str = "https://codelovesme.github.io/code/modules-index.json";
-
 /// `run` interprets; `build` compiles (LLVM, see codegen.rs) and links a
 /// standalone executable via the system `cc`. Both are meant to run every
 /// language feature identically (see memory `new-language-rewrite`).
@@ -203,7 +195,8 @@ usage: code install <name-or-url> [--global]
        code remove <name>
        code ls
 
-A first-party module installs by name, from the index; anything else installs
+A first-party module installs by name, from this binary's own release — one
+tag carries the CLI and every module at one version. Anything else installs
 by the URL of its manifest. Bytes land in ./.code/modules and are pinned by
 sha256 in ./.code/lock.json — `--global` puts them in ~/.code/modules and
 records the same lock entry.";
@@ -577,12 +570,13 @@ fn build_file(path: &str, target: BuildTarget, out: &Path, release: bool) -> Exi
 /// `code install <name-or-url> [--global]` — download a module's artifact
 /// for this platform, verify its sha256 against the manifest, lay it down
 /// under the project's (or `~/.code`'s) `modules/<name>/<version>/`, and pin
-/// it in `.code/lock.json`. First-party names resolve through the index;
+/// it in `.code/lock.json`. A first-party name resolves to this binary's own
+/// release, since one tag publishes the CLI and every module at one version;
 /// community modules come by the URL of their manifest (not a release page —
 /// that serves HTML, not JSON).
 #[cfg(feature = "install")]
 fn cmd_install(mut args: Vec<String>) -> ExitCode {
-    use code::module_install::{self, Index, InstallScope};
+    use code::module_install::{self, InstallScope};
 
     let mut global = false;
     let mut positionals: Vec<String> = Vec::new();
@@ -600,23 +594,6 @@ fn cmd_install(mut args: Vec<String>) -> ExitCode {
     }
     let reference = positionals.pop().expect("checked above");
 
-    let index_url =
-        std::env::var("CODE_MODULE_INDEX").unwrap_or_else(|_| MODULE_INDEX_URL.to_string());
-    let index_text = match module_install::fetch_url(&index_url) {
-        Ok(text) => text,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let index: Index = match serde_json::from_str(&index_text) {
-        Ok(index) => index,
-        Err(e) => {
-            eprintln!("error: malformed module index at '{index_url}': {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-
     let cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
         Err(e) => {
@@ -630,7 +607,7 @@ fn cmd_install(mut args: Vec<String>) -> ExitCode {
         InstallScope::Project
     };
 
-    match module_install::install(&cwd, &reference, scope, &index) {
+    match module_install::install(&cwd, &reference, scope, env!("CARGO_PKG_VERSION")) {
         Ok(installed) => {
             println!(
                 "installed {}@{} (sha256 {})",
@@ -689,10 +666,11 @@ fn cmd_remove(args: Vec<String>) -> ExitCode {
 }
 
 /// `code ls` — installed modules (from the nearest lockfile, with their
-/// bytes checked for presence) and available ones (from the index).
+/// bytes checked for presence) and available ones. The available list is the
+/// first-party modules at this binary's own version, so it needs no network.
 #[cfg(feature = "install")]
 fn cmd_ls() -> ExitCode {
-    use code::module_install::{self, Index, InstallScope};
+    use code::module_install::{self, InstallScope};
 
     let cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
@@ -724,25 +702,8 @@ fn cmd_ls() -> ExitCode {
     }
 
     println!("available:");
-    let index_url =
-        std::env::var("CODE_MODULE_INDEX").unwrap_or_else(|_| MODULE_INDEX_URL.to_string());
-    match module_install::fetch_url(&index_url) {
-        Ok(text) => match serde_json::from_str::<Index>(&text) {
-            Ok(index) => {
-                if index.is_empty() {
-                    println!("  (empty index)");
-                }
-                for (name, entry) in &index {
-                    println!("  {name}@{}", entry.version);
-                }
-            }
-            Err(e) => {
-                eprintln!("warning: malformed module index at '{index_url}': {e}");
-            }
-        },
-        Err(e) => {
-            eprintln!("warning: could not fetch the module index: {e}");
-        }
+    for name in module_install::FIRST_PARTY {
+        println!("  {name}@{}", env!("CARGO_PKG_VERSION"));
     }
     ExitCode::SUCCESS
 }

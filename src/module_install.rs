@@ -1,4 +1,4 @@
-//! Module installation: the manifest, the lockfile, the index, and the
+//! Module installation: the manifest, the lockfile, and the
 //! download-and-verify flow behind `code install` / `remove` / `ls`.
 //!
 //! Everything here except [`fetch_url`] and [`download_to`] is plain
@@ -68,18 +68,36 @@ impl Manifest {
     }
 }
 
-/// One row of the project index — the JSON file served from the Pages site
-/// that maps a first-party module name to its latest version and release.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
-pub struct IndexEntry {
-    /// Latest published semVer (no leading `v`).
-    pub version: String,
-    /// The GitHub Release page the assets live under.
-    pub url: String,
-}
+/// The modules published from this repository, at this repository's version.
+///
+/// A compiled-in list rather than an index fetched over the network, since
+/// 2026-08-29: one `v*` tag releases the CLI and every module together, so a
+/// name plus this binary's own version already *is* the address, and there is
+/// no "latest version" left for an index to answer. It also means a wrong
+/// name is answered locally and `code ls` needs no network at all.
+/// `tests/first_party_modules.rs` holds this list to `crates/modules/` and to
+/// the publish workflow's matrix, so a module cannot be added to one and
+/// forgotten in the others — which is exactly how the index it replaces came
+/// to be missing two.
+pub const FIRST_PARTY: &[&str] = &[
+    "env",
+    "http_client",
+    "http_server",
+    "math",
+    "strings",
+    "terminal",
+];
 
-/// The project index: first-party module name → latest release.
-pub type Index = BTreeMap<String, IndexEntry>;
+/// Where this repository's releases live. Overridable for offline work and
+/// pre-deploy dogfooding: point `CODE_MODULE_RELEASE` at any release tag page
+/// serving the same assets.
+const RELEASES_TAG_URL: &str = "https://github.com/codelovesme/code/releases/tag";
+
+/// The release page a first-party module of `version` comes from.
+pub fn first_party_source(version: &str) -> String {
+    std::env::var("CODE_MODULE_RELEASE")
+        .unwrap_or_else(|_| format!("{RELEASES_TAG_URL}/v{version}"))
+}
 
 /// One pinned module in `.code/lock.json`.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -212,15 +230,19 @@ pub fn install_dir(root: &Path, name: &str, version: &str) -> Result<PathBuf, St
     Ok(dir)
 }
 
-/// Fetch `url` with curl. Returns stdout on success.
+/// Fetch `url` with curl, separating "the server answered, with this status"
+/// from "the fetch itself failed" — which is what lets a 404 be reported as a
+/// missing thing rather than as a broken network.
 ///
 /// curl rather than a Rust HTTP stack: the binary already shells out to the
 /// system toolchain (`cc`, `nm`), and a static TLS dependency would bloat
-/// every build of `code` for one subcommand. The failure message carries
-/// curl's stderr, which is usually enough to act on.
-pub fn fetch_url(url: &str) -> Result<String, String> {
+/// every build of `code` for one subcommand. `-w` appends the final status
+/// after the body, on its own line, which is why the split is from the end;
+/// `-S` (rather than the `-f` this used to carry) keeps curl's stderr for a
+/// real transport failure, which is usually enough to act on.
+pub fn fetch_url_status(url: &str) -> Result<(u32, String), String> {
     let output = std::process::Command::new("curl")
-        .args(["-sfL", "--max-time", "60", url])
+        .args(["-sSL", "--max-time", "60", "-w", "\n%{http_code}", url])
         .output()
         .map_err(|e| format!("failed to run curl: {e}"))?;
     if !output.status.success() {
@@ -229,7 +251,24 @@ pub fn fetch_url(url: &str) -> Result<String, String> {
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    let text = String::from_utf8_lossy(&output.stdout).into_owned();
+    let (body, status) = text
+        .rsplit_once('\n')
+        .ok_or_else(|| format!("curl reported no status for '{url}'"))?;
+    let status = status
+        .trim()
+        .parse::<u32>()
+        .map_err(|_| format!("curl reported no status for '{url}'"))?;
+    Ok((status, body.to_string()))
+}
+
+/// Fetch `url`, treating any non-2xx answer as a failure. Callers that need
+/// to tell a 404 apart use [`fetch_url_status`] directly.
+pub fn fetch_url(url: &str) -> Result<String, String> {
+    match fetch_url_status(url)? {
+        (status, body) if (200..300).contains(&status) => Ok(body),
+        (status, _) => Err(format!("failed to fetch '{url}': HTTP {status}")),
+    }
 }
 
 /// Download `url` straight to `dest` (streaming, no full-body allocation).
@@ -295,7 +334,7 @@ pub fn release_asset_base(release_url: &str) -> Result<String, String> {
     ))
 }
 
-/// The manifest URL for a source URL: an indexed module's source is its
+/// The manifest URL for a source URL: a first-party module's source is its
 /// release *tag page*, which serves HTML — the manifest is an asset, so the
 /// URL has to cross over to `/releases/download/` first (`release_asset_base`)
 /// before `{name}.json` is appended. Any other URL is taken to be the
@@ -321,32 +360,45 @@ pub fn manifest_url_for(source: &str, name: &str) -> String {
 ///   at the manifest itself (a release page would serve HTML, not JSON);
 ///   name and version come from the fetched manifest, the source is the URL
 ///   verbatim.
-/// - anything else → a first-party name looked up in `index`; the source is
-///   the indexed release URL.
+/// - anything else → a first-party name, which needs no lookup: one tag
+///   releases the CLI and every module together, so `cli_version` names the
+///   release the module comes from.
 pub fn resolve_reference(
     reference: &str,
-    index: &Index,
+    cli_version: &str,
 ) -> Result<(String, String, String), String> {
     if reference.starts_with("http://") || reference.starts_with("https://") {
         // Community-by-URL: the manifest names itself.
         let manifest = Manifest::parse(&fetch_url(reference)?)?;
-        Ok((manifest.name, manifest.version, reference.to_string()))
-    } else {
-        let entry = index.get(reference).ok_or_else(|| {
-            format!(
-                "unknown module '{reference}' (not in the index — community modules install \
-                 by the URL of their manifest)"
-            )
-        })?;
-        let manifest = Manifest::parse(&fetch_url(&manifest_url_for(&entry.url, reference))?)?;
-        if manifest.name != reference {
-            return Err(format!(
-                "index lists '{reference}' but its manifest says '{}' — refusing to install",
-                manifest.name
-            ));
-        }
-        Ok((manifest.name, manifest.version, entry.url.clone()))
+        return Ok((manifest.name, manifest.version, reference.to_string()));
     }
+    if !FIRST_PARTY.contains(&reference) {
+        return Err(format!(
+            "unknown module '{reference}' — the first-party modules are {}, and a community \
+             module installs by the URL of its manifest",
+            FIRST_PARTY.join(", ")
+        ));
+    }
+    let source = first_party_source(cli_version);
+    let url = manifest_url_for(&source, reference);
+    let (status, body) = fetch_url_status(&url)?;
+    if status == 404 {
+        return Err(format!(
+            "'{reference}' is a first-party module, but the release at {source} does not carry \
+             it — which is what an unreleased development version of `code` looks like from here"
+        ));
+    }
+    if !(200..300).contains(&status) {
+        return Err(format!("failed to fetch '{url}': HTTP {status}"));
+    }
+    let manifest = Manifest::parse(&body)?;
+    if manifest.name != reference {
+        return Err(format!(
+            "{url} says it is '{}', not '{reference}' — refusing to install",
+            manifest.name
+        ));
+    }
+    Ok((manifest.name, manifest.version, source))
 }
 
 /// The outcome of an install, for the CLI to report.
@@ -368,9 +420,9 @@ pub fn install(
     cwd: &Path,
     reference: &str,
     scope: InstallScope,
-    index: &Index,
+    cli_version: &str,
 ) -> Result<InstalledModule, String> {
-    let (name, version, source) = resolve_reference(reference, index)?;
+    let (name, version, source) = resolve_reference(reference, cli_version)?;
 
     // Nearest project wins; a bare directory becomes a project on demand.
     let code_dir = ensure_project_code_dir(cwd)?;
