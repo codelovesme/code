@@ -1,0 +1,174 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Code",
+  "scopeName": "source.code",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#link-statement" },
+    { "include": "#type-declaration" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#constant" },
+    { "include": "#keyword-control" },
+    { "include": "#keyword-modifier" },
+    { "include": "#keyword-type-check" },
+    { "include": "#domain-keyword" },
+    { "include": "#language-variable" },
+    { "include": "#handler-definition" },
+    { "include": "#handler-arrow" },
+    { "include": "#type-name" },
+    { "include": "#operator" },
+    { "include": "#punctuation" },
+    { "include": "#identifier" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.arrow.code",
+      "match": "->.*$"
+    },
+    "link-statement": {
+      "match": "\\b(link)\\s+([-a-zA-Z0-9_./]+)(?:\\s+(as)\\s+([a-z_][a-zA-Z0-9_]*))?",
+      "captures": {
+        "1": { "name": "keyword.control.import.code" },
+        "2": { "name": "string.unquoted.module-path.code" },
+        "3": { "name": "keyword.control.import.code" },
+        "4": { "name": "entity.name.namespace.code" }
+      }
+    },
+    "type-declaration": {
+      "patterns": [
+        {
+          "comment": "Type alias: type Name = TypeExpr",
+          "match": "\\b(type)\\s+([A-Z][a-zA-Z0-9_]*)\\s*(?==\\s)",
+          "captures": {
+            "1": { "name": "storage.type.code" },
+            "2": { "name": "entity.name.type.declaration.code" }
+          }
+        },
+        {
+          "comment": "Type declaration: type Name { ... }",
+          "match": "\\b(type)\\s+([A-Z][a-zA-Z0-9_]*)\\s*(?=\\{)",
+          "captures": {
+            "1": { "name": "storage.type.code" },
+            "2": { "name": "entity.name.type.declaration.code" }
+          }
+        }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.code",
+      "begin": "\"",
+      "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.code" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.code" }
+      },
+      "patterns": [
+        {
+          "name": "constant.character.escape.code",
+          "match": "\\\\."
+        },
+        {
+          "name": "variable.other.interpolation.code",
+          "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*"
+        }
+      ]
+    },
+    "number": {
+      "name": "constant.numeric.code",
+      "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
+    },
+    "constant": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.code",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.code",
+          "match": "\\bNull\\b"
+        }
+      ]
+    },
+    "keyword-control": {
+      "name": "keyword.control.code",
+      "match": "\\b(if|loop|over|break|return|assert|in|emit|to|get|yield|with|fold|by)\\b"
+    },
+    "keyword-modifier": {
+      "name": "keyword.other.modifier.code",
+      "match": "\\b(private)\\b"
+    },
+    "keyword-type-check": {
+      "name": "keyword.operator.type.code",
+      "match": "\\b(is|not|and|or)\\b"
+    },
+    "domain-keyword": {
+      "name": "support.type.domain.code",
+      "match": "\\b(Z|R|N)\\b"
+    },
+    "language-variable": {
+      "name": "variable.language.code",
+      "match": "\\b(this|base)\\b"
+    },
+    "handler-definition": {
+      "comment": "Handler class name: ClassName before => or ClassName{...} =>",
+      "match": "^\\s*([A-Z][a-zA-Z0-9_]*)\\s*(?=\\{[^=]*\\}\\s*=>|=>\\s*\\{)",
+      "captures": {
+        "1": { "name": "entity.name.type.handler.code" }
+      }
+    },
+    "handler-arrow": {
+      "comment": "Arrow used only in handler definitions: ClassName => { body }",
+      "name": "keyword.operator.arrow.code",
+      "match": "=>(?=\\s*\\{)"
+    },
+    "type-name": {
+      "name": "entity.name.type.code",
+      "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+    },
+    "operator": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.code",
+          "match": "=(?!>)|[≠≤≥]"
+        },
+        {
+          "name": "keyword.operator.membership.code",
+          "match": "[∈∉]"
+        },
+        {
+          "name": "keyword.operator.comparison.code",
+          "match": "[<>]"
+        },
+        {
+          "name": "keyword.operator.arithmetic.code",
+          "match": "[+\\-*/]"
+        },
+        {
+          "name": "keyword.operator.union.code",
+          "match": "\\|"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        { "match": "\\{", "name": "punctuation.section.block.begin.code" },
+        { "match": "\\}", "name": "punctuation.section.block.end.code" },
+        { "match": "\\[", "name": "punctuation.section.array.begin.code" },
+        { "match": "\\]", "name": "punctuation.section.array.end.code" },
+        { "match": "\\(", "name": "punctuation.section.parens.begin.code" },
+        { "match": "\\)", "name": "punctuation.section.parens.end.code" },
+        { "match": ",", "name": "punctuation.separator.comma.code" },
+        { "match": ":", "name": "punctuation.separator.colon.code" },
+        { "match": "\\.", "name": "punctuation.accessor.dot.code" },
+        { "match": "\\?", "name": "punctuation.definition.optional.code" }
+      ]
+    },
+    "identifier": {
+      "name": "variable.other.code",
+      "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
+    }
+  }
+}

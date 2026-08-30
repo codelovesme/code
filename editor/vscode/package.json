@@ -1,0 +1,71 @@
+{
+  "name": "code-language",
+  "displayName": "Code Language",
+  "description": "Syntax coloring, diagnostics and formatting for the Code programming language (.code files) — driven by the code-lsp server built from the very code release you have.",
+  "publisher": "codelovesme",
+  "version": "1.1.4",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codelovesme/code"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Linters"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "code",
+        "aliases": ["Code", "code"],
+        "extensions": [
+          ".code"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "code",
+        "scopeName": "source.code",
+        "path": "./syntaxes/code.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Code Language",
+      "properties": {
+        "codelanguage.server.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to a `code-lsp` binary to serve `.code` files. Leave empty to use the server compiled from this repository and shipped inside the extension, which always matches the `code` version in this extension's description. As a last resort the extension looks for `code-lsp` on `PATH` and says so in a warning, because a server from another vintage would answer about a different language than the one these documents describe."
+        },
+        "codelanguage.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "markdownDescription": "Traces the communication between VS Code and the Code language server (the LSP messages themselves)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.5.0"
+  }
+}

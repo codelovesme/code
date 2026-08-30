@@ -80,10 +80,15 @@ fn every_published_artifact_shares_the_repository_version() {
             wrong.push(format!("{} is {found}", manifest.display()));
         }
     }
-    let npm = repo("crates/code-wasm/npm/package.json");
-    let found = json_version(&npm);
-    if found != expected {
-        wrong.push(format!("{} is {found}", npm.display()));
+    let json_manifests = [
+        repo("crates/code-wasm/npm/package.json"),
+        repo("editor/vscode/package.json"),
+    ];
+    for manifest in &json_manifests {
+        let found = json_version(manifest);
+        if found != expected {
+            wrong.push(format!("{} is {found}", manifest.display()));
+        }
     }
 
     assert!(
