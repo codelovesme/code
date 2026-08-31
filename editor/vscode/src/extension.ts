@@ -4,7 +4,7 @@
 // language server built from this repository (`crates/code-lsp`). Everything
 // heavy — parsing, formatting, semantic tokens — lives on that side and ships
 // with us because the packaging builds it from exactly this checkout (see
-// .github/workflows/publish_editor_vsix.yml), so the behaviour described by
+// .github/workflows/publish-editor-vsix.yml), so the behaviour described by
 // this extension always matches the engine it advertises.
 //
 // Transport notes: `code-lsp` speaks LSP over stdio (it takes no CLI args),

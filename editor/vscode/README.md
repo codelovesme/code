@@ -8,7 +8,7 @@ Everything heavy — parsing, diagnostics, semantic tokens, formatting — lives
 in [`code-lsp`](../../crates/code-lsp/README.md), the official language server
 built from **this repository**. This extension is deliberately thin: it finds
 and launches that binary and stays out of its way. Packaging
-(`../../.github/workflows/publish_editor_vsix.yml`, or run locally with
+(`../../.github/workflows/publish-editor-vsix.yml`, or run locally with
 `vsce package`) builds `code-lsp` from the checked-out commit it ships beside,
 so the editor integration you have matches the language rules the `code`
 binary of the same version enforces. There is no second implementation to get
