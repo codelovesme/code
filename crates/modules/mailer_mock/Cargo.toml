@@ -6,7 +6,7 @@
 
 [package]
 name = "mailer_mock"
-version = "1.1.6"
+version = "1.1.7"
 edition = "2021"
 description = "The `mailer_mock` native module for the Code programming language — a drop-in for `mailer` that captures messages in an in-memory outbox instead of sending them."
 license = "GPL-3.0"
