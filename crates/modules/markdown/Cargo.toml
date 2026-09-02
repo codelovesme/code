@@ -6,7 +6,7 @@
 
 [package]
 name = "markdown"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 description = "The `markdown` native module for the Code programming language — CommonMark + GFM to HTML, with a table of contents, link list, and split-by-heading."
 license = "GPL-3.0"

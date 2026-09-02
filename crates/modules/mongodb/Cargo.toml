@@ -6,7 +6,7 @@
 
 [package]
 name = "mongodb"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 description = "The `mongodb` native module for the Code programming language — documents in and out of a MongoDB collection, plus a key/value layer."
 license = "GPL-3.0"

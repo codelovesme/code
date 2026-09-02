@@ -7,7 +7,7 @@
 
 [package]
 name = "http_server"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 description = "The `http_server` native module for the Code programming language — accepts HTTP requests, pushes them to the program as particles, and answers what the program sends back. Written in Rust on code-native."
 license = "GPL-3.0"
