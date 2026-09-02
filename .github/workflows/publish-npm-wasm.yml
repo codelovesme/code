@@ -73,7 +73,26 @@ jobs:
           npm pack --dry-run
           node smoke-test.mjs
 
-      - name: Publish to npm
+      # Re-running a tag's pipeline must be a normal thing to do — the VSIX
+      # job failing on its own is reason enough, and it should not mean
+      # collecting a red X here for work that already succeeded. npm is
+      # immutable, so republishing a version is a 403 rather than a no-op;
+      # asking the registry first turns "already done" into what it is.
+      - name: Is this version already on npm?
+        id: published
         if: github.ref_type == 'tag'
+        working-directory: crates/code-wasm/npm
+        run: |
+          set -euo pipefail
+          v="${GITHUB_REF_NAME#v}"
+          if npm view "code-wasm@$v" version >/dev/null 2>&1; then
+            echo "code-wasm $v is already published — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        if: github.ref_type == 'tag' && steps.published.outputs.skip != 'true'
         working-directory: crates/code-wasm/npm
         run: npm publish --provenance

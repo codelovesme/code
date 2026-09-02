@@ -56,8 +56,32 @@ jobs:
         working-directory: crates/code-native
         run: cargo publish --dry-run
 
-      - name: Publish to crates.io
+      # Re-running a tag's pipeline must be a normal thing to do — the VSIX
+      # job failing on its own is reason enough, and it should not mean
+      # collecting a red X here for work that already succeeded. crates.io is
+      # immutable, so a second `cargo publish` of the same version is an
+      # error rather than a no-op; asking the index first turns "already
+      # done" into what it actually is.
+      #
+      # The sparse index rather than the API: it is the canonical source
+      # cargo itself reads, needs no User-Agent, and is CDN-cached. The path
+      # is the crate name's first two characters, then the next two.
+      - name: Is this version already on crates.io?
+        id: published
         if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          v="${GITHUB_REF_NAME#v}"
+          index="$(curl -sf https://index.crates.io/co/de/code-native || true)"
+          if grep -q "\"vers\":\"$v\"" <<<"$index"; then
+            echo "code-native $v is already published — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to crates.io
+        if: github.ref_type == 'tag' && steps.published.outputs.skip != 'true'
         working-directory: crates/code-native
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
