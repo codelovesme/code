@@ -104,8 +104,9 @@ Build on an older-glibc runner image for maximum compatibility.
 
 ### Install: `code install` — shipped 2026-08-23
 
-Subcommands: `code install <name-or-url> [--global]`, `code remove <name>`
-(alias `rm`), `code ls` (installed + available).
+Subcommands: `code install <name-or-url> [--global]`, `code uninstall <name>`,
+`code list` (installed + available). Renamed from `remove`/`rm`/`ls` in 1.3.0,
+so `cdlvsm`, `code` and `euglena` share one set.
 
 - Resolution: a first-party name resolves to **this binary's own release**;
   community modules install by full URL until a name-based community index
@@ -126,7 +127,7 @@ Subcommands: `code install <name-or-url> [--global]`, `code remove <name>`
   Its replacement is `module_install::FIRST_PARTY`, a compiled-in list that
   `tests/first_party_modules.rs` holds to `crates/modules/` *and* to the
   publish workflow's matrix — the drift that broke the index is now a failing
-  test. A wrong name is answered locally rather than by a 404, and `code ls`
+  test. A wrong name is answered locally rather than by a 404, and `code list`
   needs no network.
 - Storage: project-local `.code/modules/<name>/<version>/` plus
   `.code/lock.json` recording name, version, source URL, and sha256;
@@ -513,7 +514,7 @@ site could render, and there is no community index at all.
 
 A **Modules** page beside the Packages section: renders each module's
 `module.json` (handlers, versions, platforms, install command), sourced from
-the same data `code ls` reads. It doubles as the de-facto index.
+the same data `code list` reads. It doubles as the de-facto index.
 
 ## Phases
 

@@ -81,7 +81,7 @@ impl Manifest {
 /// 2026-08-29: one `v*` tag releases the CLI and every module together, so a
 /// name plus this binary's own version already *is* the address, and there is
 /// no "latest version" left for an index to answer. It also means a wrong
-/// name is answered locally and `code ls` needs no network at all.
+/// name is answered locally and `code list` needs no network at all.
 /// `tests/first_party_modules.rs` holds this list to `crates/modules/` and to
 /// the publish workflow's matrix, so a module cannot be added to one and
 /// forgotten in the others — which is exactly how the index it replaces came
@@ -539,10 +539,10 @@ pub fn install(
     })
 }
 
-/// Remove `name` from `cwd`'s lockfile and delete its installed bytes in
-/// both scopes. Missing pieces are reported, not errors — removal should be
-/// idempotent.
-pub fn remove(cwd: &Path, name: &str) -> Result<Vec<String>, String> {
+/// Uninstall `name` from `cwd`'s lockfile and delete its installed bytes in
+/// both scopes. Missing pieces are reported, not errors — uninstalling should
+/// be idempotent.
+pub fn uninstall(cwd: &Path, name: &str) -> Result<Vec<String>, String> {
     let mut notes = Vec::new();
 
     let mut removed_entry = false;

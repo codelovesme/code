@@ -107,9 +107,9 @@ fn main() -> ExitCode {
         #[cfg(feature = "install")]
         "install" => cmd_install(args.collect()),
         #[cfg(feature = "install")]
-        "remove" | "rm" => cmd_remove(args.collect()),
+        "uninstall" => cmd_uninstall(args.collect()),
         #[cfg(feature = "install")]
-        "ls" => cmd_ls(),
+        "list" => cmd_list(),
         "test" => cmd_test(args.collect()),
         "format" => cmd_format(args.collect()),
         // Global flags rather than subcommands, so they take no feature gate
@@ -144,7 +144,7 @@ fn help_for(command: &str) -> &'static str {
         "run" => "usage: code run [path]\n\nInterprets a file, or a project's main.code. Defaults to `.`. `link` \
 resolves relative to the file doing the linking.",
         "build" => BUILD_HELP,
-        "install" | "remove" | "rm" | "ls" | "module" => MODULE_HELP,
+        "install" | "uninstall" | "list" | "module" => MODULE_HELP,
         // Reachable as `code help init` too: someone who knows the command
         // exists but not where it lives should still find it.
         "init" => INIT_HELP,
@@ -165,8 +165,8 @@ commands:
   run [path]                     interpret a file, or a project's main.code
   build [path] [options]         compile one, into a build/ beside it
   install <name-or-url>          fetch a module into ./.code/modules
-  remove <name>                  delete it, and its lock entry
-  ls                             what is installed, and what is available
+  uninstall <name>               delete it, and its lock entry
+  list                           what is installed, and what is available
   test [path]...                 run the fixtures in tests/, or the ones named
   format [--check] <path>...     the canonical layout, rewritten in place
 
@@ -195,8 +195,8 @@ options:
 
 const MODULE_HELP: &str = "\
 usage: code install <name-or-url> [--global]
-       code remove <name>
-       code ls
+       code uninstall <name>
+       code list
 
 A first-party module installs by name, from this binary's own release — one
 tag carries the CLI and every module at one version. Anything else installs
@@ -785,15 +785,15 @@ fn cmd_install(mut args: Vec<String>) -> ExitCode {
     }
 }
 
-/// `code remove <name>` — drop the lock entry and delete the installed
-/// bytes in both scopes. Idempotent: removing what is not installed reports
-/// rather than errors.
+/// `code uninstall <name>` — drop the lock entry and delete the installed
+/// bytes in both scopes. Idempotent: uninstalling what is not installed
+/// reports rather than errors.
 #[cfg(feature = "install")]
-fn cmd_remove(args: Vec<String>) -> ExitCode {
+fn cmd_uninstall(args: Vec<String>) -> ExitCode {
     use code::module_install;
 
     if args.len() != 1 {
-        eprintln!("usage: code remove <name>");
+        eprintln!("usage: code uninstall <name>");
         return ExitCode::FAILURE;
     }
     let name = args.into_iter().next().expect("checked above");
@@ -804,7 +804,7 @@ fn cmd_remove(args: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match module_install::remove(&cwd, &name) {
+    match module_install::uninstall(&cwd, &name) {
         Ok(notes) => {
             for note in notes {
                 println!("{note}");
@@ -818,11 +818,11 @@ fn cmd_remove(args: Vec<String>) -> ExitCode {
     }
 }
 
-/// `code ls` — installed modules (from the nearest lockfile, with their
+/// `code list` — installed modules (from the nearest lockfile, with their
 /// bytes checked for presence) and available ones. The available list is the
 /// first-party modules at this binary's own version, so it needs no network.
 #[cfg(feature = "install")]
-fn cmd_ls() -> ExitCode {
+fn cmd_list() -> ExitCode {
     use code::module_install::{self, InstallScope};
 
     let cwd = match std::env::current_dir() {

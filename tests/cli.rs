@@ -248,3 +248,51 @@ fn test_takes_explicit_paths_and_says_when_there_is_no_tests_dir() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// The module commands are spelled `install` / `uninstall` / `list`, the same
+/// three words `cdlvsm` and `euglena` use. `remove`, `rm` and `ls` were the
+/// old spellings and are gone outright — a second working spelling is exactly
+/// what this rename was for, so they must fail as unknown commands rather
+/// than quietly keep working.
+#[cfg(feature = "install")]
+#[test]
+fn the_module_commands_are_install_uninstall_list() {
+    let dir = temp_dir("module-vocabulary");
+    assert!(code(&dir, &["init"]).status.success());
+
+    // `list` works with nothing installed, and needs no network to say so.
+    let out = code(&dir, &["list"]);
+    assert!(
+        out.status.success(),
+        "code list failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("installed:"));
+
+    // `uninstall` is idempotent, so it answers without a module installed.
+    assert!(code(&dir, &["uninstall", "terminal"]).status.success());
+
+    for old in ["ls", "rm", "remove"] {
+        let out = code(&dir, &[old]);
+        assert!(!out.status.success(), "`code {old}` should no longer run");
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("unknown command"),
+            "`code {old}` should be an unknown command: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    // The help names the surviving spellings and none of the old ones.
+    let out = code(&dir, &["--help"]);
+    let help = String::from_utf8_lossy(&out.stdout).to_string();
+    for word in ["install ", "uninstall ", "list "] {
+        assert!(help.contains(word), "help should mention `{word}`:\n{help}");
+    }
+    assert!(!help.contains("\n  ls "), "help still lists `ls`:\n{help}");
+    assert!(
+        !help.contains("\n  remove "),
+        "help still lists `remove`:\n{help}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}

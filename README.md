@@ -67,8 +67,8 @@ code test tests/parser.code                # ...or just the ones you name
 code format src/ program.code              # canonical layout, rewritten in place
 code format --check tests/                 # writes nothing; non-zero if any differ
 code install terminal                      # fetch a module into ./.code/modules
-code ls                                    # what's installed
-code remove terminal
+code list                                  # what's installed
+code uninstall terminal
 code --help                                # or `code help build`, `code build -h`
 code --version
 ```
