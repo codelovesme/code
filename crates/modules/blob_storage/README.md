@@ -8,7 +8,7 @@ link "blob_storage.so" as blobs
 
 emit Config {
     bucket = "${S3_BUCKET}", access_key = "${S3_ACCESS_KEY}", secret_key = "${S3_SECRET_KEY}",
-    endpoint = "${S3_ENDPOINT}"          -- omit for AWS
+    endpoint = "${S3_ENDPOINT}"          | omit for AWS
 } to blobs get c
 assert c.ok
 

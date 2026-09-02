@@ -1,14 +1,14 @@
--- The `terminal` module is the language's answer to "how do I say something
--- to a human?" — there is no core print statement, so a program emits a
--- particle to a linked module and that module writes it out. `Print` is the
--- plain case: it renders `value` and writes it, newline-terminated, straight
--- to stdout. Being a `.so`, it does this in C in both output modes (the
--- compiled binary dlopens the very same library the interpreter does), so the
--- bytes on the wire are identical either way.
---
--- The result is a particle carrying how many characters landed on the wire,
--- so a program can prove the print happened without the harness having to
--- capture and compare stdout.
+| The `terminal` module is the language's answer to "how do I say something
+| to a human?" — there is no core print statement, so a program emits a
+| particle to a linked module and that module writes it out. `Print` is the
+| plain case: it renders `value` and writes it, newline-terminated, straight
+| to stdout. Being a `.so`, it does this in C in both output modes (the
+| compiled binary dlopens the very same library the interpreter does), so the
+| bytes on the wire are identical either way.
+|
+| The result is a particle carrying how many characters landed on the wire,
+| so a program can prove the print happened without the harness having to
+| capture and compare stdout.
 link "native_modules/terminal.so" as term
 emit Print { value = "hello, terminal" } to term get r
 assert r = { _class = "TerminalResult", value = 15 }

@@ -1,7 +1,7 @@
--- `ClassName { fields }` is pure parser sugar: it desugars into an ordinary
--- object literal with a "_class" field prepended. No new value kind, no
--- schema, no validation — any uppercase-first name immediately followed by
--- `{` works, known or not.
+| `ClassName { fields }` is pure parser sugar: it desugars into an ordinary
+| object literal with a "_class" field prepended. No new value kind, no
+| schema, no validation — any uppercase-first name immediately followed by
+| `{` works, known or not.
 let log = Log { message = "hi", level = "Info" }
 assert log._class = "Log"
 assert log.message = "hi"

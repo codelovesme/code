@@ -1,9 +1,9 @@
--- Passthrough of a nested Object containing an Array — the module never
--- rebuilds this value, it hands back the same structure it was given
--- (`code_make_result`'s `value` argument, not a fresh one), so this checks
--- the deep-copy-at-the-boundary path (`code_native_copy_in`/`ffi_to_value`)
--- handles CODE_OBJECT and CODE_ARRAY nested inside each other, not just at
--- the top level.
+| Passthrough of a nested Object containing an Array — the module never
+| rebuilds this value, it hands back the same structure it was given
+| (`code_make_result`'s `value` argument, not a fresh one), so this checks
+| the deep-copy-at-the-boundary path (`code_native_copy_in`/`ffi_to_value`)
+| handles CODE_OBJECT and CODE_ARRAY nested inside each other, not just at
+| the top level.
 link "native_modules/test_math.so" as m
 emit Echo { value = { tag = "x", nums = [1, 2, 3] } } to m get n
 assert n = { _class = "EchoResult", value = { tag = "x", nums = [1, 2, 3] } }

@@ -1,5 +1,5 @@
--- A module that links another one. Paths resolve relative to the file doing
--- the linking, so this finds tests/modules/shared_values.code.
+| A module that links another one. Paths resolve relative to the file doing
+| the linking, so this finds tests/modules/shared_values.code.
 link "shared_values" as shared
 
 export let doubled = shared.n + shared.n

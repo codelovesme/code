@@ -1,6 +1,6 @@
--- `loop x over arr { }` runs the body once per element, in order, with `x`
--- bound to that element. Accumulating a result goes through `get` plus the
--- array `+` that already exists — see loop_collect.code.
+| `loop x over arr { }` runs the body once per element, in order, with `x`
+| bound to that element. Accumulating a result goes through `get` plus the
+| array `+` that already exists — see loop_collect.code.
 let items = [10, 20, 30]
 let doubled = []
 loop item over items {
@@ -8,7 +8,7 @@ loop item over items {
 }
 assert doubled = [20, 40, 60]
 
--- The body sees the element itself, whatever kind it is.
+| The body sees the element itself, whatever kind it is.
 let names = ["ada", "grace"]
 let joined = ""
 loop name over names {

@@ -15,7 +15,7 @@ emit Get { key = "notes/a.txt" } to blobs get g
 assert g.found
 assert g.data = "hello"
 
-emit List { prefix = "notes/" } to blobs get l   -- l.keys, l.count
+emit List { prefix = "notes/" } to blobs get l   | l.keys, l.count
 ```
 
 Every S3 field on `Config` (`endpoint`, `region`, `path_style`, `create`) is

@@ -1,6 +1,6 @@
--- Parse and Stringify are inverses: text -> value -> text is the identity
--- for any well-formed compact JSON, and value -> text -> value is the
--- identity for any value with no `_class` field.
+| Parse and Stringify are inverses: text -> value -> text is the identity
+| for any well-formed compact JSON, and value -> text -> value is the
+| identity for any value with no `_class` field.
 link "native_modules/json.so" as j
 
 let source = "{\"name\":\"ada\",\"wins\":[1,2,3],\"active\":true,\"note\":null}"
@@ -9,7 +9,7 @@ emit Parse { text = source } to j get parsed
 emit Stringify { value = parsed.value } to j get back
 assert back.value = source
 
--- And the other direction.
+| And the other direction.
 let value = { items = [{ id = 1 }, { id = 2 }], total = 2 }
 emit Stringify { value = value } to j get text
 emit Parse { text = text.value } to j get again

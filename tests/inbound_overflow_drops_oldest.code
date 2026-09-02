@@ -1,10 +1,10 @@
--- The queue is bounded (CODE_INBOUND_CAPACITY, 256): a module that pushes
--- faster than the program drains costs bounded memory, not unbounded. Past
--- capacity the *oldest* pending particle is dropped, so what survives is the
--- most recent 256 — here values 44 through 299 of the 300 pushed.
---
--- Asserting the loss rather than hiding it: silently dropping would be the
--- kind of thing that only shows up as a mystery much later.
+| The queue is bounded (CODE_INBOUND_CAPACITY, 256): a module that pushes
+| faster than the program drains costs bounded memory, not unbounded. Past
+| capacity the *oldest* pending particle is dropped, so what survives is the
+| most recent 256 — here values 44 through 299 of the 300 pushed.
+|
+| Asserting the loss rather than hiding it: silently dropping would be the
+| kind of thing that only shows up as a mystery much later.
 link "native_modules/test_events.so" as ev
 
 let seen = []

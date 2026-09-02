@@ -1,19 +1,19 @@
--- `Length`'s own operand-type rule: "value" must be an array or a string.
--- Anything else is core failing to do the work, and core answers with an
--- `Exception` like any other recipient — it does not end the frame that
--- emitted (2026-08-28; was `fail_emit_length_non_array.code`, which pinned
--- the old behaviour).
---
--- A field the particle does not carry is null, so `Length { }` is the same
--- particle as `Length { value = null }` and produces the same failure. There
--- is no separate "you didn't supply it" complaint: emitting is not filling in
--- a form.
---
--- The messages are asserted in full because these two cannot be reached from
--- `tests/message_parity.rs` any more — that file provokes failures at the top
--- level, where these now answer instead of failing. This fixture is what
--- keeps the two backends' wording identical for them, since it runs under
--- both.
+| `Length`'s own operand-type rule: "value" must be an array or a string.
+| Anything else is core failing to do the work, and core answers with an
+| `Exception` like any other recipient — it does not end the frame that
+| emitted (2026-08-28; was `fail_emit_length_non_array.code`, which pinned
+| the old behaviour).
+|
+| A field the particle does not carry is null, so `Length { }` is the same
+| particle as `Length { value = null }` and produces the same failure. There
+| is no separate "you didn't supply it" complaint: emitting is not filling in
+| a form.
+|
+| The messages are asserted in full because these two cannot be reached from
+| `tests/message_parity.rs` any more — that file provokes failures at the top
+| level, where these now answer instead of failing. This fixture is what
+| keeps the two backends' wording identical for them, since it runs under
+| both.
 emit Length { value = 5 } to core get n
 assert n ∈ Exception
 assert n.source = "core"
@@ -26,7 +26,7 @@ assert b ∈ Exception
 assert a.message = b.message
 assert a.message = "Length requires an array or string 'value', found a null"
 
--- The working path is untouched.
+| The working path is untouched.
 emit Length { value = [1, 2, 3] } to core get ok
 assert ok ∈ LengthResult
 assert ok.value = 3

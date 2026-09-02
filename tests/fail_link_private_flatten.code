@@ -1,5 +1,5 @@
--- A name the module didn't export is not defined here at all — unlike the
--- alias case, where reading it is a missing field and yields null.
+| A name the module didn't export is not defined here at all — unlike the
+| alias case, where reading it is a missing field and yields null.
 link "modules/shared_values"
 
 let x = hidden

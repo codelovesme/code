@@ -360,20 +360,20 @@ fn cmd_init(args: Vec<String>) -> ExitCode {
 
 /// Every construct here is one a reader will need on their first day, and
 /// nothing here needs a module — see `cmd_init`.
-const MAIN_TEMPLATE: &str = r#"-- A new Code program. `code run main.code` runs this as written.
---
--- There is no print statement: writing to a terminal is a module's job, not
--- the language's. `code install terminal` gets you one.
+const MAIN_TEMPLATE: &str = r#"| A new Code program. `code run main.code` runs this as written.
+|
+| There is no print statement: writing to a terminal is a module's job, not
+| the language's. `code install terminal` gets you one.
 
 let name = "world"
 let scores = [88, 94, 71]
 
--- `emit` sends a particle to a recipient. `core` is compiled in, so this
--- works with nothing installed.
+| `emit` sends a particle to a recipient. `core` is compiled in, so this
+| works with nothing installed.
 emit Length { value = scores } to core get n
 assert n.value = 3
 
--- The only loop form there is. `get` declares a result that survives it.
+| The only loop form there is. `get` declares a result that survives it.
 loop score over scores get best = 0 {
     if score > best {
         best = score
@@ -381,8 +381,8 @@ loop score over scores get best = 0 {
 }
 assert best = 94
 
--- Handlers are how a program answers its own particles. There are no
--- functions.
+| Handlers are how a program answers its own particles. There are no
+| functions.
 Greet { who } => {
     return Greeting { text = "hello, $who" }
 }

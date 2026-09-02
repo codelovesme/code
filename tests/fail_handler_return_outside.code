@@ -1,2 +1,2 @@
--- `return` only means something inside a handler body.
+| `return` only means something inside a handler body.
 return Ack {}

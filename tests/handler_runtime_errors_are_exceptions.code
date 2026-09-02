@@ -1,12 +1,12 @@
--- `assert` is not a special case. Every runtime failure inside a handler body
--- ends that frame with an `Exception`, because they all travel the same
--- channel: runtime.c's helpers set `code_failed`, codegen's `check_failed`
--- branches to the frame's exit, and the interpreter converts the `Err` at the
--- same boundary. Phase 5 of docs/todo/errors-as-particles.md turned out to be
--- the same change as phase 4 rather than a further one.
---
--- One per failing helper family, since each is a separate check site:
--- `code_field`, `code_core_dispatch`, `code_compare`, `code_div`, `code_add`.
+| `assert` is not a special case. Every runtime failure inside a handler body
+| ends that frame with an `Exception`, because they all travel the same
+| channel: runtime.c's helpers set `code_failed`, codegen's `check_failed`
+| branches to the frame's exit, and the interpreter converts the `Err` at the
+| same boundary. Phase 5 of docs/todo/errors-as-particles.md turned out to be
+| the same change as phase 4 rather than a further one.
+|
+| One per failing helper family, since each is a separate check site:
+| `code_field`, `code_core_dispatch`, `code_compare`, `code_div`, `code_add`.
 Field { k } => {
     return R { v = k.name }
 }
@@ -40,7 +40,7 @@ assert d.message = "division by zero"
 emit Add { k = true } to this get e
 assert e ∈ Exception
 
--- Each one answered; none of them ended the program.
+| Each one answered; none of them ended the program.
 emit Divide { k = 4 } to this get ok
 assert ok ∈ R
 assert ok.v = 0.25

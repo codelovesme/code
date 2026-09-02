@@ -1,5 +1,5 @@
--- A handler body is ordinary code: it can emit to core and to a linked
--- native module, not just to `this`.
+| A handler body is ordinary code: it can emit to core and to a linked
+| native module, not just to `this`.
 link "native_modules/math.so" as m
 
 Total { values } => {

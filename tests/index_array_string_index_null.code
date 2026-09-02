@@ -1,5 +1,5 @@
--- A non-Number index against an array is null, not an error — even one
--- that happens to look like a valid array position as a string.
+| A non-Number index against an array is null, not an error — even one
+| that happens to look like a valid array position as a string.
 let a = [10, 20, 30]
 assert a["0"] = null
 assert a["1"] = null

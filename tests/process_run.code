@@ -1,8 +1,8 @@
--- `process` — run another program. `Run` is one-shot with captured output;
--- `Spawn`/`Status`/`Wait`/`Kill`/`List` track a long-running child.
+| `process` — run another program. `Run` is one-shot with captured output;
+| `Spawn`/`Status`/`Wait`/`Kill`/`List` track a long-running child.
 link "native_modules/process.so" as proc
 
--- Run: to completion, output captured, blocks until the child exits.
+| Run: to completion, output captured, blocks until the child exits.
 emit Run { command = "echo", args = ["hello", "world"] } to proc get r
 assert r ∈ RunResult
 assert r.code = 0
@@ -10,12 +10,12 @@ assert r.success
 assert r.stdout = "hello world\n"
 assert r.stderr = ""
 
--- A non-zero exit is a result, not an error.
+| A non-zero exit is a result, not an error.
 emit Run { command = "sh", args = ["-c", "exit 3"] } to proc get bad
 assert bad.code = 3
 assert bad.success = false
 
--- stdin, env, and cwd all pass through.
+| stdin, env, and cwd all pass through.
 emit Run { command = "cat", stdin = "piped" } to proc get catted
 assert catted.stdout = "piped"
 
@@ -25,14 +25,14 @@ assert e.stdout = "seen\n"
 emit Run { command = "pwd", cwd = "/tmp" } to proc get p
 assert p.stdout = "/tmp\n"
 
--- A command that isn't there, or a missing `command`, is an Exception.
+| A command that isn't there, or a missing `command`, is an Exception.
 emit Run { command = "no-such-binary-xyzzy" } to proc get missing
 assert missing ∈ Exception
 assert missing.source = "process"
 emit Run {} to proc get nocmd
 assert nocmd ∈ Exception
 
--- Spawn: tracked by a caller-chosen id.
+| Spawn: tracked by a caller-chosen id.
 emit Spawn { id = "sleeper", command = "sleep", args = ["5"] } to proc get s
 assert s ∈ SpawnResult
 assert s.id = "sleeper"
@@ -42,7 +42,7 @@ emit Status { id = "sleeper" } to proc get st
 assert st.alive
 assert st.status = "running"
 
--- A second Spawn on a still-running id is refused.
+| A second Spawn on a still-running id is refused.
 emit Spawn { id = "sleeper", command = "sleep", args = ["1"] } to proc get dup
 assert dup ∈ Exception
 
@@ -52,23 +52,23 @@ assert l.processes = [
     { _class = "ProcessEntry", id = "sleeper", command = "sleep", alive = true, status = "running" }
 ]
 
--- Kill is idempotent: killed = false once it is already gone.
+| Kill is idempotent: killed = false once it is already gone.
 emit Kill { id = "sleeper" } to proc get k1
 assert k1.killed
 emit Kill { id = "sleeper" } to proc get k2
 assert k2.killed = false
 
--- An unknown id is an Exception.
+| An unknown id is an Exception.
 emit Status { id = "ghost" } to proc get ghost
 assert ghost ∈ Exception
 
--- Wait blocks until the child is done and reports its code.
+| Wait blocks until the child is done and reports its code.
 emit Spawn { id = "quick", command = "true" } to proc get q
 emit Wait { id = "quick" } to proc get w
 assert w.alive = false
 assert w.code = 0
 assert w.status = "exited"
 
--- A class this module does not handle is null.
+| A class this module does not handle is null.
 emit Nice {} to proc get u
 assert u = null

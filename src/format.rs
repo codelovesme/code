@@ -5,7 +5,7 @@
 //! drops comments entirely, the parser rewrites `n += 1` into `n = n + 1` and
 //! `Timestamp {}` into an object with a `_class` field, and a `Number` is an
 //! `f64` rather than the digits someone typed. Printing that back out would
-//! delete every `--` comment in `tests/`, which is most of the language's
+//! delete every `|` comment in `tests/`, which is most of the language's
 //! documentation. Teaching the AST to carry comments is the "heavy and
 //! dependent everywhere" change ruled out for spans.
 //!
@@ -218,8 +218,8 @@ impl Formatter<'_> {
     }
 
     /// Walks the text between two tokens. By construction it holds nothing
-    /// but whitespace, `;`, and `--` comments: anything else would have
-    /// become a token, and a `--` inside a string literal is inside that
+    /// but whitespace, `;`, and `|` comments: anything else would have
+    /// become a token, and a `|` inside a string literal is inside that
     /// token rather than out here.
     fn gap(&mut self, start: usize, end: usize) {
         let mut i = start;
@@ -231,7 +231,7 @@ impl Formatter<'_> {
                 // left a blank line — or ended a comment line.
                 self.finish_line();
                 i += 1;
-            } else if c == '-' && self.chars.get(i + 1) == Some(&'-') {
+            } else if c == '|' {
                 let from = i;
                 while i < end && i < self.chars.len() && self.chars[i] != '\n' {
                     i += 1;

@@ -1,7 +1,7 @@
--- `Double` multiplies its Number by two — the numeric half of `test_math`
--- inherited by the real `math` module under the split proposal. Floats go
--- through unchanged: the result is whatever IEEE 754 says, no formatting
--- policy invented along the way.
+| `Double` multiplies its Number by two — the numeric half of `test_math`
+| inherited by the real `math` module under the split proposal. Floats go
+| through unchanged: the result is whatever IEEE 754 says, no formatting
+| policy invented along the way.
 link "native_modules/math.so" as m
 emit Double { value = 21 } to m get n
 assert n = { _class = "DoubleResult", value = 42 }

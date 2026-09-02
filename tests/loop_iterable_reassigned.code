@@ -1,6 +1,6 @@
--- The iterable is a snapshot taken before the first iteration. Reassigning
--- the binding it came from, from inside the body, must not disturb the
--- iteration in progress — the loop keeps the original array alive on its own.
+| The iterable is a snapshot taken before the first iteration. Reassigning
+| the binding it came from, from inside the body, must not disturb the
+| iteration in progress — the loop keeps the original array alive on its own.
 let xs = [1, 2, 3]
 let seen = []
 loop x over xs {
@@ -10,7 +10,7 @@ loop x over xs {
 assert seen = [1, 2, 3]
 assert xs = []
 
--- Growing it mid-loop doesn't extend the iteration either.
+| Growing it mid-loop doesn't extend the iteration either.
 let ys = [1, 2]
 let count = 0
 loop y over ys {

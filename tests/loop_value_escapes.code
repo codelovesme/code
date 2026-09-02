@@ -1,7 +1,7 @@
--- A value built inside a loop body can outlive the iteration that built it,
--- by being copied into a binding from an enclosing scope. The body's storage
--- is therefore NOT reusable as scratch across iterations — each iteration's
--- array has to stay intact for as long as something still refers to it.
+| A value built inside a loop body can outlive the iteration that built it,
+| by being copied into a binding from an enclosing scope. The body's storage
+| is therefore NOT reusable as scratch across iterations — each iteration's
+| array has to stay intact for as long as something still refers to it.
 let saved = []
 let seen = []
 loop x over [1, 2, 3] {
@@ -14,8 +14,8 @@ loop x over [1, 2, 3] {
 assert saved = [1, 10]
 assert seen = [[1, 10], [2, 20], [3, 30]]
 
--- Same thing one level deeper: the escaping value is nested inside another
--- value that also escapes.
+| Same thing one level deeper: the escaping value is nested inside another
+| value that also escapes.
 let boxes = []
 loop x over ["a", "b"] {
     let inner = { k = x }

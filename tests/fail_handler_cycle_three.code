@@ -1,4 +1,4 @@
--- A longer loop. Any cycle at all is rejected, not only the direct kind.
+| A longer loop. Any cycle at all is rejected, not only the direct kind.
 A {} => {
     emit B to this get r
     return Ack {}

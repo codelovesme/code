@@ -1,5 +1,5 @@
--- A linked module may link others; those resolve relative to *it*, not to
--- this file.
+| A linked module may link others; those resolve relative to *it*, not to
+| this file.
 link "modules/uses_shared" as m
 
 assert m.doubled = 84

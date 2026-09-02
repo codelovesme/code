@@ -1,12 +1,12 @@
--- A `.a` static module speaking first. Until 2026-08-28 this was impossible,
--- and not by decision: a `.a` links straight into the host binary and so has
--- no `dlopen` handle — and the handle was where the inbound queue lived.
--- `code_static_open` allocates one for exactly this, so the two module
--- formats now differ only in how they are *called*, not in what they can say.
---
--- `buildonly_` because there is no `dlopen` for a static archive: this must
--- fail under `code run` and succeed under `code build`, like every other
--- `.a` fixture.
+| A `.a` static module speaking first. Until 2026-08-28 this was impossible,
+| and not by decision: a `.a` links straight into the host binary and so has
+| no `dlopen` handle — and the handle was where the inbound queue lived.
+| `code_static_open` allocates one for exactly this, so the two module
+| formats now differ only in how they are *called*, not in what they can say.
+|
+| `buildonly_` because there is no `dlopen` for a static archive: this must
+| fail under `code run` and succeed under `code build`, like every other
+| `.a` fixture.
 link "native_modules/test_events_static.a" as ev
 
 let seen = []
@@ -19,13 +19,13 @@ Tick { value } => {
 emit Start { value = 3 } to ev get started
 assert started = { _class = "StartedResult", value = 3 }
 
--- Queued particles are dispatched after the top-level statement that caused
--- them, in the order pushed — the same rule a `.so` follows, reached through
--- the same drain loop.
+| Queued particles are dispatched after the top-level statement that caused
+| them, in the order pushed — the same rule a `.so` follows, reached through
+| the same drain loop.
 assert seen = [0, 1, 2]
 
--- And a second round still works, so the queue is reusable rather than a
--- one-shot handed over at link time.
+| And a second round still works, so the queue is reusable rather than a
+| one-shot handed over at link time.
 emit Start { value = 2 } to ev get again
 assert again.value = 2
 assert seen = [0, 1, 2, 0, 1]

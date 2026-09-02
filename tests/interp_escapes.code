@@ -1,13 +1,13 @@
--- Escapes still work, and `\$` is the way to write a literal dollar sign.
--- It has to exist: a bare `$` must be followed by an identifier, so
--- `"costs $5"` would otherwise be unwritable rather than merely awkward.
+| Escapes still work, and `\$` is the way to write a literal dollar sign.
+| It has to exist: a bare `$` must be followed by an identifier, so
+| `"costs $5"` would otherwise be unwritable rather than merely awkward.
 let price = 5
 
 assert "costs \$$price" = "costs \$5"
 assert "\$" = "\$"
 assert "a\tb\nc" = "a\tb\nc"
 
--- An escape inside a string that also interpolates: the literal segments
--- keep their own escape handling, unchanged.
+| An escape inside a string that also interpolates: the literal segments
+| keep their own escape handling, unchanged.
 let who = "ada"
 assert "\"$who\"" = "\"ada\""

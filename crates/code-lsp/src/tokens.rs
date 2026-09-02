@@ -5,7 +5,7 @@
 //! span, so classifying is just walking `Lexed` and labeling each token by
 //! kind. The lexer strips comments outright (they produce no token at all),
 //! so those are recovered separately by scanning the gaps `Lexed` leaves
-//! between tokens for a `--` run — the same gap a `.code` formatter would
+//! between tokens for a `|` run — the same gap a `.code` formatter would
 //! need to preserve them (see `docs/todo/formatter.md`'s `Lexed::ends`
 //! section, which this crate's addition of that field also serves).
 //!
@@ -133,9 +133,9 @@ pub fn semantic_tokens(src: &str) -> Vec<SemToken> {
             continue;
         }
 
-        // Not the start of a real token, so we're in a gap: either a `--`
+        // Not the start of a real token, so we're in a gap: either a `|`
         // comment or plain whitespace between tokens.
-        if chars[idx] == '-' && chars.get(idx + 1) == Some(&'-') {
+        if chars[idx] == '|' {
             let (start_line, start_col, start) = (line, col, idx);
             while idx < chars.len() && chars[idx] != '\n' {
                 step(chars[idx], &mut line, &mut col);
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn classifies_comment_and_string() {
-        let got = kinds("-- a comment");
+        let got = kinds("| a comment");
         assert_eq!(got[0].0, "comment");
         let got = kinds("let a = \"hello\"");
         assert!(got.iter().any(|(k, t)| *k == "string" && t == "\"hello\""));

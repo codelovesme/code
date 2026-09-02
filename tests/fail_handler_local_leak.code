@@ -1,4 +1,4 @@
--- A handler body's locals are its own; the particle's fields are too.
+| A handler body's locals are its own; the particle's fields are too.
 Greet { who } => {
     let inside = 1
     return Ack {}

@@ -1,4 +1,4 @@
--- redeclaring with 'let' in the SAME scope is allowed -- just rebinds
+| redeclaring with 'let' in the SAME scope is allowed -- just rebinds
 let x = 1
 let x = 2
 assert x = 2

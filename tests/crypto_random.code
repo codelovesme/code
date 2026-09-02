@@ -1,7 +1,7 @@
--- `crypto.RandomCode { length? }` → `RandomCodeResult { code }`: a random
--- [A-Za-z0-9] string. The language has no string length or character
--- iteration, so this asserts what it can — a non-empty string, and that
--- two draws differ.
+| `crypto.RandomCode { length? }` → `RandomCodeResult { code }`: a random
+| [A-Za-z0-9] string. The language has no string length or character
+| iteration, so this asserts what it can — a non-empty string, and that
+| two draws differ.
 link "native_modules/crypto.so" as c
 
 emit RandomCode {} to c get r
@@ -11,14 +11,14 @@ assert r.code ≠ ""
 emit RandomCode {} to c get r2
 assert r.code ≠ r2.code
 
--- A length is accepted; 0 clamps up to 1 rather than giving "".
+| A length is accepted; 0 clamps up to 1 rather than giving "".
 emit RandomCode { length = 12 } to c get twelve
 assert twelve.code ≠ ""
 
 emit RandomCode { length = 0 } to c get zero
 assert zero.code ≠ ""
 
--- A fractional or negative length is refused, not truncated.
+| A fractional or negative length is refused, not truncated.
 emit RandomCode { length = 3.5 } to c get frac
 assert frac ∈ Exception
 

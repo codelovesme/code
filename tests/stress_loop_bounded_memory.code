@@ -1,10 +1,10 @@
--- A loop must run in memory bounded by the *program*, not by the number
--- of iterations. Before values were refcounted this segfaulted: every
--- alloca in the body ran once per iteration and LLVM reclaims none of
--- them until main returns, so ~1KB of stack per iteration ran an 8MB
--- stack out at roughly 8k iterations. The body is deliberately
--- alloca-heavy so this stays fast to run while still demanding ~16MB
--- of stack the old way.
+| A loop must run in memory bounded by the *program*, not by the number
+| of iterations. Before values were refcounted this segfaulted: every
+| alloca in the body ran once per iteration and LLVM reclaims none of
+| them until main returns, so ~1KB of stack per iteration ran an 8MB
+| stack out at roughly 8k iterations. The body is deliberately
+| alloca-heavy so this stays fast to run while still demanding ~16MB
+| of stack the old way.
 let a = [1]
 a = a + a
 a = a + a

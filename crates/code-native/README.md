@@ -56,7 +56,7 @@ cargo build --release
 ```
 
 ```
--- my_script.code
+| my_script.code
 link "libmymodule.so" as m
 emit Double { _class = "Double", value = 21 } to m get result
 assert result.value = 42

@@ -1,4 +1,4 @@
--- `continue` skips the rest of the iteration and starts the next one.
+| `continue` skips the rest of the iteration and starts the next one.
 loop x over [1, 2, 3, 4] get kept = [] {
     if x = 2 {
         continue
@@ -7,7 +7,7 @@ loop x over [1, 2, 3, 4] get kept = [] {
 }
 assert kept = [1, 3, 4]
 
--- Statements after a `continue` never run.
+| Statements after a `continue` never run.
 loop x over [1, 2] get seen = 0 {
     seen = seen + 1
     continue
@@ -15,7 +15,7 @@ loop x over [1, 2] get seen = 0 {
 }
 assert seen = 2
 
--- In a bare `loop { }`, `continue` re-enters the body immediately.
+| In a bare `loop { }`, `continue` re-enters the body immediately.
 let i = 0
 let reached = 0
 loop {
@@ -31,7 +31,7 @@ loop {
 assert i = 4
 assert reached = 3
 
--- `continue` affects only the innermost loop.
+| `continue` affects only the innermost loop.
 loop x over [1, 2] get rows = [] {
     loop y over [1, 2, 3] get cols = [] {
         if y = 2 {

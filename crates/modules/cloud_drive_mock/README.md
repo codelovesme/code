@@ -8,7 +8,7 @@ link "cloud_drive_mock.so" as drive
 
 emit Config { client_id = "id", client_secret = "shh" } to drive get c
 
-emit ExchangeCode { code = "user-1" } to drive get t     -- t.account_email = "user-1@drive.test"
+emit ExchangeCode { code = "user-1" } to drive get t     | t.account_email = "user-1@drive.test"
 
 emit UploadFile { access_token = t.access_token, file_name = "a.txt", data = "hi" } to drive get f
 emit DownloadFile { access_token = t.access_token, file_id = f.file_id } to drive get d

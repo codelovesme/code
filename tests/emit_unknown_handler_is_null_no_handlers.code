@@ -1,6 +1,6 @@
--- The same rule in a program that defines no handler at all. Worth its own
--- fixture because the compiled backend has no dispatch chain to fall
--- through in this case — there is nothing to generate — so the null has to
--- come from somewhere else.
+| The same rule in a program that defines no handler at all. Worth its own
+| fixture because the compiled backend has no dispatch chain to fall
+| through in this case — there is nothing to generate — so the null has to
+| come from somewhere else.
 emit Anything { x = 1 } to this get r
 assert r = null

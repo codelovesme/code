@@ -1,5 +1,5 @@
--- A module. Nothing here is visible to a linking file unless it says
--- `export` — private is the default, the opposite of the old language.
+| A module. Nothing here is visible to a linking file unless it says
+| `export` — private is the default, the opposite of the old language.
 export let greeting = "hello"
 export let n = 42
 

@@ -1,19 +1,19 @@
--- Ordering is Number-only: `<` `>` `≤` `≥` accept nothing else, strings
--- included (see fail_string_ordering.code).
+| Ordering is Number-only: `<` `>` `≤` `≥` accept nothing else, strings
+| included (see fail_string_ordering.code).
 let a = 1 < 2
 let b = 2 ≤ 2
 let c = 3 > 5
 let d = 3 ≥ 5
 
--- Equality is the opposite: `=` and `≠` are well-defined for *any* two
--- values, so mismatched kinds are simply unequal rather than an error.
+| Equality is the opposite: `=` and `≠` are well-defined for *any* two
+| values, so mismatched kinds are simply unequal rather than an error.
 let e = 1 = 1
 let f = 1 = "1"
 let g = [1, 2] = [1, 2]
 let h = { x = 1 } = { x = 1 }
 
--- `=` inside an expression is equality; the `=` that follows a name at the
--- start of a statement is the assignment separator. Both appear here.
+| `=` inside an expression is equality; the `=` that follows a name at the
+| start of a statement is the assignment separator. Both appear here.
 assert a
 assert b
 assert not c

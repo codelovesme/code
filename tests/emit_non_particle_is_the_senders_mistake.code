@@ -1,15 +1,15 @@
--- Emitting something that is not a particle is a mistake by the *sender*,
--- and it reads the same wherever it was pointed. The question is asked once,
--- by `emit` itself, before the target is even looked at.
---
--- It was asked five times before 2026-08-28 — twice by `core`, once by `to
--- this`, in two different wordings — and not at all on the module path,
--- which could not ask: a module reads `_class`, finds none, and cannot tell
--- "not a particle" from "a class I don't handle", so `emit 5 to math` did
--- nothing at all while `emit 5 to this` failed.
---
--- The failure is a value like any other: the frame ends and answers with an
--- `Exception`. Nothing is terminated.
+| Emitting something that is not a particle is a mistake by the *sender*,
+| and it reads the same wherever it was pointed. The question is asked once,
+| by `emit` itself, before the target is even looked at.
+|
+| It was asked five times before 2026-08-28 — twice by `core`, once by `to
+| this`, in two different wordings — and not at all on the module path,
+| which could not ask: a module reads `_class`, finds none, and cannot tell
+| "not a particle" from "a class I don't handle", so `emit 5 to math` did
+| nothing at all while `emit 5 to this` failed.
+|
+| The failure is a value like any other: the frame ends and answers with an
+| `Exception`. Nothing is terminated.
 link "native_modules/math.so" as math
 
 Viathis {} => {
@@ -33,13 +33,13 @@ assert a ∈ Exception
 assert b ∈ Exception
 assert c ∈ Exception
 
--- One question, so one answer: the same message from all three.
+| One question, so one answer: the same message from all three.
 assert a.message = b.message
 assert b.message = c.message
 assert a.message = "emit requires a particle — an object with a '_class' field — found a number"
 
--- Not just numbers: a plain object is not a particle either, since there is
--- no `_class` to dispatch on.
+| Not just numbers: a plain object is not a particle either, since there is
+| no `_class` to dispatch on.
 Plain {} => {
     emit { value = 1 } to math get r
     return Reached {}
@@ -48,7 +48,7 @@ emit Plain {} to this get d
 assert d ∈ Exception
 assert d.message = "emit requires a particle — an object with a '_class' field — found an object"
 
--- And this is a different question from "nobody handles that class", which
--- is still null rather than a failure — sending a particle is not a demand.
+| And this is a different question from "nobody handles that class", which
+| is still null rather than a failure — sending a particle is not a demand.
 emit Nobody {} to math get e
 assert e = null

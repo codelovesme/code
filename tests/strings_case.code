@@ -1,7 +1,7 @@
--- `Upper`/`Lower` convert ASCII case. Non-letter bytes pass through
--- untouched, and the conversion is explicitly ASCII-only: the language has
--- no Unicode story yet, so the module says what it does instead of
--- pretending.
+| `Upper`/`Lower` convert ASCII case. Non-letter bytes pass through
+| untouched, and the conversion is explicitly ASCII-only: the language has
+| no Unicode story yet, so the module says what it does instead of
+| pretending.
 link "native_modules/strings.so" as s
 emit Upper { value = "mixed CASE 123" } to s get u
 assert u = { _class = "UpperResult", value = "MIXED CASE 123" }

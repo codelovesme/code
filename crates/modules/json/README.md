@@ -48,9 +48,9 @@ carrying, not the plumbing:
 
 ```code
 Handle { id } => {
-    -- `received` here is `{ _class = "Handle", id = … }`
+    | `received` here is `{ _class = "Handle", id = … }`
     emit Stringify { value = received } to json get s
-    -- s.value is `{"id":…}`, no _class
+    | s.value is `{"id":…}`, no _class
 }
 ```
 

@@ -1,7 +1,7 @@
--- Several interpolations in one string: adjacent (`$a$b`, no literal
--- between them), leading, and trailing. The name runs to the first
--- character that can't continue an identifier, which is what lets
--- `$user.` and `$n items` end where a reader expects.
+| Several interpolations in one string: adjacent (`$a$b`, no literal
+| between them), leading, and trailing. The name runs to the first
+| character that can't continue an identifier, which is what lets
+| `$user.` and `$n items` end where a reader expects.
 let a = "one"
 let b = "two"
 let user = "ada"
@@ -13,8 +13,8 @@ assert "hello $user." = "hello ada."
 assert "$n items left" = "3 items left"
 assert "trailing $a" = "trailing one"
 
--- `.` and `[` do not chain inside a string: the name stops at `$user`,
--- and the rest is literal text. Interpolation takes a bare variable, not
--- an expression.
+| `.` and `[` do not chain inside a string: the name stops at `$user`,
+| and the rest is literal text. Interpolation takes a bare variable, not
+| an expression.
 let box = { lid = "shut" }
 assert "$box.lid" = "{\"lid\":\"shut\"}.lid"

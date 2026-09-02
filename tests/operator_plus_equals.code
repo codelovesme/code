@@ -1,5 +1,5 @@
--- `name += expr` is exactly `name = name + expr`, so it means whatever `+`
--- means for those two values.
+| `name += expr` is exactly `name = name + expr`, so it means whatever `+`
+| means for those two values.
 let n = 1
 n += 2
 assert n = 3
@@ -8,7 +8,7 @@ let s = "a"
 s += "b"
 assert s = "ab"
 
--- Arrays: concatenating and appending both work, same as `+`.
+| Arrays: concatenating and appending both work, same as `+`.
 let xs = [1]
 xs += [2]
 assert xs = [1, 2]
@@ -17,20 +17,20 @@ assert xs = [1, 2, 3]
 xs += [[4]]
 assert xs = [1, 2, 3, [4]]
 
--- The entire right-hand side is the operand, not just its first term.
+| The entire right-hand side is the operand, not just its first term.
 let m = 10
 m += 2 * 3
 assert m = 16
 
--- It reassigns an existing binding, so it reaches outward from a block
--- exactly like a bare `name = ...` does.
+| It reassigns an existing binding, so it reaches outward from a block
+| exactly like a bare `name = ...` does.
 let outer = [1]
 if true {
     outer += 2
 }
 assert outer = [1, 2]
 
--- Including a loop's `get` accumulator, which is an ordinary binding.
+| Including a loop's `get` accumulator, which is an ordinary binding.
 loop x over [1, 2, 3] get out = [] {
     out += x
 }

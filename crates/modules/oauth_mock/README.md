@@ -15,7 +15,7 @@ emit Config {
 } to oauth get c
 
 emit AuthUrl { state = "csrf" } to oauth get a
--- a.url points at auth_url — typically a local mock-provider page
+| a.url points at auth_url — typically a local mock-provider page
 
 emit ExchangeCode { code = "the-code" } to oauth get id
 ```

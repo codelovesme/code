@@ -12,11 +12,11 @@ assert c.ok
 assert c.dirty = false
 
 emit Add { pattern = "." } to git get _
-emit Commit { message = "first" } to git get cm     -- cm ∈ CommitResult
+emit Commit { message = "first" } to git get cm     | cm ∈ CommitResult
 emit Status { } to git get s
 assert s.clean
 
-emit Push { } to git get p                          -- p ∈ PushResult, no network
+emit Push { } to git get p                          | p ∈ PushResult, no network
 ```
 
 ## The model

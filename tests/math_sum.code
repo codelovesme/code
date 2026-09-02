@@ -1,6 +1,6 @@
--- `Sum` reduces an array of Numbers to their total. An empty array sums to
--- 0 — the identity of the operation — and floats accumulate in the order
--- written, so the result is whatever IEEE 754 says.
+| `Sum` reduces an array of Numbers to their total. An empty array sums to
+| 0 — the identity of the operation — and floats accumulate in the order
+| written, so the result is whatever IEEE 754 says.
 link "native_modules/math.so" as m
 emit Sum { value = [1, 2, 3, 4, 5] } to m get n
 assert n = { _class = "SumResult", value = 15 }

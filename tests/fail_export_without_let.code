@@ -1,4 +1,4 @@
--- `export` only ever prefixes a `let` — it marks a declaration, and `let` is
--- the only way to declare a name.
+| `export` only ever prefixes a `let` — it marks a declaration, and `let` is
+| the only way to declare a name.
 let x = 1
 export x = 2

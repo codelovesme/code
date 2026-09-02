@@ -1,5 +1,5 @@
--- `break` exits only the innermost loop — the outer one keeps going, so
--- this collects exactly one element per outer iteration.
+| `break` exits only the innermost loop — the outer one keeps going, so
+| this collects exactly one element per outer iteration.
 let seen = []
 loop a over [1, 2, 3] {
     loop b over [10, 20, 30] {

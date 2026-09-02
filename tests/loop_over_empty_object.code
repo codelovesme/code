@@ -1,4 +1,4 @@
--- An empty object iterates zero times, same as an empty array.
+| An empty object iterates zero times, same as an empty array.
 let touched = false
 loop k, v over {} {
     touched = true

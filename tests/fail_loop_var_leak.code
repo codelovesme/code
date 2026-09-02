@@ -1,5 +1,5 @@
--- The loop variable is scoped to the body, like an `if`-local `let` — not
--- reachable after the loop ends.
+| The loop variable is scoped to the body, like an `if`-local `let` — not
+| reachable after the loop ends.
 loop x over [1, 2] {
     assert x > 0
 }

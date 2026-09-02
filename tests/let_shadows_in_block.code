@@ -1,7 +1,7 @@
--- 'let' always creates a new binding local to the current scope, even if
--- a same-named variable already exists outside -- this is the capability
--- bare assignment couldn't offer (it was always forced to mutate the
--- outer name if one existed)
+| 'let' always creates a new binding local to the current scope, even if
+| a same-named variable already exists outside -- this is the capability
+| bare assignment couldn't offer (it was always forced to mutate the
+| outer name if one existed)
 let x = 1
 {
     let x = 2

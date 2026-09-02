@@ -22,7 +22,7 @@ Config { base_dir }        → ConfigResult { ok, base_dir }
 Store  { key, value }       → StoreResult  { key }
 Fetch  { key }              → FetchResult  { exists, key, value }
 Delete { key }              → DeleteResult { key, existed }
-Remove { key }              → DeleteResult { key, existed }   -- an alias for Delete
+Remove { key }              → DeleteResult { key, existed }   | an alias for Delete
 ```
 
 `Config` is the setup particle — a stateful module. `Store`/`Fetch`/`Delete`

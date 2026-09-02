@@ -1,5 +1,5 @@
--- Flattening the same module twice would bind `greeting` and `n` a second
--- time. Silent shadowing across module boundaries is a bug factory, so it is
--- an error instead.
+| Flattening the same module twice would bind `greeting` and `n` a second
+| time. Silent shadowing across module boundaries is a bug factory, so it is
+| an error instead.
 link "modules/shared_values"
 link "modules/shared_values"

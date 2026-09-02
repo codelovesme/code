@@ -1,11 +1,11 @@
--- A handler whose result is not a particle has failed, and a failed frame's
--- answer is an `Exception` rather than the end of the program — the same rule
--- a failing `assert` follows (phase 4, 2026-08-28, see
--- docs/todo/errors-as-particles.md). Whether to look at it is the caller's
--- business, exactly as with any other returned value.
---
--- Was `fail_handler_return_non_particle.code`, which pinned the old rule that
--- this aborted.
+| A handler whose result is not a particle has failed, and a failed frame's
+| answer is an `Exception` rather than the end of the program — the same rule
+| a failing `assert` follows (phase 4, 2026-08-28, see
+| docs/todo/errors-as-particles.md). Whether to look at it is the caller's
+| business, exactly as with any other returned value.
+|
+| Was `fail_handler_return_non_particle.code`, which pinned the old rule that
+| this aborted.
 Ping {} => {
     return 42
 }
@@ -15,11 +15,11 @@ assert r ∈ Exception
 assert r.source = "core"
 assert r.innerException = null
 
--- Asserted in full, not just `is Exception`: the message is now an ordinary
--- value the program can read, so the two backends building it differently
--- would be a divergence the harness (which only compares pass/fail) could not
--- otherwise catch.
+| Asserted in full, not just `is Exception`: the message is now an ordinary
+| value the program can read, so the two backends building it differently
+| would be a divergence the harness (which only compares pass/fail) could not
+| otherwise catch.
 assert r.message = "a handler must return a particle — an object with a '_class' field — found a number"
 
--- Still running, which is the whole point.
+| Still running, which is the whole point.
 assert 1 = 1

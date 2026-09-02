@@ -1,6 +1,6 @@
--- One handler per class. A second definition is an error rather than a
--- silent override or a stacked second body — the same rule `link` follows
--- for duplicate module references.
+| One handler per class. A second definition is an error rather than a
+| silent override or a stacked second body — the same rule `link` follows
+| for duplicate module references.
 Dup => {
     return Ack {}
 }

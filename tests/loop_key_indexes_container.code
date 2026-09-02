@@ -1,6 +1,6 @@
--- The law `Stmt::Loop` promises: `loop k, v over X` guarantees `X[k] = v`,
--- for both containers `over` accepts. This is the fixture that fails if the
--- interpreter and the compiled backend ever disagree about it.
+| The law `Stmt::Loop` promises: `loop k, v over X` guarantees `X[k] = v`,
+| for both containers `over` accepts. This is the fixture that fails if the
+| interpreter and the compiled backend ever disagree about it.
 let arr = [10, 20, 30]
 loop k, v over arr {
     assert arr[k] = v

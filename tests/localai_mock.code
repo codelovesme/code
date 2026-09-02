@@ -1,5 +1,5 @@
--- `localai_mock` — a drop-in for `localai` with canned, deterministic
--- replies and no model server.
+| `localai_mock` — a drop-in for `localai` with canned, deterministic
+| replies and no model server.
 link "native_modules/localai_mock.so" as ai
 
 emit Chat { user = "hi" } to ai get early
@@ -10,12 +10,12 @@ emit Config { endpoint = "mock", model = "tiny", max_tokens = 100, temperature =
 assert c ∈ ConfigResult
 assert c.ok
 
--- Chat echoes the last user message, tagged with the model.
+| Chat echoes the last user message, tagged with the model.
 emit Chat { system = "be terse", user = "what is 2+2?" } to ai get r
 assert r ∈ ChatResult
 assert r.content = "[mock tiny] what is 2+2?"
 
--- messages works too — the last user turn wins.
+| messages works too — the last user turn wins.
 emit Chat { messages = [
         { role = "system", content = "s" },
         { role = "user", content = "first" },
@@ -24,7 +24,7 @@ emit Chat { messages = [
     ] } to ai get multi
 assert multi.content = "[mock tiny] second"
 
--- ChatJson returns valid JSON, so a downstream Parse succeeds.
+| ChatJson returns valid JSON, so a downstream Parse succeeds.
 emit ChatJson { user = "give me json" } to ai get j
 assert j.content = "{}"
 

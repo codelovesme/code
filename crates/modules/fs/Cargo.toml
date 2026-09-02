@@ -6,7 +6,7 @@
 
 [package]
 name = "fs"
-version = "1.3.0"
+version = "2.0.0"
 edition = "2021"
 description = "The `fs` native module for the Code programming language — read, write, list and remove files under a sandboxed base directory."
 license = "GPL-3.0"

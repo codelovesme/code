@@ -1,5 +1,5 @@
--- `break` exits the innermost loop immediately — the rest of the body is
--- skipped for that iteration too.
+| `break` exits the innermost loop immediately — the rest of the body is
+| skipped for that iteration too.
 let nums = [1, 2, 3, 4, 5]
 let taken = []
 loop n over nums {
@@ -10,8 +10,8 @@ loop n over nums {
 }
 assert taken = [1, 2, 3]
 
--- `break` reaches out through any number of `if`/bare-block bodies — it
--- exits the enclosing *loop*, not the enclosing block.
+| `break` reaches out through any number of `if`/bare-block bodies — it
+| exits the enclosing *loop*, not the enclosing block.
 let hit = []
 loop n over nums {
     {
@@ -23,8 +23,8 @@ loop n over nums {
 }
 assert hit = [1]
 
--- Breaking before the accumulator is touched leaves it empty: the
--- statements after `break` never run at all.
+| Breaking before the accumulator is touched leaves it empty: the
+| statements after `break` never run at all.
 let none = []
 loop n over nums {
     break

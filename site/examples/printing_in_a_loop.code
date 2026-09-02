@@ -1,4 +1,4 @@
--- The two things a program does that you can watch: loop, and say something.
+| The two things a program does that you can watch: loop, and say something.
 link "console" as out
 
 let names = ["ada", "grace", "alan"]
@@ -7,7 +7,7 @@ loop name over names {
     emit Print { value = "hello, $name" } to out
 }
 
--- Handlers answer particles, and a handler can print too.
+| Handlers answer particles, and a handler can print too.
 Greet { who } => {
     emit Print { value = "greeting $who" } to out
     return Greeting { text = "hello, $who" }

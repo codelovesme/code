@@ -667,7 +667,7 @@ run_with_modules(
         <div class="pkg-body">
           <div>
             <div class="step-label"><span class="num">1</span> write it</div>
-<pre class="codeblock"><span class="cm">-- greet.code</span>
+<pre class="codeblock"><span class="cm">| greet.code</span>
 <span class="kw">export</span> <span class="kw">let</span> answer = 21 + 21
 
 Greet { who } =&gt; {
@@ -742,7 +742,7 @@ pub <span class="kw">unsafe extern</span> <span class="st">"C"</span> <span clas
             <div class="step-label"><span class="num">3</span> build &amp; link it from code</div>
 <pre class="codeblock">cargo build --release   <span class="cm"># → target/release/libmymodule.so</span>
 
-<span class="cm">-- my_script.code</span>
+<span class="cm">| my_script.code</span>
 link <span class="st">"libmymodule.so"</span> <span class="kw">as</span> m
 emit Double { value = 21 } <span class="kw">to</span> m <span class="kw">get</span> result
 assert result.value = 42</pre>

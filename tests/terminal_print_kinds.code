@@ -1,12 +1,12 @@
--- `Print` renders whatever value kind it's handed, so a program can show a
--- number, a boolean, or even an array without first converting it by hand.
--- Each emit prints one line and returns the character count, asserted here
--- so the rendering rules (integral numbers stay integral, booleans/null use
--- their literal names, containers report their size) are pinned down in both
--- output modes.
---
--- The last value is long enough to force the module's internal buffer to grow
--- past its initial capacity mid-render — the realloc path, exercised for free.
+| `Print` renders whatever value kind it's handed, so a program can show a
+| number, a boolean, or even an array without first converting it by hand.
+| Each emit prints one line and returns the character count, asserted here
+| so the rendering rules (integral numbers stay integral, booleans/null use
+| their literal names, containers report their size) are pinned down in both
+| output modes.
+|
+| The last value is long enough to force the module's internal buffer to grow
+| past its initial capacity mid-render — the realloc path, exercised for free.
 link "native_modules/terminal.so" as term
 
 emit Print { value = 42 } to term get r1

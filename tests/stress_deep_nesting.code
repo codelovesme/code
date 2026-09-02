@@ -1,14 +1,14 @@
--- Nesting depth is bounded by a loop's iteration count, not by how many
--- brackets someone was willing to type, so no traversal of a value can
--- afford one native stack frame per level. Before this the interpreter
--- aborted at ~16k deep (taking the whole test process with it) and the
--- compiled binary segfaulted at ~131k; this builds 262144 levels, 8 per
--- iteration, and both tears it down and compares it.
---
--- Everything lives in a block so none of it leaks past the program:
--- the point is the teardown and equality paths, not 64KB of garbage.
--- Teardown happens either way -- at scope exit in the interpreter, in
--- the end-of-program sweep when compiled.
+| Nesting depth is bounded by a loop's iteration count, not by how many
+| brackets someone was willing to type, so no traversal of a value can
+| afford one native stack frame per level. Before this the interpreter
+| aborted at ~16k deep (taking the whole test process with it) and the
+| compiled binary segfaulted at ~131k; this builds 262144 levels, 8 per
+| iteration, and both tears it down and compares it.
+|
+| Everything lives in a block so none of it leaks past the program:
+| the point is the teardown and equality paths, not 64KB of garbage.
+| Teardown happens either way -- at scope exit in the interpreter, in
+| the end-of-program sweep when compiled.
 {
     let big = [1]
     big = big + big

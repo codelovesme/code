@@ -1,4 +1,4 @@
--- `loop { }` has no iterable and no bound — only `break` leaves it.
+| `loop { }` has no iterable and no bound — only `break` leaves it.
 let i = 0
 loop {
     i = i + 1
@@ -8,7 +8,7 @@ loop {
 }
 assert i = 5
 
--- It takes a `get` accumulator like any other loop.
+| It takes a `get` accumulator like any other loop.
 let n = 0
 loop get total = 0 {
     n = n + 1
@@ -19,7 +19,7 @@ loop get total = 0 {
 }
 assert total = 10
 
--- Nested bare loops: `break` leaves only the innermost.
+| Nested bare loops: `break` leaves only the innermost.
 let outer = 0
 let inner_runs = 0
 loop {

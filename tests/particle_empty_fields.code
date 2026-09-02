@@ -1,4 +1,4 @@
--- No fields at all — still just an object with one key, "_class".
+| No fields at all — still just an object with one key, "_class".
 let e = Empty {}
 assert e._class = "Empty"
 assert e = { _class = "Empty" }

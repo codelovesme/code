@@ -1,13 +1,13 @@
--- `crypto.Hash` / `Verify` — bcrypt, round-tripped. Cost 4 throughout so
--- the fixture stays fast; the default is 12.
+| `crypto.Hash` / `Verify` — bcrypt, round-tripped. Cost 4 throughout so
+| the fixture stays fast; the default is 12.
 link "native_modules/crypto.so" as c
 
 emit Hash { password = "correct horse battery staple", cost = 4 } to c get h
 assert h ∈ HashResult
 assert h.hash ≠ ""
 
--- The right password verifies, a wrong one does not — and a wrong one is a
--- `false`, not an error.
+| The right password verifies, a wrong one does not — and a wrong one is a
+| `false`, not an error.
 emit Verify { password = "correct horse battery staple", hash = h.hash } to c get yes
 assert yes ∈ VerifyResult
 assert yes.valid
@@ -15,31 +15,31 @@ assert yes.valid
 emit Verify { password = "wrong", hash = h.hash } to c get no
 assert no.valid = false
 
--- Two hashes of the same password differ (bcrypt salts each one).
+| Two hashes of the same password differ (bcrypt salts each one).
 emit Hash { password = "same", cost = 4 } to c get a
 emit Hash { password = "same", cost = 4 } to c get b
 assert a.hash ≠ b.hash
 
--- No `cost` uses the default of 12 — this module is stateless, there is
--- nothing to configure.
+| No `cost` uses the default of 12 — this module is stateless, there is
+| nothing to configure.
 emit Hash { password = "d" } to c get def
 assert def ∈ HashResult
 
--- A malformed hash string is a question the input can't answer → Exception.
+| A malformed hash string is a question the input can't answer → Exception.
 emit Verify { password = "x", hash = "not-bcrypt" } to c get bad
 assert bad ∈ Exception
 assert bad.source = "crypto"
 
--- Missing / wrong-typed fields are the same kind of failure.
+| Missing / wrong-typed fields are the same kind of failure.
 emit Hash {} to c get m1
 assert m1 ∈ Exception
 emit Verify { password = "x" } to c get m2
 assert m2 ∈ Exception
 
--- An out-of-range cost names the range rather than clamping silently.
+| An out-of-range cost names the range rather than clamping silently.
 emit Hash { password = "x", cost = 99 } to c get badcost
 assert badcost ∈ Exception
 
--- A class this module does not handle is null.
+| A class this module does not handle is null.
 emit Encrypt {} to c get u
 assert u = null

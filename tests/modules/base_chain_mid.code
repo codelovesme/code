@@ -1,7 +1,7 @@
--- Deepest level of the three-level chain. Handles nothing itself —
--- its only job is to ask its direct parent (base_chain_leaf) for
--- Pong and re-export the answer. If `to base` ever skipped a level or
--- fell through to the root, this would answer null and the test's
--- assert would catch it.
+| Deepest level of the three-level chain. Handles nothing itself —
+| its only job is to ask its direct parent (base_chain_leaf) for
+| Pong and re-export the answer. If `to base` ever skipped a level or
+| fell through to the root, this would answer null and the test's
+| assert would catch it.
 emit Pong { value = 1 } to base get up
 export let up = up.value

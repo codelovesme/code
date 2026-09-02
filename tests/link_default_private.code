@@ -1,6 +1,6 @@
--- Everything a module doesn't `export` stays its own. Read through an alias
--- that is an ordinary missing field, which this language answers with null
--- rather than an error (see invalid_access_returns_null.code).
+| Everything a module doesn't `export` stays its own. Read through an alias
+| that is an ordinary missing field, which this language answers with null
+| rather than an error (see invalid_access_returns_null.code).
 link "modules/shared_values" as m
 
 assert m.hidden = null

@@ -1,5 +1,5 @@
--- `cloud_drive_mock` — a drop-in for `cloud_drive` with an in-memory file
--- store and no Google. A full upload/list/download/delete round trip works.
+| `cloud_drive_mock` — a drop-in for `cloud_drive` with an in-memory file
+| store and no Google. A full upload/list/download/delete round trip works.
 link "native_modules/cloud_drive_mock.so" as drive
 
 emit GetQuota { access_token = "t" } to drive get early
@@ -23,7 +23,7 @@ assert t ∈ Tokens
 assert t.account_email = "user-1@drive.test"
 assert t.access_token = "mock-access"
 
--- A non-google provider is refused, as in the real module.
+| A non-google provider is refused, as in the real module.
 emit UploadFile { provider = "onedrive", access_token = "t", file_name = "f", data = "x" } to drive get wrong
 assert wrong ∈ Exception
 

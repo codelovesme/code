@@ -1,4 +1,4 @@
--- without parens, 'and' binds tighter than 'or': true or (true and false) = true
+| without parens, 'and' binds tighter than 'or': true or (true and false) = true
 assert true or true and false
--- parens can force the other grouping, flipping the result
+| parens can force the other grouping, flipping the result
 assert ((true or true) and false) = false

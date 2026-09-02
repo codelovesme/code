@@ -1,4 +1,4 @@
--- once declared with 'let', bare 'name = expr' still works for reassignment
+| once declared with 'let', bare 'name = expr' still works for reassignment
 let x = 5
 x = 6
 assert x = 6

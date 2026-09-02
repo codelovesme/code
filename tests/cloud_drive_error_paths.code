@@ -1,14 +1,14 @@
--- `cloud_drive` — the paths that need no Google. The OAuth exchange and the
--- file operations round trip in tests/cloud_drive_module.rs, against a fake
--- Drive on loopback.
+| `cloud_drive` — the paths that need no Google. The OAuth exchange and the
+| file operations round trip in tests/cloud_drive_module.rs, against a fake
+| Drive on loopback.
 link "native_modules/cloud_drive.so" as drive
 
--- Nothing works before Config.
+| Nothing works before Config.
 emit GetQuota { access_token = "x" } to drive get early
 assert early ∈ Exception
 assert early.source = "cloud_drive"
 
--- Config validates the credentials.
+| Config validates the credentials.
 emit Config { client_id = "c" } to drive get short
 assert short ∈ Exception
 
@@ -24,38 +24,38 @@ emit Config {
 assert c ∈ ConfigResult
 assert c.ok
 
--- AuthUrl is pure string building — no network. The URL is exact:
--- `state` and every reserved character are percent-encoded.
+| AuthUrl is pure string building — no network. The URL is exact:
+| `state` and every reserved character are percent-encoded.
 emit AuthUrl { state = "abc/123" } to drive get a
 assert a ∈ AuthUrlResult
 assert a.url = "https://auth.example/a?response_type=code&client_id=cid&redirect_uri=https%3A%2F%2Fapp.example%2Fcallback&scope=openid%20email&state=abc%2F123&access_type=offline&include_granted_scopes=true&prompt=consent"
 
--- `extra` appends parameters in order.
+| `extra` appends parameters in order.
 emit AuthUrl { state = "s", extra = { login_hint = "u@example.com" } } to drive get a2
 assert a2.url = "https://auth.example/a?response_type=code&client_id=cid&redirect_uri=https%3A%2F%2Fapp.example%2Fcallback&scope=openid%20email&state=s&access_type=offline&include_granted_scopes=true&prompt=consent&login_hint=u%40example.com"
 
--- Missing required fields are Exceptions.
+| Missing required fields are Exceptions.
 emit AuthUrl {} to drive get nostate
 assert nostate ∈ Exception
 emit ExchangeCode {} to drive get nocode
 assert nocode ∈ Exception
 
--- A non-google provider is refused, not silently ignored.
+| A non-google provider is refused, not silently ignored.
 emit UploadFile { provider = "onedrive", access_token = "t", file_name = "f", data = "x" } to drive get wrong
 assert wrong ∈ Exception
 
--- base64 = true on data that isn't base64 is caught before the network.
+| base64 = true on data that isn't base64 is caught before the network.
 emit UploadFile { access_token = "t", file_name = "f", data = "!! not base64 !!", base64 = true } to drive get badb64
 assert badb64 ∈ Exception
 
--- Any real operation against an endpoint nothing answers on is an
--- Exception (connection refused), not a hang.
+| Any real operation against an endpoint nothing answers on is an
+| Exception (connection refused), not a hang.
 emit GetQuota { access_token = "t" } to drive get refused
 assert refused ∈ Exception
 
 emit ExchangeCode { code = "z" } to drive get refused2
 assert refused2 ∈ Exception
 
--- A class this module does not handle is null.
+| A class this module does not handle is null.
 emit Presign {} to drive get u
 assert u = null

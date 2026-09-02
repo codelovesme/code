@@ -1,5 +1,5 @@
--- A module that queues nothing leaves the program untouched: draining an
--- empty queue is not an error and costs the program nothing.
+| A module that queues nothing leaves the program untouched: draining an
+| empty queue is not an error and costs the program nothing.
 link "native_modules/test_events.so" as ev
 
 let seen = []

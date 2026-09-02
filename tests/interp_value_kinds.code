@@ -1,8 +1,8 @@
--- Interpolation is total: every kind has a spelling, so no value is
--- uninterpolable. A string splices in bare (quoting it would make
--- `"$s"` read `"hi"` instead of `hi`); everything else renders as the
--- same compact JSON the language uses everywhere else, which means a
--- string *nested* inside an array or object keeps its quotes.
+| Interpolation is total: every kind has a spelling, so no value is
+| uninterpolable. A string splices in bare (quoting it would make
+| `"$s"` read `"hi"` instead of `hi`); everything else renders as the
+| same compact JSON the language uses everywhere else, which means a
+| string *nested* inside an array or object keeps its quotes.
 let s = "hi"
 let whole = 3
 let frac = 2.5
@@ -19,7 +19,7 @@ assert "$nothing" = "null"
 assert "$arr" = "[1,\"a\"]"
 assert "$obj" = "{\"k\":1}"
 
--- Nesting and negatives, still JSON.
+| Nesting and negatives, still JSON.
 let nested = { items = [1, [2]], name = "ada" }
 assert "$nested" = "{\"items\":[1,[2]],\"name\":\"ada\"}"
 

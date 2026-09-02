@@ -99,10 +99,11 @@ system `cc` at runtime, since it hands off final linking.
 
 ### Comments
 
-`--` to end of line. A lone `-` is subtraction or negation.
+`|` to end of line. One character, because there is nothing to tell it apart
+from — `|` is not an operator in this language.
 
 ```
--- this is a comment
+| this is a comment
 let x = 1 - 2
 ```
 
@@ -196,8 +197,8 @@ assert port ∈ Number
 
 ```
 let x = 5
-x = 6            -- reassigns
-y = 1            -- error: undefined variable 'y'
+x = 6            | reassigns
+y = 1            | error: undefined variable 'y'
 ```
 
 That split is what makes shadowing unambiguous. `let` always creates a new
@@ -207,14 +208,14 @@ existing one.
 ```
 let x = 1
 {
-    let x = 2    -- a new, inner binding
+    let x = 2    | a new, inner binding
     assert x = 2
 }
-assert x = 1     -- untouched
+assert x = 1     | untouched
 
 let y = 1
 {
-    y = 2        -- reaches out and mutates
+    y = 2        | reaches out and mutates
 }
 assert y = 2
 ```
@@ -250,7 +251,7 @@ let arr = [1, "a"]
 let whole = 3
 assert "$s" = "hi"
 assert "$arr" = "[1,\"a\"]"
-assert "$whole" = "3"          -- numbers: shortest form that round-trips
+assert "$whole" = "3"          | numbers: shortest form that round-trips
 ```
 
 ### Operators
@@ -295,14 +296,14 @@ ends and answers with an `Exception`, rather than the program stopping. See
 ```
 assert 1 + 2 = 3
 assert "a" + "b" = "ab"
-assert "n=" + 3 = "n=3"          -- a string on either side: the other operand
-assert 3 + "!" = "3!"            -- renders as it would inside "$…", and joins
+assert "n=" + 3 = "n=3"          | a string on either side: the other operand
+assert 3 + "!" = "3!"            | renders as it would inside "$…", and joins
 assert "x" + null = "xnull"
-assert [1] + [2] = [1, 2]        -- two arrays concatenate
-assert [1, 2] + 3 = [1, 2, 3]    -- one array: the other side is an element
-assert 0 + [1, 2] = [0, 1, 2]    -- appended or prepended by which side it's on
-assert {a = 1} + {b = 2} = {a = 1, b = 2}      -- two objects merge
-assert {a = 1, b = 2} + {a = 9} = {a = 9, b = 2}   -- right wins, in place
+assert [1] + [2] = [1, 2]        | two arrays concatenate
+assert [1, 2] + 3 = [1, 2, 3]    | one array: the other side is an element
+assert 0 + [1, 2] = [0, 1, 2]    | appended or prepended by which side it's on
+assert {a = 1} + {b = 2} = {a = 1, b = 2}      | two objects merge
+assert {a = 1, b = 2} + {a = 9} = {a = 9, b = 2}   | right wins, in place
 ```
 
 A `Str` on either side wins over everything except a container: `"x" + [1]`
@@ -341,7 +342,7 @@ let point = { x = 1 }
 let nums = [10, 20]
 assert point.x = 1
 assert nums[0] = 10
-assert nums[1 - 1] = 10          -- the index is an expression
+assert nums[1 - 1] = 10          | the index is an expression
 ```
 
 Two different rules, deliberately:
@@ -421,10 +422,10 @@ With two names, the first is the **key** and the second the value. The law is
 and an object yields its field name:
 
 ```
-loop i, color over ["red", "green"] {   -- i = 0, 1
+loop i, color over ["red", "green"] {   | i = 0, 1
     ...
 }
-loop name, score over {alice = 10} {   -- name = "alice"
+loop name, score over {alice = 10} {   | name = "alice"
     ...
 }
 ```
@@ -616,8 +617,8 @@ rejected is a cycle:
 
 ```
 Down { n } => {
-    emit Down { n = n - 1 } to this get inner   -- error, before it runs:
-    return Done { value = 0 }                   -- handler cycle: Down -> Down
+    emit Down { n = n - 1 } to this get inner   | error, before it runs:
+    return Done { value = 0 }                   | handler cycle: Down -> Down
 }
 ```
 
@@ -668,9 +669,9 @@ on from where you were.
 
 ```code
 Outer { } => {
-    emit Divide { a = 1, b = 0 } to this get r   -- r is an Exception
-    emit Print { value = "still here" } to term   -- and this still runs
-    return Report { inner = r }                   -- pass it on, or don't
+    emit Divide { a = 1, b = 0 } to this get r   | r is an Exception
+    emit Print { value = "still here" } to term   | and this still runs
+    return Report { inner = r }                   | pass it on, or don't
 }
 ```
 
@@ -688,7 +689,7 @@ the program with a non-zero status — which is what "returned an `Exception`
 from the outermost call" amounts to.
 
 ```code
-assert 1 = 2        -- error: assertion failed, and the program stops
+assert 1 = 2        | error: assertion failed, and the program stops
 ```
 
 ### Emitting is not filling in a form
@@ -700,7 +701,7 @@ handler runs and answers on that basis.
 ```code
 emit Length { } to core get a
 emit Length { value = null } to core get b
-assert a.message = b.message      -- the same particle, so the same answer
+assert a.message = b.message      | the same particle, so the same answer
 ```
 
 There is no separate "you did not supply it" complaint, because there is
@@ -721,19 +722,19 @@ after a program has already had effects.
 says `export`:
 
 ```
--- shared_values.code
+| shared_values.code
 export let greeting = "hello"
 export let n = 42
-let hidden = 1              -- not visible to anyone linking this
+let hidden = 1              | not visible to anyone linking this
 ```
 
 ```
-link "shared_values"              -- flattens exports into this scope
+link "shared_values"              | flattens exports into this scope
 assert greeting = "hello"
 
-link "shared_values" as shared    -- or gather them into an object
+link "shared_values" as shared    | or gather them into an object
 assert shared.greeting = "hello"
-assert shared.hidden = null       -- private: an ordinary missing field
+assert shared.hidden = null       | private: an ordinary missing field
 ```
 
 `link` is top-level only. Cycles and duplicate links are errors.
@@ -746,7 +747,7 @@ alias, and are reached by `emit`:
 ```
 link "native_modules/terminal.so" as term
 emit Print { value = "hello" } to term get r
-assert r.value = 5                -- bytes written
+assert r.value = 5                | bytes written
 
 link "native_modules/math.so" as m
 emit Sum { value = [1, 2, 3] } to m get n
@@ -774,7 +775,7 @@ become `code_module_dispatch`, its `export let`s become `code_module_vars`,
 and another program links the result exactly as it links a C or Rust module.
 
 ```
-code build greet.code --target shared     -- -> build/libgreet.so
+code build greet.code --target shared     # -> build/libgreet.so
 ```
 
 ```
@@ -816,8 +817,8 @@ Tick { value } => {
     ...
 }
 
-emit Start { value = 3 } to ev get started   -- module queues three Ticks
--- by here they have all been handled
+emit Start { value = 3 } to ev get started   | module queues three Ticks
+| by here they have all been handled
 ```
 
 Queued particles are dispatched after each top-level statement — and after
@@ -915,7 +916,7 @@ modules happen to be linked. So the agreement has to live in the particle,
 and two of them are common vocabulary:
 
 ```
-Log       { source, level, message }    -- level: Info | Warn | Error | Debug
+Log       { source, level, message }    | level: Info | Warn | Error | Debug
 Exception { source, message, innerException }
 ```
 

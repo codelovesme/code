@@ -1,15 +1,15 @@
--- A module answers null for a class it does not handle, rather than ending
--- the program. `http_client` does the seven HTTP methods; `Ping` is simply
--- not its business.
---
--- Replaces fail_net_unknown_handler.code (2026-08-28). That one used
--- `Delete` as the class nobody handles, which stopped being true on
--- 2026-08-29 when the other five methods landed.
+| A module answers null for a class it does not handle, rather than ending
+| the program. `http_client` does the seven HTTP methods; `Ping` is simply
+| not its business.
+|
+| Replaces fail_net_unknown_handler.code (2026-08-28). That one used
+| `Delete` as the class nobody handles, which stopped being true on
+| 2026-08-29 when the other five methods landed.
 link "native_modules/http_client.so" as http
 
 emit Ping { url = "http://127.0.0.1:1/" } to http get r
 assert r = null
 
--- And the module still works afterwards: a miss leaves nothing broken.
+| And the module still works afterwards: a miss leaves nothing broken.
 emit Get { url = "http://127.0.0.1:1/" } to http get ok
 assert not ok.ok

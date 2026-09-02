@@ -1,8 +1,8 @@
--- A plain object is not a particle — no `_class`, so nothing to dispatch or
--- type-test on. Rejected just like a number, and by the same route: the frame
--- fails and answers an `Exception`.
---
--- Was `fail_handler_return_plain_object.code`.
+| A plain object is not a particle — no `_class`, so nothing to dispatch or
+| type-test on. Rejected just like a number, and by the same route: the frame
+| fails and answers an `Exception`.
+|
+| Was `fail_handler_return_plain_object.code`.
 Ping {} => {
     return { x = 1 }
 }

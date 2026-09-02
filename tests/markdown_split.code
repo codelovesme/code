@@ -1,6 +1,6 @@
--- `markdown.SplitByHeading { src, level }` → the source cut into
--- `{ slug, title, body }` at every heading of `level` (default 2). Anything
--- before the first such heading is dropped.
+| `markdown.SplitByHeading { src, level }` → the source cut into
+| `{ slug, title, body }` at every heading of `level` (default 2). Anything
+| before the first such heading is dropped.
 link "native_modules/markdown.so" as md
 
 emit SplitByHeading {
@@ -12,21 +12,21 @@ assert s.chapters = [
     { _class = "Chapter", slug = "second-part", title = "Second Part", body = "\nbody two\n" }
 ]
 
--- `level` selects which headings split; a deeper one is body, not a break.
+| `level` selects which headings split; a deeper one is body, not a break.
 emit SplitByHeading { src = "# Top\n\n## sub stays in body\n\nx\n", level = 1 } to md get top
 assert top.chapters = [
     { _class = "Chapter", slug = "top", title = "Top", body = "\n## sub stays in body\n\nx\n" }
 ]
 
--- No matching heading → no chapters.
+| No matching heading → no chapters.
 emit SplitByHeading { src = "just text, no headings\n" } to md get none
 assert none.chapters = []
 
--- Default level is 2.
+| Default level is 2.
 emit SplitByHeading { src = "## only\n\nz\n" } to md get def
 assert def.chapters = [{ _class = "Chapter", slug = "only", title = "only", body = "\nz\n" }]
 
--- An out-of-range or fractional level names the range rather than clamping.
+| An out-of-range or fractional level names the range rather than clamping.
 emit SplitByHeading { src = "x", level = 0 } to md get low
 assert low ∈ Exception
 emit SplitByHeading { src = "x", level = 2.5 } to md get frac

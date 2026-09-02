@@ -1,5 +1,5 @@
--- `as name` gathers the exports into an object instead, so they are reached
--- by ordinary field access — no new lookup rule, the alias is just a value.
+| `as name` gathers the exports into an object instead, so they are reached
+| by ordinary field access — no new lookup rule, the alias is just a value.
 link "modules/shared_values" as shared
 
 assert shared.greeting = "hello"

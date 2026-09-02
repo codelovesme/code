@@ -1,4 +1,4 @@
--- field/index access chains and composes with literals directly, not just variables
+| field/index access chains and composes with literals directly, not just variables
 let data = { items = [1, 2, { name = "z" }] }
 let n = data.items[2].name
 let first_of_literal = [10, 20, 30][0]

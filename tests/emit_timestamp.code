@@ -1,10 +1,10 @@
--- `Timestamp` is a compiled-in core handler taking no operands: it reports
--- the current Unix time in whole seconds. Like every core result it comes
--- back as a particle — `TimestampResult` — not a bare number.
---
--- The value is checked inside a block rather than left as a top-level
--- binding: the assertion is the whole point, and keeping the timestamp out
--- of top-level scope means the program prints nothing at all.
+| `Timestamp` is a compiled-in core handler taking no operands: it reports
+| the current Unix time in whole seconds. Like every core result it comes
+| back as a particle — `TimestampResult` — not a bare number.
+|
+| The value is checked inside a block rather than left as a top-level
+| binding: the assertion is the whole point, and keeping the timestamp out
+| of top-level scope means the program prints nothing at all.
 {
     emit Timestamp {} to core get t
     assert t._class = "TimestampResult"

@@ -152,9 +152,11 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
             continue;
         }
 
-        // `--` line comment. A lone `-` is the subtraction/negation operator
-        // (below), so this has to be checked first.
-        if c == '-' && chars.get(i + 1) == Some(&'-') {
+        // `|` line comment. One character, because unlike the `--` it
+        // replaced there is nothing to tell it apart from: `|` is not an
+        // operator here and never was, so the second character `--` needed
+        // to escape `-`'s own meaning would buy nothing.
+        if c == '|' {
             while i < chars.len() && chars[i] != '\n' {
                 i += 1;
             }
@@ -390,7 +392,7 @@ mod tests {
     /// relies on (see its doc comment).
     #[test]
     fn ends_slice_back_the_source_text() {
-        let src = "let n += 1.50 -- a comment\nemit Foo {} to core get t\n\"a\\nb\"";
+        let src = "let n += 1.50 | a comment\nemit Foo {} to core get t\n\"a\\nb\"";
         let lexed = tokenize(src).unwrap();
         let chars: Vec<char> = src.chars().collect();
         let mut texts = Vec::new();

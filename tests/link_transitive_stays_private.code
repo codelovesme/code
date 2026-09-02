@@ -1,6 +1,6 @@
--- Linking is not re-exporting. `uses_shared` links `shared_values`, but that
--- only makes those names visible *inside* `uses_shared` — they are not part
--- of what it exports, so they don't reach here.
+| Linking is not re-exporting. `uses_shared` links `shared_values`, but that
+| only makes those names visible *inside* `uses_shared` — they are not part
+| of what it exports, so they don't reach here.
 link "modules/uses_shared" as m
 
 assert m.doubled = 84

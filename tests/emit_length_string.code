@@ -1,4 +1,4 @@
--- `Length` also accepts a string, counting its bytes.
+| `Length` also accepts a string, counting its bytes.
 emit Length { value = "hello world" } to core get n
 assert n._class = "LengthResult"
 assert n.value = 11

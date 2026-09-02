@@ -1,8 +1,8 @@
 let a = true and false
 let b = true or false
 let c = not true
--- no parens here on purpose — precedence alone must resolve this correctly:
--- 'and' binds tighter than 'or', so this is (true and true) or false
+| no parens here on purpose — precedence alone must resolve this correctly:
+| 'and' binds tighter than 'or', so this is (true and true) or false
 let d = true and true or false
 
 assert a = false

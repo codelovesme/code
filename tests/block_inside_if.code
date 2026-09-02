@@ -1,4 +1,4 @@
--- bare blocks and if-bodies compose: nesting one inside the other
+| bare blocks and if-bodies compose: nesting one inside the other
 let x = 0
 if true {
     {

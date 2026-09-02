@@ -1,14 +1,14 @@
--- A particle can be sent to three places, and all three answer the same way
--- when they cannot do the work: with an `Exception` as their result. The
--- frame that emitted carries on and decides what to do with it.
---
--- `to this` and `to <module>` have worked this way since phases 4 and 2.
--- `core` did not: phase 3 wired its failures into the flag channel, which
--- made them unwind the *caller* instead of answering — so `emit Double { }
--- to math get r` bound `r` while `emit Length { } to core get r` ended the
--- frame outright. Fixed 2026-08-28: `core` is a recipient like any other,
--- which is what `dispatch_core` already claimed for the class-it-doesn't-know
--- case.
+| A particle can be sent to three places, and all three answer the same way
+| when they cannot do the work: with an `Exception` as their result. The
+| frame that emitted carries on and decides what to do with it.
+|
+| `to this` and `to <module>` have worked this way since phases 4 and 2.
+| `core` did not: phase 3 wired its failures into the flag channel, which
+| made them unwind the *caller* instead of answering — so `emit Double { }
+| to math get r` bound `r` while `emit Length { } to core get r` ended the
+| frame outright. Fixed 2026-08-28: `core` is a recipient like any other,
+| which is what `dispatch_core` already claimed for the class-it-doesn't-know
+| case.
 link "native_modules/math.so" as math
 
 Bad {} => {
@@ -32,7 +32,7 @@ emit Viacore {} to this get a
 emit Viamodule {} to this get b
 emit Viahandler {} to this get c
 
--- The point: every one of them got past the emit.
+| The point: every one of them got past the emit.
 assert a ∈ Reached
 assert b ∈ Reached
 assert c ∈ Reached
@@ -41,7 +41,7 @@ assert a.r ∈ Exception
 assert b.r ∈ Exception
 assert c.r ∈ Exception
 
--- And they name who could not do it, which is the one thing that differs.
+| And they name who could not do it, which is the one thing that differs.
 assert a.r.source = "core"
 assert b.r.source = "math"
 assert c.r.source = "core"

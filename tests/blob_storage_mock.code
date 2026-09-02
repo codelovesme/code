@@ -1,5 +1,5 @@
--- `blob_storage_mock` — a drop-in for `blob_storage` backed by an in-memory
--- map. A full put/get/list/delete round trip works; nothing leaves memory.
+| `blob_storage_mock` — a drop-in for `blob_storage` backed by an in-memory
+| map. A full put/get/list/delete round trip works; nothing leaves memory.
 link "native_modules/blob_storage_mock.so" as blobs
 
 emit Put { key = "x", data = "y" } to blobs get early

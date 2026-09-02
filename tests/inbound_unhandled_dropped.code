@@ -1,20 +1,20 @@
--- A pushed particle whose class the program defines no handler for is
--- dropped, and the program carries on. Decided 2026-08-28, replacing the
--- opposite rule this file used to pin (`fail_inbound_unhandled.code`).
---
--- The reason is `Log`/`Exception`: a module speaks first on its own
--- initiative, so a diagnostic nobody asked to hear is not a mistake by the
--- program. Making it fatal would mean every program linking a module that
--- *might* report something has to handle it, whether it cares or not.
---
--- The cost, accepted knowingly: a module pushing a mistyped class is now
--- invisible rather than loud.
+| A pushed particle whose class the program defines no handler for is
+| dropped, and the program carries on. Decided 2026-08-28, replacing the
+| opposite rule this file used to pin (`fail_inbound_unhandled.code`).
+|
+| The reason is `Log`/`Exception`: a module speaks first on its own
+| initiative, so a diagnostic nobody asked to hear is not a mistake by the
+| program. Making it fatal would mean every program linking a module that
+| *might* report something has to handle it, whether it cares or not.
+|
+| The cost, accepted knowingly: a module pushing a mistyped class is now
+| invisible rather than loud.
 link "native_modules/test_events.so" as ev
 
 emit Start { value = 3 } to ev get started
 assert started.value = 3
 
--- Three Ticks were queued and all three went nowhere. Reaching here at all
--- is the assertion; `emit ... to this` is unchanged and still errors on a
--- class nothing handles (fail_handler_unknown.code).
+| Three Ticks were queued and all three went nowhere. Reaching here at all
+| is the assertion; `emit ... to this` is unchanged and still errors on a
+| class nothing handles (fail_handler_unknown.code).
 assert 1 + 1 = 2

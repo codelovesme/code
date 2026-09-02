@@ -8,10 +8,10 @@ link "process.so" as proc
 
 emit Run { command = "git", args = ["rev-parse", "HEAD"] } to proc get r
 assert r.success
--- r.stdout is the commit hash
+| r.stdout is the commit hash
 
 emit Spawn { id = "server", command = "./myserver", args = ["--port", "8080"] } to proc get s
--- ... later ...
+| ... later ...
 emit Kill { id = "server" } to proc get _
 ```
 

@@ -1,13 +1,13 @@
--- `mailer` — the paths that need no SMTP server. A real send is covered by
--- tests/mailer_module.rs, which stands one up.
+| `mailer` — the paths that need no SMTP server. A real send is covered by
+| tests/mailer_module.rs, which stands one up.
 link "native_modules/mailer.so" as mail
 
--- Send before Config is an Exception.
+| Send before Config is an Exception.
 emit Send { recipient = "a@b.com" } to mail get early
 assert early ∈ Exception
 assert early.source = "mailer"
 
--- Config validates its fields up front.
+| Config validates its fields up front.
 emit Config { from = "s@x.com" } to mail get nohost
 assert nohost ∈ Exception
 
@@ -23,20 +23,20 @@ assert badport ∈ Exception
 emit Config { host = "x", from = "s@x.com", username = "u" } to mail get halfauth
 assert halfauth ∈ Exception
 
--- A valid Config against a port nothing is listening on.
+| A valid Config against a port nothing is listening on.
 emit Config { host = "127.0.0.1", from = "sender@example.com", port = 1, tls = "none" } to mail get c
 assert c ∈ ConfigResult
 assert c.ok
 
--- A bad recipient address is caught before the socket.
+| A bad recipient address is caught before the socket.
 emit Send { recipient = "definitely not an email" } to mail get badrcpt
 assert badrcpt ∈ Exception
 
--- A well-formed Send with nothing listening: an Exception, not a hang or a
--- crash — the whole point of a module.
+| A well-formed Send with nothing listening: an Exception, not a hang or a
+| crash — the whole point of a module.
 emit Send { recipient = "to@example.com", subject = "hi", text = "body" } to mail get refused
 assert refused ∈ Exception
 
--- A class this module does not handle is null.
+| A class this module does not handle is null.
 emit Deliver {} to mail get u
 assert u = null

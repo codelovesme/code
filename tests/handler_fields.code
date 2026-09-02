@@ -1,5 +1,5 @@
--- Several fields, comma-separated, in any order relative to the particle's
--- own — they are matched by name, not by position.
+| Several fields, comma-separated, in any order relative to the particle's
+| own — they are matched by name, not by position.
 Rect { width, height } => {
     return Area { value = width * height }
 }
@@ -8,8 +8,8 @@ assert a.value = 12
 emit Rect { height = 5, width = 2 } to this get b
 assert b.value = 10
 
--- An empty list binds nothing, and may be dropped entirely — the same
--- shorthand `emit Timestamp to core` already uses for an empty particle.
+| An empty list binds nothing, and may be dropped entirely — the same
+| shorthand `emit Timestamp to core` already uses for an empty particle.
 Ping {} => {
     return Pong { ok = true }
 }
@@ -21,8 +21,8 @@ assert p.ok = true
 emit Pung to this get q
 assert q.ok = true
 
--- A listed field the particle doesn't carry is null, the same answer
--- `.field` gives for an absent member (see missing_member_returns_null.code).
+| A listed field the particle doesn't carry is null, the same answer
+| `.field` gives for an absent member (see missing_member_returns_null.code).
 Maybe { present, absent } => {
     return Seen { a = present, b = absent }
 }
@@ -30,8 +30,8 @@ emit Maybe { present = 1 } to this get m
 assert m.a = 1
 assert m.b = null
 
--- Only listed fields are bound; the rest of the particle is simply not
--- reachable from the body, which is the point of writing the list.
+| Only listed fields are bound; the rest of the particle is simply not
+| reachable from the body, which is the point of writing the list.
 Narrow { kept } => {
     return Echo { value = kept }
 }

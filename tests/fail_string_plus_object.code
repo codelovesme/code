@@ -1,5 +1,5 @@
--- A string concatenates with any scalar, but not with an object: an object
--- has no bare form to splice in, so `Str + Object` stays a type error (the
--- same reason `{a = 1} + 3` is one). One array operand is different — the
--- array rule makes the string an element — so only the object case fails.
+| A string concatenates with any scalar, but not with an object: an object
+| has no bare form to splice in, so `Str + Object` stays a type error (the
+| same reason `{a = 1} + 3` is one). One array operand is different — the
+| array rule makes the string an element — so only the object case fails.
 let x = "config: " + { port = 8080 }

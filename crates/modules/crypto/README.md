@@ -10,7 +10,7 @@ emit Hash { password = "hunter2" } to crypto get h
 emit Verify { password = "hunter2", hash = h.hash } to crypto get v
 assert v.valid
 
-emit RandomCode { length = 8 } to crypto get r   -- r.code is 8 of [A-Za-z0-9]
+emit RandomCode { length = 8 } to crypto get r   | r.code is 8 of [A-Za-z0-9]
 ```
 
 ## Handlers

@@ -1,5 +1,5 @@
--- no parens used here on purpose, so these pin down precedence and
--- left-associativity purely structurally
+| no parens used here on purpose, so these pin down precedence and
+| left-associativity purely structurally
 let a = 2 + 3 * 4
 let b = 2 * 3 + 4
 let c = 10 - 2 - 3

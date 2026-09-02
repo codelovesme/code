@@ -1,5 +1,5 @@
--- `git_mock` — a drop-in for `git` that runs no `git` and reaches no
--- remote. State is a small in-memory model.
+| `git_mock` — a drop-in for `git` that runs no `git` and reaches no
+| remote. State is a small in-memory model.
 link "native_modules/git_mock.so" as git
 
 emit Commit { message = "x" } to git get early
@@ -13,12 +13,12 @@ assert c.dirty = false
 assert c.branch = "trunk"
 assert c.head = ""
 
--- A fresh mock repo is clean.
+| A fresh mock repo is clean.
 emit Status {} to git get s0
 assert s0.clean
 assert s0.output = ""
 
--- Committing with nothing staged is refused, like git.
+| Committing with nothing staged is refused, like git.
 emit Commit { message = "empty" } to git get noop
 assert noop ∈ Exception
 
@@ -33,7 +33,7 @@ emit Commit { message = "first" } to git get cm
 assert cm ∈ CommitResult
 assert cm.message = "first"
 
--- After the commit the tree is clean again.
+| After the commit the tree is clean again.
 emit Status {} to git get s2
 assert s2.clean
 
@@ -45,7 +45,7 @@ emit SetRemote { name = "origin", url = "https://user:secret@example.com/r.git" 
 assert sr.name = "origin"
 assert sr.url = "https://***@example.com/r.git"
 
--- Stash tracks whether there was anything to stash.
+| Stash tracks whether there was anything to stash.
 emit Stash {} to git get st
 assert st.changed = false
 emit Add { pattern = "." } to git get _

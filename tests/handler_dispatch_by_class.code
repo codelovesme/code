@@ -1,7 +1,7 @@
--- Dispatch is by the particle's runtime `_class`, not by the name written
--- at the call site — the same rule `to core` and `to <alias>` already
--- follow (see emit_particle_from_variable.code). So a particle held in a
--- variable reaches the same handler a literal would.
+| Dispatch is by the particle's runtime `_class`, not by the name written
+| at the call site — the same rule `to core` and `to <alias>` already
+| follow (see emit_particle_from_variable.code). So a particle held in a
+| variable reaches the same handler a literal would.
 Double { value } => {
     return DoubleResult { value = value * 2 }
 }
@@ -13,7 +13,7 @@ let held = Double { value = 5 }
 emit held to this get indirect
 assert indirect.value = 10
 
--- Built by one handler, dispatched by another, still on `_class`.
+| Built by one handler, dispatched by another, still on `_class`.
 Make => {
     return Double { value = 7 }
 }

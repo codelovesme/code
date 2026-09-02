@@ -1,6 +1,6 @@
--- A member that simply isn't there is null, not an error: the operand is the
--- right kind, the lookup just found nothing. (Using the wrong kind entirely
--- *is* an error — see fail_field_on_non_object.code / fail_index_on_non_array.code.)
+| A member that simply isn't there is null, not an error: the operand is the
+| right kind, the lookup just found nothing. (Using the wrong kind entirely
+| *is* an error — see fail_field_on_non_object.code / fail_index_on_non_array.code.)
 let point = { x = 1 }
 let missing_field = point.z
 assert missing_field = null
@@ -11,6 +11,6 @@ assert nums[0.5] = null
 assert nums["x"] = null
 assert nums[0 - 1] = null
 
--- This is what makes a module's un-exported names read as null through its
--- alias, rather than blowing up (see link_default_private.code).
+| This is what makes a module's un-exported names read as null through its
+| alias, rather than blowing up (see link_default_private.code).
 assert point.nope = null

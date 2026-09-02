@@ -1,29 +1,29 @@
--- A field name is a *name*, and there are three ways to write one.
---
--- Bare, when it looks like an identifier — which is nearly always, and is
--- what the language reads as by 2026-08-29.
+| A field name is a *name*, and there are three ways to write one.
+|
+| Bare, when it looks like an identifier — which is nearly always, and is
+| what the language reads as by 2026-08-29.
 let person = { name = "ada", score = 94 }
 assert person.name = "ada"
 assert person.score = 94
 
--- Quoted, when it does not. A header name is the reason this exists.
+| Quoted, when it does not. A header name is the reason this exists.
 let headers = { "Content-Type" = "text/plain", "X-Count" = 3 }
 assert headers["Content-Type"] = "text/plain"
 assert headers["X-Count"] = 3
 
--- Built while the program runs: a quoted key that interpolates. This is what
--- makes an object with a name nobody wrote down possible — a response header,
--- a field named after a loop variable.
+| Built while the program runs: a quoted key that interpolates. This is what
+| makes an object with a name nobody wrote down possible — a response header,
+| a field named after a loop variable.
 let field = "Content-Type"
 let built = { "$field" = "application/json" }
 assert built["Content-Type"] = "application/json"
 
--- The interpolation is an ordinary one, so it may be part of a longer name.
+| The interpolation is an ordinary one, so it may be part of a longer name.
 let n = 2
 let numbered = { "field$n" = "second" }
 assert numbered["field2"] = "second"
 
--- Keys collected in a loop, which is the shape that wanted this.
+| Keys collected in a loop, which is the shape that wanted this.
 let names = ["a", "b"]
 let collected = {}
 loop k over names {
@@ -31,14 +31,14 @@ loop k over names {
 }
 assert collected = { a = "a!", b = "b!" }
 
--- And it still holds after the heap has been handed out again. `+` builds a
--- merged object out of two others, and until 2026-08-29 the compiled backend
--- kept the operands' key *pointers* rather than copying the characters —
--- fine while every field name was a literal in read-only data, wrong the day
--- one could be built at run time, because the literal above is released by
--- the next iteration. The assert five lines up passed anyway: the names were
--- read out of freed memory that nothing had claimed yet. The loop below
--- claims it, allocating objects of exactly the shape just released.
+| And it still holds after the heap has been handed out again. `+` builds a
+| merged object out of two others, and until 2026-08-29 the compiled backend
+| kept the operands' key *pointers* rather than copying the characters —
+| fine while every field name was a literal in read-only data, wrong the day
+| one could be built at run time, because the literal above is released by
+| the next iteration. The assert five lines up passed anyway: the names were
+| read out of freed memory that nothing had claimed yet. The loop below
+| claims it, allocating objects of exactly the shape just released.
 let churn = {}
 loop i over [1, 2, 3, 4, 5, 6, 7, 8] {
     churn = { "$i" = "x" }
@@ -46,10 +46,10 @@ loop i over [1, 2, 3, 4, 5, 6, 7, 8] {
 assert churn = { "8" = "x" }
 assert collected = { a = "a!", b = "b!" }
 
--- Particle sugar takes the same fields, and `_class` is an ordinary name.
+| Particle sugar takes the same fields, and `_class` is an ordinary name.
 let tagged = Reply { status = 200 }
 assert tagged = { _class = "Reply", status = 200 }
 
--- Rendering is still JSON: what a value prints as and what its source looks
--- like are two different languages now, and only the source changed.
+| Rendering is still JSON: what a value prints as and what its source looks
+| like are two different languages now, and only the source changed.
 assert "$person" = "{\"name\":\"ada\",\"score\":94}"

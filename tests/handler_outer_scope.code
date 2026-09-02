@@ -1,8 +1,8 @@
--- A handler body's enclosing scope is the top level: it reads top-level
--- bindings, and reassigns them with a bare `name = ...` like any other
--- statement. `let` inside a body declares a *local*, the ordinary rule —
--- the old language let `let` reassign outward inside a handler, which is
--- exactly the shadow-vs-mutate ambiguity mandatory `let` exists to remove.
+| A handler body's enclosing scope is the top level: it reads top-level
+| bindings, and reassigns them with a bare `name = ...` like any other
+| statement. `let` inside a body declares a *local*, the ordinary rule —
+| the old language let `let` reassign outward inside a handler, which is
+| exactly the shadow-vs-mutate ambiguity mandatory `let` exists to remove.
 let suffix = "!"
 let calls = 0
 let last = null
@@ -24,5 +24,5 @@ assert b.value = "bye!"
 assert calls = 2
 assert last = "bye!"
 
--- `local` was a handler-local binding and never escaped to the top level.
+| `local` was a handler-local binding and never escaped to the top level.
 assert suffix = "!"

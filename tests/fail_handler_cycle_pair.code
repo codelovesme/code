@@ -1,5 +1,5 @@
--- Two handlers calling each other. Reported as the whole path, not just
--- "there is a cycle somewhere".
+| Two handlers calling each other. Reported as the whole path, not just
+| "there is a cycle somewhere".
 Even { n } => {
     emit Odd { n = n - 1 } to this get r
     return Answer { value = 0 }

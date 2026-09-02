@@ -48,7 +48,7 @@ assert c.ok
 emit Drop {{ collection = "users" }} to db get _
 emit Drop {{ collection = "state" }} to db get _
 
--- key/value, types preserved
+| key/value, types preserved
 emit Store {{ key = "prefs", value = {{ theme = "dark", n = 3, tags = ["a", "b"] }} }} to db get s
 assert s.key = "prefs"
 emit Fetch {{ key = "prefs" }} to db get f
@@ -62,7 +62,7 @@ assert d.existed
 emit Delete {{ key = "prefs" }} to db get d2
 assert d2.existed = false
 
--- documents
+| documents
 emit InsertMany {{ collection = "users", docs = [
     {{ name = "ada", age = 36, role = "admin" }},
     {{ name = "bob", age = 29, role = "user" }},

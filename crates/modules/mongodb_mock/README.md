@@ -15,7 +15,7 @@ assert f.value = { theme = "dark" }
 
 emit Insert { collection = "events", doc = { kind = "signup" } } to db get _
 emit Find { collection = "events", filter = { kind = "signup" } } to db get r
--- r.items is an array of objects
+| r.items is an array of objects
 ```
 
 ## What `Find` supports

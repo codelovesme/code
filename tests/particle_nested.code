@@ -1,5 +1,5 @@
--- A particle field can itself be a particle — it's just an expression, and
--- particle construction is just an expression too.
+| A particle field can itself be a particle — it's just an expression, and
+| particle construction is just an expression too.
 let wrapper = Wrapper { inner = Log { message = "hi" } }
 assert wrapper._class = "Wrapper"
 assert wrapper.inner._class = "Log"

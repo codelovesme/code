@@ -18,10 +18,10 @@ emit Config {
     scope         = "openid email profile"
 } to oauth get _
 
--- redirect the browser here
+| redirect the browser here
 emit AuthUrl { state = "${csrf_token}", extra = { access_type = "offline" } } to oauth get a
 
--- ...user comes back to redirect_uri with ?code=...&state=...
+| ...user comes back to redirect_uri with ?code=...&state=...
 emit ExchangeCode { code = "${code_from_callback}" } to oauth get id
 assert id.email = "…"
 ```

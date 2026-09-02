@@ -1,6 +1,6 @@
--- `get name` always declares a fresh binding, exactly like `let` — never a
--- reassignment. It shadows a same-named outer binding rather than erroring
--- or requiring the outer one to already exist.
+| `get name` always declares a fresh binding, exactly like `let` — never a
+| reassignment. It shadows a same-named outer binding rather than erroring
+| or requiring the outer one to already exist.
 let n = "outer"
 emit Length { value = [1, 2, 3] } to core get n
 assert n.value = 3

@@ -13,7 +13,7 @@ assert r.toc = [
     { _class = "HeadingEntry", level = 1, text = "Title",   slug = "title" },
     { _class = "HeadingEntry", level = 2, text = "Details", slug = "details" }
 ]
--- r.html has `<h1 id="title">` and `<h2 id="details">`
+| r.html has `<h1 id="title">` and `<h2 id="details">`
 ```
 
 ## Handlers

@@ -1,6 +1,6 @@
--- `emit … to base` — a linked module sends a particle UPWARD, to the
--- file that linked it. The answer comes from that file's own
--- top-level handlers, exactly as if the file had emitted `to this`.
+| `emit … to base` — a linked module sends a particle UPWARD, to the
+| file that linked it. The answer comes from that file's own
+| top-level handlers, exactly as if the file had emitted `to this`.
 Ping { value } => {
     return Ping { value = value + 10 }
 }

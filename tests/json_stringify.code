@@ -1,37 +1,37 @@
--- `json.Stringify { value, pretty? }` -> `StringifyResult { value }`.
--- Compact output is byte-for-byte what string interpolation produces; the
--- module exists for the two things interpolation can't do — `pretty`, and
--- the round trip (see json_parse.code).
+| `json.Stringify { value, pretty? }` -> `StringifyResult { value }`.
+| Compact output is byte-for-byte what string interpolation produces; the
+| module exists for the two things interpolation can't do — `pretty`, and
+| the round trip (see json_parse.code).
 link "native_modules/json.so" as j
 
 emit Stringify { value = { a = 1, b = [2, 3], c = "x" } } to j get s
 assert s ∈ StringifyResult
 assert s.value = "{\"a\":1,\"b\":[2,3],\"c\":\"x\"}"
 
--- Fields come out in the order they were written, not sorted — the same as
--- interpolation. `z` before `a` proves it isn't just alphabetical luck.
+| Fields come out in the order they were written, not sorted — the same as
+| interpolation. `z` before `a` proves it isn't just alphabetical luck.
 emit Stringify { value = { z = 1, a = 2 } } to j get order
 assert order.value = "{\"z\":1,\"a\":2}"
 let direct = { z = 1, a = 2 }
 assert order.value = "$direct"
 
--- The `_class` the language injects into every particle is dropped, top
--- level and nested — Stringify gives the data, not the plumbing.
+| The `_class` the language injects into every particle is dropped, top
+| level and nested — Stringify gives the data, not the plumbing.
 emit Stringify { value = { _class = "Point", x = 1, y = 2, at = { _class = "P", z = 3 } } } to j get p
 assert p.value = "{\"x\":1,\"y\":2,\"at\":{\"z\":3}}"
 
--- Any other `_`-prefixed key is left alone.
+| Any other `_`-prefixed key is left alone.
 emit Stringify { value = { _id = "abc", name = "row" } } to j get id
 assert id.value = "{\"_id\":\"abc\",\"name\":\"row\"}"
 
--- `pretty` indents with two spaces.
+| `pretty` indents with two spaces.
 emit Stringify { value = { a = [1, 2] }, pretty = true } to j get pretty
 assert pretty.value = "{\n  \"a\": [\n    1,\n    2\n  ]\n}"
 
--- Whole numbers write without a fractional part, like interpolation.
+| Whole numbers write without a fractional part, like interpolation.
 emit Stringify { value = 3 } to j get whole
 assert whole.value = "3"
 
--- Nothing to stringify is null, not a refusal.
+| Nothing to stringify is null, not a refusal.
 emit Stringify {} to j get nothing
 assert nothing.value = "null"

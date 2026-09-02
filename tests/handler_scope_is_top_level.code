@@ -1,6 +1,6 @@
--- The positive half of fail_handler_caller_scope.code: invoked from inside
--- a block, a loop, and another handler, a body still sees exactly the top
--- level — and its writes there are the same writes every caller observes.
+| The positive half of fail_handler_caller_scope.code: invoked from inside
+| a block, a loop, and another handler, a body still sees exactly the top
+| level — and its writes there are the same writes every caller observes.
 let total = 0
 
 Bump { by } => {

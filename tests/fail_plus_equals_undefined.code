@@ -1,2 +1,2 @@
--- `+=` reassigns, so like a bare `name = ...` it needs an existing binding.
+| `+=` reassigns, so like a bare `name = ...` it needs an existing binding.
 undefined_total += 1

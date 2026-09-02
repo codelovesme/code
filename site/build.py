@@ -68,12 +68,12 @@ def category_for(name: str) -> str:
 
 
 def first_comment(source: str) -> str:
-    """The fixture's first `--` comment line, stripped — the author's own
+    """The fixture's first `|` comment line, stripped — the author's own
     one-line explanation of the feature."""
     for line in source.splitlines():
         s = line.strip()
-        if s.startswith("--"):
-            text = s[2:].strip()
+        if s.startswith("|"):
+            text = s[1:].strip()
             if text:
                 return text
     return ""

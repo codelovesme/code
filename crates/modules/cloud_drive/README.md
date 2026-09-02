@@ -12,15 +12,15 @@ emit Config {
 } to drive get c
 assert c.ok
 
--- 1. send the user here
+| 1. send the user here
 emit AuthUrl { state = "csrf-token" } to drive get a
--- redirect to a.url …
+| redirect to a.url …
 
--- 2. they come back with ?code=…
+| 2. they come back with ?code=…
 emit ExchangeCode { code = "the-code" } to drive get t
 assert t.access_token ≠ ""
 
--- 3. use the token
+| 3. use the token
 emit UploadFile {
     access_token = t.access_token, file_name = "notes.txt",
     data = "remember the milk", content_type = "text/plain"

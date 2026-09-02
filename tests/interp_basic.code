@@ -1,5 +1,5 @@
--- `$name` inside a double-quoted string splices the variable's text in.
--- A string with no `$` is untouched — it stays a plain literal.
+| `$name` inside a double-quoted string splices the variable's text in.
+| A string with no `$` is untouched — it stays a plain literal.
 let name = "world"
 
 assert "hi $name" = "hi world"

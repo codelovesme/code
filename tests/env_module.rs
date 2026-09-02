@@ -82,15 +82,15 @@ assert port.value = 9090
 emit Get { name = "CODE_TEST_DEBUG", default = false } to env get debug
 assert debug.value
 
--- No default: the string as it stands.
+| No default: the string as it stands.
 emit Get { name = "CODE_TEST_NAME" } to env get name
 assert name.value = "ada"
 
--- A default that is a string does not turn the value into anything else.
+| A default that is a string does not turn the value into anything else.
 emit Get { name = "CODE_TEST_PORT", default = "none" } to env get text
 assert text.value = "9090"
 
--- Set, so `Require` is satisfied.
+| Set, so `Require` is satisfied.
 emit Require { name = "CODE_TEST_NAME" } to env get needed
 assert needed.value = "ada"
 "#,
@@ -116,8 +116,8 @@ emit Get { name = "CODE_TEST_PORT", default = 8080 } to env get port
 assert port ∈ Exception
 assert port.source = "env"
 
--- And the program is still running, which is the whole point of an
--- Exception being a value.
+| And the program is still running, which is the whole point of an
+| Exception being a value.
 assert 1 + 1 = 2
 "#,
         &[("CODE_TEST_PORT", "banana")],

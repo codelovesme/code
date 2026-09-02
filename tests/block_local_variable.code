@@ -1,6 +1,6 @@
--- a variable declared inside a block that doesn't already exist outside is
--- local to it: usable within it, gone afterward (see
--- fail_block_local_leak.code for the "gone afterward" half)
+| a variable declared inside a block that doesn't already exist outside is
+| local to it: usable within it, gone afterward (see
+| fail_block_local_leak.code for the "gone afterward" half)
 {
     let y = 5
     assert y = 5

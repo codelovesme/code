@@ -63,7 +63,7 @@ cannot run without:
 ```code
 emit Require { name = "DATABASE_URL" } to env get db
 if db ∈ Exception {
-    -- say so and stop, rather than starting half-configured
+    | say so and stop, rather than starting half-configured
 }
 ```
 

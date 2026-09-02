@@ -1,5 +1,5 @@
--- `Trim` removes leading and trailing whitespace only — interior runs are
--- left exactly as they were. `Trim` trims; it does not collapse.
+| `Trim` removes leading and trailing whitespace only — interior runs are
+| left exactly as they were. `Trim` trims; it does not collapse.
 link "native_modules/strings.so" as s
 emit Trim { value = "  padded  " } to s get n
 assert n = { _class = "TrimResult", value = "padded" }

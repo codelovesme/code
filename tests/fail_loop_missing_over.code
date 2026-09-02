@@ -1,5 +1,5 @@
--- `over` is required. The old language's `loop x { }` domain-enumeration
--- form has no meaning here — there is no constraint system to enumerate.
+| `over` is required. The old language's `loop x { }` domain-enumeration
+| form has no meaning here — there is no constraint system to enumerate.
 loop x {
     assert true
 }

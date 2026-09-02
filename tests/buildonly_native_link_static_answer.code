@@ -1,6 +1,6 @@
--- The same answer path for a `.a`, where the reply is a direct call to
--- `<prefix>_code_module_inbound_reply` rather than a pointer the runtime
--- dlsym'd — the same split the dispatch itself already has.
+| The same answer path for a `.a`, where the reply is a direct call to
+| `<prefix>_code_module_inbound_reply` rather than a pointer the runtime
+| dlsym'd — the same split the dispatch itself already has.
 link "native_modules/test_events_static.a" as ev
 
 Tick { value } => {

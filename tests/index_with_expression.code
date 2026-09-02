@@ -1,5 +1,5 @@
--- index access composes with the new operators: the index itself can be
--- any expression, not just a literal
+| index access composes with the new operators: the index itself can be
+| any expression, not just a literal
 let nums = [10, 20, 30, 40]
 let i = 1
 let picked = nums[i + 1]

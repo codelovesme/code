@@ -11,7 +11,7 @@ assert c.ok
 
 emit Insert { collection = "events", doc = { kind = "signup", user = "u1" } } to db get _
 emit Find   { collection = "events", filter = { kind = "signup" }, sort = { _id = -1 }, limit = 20 } to db get r
--- r.items is an array of objects
+| r.items is an array of objects
 ```
 
 ## Handlers

@@ -1,32 +1,32 @@
--- The environment, as particles. Everything a program needs from outside
--- itself and cannot write down: a port, a database, a secret. Hardcoding
--- those means the program runs in exactly one place.
+| The environment, as particles. Everything a program needs from outside
+| itself and cannot write down: a port, a database, a secret. Hardcoding
+| those means the program runs in exactly one place.
 link "native_modules/env.so" as env
 
--- PATH is set in every environment this can run in, and read as a string
--- because no `default` says otherwise.
+| PATH is set in every environment this can run in, and read as a string
+| because no `default` says otherwise.
 emit Get { name = "PATH" } to env get path
 assert path.found
 assert path.name = "PATH"
 
--- Absent, with a default: the default verbatim, and `found` says which
--- happened. Not an Exception — asking for something that might not be there
--- is what a default means.
+| Absent, with a default: the default verbatim, and `found` says which
+| happened. Not an Exception — asking for something that might not be there
+| is what a default means.
 emit Get { name = "CODE_NO_SUCH_VARIABLE", default = 8080 } to env get port
 assert not port.found
 assert port.value = 8080
 
--- Absent with no default at all is null, still not an error.
+| Absent with no default at all is null, still not an error.
 emit Get { name = "CODE_NO_SUCH_VARIABLE" } to env get missing
 assert not missing.found
 assert missing.value = null
 
--- `Require` is the other half: something the program cannot run without says
--- so, as an Exception, rather than carrying on with a default it invented.
+| `Require` is the other half: something the program cannot run without says
+| so, as an Exception, rather than carrying on with a default it invented.
 emit Require { name = "CODE_NO_SUCH_VARIABLE" } to env get needed
 assert needed ∈ Exception
 assert needed.source = "env"
 
--- A class this module does not handle is null, like every module.
+| A class this module does not handle is null, like every module.
 emit Ping {} to env get p
 assert p = null

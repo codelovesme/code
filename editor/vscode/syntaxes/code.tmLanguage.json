@@ -23,8 +23,8 @@
   ],
   "repository": {
     "comment": {
-      "name": "comment.line.arrow.code",
-      "match": "->.*$"
+      "name": "comment.line.pipe.code",
+      "match": "\\|.*$"
     },
     "link-statement": {
       "match": "\\b(link)\\s+([-a-zA-Z0-9_./]+)(?:\\s+(as)\\s+([a-z_][a-zA-Z0-9_]*))?",
