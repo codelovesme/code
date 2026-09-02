@@ -20,10 +20,17 @@ name: Publish VSIX (editor extension)
 # with credentials already present on this repository and nothing new to set
 # up.
 #
-# Building `code-lsp` twice (linux-x64 natively, darwin-arm64 cross-compiled)
-# never touches LLVM: crates/code-lsp turns off the `llvm` feature, and a
-# pure-Rust cross compile needs no C linker and no macOS runner — unlike
-# release.yml's full CLI, which is why that one still installs LLVM 17.
+# Building `code-lsp` twice never touches LLVM: crates/code-lsp turns off the
+# `llvm` feature — unlike release.yml's full CLI, which is why that one still
+# installs LLVM 17.
+#
+# Each platform builds on its own runner, natively. This used to cross-compile
+# darwin-arm64 from the Linux box, on the reasoning that a pure-Rust binary
+# needs no C toolchain; that is wrong, and it is why the workflow had never
+# once run green. rustc still drives the link through `cc`, and a Linux `cc`
+# answers `-arch arm64` with "unrecognized command-line option" — there is no
+# macOS SDK to link against either. A macOS runner is arm64 anyway, so the
+# honest fix is not a better cross-compile but no cross-compile.
 
 on:
   push:
@@ -41,8 +48,49 @@ permissions:
   contents: write
 
 jobs:
+  # macos-latest is arm64, so this is a native build rather than a cross one.
+  # Only the server binary is built here; everything else — npm, packaging,
+  # verification, shipping — stays on the Linux runner below.
+  darwin-server:
+    name: Build code-lsp for darwin-arm64
+    runs-on: macos-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # The same stamping `pack` does, for the same reason: on a real tag the
+      # shipped identity comes from the tag, not from the tree. Repeated
+      # rather than shared because this runs on its own runner, with its own
+      # checkout, before `pack` has done anything.
+      - name: Stamp code-lsp version from tag
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          v="${GITHUB_REF_NAME#v}"
+          # awk rather than sed: this runner is macOS, whose BSD sed has no
+          # `0,/re/` address, and `1,/re/` would skip a match on line 1. The
+          # Linux job's sed stays as it is.
+          awk -v v="$v" 'BEGIN { done = 0 }
+               /^version = "/ && !done { sub(/"[^"]*"/, "\"" v "\""); done = 1 }
+               { print }' crates/code-lsp/Cargo.toml > /tmp/lsp-cargo.toml
+          mv /tmp/lsp-cargo.toml crates/code-lsp/Cargo.toml
+          grep -m1 '^version = ' crates/code-lsp/Cargo.toml
+
+      - name: Build code-lsp
+        run: cargo build --release -p code-lsp --bin code-lsp
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-lsp-darwin-arm64
+          path: target/release/code-lsp
+          if-no-files-found: error
+
   pack:
     name: Build code-lsp, verify the package, ship the VSIX
+    needs: darwin-server
     runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
@@ -51,12 +99,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Host target only — darwin-arm64 comes from the macOS job above, as an
+      # artifact. No `components`: `cargo test --test one_version` is pure std
+      # and cargo fmt/clippy intentionally stay ci.yml's job, not a parallel
+      # gate everywhere.
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          # x86_64 (host), plus the one cross target below. No `components`:
-          # `cargo test --test one_version` is pure std and cargo fmt/clippy
-          # intentionally stay ci.yml's job, not a parallel gate everywhere.
-          targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
@@ -109,14 +156,27 @@ jobs:
       # alone and fails with "no bin target named `code-lsp` in default-run
       # packages" — which is exactly how v1.1.7 and v1.2.0 shipped without
       # a .vsix.
-      - name: Build the bundled code-lsp (both platforms)
+      - name: Build the bundled code-lsp (linux-x64)
         run: |
           set -euo pipefail
           mkdir -p editor/vscode/server/linux-x64 editor/vscode/server/darwin-arm64
           cargo build --release -p code-lsp --bin code-lsp
           install -m 0755 target/release/code-lsp editor/vscode/server/linux-x64/code-lsp
-          cargo build --release -p code-lsp --bin code-lsp --target aarch64-apple-darwin
-          install -m 0755 target/aarch64-apple-darwin/release/code-lsp editor/vscode/server/darwin-arm64/code-lsp
+
+      # The other half, built natively on the macOS runner. `download-artifact`
+      # does not preserve the executable bit, so it is set back here — the
+      # closure check below only asks that the file exists, and an extension
+      # shipping a non-executable server would pass it and fail on a user's
+      # machine.
+      - uses: actions/download-artifact@v4
+        with:
+          name: code-lsp-darwin-arm64
+          path: editor/vscode/server/darwin-arm64
+      - name: Restore the darwin binary's executable bit
+        run: |
+          set -euo pipefail
+          chmod 0755 editor/vscode/server/darwin-arm64/code-lsp
+          file editor/vscode/server/darwin-arm64/code-lsp
 
       # Locked (npm ci, honoring package-lock.json), so a fresh CI box resolves
       # the identical node_modules graph a developer builds locally. Type errors
