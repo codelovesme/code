@@ -14,7 +14,7 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "1.1.6"
+version = "1.1.7"
 dependencies = [
  "cc",
 ]
@@ -27,7 +27,7 @@ checksum = "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
 
 [[package]]
 name = "fs"
-version = "1.1.6"
+version = "1.1.7"
 dependencies = [
  "code-native",
 ]
