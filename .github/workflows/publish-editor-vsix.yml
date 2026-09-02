@@ -103,13 +103,19 @@ jobs:
       # no C linker dependency and macOS hardware is unnecessary. By
       # contrast, release.yml needs apt-installed LLVM because of the
       # full CLI.
+      #
+      # `-p code-lsp` is not optional: the workspace root *is* the `code`
+      # package, so a bare `--bin code-lsp` resolves against that package
+      # alone and fails with "no bin target named `code-lsp` in default-run
+      # packages" — which is exactly how v1.1.7 and v1.2.0 shipped without
+      # a .vsix.
       - name: Build the bundled code-lsp (both platforms)
         run: |
           set -euo pipefail
           mkdir -p editor/vscode/server/linux-x64 editor/vscode/server/darwin-arm64
-          cargo build --release --bin code-lsp
+          cargo build --release -p code-lsp --bin code-lsp
           install -m 0755 target/release/code-lsp editor/vscode/server/linux-x64/code-lsp
-          cargo build --release --bin code-lsp --target aarch64-apple-darwin
+          cargo build --release -p code-lsp --bin code-lsp --target aarch64-apple-darwin
           install -m 0755 target/aarch64-apple-darwin/release/code-lsp editor/vscode/server/darwin-arm64/code-lsp
 
       # Locked (npm ci, honoring package-lock.json), so a fresh CI box resolves
