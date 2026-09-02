@@ -182,10 +182,17 @@ jobs:
               printf 'emit Get { name = "PATH" } to mod get r\nassert r.found\n' >> dogfood/demo.code
               ;;
             http_server)
-              # Config then Listen — binds an OS-chosen port on loopback and
-              # never serves anything: the artifact loads, routes both
-              # particles, and reports the port it got.
-              printf 'emit Config { port = 0 } to mod get _\nemit Listen { } to mod get l\nassert l.ok\nassert l.port > 0\n' >> dogfood/demo.code
+              # Config, Listen, then Stop — binds an OS-chosen port on
+              # loopback and never serves anything: the artifact loads, routes
+              # the particles, and reports the port it got.
+              #
+              # `Stop` is not decoration. Since the host keeps a program alive
+              # while a module reports itself serving, a demo that ends after
+              # `Listen` no longer ends at all — it hangs until the job times
+              # out six hours later, which is exactly what v1.2.0 and v1.2.1
+              # did, taking the whole module publish down with them. Ending
+              # the accept thread is what lets this program finish.
+              printf 'emit Config { port = 0 } to mod get _\nemit Listen { } to mod get l\nassert l.ok\nassert l.port > 0\nemit Stop { } to mod get s\nassert s.ok\n' >> dogfood/demo.code
               ;;
             http_client)
               # Nothing is listening on port 1, so this needs no network —
