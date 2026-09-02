@@ -834,6 +834,12 @@ typedef struct {
      * Held for the whole of a push so a poll can never see a half-built
      * value. */
     CodeMutex lock;
+    /* Optional `code_module_serving`: non-zero while this module still
+     * expects to speak, which is what holds the program open after its last
+     * statement (see `code_host_park`). NULL for a module that exports none,
+     * and for every `.a` — a static module's exports are called by their
+     * prefixed names from generated code, so there is no pointer to keep. */
+    int (*serving)(void);
     /* Whether the module took the inbound channel — i.e. whether anything
      * but this thread can ever reach the ring. Decides what
      * `code_native_close` may do with the handle. */
@@ -903,6 +909,8 @@ void *code_native_open(const char *path) {
     nh->vars = (const CodeVarList *(*)(void))dlsym(handle, "code_module_vars");
     /* Also optional: only a module that wants an answer to what it pushed. */
     nh->reply = (CodeInboundReplyFn)dlsym(handle, "code_module_inbound_reply");
+    /* Optional too: a module that holds the program open while it works. */
+    nh->serving = (int (*)(void))dlsym(handle, "code_module_serving");
 
     /* Also optional: a module that never speaks first doesn't export it.
      * The pusher handed across is *this* runtime's, not the module's own
@@ -948,6 +956,7 @@ void *code_static_open(void) {
      * prefixed name, exactly as its dispatch is — there is no pointer to
      * keep here. */
     nh->reply = NULL;
+    nh->serving = NULL;
     memset(nh->inbound, 0, sizeof nh->inbound);
     nh->inbound_head = 0;
     nh->inbound_count = 0;
@@ -1056,6 +1065,31 @@ static void code_native_copy_in(CodeValue *out, const CodeValue *from) {
  * the pusher builds it alone, the ring holds it under this lock, and the
  * program owns it alone once `code_poll_inbound` hands it over. */
 
+/* How long `code_host_park` sleeps before re-asking whether anything is still
+ * serving. **Not a poll interval** — delivery is exact, since every push
+ * signals below. This only bounds how long it takes to notice a module that
+ * *stopped* serving without pushing on its way out. `interpreter.rs`'s
+ * `SERVING_RECHECK` is the same number, because the two output modes have to
+ * idle the same way. */
+#define CODE_SERVING_RECHECK_SECONDS 1
+
+#ifndef CODE_WASM
+/* Raised by every push, waited on by `code_host_park`.
+ *
+ * One signal for every module rather than one per ring: the program waits for
+ * *something* to arrive, not for a particular module to speak, and a condvar
+ * per ring would mean choosing which one to sleep on. `interpreter.rs` keeps a
+ * single pair for exactly the same reason.
+ *
+ * A count, not a bare signal, because the two sides race by design: a push can
+ * land between the drain that emptied the rings and the park that follows it.
+ * A signal sent in that window would be sent to nobody. A count survives the
+ * gap — the parker sees it is already non-zero and returns without sleeping. */
+static pthread_mutex_t code_wakeup_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t code_wakeup_cond = PTHREAD_COND_INITIALIZER;
+static unsigned long code_wakeups = 0;
+#endif
+
 void code_emit_inbound(void *queue, const CodeValue *value) {
     if (!queue || !value) {
         return;
@@ -1082,6 +1116,59 @@ void code_emit_inbound(void *queue, const CodeValue *value) {
     }
     code_native_copy_in(&nh->inbound[slot], value);
     code_mutex_unlock(&nh->lock);
+#ifndef CODE_WASM
+    /* After the ring's own lock is released, never while holding it: the
+     * parker wakes into a drain, and waking it inside that critical section
+     * only means it blocks again on the way out. */
+    pthread_mutex_lock(&code_wakeup_lock);
+    code_wakeups++;
+    pthread_cond_broadcast(&code_wakeup_cond);
+    pthread_mutex_unlock(&code_wakeup_lock);
+#endif
+}
+
+/* Whether one linked module still expects to speak. Generated code asks this
+ * of every `.so` handle it holds; the answer decides whether the program stays
+ * up past its last statement. A module exporting no `code_module_serving`
+ * holds nothing open, which is what keeps every program that ever worked
+ * ending exactly when it used to. */
+int code_native_serving(void *handle) {
+    if (!handle) {
+        return 0;
+    }
+    NativeHandle *nh = (NativeHandle *)handle;
+    return nh->serving ? nh->serving() : 0;
+}
+
+/* Sleep until something is pushed, or until it is time to re-ask who is still
+ * serving. Called once per iteration of the keep-alive loop generated at the
+ * end of `main` (see codegen.rs's `gen_keep_alive`).
+ *
+ * This is why an application writes no keep-alive loop of its own, and why
+ * that loop could never have been a plain `join`: a pushed particle is
+ * dispatched to the program's own handlers, which run on *this* thread
+ * between statements. A thread blocked in `join` is not between statements,
+ * and every request would time out one frame below the handler that should
+ * have answered it. So: park, wake on a push, drain, park again. */
+void code_host_park(void) {
+#ifndef CODE_WASM
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += CODE_SERVING_RECHECK_SECONDS;
+
+    pthread_mutex_lock(&code_wakeup_lock);
+    while (code_wakeups == 0) {
+        /* Non-zero is a timeout (or an error we treat as one): stop waiting
+         * and let the caller re-ask whether anything is still serving. */
+        if (pthread_cond_timedwait(&code_wakeup_cond, &code_wakeup_lock, &deadline) != 0) {
+            break;
+        }
+    }
+    /* Consumed whole: the drain that follows hands over everything queued in
+     * one pass, so one park answers every push that led to it. */
+    code_wakeups = 0;
+    pthread_mutex_unlock(&code_wakeup_lock);
+#endif
 }
 
 /* Pops the oldest queued particle into `out`, or returns 0 when the queue is

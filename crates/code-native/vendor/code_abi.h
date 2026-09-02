@@ -50,6 +50,29 @@
  *      with more than one outstanding push has to carry its own key in the
  *      particle it pushed and read it back here.
  *
+ *   8. *Optionally* export `int code_module_serving(void)`, returning
+ *      non-zero while this module still expects to speak — a socket it is
+ *      listening on, a timer that has not fired for the last time.
+ *
+ *      This is what keeps the program alive. A program does not end at its
+ *      last statement while any linked module answers non-zero here: the
+ *      host parks, wakes on a push, dispatches it, and parks again, exactly
+ *      as a JVM stays up for a non-daemon thread. That is why an application
+ *      that serves HTTP writes no keep-alive loop of its own.
+ *
+ *      A module that exports nothing here holds nothing open, which is why
+ *      this is safe to add: every program that ended when it used to still
+ *      ends then. Optional and additive, for the same reason as the three
+ *      above — the ABI version does not move.
+ *
+ *      The obvious alternative does not work: a module cannot simply block
+ *      forever inside `code_module_dispatch` instead. A pushed particle is
+ *      dispatched to the *program's* handlers, which run on the host's
+ *      thread between statements — a thread parked inside a dispatch is not
+ *      between statements, so nothing it queues is ever handled. Measured:
+ *      every request times out one frame below the handler that should have
+ *      answered it.
+ *
  * Why `emit` is a function *pointer* the host supplies, rather than a
  * `code_emit_inbound` a module could call directly: a `.so` carries its own
  * copy of this runtime (see below), so a direct call would push onto the

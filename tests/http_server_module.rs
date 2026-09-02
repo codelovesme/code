@@ -102,9 +102,11 @@ fn body_of(response: &str) -> String {
 }
 
 /// Runs `program` under both output modes, handing each a fresh port, and
-/// calls `check` with the port while it is up. The program is killed after —
-/// it is a daemon, and the only way it ends.
-fn serving(tag: &str, program: &str, check: impl Fn(u16)) {
+/// calls `check` with the port and the program's pid while it is up. The pid
+/// is for the one test that asks what the process *costs* rather than what it
+/// answers. The program is killed after — it is a daemon, and the only way it
+/// ends.
+fn serving(tag: &str, program: &str, check: impl Fn(u16, u32)) {
     let dir = std::env::temp_dir().join(format!("code-http-server-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("create test directory");
@@ -137,7 +139,7 @@ fn serving(tag: &str, program: &str, check: impl Fn(u16)) {
                 .expect("spawn the compiled program")
         };
 
-        check(port);
+        check(port, child.id());
 
         let _ = child.kill();
         let _ = child.wait();
@@ -171,7 +173,7 @@ assert l.port = PORT
 loop {
 }
 "#;
-    serving("answers", program, |port| {
+    serving("answers", program, |port, _pid| {
         let r = request(port, "GET", "/hello", "");
         assert_eq!(status_of(&r), 200);
         assert_eq!(body_of(&r), "GET /hello");
@@ -227,7 +229,7 @@ assert l.ok
 loop {
 }
 "#;
-    serving("headers", program, |port| {
+    serving("headers", program, |port, _pid| {
         let r = request_with(
             port,
             "GET",
@@ -286,7 +288,7 @@ assert l.ok
 loop {
 }
 "#;
-    serving("unhandled", program, |port| {
+    serving("unhandled", program, |port, _pid| {
         let r = request(port, "GET", "/anything", "");
         assert_eq!(status_of(&r), 404);
     });
@@ -315,7 +317,146 @@ assert late ∈ Exception
 loop {
 }
 "#;
-    serving("config-frozen", program, |port| {
+    serving("config-frozen", program, |port, _pid| {
         assert_eq!(status_of(&request(port, "GET", "/", "")), 200);
     });
+}
+
+/// Seconds of CPU (user + system) a process has used so far.
+///
+/// From `/proc/<pid>/stat`, whose second field is the executable name in
+/// parentheses and may itself contain spaces — so the fields are counted from
+/// after the last `)`, where the state (field 3) begins, making utime (14)
+/// and stime (15) the twelfth and thirteenth from there. Linux-only, like
+/// everything else this repository ships.
+fn cpu_seconds(pid: u32) -> f64 {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).expect("read /proc/<pid>/stat");
+    let tail = &stat[stat.rfind(')').expect("the comm field is parenthesised") + 1..];
+    let fields: Vec<&str> = tail.split_whitespace().collect();
+    let ticks = |i: usize| fields[i].parse::<f64>().expect("a clock-tick count");
+    // USER_HZ is 100 on every Linux this runs on, and the assertion below has
+    // enough margin that being wrong about it would not change the verdict.
+    (ticks(11) + ticks(12)) / 100.0
+}
+
+/// The shape an application actually writes: **no keep-alive loop at all.**
+///
+/// `Listen` starts a thread, this module answers `code_module_serving` while
+/// that thread is alive, and the host keeps the program up for exactly that
+/// long — the same rule a JVM follows for a non-daemon thread. So the program
+/// ends after `assert l.ok` and yet goes on serving.
+///
+/// Idle cost is asserted as a fraction of wall time, with a wide margin: the
+/// host parks on its own queue, so an idle server is at about 1% of a core,
+/// and anything under a quarter is unambiguous while staying immune to a busy
+/// machine.
+#[test]
+fn a_program_with_no_loop_keeps_serving_while_the_module_does() {
+    let program = r#"link "http_server.so" as srv
+
+Request { method, path, query, body } => {
+    return Response { status = 200, body = "pong" }
+}
+
+emit Config { port = PORT } to srv get c
+assert c.ok
+emit Listen { } to srv get l
+assert l.ok
+"#;
+    serving("no-loop", program, |port, pid| {
+        assert_eq!(status_of(&request(port, "GET", "/", "")), 200);
+
+        let window = Duration::from_secs(2);
+        let before = cpu_seconds(pid);
+        thread::sleep(window);
+        let used = cpu_seconds(pid) - before;
+
+        assert!(
+            used < window.as_secs_f64() * 0.25,
+            "an idle server burned {used:.2}s of CPU over {:.0}s of doing nothing — \
+             it is spinning rather than parked",
+            window.as_secs_f64()
+        );
+
+        // Still serving after two seconds of being left alone: the host went
+        // back to waiting rather than falling out of it.
+        assert_eq!(status_of(&request(port, "GET", "/still-here", "")), 200);
+    });
+}
+
+/// `Stop` is how such a program ends: it stops the accept thread, the module
+/// stops answering `code_module_serving`, and the host lets `main` finish.
+/// Without it a loop-less program would have no way to shut itself down.
+#[test]
+fn stop_ends_the_program_by_itself() {
+    let program = r#"link "http_server.so" as srv
+
+Request { method, path, query, body } => {
+    if path = "/quit" {
+        emit Stop { } to srv get s
+        assert s.ok
+        return Response { status = 200, body = "bye" }
+    }
+    return Response { status = 200, body = "pong" }
+}
+
+emit Config { port = PORT } to srv get c
+assert c.ok
+emit Listen { } to srv get l
+assert l.ok
+"#;
+
+    let dir = std::env::temp_dir().join(format!("code-http-stop-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("create test directory");
+    fs::copy(build_module(), dir.join("http_server.so")).expect("copy http_server.so");
+
+    for mode in ["run", "build"] {
+        let port = free_port();
+        let source = dir.join(format!("{mode}.code"));
+        fs::write(&source, program.replace("PORT", &port.to_string())).expect("write program");
+
+        let mut child: Child = if mode == "run" {
+            Command::new(env!("CARGO_BIN_EXE_code"))
+                .arg("run")
+                .arg(&source)
+                .current_dir(&dir)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("spawn code run")
+        } else {
+            let exe = dir.join(mode);
+            code::compile_file(&source, code::BuildTarget::Exe, &exe, false).expect("compile");
+            Command::new(&exe)
+                .current_dir(&dir)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("spawn the compiled program")
+        };
+
+        // Serving before, answered the shutdown request, gone after.
+        assert_eq!(status_of(&request(port, "GET", "/", "")), 200, "{mode}");
+        assert_eq!(body_of(&request(port, "GET", "/quit", "")), "bye", "{mode}");
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let status = loop {
+            match child.try_wait().expect("poll the child") {
+                Some(status) => break Some(status),
+                None if Instant::now() < deadline => thread::sleep(Duration::from_millis(50)),
+                None => break None,
+            }
+        };
+        match status {
+            Some(status) => assert!(status.success(), "{mode}: exited with {status}"),
+            None => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("{mode}: the program did not end after Stop");
+            }
+        }
+    }
+
+    let _ = fs::remove_dir_all(&dir);
 }

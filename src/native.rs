@@ -236,6 +236,11 @@ pub struct NativeModule {
     has_inbound: bool,
     /// Whether it also wants to hear what the program answered.
     has_reply: bool,
+    /// `code_module_serving`, if the module exports it — see `code_abi.h`.
+    /// A module that answers non-zero holds the program open, the way a
+    /// non-daemon thread holds a JVM open. Most modules export nothing here
+    /// and so hold nothing.
+    serving: Option<ServingFn>,
     /// Where this module's pushed particles land until the program drains
     /// them. Leaked at `open`, so the raw pointer the module keeps stays
     /// valid for as long as the module is loaded.
@@ -280,6 +285,9 @@ type SetInboundFn = unsafe extern "C" fn(*mut c_void, EmitFn);
 /// `code_module_inbound_reply` — see `code_abi.h`. Optional, and most
 /// modules do not export it.
 type InboundReplyFn = unsafe extern "C" fn(*const CodeValueFfi, *const CodeValueFfi);
+
+/// `code_module_serving` — non-zero while the module still expects to speak.
+type ServingFn = unsafe extern "C" fn() -> std::ffi::c_int;
 /// The host function a module calls to speak first — see `code_abi.h`'s
 /// `CodeEmitFn`. Handed across as a pointer because a `.so` has its own copy
 /// of the runtime, so a direct call would reach the wrong queue.
@@ -326,11 +334,17 @@ impl InboundQueue {
     /// policy `runtime.c`'s ring follows, so both output modes lose exactly
     /// the same particles when a module outruns the program.
     fn push(&self, value: Value) {
-        let mut pending = self.lock();
-        if pending.len() == CODE_INBOUND_CAPACITY {
-            pending.pop_front();
+        {
+            let mut pending = self.lock();
+            if pending.len() == CODE_INBOUND_CAPACITY {
+                pending.pop_front();
+            }
+            pending.push_back(value);
         }
-        pending.push_back(value);
+        // After the queue lock is released, never while holding it: the
+        // waiter wakes into `take`, and waking it inside this critical
+        // section only means it blocks again on the way out.
+        crate::interpreter::signal_inbound();
     }
 }
 
@@ -388,11 +402,18 @@ impl NativeModule {
         // the answer. Looked up once here rather than per reply.
         let has_reply = unsafe { lib.get::<InboundReplyFn>(b"code_module_inbound_reply") }.is_ok();
 
+        // Optional in the same way, and resolved once: a module that never
+        // holds the program open simply doesn't export it.
+        let serving = unsafe { lib.get::<ServingFn>(b"code_module_serving") }
+            .ok()
+            .map(|f| *f);
+
         Ok(NativeModule {
             lib: ManuallyDrop::new(lib),
             path: path.to_string(),
             has_inbound,
             has_reply,
+            serving,
             inbound,
         })
     }
@@ -401,6 +422,21 @@ impl NativeModule {
     /// dispatch closure — `'static` because it was leaked at `open`.
     pub fn inbound_handle(&self) -> &'static InboundQueue {
         self.inbound
+    }
+
+    /// Whether this module still expects to speak — a listening socket, a
+    /// running timer. While any linked module says so, the program stays up
+    /// after its last statement instead of exiting (see
+    /// `interpreter::keep_alive`).
+    ///
+    /// A module that exports no `code_module_serving` holds nothing open,
+    /// which is what keeps every existing program ending exactly when it
+    /// used to.
+    pub fn serving(&self) -> bool {
+        // SAFETY: the symbol was resolved from a library that is still
+        // loaded — a module with an inbound channel is never unloaded, and
+        // one without has no thread to be serving from anyway.
+        self.serving.map(|f| unsafe { f() != 0 }).unwrap_or(false)
     }
 
     /// Tell the module what the program's handler answered to a particle it

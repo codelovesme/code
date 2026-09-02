@@ -14,6 +14,8 @@
 //!   are loopback, an OS-chosen port); an `Exception` if sent after `Listen`.
 //! - `Listen {}` → `ListenResult { ok, port, message }` — binds the socket
 //!   and starts serving. Takes no fields.
+//! - `Stop {}` → `StopResult { ok }` — stops the accept loop, which is what
+//!   lets the program end (see below).
 //!
 //! Pushed into the program (its own handlers, between statements):
 //!
@@ -39,9 +41,13 @@
 //! emit Config { port = 8080 } to srv get _
 //! emit Listen { } to srv get l
 //! assert l.ok
-//! loop {
-//! }
 //! ```
+//!
+//! **That is the whole program — there is no keep-alive loop.** `Listen`
+//! starts a thread, and this module answers `code_module_serving` while that
+//! thread is alive; the host keeps the program up for exactly as long, the
+//! way a JVM stays up for a non-daemon thread. `Stop {}` ends the thread, the
+//! answer turns to zero, and the program finishes on its own.
 //!
 //! A handler that returns something without a `status`/`body` still answers —
 //! 200 and an empty body. Returning null, or defining no `Request` handler at
@@ -67,6 +73,7 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -88,6 +95,20 @@ static PENDING: Mutex<Option<Sender<Reply>>> = Mutex::new(None);
 
 /// One `Listen` per module, because there is one program to serve.
 static LISTENING: OnceLock<()> = OnceLock::new();
+
+/// Whether the accept thread is still running — the answer
+/// `code_module_serving` gives the host, and so the thing that decides how
+/// long the program lives. Set when `Listen` binds, cleared when the accept
+/// loop leaves (because `Stop` asked it to, or because the listener died).
+static SERVING: AtomicBool = AtomicBool::new(false);
+
+/// Set by `Stop`, read by the accept loop between connections.
+static STOPPING: AtomicBool = AtomicBool::new(false);
+
+/// Where the server is listening, so `Stop` can reach it. `accept()` blocks
+/// and there is no portable way to interrupt it, so `Stop` opens a connection
+/// of its own: the loop wakes, sees `STOPPING`, and leaves.
+static BOUND_ADDR: Mutex<Option<std::net::SocketAddr>> = Mutex::new(None);
 
 /// What the server binds and serves as. Set (optionally) by `Config`, read
 /// once by `Listen`. `None` means "nobody sent `Config`" — the defaults
@@ -187,6 +208,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
         match read_field_str(particle, "_class") {
             Some("Config") => handle_config(out, particle),
             Some("Listen") => handle_listen(out),
+            Some("Stop") => handle_stop(out),
             // Including `Request`, which this module pushes but never answers.
             _ => null(out),
         }
@@ -287,12 +309,18 @@ fn handle_listen(out: &mut CodeValue) {
             return;
         }
     };
-    let bound = listener.local_addr().map(|a| a.port()).unwrap_or(cfg.port);
+    let addr = listener.local_addr().ok();
+    let bound = addr.map(|a| a.port()).unwrap_or(cfg.port);
+    *BOUND_ADDR.lock().unwrap_or_else(|e| e.into_inner()) = addr;
 
     // The thread outlives this call, which is the whole point: a server that
     // only ran while the program was inside `emit` would never accept
-    // anything. Nothing joins it — the process ending is what stops it, and
-    // the host leaves a module that can push loaded for exactly that reason.
+    // anything. Nothing joins it — but from here until it leaves, this module
+    // answers `code_module_serving`, and the host keeps the program up for
+    // exactly that long. Set before the spawn, so there is no window in which
+    // the program could reach its last statement and exit out from under a
+    // thread that is already listening.
+    SERVING.store(true, Ordering::SeqCst);
     std::thread::spawn(move || accept_loop(listener, cfg.max_body, cfg.timeout));
     report_log("Info", &format!("listening on {}:{bound}", cfg.host));
     listen_result(out, true, bound, "");
@@ -304,11 +332,69 @@ fn handle_listen(out: &mut CodeValue) {
 
 fn accept_loop(listener: TcpListener, max_body: usize, response_timeout: f64) {
     for stream in listener.incoming() {
+        // Checked first: `Stop`'s own connection is what woke this iteration,
+        // and it is not a request to serve.
+        if STOPPING.load(Ordering::SeqCst) {
+            break;
+        }
         match stream {
             Ok(stream) => serve(stream, max_body, response_timeout),
             Err(e) => report_log("Warn", &format!("accept failed: {e}")),
         }
     }
+    // The last thing this thread does. Once it is false nothing holds the
+    // program open any more, and the host's keep-alive loop lets `main`
+    // finish — so this must happen after the loop, never before it.
+    SERVING.store(false, Ordering::SeqCst);
+    report_log("Info", "stopped listening");
+}
+
+/// `Stop {}` → `StopResult { ok }` — stop serving, and so let the program end.
+///
+/// This is how a program that writes no keep-alive loop shuts itself down.
+/// While the accept thread is alive this module tells the host it is serving,
+/// and the host keeps `main` from finishing; `Stop` ends the thread, the
+/// answer turns to zero, and the program finishes on its own.
+///
+/// `accept()` blocks and there is no portable way to interrupt it, so this
+/// sets the flag and then opens a connection to the server's own address: the
+/// loop wakes for it, sees the flag, and leaves without serving it.
+fn handle_stop(out: &mut CodeValue) {
+    if LISTENING.get().is_none() {
+        exception(
+            out,
+            "http_server",
+            "Stop before Listen — nothing is serving",
+        );
+        return;
+    }
+    STOPPING.store(true, Ordering::SeqCst);
+    if let Some(addr) = *BOUND_ADDR.lock().unwrap_or_else(|e| e.into_inner()) {
+        // Best effort, and its failure is not this handler's to report: if
+        // the connection cannot be made the listener is already gone, which
+        // is the state `Stop` was asking for.
+        let _ = TcpStream::connect(addr);
+    }
+
+    let mut buf = SlotBuffer::new(2);
+    borrowed_str(buf.slot_mut(0), c"StopResult");
+    boolean(buf.slot_mut(1), true);
+    object(out, &[c"_class", c"ok"], &mut buf);
+    buf.release_all();
+}
+
+/// # Safety
+///
+/// Called by the host between the program's statements; takes no arguments
+/// and touches only an atomic.
+///
+/// Non-zero while the accept thread is alive. This is what holds the program
+/// open past its last statement — the same role a non-daemon thread plays in
+/// a JVM — and it is why an application using this module writes no
+/// keep-alive loop of its own. See `code_abi.h`.
+#[no_mangle]
+pub extern "C" fn code_module_serving() -> std::ffi::c_int {
+    i32::from(SERVING.load(Ordering::SeqCst))
 }
 
 /// One request, start to finish: read it, hand it to the program, wait for

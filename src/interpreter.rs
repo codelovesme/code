@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
+use std::sync::{Condvar, Mutex};
+use std::time::Duration;
 
 use crate::ast::{
     BinOp, EmitTarget, Expr, FieldKey, IsTest, NativeFormat, Program, Stmt, UnOp, ValueKind,
@@ -151,8 +153,17 @@ impl Environment {
     /// Registers a linked module's inbound queue, so `drain_inbound` will
     /// pick up whatever it pushes. Separate from `link_module` because most
     /// modules never speak first — `code_module_set_inbound` is optional.
-    pub fn link_inbound(&mut self, drain: Rc<dyn Fn() -> Vec<Value>>, reply: InboundReply) {
-        self.inbound.push(InboundSource { drain, reply });
+    pub fn link_inbound(
+        &mut self,
+        drain: Rc<dyn Fn() -> Vec<Value>>,
+        reply: InboundReply,
+        serving: Rc<dyn Fn() -> bool>,
+    ) {
+        self.inbound.push(InboundSource {
+            drain,
+            reply,
+            serving,
+        });
     }
 
     pub fn provide_module(&mut self, name: &str, vars: Value, dispatch: ModuleDispatch) {
@@ -264,12 +275,91 @@ fn drain_inbound(env: &mut Environment) -> Result<(), String> {
     }
 }
 
+/// Whether *any* linked module still expects to speak — the condition that
+/// keeps the program up after its last statement. See [`keep_alive`].
+fn any_module_serving(env: &Environment) -> bool {
+    env.inbound.iter().any(|source| (source.serving)())
+}
+
+/// Raised by every push (`native::InboundQueue::push`), waited on by
+/// [`keep_alive`].
+///
+/// **One signal for every module**, not one per queue: the program waits for
+/// *something* to arrive, not for a particular module to speak, and a condvar
+/// per queue would mean choosing which one to sleep on. `runtime.c` keeps a
+/// single global for exactly the same reason.
+///
+/// A **count**, not a bare notification, because the two sides race by
+/// design: a push can land between the drain that emptied the queues and the
+/// wait that follows it. A signal sent in that window would be sent to
+/// nobody, and the particle would sit there until the next re-check. A count
+/// survives the gap — the waiter sees it is already non-zero and returns
+/// without sleeping at all.
+static INBOUND_WAKEUPS: Mutex<u64> = Mutex::new(0);
+static INBOUND_WAKEUP: Condvar = Condvar::new();
+
+/// Called by a module's queue after it has pushed. Public to the crate
+/// because `native.rs` is the only caller and it is on the *other* side of a
+/// feature gate — which is also why it is dead code in an interpreter-only
+/// build (`crates/code-wasm`): there are no native modules there, so nothing
+/// pushes and nothing waits.
+#[cfg_attr(not(feature = "native-modules"), allow(dead_code))]
+pub(crate) fn signal_inbound() {
+    let mut pending = INBOUND_WAKEUPS.lock().unwrap_or_else(|e| e.into_inner());
+    *pending += 1;
+    INBOUND_WAKEUP.notify_all();
+}
+
+/// How long a wait sleeps before re-asking whether anything is still serving.
+///
+/// **Not a poll interval** — delivery is exact, since every push signals. This
+/// only bounds how long it takes to notice a module that *stopped* serving
+/// without pushing anything on its way out (an `http_server` told to `Stop`).
+/// One wakeup a second, and only while the program is otherwise idle.
+const SERVING_RECHECK: Duration = Duration::from_secs(1);
+
+/// Keeps the program up after its last statement, for as long as any linked
+/// module is still expecting to speak.
+///
+/// This is the whole reason an app does not write a keep-alive loop of its
+/// own. It is the same rule a JVM follows for non-daemon threads: `Listen`
+/// starts a thread, that thread holds the program open, and the program ends
+/// on its own once nothing holds it any more.
+///
+/// It cannot be a plain join. A pushed particle is dispatched to the
+/// program's *own* handlers, which run here, on this thread, between
+/// statements — a thread blocked in `join` is not between statements, and
+/// every request would time out unanswered one frame below the handler that
+/// should have answered it. So this parks, wakes on a push, drains, and parks
+/// again: a join with a dispatch pump in it. `codegen.rs` emits the same loop
+/// around `code_host_wait`.
+fn keep_alive(env: &mut Environment) -> Result<(), String> {
+    while any_module_serving(env) {
+        {
+            let pending = INBOUND_WAKEUPS.lock().unwrap_or_else(|e| e.into_inner());
+            let (mut pending, _) = INBOUND_WAKEUP
+                .wait_timeout_while(pending, SERVING_RECHECK, |pending| *pending == 0)
+                .unwrap_or_else(|e| e.into_inner());
+            // Consumed whole: the drain below hands over everything queued in
+            // one pass, so one wait answers every push that led to it.
+            *pending = 0;
+        }
+        drain_inbound(env)?;
+    }
+    Ok(())
+}
+
 /// One linked module's half of the inbound conversation: what it has queued,
-/// and where the program's answer goes.
+/// where the program's answer goes, and whether it is still expecting to
+/// speak at all.
 #[derive(Clone)]
 struct InboundSource {
     drain: Rc<dyn Fn() -> Vec<Value>>,
     reply: InboundReply,
+    /// `code_module_serving` behind a closure, so this stays free of any
+    /// `native-modules`-only type — the same reason `drain` and `reply` are
+    /// closures rather than a module handle.
+    serving: Rc<dyn Fn() -> bool>,
 }
 
 /// Hands one module the answer to a particle it pushed — the pushed particle
@@ -361,6 +451,10 @@ pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, 
             .and_then(|_| drain_inbound(&mut env))
             .map_err(|msg| locate(program, i, msg))?;
     }
+    // The last statement is not the end of the program: a module that is
+    // still serving holds it open, and pushed particles keep reaching their
+    // handlers until nothing does. See `keep_alive`.
+    keep_alive(&mut env)?;
     Ok(env)
 }
 
@@ -501,10 +595,12 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     let module = Rc::new(module);
                     let dispatching = Rc::clone(&module);
                     let dispatch: ModuleDispatch = Rc::new(move |v| dispatching.dispatch(v));
+                    let asking = Rc::clone(&module);
                     env.link_module(alias, Value::Object(Rc::new(vars)), dispatch);
                     env.link_inbound(
                         Rc::new(move || inbound.take()),
                         Rc::new(move |particle, answer| module.reply(particle, answer)),
+                        Rc::new(move || asking.serving()),
                     );
                     Ok(Flow::Normal)
                 }

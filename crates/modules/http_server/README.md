@@ -13,16 +13,16 @@ Request { method, path } => {
 emit Config { port = 8080 } to srv get _
 emit Listen { } to srv get l
 assert l.ok
-
-loop {
-}
 ```
+
+That is the whole program — **there is no keep-alive loop.**
 
 ## Handlers
 
 ```
 Config { port?, host?, max_body_bytes?, response_timeout_seconds? } → ConfigResult { ok }
 Listen { }                                                          → ListenResult { ok, port, message }
+Stop   { }                                                          → StopResult   { ok }
 ```
 
 **Configuration and the action are separate.** `Config` sets what the server
@@ -40,6 +40,40 @@ socket is already bound.
 
 A bad value in any `Config` field is an `Exception`, not a silent coercion.
 One `Listen` per program: a second one answers `ok: false`.
+
+## How long the program lives
+
+`Listen` starts a thread. While that thread is alive this module answers the
+ABI's `code_module_serving`, and **the host keeps the program up for exactly
+that long** — the same rule a JVM follows for a non-daemon thread. So the
+program runs past `assert l.ok`, reaches the end of its statements, and goes
+on serving. Idle it costs nothing: the runtime parks on its own queue and
+wakes on a real request, not on a poll interval.
+
+`Stop { }` is how it ends. It stops the accept thread; nothing holds the
+program open any more, and `main` finishes on its own:
+
+```code
+Request { method, path } => {
+    if path = "/shutdown" {
+        emit Stop { } to srv get s
+        return Response { status = 200, body = "bye" }
+    }
+    return Response { status = 200, body = "ok" }
+}
+```
+
+`accept()` blocks and there is no portable way to interrupt it, so `Stop`
+opens a connection to the server's own address to wake it; that connection is
+never served. `Stop` before `Listen` is an `Exception`.
+
+**Why `Listen` does not simply block instead.** It was tried and measured:
+joining the accept thread parks the program one frame *below* the handler
+that would answer it. A pushed `Request` is dispatched to your handler by the
+host, between the program's own statements — a thread parked inside a module
+call is not between statements, so the request reaches the queue, nothing
+dispatches it, and every connection times out into a 504. The waiting has to
+happen where the host can still dispatch, which is why it happens in the host.
 
 ## Pushed into the program
 

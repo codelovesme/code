@@ -397,6 +397,12 @@ pub fn compile_to_object(
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_native_serving = module.add_function(
+        "code_native_serving",
+        i32_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_host_park = module.add_function("code_host_park", void_ty.fn_type(&[], false), None);
     let fn_is_kind = module.add_function(
         "code_is_kind",
         i32_ty.fn_type(&[i8_ptr_ty.into(), i32_ty.into()], false),
@@ -647,6 +653,8 @@ pub fn compile_to_object(
         fn_check_particle,
         fn_check_emittable,
         fn_poll_inbound,
+        fn_native_serving,
+        fn_host_park,
         fn_native_reply,
         fn_str_text,
         fn_is_kind,
@@ -688,6 +696,12 @@ pub fn compile_to_object(
     // Before `emit_cleanup`, which takes `native_links` — the drain body is
     // generated from exactly those handles.
     gen.gen_drain_body()?;
+    // After the last statement, before the sweep: a module that is still
+    // serving holds the program open, exactly as `interpreter::keep_alive`
+    // does. A library never does this — its `_code_init` has to return.
+    if !target.is_library() {
+        gen.gen_keep_alive()?;
+    }
     // A library sweeps nothing, and this is the ABI contract rather than an
     // optimization: `code_abi.h` says a module owns its exported values "for
     // the module's whole lifetime", and the host — which reads them at `link`
@@ -909,6 +923,13 @@ struct Gen<'a, 'm> {
     failed_flag: PointerValue<'a>,
     location_slot: PointerValue<'a>,
     fn_poll_inbound: FunctionValue<'a>,
+    /// `runtime.c`'s `code_native_serving` — whether one linked module still
+    /// expects to speak, which is what holds the program open past its last
+    /// statement. See `gen_keep_alive`.
+    fn_native_serving: FunctionValue<'a>,
+    /// `runtime.c`'s `code_host_park` — sleep until a push arrives or it is
+    /// time to re-ask who is serving.
+    fn_host_park: FunctionValue<'a>,
     /// `runtime.c`'s `code_is_kind` — `x is String` and its five siblings.
     fn_is_kind: FunctionValue<'a>,
     /// `runtime.c`'s `code_str_text` — the characters of a Str, for a
@@ -1400,6 +1421,108 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// Generated last, once every module's handle global exists. The globals
     /// are what make this possible at all: a handle used to be an SSA value
     /// in `main`, which a separate function could not see.
+    /// Emits, at the end of `main`, the loop that keeps the program up while
+    /// any linked module is still expecting to speak:
+    ///
+    /// ```text
+    /// head:  %serving = code_native_serving(h1) | code_native_serving(h2) | …
+    ///        br %serving, body, done
+    /// body:  code_host_park()          ; sleeps until a push, or a re-check
+    ///        _code_drain_inbound()     ; hands everything queued to handlers
+    ///        br head
+    /// done:  …cleanup…
+    /// ```
+    ///
+    /// This is why an application writes no keep-alive loop of its own, and
+    /// the same shape `interpreter::keep_alive` runs — the two output modes
+    /// have to idle, and stop, identically.
+    ///
+    /// It could not be a plain join on the module's thread: a pushed particle
+    /// is dispatched to the program's *own* handlers, which run on this
+    /// thread, between statements. A thread blocked in `join` is not between
+    /// statements, and every request would time out one frame below the
+    /// handler that should have answered it.
+    ///
+    /// Nothing is emitted when the program links no native module — a plain
+    /// script compiles exactly as it did. Only `.so` handles are asked:
+    /// a `.a`'s exports are called by their prefixed names from generated
+    /// code, so a static module holding the program open would need its own
+    /// call emitted here, and none does yet.
+    fn gen_keep_alive(&mut self) -> Result<(), String> {
+        let Some(drain) = self.drain_fn else {
+            return Ok(());
+        };
+        let handles: Vec<PointerValue<'a>> = self
+            .native_links
+            .values()
+            .filter_map(|link| match link {
+                NativeLink::Dynamic(slot) => Some(*slot),
+                NativeLink::Static { .. } => None,
+            })
+            .collect();
+        if handles.is_empty() {
+            return Ok(());
+        }
+
+        let Some(current) = self.builder.get_insert_block() else {
+            return Ok(());
+        };
+        let function = current
+            .get_parent()
+            .ok_or_else(|| "keep-alive emitted outside a function".to_string())?;
+        let head = self.context.append_basic_block(function, "keepalive_head");
+        let body = self.context.append_basic_block(function, "keepalive_body");
+        let done = self.context.append_basic_block(function, "keepalive_done");
+
+        self.builder
+            .build_unconditional_branch(head)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(head);
+        let zero = self.i32_ty.const_zero();
+        let mut serving = self.context.bool_type().const_zero();
+        for slot in handles {
+            let handle = self
+                .builder
+                .build_load(self.i8_ptr_ty, slot, "native_handle")
+                .map_err(|e| e.to_string())?
+                .into_pointer_value();
+            let answer = self
+                .builder
+                .build_call(self.fn_native_serving, &[handle.into()], "serving")
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .left()
+                .ok_or_else(|| "code_native_serving returned nothing".to_string())?
+                .into_int_value();
+            let is_serving = self
+                .builder
+                .build_int_compare(inkwell::IntPredicate::NE, answer, zero, "is_serving")
+                .map_err(|e| e.to_string())?;
+            serving = self
+                .builder
+                .build_or(serving, is_serving, "any_serving")
+                .map_err(|e| e.to_string())?;
+        }
+        self.builder
+            .build_conditional_branch(serving, body, done)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(body);
+        self.builder
+            .build_call(self.fn_host_park, &[], "")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_call(drain, &[], "")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(head)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(done);
+        Ok(())
+    }
+
     fn gen_drain_body(&mut self) -> Result<(), String> {
         let Some(drain) = self.drain_fn else {
             return Ok(());
