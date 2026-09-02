@@ -6,7 +6,7 @@
 
 [package]
 name = "cloud_drive"
-version = "1.2.1"
+version = "1.3.0"
 edition = "2021"
 description = "The `cloud_drive` native module for the Code programming language — Google Drive: OAuth, quota, upload, download, list and delete."
 license = "GPL-3.0"

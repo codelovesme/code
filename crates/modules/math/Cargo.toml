@@ -7,7 +7,7 @@
 
 [package]
 name = "math"
-version = "1.2.1"
+version = "1.3.0"
 edition = "2021"
 description = "The `math` native module for the Code programming language — Double, Sum. Written in Rust on code-native; inherits the numeric half of test_math under the split proposal."
 license = "GPL-3.0"

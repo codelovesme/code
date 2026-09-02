@@ -3,7 +3,7 @@
   "displayName": "Code Language",
   "description": "Syntax coloring, diagnostics and formatting for the Code programming language (.code files) — driven by the code-lsp server built from the very code release you have.",
   "publisher": "codelovesme",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "license": "GPL-3.0-or-later",
   "repository": {
     "type": "git",
