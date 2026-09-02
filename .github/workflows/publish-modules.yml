@@ -66,6 +66,15 @@ jobs:
         module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, oauth_mock]
     steps:
       - uses: actions/checkout@v4
+      # Each module is its own workspace with its own Cargo.lock (see those
+      # crates' Cargo.toml for why they opt out of the main one), so the cache
+      # is pointed at that workspace rather than the repository root. It holds
+      # the dependency tree, not the module's own crate — which is where the
+      # time actually goes: `jwt` drags in ring and rustls, `blob_storage` an
+      # HTTP stack, and both spent over a minute rebuilding them on every tag.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/modules/${{ matrix.module }}
       - name: Compile
         run: |
           set -euo pipefail
@@ -79,17 +88,20 @@ jobs:
           name: module-${{ matrix.module }}-linux-x86_64
           path: "dist/*.so"
 
-  # Proof the artifact actually loads: build the real `code` binary and run
-  # a script that links the just-built .so through BOTH output modes — the
-  # same parity invariant the fixture harness enforces, applied to the
-  # shipped artifact rather than the test-tree build.
-  dogfood:
-    name: Dogfood ${{ matrix.module }} (code run + code build)
-    needs: [resolve, build-linux-x86_64]
+  # The `code` binary every dogfood job below needs — built once here rather
+  # than 27 times over there. That is what it used to be: each of the 27
+  # matrix jobs installed LLVM 17 from apt and compiled the whole compiler,
+  # to then spend about a second linking one module and emitting one
+  # particle. Same artifact, 27 times, ~40 runner-minutes of it.
+  #
+  # It travels as an artifact because it can: the release binary links LLVM
+  # statically (`ldd` on it names ten shared objects and none of them is
+  # LLVM), which is the same reason release.yml's tarball runs on machines
+  # that never installed LLVM at all.
+  build-code:
+    name: Build code (once, for every dogfood job)
+    needs: resolve
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, oauth_mock]
     env:
       LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
     steps:
@@ -101,7 +113,43 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build code
-        run: cargo build --release
+        run: cargo build --release --bin code
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-binary
+          path: target/release/code
+          if-no-files-found: error
+
+  # Proof the artifact actually loads: take the real `code` binary and run
+  # a script that links the just-built .so through BOTH output modes — the
+  # same parity invariant the fixture harness enforces, applied to the
+  # shipped artifact rather than the test-tree build.
+  dogfood:
+    name: Dogfood ${{ matrix.module }} (code run + code build)
+    needs: [resolve, build-code, build-linux-x86_64]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, oauth_mock]
+    steps:
+      - uses: actions/checkout@v4
+
+      # No toolchain and no LLVM on this runner: nothing here compiles Rust.
+      # `code build` does still shell out to a system `cc` for the final
+      # link, which ubuntu-latest ships — that is the one build dependency
+      # this job has left, and it is why removing the toolchain is safe.
+      - name: Download the code binary
+        uses: actions/download-artifact@v4
+        with:
+          name: code-binary
+          path: target/release
+      - name: Make it runnable and prove it runs
+        run: |
+          set -euo pipefail
+          # download-artifact does not preserve the executable bit.
+          chmod 0755 target/release/code
+          ./target/release/code --version
+
       - name: Download linux-x86_64 artifact
         uses: actions/download-artifact@v4
         with:
@@ -264,10 +312,15 @@ jobs:
       ]
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
+      # `pattern` rather than everything: since the `code` binary became an
+      # artifact of its own (see build-code), an unfiltered download would
+      # drop a 44MB compiler into dist/ — which `files: dist/*` below would
+      # then try to attach to the release.
+      - name: Download the module artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: module-*
       - name: Flatten into dist/
         run: find dist -type f \( -name '*.so' -o -name '*.dylib' \) -exec mv {} dist/ \;
       - name: Write one module.json per module
