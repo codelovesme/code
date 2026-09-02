@@ -215,19 +215,39 @@ jobs:
               package.json \
               out/extension.js \
               server/linux-x64/code-lsp \
-              server/darwin-arm64/code-lsp \
-              node_modules/vscode-languageclient/package.json \
-              node_modules/vscode-languageserver-protocol/package.json \
-              node_modules/vscode-jsonrpc/package.json \
-              node_modules/minimatch/package.json \
-              node_modules/semver/package.json \
-              node_modules/brace-expansion/package.json \
-              node_modules/balanced-match/package.json
+              server/darwin-arm64/code-lsp
           do
             if [[ ! -e "$ext/$want" ]]; then
               echo "FAIL: required entry missing from packaged VSIX: $want" >&2
               exit 1
             fi
+          done
+
+          # The runtime closure is checked by *name*, anywhere under
+          # node_modules, rather than at a fixed path. Where npm puts a
+          # package is npm's business and it moves: `minimatch`,
+          # `brace-expansion` and `balanced-match` are no longer hoisted to
+          # the root — the root copies belong to vsce, a dev dependency, and
+          # the production ones now sit nested under
+          # `vscode-languageclient/node_modules/`. This check used to name the
+          # hoisted paths and so failed on a package that was in fact
+          # complete. What the extension actually needs is that the module is
+          # in the archive at all.
+          for want in \
+              vscode-languageclient \
+              vscode-languageserver-protocol \
+              vscode-jsonrpc \
+              minimatch \
+              semver \
+              brace-expansion \
+              balanced-match
+          do
+            found="$(find "$ext/node_modules" -type f -path "*/$want/package.json" -print -quit)"
+            if [[ -z "$found" ]]; then
+              echo "FAIL: runtime dependency missing from packaged VSIX: $want" >&2
+              exit 1
+            fi
+            echo "  ok  $want -> ${found#"$ext/"}"
           done
           if [[ -e "$ext/node_modules/typescript" || -e "$ext/node_modules/@types" || -e "$ext/node_modules/esbuild" ]]; then
             echo "FAIL: development-only dependency leaked into the packaged node_modules/" >&2

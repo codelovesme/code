@@ -5,9 +5,12 @@ node_modules/**
 # ...except exactly the production runtime closure of `out/extension.js`
 # (verified with `npm ls --omit=dev` plus reading its compiled requires):
 # vscode-languageclient pulls vscode-languageserver-protocol
-# (which pulls vscode-jsonrpc) and, at its pinned versions, its private
-# copies of minimatch/brace-expansion/balanced-match resolve to these
-# hoisted roots. Without them the packaged .vsix fails to load the
+# (which pulls vscode-jsonrpc), plus minimatch/brace-expansion/
+# balanced-match. Where npm puts those three is npm's business and it has
+# already moved once: the roots now hold vsce's *dev* copies, and the
+# production ones sit nested under vscode-languageclient/node_modules/,
+# which the first negation below already covers. The root negations stay
+# for the day npm hoists them back. Without them the packaged .vsix fails to load the
 # language client on a fresh install, because VS Code resolves the entry's
 # `require("vscode-languageclient/node")` inside the extracted folder
 # alone. Everything else under node_modules stays excluded: the toolchain
