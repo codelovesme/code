@@ -110,6 +110,7 @@ fn main() -> ExitCode {
         "remove" | "rm" => cmd_remove(args.collect()),
         #[cfg(feature = "install")]
         "ls" => cmd_ls(),
+        "test" => cmd_test(args.collect()),
         "format" => cmd_format(args.collect()),
         // Global flags rather than subcommands, so they take no feature gate
         // and work even in the wasm-only interpreter build.
@@ -148,6 +149,7 @@ resolves relative to the file doing the linking.",
         // exists but not where it lives should still find it.
         "init" => INIT_HELP,
         "format" => FORMAT_HELP,
+        "test" => TEST_HELP,
         _ => HELP,
     }
 }
@@ -165,6 +167,7 @@ commands:
   install <name-or-url>          fetch a module into ./.code/modules
   remove <name>                  delete it, and its lock entry
   ls                             what is installed, and what is available
+  test [path]...                 run the fixtures in tests/, or the ones named
   format [--check] <path>...     the canonical layout, rewritten in place
 
   -h, --help [command]           this, or one command's own help
@@ -208,6 +211,17 @@ Scaffolds a project in the current directory, or in <name>. Writes main.code
 (which runs as written, with nothing installed), an empty .code/lock.json —
 .code/ is what marks the project root — and a .gitignore. An existing file is
 a refusal, never a merge.";
+
+const TEST_HELP: &str = "\
+usage: code test [path]...
+
+Interprets each fixture and reports it. A fixture passes by running to the
+end; one whose file name starts with `fail_` passes by *not* doing so. There
+is nothing else to declare — `assert` is already the language's way of saying
+what should hold.
+
+No path means ./tests, walked for *.code. A path may be a directory or a
+single fixture. Exits non-zero if any fixture did not do what its name says.";
 
 const FORMAT_HELP: &str = "\
 usage: code format [--check] <path>...
@@ -387,6 +401,140 @@ const GITIGNORE_TEMPLATE: &str = "\
 # Where `code build <directory>` puts artifacts.
 build/
 ";
+
+/// A project's fixtures live here, and `code test` with no path means this.
+const TESTS_DIR: &str = "tests";
+
+/// `code test [path]...` — run every fixture and say which of them did what
+/// its name says it would.
+///
+/// The convention is the one this repository's own suite already runs on: a
+/// fixture must reach its end, and a `fail_*.code` fixture must not. That is
+/// the whole contract, and it is deliberately not a framework — the language
+/// has `assert`, so a test is just a program, and a runner only has to say
+/// which programs stopped.
+///
+/// It lives here rather than in a wrapper because nothing about it is
+/// specific to any framework built on Code: walking `tests/`, interpreting a
+/// file, and reading the `fail_` prefix are all things `code` already knows
+/// how to do, and every project that has fixtures wants the same answer.
+///
+/// **It interprets, and does not also build — deliberately.**
+/// `tests/run_language_tests.rs` runs this repository's own fixtures through
+/// *both* output modes, because those fixtures exist to prove the two modes
+/// agree. The fixtures this command runs are somebody's *application* tests:
+/// they assert what their program computes, and they are entitled to assume
+/// what the language already guarantees. Compiling each one to check the same
+/// assertion twice would double the wait to re-prove a property that is not
+/// theirs to prove.
+fn cmd_test(args: Vec<String>) -> ExitCode {
+    if let Some(unknown) = args.iter().find(|a| a.starts_with('-')) {
+        eprintln!("code test takes paths, not '{unknown}'");
+        return ExitCode::FAILURE;
+    }
+
+    let mut files = Vec::new();
+    if args.is_empty() {
+        let default_dir = Path::new(TESTS_DIR);
+        if !default_dir.is_dir() {
+            eprintln!(
+                "no {TESTS_DIR}/ directory here — name the fixtures instead: code test <path>..."
+            );
+            return ExitCode::FAILURE;
+        }
+        collect_code_files(default_dir, &mut files);
+    } else {
+        for path in &args {
+            collect_code_files(Path::new(path), &mut files);
+        }
+    }
+    files.sort();
+
+    if files.is_empty() {
+        println!("no *.code fixtures found");
+        return ExitCode::SUCCESS;
+    }
+
+    let exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(e) => {
+            eprintln!("cannot find this binary to run fixtures with: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+    for file in &files {
+        let must_fail = file
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with("fail_"));
+        let outcome = run_fixture(&exe, file);
+
+        if outcome.is_ok() != must_fail {
+            println!("ok    {}", file.display());
+            passed += 1;
+            continue;
+        }
+
+        println!("FAIL  {}", file.display());
+        match &outcome {
+            // Indented whole: an error carries its source excerpt over
+            // several lines, and only indenting the first would break the
+            // caret's alignment with the line above it.
+            Err(e) => e.lines().for_each(|line| println!("      {line}")),
+            Ok(()) => println!("      ran to the end, but `fail_` says it should not have"),
+        }
+        failed += 1;
+    }
+
+    println!();
+    println!("{passed} passed, {failed} failed");
+    if failed > 0 {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// Interpret one fixture, in a child process, and say whether it finished.
+///
+/// A child rather than a call straight into the interpreter, for the same
+/// reason `tests/run_language_tests.rs` shells out: a fixture may `link` a
+/// native module, and a module that dies takes its whole host process down
+/// with it (see `docs/todo/native-module-linking.md`). Run in-process, one
+/// bad module would kill the run and take the report of every other fixture
+/// with it. In a child it is an exit code like any other failure — the
+/// fixture is marked FAIL and the rest still run, which is the one thing a
+/// test runner has to get right.
+///
+/// The fixture's own output is captured, so a passing run is silent and a
+/// failing one shows what it said, verbatim: that text is the diagnostic,
+/// and re-wording it here would only hide it.
+fn run_fixture(exe: &Path, file: &Path) -> Result<(), String> {
+    let out = std::process::Command::new(exe)
+        .arg("run")
+        .arg(file)
+        .output()
+        .map_err(|e| format!("cannot run '{}': {e}", exe.display()))?;
+    if out.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let said = if stderr.trim().is_empty() {
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    } else {
+        stderr.into_owned()
+    };
+    // A fixture killed by a signal — the linked-module case this runs in a
+    // child for — usually says nothing at all, so the status is the report.
+    Err(if said.trim().is_empty() {
+        format!("no output ({})", out.status)
+    } else {
+        said.trim_end().to_string()
+    })
+}
 
 /// `code format <path>...` rewrites in place; `--check` writes nothing and
 /// exits non-zero if anything would change. A path may be a directory, walked

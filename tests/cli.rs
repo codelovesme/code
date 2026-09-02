@@ -165,3 +165,86 @@ fn version_answers_to_all_three_spellings() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// `code test` runs a project's fixtures on the convention this repository's
+/// own suite already uses: a fixture passes by finishing, and a `fail_*.code`
+/// fixture passes by not finishing. Nothing declares anything — the language
+/// has `assert`, so a test is just a program.
+#[test]
+fn test_runs_fixtures_on_the_fail_prefix_convention() {
+    let dir = temp_dir("test-cmd");
+    let tests = dir.join("tests");
+    fs::create_dir_all(&tests).expect("create tests/");
+    fs::write(tests.join("passes.code"), "let x = 1\nassert x = 1\n").unwrap();
+    fs::write(tests.join("fail_asserts.code"), "let x = 1\nassert x = 2\n").unwrap();
+
+    let out = code(&dir, &["test"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "both fixtures did what their names say:\n{stdout}"
+    );
+    assert!(stdout.contains("2 passed, 0 failed"), "got:\n{stdout}");
+
+    // A fixture that stops without saying it would is the failure.
+    fs::write(tests.join("breaks.code"), "let x = 1\nassert x = 2\n").unwrap();
+    let out = code(&dir, &["test"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !out.status.success(),
+        "a broken fixture should fail the run:\n{stdout}"
+    );
+    assert!(stdout.contains("FAIL  tests/breaks.code"), "got:\n{stdout}");
+    assert!(stdout.contains("2 passed, 1 failed"), "got:\n{stdout}");
+    // The reason travels with the failure, not just the verdict.
+    assert!(stdout.contains("assertion failed"), "got:\n{stdout}");
+
+    // A fixture that does not even parse is reported like any other stop,
+    // and the run carries on to the fixtures after it. Each fixture is
+    // interpreted in a child process precisely so that it can fail as hard
+    // as it likes — a `link`ed native module that dies takes its host down
+    // with it, and in-process that would take the whole report along.
+    fs::write(tests.join("breaks.code"), "let = = =\n").unwrap();
+    let out = code(&dir, &["test"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(!out.status.success(), "got:\n{stdout}");
+    assert!(stdout.contains("FAIL  tests/breaks.code"), "got:\n{stdout}");
+    assert!(
+        stdout.contains("ok    tests/passes.code"),
+        "the fixtures after a hard failure still run:\n{stdout}"
+    );
+    fs::remove_file(tests.join("breaks.code")).unwrap();
+
+    // ...and so is a `fail_` fixture that quietly succeeds.
+    fs::write(tests.join("fail_but_passes.code"), "assert 1 = 1\n").unwrap();
+    let out = code(&dir, &["test"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(!out.status.success(), "got:\n{stdout}");
+    assert!(stdout.contains("should not have"), "got:\n{stdout}");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Named paths are taken as given, and a project with no `tests/` is told
+/// that rather than silently passing.
+#[test]
+fn test_takes_explicit_paths_and_says_when_there_is_no_tests_dir() {
+    let dir = temp_dir("test-paths");
+    fs::write(dir.join("lone.code"), "assert 1 = 1\n").unwrap();
+
+    let out = code(&dir, &["test", "lone.code"]);
+    assert!(out.status.success());
+    assert!(String::from_utf8_lossy(&out.stdout).contains("1 passed, 0 failed"));
+
+    let out = code(&dir, &["test"]);
+    assert!(
+        !out.status.success(),
+        "no tests/ is a mistake worth reporting"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("tests/"),
+        "the error should name what it looked for"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}

@@ -37,6 +37,7 @@ emit Print { value = "$name won $rounds rounds" } to term
 - [Handlers](#handlers)
 - [Errors](#errors)
 - [Modules](#modules)
+- [Tests](#tests)
 - [One canonical layout](#one-canonical-layout)
 - [What the language deliberately does not have](#what-the-language-deliberately-does-not-have)
 - [The two output modes](#the-two-output-modes)
@@ -61,6 +62,8 @@ code build                                 # -> ./build/<this directory>
 code build program.code --target wasm      # -t; exe | shared | static | wasm
 code build program.code -o out/thing        # --output is the same flag
 code build program.code --release          # -r; -O2, the default is unoptimized
+code test                                  # run every fixture in ./tests
+code test tests/parser.code                # ...or just the ones you name
 code format src/ program.code              # canonical layout, rewritten in place
 code format --check tests/                 # writes nothing; non-zero if any differ
 code install terminal                      # fetch a module into ./.code/modules
@@ -831,8 +834,6 @@ Request { method, path } => {
 
 emit Config { port = 8080 } to srv get _
 emit Listen { } to srv get l
-loop {
-}
 ```
 
 Nothing new is written on this side — a pushed particle is answered exactly
@@ -852,11 +853,10 @@ outruns the program costs bounded memory.
 
 A module may push from **a thread of its own**, not only from inside a
 dispatch call it was asked on: a timer, a socket accept loop, a terminal
-reading keys. A program that wants to receive those has to stay up, and the
-way it says so is `loop { }` — the loop that was already in the language,
-because a program that wants to stay up writes the thing that stays. Nothing
-in the body causes the particles; they arrive because something else is
-putting them there:
+reading keys. A program that wants to receive those has to stay up — and it
+says so by starting the thing that pushes, not by writing anything to wait
+with. Nothing in the program causes the particles; they arrive because
+something else is putting them there:
 
 ```
 link "modules/timer.so" as timer
@@ -866,25 +866,42 @@ Tick { value } => {
 }
 
 emit Start { value = 3 } to timer get started
-loop {
-    emit Wait { timeout_ms = 2000 } to timer get w    -- parks until a push
-}
 ```
 
-**Waiting is the module's job, never the runtime's.** `loop { }` with an
-empty body spins a core, exactly as `loop {}` does in Rust — nothing here
-sleeps on your behalf or guesses how long you meant to wait. A module that
-is an event source blocks inside its own `code_module_dispatch` (a condvar, a
-`recv`, an `epoll`) and returns when it has something; the program parks
-there at no cost, and the drain at the end of the iteration hands over
-whatever was queued meanwhile. `http_client` already blocks this way for an HTTP
-round trip.
+Notice what is *not* there: no keep-alive loop. **A program does not end at
+its last statement while a linked module is still expecting to speak.** A
+module says so by exporting `code_module_serving` (see
+[`code_abi.h`](src/code_abi.h)); while any linked module answers non-zero,
+the runtime parks, wakes on a push, dispatches it, and parks again. It is the
+rule a JVM follows for a non-daemon thread, and it costs nothing while idle —
+the wait ends on a real push, never on a guessed interval. `http_server`'s
+`Stop { }` is how a program of that shape shuts itself down: it ends the
+accept thread, nothing holds the program open any more, and `main` finishes.
+
+A module that exports nothing there holds nothing open, so a script that
+links `terminal` and prints a line still ends exactly where it always did.
+
+**Waiting is still the module's job, never the runtime's.** The runtime blocks
+on its own queue, which is exact; it never sleeps on your behalf or guesses
+how long you meant to wait. A module that is an event source blocks inside its
+own `code_module_dispatch` (a condvar, a `recv`, an `epoll`) and returns when
+it has something — `http_client` does this for an HTTP round trip.
+
+**A module cannot simply not return, though.** Making `Listen` join its own
+accept thread — the obvious way to keep a program alive — parks it one frame
+*below* the handler that would answer: the request reaches the queue, the
+drain never runs, and the connection times out. Measured, not assumed. A
+pushed particle is dispatched between the program's own statements, so a
+blocking module has to *return* and let the host do the waiting.
 
 Two things such a module owes its callers. **Bound the block** — a timeout
 field, as `http_client` has: nothing in the ABI can stop a module that blocks
-forever, and a module that must be asked before the program may exit is a
-module that can hang it. **Expect a backlog** — while one module is parked,
+forever inside a dispatch. **Expect a backlog** — while one module is parked,
 another's pushes queue up behind it, and past 256 the oldest are dropped.
+
+`loop { }` still works and still means what it always did, for a program that
+wants to drive its own iterations. It also still spins a core, exactly as
+`loop {}` does in Rust.
 
 The drain stops at a handler's edge. A loop inside a handler does not drain,
 because handing a particle over while a handler is running is re-entry, and
@@ -1056,6 +1073,41 @@ through both and compares the whole report. That is not politeness: a failed
 frame returns an `Exception` whose `message` the program can read (see
 [Errors](#errors)), so two backends wording a failure differently would be a
 difference in what a program *computes*.
+
+## Tests
+
+`code test` interprets every `*.code` file under `./tests` and reports it.
+There is nothing to declare and no framework to learn: a fixture passes by
+running to the end, and a fixture whose file name starts with `fail_` passes
+by *not* getting there.
+
+```
+$ code test
+ok    tests/loops.code
+ok    tests/fail_type_mismatch.code
+FAIL  tests/handlers.code
+      assertion failed
+       --> tests/handlers.code:12:1
+        |
+     12 | assert reply.text = "hi"
+        | ^
+
+2 passed, 1 failed
+```
+
+That is the same convention this repository's own suite runs on, and it works
+because `assert` is already the language's way of saying what should hold — a
+test is just a program, so a runner only has to say which programs stopped.
+
+It interprets, and does not also build. This repository's own suite runs its
+fixtures through both output modes, because those fixtures exist to prove the
+two modes agree; *your* fixtures assert what your program computes, and are
+entitled to assume what the language already guarantees.
+
+A path may be a directory (walked for `*.code`) or a single fixture. `link`
+resolves relative to the file doing the linking, so a fixture under `tests/`
+reaches a module or another source file by its own relative path, wherever
+you run from.
 
 ## One canonical layout
 
