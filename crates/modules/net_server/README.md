@@ -91,23 +91,39 @@ allows — a handler may emit to another, as long as the call graph stays
 acyclic (see `src/handlers.rs`):
 
 ```code
-Impulse { token, app, particle } => {
-    emit Decode { token = token } to jwt get claims
-    if claims ∈ Exception { return Denied { reason = "bad token" } }
-    emit Authenticated { user = claims.sub, particle = particle } to this get r
-    return r
+Impulse { token, particle } => {
+    emit Decode { token = token } to jwt get who
+    if not who.valid { return Denied { reason = "bad token" } }
+
+    | The allow-list: the classes this program offers, and what each needs.
+    if particle._class = "Ping" {
+        emit DoPing { user = who.sub } to this get r
+        return r
+    }
+    if particle._class = "Report" {
+        if who.role ≠ "admin" { return Forbidden { } }
+        emit DoReport { } to this get r
+        return r
+    }
+    return Unknown { class = particle._class }
 }
 
-Authenticated { user, particle } => {
-    | the permission check happens here, with the user in hand
-    emit particle to this get r
-    return r
-}
+DoPing { user } => { … }
 ```
 
-The last link works because a particle held in a variable can be emitted:
-which handler runs is decided by its `_class` at runtime, and the re-entry
-guard catches the case where that names a handler already on the stack.
+**Name the classes you offer; do not emit what arrived.** `emit particle to
+this` would hand a sender the whole program: the class is theirs to choose, so
+they could reach any handler in it — `Log`, `Exception`, anything internal —
+and pick which one runs. The allow-list is what keeps this transport from
+being a dispatch table into your program.
+
+Two things make the shape work. A particle held in a variable *can* be
+emitted, so the class it names is decided at runtime; and `particle._class` is
+readable, so a program can decide what to do about it first. The caller
+travels as a field on the emitted particle rather than in shared state,
+because a handler defined in a linked gene cannot see that gene's own
+top-level `let` — the gene's statements are a scope of their own while its
+handlers are hoisted to the program.
 
 It is also why this module knows nothing about euglena: no manifest, no
 projects directory, no per-app public-class list. The old `server` organelle

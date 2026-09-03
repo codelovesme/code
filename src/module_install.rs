@@ -109,6 +109,8 @@ pub const FIRST_PARTY: &[&str] = &[
     "math",
     "mongodb",
     "mongodb_mock",
+    "net_client",
+    "net_server",
     "oauth",
     "oauth_mock",
     "process",

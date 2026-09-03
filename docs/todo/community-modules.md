@@ -12,7 +12,7 @@ Three tiers, distinguished by *where the bytes live*:
 | tier | what | how users get it |
 |---|---|---|
 | **core** | `Length` (shipped), `Timestamp` | compiled into the `code` binary — nothing to install, works everywhere including the wasm playground |
-| **first-party modules** | `terminal`, `console`, `math`, `strings`, `env`, `http_client`, `http_server`, … | native: GitHub Releases + `code install <name>`; browser: npm |
+| **first-party modules** | `terminal`, `console`, `math`, `strings`, `env`, `http_client`, `http_server`, `net_client`, `net_server`, … | native: GitHub Releases + `code install <name>`; browser: npm |
 | **community modules** | anyone's | the author publishes to *their own* GitHub Releases (a template repo provides the CI); consumers install by URL first, by name once an index exists |
 
 The rule separating tier 1 from tier 2: **fundamentals are core**. Only

@@ -44,19 +44,24 @@
 //! as long as the call graph stays acyclic):
 //!
 //! ```code
-//! Impulse { token, app, particle } => {
-//!     emit Decode { token = token } to jwt get claims
-//!     if claims ∈ Exception { return Denied { reason = "bad token" } }
-//!     emit Authenticated { user = claims.sub, particle = particle } to this get r
-//!     return r
-//! }
+//! Impulse { token, particle } => {
+//!     emit Decode { token = token } to jwt get who
+//!     if not who.valid { return Denied { reason = "bad token" } }
 //!
-//! Authenticated { user, particle } => {
-//!     | the permission check happens here, with the user in hand
-//!     emit particle to this get r
-//!     return r
+//!     | The allow-list: the classes this program offers, and what each needs.
+//!     if particle._class = "Ping" {
+//!         emit DoPing { user = who.sub } to this get r
+//!         return r
+//!     }
+//!     return Unknown { class = particle._class }
 //! }
 //! ```
+//!
+//! **Name the classes you offer; do not emit what arrived.** `emit particle
+//! to this` would hand a sender the whole program: the class is theirs to
+//! choose, so they could reach any handler in it — `Log`, `Exception`,
+//! anything internal — and pick which one runs. The allow-list is what keeps
+//! this transport from being a dispatch table into a program.
 //!
 //! It is also why this module knows nothing about euglena: no manifest, no
 //! projects directory, no per-app public-class list. The old `server`
@@ -82,7 +87,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -107,6 +112,35 @@ static LISTENING: OnceLock<()> = OnceLock::new();
 static SERVING: AtomicBool = AtomicBool::new(false);
 /// Set by `Stop`, read by the accept loop between connections.
 static STOPPING: AtomicBool = AtomicBool::new(false);
+/// Connections accepted but not yet answered — counted from just before the
+/// serving thread is spawned to the moment it has written its frame back.
+///
+/// This is the other half of "is this module still serving". `SERVING` alone
+/// answers whether *new* connections are being taken, and `Stop` turns that
+/// off from inside a handler — which is exactly the handler that still owes
+/// its caller a reply. Without this the host could see nothing serving and
+/// end the program between the answer being produced and it reaching the
+/// socket, which is precisely what `Quit { } => { emit Stop {} …
+/// return Bye {} }` asks for.
+static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+
+/// Decrements [`IN_FLIGHT`] however its scope is left. `serve` returns from
+/// six places; a manual decrement would be five chances to leak a count and
+/// hold the program open for ever.
+struct InFlight;
+
+impl InFlight {
+    fn enter() -> Self {
+        IN_FLIGHT.fetch_add(1, Ordering::SeqCst);
+        InFlight
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 /// Where the server is listening, so `Stop` can reach it: `accept()` blocks
 /// and there is no portable way to interrupt it, so `Stop` opens a connection
 /// of its own to wake the loop.
@@ -176,7 +210,9 @@ declare_inbound_reply!(answered);
 /// See `code_abi.h` item 8.
 #[no_mangle]
 pub extern "C" fn code_module_serving() -> std::ffi::c_int {
-    i32::from(SERVING.load(Ordering::SeqCst))
+    let accepting = SERVING.load(Ordering::SeqCst);
+    let owed = IN_FLIGHT.load(Ordering::SeqCst) > 0;
+    i32::from(accepting || owed)
 }
 
 /// # Safety
@@ -379,7 +415,14 @@ fn accept_loop(listener: TcpListener, cfg: ServerConfig) {
                 // socket. What it *does* wait for is the program, which
                 // answers one particle at a time no matter how many are here.
                 let cfg = cfg.clone();
-                std::thread::spawn(move || serve(stream, cfg));
+                // Counted here rather than inside `serve`, so a connection is
+                // never invisible in the gap between `spawn` and the thread
+                // actually starting.
+                let in_flight = InFlight::enter();
+                std::thread::spawn(move || {
+                    let _in_flight = in_flight;
+                    serve(stream, cfg)
+                });
             }
             Err(e) => report_log("Warn", &format!("accept failed: {e}")),
         }
@@ -393,6 +436,13 @@ fn accept_loop(listener: TcpListener, cfg: ServerConfig) {
 /// One connection, start to finish: read the frame, hand the particle to the
 /// program, wait for the answer, frame it back.
 fn serve(mut stream: TcpStream, cfg: ServerConfig) {
+    // Bound the read. `read_exact` blocks for ever on a client that connects
+    // and then says nothing, and since this connection is counted in
+    // `IN_FLIGHT` a stalled one would hold the whole program open — `Stop`
+    // included. The same `timeout` that bounds waiting for the program
+    // bounds waiting for the sender.
+    let _ = stream.set_read_timeout(Some(Duration::from_secs_f64(cfg.timeout)));
+
     let envelope = match read_frame(&mut stream, cfg.max_bytes) {
         Ok(bytes) => bytes,
         Err(message) => {

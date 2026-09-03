@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, oauth_mock]
+        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, oauth_mock]
     steps:
       - uses: actions/checkout@v4
       # Each module is its own workspace with its own Cargo.lock (see those
@@ -130,7 +130,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, oauth_mock]
+        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, oauth_mock]
     steps:
       - uses: actions/checkout@v4
 
@@ -281,6 +281,25 @@ jobs:
             mailer_mock)
               printf 'emit Config { host = "mock", from = "me@x.test" } to mod get c\nassert c.ok\nemit Send { recipient = "you@x.test", subject = "hi", text = "yo" } to mod get s\nassert s.ok\nemit Outbox { } to mod get o\nassert o.count = 1\n' >> dogfood/demo.code
               ;;
+            net_server)
+              # Config, Listen, then Stop — binds an OS-chosen port on loopback
+              # and never serves anything.
+              #
+              # `Stop` is not decoration. This module reports itself serving
+              # while its accept thread is alive, and the host keeps a serving
+              # program alive, so a demo that ended after `Listen` would not
+              # end at all — it would sit here until the job timed out. That
+              # is exactly how the http_server demo took two module publishes
+              # down with it.
+              printf 'emit Config { port = 0 } to mod get c\nassert c.ok\nemit Listen { } to mod get l\nassert l.ok\nassert l.port > 0\nemit Stop { } to mod get s\nassert s.ok\n' >> dogfood/demo.code
+              ;;
+            net_client)
+              # Nothing is listening on port 1, so this needs no network — it
+              # proves the artifact loads and routes, and that an unreachable
+              # far side comes back as an Exception value rather than killing
+              # the program.
+              printf 'emit Send { url = "euglena://127.0.0.1:1/demo", particle = Ping { } } to mod get r\nassert r ∈ Exception\nassert r.source = "net_client"\n' >> dogfood/demo.code
+              ;;
             oauth_mock)
               printf 'emit Config { client_id = "c", client_secret = "s", redirect_uri = "https://a/cb", auth_url = "https://a/auth", token_url = "https://a/tok" } to mod get c\nassert c.ok\nemit ExchangeCode { code = "abc" } to mod get i\nassert i ∈ Identity\nassert i.email = "abc@mock.test"\n' >> dogfood/demo.code
               ;;
@@ -335,7 +354,7 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in terminal strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock oauth_mock; do
+          for m in terminal strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server oauth_mock; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
@@ -360,6 +379,8 @@ jobs:
               cloud_drive) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode", "RefreshToken", "GetQuota", "ListFiles", "UploadFile", "DownloadFile", "DeleteFile"]' ;;
               localai) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions"]' ;;
               mailer_mock) handlers='["Config", "Send", "Outbox"]' ;;
+              net_server) handlers='["Config", "Listen", "Stop"]' ;;
+              net_client) handlers='["Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb_mock) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;
               blob_storage_mock) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
@@ -375,6 +396,7 @@ jobs:
             # block should emit. Stateless modules have none.
             case "$m" in
               http_server) setup='"setup": "Config",' ;;
+              net_server) setup='"setup": "Config",' ;;
               jwt|fs|json_store|git|mailer|oauth|mongodb|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
               *) setup='' ;;
             esac
