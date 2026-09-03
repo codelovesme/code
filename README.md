@@ -405,6 +405,22 @@ There is **no `else`**, and there never will be. The condition must be a
 Bool. A bare `{ … }` block is also a statement, and both introduce a scope
 that follows the [`let` vs. bare assignment](#bindings-and-scope) rule above.
 
+A block may hold its statement on the same line — the `}` ends that
+statement, the way a newline does:
+
+```
+if score ≥ 90 { return G { letter = "A" } }
+if score ≥ 80 { return G { letter = "B" } }
+return G { letter = "F" }
+```
+
+which is what makes a run of guards writable. With no `else`, that run *is*
+the multi-way conditional here.
+
+Statements are separated by newlines and nothing else. There is no `;` — it
+was a second spelling of the same separator, never needed once a `}` could
+end a statement, and typing one now says so.
+
 ### loop
 
 One iteration construct, in three shapes.
@@ -1007,9 +1023,14 @@ Drive: the OAuth flow, quota, upload, download, list, delete — see
 completions and audio transcription over an OpenAI-compatible endpoint — see
 [its README](crates/modules/localai/README.md)), `http_client` (the seven HTTP
 methods, and `Exception`/`Log` pushed back — see
-[its README](crates/modules/http_client/README.md)), and `http_server`
+[its README](crates/modules/http_client/README.md)), `http_server`
 (requests pushed in, answered by what a `Request` handler returns — see
-[its README](crates/modules/http_server/README.md)).
+[its README](crates/modules/http_server/README.md)), and the `net_server` /
+`net_client` pair (a particle to a url and the answer back, with no protocol
+of their own and no policy — authentication and authorization are a chain of
+handlers, because that is where a user and their permissions can be read; see
+[`net_server`](crates/modules/net_server/README.md) and
+[`net_client`](crates/modules/net_client/README.md)).
 Seven of these ship a `<name>_mock` twin — `mailer_mock`, `oauth_mock`,
 `mongodb_mock`, `blob_storage_mock`, `cloud_drive_mock`, `git_mock`,
 `localai_mock` — same particles and results, but no SMTP server, no
@@ -1152,7 +1173,8 @@ crates/
   modules/      first-party modules: terminal, math, strings, env, json,
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
                 oauth, mongodb, blob_storage, cloud_drive, localai,
-                http_client, http_server — plus <name>_mock twins for
+                http_client, http_server, net_client, net_server — plus
+                <name>_mock twins for
                 mailer, oauth, mongodb, blob_storage, cloud_drive, git, localai
 site/           the playground; build.py embeds tests/*.code as examples
 templates/      module/ — a working starting point for publishing your own
