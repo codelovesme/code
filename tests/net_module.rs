@@ -448,3 +448,77 @@ assert r.n = {n}
     let _ = child.wait();
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A connection that never finishes its frame must not hold the program open.
+///
+/// This is the other side of counting connections in `IN_FLIGHT`. Counting is
+/// what lets a handler call `Stop` and still have its answer reach the caller
+/// — the accept loop stops, but the program stays alive while a reply is
+/// owed. Taken alone that hands any client a way to pin the process for ever:
+/// connect, say nothing, and the count never comes back down.
+///
+/// So the socket read is bounded by the same `response_timeout_seconds` that
+/// bounds waiting for the program. Here one connection stalls, a second sends
+/// `Quit` — whose handler calls `Stop` — and the program has to end anyway.
+/// Without the read timeout it runs until this test's patience does.
+#[test]
+fn a_stalled_connection_cannot_hold_the_program_open() {
+    use std::io::Write;
+    use std::net::TcpStream;
+
+    let dir = workspace("stalled");
+    let port = free_port();
+
+    let server = dir.join("server.code");
+    fs::write(
+        &server,
+        format!(
+            r#"link "net_server.so" as net
+
+Quit {{ }} => {{
+    emit Stop {{ }} to net get s
+    assert s.ok
+    return Bye {{ }}
+}}
+
+emit Config {{ port = {port}, response_timeout_seconds = 2 }} to net get c
+assert c.ok
+emit Listen {{ }} to net get l
+assert l.ok
+"#
+        ),
+    )
+    .expect("write the server");
+
+    let mut child = start(&dir, "run", &server, "server-stalled");
+    await_listening(port);
+
+    // Connect and say nothing, holding it open for longer than the test.
+    let _stalled = TcpStream::connect(("127.0.0.1", port)).expect("open a stalled connection");
+
+    // A second connection asks it to quit, framed the way net_client does:
+    // four big-endian length bytes, then the JSON envelope.
+    let mut quit = TcpStream::connect(("127.0.0.1", port)).expect("open the quit connection");
+    let body = br#"{"app":"","particle":{"_class":"Quit"}}"#;
+    quit.write_all(&(body.len() as u32).to_be_bytes())
+        .and_then(|()| quit.write_all(body))
+        .expect("send Quit");
+
+    // The stall is 2s of read timeout, so this is generous without being
+    // indistinguishable from hanging.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        match child.try_wait().expect("poll the server") {
+            Some(status) => {
+                assert!(status.success(), "the server exited badly: {status}");
+                break;
+            }
+            None if Instant::now() < deadline => thread::sleep(Duration::from_millis(100)),
+            None => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("a stalled connection kept the program alive past Stop");
+            }
+        }
+    }
+}
