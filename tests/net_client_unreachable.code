@@ -1,0 +1,9 @@
+| An unreachable far side is a value, not a dead program: nothing listens on
+| port 1, so this needs no network. The whole contract of a module is that it
+| may not end the application — it reports with an Exception instead.
+
+link "native_modules/net_client.so" as net
+
+emit Send { url = "euglena://127.0.0.1:1/demo", particle = Ping { } } to net get r
+assert r ∈ Exception
+assert r.source = "net_client"

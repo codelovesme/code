@@ -1,0 +1,25 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree. Same convention
+# `net_server`, `json` and `math` use.
+[workspace]
+
+[package]
+name = "net_client"
+version = "2.0.0"
+edition = "2021"
+description = "The `net_client` native module for the Code programming language — sends a particle to a `net_server` and returns the particle its handlers answered with. Written in Rust on code-native."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+name = "net_client"
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }
+# `preserve_order` for the same reason `net_server` needs it: a particle's
+# fields must survive the round trip in the order they were written, because
+# `code` object equality is field-order sensitive.
+serde_json = { version = "1", features = ["preserve_order"] }

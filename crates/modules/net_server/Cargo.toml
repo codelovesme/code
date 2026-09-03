@@ -1,0 +1,27 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree. Same convention
+# `http_server`, `json` and `math` use.
+[workspace]
+
+[package]
+name = "net_server"
+version = "2.0.0"
+edition = "2021"
+description = "The `net_server` native module for the Code programming language — accepts particles over a framed transport and hands them to the program's own handlers, with no protocol of its own. Written in Rust on code-native."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+name = "net_server"
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }
+# `preserve_order` so a particle's fields survive the wire in the order the
+# sender wrote them. Without it serde_json sorts keys and an object that went
+# out as `{ a, b }` comes back `{ a, b }` sorted differently — and `code`
+# object equality is field-order sensitive, so an `assert` on a round-tripped
+# particle would fail for no reason a caller could see.
+serde_json = { version = "1", features = ["preserve_order"] }
