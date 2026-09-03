@@ -1,0 +1,6 @@
+| `for` names a construct this language does not have. The error says so
+| by name — see docs/todo/errors-for-absent-constructs.md.
+
+for x in [1, 2] {
+    let y = x
+}

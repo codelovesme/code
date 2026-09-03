@@ -1,0 +1,7 @@
+| `while` names a construct this language does not have. The error says so
+| by name — see docs/todo/errors-for-absent-constructs.md.
+
+let i = 0
+while i < 3 {
+    i = i + 1
+}

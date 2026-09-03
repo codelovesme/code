@@ -1,5 +1,8 @@
 # The constructs this language does not have get its worst errors
 
+> **Shipped 2026-09-03.** Each is answered by name now. The write-up below
+> is the original; "What shipped" records what landed and what it cost.
+
 This language already knows how to answer someone reaching for a construct it
 does not have. Two of the best errors in the codebase are exactly that:
 
@@ -92,3 +95,39 @@ deleted and the generic message came back.
 Found by using the language cold. `fn` was the first thing typed after
 reading the scaffold, on the reasoning that the scaffold's `Greet` handler
 looked like a function and there was probably a lighter way to write one.
+
+## What shipped
+
+`absent_construct(name) -> Option<&'static str>` in `src/parser.rs`, consulted
+from the bare-identifier arm only when the `=`/`+=` it wanted did not arrive.
+Six groups: the function spellings, `while`, `for`/`foreach`, the type
+declarations, the import spellings, and the print spellings. `else` is
+answered separately from `expect_end_of_statement`, because the `}` it follows
+has already closed the `if` body and it never reaches the statement arm.
+
+Two things fell out of doing it that the write-up had not anticipated:
+
+**The caret pointed at the wrong token.** `advance` moves `err_pos` past the
+name before the assignment is demanded, so the first version underlined the
+word *after* `fn`. The name's position is now captured as it is consumed and
+restored when the hint fires. Easy to regress silently, hence its own test.
+
+**None of these words is reserved, and none became reserved.** The hint fires
+only where an assignment was expected and did not arrive, so `let print = 1`,
+`print = 2` and `print += 1` all still work. That is the difference between
+this and adding keywords, and it is the property most likely to be broken by
+a well-meaning simplification later — `the_words_are_still_ordinary_identifiers`
+exists to catch that.
+
+### Coverage, and why the fixtures were not enough
+
+`tests/fail_absent_{fn,while,for,else,print,import}.code` prove the programs
+are refused. That was never in doubt — `fn average(xs)` was refused before
+this change too, with the misleading message. So the wording needed a test of
+its own: `tests/absent_constructs.rs`, asserting each message names the
+construct *and* shows the shape that replaces it.
+
+Verified by mutation. Deleting the `absent_construct` call makes three of the
+six tests in that file fail — and every `fail_` fixture still pass, which is
+the write-up's point about refusal not being the problem, demonstrated rather
+than argued.

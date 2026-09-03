@@ -371,6 +371,10 @@ impl<'a> Parser<'a> {
             ))
             }
         };
+        // Where the name itself sits, so an `absent_construct` message can
+        // point at the word someone typed rather than at whatever followed
+        // it — `advance` will have moved `err_pos` on by then.
+        let name_pos = self.err_pos;
         // `+=` is the one compound form. It is pure sugar, rewritten here
         // into `name = name + expr` so that neither backend — nor anything
         // else downstream — learns it exists. Whatever `+` means for the two
@@ -380,9 +384,21 @@ impl<'a> Parser<'a> {
             Token::Equals => false,
             Token::PlusEq => true,
             other => {
+                // A lowercase word starting a statement can only be a
+                // reassignment target, so the generic message here is that
+                // the `=` is missing. For the handful of words that name a
+                // construct this language does not have, that is actively
+                // misleading: it says the *assignment* is malformed and
+                // leaves the reader to discover on their own that there are
+                // no functions. Answer those by name instead, the way `!`
+                // and `<=` are answered in `lexer.rs` and `comparison`.
+                if let Some(hint) = absent_construct(&name) {
+                    self.err_pos = name_pos;
+                    return Err(hint.to_string());
+                }
                 return Err(format!(
                     "expected '=' or '+=' after '{name}', found {other:?}"
-                ))
+                ));
             }
         };
         let value = self.expr()?;
@@ -583,6 +599,18 @@ impl<'a> Parser<'a> {
         match self.peek() {
             Token::Newline | Token::Eof => Ok(()),
             Token::RBrace if self.block_depth > 0 => Ok(()),
+            // `else` lands here rather than at the start of a statement,
+            // because the `}` it follows has already closed the `if` body.
+            // Worth naming for the same reason the others are: the README
+            // says to write a second `if`, and nothing at the point of the
+            // mistake said so.
+            Token::Ident(name) if name == "else" => {
+                let msg = "there is no `else` — write a second `if`, or fall through to what \
+                     follows the first"
+                    .to_string();
+                self.err_here();
+                Err(msg)
+            }
             other => {
                 let msg = format!("expected end of statement, found {other:?}");
                 self.err_here();
@@ -930,6 +958,46 @@ impl<'a> Parser<'a> {
 /// answer would win for every particle ever built. Refusing the name is a
 /// rule someone can read; a silent precedence is one they would have to
 /// discover.
+/// The message for a word that names a construct this language does not
+/// have, or `None` for an ordinary identifier.
+///
+/// These are the absences `README.md` lists under "What the language
+/// deliberately does not have" — argued for there, and until now answered at
+/// the point of use by a message about a missing `=`. Someone who reads the
+/// README start to finish is well served; someone who scaffolds a project and
+/// starts typing was told they mistyped an assignment.
+///
+/// A list of English words in a parser is a real if small ugliness. It is the
+/// same one `!`'s error already accepted, for the same reason: these are not
+/// hypothetical strings, they are what people type first.
+fn absent_construct(name: &str) -> Option<&'static str> {
+    match name {
+        "fn" | "func" | "fun" | "def" | "function" | "lambda" => Some(
+            "there are no functions — a handler answers a particle, and is the only \
+             call-like thing here:\n  Name { field } => { return Result { ... } }\n\
+             reached with `emit Name { field = x } to this get r`",
+        ),
+        "while" => Some("there is no `while` — `loop { }` with `break` is the unbounded loop"),
+        "for" | "foreach" => Some(
+            "there is no `for` — `loop item over container { }` iterates an Array or an Object",
+        ),
+        "class" | "struct" | "type" | "interface" | "enum" => Some(
+            "there are no type declarations — a particle is an Object with a `_class` \
+             field, written `Name { field = value }`, and the six value kinds are all \
+             there are",
+        ),
+        "import" | "require" | "use" | "include" => {
+            Some("there is no `import` — `link \"module.so\" as name` is how a module is reached")
+        }
+        "print" | "println" | "echo" | "puts" => Some(
+            "there is no print statement — writing to a terminal is a module's job:\n  \
+             code install terminal\n  link \"terminal.so\" as term\n  \
+             emit Print { value = \"hello\" } to term",
+        ),
+        _ => None,
+    }
+}
+
 fn reject_kind_as_class(name: &str) -> Result<(), String> {
     if ValueKind::parse(name).is_some() {
         return Err(format!(
