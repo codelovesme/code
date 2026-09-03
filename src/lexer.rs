@@ -94,8 +94,14 @@ pub enum Token {
     Base,
     /// `return` — a handler body's early exit with a result.
     Return,
-    /// Statement separator — a newline or `;`. Blank lines never produce one
-    /// (see `tokenize`: consecutive separators are collapsed).
+    /// Statement separator — a newline. Blank lines never produce one (see
+    /// `tokenize`: consecutive separators are collapsed).
+    ///
+    /// A newline is the only spelling. `;` was a second one until 2.0.0,
+    /// carried over from languages that need it and never used once in this
+    /// repository's own corpus; once a `}` could end a statement there was
+    /// nothing left that required it, and a redundant spelling is the thing
+    /// this language keeps removing.
     Newline,
     Eof,
 }
@@ -136,7 +142,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
         // so this is always the first char of whatever token is pushed next.
         let start = i;
 
-        if c == '\n' || c == ';' {
+        if c == '\n' {
             if !last_was_separator {
                 tokens.push(Token::Newline);
                 starts.push(start as u32);
@@ -170,6 +176,17 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
             return Err(Located::at(
                 i,
                 "unexpected character '!' (inequality is '≠')",
+            ));
+        }
+
+        // `;` was a second spelling of the statement separator until 2.0.0.
+        // Anyone typing one is reaching for a separator, so say which one
+        // there is rather than reporting an unknown character.
+        if c == ';' {
+            return Err(Located::at(
+                i,
+                "unexpected character ';' — a newline separates statements, \
+                 and a '}' ends the last one in a block",
             ));
         }
 

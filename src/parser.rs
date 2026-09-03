@@ -566,9 +566,23 @@ impl<'a> Parser<'a> {
         Ok(statements)
     }
 
+    /// A statement ends at a separator, at end of input, or at the `}` that
+    /// closes the block it sits in — the last of which is what lets a block
+    /// hold a statement on one line: `if score ≥ 90 { return G { letter =
+    /// "A" } }`. That shape is the guard clause, and with no `else` in the
+    /// language a run of them is how a multi-way conditional is written, so
+    /// refusing it cost the idiom the rest of the design points at.
+    ///
+    /// The `}` is not consumed — `block` is what closes a block, and it
+    /// decides it is finished by peeking the same token.
+    ///
+    /// Only *inside* a block, hence `block_depth`. At the top level there is
+    /// nothing for a `}` to close, so a stray one stays the error it always
+    /// was rather than being quietly accepted and reported one token later.
     fn expect_end_of_statement(&mut self) -> Result<(), String> {
         match self.peek() {
             Token::Newline | Token::Eof => Ok(()),
+            Token::RBrace if self.block_depth > 0 => Ok(()),
             other => {
                 let msg = format!("expected end of statement, found {other:?}");
                 self.err_here();

@@ -218,14 +218,14 @@ impl Formatter<'_> {
     }
 
     /// Walks the text between two tokens. By construction it holds nothing
-    /// but whitespace, `;`, and `|` comments: anything else would have
+    /// but whitespace and `|` comments: anything else would have
     /// become a token, and a `|` inside a string literal is inside that
     /// token rather than out here.
     fn gap(&mut self, start: usize, end: usize) {
         let mut i = start;
         while i < end && i < self.chars.len() {
             let c = self.chars[i];
-            if c == '\n' || c == ';' {
+            if c == '\n' {
                 // A separator the lexer had already counted (it emits one
                 // `Newline` per run), so reaching one here means the author
                 // left a blank line — or ended a comment line.

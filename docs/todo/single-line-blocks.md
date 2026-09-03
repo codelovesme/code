@@ -1,5 +1,9 @@
 # A block cannot hold a statement on one line
 
+> **Shipped 2026-09-03.** Option 1: a `}` ends the statement it closes, so
+> `if score ≥ 90 { return G { letter = "A" } }` parses. `;` went with it —
+> see "What shipped". The write-up below is the original.
+
 `if score ≥ 90 { return G { letter = "A" } }` does not parse. The guard
 clause — arguably the most-typed shape in any language with early return —
 is a syntax error here, and the error does not say why:
@@ -88,3 +92,46 @@ handler-based reuse. It was hit twice: once reaching for `loop { ... break }`
 on one line, once writing the grade guards above. Both times the error read
 as though something was wrong with the expression, not with where the newline
 was.
+
+## What shipped
+
+**Option 1**, as recommended. `expect_end_of_statement` (`src/parser.rs`)
+takes `Token::RBrace` alongside `Newline`/`Eof` and does not consume it —
+`block` still closes the block, deciding it is finished by peeking the same
+token.
+
+Guarded on `block_depth > 0`. At the top level there is nothing for a `}` to
+close, so `let a = 1 }` stays the error it was rather than being accepted and
+reported one token later with a worse message.
+
+It is a pure relaxation: every program that parsed before parses identically,
+because the only change is accepting a token that previously ended parsing
+with an error. The two cases the write-up flagged as leaning on that error
+were checked and are unaffected — `1 < 2 < 3` and two statements sharing a
+line both fail on the token *before* any `}`, at top level and inside a block
+alike. `tests/block_statement_on_one_line.code` covers the new shape across
+`if`, `loop { }`, `loop … over … get`, and a bare block.
+
+### `;` went too
+
+Once a `}` could end a statement, nothing required `;` — and it turned out
+nothing had ever used it. Across all 274 `.code` files in the repository
+there was not one `;` acting as a separator; every occurrence was English
+punctuation inside comment prose.
+
+So it is gone from the lexer, and typing one now says which separator there
+is, in the style `!` and `<=` already set:
+
+```
+let a = 1; let b = 2
+→ error: unexpected character ';' — a newline separates statements,
+         and a '}' ends the last one in a block
+```
+
+This was the owner's call, made while the block change was going in: a
+separator that is never necessary and never used is a second spelling, and
+this language keeps removing those. `format.rs`'s `gap` no longer has a `;`
+arm, and `Token::Newline`'s doc records what the spelling used to be.
+
+The README's "if and blocks" section now states both rules, which closes the
+"undocumented" half of the complaint above.

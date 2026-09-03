@@ -98,9 +98,13 @@ Everything else is normalized:
    line is emitted at the current indent; a trailing comment keeps its line,
    two spaces after the code. (The tree has no trailing comments today; the
    rule exists so the first one is not a surprise.)
-5. **Separators** — `;` becomes a newline. It is a statement separator that
-   nothing in `tests/` actually uses, so canonicalizing it costs nothing and
-   removes a second way to write the same thing.
+5. **Separators** — ~~`;` becomes a newline~~. **Moot since 2.0.0**: `;` is
+   no longer a separator at all. The reasoning here — "a statement separator
+   that nothing in `tests/` actually uses", "removes a second way to write
+   the same thing" — was right and only stopped half a step short; once a
+   `}` could end a statement (`single-line-blocks.md`) there was nothing
+   left that needed one, so it went from the lexer rather than from the
+   layout. `gap` no longer has a `;` arm.
 
 ## CLI
 
