@@ -312,9 +312,20 @@ type EmitFn = unsafe extern "C" fn(*mut c_void, *const CodeValueFfi);
 #[derive(Default)]
 pub struct InboundQueue {
     pending: Mutex<VecDeque<Value>>,
+    /// The environment to wake after a push. Attached at link time rather
+    /// than at construction, because the queue is handed to the module before
+    /// there is an environment to belong to — and it is per environment, so a
+    /// host running several programs never wakes the wrong one.
+    wakeup: Mutex<Option<std::sync::Arc<crate::interpreter::Wakeup>>>,
 }
 
 impl InboundQueue {
+    /// Tell this queue which environment to wake after a push. Called once,
+    /// when the module is linked into that environment.
+    pub fn wake(&self, wakeup: std::sync::Arc<crate::interpreter::Wakeup>) {
+        *self.wakeup.lock().unwrap_or_else(|e| e.into_inner()) = Some(wakeup);
+    }
+
     /// Takes everything queued so far, leaving the queue empty. Draining
     /// rather than peeking so a handler that causes more pushes has them
     /// picked up by the next round rather than this one.
@@ -344,7 +355,14 @@ impl InboundQueue {
         // After the queue lock is released, never while holding it: the
         // waiter wakes into `take`, and waking it inside this critical
         // section only means it blocks again on the way out.
-        crate::interpreter::signal_inbound();
+        let wakeup = self
+            .wakeup
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        if let Some(wakeup) = wakeup {
+            wakeup.signal();
+        }
     }
 }
 

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
-use std::sync::{Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use crate::ast::{
@@ -77,6 +77,9 @@ pub struct Environment {
     /// one: it keeps this field free of any `native-modules`-only type, so
     /// `crates/code-wasm` compiles with the feature off.
     inbound: Vec<InboundSource>,
+    /// What a linked module's queue signals after pushing, and what
+    /// `keep_alive` sleeps on. One per environment — see [`Wakeup`].
+    wakeup: Arc<Wakeup>,
     /// Handlers currently on the call stack. `handlers::check_cycles` already
     /// rejects every cycle it can see, but dispatch is by the particle's
     /// runtime `_class`, so a particle held in a variable names a handler no
@@ -122,11 +125,19 @@ impl Default for Environment {
             module_depth: 0,
             inbound: Vec::new(),
             active: HashSet::new(),
+            wakeup: Arc::new(Wakeup::default()),
         }
     }
 }
 
 impl Environment {
+    /// This environment's own wakeup, for a host wiring a module's queue to
+    /// it. Cloned rather than borrowed: the queue outlives the call and is
+    /// signalled from the module's thread.
+    pub fn wakeup(&self) -> Arc<Wakeup> {
+        Arc::clone(&self.wakeup)
+    }
+
     pub fn get(&self, name: &str) -> Option<&Value> {
         self.scopes.iter().rev().find_map(|scope| scope.get(name))
     }
@@ -238,7 +249,8 @@ fn drain_between_iterations(env: &mut Environment) -> Result<(), String> {
     Ok(())
 }
 
-fn drain_inbound(env: &mut Environment) -> Result<(), String> {
+fn drain_inbound(env: &mut Environment) -> Result<usize, String> {
+    let mut handled = 0usize;
     loop {
         let sources = env.inbound.clone();
         // Kept per source rather than pooled: the answer has to go back to
@@ -249,8 +261,9 @@ fn drain_inbound(env: &mut Environment) -> Result<(), String> {
             queued.extend((source.drain)().into_iter().map(|v| (i, v)));
         }
         if queued.is_empty() {
-            return Ok(());
+            return Ok(handled);
         }
+        handled += queued.len();
         for (source, particle) in queued {
             // A pushed class the program has no handler for is *dropped*,
             // not an error — decided 2026-08-28, when `net` gained
@@ -281,8 +294,7 @@ fn any_module_serving(env: &Environment) -> bool {
     env.inbound.iter().any(|source| (source.serving)())
 }
 
-/// Raised by every push (`native::InboundQueue::push`), waited on by
-/// [`keep_alive`].
+/// Raised by every push, waited on by [`keep_alive`].
 ///
 /// **One signal for every module**, not one per queue: the program waits for
 /// *something* to arrive, not for a particular module to speak, and a condvar
@@ -295,19 +307,39 @@ fn any_module_serving(env: &Environment) -> bool {
 /// nobody, and the particle would sit there until the next re-check. A count
 /// survives the gap — the waiter sees it is already non-zero and returns
 /// without sleeping at all.
-static INBOUND_WAKEUPS: Mutex<u64> = Mutex::new(0);
-static INBOUND_WAKEUP: Condvar = Condvar::new();
+///
+/// **One per `Environment`, not one per process.** A host that runs several
+/// programs at once — a runtime holding an app each in its own environment —
+/// gives every one of them its own. Shared, a push meant for one program
+/// would wake all of them, and whichever woke first would consume the count
+/// and leave the rest to sleep until the next re-check: a particle delivered
+/// a second late for no reason its sender could see.
+#[derive(Default)]
+pub struct Wakeup {
+    pending: Mutex<u64>,
+    arrived: Condvar,
+}
 
-/// Called by a module's queue after it has pushed. Public to the crate
-/// because `native.rs` is the only caller and it is on the *other* side of a
-/// feature gate — which is also why it is dead code in an interpreter-only
-/// build (`crates/code-wasm`): there are no native modules there, so nothing
-/// pushes and nothing waits.
-#[cfg_attr(not(feature = "native-modules"), allow(dead_code))]
-pub(crate) fn signal_inbound() {
-    let mut pending = INBOUND_WAKEUPS.lock().unwrap_or_else(|e| e.into_inner());
-    *pending += 1;
-    INBOUND_WAKEUP.notify_all();
+impl Wakeup {
+    /// Called by a module's queue after it has pushed.
+    pub fn signal(&self) {
+        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+        *pending += 1;
+        self.arrived.notify_all();
+    }
+
+    /// Sleep until something is pushed, or until it is time to re-ask who is
+    /// still serving. Consumes the count whole: the drain that follows hands
+    /// over everything queued in one pass, so one wait answers every push
+    /// that led to it.
+    fn wait(&self, timeout: Duration) {
+        let pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+        let (mut pending, _) = self
+            .arrived
+            .wait_timeout_while(pending, timeout, |pending| *pending == 0)
+            .unwrap_or_else(|e| e.into_inner());
+        *pending = 0;
+    }
 }
 
 /// How long a wait sleeps before re-asking whether anything is still serving.
@@ -333,20 +365,33 @@ const SERVING_RECHECK: Duration = Duration::from_secs(1);
 /// should have answered it. So this parks, wakes on a push, drains, and parks
 /// again: a join with a dispatch pump in it. `codegen.rs` emits the same loop
 /// around `code_host_wait`.
-fn keep_alive(env: &mut Environment) -> Result<(), String> {
+pub fn keep_alive(env: &mut Environment) -> Result<(), String> {
     while any_module_serving(env) {
-        {
-            let pending = INBOUND_WAKEUPS.lock().unwrap_or_else(|e| e.into_inner());
-            let (mut pending, _) = INBOUND_WAKEUP
-                .wait_timeout_while(pending, SERVING_RECHECK, |pending| *pending == 0)
-                .unwrap_or_else(|e| e.into_inner());
-            // Consumed whole: the drain below hands over everything queued in
-            // one pass, so one wait answers every push that led to it.
-            *pending = 0;
-        }
+        Arc::clone(&env.wakeup).wait(SERVING_RECHECK);
         drain_inbound(env)?;
     }
     Ok(())
+}
+
+/// Hand one particle to this environment's own handlers and give back what
+/// they answered — `Value::Null` when nothing handled its class.
+///
+/// This is what lets a host keep a program *resident*: run it once, hold the
+/// environment, and push work into it afterwards. Without it a program is a
+/// script that runs and ends, which is fine for a program that owns its
+/// process and useless for one being hosted alongside others.
+pub fn deliver(particle: &Value, env: &mut Environment) -> Result<Value, String> {
+    dispatch_handler(particle, env)
+}
+
+/// Hand over everything the environment's linked modules have queued, and
+/// answer each. Returns how many were dispatched.
+///
+/// A host driving several programs calls this instead of `keep_alive`: it
+/// decides when each one gets a turn, rather than each one parking on its own
+/// thread forever.
+pub fn drain(env: &mut Environment) -> Result<usize, String> {
+    drain_inbound(env)
 }
 
 /// One linked module's half of the inbound conversation: what it has queued,
@@ -592,6 +637,11 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     // Taken before the module moves into the closure below;
                     // the queue outlives both (it was leaked at `open`).
                     let inbound = module.inbound_handle();
+                    // Which environment to wake: this one. Set here rather
+                    // than when the queue was built, because the queue is
+                    // handed to the module before there is an environment for
+                    // it to belong to.
+                    inbound.wake(env.wakeup());
                     let module = Rc::new(module);
                     let dispatching = Rc::clone(&module);
                     let dispatch: ModuleDispatch = Rc::new(move |v| dispatching.dispatch(v));
