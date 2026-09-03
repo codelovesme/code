@@ -97,7 +97,7 @@ pub enum Token {
     /// Statement separator — a newline. Blank lines never produce one (see
     /// `tokenize`: consecutive separators are collapsed).
     ///
-    /// A newline is the only spelling. `;` was a second one until 2.0.0,
+    /// A newline is the only spelling. `;` was a second one until 1.4.0,
     /// carried over from languages that need it and never used once in this
     /// repository's own corpus; once a `}` could end a statement there was
     /// nothing left that required it, and a redundant spelling is the thing
@@ -179,7 +179,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
             ));
         }
 
-        // `;` was a second spelling of the statement separator until 2.0.0.
+        // `;` was a second spelling of the statement separator until 1.4.0.
         // Anyone typing one is reaching for a separator, so say which one
         // there is rather than reporting an unknown character.
         if c == ';' {

@@ -135,7 +135,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
 name = "code-native"
-version = "2.0.0"
+version = "1.4.0"
 dependencies = [
  "cc",
 ]
@@ -966,7 +966,7 @@ checksum = "851fac73f7fe22f6a3ab87f720ce509cae7c9fd08e7dd27866cc232dee07ccf4"
 
 [[package]]
 name = "mongodb"
-version = "2.0.0"
+version = "1.4.0"
 dependencies = [
  "code-native",
  "mongodb 3.8.2",
