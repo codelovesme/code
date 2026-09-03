@@ -116,3 +116,34 @@ fn the_words_are_still_ordinary_identifiers() {
     code::run_source("let for = 1\nfor = 5\nassert for = 5\n").expect("`for` as a name");
     code::run_source("let type = \"x\"\nassert type = \"x\"\n").expect("`type` as a name");
 }
+
+/// The marker that changed. Anyone with a file written before 1.4.0 meets
+/// this first, and the generic answer — `unexpected character '`'`, from
+/// somewhere in the middle of the prose — says nothing about what happened.
+#[test]
+fn an_old_comment_marker_names_the_new_one() {
+    // Deliberately full of what real comments contain: backticks and a
+    // version number, both of which fail to lex. The message has to come
+    // from the marker, not from the text after it.
+    let err = error_from("-- a comment with `backticks` and 1.4.0 in it\nassert 1 = 1\n");
+    assert!(err.contains("`--` is not a comment"), "{err}");
+    assert!(err.contains("`|`"), "should name the marker; got:\n{err}");
+    assert!(
+        err.contains(":1:1"),
+        "should point at the marker; got:\n{err}"
+    );
+
+    // Indented too — a comment inside a block is still a comment.
+    let err = error_from("if true {\n    -- indented\n    assert 1 = 1\n}\n");
+    assert!(err.contains("`--` is not a comment"), "{err}");
+}
+
+/// …and nowhere else. `--` stopped being special when the marker moved, and
+/// `5--1` is `5 - -1` — the very ambiguity the old marker created. Refusing
+/// `--` outright, the way `!` and `;` are refused, would take that with it.
+#[test]
+fn double_minus_is_still_arithmetic_anywhere_but_a_line_start() {
+    code::run_source("let n = 5--1\nassert n = 6\n").expect("5--1 is 5 - -1");
+    code::run_source("let a = 3\nlet b = 1\nlet m = a - -b\nassert m = 4\n").expect("a - -b");
+    code::run_source("let xs = [1, --2]\nassert xs = [1, 2]\n").expect("--2 inside a literal");
+}

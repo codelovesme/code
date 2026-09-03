@@ -131,3 +131,27 @@ Verified by mutation. Deleting the `absent_construct` call makes three of the
 six tests in that file fail — and every `fail_` fixture still pass, which is
 the write-up's point about refusal not being the problem, demonstrated rather
 than argued.
+
+### The marker that changed
+
+Added alongside the rest, from the same reasoning but a different mechanism.
+`--` was the comment marker until 1.4.0, so it is the first thing anyone with
+an older file meets — and the generic answer was whatever failed to lex in
+the middle of the prose (`unexpected character '\`'`, since this project's
+comments are full of backticks), which says nothing about what happened.
+
+It could not go where the others went. The parser never sees it: a comment's
+text is not a token stream, so lexing dies on the prose long before anything
+could recognise the `--`. It is answered in the lexer instead, at the marker,
+which is what makes the message independent of whatever follows it.
+
+And it could not be refused outright the way `!` and `;` are, because `--`
+stopped being special when the marker moved: `5--1` is now `5 - -1`, which is
+exactly the ambiguity the old marker created and the new one removed. So the
+check is narrowed to a line that *opens* with `--`, which is what a comment
+is and what arithmetic never is.
+
+The cost, stated because it is a real one: `--2` alone on a continuation line
+inside a multi-line literal is double negation and reads as an old comment.
+`- -2` says it without the guess. `double_minus_is_still_arithmetic_anywhere_but_a_line_start`
+pins the rest.

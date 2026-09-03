@@ -128,6 +128,16 @@ pub struct Lexed {
     pub ends: Vec<u32>,
 }
 
+/// Whether everything before `at` on its line is whitespace — i.e. `at` is
+/// the first thing written on that line.
+fn line_so_far_is_blank(chars: &[char], at: usize) -> bool {
+    chars[..at]
+        .iter()
+        .rev()
+        .take_while(|&&c| c != '\n')
+        .all(|c| c.is_whitespace())
+}
+
 pub fn tokenize(src: &str) -> Result<Lexed, Located> {
     let chars: Vec<char> = src.chars().collect();
     let mut i = 0;
@@ -156,6 +166,30 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
         if c.is_whitespace() {
             i += 1;
             continue;
+        }
+
+        // A line that *opens* with `--` is a comment from before 1.4.0.
+        //
+        // Caught here rather than in the parser because the parser never sees
+        // it: a comment's prose is not a token stream, and this repository's
+        // own comments are full of backticks, so the lexer would fail on the
+        // text long before anything could recognise the `--`. Answering at
+        // the marker means the message survives whatever follows it.
+        //
+        // Only at the start of a line, and that is the whole safety argument.
+        // `--` is no longer special anywhere else: `5--1` is `5 - -1`, which
+        // is exactly the ambiguity removing the old marker resolved, so
+        // refusing `--` outright the way `!` and `;` are refused would take
+        // real arithmetic with it. What this gives up is a `--2` written
+        // alone on a continuation line inside a multi-line literal, where
+        // double negation and an old comment look identical; `- -2` says it
+        // without the guess.
+        if c == '-' && chars.get(i + 1) == Some(&'-') && line_so_far_is_blank(&chars, i) {
+            return Err(Located::at(
+                i,
+                "`--` is not a comment — the marker is `|`. (It changed in 1.4.0; \
+                 `--` now reads as two minus signs.)",
+            ));
         }
 
         // `|` line comment. One character, because unlike the `--` it
