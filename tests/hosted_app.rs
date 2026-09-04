@@ -512,3 +512,68 @@ assert no.answer = "Exception"
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// The name a host matches on is the organelle's, not the file's.
+///
+/// A guest is compiled against whatever path its module resolver produced,
+/// and in a real project that is a versioned, platform-suffixed asset deep
+/// under `.code/modules/`. A host handler saying `if name = "test_math"` has
+/// to keep working across all of it — otherwise every host would be matching
+/// on someone else's deployment layout.
+///
+/// Found by hosting a real application: it asked for
+/// `net_server-linux-x86_64` and was refused by a host that offers
+/// `net_server`.
+#[test]
+fn a_host_sees_an_organelle_by_name_whatever_path_the_guest_carries() {
+    let dir = temp_dir("naming");
+    let nested = dir.join(".code/modules/test_math/9.9.9");
+    fs::create_dir_all(&nested).expect("create module dir");
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/native_modules/test_math.so"),
+        nested.join("test_math-linux-x86_64.so"),
+    )
+    .expect("copy the module under a release-shaped name");
+
+    build(
+        &dir,
+        "guest",
+        r#"link ".code/modules/test_math/9.9.9/test_math-linux-x86_64.so" as m
+
+Work { value } => {
+    emit Double { value = value } to m get d
+    return Done { value = d.value }
+}
+"#,
+        code::BuildTarget::Shared,
+        "guest.so",
+    );
+    fs::write(
+        dir.join("main.code"),
+        r#"| Matches the plain name, and never sees the version or the platform.
+Offer { app, name } => {
+    if name = "test_math" { return Offered { } }
+    return Denied { }
+}
+
+Organelle { app, name, particle } => {
+    if name = "test_math" { return DoubleResult { value = particle.value * 10 } }
+    return Denied { }
+}
+
+Run { } => {
+    link "./guest.so" as app
+    emit Work { value = 3 } to app get r
+    unlink app
+    return r
+}
+
+emit Run { } to this get r
+assert r.value = 30
+"#,
+    )
+    .expect("write host");
+    run_both_ways(&dir, "the host did not recognise the organelle by name");
+
+    let _ = fs::remove_dir_all(&dir);
+}

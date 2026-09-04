@@ -669,11 +669,14 @@ fn handle_row(handle: *mut c_void) -> Option<usize> {
     (handle as usize).checked_sub(1)
 }
 
-/// The particle name for an organelle: the file's stem, not the path the
-/// guest wrote. Must match `runtime.c`'s `organelle_stem`.
+/// The organelle's *name*, from whatever path the guest was compiled with —
+/// see `runtime.c`'s `organelle_stem` for why the first hyphen ends it, and
+/// what that assumes. The two must agree exactly: a host handler matching on
+/// this name has to see the same thing in both output modes.
 fn organelle_stem(reference: &str) -> String {
     let base = reference.rsplit('/').next().unwrap_or(reference);
-    base.strip_suffix(".so").unwrap_or(base).to_string()
+    let base = base.strip_suffix(".so").unwrap_or(base);
+    base.split('-').next().unwrap_or(base).to_string()
 }
 
 fn hosting_particle(class: &str, app: &str, name: &str, particle: Option<Value>) -> Value {

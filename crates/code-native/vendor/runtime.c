@@ -1518,11 +1518,22 @@ void code_set_program_dispatch(void (*fn)(CodeValue *out, const CodeValue *parti
     code_program_dispatch = fn;
 }
 
-/* `name` for the particle: the file's stem, not the path the guest wrote.
- * A host's handler wants to say `if name = "net_server"`, and matching on
- * whatever spelling happened to be baked into the guest — a bare name in one
- * build, a directory-qualified one in another — would make that handler
- * depend on how the guest was compiled. */
+/* The organelle's *name*, from whatever path the guest was compiled with.
+ *
+ * A host's handler wants to say `if name = "net_server"`. What arrives is a
+ * path, and which path depends on how the guest was built: a bare
+ * `net_server.so` in one, a resolved
+ * `.code/modules/net_server/1.5.1/net_server-linux-x86_64.so` in another,
+ * because the module resolver rewrites the tidy spelling into the real
+ * release asset before the guest is compiled. A handler matching on any of
+ * that would be matching on someone else's deployment.
+ *
+ * So: last path segment, drop `.so`, stop at the first `-`. That last step
+ * has a premise worth stating — module names never contain a hyphen (they
+ * use `_`: `net_server`, `json_store`, `blob_storage`), while the release
+ * asset convention appends `-<os>-<arch>`. So a hyphen is always the start
+ * of the platform suffix and never part of the name. If that convention
+ * changes, this is where it breaks. */
 static void organelle_stem(const char *ref, char *out, size_t outlen) {
     const char *start = ref;
     for (const char *c = ref; *c; c++) {
@@ -1530,6 +1541,12 @@ static void organelle_stem(const char *ref, char *out, size_t outlen) {
     }
     size_t n = strlen(start);
     if (n > 3 && strcmp(start + n - 3, ".so") == 0) n -= 3;
+    for (size_t i = 0; i < n; i++) {
+        if (start[i] == '-') {
+            n = i;
+            break;
+        }
+    }
     if (n >= outlen) n = outlen - 1;
     memcpy(out, start, n);
     out[n] = '\0';
