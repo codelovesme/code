@@ -89,7 +89,7 @@ enum LibraryMode {
     Static { prefix: String },
 }
 
-/// Everything a `.a` module defines that is not one of its ABI entry points
+/// Everything a library defines that is not one of its ABI entry points
 /// becomes internal to it.
 ///
 /// A static module is linked into a program that already has a runtime, its
@@ -102,16 +102,44 @@ enum LibraryMode {
 /// also what keeps `loader.rs`'s "exactly one symbol ends in
 /// `_code_module_dispatch`" true of a compiled archive.
 ///
+/// **`Shared` too, since 2026-09-04.** A `.so` has its own symbol namespace,
+/// so nothing had broken yet — but until then every `.code` library handed
+/// out its whole inside by name: its initialisation guard, its handler
+/// chain, one symbol per top-level slot, all generated identically in every
+/// library. Two of them loaded at once is not a hypothetical; it is what a
+/// program hosting more than one application *is*. Exporting a module's
+/// initialisation guard under a name every other module also uses is an
+/// invitation, and the fix costs nothing.
+///
+/// The two modes differ only in what counts as an entry point: a `.so`'s
+/// carry no prefix and it keeps a runnable `main` and a release point
+/// besides.
+///
 /// Only definitions are touched. The runtime functions the object calls —
 /// `code_copy`, `code_release`, and the rest — are declarations, with no body
 /// and no initializer, and they must stay external: resolving them against
 /// the host's single runtime is the whole point of a `.a` module.
-fn hide_internal_symbols(module: &Module<'_>, prefix: &str) {
-    let exports = [
-        format!("{prefix}_code_module_abi_version"),
-        format!("{prefix}_code_module_dispatch"),
-        format!("{prefix}_code_module_vars"),
-    ];
+fn hide_internal_symbols(module: &Module<'_>, lib_mode: &LibraryMode) {
+    let exports: Vec<String> = match lib_mode {
+        // A `.so`'s entry points carry no prefix, and it keeps a runnable
+        // `main` and a release point besides. Everything else is its own
+        // business.
+        LibraryMode::Shared => [
+            "main",
+            "code_module_abi_version",
+            "code_module_dispatch",
+            "code_module_vars",
+            "code_module_release",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect(),
+        LibraryMode::Static { prefix } => vec![
+            format!("{prefix}_code_module_abi_version"),
+            format!("{prefix}_code_module_dispatch"),
+            format!("{prefix}_code_module_vars"),
+        ],
+    };
     let exported = |name: &std::ffi::CStr| {
         name.to_str()
             .map(|name| exports.iter().any(|e| e == name))
@@ -742,8 +770,8 @@ pub fn compile_to_object(
 
     // After every definition exists, and before verification — an archive's
     // internals stop being visible to whatever links it.
-    if let Some(LibraryMode::Static { prefix }) = &lib_mode {
-        hide_internal_symbols(&module, prefix);
+    if let Some(lib_mode) = &lib_mode {
+        hide_internal_symbols(&module, lib_mode);
     }
 
     module.verify().map_err(|e| e.to_string())?;
