@@ -3,7 +3,7 @@ members = [".", "crates/code-wasm", "crates/code-native", "crates/code-lsp"]
 
 [package]
 name = "code"
-version = "1.5.0"
+version = "1.5.1"
 edition = "2021"
 description = "The Code programming language — interpreter and compiler (rewrite; see old/ for the previous version kept as architectural reference)."
 license = "GPL-3.0"

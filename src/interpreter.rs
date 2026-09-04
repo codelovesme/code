@@ -234,6 +234,7 @@ impl Environment {
         self.modules.insert(alias.to_string(), dispatch);
     }
 
+    #[cfg(feature = "native-modules")]
     /// Files a runtime-linked organelle and hands back the address value
     /// naming it — see `ast::Stmt::LinkRuntime`.
     ///
@@ -246,6 +247,7 @@ impl Environment {
         organelle_address(self.runtime_modules.len() - 1)
     }
 
+    #[cfg(feature = "native-modules")]
     /// The row already holding `path`, if one is open — see
     /// `RuntimeOrganelle.refs`. Answering with the same address is the honest
     /// result: they are the same thing.

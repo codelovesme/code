@@ -1753,7 +1753,10 @@ void code_runtime_link(CodeValue *out, const CodeValue *path) {
      * appears later is never read and nothing it pushed would ever be
      * handled — a silence far worse than a refusal. */
     if (nh->has_inbound) {
-        char msg[256];
+        /* Wide enough for the sentence plus a rooted path — `text` may be up
+         * to `sizeof rooted`, and `snprintf` truncating a diagnostic is not
+         * a bug but it is a warning on every module build. */
+        char msg[768];
         snprintf(msg, sizeof msg,
                  "'link %s' inside a handler: this organelle speaks first, and only "
                  "organelles linked at the top level are ever listened to",
