@@ -5,6 +5,7 @@
   "patterns": [
     { "include": "#comment" },
     { "include": "#link-statement" },
+    { "include": "#unlink-statement" },
     { "include": "#type-declaration" },
     { "include": "#string" },
     { "include": "#number" },
@@ -34,6 +35,11 @@
         "3": { "name": "keyword.control.import.code" },
         "4": { "name": "entity.name.namespace.code" }
       }
+    },
+    "unlink-statement": {
+      "comment": "unlink <expr> — closes an organelle linked while running. The argument is an ordinary expression, so only the keyword is matched here.",
+      "name": "keyword.control.import.code",
+      "match": "\\b(unlink)\\b"
     },
     "type-declaration": {
       "patterns": [

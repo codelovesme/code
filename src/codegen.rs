@@ -343,6 +343,39 @@ pub fn compile_to_object(
         i8_ptr_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
+    // The three runtime-linking entry points (`ast::Stmt::LinkRuntime`).
+    // All three take values rather than a handle, because a runtime-linked
+    // organelle has no compile-time alias to hold a handle for — the program
+    // holds an address value instead.
+    let fn_runtime_link = module.add_function(
+        "code_runtime_link",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_runtime_unlink = module.add_function(
+        "code_runtime_unlink",
+        void_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
+    // How the runtime reaches *this program's* handlers, for the half of
+    // `code_abi.h` item 10 where this program is the host: a guest's `link`
+    // becomes a particle asked of the handlers below. Only codegen knows the
+    // chain's name, so only codegen can hand it over.
+    let fn_set_program_dispatch = module.add_function(
+        "code_set_program_dispatch",
+        void_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_runtime_unlink_all =
+        module.add_function("code_runtime_unlink_all", void_ty.fn_type(&[], false), None);
+    let fn_runtime_dispatch = module.add_function(
+        "code_runtime_dispatch",
+        void_ty.fn_type(
+            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+            false,
+        ),
+        None,
+    );
     let fn_native_dispatch = module.add_function(
         "code_native_dispatch",
         void_ty.fn_type(
@@ -665,6 +698,11 @@ pub fn compile_to_object(
         fn_clear,
         fn_core_dispatch,
         fn_native_open,
+        fn_runtime_link,
+        fn_runtime_unlink,
+        fn_runtime_unlink_all,
+        fn_set_program_dispatch,
+        fn_runtime_dispatch,
         fn_native_dispatch,
         fn_native_vars_object,
         fn_native_close,
@@ -716,6 +754,11 @@ pub fn compile_to_object(
     gen.gen_base_dispatches(&program.statements)?;
 
     gen.declare_drain();
+    // Before the first statement, because the first statement may already
+    // `link` a guest — and a guest's own top level runs the moment it is
+    // reached. A program with no handlers hands over nothing and so offers
+    // nothing, which is the right answer for it.
+    gen.gen_publish_dispatch()?;
     for (i, stmt) in program.statements.iter().enumerate() {
         gen.gen_locate(program, i)?;
         gen.gen_stmt(stmt)?;
@@ -758,7 +801,7 @@ pub fn compile_to_object(
     }
 
     if let Some(lib_mode) = &lib_mode {
-        gen.define_library_exports(lib_mode, main_fn)?;
+        gen.define_library_exports(lib_mode, main_fn, fn_check_leaks)?;
     }
 
     // Closed only now: every alloca and its zero-init had to be appended to
@@ -872,6 +915,11 @@ struct Gen<'a, 'm> {
     fn_clear: FunctionValue<'a>,
     fn_core_dispatch: FunctionValue<'a>,
     fn_native_open: FunctionValue<'a>,
+    fn_runtime_link: FunctionValue<'a>,
+    fn_runtime_unlink: FunctionValue<'a>,
+    fn_runtime_unlink_all: FunctionValue<'a>,
+    fn_set_program_dispatch: FunctionValue<'a>,
+    fn_runtime_dispatch: FunctionValue<'a>,
     fn_native_dispatch: FunctionValue<'a>,
     fn_native_vars_object: FunctionValue<'a>,
     fn_native_close: FunctionValue<'a>,
@@ -2173,6 +2221,14 @@ impl<'a, 'm> Gen<'a, 'm> {
                 path,
                 format,
             } => self.gen_import_native(alias, path, format),
+            Stmt::LinkRuntime { alias, path } => self.gen_link_runtime(alias, path),
+            Stmt::Unlink(address) => {
+                let address_ptr = self.gen_expr(address)?;
+                self.builder
+                    .build_call(self.fn_runtime_unlink, &[address_ptr.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.check_failed()
+            }
             Stmt::Assign { name, value } => self.gen_reassign(name, value),
             Stmt::Assert(expr) => {
                 let ptr = self.gen_expr(expr)?;
@@ -2764,13 +2820,35 @@ impl<'a, 'm> Gen<'a, 'm> {
                 self.check_failed()?;
             }
             EmitTarget::Module(alias) => {
-                // `verify_defined` already rejected an `alias` that was
-                // never `link`ed, so this is always present.
-                match self
-                    .native_links
-                    .get(alias)
-                    .expect("verify_defined checked this alias was linked")
-                {
+                // A statically linked alias first — every program that
+                // compiled before runtime linking existed takes exactly this
+                // path. Only when the name is not one does it become an
+                // ordinary variable holding an address (`Stmt::LinkRuntime`),
+                // which `verify_defined` has already confirmed is bound
+                // somewhere. Must match interpreter.rs's `EmitTarget::Module`
+                // arm, which derives the same answer from the same fact.
+                let Some(link) = self.native_links.get(alias) else {
+                    let address = self
+                        .lookup(alias)
+                        .expect("verify_defined checked this name is a linked alias or bound");
+                    self.builder
+                        .build_call(
+                            self.fn_runtime_dispatch,
+                            &[temp.into(), address.into(), particle_ptr.into()],
+                            "",
+                        )
+                        .map_err(|e| e.to_string())?;
+                    self.check_failed()?;
+                    if let Some(name) = result {
+                        let permanent = self.alloc_slot("var")?;
+                        self.builder
+                            .build_call(self.fn_copy, &[permanent.into(), temp.into()], "")
+                            .map_err(|e| e.to_string())?;
+                        self.bind(name, permanent);
+                    }
+                    return Ok(());
+                };
+                match link {
                     NativeLink::Dynamic(slot) => {
                         let handle = self
                             .builder
@@ -2834,6 +2912,52 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.exported_lets.push((name.to_string(), permanent));
         }
         self.bind(name, permanent);
+        Ok(())
+    }
+
+    /// Hands the runtime this program's dispatch chain, so a guest linked
+    /// while the program runs can have its own `link`s answered by this
+    /// program's handlers (`code_abi.h` item 10).
+    ///
+    /// A no-op in a program that defines no handlers: there would be nothing
+    /// to ask, and the runtime already treats "no chain" as "offers
+    /// nothing".
+    fn gen_publish_dispatch(&mut self) -> Result<(), String> {
+        let Some(dispatch) = self.dispatch_fn else {
+            return Ok(());
+        };
+        let ptr = dispatch.as_global_value().as_pointer_value();
+        self.builder
+            .build_call(self.fn_set_program_dispatch, &[ptr.into()], "")
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// `link <expr> as <name>` inside a handler — see
+    /// `ast::Stmt::LinkRuntime`.
+    ///
+    /// Nothing here is parked in a global, which is the whole difference
+    /// from `gen_import_native`. That one stores a handle in a module-level
+    /// slot because the alias is a compile-time name every `emit` to it can
+    /// address directly. Here the alias is an ordinary binding holding an
+    /// address value, so it lives in a slot like any other `let` — and the
+    /// same `link` statement running twice opens two organelles and binds
+    /// two different addresses, which a global could not represent.
+    fn gen_link_runtime(&mut self, alias: &str, path: &Expr) -> Result<(), String> {
+        let path_ptr = self.gen_expr(path)?;
+        let temp = self.alloc_temp("organelle_address")?;
+        self.builder
+            .build_call(self.fn_runtime_link, &[temp.into(), path_ptr.into()], "")
+            .map_err(|e| e.to_string())?;
+        // Before the binding: a failed link leaves `temp` null, and the
+        // landing block this jumps to turns the failure into an `Exception`
+        // rather than binding a name to nothing.
+        self.check_failed()?;
+        let permanent = self.alloc_slot("var")?;
+        self.builder
+            .build_call(self.fn_copy, &[permanent.into(), temp.into()], "")
+            .map_err(|e| e.to_string())?;
+        self.bind(alias, permanent);
         Ok(())
     }
 
@@ -3392,6 +3516,14 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// The cost is one call per slot, i.e. bounded by program size, all of it
     /// after the last observable output.
     fn emit_cleanup(&mut self, fn_check_leaks: FunctionValue<'a>) -> Result<(), String> {
+        // First, and before the leak check at the end looks: anything still
+        // linked at runtime is closed, so a guest that was never `unlink`ed
+        // still reaches its own release point. Same "owns nothing when it
+        // exits" rule as the slots below, one level out — the difference is
+        // that what it frees belongs to another copy of this runtime.
+        self.builder
+            .build_call(self.fn_runtime_unlink_all, &[], "")
+            .map_err(|e| e.to_string())?;
         let slots = std::mem::take(&mut self.slots);
         for (buf, count) in slots {
             for i in 0..count {
@@ -3423,6 +3555,16 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .into_pointer_value();
                 self.builder
                     .build_call(self.fn_native_close, &[handle.into()], "")
+                    .map_err(|e| e.to_string())?;
+                // And leave nothing behind pointing at it. For a program
+                // this is merely tidy — it is exiting. For a library it is
+                // load-bearing: the module may be linked again after being
+                // released, and a global still holding the closed handle
+                // would be dispatched through. `code_native_dispatch`
+                // refuses a null handle with a message, so if a module ever
+                // does reach one, it says so instead of crashing.
+                self.builder
+                    .build_store(slot, self.i8_ptr_ty.const_null())
                     .map_err(|e| e.to_string())?;
             }
         }
@@ -3457,6 +3599,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         &mut self,
         lib_mode: &LibraryMode,
         main_fn: Option<FunctionValue<'a>>,
+        fn_check_leaks: FunctionValue<'a>,
     ) -> Result<(), String> {
         let prefix = match lib_mode {
             LibraryMode::Shared => String::new(),
@@ -3593,6 +3736,38 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.builder
                 .build_return(Some(&list.as_pointer_value()))
                 .map_err(|e| e.to_string())?;
+        }
+
+        // Optional: the release point, `code_abi.h` item 9.
+        //
+        // This is the sweep `compile_to_object` skips for a library, moved
+        // into a function a consumer calls rather than dropped. The reason it
+        // could not stay where a program has it is unchanged — `_code_init`
+        // returning is not the end of a module's life, and sweeping there
+        // frees an exported value before `code_module_vars` copies it out.
+        // What was missing was any *later* point that is the end of its life.
+        // This is that point, and the contract is the sharp one the absence
+        // implied: after this call nothing in the module may be touched
+        // again, because its exported values are gone. `unlink` is the only
+        // caller, and it unloads the module immediately afterwards.
+        //
+        // `Shared` only. A `.a` is linked into a host that has its own
+        // runtime and its own sweep, and a second one reachable by name would
+        // free the host's slots out from under it.
+        //
+        // `code_check_leaks` stays inside, exactly as at the end of a
+        // program: under `CODE_CHECK_LEAKS=1` this is what turns "the guest
+        // let go of everything" from a claim into a check.
+        if matches!(lib_mode, LibraryMode::Shared) {
+            let release = self.module.add_function(
+                "code_module_release",
+                self.context.void_type().fn_type(&[], false),
+                None,
+            );
+            let entry = self.context.append_basic_block(release, "entry");
+            self.builder.position_at_end(entry);
+            self.emit_cleanup(fn_check_leaks)?;
+            self.builder.build_return(None).map_err(|e| e.to_string())?;
         }
 
         // A `.so` keeps a runnable `main` — a standalone smoke run of the

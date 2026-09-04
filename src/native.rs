@@ -236,6 +236,12 @@ pub struct NativeModule {
     has_inbound: bool,
     /// Whether it also wants to hear what the program answered.
     has_reply: bool,
+    /// `code_module_release`, if the module exports it — see `code_abi.h`
+    /// item 9. Only meaningful for a module that will actually be unloaded,
+    /// which today means one opened by a `link` inside a handler; a
+    /// top-level `link` never reaches the end of the module's life before
+    /// the process does.
+    module_release: Option<ModuleReleaseFn>,
     /// `code_module_serving`, if the module exports it — see `code_abi.h`.
     /// A module that answers non-zero holds the program open, the way a
     /// non-daemon thread holds a JVM open. Most modules export nothing here
@@ -288,6 +294,11 @@ type InboundReplyFn = unsafe extern "C" fn(*const CodeValueFfi, *const CodeValue
 
 /// `code_module_serving` — non-zero while the module still expects to speak.
 type ServingFn = unsafe extern "C" fn() -> std::ffi::c_int;
+/// `code_module_release` — see `code_abi.h` item 9. Optional, and only a
+/// `.code` library compiled with `--target shared` has one today: it is the
+/// point at which a module gives up the top-level values the ABI otherwise
+/// promises it owns for its whole lifetime.
+type ModuleReleaseFn = unsafe extern "C" fn();
 /// The host function a module calls to speak first — see `code_abi.h`'s
 /// `CodeEmitFn`. Handed across as a pointer because a `.so` has its own copy
 /// of the runtime, so a direct call would reach the wrong queue.
@@ -426,11 +437,19 @@ impl NativeModule {
             .ok()
             .map(|f| *f);
 
+        // Optional in the same way. Absent from every hand-written module;
+        // present on a `.code` library, which is the only kind of module
+        // that has top-level values of its own to give up.
+        let module_release = unsafe { lib.get::<ModuleReleaseFn>(b"code_module_release") }
+            .ok()
+            .map(|f| *f);
+
         Ok(NativeModule {
             lib: ManuallyDrop::new(lib),
             path: path.to_string(),
             has_inbound,
             has_reply,
+            module_release,
             serving,
             inbound,
         })
@@ -440,6 +459,28 @@ impl NativeModule {
     /// dispatch closure — `'static` because it was leaked at `open`.
     pub fn inbound_handle(&self) -> &'static InboundQueue {
         self.inbound
+    }
+
+    /// Whether this module took the inbound channel — i.e. whether it can
+    /// speak without being asked. What decides if it may be linked at
+    /// runtime at all (see the `LinkRuntime` arm in `interpreter.rs`).
+    pub fn has_inbound(&self) -> bool {
+        self.has_inbound
+    }
+
+    /// Tell the module it may let go of everything it owns — `code_abi.h`
+    /// item 9, and a no-op for the modules that export no such point.
+    ///
+    /// Must be the last thing asked of it. `code_abi.h` says a module owns
+    /// its exported values for its whole lifetime, so this call *is* the end
+    /// of that lifetime: reading a value afterwards reads freed memory. The
+    /// only caller is `unlink`, which drops the module immediately after.
+    pub fn release(&self) {
+        // SAFETY: resolved from a library still loaded — the `Rc` holding
+        // this module is what the caller drops next, not before.
+        if let Some(release) = self.module_release {
+            unsafe { release() }
+        }
     }
 
     /// Whether this module still expects to speak — a listening socket, a
@@ -547,5 +588,289 @@ impl NativeModule {
             out.push((name, value));
         }
         Ok(out)
+    }
+}
+
+/* ---- Hosting a guest ------------------------------------------------------
+ *
+ * The interpreter's half of `code_abi.h` item 10 — what `runtime.c`'s
+ * `hosted_resolve`/`hosted_dispatch` do for a compiled program. Both halves
+ * exist because both kinds of program can be a host, and the two must answer
+ * a guest identically.
+ *
+ * Everything a host decides is decided in its own handlers. Nothing here
+ * knows what an organelle is for; it turns the guest's C-level question into
+ * a particle, asks the program, and turns the answer back.
+ *
+ * The tables below are addressed by row and a row is emptied rather than
+ * removed, exactly as in `runtime.c` and for the same reason: nothing handed
+ * across the ABI may be an address into this side's bookkeeping.
+ */
+
+/// `CodeHostModule` — one organelle as the host supplies it.
+#[repr(C)]
+struct CodeHostModuleFfi {
+    dispatch: Option<unsafe extern "C" fn(*mut c_void, *mut CodeValueFfi, *const CodeValueFfi)>,
+    release: Option<unsafe extern "C" fn(*mut c_void, *mut CodeValueFfi)>,
+    vars: Option<unsafe extern "C" fn(*mut c_void) -> *const CodeVarListFfi>,
+    serving: Option<unsafe extern "C" fn(*mut c_void) -> std::ffi::c_int>,
+    ctx: *mut c_void,
+}
+
+/// `CodeHostVtable` — what the host answers a guest's `link` with.
+#[repr(C)]
+struct CodeHostVtableFfi {
+    resolve:
+        unsafe extern "C" fn(*mut c_void, *const c_char, *mut CodeHostModuleFfi) -> std::ffi::c_int,
+}
+
+type SetHostFn = unsafe extern "C" fn(*const CodeHostVtableFfi, *mut c_void);
+
+/// One organelle standing in for another, on behalf of one guest.
+struct StandIn {
+    guest: usize,
+    name: String,
+    /// Whether the program actually offered this one — see `hosted_resolve`
+    /// for why a refusal is still handed over.
+    offered: bool,
+}
+
+/// Everything this program keeps in order to be a host.
+///
+/// A thread local rather than something threaded through `Environment`,
+/// because the round trip that reaches it goes out through C and comes back:
+/// there is no borrow to carry, only the raw environment pointer left here
+/// when a guest was linked. The interpreter runs one program on one thread,
+/// so there is exactly one of these while it matters.
+#[derive(Default)]
+struct Hosting {
+    env: Option<*mut crate::interpreter::Environment>,
+    /// The path each guest was linked from; `None` once its row is emptied.
+    guests: Vec<Option<String>>,
+    /// `None` once the guest that owns it is gone.
+    standins: Vec<Option<StandIn>>,
+    /// Answers built for guests and not yet released. A guest copies an
+    /// answer into its own heap and releases it immediately, so this is a
+    /// short stack, popped in the order it is pushed.
+    pending: Vec<Arena>,
+}
+
+thread_local! {
+    static HOSTING: std::cell::RefCell<Hosting> = std::cell::RefCell::new(Hosting::default());
+}
+
+/// Rows travel across the ABI as handles: row + 1, so the zero handle is
+/// never a valid row. Must match `runtime.c`'s `row_handle`.
+fn row_handle(row: usize) -> *mut c_void {
+    (row + 1) as *mut c_void
+}
+
+fn handle_row(handle: *mut c_void) -> Option<usize> {
+    (handle as usize).checked_sub(1)
+}
+
+/// The particle name for an organelle: the file's stem, not the path the
+/// guest wrote. Must match `runtime.c`'s `organelle_stem`.
+fn organelle_stem(reference: &str) -> String {
+    let base = reference.rsplit('/').next().unwrap_or(reference);
+    base.strip_suffix(".so").unwrap_or(base).to_string()
+}
+
+fn hosting_particle(class: &str, app: &str, name: &str, particle: Option<Value>) -> Value {
+    let mut fields = vec![
+        ("_class".to_string(), Value::Str(class.into())),
+        ("app".to_string(), Value::Str(app.into())),
+        ("name".to_string(), Value::Str(name.into())),
+    ];
+    if let Some(particle) = particle {
+        fields.push(("particle".to_string(), particle));
+    }
+    Value::Object(Rc::new(fields))
+}
+
+fn is_class(value: &Value, class: &str) -> bool {
+    let Value::Object(fields) = value else {
+        return false;
+    };
+    matches!(
+        fields.iter().find(|(k, _)| k == "_class"),
+        Some((_, Value::Str(found))) if &**found == class
+    )
+}
+
+/// Asks the hosting program a question.
+///
+/// The environment comes back through a raw pointer because the round trip
+/// went out through C, which cannot carry a borrow. It is the same
+/// environment the caller is running in, and nothing touches it in between:
+/// every calling frame is blocked in this call. The borrow of `HOSTING` is
+/// dropped before dispatching, because the program's handlers may link
+/// another guest and reach it again.
+fn ask(particle: &Value) -> Value {
+    let env = HOSTING.with(|h| h.borrow().env);
+    let Some(env) = env else {
+        return Value::Null;
+    };
+    // SAFETY: see this function's doc comment.
+    let env = unsafe { &mut *env };
+    crate::interpreter::ask_program(particle, env)
+}
+
+/// What a guest's `emit ... to <organelle>` becomes: an `Organelle` particle
+/// asked of the host's own handlers, on the host's thread, as an ordinary
+/// nested handler call.
+///
+/// Nested rather than queued, and that is the whole reason it works. A queue
+/// is drained between the program's statements, and this call happens
+/// *during* one; `code_abi.h` item 8 describes that trap from the other
+/// side. The existing re-entry guard still applies, so a host whose answer
+/// loops back into the same guest gets an `Exception` rather than a hang.
+unsafe extern "C" fn hosted_dispatch(
+    ctx: *mut c_void,
+    out: *mut CodeValueFfi,
+    particle: *const CodeValueFfi,
+) {
+    let found = handle_row(ctx).and_then(|row| {
+        HOSTING.with(|h| {
+            let hosting = h.borrow();
+            let standin = hosting.standins.get(row)?.as_ref()?;
+            let app = hosting.guests.get(standin.guest)?.clone()?;
+            Some((app, standin.name.clone(), standin.offered))
+        })
+    });
+
+    let answer = match found {
+        None => crate::interpreter::hosting_stopped(),
+        Some((_, name, false)) => crate::interpreter::hosting_refusal(&name),
+        Some((app, name, true)) => {
+            let sent = unsafe { ffi_to_value(&*particle) };
+            ask(&hosting_particle("Organelle", &app, &name, Some(sent)))
+        }
+    };
+
+    // The answer has to outlive this call: the guest copies it into its own
+    // heap and only then releases it. So it is built into an arena kept
+    // here, which `hosted_release` drops.
+    let mut arena = Arena::default();
+    let built = arena.build(&answer);
+    HOSTING.with(|h| h.borrow_mut().pending.push(arena));
+    unsafe { *out = built };
+}
+
+/// The guest is done with a value built for it.
+unsafe extern "C" fn hosted_release(_ctx: *mut c_void, _v: *mut CodeValueFfi) {
+    // Last in, first out: a guest releases an answer immediately after
+    // copying it, so the one being released is always the newest.
+    HOSTING.with(|h| {
+        h.borrow_mut().pending.pop();
+    });
+}
+
+/// A guest is asking for an organelle. The program decides.
+unsafe extern "C" fn hosted_resolve(
+    host_ctx: *mut c_void,
+    reference: *const c_char,
+    out: *mut CodeHostModuleFfi,
+) -> std::ffi::c_int {
+    let Some(guest) = handle_row(host_ctx) else {
+        return 0;
+    };
+    let Some(app) = HOSTING.with(|h| h.borrow().guests.get(guest).cloned().flatten()) else {
+        return 0;
+    };
+    let reference = unsafe { CStr::from_ptr(reference) }
+        .to_string_lossy()
+        .into_owned();
+    let name = organelle_stem(&reference);
+
+    let answer = ask(&hosting_particle("Offer", &app, &name, None));
+    let offered = is_class(&answer, "Offered");
+
+    // A refusal is never a *failure to resolve*, and this is the one place
+    // that distinction decides whether a host survives its guests. The ABI
+    // lets a host answer "I do not offer that", and the guest's `link` then
+    // fails — but a guest's top-level `link` failing ends the guest, and a
+    // fatal error inside a module ends the process it was loaded into. So a
+    // host that refused an organelle would be killed by its own policy, by a
+    // guest it deliberately said no to.
+    //
+    // Instead a refused organelle is handed over as an organelle that
+    // refuses: the guest links it, and every particle it sends gets an
+    // `Exception`. Must match `runtime.c`'s `hosted_resolve`.
+    let row = HOSTING.with(|h| {
+        let mut hosting = h.borrow_mut();
+        hosting.standins.push(Some(StandIn {
+            guest,
+            name,
+            offered,
+        }));
+        hosting.standins.len() - 1
+    });
+
+    unsafe {
+        *out = CodeHostModuleFfi {
+            dispatch: Some(hosted_dispatch),
+            release: Some(hosted_release),
+            // No exported values and nothing held open. A stand-in is
+            // reached only by `emit`, and what actually holds the program up
+            // is the host's own organelle, which the host holds directly.
+            vars: None,
+            serving: None,
+            ctx: row_handle(row),
+        };
+    }
+    1
+}
+
+static HOSTED_VTABLE: CodeHostVtableFfi = CodeHostVtableFfi {
+    resolve: hosted_resolve,
+};
+
+/// Empties a guest's row and every stand-in handed out on its behalf. Their
+/// handles stay valid *as handles* — they simply name nothing now, and
+/// answer so.
+pub fn close_hosted_guest(guest: usize) {
+    HOSTING.with(|h| {
+        let mut hosting = h.borrow_mut();
+        for standin in hosting.standins.iter_mut() {
+            if standin.as_ref().is_some_and(|s| s.guest == guest) {
+                *standin = None;
+            }
+        }
+        if let Some(slot) = hosting.guests.get_mut(guest) {
+            *slot = None;
+        }
+    });
+}
+
+impl NativeModule {
+    /// Become this module's host: from here on every `link` inside it asks
+    /// `env`'s handlers instead of the filesystem. Answers the guest's row,
+    /// or `None` for a module built before `code_abi.h` item 10, which
+    /// exports no `code_module_set_host` — such a module can still be linked
+    /// and talked to, it just cannot be furnished.
+    ///
+    /// # Safety
+    /// `env` must be the environment running this program, and must outlive
+    /// every dispatch into this module.
+    pub unsafe fn host(
+        &self,
+        app: &str,
+        env: *mut crate::interpreter::Environment,
+    ) -> Option<usize> {
+        let set_host = unsafe { self.lib.get::<SetHostFn>(b"code_module_set_host") }.ok()?;
+        let guest = HOSTING.with(|h| {
+            let mut hosting = h.borrow_mut();
+            hosting.env = Some(env);
+            hosting.guests.push(Some(app.to_string()));
+            hosting.guests.len() - 1
+        });
+        // Before anything else touches the module. A `.code` library runs
+        // its top level lazily, on the first dispatch or the first read of
+        // its values, and its own `link`s run with it — installing this
+        // afterwards would be too late for exactly the statements it exists
+        // to intercept.
+        unsafe { set_host(&HOSTED_VTABLE, row_handle(guest)) };
+        Some(guest)
     }
 }

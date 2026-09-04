@@ -70,6 +70,11 @@ pub enum Token {
     Break,
     Continue,
     Link,
+    /// `unlink <expr>` — closes an organelle opened by a `link` that ran
+    /// inside a handler. A reserved word rather than a core particle so it
+    /// reads as the exact mirror of `link`, and so `let unlink = ...` is a
+    /// parse error instead of quietly shadowing it.
+    Unlink,
     As,
     Export,
     Emit,
@@ -394,6 +399,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                 "break" => Token::Break,
                 "continue" => Token::Continue,
                 "link" => Token::Link,
+                "unlink" => Token::Unlink,
                 "as" => Token::As,
                 "export" => Token::Export,
                 "emit" => Token::Emit,

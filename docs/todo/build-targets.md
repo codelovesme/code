@@ -159,6 +159,28 @@ number. It is why `tests/library_targets.rs` leak-checks the `.so` half and
 not the `.a` half. Making it go away needs a "the host is done reading vars"
 point in the ABI, which is a bigger change than the problem.
 
+### That point now exists, for the `.so` half — 2026-09-04
+
+`code_abi.h` item 9, `code_module_release`, and a `Shared` build generates
+one: it is the sweep this document decided a library must *not* do at
+`_code_init`, moved into a function a consumer calls rather than dropped. The
+reasoning above is unchanged and is exactly why it had to be a separate
+function — `_code_init` returning is not the end of a module's life, and
+sweeping there frees an exported value before `code_module_vars` copies it
+out. What was missing was any *later* point that is the end of its life.
+
+What made it worth building was `unlink` (`ast::Stmt::Unlink`): a program can
+now open an organelle while it runs and close it again, so a module's
+lifetime ends before the process's. Without a release point, closing one
+would unmap its code and leave its heap behind. `tests/hosted_app.rs` is the
+check — a `.code` guest owning heap blocks, started and stopped five times
+under `CODE_CHECK_LEAKS=1`, where the guest's own counter is read from inside
+its own release point.
+
+The `.a` half is untouched and stays as described above: an archive shares
+the host's single runtime, so a second sweep reachable by name would free the
+host's slots out from under it.
+
 Covered by `tests/library_targets.rs`, which is a *consumer*: it builds a
 module from `.code`, links it from another `.code` program in both output
 modes, and lets that program's asserts be the result.

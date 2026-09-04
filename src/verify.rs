@@ -165,9 +165,21 @@ fn verify_stmts(
             } => {
                 verify_expr(particle, scopes)?;
                 if let EmitTarget::Module(alias) = target {
-                    if !natives.contains(alias) {
+                    // A statically linked alias is the common case and keeps
+                    // its check exactly as it was. Otherwise the name may be
+                    // an ordinary binding holding an address from a `link`
+                    // that ran inside a handler (`Stmt::LinkRuntime`) — which
+                    // cannot be checked further here, since whether it really
+                    // holds an address is only knowable at runtime.
+                    //
+                    // What survives is the check that actually catches
+                    // mistakes: a name that is neither is still refused
+                    // before the program starts, so a typo'd alias never
+                    // becomes a runtime failure.
+                    if !natives.contains(alias) && !is_defined(scopes, alias) {
                         return Err(format!(
-                            "'emit ... to {alias}' but no native module is linked as '{alias}'"
+                            "'emit ... to {alias}' but no native module is linked as '{alias}' \
+                             and no variable of that name is in scope"
                         ));
                     }
                 }
@@ -180,6 +192,16 @@ fn verify_stmts(
                     scopes.last_mut().unwrap().insert(name.clone());
                 }
             }
+            Stmt::LinkRuntime { alias, path } => {
+                verify_expr(path, scopes)?;
+                // An ordinary binding in the current scope, not a native
+                // alias: what it holds is an address value, and `emit ... to
+                // <alias>` reaches it through the variable lookup above, not
+                // through `natives`. Registering it here would claim a
+                // compile-time guarantee this form cannot make.
+                scopes.last_mut().unwrap().insert(alias.clone());
+            }
+            Stmt::Unlink(address) => verify_expr(address, scopes)?,
             // Nothing to check — the parser already rejected any `break`
             // or `continue` that isn't inside a loop.
             Stmt::Break | Stmt::Continue => {}

@@ -753,7 +753,9 @@ assert shared.greeting = "hello"
 assert shared.hidden = null       | private: an ordinary missing field
 ```
 
-`link` is top-level only. Cycles and duplicate links are errors.
+`link` is top-level only for a source module. Cycles and duplicate links
+are errors. (An *organelle* may also be linked from inside a handler, while
+the program runs — see [Linking while the program runs](#linking-while-the-program-runs).)
 
 **Native modules** are shared libraries that provide handlers, written in C
 against [`src/code_abi.h`](src/code_abi.h) or in Rust against the
@@ -803,6 +805,80 @@ emit Greet { who = "ada" } to g get r
 Asking for the container is asking for the library — there is no separate
 flag. What the module keeps private stays private: only `export let` crosses,
 the same rule a source `link` follows.
+
+### Linking while the program runs
+
+`link` inside a handler body opens an organelle the program only worked out
+while running. The path is an expression rather than a quoted literal, and
+the name it binds is an ordinary variable holding an **address** rather than
+a compile-time alias — so it can be kept, passed around, and stored:
+
+```
+Start { path } => {
+    link path as app              | the path is a value
+    emit Ping { who = "ada" } to app get r
+    unlink app                    | and it can be closed again
+    return r
+}
+```
+
+This is how one program holds another. Build an application with `--target
+shared`, and a host can start it, talk to it, and stop it — without the
+application knowing it is a guest. It is the same source either way: run it
+on its own, or hand its `.so` to a host.
+
+`unlink` is what makes stopping mean something. It calls the organelle's
+release point ([`code_abi.h`](src/code_abi.h) item 9) and unloads it, so a
+`.code` guest gives back every block it owned. A guest still linked when the
+program ends is released the same way, as part of the same sweep that
+releases everything else.
+
+Four things are worth knowing before reaching for it:
+
+- **Organelles only.** A `.code` source would mean adding handlers while the
+  program runs, and a `.a` is already part of the binary. Only a `.so`.
+- **The path is a path**, taken as written and relative to the working
+  directory. A top-level `link` is resolved against the *file* that says it,
+  which cannot work here: the path does not exist until the program runs, and
+  a compiled binary carries no source tree to resolve against.
+- **Same file, same organelle.** The dynamic loader hands back one mapping
+  per path, so linking a file twice gives two names for one organelle — the
+  same address, and it stops only when the last name is gone.
+- **Not an organelle that speaks first.** The inbound drain runs over the
+  organelles known when the program started, so one linked later would push
+  into a queue nobody reads. Refused at `link` rather than silently ignored.
+
+Everything that can go wrong here is a value, not the end of the program — a
+missing file, a stale address, the wrong kind of value. A program that opens
+organelles it worked out at runtime has to survive the ones it cannot open.
+
+**A host furnishes its guests.** A guest opened this way does not open its own
+organelles: its `link` is answered by the program that opened it. So a hosted
+application binds no port of its own and holds no connections of its own — it
+reaches whatever the host put there, without knowing the difference.
+
+The host answers in its own handlers. A guest's `link` arrives as
+`Offer { app, name }`, and each `emit` to what it was given arrives as
+`Organelle { app, name, particle }`:
+
+```
+Offer { app, name } => {
+    if name = "net_server" { return Offered { } }
+    return Denied { }
+}
+
+Organelle { app, name, particle } => {
+    if particle._class = "Listen" { return ListenResult { ok = true, port = 0 } }
+    emit particle to net get answer
+    return answer
+}
+```
+
+`app` says which guest is asking, so one may be offered what another is
+denied. An organelle the host does not offer is not a failed `link` — it is an
+organelle that refuses: the guest links it and gets an `Exception` on first
+use, the way it would from a network that is not there. A host is never ended
+by its own policy.
 
 ### A module may never end the program
 

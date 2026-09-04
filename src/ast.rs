@@ -178,6 +178,37 @@ pub enum Stmt {
         path: String,
         format: NativeFormat,
     },
+    /// `link <expr> as <alias>` written **inside a handler body** — an
+    /// organelle bound while the program is already running.
+    ///
+    /// Kept separate from `Link`/`ImportNative` rather than folded into
+    /// them, because the two differ in what is knowable and when.
+    /// `loader.rs` resolves a top-level `link` before either backend sees
+    /// the program: it maps the tidy spelling to a real file, recurses into
+    /// `.code` sources, and detects cycles. None of that can happen here —
+    /// the path is an arbitrary expression whose value does not exist until
+    /// the handler runs. So the path is taken **as written**, with no search
+    /// and no mapping, and only a `.so` is accepted: a `.code` source would
+    /// mean adding handlers mid-run, and a `.a` is baked into the binary at
+    /// link time and has nothing to open.
+    ///
+    /// `alias` is bound to an **address value** — an ordinary object
+    /// `{ "_organelle": <n> }` naming a row in the runtime's table of open
+    /// organelles. Deliberately an ordinary value rather than a seventh
+    /// value kind: the language has six JSON-shaped kinds and this changes
+    /// none of them. The address is what `emit ... to <alias>` dispatches
+    /// through (`EmitTarget::Address`), and what `Unlink` closes.
+    LinkRuntime { alias: String, path: Expr },
+    /// `unlink <expr>` — the symmetric half of `LinkRuntime`. Calls the
+    /// organelle's release point (`code_module_release`, `code_abi.h` item
+    /// 10) when it has one, unloads it, and invalidates the address, so a
+    /// later `emit` through the same value is a clean `Exception` rather
+    /// than a call into unmapped code.
+    ///
+    /// Only ever closes an organelle opened by `LinkRuntime`. A top-level
+    /// `link`'s module has no address to name it by and stays for the life
+    /// of the process, exactly as before.
+    Unlink(Expr),
     /// `emit <particle> to <target> [get <name>]` — invokes a handler.
     /// Which one is chosen at **runtime**, by reading the particle's own
     /// `"_class"` field — never resolved at parse or compile time, even
@@ -348,6 +379,22 @@ pub enum NativeFormat {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EmitTarget {
     Core,
+    /// A name after `to`. Usually a `link`ed alias, and that case is
+    /// unchanged: resolved against whatever `link "....so" as <alias>`
+    /// bound, and checked at compile time.
+    ///
+    /// It may instead be an ordinary binding holding an **address value**
+    /// from a `link` that ran inside a handler (`Stmt::LinkRuntime`) —
+    /// `emit p to app`. The parser cannot tell the two apart (both are just
+    /// a name) and neither variant would help: each backend already knows,
+    /// at the point it generates the emit, exactly which aliases it linked,
+    /// so both derive the same answer from the same fact rather than
+    /// carrying a second one that could disagree.
+    ///
+    /// Precedence is linked-alias-first, so no program that compiled before
+    /// changes meaning. A name that is neither a linked alias nor a bound
+    /// variable is still the compile-time error it always was — which is
+    /// what keeps a typo'd alias from silently becoming a runtime failure.
     Module(String),
     /// `to this` — a handler defined by the program itself
     /// (`Stmt::HandlerDef`). Named rather than left implicit so every

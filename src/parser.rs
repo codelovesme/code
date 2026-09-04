@@ -236,10 +236,37 @@ impl<'a> Parser<'a> {
             return Ok(Stmt::Block(body));
         }
 
+        if matches!(self.peek(), Token::Unlink) {
+            self.advance();
+            let address = self.expr()?;
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::Unlink(address));
+        }
+
         if matches!(self.peek(), Token::Link) {
             self.advance();
+            // Inside a block, `link` is the runtime form: the path is an
+            // expression, not a quoted literal, because the whole point is a
+            // module named by something the program worked out. `as` is
+            // mandatory here — a runtime link with no name would open a
+            // module nothing could ever reach, and unlike the top-level form
+            // there are no exports to fall back on binding.
             if self.block_depth > 0 {
-                return Err("'link' is only allowed at the top level of a file".to_string());
+                let path = self.expr()?;
+                if !matches!(self.peek(), Token::As) {
+                    return Err(
+                        "a 'link' inside a handler must say 'as <name>' — the name is the \
+                         only way to reach what it opened"
+                            .to_string(),
+                    );
+                }
+                self.advance();
+                let alias = match self.advance() {
+                    Token::Ident(name) => name,
+                    other => return Err(format!("expected a name after 'as', found {other:?}")),
+                };
+                self.expect_end_of_statement()?;
+                return Ok(Stmt::LinkRuntime { alias, path });
             }
             let path = match self.advance() {
                 Token::Str(path) => path,

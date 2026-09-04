@@ -73,6 +73,46 @@
  *      every request times out one frame below the handler that should have
  *      answered it.
  *
+ *   9. *Optionally* export `void code_module_release(void)` — the point at
+ *      which this module gives up everything it owns.
+ *
+ *      Every rule above says a module owns its exported values "for the
+ *      module's whole lifetime", and until this existed there was no way to
+ *      say when that lifetime ended: a module was loaded until the process
+ *      exited, so the question never came up. `unlink` (a `link` that ran
+ *      inside a handler, see `ast::Stmt::LinkRuntime`) is that question. It
+ *      calls this, and then unloads the module.
+ *
+ *      So the contract is sharp: after this call **nothing in the module may
+ *      be touched again** — not a dispatch, not an exported value, not a key
+ *      string an exported object borrowed. The caller unloads it
+ *      immediately, which is the only reason it is safe to free everything
+ *      here rather than merely promising to.
+ *
+ *      What it must free is what a program frees when it ends: every
+ *      top-level value the module holds. A `.code` library compiled with
+ *      `--target shared` gets one generated for it, ending in that copy of
+ *      the runtime's own `code_check_leaks` — which is what turns "the
+ *      module let go of everything" from a claim into a check under
+ *      `CODE_CHECK_LEAKS=1`.
+ *
+ *      A module that exports nothing here is simply never released, and
+ *      `unlink` unloads it anyway. That is correct for the hand-written
+ *      modules, which keep their state in C statics rather than in
+ *      refcounted blocks. Optional and additive, for the same reason as the
+ *      four above — the ABI version does not move.
+ *
+ *  10. *Optionally* be **hosted**: when a program opens this module while it
+ *      is running, it may furnish the module's own organelles rather than
+ *      letting it open them itself. See "Being hosted" further down for the
+ *      two structs and the one function, and for why a hosted module's
+ *      `link` is not allowed to fall back to the filesystem.
+ *
+ *      Nothing is exported for this — the runtime every compiled `.so`
+ *      carries defines `code_module_set_host` itself, so a module gets it by
+ *      existing. A module built before this did not, which is exactly how a
+ *      host tells the two apart.
+ *
  * Why `emit` is a function *pointer* the host supplies, rather than a
  * `code_emit_inbound` a module could call directly: a `.so` carries its own
  * copy of this runtime (see below), so a direct call would push onto the
@@ -172,6 +212,77 @@ typedef struct CodeVarList {
     const char **names;
     CodeValue *values; /* CODE_VALUE_SLOT_SIZE stride, `count` slots */
 } CodeVarList;
+
+/* ---- Being hosted: item 10 -----------------------------------------------
+ *
+ * A module normally finds its own organelles: a `link` inside it opens the
+ * file it names. When a *program* opens a module while it is running
+ * (`ast::Stmt::LinkRuntime`), that is the wrong answer — the guest would
+ * bind its own port and hold its own connections, and the host it is running
+ * inside would have no way to know what it took or to take it back.
+ *
+ * So the opener may furnish the guest's world instead. It installs the pair
+ * below, and from then on every `link` inside that guest asks the host
+ * rather than the filesystem.
+ *
+ * The rule is deliberately blunt: once a host is installed, a `link` the
+ * host does not answer **fails**. Not a fallback to opening the file — a
+ * guest that could quietly reach past its host is a guest whose memory
+ * cannot be reclaimed and whose reach cannot be bounded, which is the whole
+ * reason for this. A module with no host installed is unaffected and opens
+ * files exactly as it always did, which is what keeps an application
+ * runnable on its own.
+ *
+ * **The two `ctx` values below are handles, not addresses.** Nothing here
+ * may be a pointer into the host's own bookkeeping: a guest outlives
+ * individual decisions the host makes about it, and a host that hands out
+ * addresses has to get every one of those lifetimes exactly right. A handle
+ * the host looks up can name something that is gone, and the host answers
+ * cleanly instead of touching freed memory. Treat these as opaque tokens:
+ * store them, hand them back, never dereference them.
+ */
+
+/* One organelle, as the host supplies it.
+ *
+ * The mirror of the `code_module_*` exports, with a `ctx` threaded through
+ * every one — because the host is answering on behalf of a *particular*
+ * guest, and the same host answers for several. A plain function pointer
+ * could not tell them apart; this is what carries "which guest is asking".
+ *
+ * `vars` and `serving` may be NULL, meaning the same as a module that
+ * exports neither: no exported values, and nothing held open. `dispatch` and
+ * `release` may not. */
+typedef struct CodeHostModule {
+    void (*dispatch)(void *ctx, CodeValue *out, const CodeValue *particle);
+    void (*release)(void *ctx, CodeValue *v);
+    const CodeVarList *(*vars)(void *ctx);
+    int (*serving)(void *ctx);
+    void *ctx;
+} CodeHostModule;
+
+/* What the host answers `link` with.
+ *
+ * `resolve` is asked once per `link`, with `ref` spelled the way the guest
+ * wrote it. Non-zero and `out` filled means "here it is"; zero means the
+ * host does not offer it, and the guest's `link` fails.
+ *
+ * `host_ctx` is whatever was handed to `code_module_set_host` — a handle,
+ * see above. */
+typedef struct CodeHostVtable {
+    int (*resolve)(void *host_ctx, const char *ref, CodeHostModule *out);
+} CodeHostVtable;
+
+/* Installs the host for this module. Defined by the runtime every compiled
+ * `.so` carries, so every one of them exports it without doing anything —
+ * which is what lets a host tell a module built before this existed (no such
+ * symbol, and it cannot be hosted) from one that can.
+ *
+ * Called immediately after opening the module and before anything else. A
+ * `.code` library runs its top level lazily, on the first dispatch or the
+ * first read of its values, and its `link`s run with it — so installing the
+ * host afterwards would be too late for exactly the statements this exists
+ * to intercept. */
+void code_module_set_host(const CodeHostVtable *host, void *host_ctx);
 
 /* ---- `.a` static modules — a different, simpler contract -----------------
  *
