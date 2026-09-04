@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, oauth_mock]
+        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, oauth_mock]
     steps:
       - uses: actions/checkout@v4
       # Each module is its own workspace with its own Cargo.lock (see those
@@ -130,7 +130,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, oauth_mock]
+        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, oauth_mock]
     steps:
       - uses: actions/checkout@v4
 
@@ -293,6 +293,13 @@ jobs:
               # down with it.
               printf 'emit Config { port = 0 } to mod get c\nassert c.ok\nemit Listen { } to mod get l\nassert l.ok\nassert l.port > 0\nemit Stop { } to mod get s\nassert s.ok\n' >> dogfood/demo.code
               ;;
+            membrane)
+              # No socket, no thread, nothing pushed — so unlike net_server
+              # there is nothing here that could hold the demo open. Run on
+              # its own it has no host, and `Listen` says so rather than
+              # claiming a door it does not have.
+              printf 'emit Config { port = 0 } to mod get c\nassert c.ok\nemit Listen { } to mod get l\nassert not l.ok\nemit Stop { } to mod get s\nassert s.ok\n' >> dogfood/demo.code
+              ;;
             net_client)
               # Nothing is listening on port 1, so this needs no network — it
               # proves the artifact loads and routes, and that an unreachable
@@ -354,7 +361,7 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in terminal strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server oauth_mock; do
+          for m in terminal strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane oauth_mock; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
@@ -380,6 +387,7 @@ jobs:
               localai) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions"]' ;;
               mailer_mock) handlers='["Config", "Send", "Outbox"]' ;;
               net_server) handlers='["Config", "Listen", "Stop"]' ;;
+              membrane) handlers='["Config", "Listen", "Stop"]' ;;
               net_client) handlers='["Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb_mock) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;
@@ -397,6 +405,7 @@ jobs:
             case "$m" in
               http_server) setup='"setup": "Config",' ;;
               net_server) setup='"setup": "Config",' ;;
+              membrane) setup='"setup": "Config",' ;;
               jwt|fs|json_store|git|mailer|oauth|mongodb|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
               *) setup='' ;;
             esac

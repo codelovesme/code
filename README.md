@@ -901,6 +901,14 @@ and the host decides what a guest gets — its own organelle, a stand-in, or
 nothing. Write no such handler and the host furnishes nothing, which is how a
 host stays out of an application's business without saying so.
 
+The one thing a host has to answer for is the guest's **door**, because that
+is the one organelle an application cannot own and still be held: a door has
+a thread, a thread that outlives the application cannot be unloaded, and an
+application that cannot be unloaded never gives its memory back. So an
+application built to be held names [`membrane`](crates/modules/membrane) where
+it would have named `net_server` — the same particles, the same genes, one
+word in its manifest — and its host stands behind that name.
+
 The host answers in its own handlers. A guest's `link` arrives as
 `Offer { app, name }`, and each `emit` to what it was given arrives as
 `Organelle { app, name, particle }`:

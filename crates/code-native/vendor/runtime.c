@@ -90,7 +90,12 @@ _Noreturn void code_runtime_error(const char *message) {
  * report trouble by returning `code_make_exception`, which needs no channel
  * because a return value already is one. */
 int code_failed = 0;
-static char failure_message[256];
+/* Wide enough for the longest diagnostic anywhere in this file — a refusal
+ * quoting a rooted module path is the one that sets the size. Sized to match
+ * so that copying into it is not a truncation the compiler has to warn
+ * about: a warning nobody can act on is noise, and noise is how the ones
+ * that matter get missed. */
+static char failure_message[1024];
 
 /* Where the top-level statement now running came from, as the rendered
  * `--> file:line:col` block `span.rs`'s `location_block` produces — or NULL

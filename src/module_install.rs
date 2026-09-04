@@ -107,6 +107,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "mailer_mock",
     "markdown",
     "math",
+    "membrane",
     "mongodb",
     "mongodb_mock",
     "net_client",

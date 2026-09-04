@@ -109,6 +109,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
     for stem in [
         "strings",
         "math",
+        "membrane",
         "http_client",
         "env",
         "terminal",
