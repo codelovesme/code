@@ -542,6 +542,21 @@ impl NativeModule {
         self.has_inbound
     }
 
+    /// Hand this module a turn to deliver whatever its own organelles
+    /// pushed. A no-op for one that linked nothing speaking first, and for
+    /// anything that is not a `.code` library.
+    ///
+    /// A library has queues but no loop of its own to empty them — its
+    /// stream ran once and returned — so the program that opened it does the
+    /// emptying, from its own drain.
+    pub fn drain(&self) {
+        // SAFETY: resolved from a library that is still loaded; the caller
+        // holds this module.
+        if let Ok(drain) = unsafe { self.lib.get::<ModuleReleaseFn>(b"code_module_drain") } {
+            unsafe { drain() }
+        }
+    }
+
     /// Tell the module it may let go of everything it owns — `code_abi.h`
     /// item 9, and a no-op for the modules that export no such point.
     ///
@@ -696,6 +711,7 @@ struct CodeHostModuleFfi {
 struct CodeHostVtableFfi {
     resolve:
         unsafe extern "C" fn(*mut c_void, *const c_char, *mut CodeHostModuleFfi) -> std::ffi::c_int,
+    wake: unsafe extern "C" fn(*mut c_void),
 }
 
 type SetHostFn = unsafe extern "C" fn(*const CodeHostVtableFfi, *mut c_void);
@@ -732,6 +748,13 @@ struct Hosting {
 thread_local! {
     static HOSTING: std::cell::RefCell<Hosting> = std::cell::RefCell::new(Hosting::default());
 }
+
+/// How a guest's organelle wakes this program.
+///
+/// Deliberately not in `Hosting` above: that is a thread local, and this is
+/// called from whichever thread the guest's organelle pushed on. The same
+/// wakeup a program's own organelles signal, so one park covers both.
+static HOST_WAKEUP: Mutex<Option<std::sync::Arc<crate::interpreter::Wakeup>>> = Mutex::new(None);
 
 /// Rows travel across the ABI as handles: row + 1, so the zero handle is
 /// never a valid row. Must match `runtime.c`'s `row_handle`.
@@ -834,6 +857,22 @@ unsafe extern "C" fn hosted_dispatch(
     unsafe { *out = built };
 }
 
+/// A guest's organelle pushed something. Wake this program the same way its
+/// own organelles do, so the one park covers guests too — no polling, and
+/// nothing at all while everyone is idle.
+///
+/// Reached from the organelle's own thread, which is why the wakeup lives in
+/// a global rather than beside the rest of the hosting state.
+unsafe extern "C" fn hosted_wake(_host_ctx: *mut c_void) {
+    let wakeup = HOST_WAKEUP
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    if let Some(wakeup) = wakeup {
+        wakeup.signal();
+    }
+}
+
 /// The guest is done with a value built for it.
 unsafe extern "C" fn hosted_release(_ctx: *mut c_void, _v: *mut CodeValueFfi) {
     // Last in, first out: a guest releases an answer immediately after
@@ -860,7 +899,16 @@ unsafe extern "C" fn hosted_resolve(
         .into_owned();
     let name = organelle_stem(&reference);
 
+    // **A host furnishes only what it says it furnishes.** With no `Offer`
+    // handler nothing answers, and the guest opens its own organelle exactly
+    // as it would running alone — its own file, its own settings, isolated.
+    // A host that wants no say writes nothing to get none. One that answers
+    // is taking that say, and then `Offered` or anything else decides.
+    // Silence and refusal are different answers. Must match `runtime.c`.
     let answer = ask(&hosting_particle("Offer", &app, &name, None));
+    if matches!(answer, Value::Null) {
+        return 0;
+    }
     let offered = is_class(&answer, "Offered");
 
     // A refusal is never a *failure to resolve*, and this is the one place
@@ -901,7 +949,14 @@ unsafe extern "C" fn hosted_resolve(
 
 static HOSTED_VTABLE: CodeHostVtableFfi = CodeHostVtableFfi {
     resolve: hosted_resolve,
+    wake: hosted_wake,
 };
+
+/// How a guest's organelle wakes this program — see `hosted_wake`. Set when
+/// the first guest is hosted; one program per process, so one wakeup.
+pub fn set_host_wakeup(wakeup: std::sync::Arc<crate::interpreter::Wakeup>) {
+    *HOST_WAKEUP.lock().unwrap_or_else(|e| e.into_inner()) = Some(wakeup);
+}
 
 /// Empties a guest's row and every stand-in handed out on its behalf. Their
 /// handles stay valid *as handles* — they simply name nothing now, and

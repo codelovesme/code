@@ -577,3 +577,96 @@ assert r.value = 30
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A guest owns its own organelles, and hears what they say.
+///
+/// Two things at once, and they are the same thing. The host installs itself
+/// on every guest, but a host with no `Offer` handler furnishes nothing — so
+/// the guest opens its own organelle, its own file, its own settings, just as
+/// it would running alone.
+///
+/// And then it hears it. An organelle may speak without being asked, into a
+/// queue that a *program's* loop empties — but a guest is a library whose
+/// stream ran once and returned, so nothing of its own would ever empty it.
+/// Its pushes ring the host's bell instead, and the host's own drain hands
+/// the guest its turn. One loop, no polling, and nothing at all while
+/// everyone is idle.
+///
+/// A refused port is the cheapest way to make an organelle speak: no network
+/// is needed, and `http_client` reports the refusal as an `Exception` it
+/// pushes rather than as the answer it returns.
+#[test]
+fn a_guest_owns_its_organelles_and_hears_them() {
+    let dir = temp_dir("owned");
+    fs::create_dir_all(dir.join("native_modules")).expect("create module dir");
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/native_modules/http_client.so"),
+        dir.join("native_modules/http_client.so"),
+    )
+    .expect("copy the organelle the guest will open for itself");
+
+    build(
+        &dir,
+        "guest",
+        r#"link "native_modules/http_client.so" as web
+
+export let heard = false
+
+Work { } => {
+    emit Get { url = "http://127.0.0.1:1/" } to web get r
+    return Done { ok = r.ok }
+}
+
+Heard { } => {
+    return Answer { heard = heard }
+}
+
+Exception { source, message } => {
+    heard = true
+}
+"#,
+        code::BuildTarget::Shared,
+        "guest.so",
+    );
+    fs::write(
+        dir.join("main.code"),
+        r#"| A host that offers nothing: no `Offer` handler at all, so the guest
+| below opens its own organelle rather than being furnished one.
+let app = null
+
+Start { } => {
+    link "./guest.so" as a
+    app = a
+    return Started { }
+}
+
+Work { } => {
+    emit Work { } to app get done
+    return done
+}
+
+Ask { } => {
+    emit Heard { } to app get a
+    return a
+}
+
+emit Start { } to this get s
+assert s._class = "Started"
+
+| Its own organelle answered — a refused connection, not a refusal to lend.
+emit Work { } to this get done
+assert not done.ok
+
+| And between these two statements this program drained, guests included.
+emit Ask { } to this get answer
+assert answer.heard
+"#,
+    )
+    .expect("write host");
+    run_both_ways(
+        &dir,
+        "a guest did not own or did not hear its own organelle",
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}

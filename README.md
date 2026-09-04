@@ -885,10 +885,21 @@ Everything that can go wrong here is a value, not the end of the program — a
 missing file, a stale address, the wrong kind of value. A program that opens
 organelles it worked out at runtime has to survive the ones it cannot open.
 
-**A host furnishes its guests.** A guest opened this way does not open its own
-organelles: its `link` is answered by the program that opened it. So a hosted
-application binds no port of its own and holds no connections of its own — it
-reaches whatever the host put there, without knowing the difference.
+**A guest owns its organelles, unless the host says otherwise.** By default a
+hosted application opens its own — its own file, its own settings, isolated,
+exactly as it would running alone. Two applications wanting two databases get
+two, and neither can reach the other's.
+
+And it hears them. An organelle may speak without being asked, into a queue
+that a *program's* loop empties; a guest is a library whose stream ran once
+and returned, so nothing of its own ever would. Its pushes wake the host
+instead, and the host's own drain hands each guest its turn. One loop, no
+polling, and nothing at all while everyone is idle.
+
+**A host that wants a say takes it by answering.** Define an `Offer` handler
+and the host decides what a guest gets — its own organelle, a stand-in, or
+nothing. Write no such handler and the host furnishes nothing, which is how a
+host stays out of an application's business without saying so.
 
 The host answers in its own handlers. A guest's `link` arrives as
 `Offer { app, name }`, and each `emit` to what it was given arrives as

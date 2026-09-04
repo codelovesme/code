@@ -130,6 +130,7 @@ fn hide_internal_symbols(module: &Module<'_>, lib_mode: &LibraryMode) {
             "code_module_dispatch",
             "code_module_vars",
             "code_module_release",
+            "code_module_drain",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -161,6 +162,24 @@ fn hide_internal_symbols(module: &Module<'_>, lib_mode: &LibraryMode) {
             g.set_linkage(Linkage::Internal);
         }
     }
+}
+
+/// Whether `stmts` contain a `link` that runs while the program does —
+/// anywhere, including inside a handler, a branch or a linked module.
+///
+/// Asked once, up front, rather than noticed as statements are generated: a
+/// `link` in a handler defined at the bottom of the file still means the
+/// statements above it may run with a guest already open.
+fn links_at_runtime(stmts: &[Stmt]) -> bool {
+    stmts.iter().any(|stmt| match stmt {
+        Stmt::LinkRuntime { .. } => true,
+        Stmt::HandlerDef { body, .. }
+        | Stmt::If { body, .. }
+        | Stmt::Block(body)
+        | Stmt::Loop { body, .. }
+        | Stmt::Import { body, .. } => links_at_runtime(body),
+        _ => false,
+    })
 }
 
 /// A `.a` static module's three (`vars` optional) entry points, declared up
@@ -364,6 +383,11 @@ pub fn compile_to_object(
     let fn_set_program_dispatch = module.add_function(
         "code_set_program_dispatch",
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_runtime_drain_guests = module.add_function(
+        "code_runtime_drain_guests",
+        void_ty.fn_type(&[], false),
         None,
     );
     let fn_runtime_unlink_all =
@@ -701,6 +725,7 @@ pub fn compile_to_object(
         fn_runtime_link,
         fn_runtime_unlink,
         fn_runtime_unlink_all,
+        fn_runtime_drain_guests,
         fn_set_program_dispatch,
         fn_runtime_dispatch,
         fn_native_dispatch,
@@ -732,6 +757,7 @@ pub fn compile_to_object(
         handler_fns: HashMap::new(),
         handler_depths: HashMap::new(),
         dispatch_fn: None,
+        links_at_runtime: links_at_runtime(&program.statements),
         base_dispatches: Vec::new(),
         dispatch_depth: 0,
         drain_fn: None,
@@ -918,6 +944,7 @@ struct Gen<'a, 'm> {
     fn_runtime_link: FunctionValue<'a>,
     fn_runtime_unlink: FunctionValue<'a>,
     fn_runtime_unlink_all: FunctionValue<'a>,
+    fn_runtime_drain_guests: FunctionValue<'a>,
     fn_set_program_dispatch: FunctionValue<'a>,
     fn_runtime_dispatch: FunctionValue<'a>,
     fn_native_dispatch: FunctionValue<'a>,
@@ -1034,6 +1061,10 @@ struct Gen<'a, 'm> {
     /// `emit ... to this` calls it, so reaching another handler is an
     /// ordinary call rather than anything the emit site has to know about.
     dispatch_fn: Option<FunctionValue<'a>>,
+    /// Whether this program contains a `link` that runs while it does. Such
+    /// a program may hold organelles nothing here can see, so its drain has
+    /// to be called even when it linked none of its own.
+    links_at_runtime: bool,
     /// The generated `_code_dispatch_base_<depth>` chain, one per level of
     /// the module graph that defines at least one handler — index `d` is
     /// the target of `emit … to base` from inside a module at depth `d + 1`
@@ -1479,8 +1510,12 @@ impl<'a, 'm> Gen<'a, 'm> {
         let Some(drain) = self.drain_fn else {
             return Ok(());
         };
-        // Nothing to drain from, so don't pay a call per statement.
-        if self.native_links.is_empty() {
+        // Nothing to drain from, so don't pay a call per statement — unless
+        // this program can open organelles while it runs, in which case what
+        // there is to drain is not knowable from here. A guest is a library:
+        // it has queues and no loop of its own, so this program's drain is
+        // the only thing that will ever empty them.
+        if self.native_links.is_empty() && !self.links_at_runtime {
             return Ok(());
         }
         self.builder
@@ -1627,6 +1662,14 @@ impl<'a, 'm> Gen<'a, 'm> {
         let entry = self.context.append_basic_block(drain, "entry");
         let saved_block = self.builder.get_insert_block();
         self.builder.position_at_end(entry);
+
+        // Guests first, and before the early return below: a host may hold
+        // applications while linking no speaking organelle of its own, and
+        // its guests' queues still have to be emptied. This is where the one
+        // park/drain loop reaches them — no polling anywhere.
+        self.builder
+            .build_call(self.fn_runtime_drain_guests, &[], "")
+            .map_err(|e| e.to_string())?;
 
         if handles.is_empty() {
             self.builder.build_return(None).map_err(|e| e.to_string())?;
@@ -3768,6 +3811,35 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.builder.position_at_end(entry);
             self.emit_cleanup(fn_check_leaks)?;
             self.builder.build_return(None).map_err(|e| e.to_string())?;
+        }
+
+        // Optional: this module's own inbound drain, run once on request.
+        //
+        // A library has queues — an organelle it linked may push — but no
+        // loop of its own to empty them: its stream is `_code_init`, which
+        // ran once and returned. So whoever opened it does the emptying, and
+        // this is where they reach in.
+        //
+        // `Shared` only, and only when there is a drain to run: a module
+        // that linked nothing that speaks first has no queues at all.
+        if matches!(lib_mode, LibraryMode::Shared) {
+            if let Some(inner) = self.drain_fn {
+                let drain = self.module.add_function(
+                    "code_module_drain",
+                    self.context.void_type().fn_type(&[], false),
+                    None,
+                );
+                let entry = self.context.append_basic_block(drain, "entry");
+                self.builder.position_at_end(entry);
+                // Nothing is queued before the module has run, and running it
+                // is not this call's business — a drain must not be what
+                // starts a module. The generated drain reads every handle
+                // slot, all null until then, and finds nothing.
+                self.builder
+                    .build_call(inner, &[], "")
+                    .map_err(|e| e.to_string())?;
+                self.builder.build_return(None).map_err(|e| e.to_string())?;
+            }
         }
 
         // A `.so` keeps a runnable `main` — a standalone smoke run of the

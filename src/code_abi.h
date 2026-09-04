@@ -113,6 +113,25 @@
  *      existing. A module built before this did not, which is exactly how a
  *      host tells the two apart.
  *
+ *  11. *Optionally* export `void code_module_drain(void)` — run this
+ *      module's own inbound drain once.
+ *
+ *      A module that linked something which speaks first has a queue, and
+ *      queues are emptied by a *program*'s loop, between its statements and
+ *      on waking. A module loaded as a library has no such loop: its stream
+ *      ran once and returned. So whoever opened it does the emptying, and
+ *      this is where they reach in.
+ *
+ *      Paired with `CodeHostVtable.wake`, that makes one loop cover both:
+ *      the guest's pushes ring the host's bell, the host wakes, drains
+ *      itself and its guests, and parks again. The alternative — a host
+ *      polling what it holds — is the busy waiting this runtime refuses to
+ *      do anywhere else.
+ *
+ *      Generated for a `--target shared` build that has anything to drain.
+ *      Optional and additive: a module without it simply has no queues worth
+ *      emptying, and the ABI version does not move.
+ *
  * Why `emit` is a function *pointer* the host supplies, rather than a
  * `code_emit_inbound` a module could call directly: a `.so` carries its own
  * copy of this runtime (see below), so a direct call would push onto the
@@ -225,13 +244,15 @@ typedef struct CodeVarList {
  * below, and from then on every `link` inside that guest asks the host
  * rather than the filesystem.
  *
- * The rule is deliberately blunt: once a host is installed, a `link` the
- * host does not answer **fails**. Not a fallback to opening the file — a
- * guest that could quietly reach past its host is a guest whose memory
- * cannot be reclaimed and whose reach cannot be bounded, which is the whole
- * reason for this. A module with no host installed is unaffected and opens
- * files exactly as it always did, which is what keeps an application
- * runnable on its own.
+ * **A host furnishes only what it says it furnishes.** `resolve` may decline,
+ * and then the module opens the file itself — its own organelle, its own
+ * settings, isolated, exactly as it would with no host at all. That is the
+ * ordinary case: an application's organelles are its own business, and a
+ * host that wants no say has to write nothing to get none. A host that does
+ * answer is taking that say, and what it hands back is what the guest gets.
+ *
+ * A module with no host installed is unaffected in every case, which is what
+ * keeps an application runnable on its own.
  *
  * **The two `ctx` values below are handles, not addresses.** Nothing here
  * may be a pointer into the host's own bookkeeping: a guest outlives
@@ -270,6 +291,17 @@ typedef struct CodeHostModule {
  * see above. */
 typedef struct CodeHostVtable {
     int (*resolve)(void *host_ctx, const char *ref, CodeHostModule *out);
+    /* "Something arrived for me." Called after a module this guest opened
+       pushes a particle, so the host wakes and drains the guest along with
+       its own queues.
+    
+       Without it a hosted guest's pushes are never heard: the drain loop
+       belongs to a *program*, and a guest is a library whose stream ran once
+       and returned. The alternative — the host polling its guests — is the
+       busy waiting this runtime refuses to do anywhere else. One wakeup, one
+       drain, shared. May be NULL, in which case the guest's pushes wait for
+       whatever else wakes the host. */
+    void (*wake)(void *host_ctx);
 } CodeHostVtable;
 
 /* Installs the host for this module. Defined by the runtime every compiled

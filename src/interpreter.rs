@@ -39,6 +39,9 @@ pub const ORGANELLE_FIELD: &str = "_organelle";
 struct RuntimeOrganelle {
     dispatch: ModuleDispatch,
     release: Rc<dyn Fn()>,
+    /// Hands it a turn to deliver whatever its own organelles pushed. A
+    /// library has queues but no loop of its own — see `NativeModule::drain`.
+    drain: Rc<dyn Fn()>,
     /// Which guest row this program keeps for it, or `None` for an organelle
     /// that cannot be hosted (one built before `code_abi.h` item 10). A row,
     /// not a pointer — see `native.rs`'s hosting tables.
@@ -390,6 +393,21 @@ fn drain_between_iterations(env: &mut Environment) -> Result<(), String> {
 fn drain_inbound(env: &mut Environment) -> Result<usize, String> {
     let mut handled = 0usize;
     loop {
+        // Guests first, and here rather than anywhere of their own: a
+        // library has queues but no loop to empty them, so this program's
+        // drain is where they get their turn. An idle program never reaches
+        // this, because nothing woke it.
+        #[cfg(feature = "native-modules")]
+        {
+            let drains: Vec<Rc<dyn Fn()>> = env
+                .runtime_modules
+                .iter()
+                .filter_map(|slot| slot.as_ref().map(|o| Rc::clone(&o.drain)))
+                .collect();
+            for drain in drains {
+                drain();
+            }
+        }
         let sources = env.inbound.clone();
         // Kept per source rather than pooled: the answer has to go back to
         // the module that asked, and once the particles are in one list
@@ -859,11 +877,17 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                 // than opening its own.
                 let env_ptr: *mut Environment = env;
                 let guest = unsafe { module.host(path, env_ptr) };
+                // How its organelles wake this program: the same wakeup
+                // this program's own organelles signal, so one park covers
+                // both and nothing polls.
+                crate::native::set_host_wakeup(env.wakeup());
                 let module = Rc::new(module);
                 let dispatching = Rc::clone(&module);
+                let draining = Rc::clone(&module);
                 let organelle = RuntimeOrganelle {
                     dispatch: Rc::new(move |v| dispatching.dispatch(v)),
                     release: Rc::new(move || module.release()),
+                    drain: Rc::new(move || draining.drain()),
                     guest,
                 };
                 let address = env.open_organelle(organelle);

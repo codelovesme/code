@@ -870,6 +870,10 @@ typedef struct {
      * its whole lifetime. NULL for every module that has none, which is all
      * of them except a `.code` library. */
     void (*module_release)(void);
+    /* Optional `code_module_drain` — runs this module's own inbound drain
+     * once. A library has queues but no loop of its own to empty them, so a
+     * host calls this when the guest's organelles have pushed something. */
+    void (*module_drain)(void);
     /* Set at cleanup: the program is done, and a push arriving after it is
      * dropped rather than queued. Without it a module thread still running
      * at exit would allocate into a ring nobody will drain, and
@@ -1006,13 +1010,14 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
      * the file: a guest that could quietly reach past its host is a guest
      * whose memory cannot be reclaimed and whose reach cannot be bounded —
      * see `code_abi.h` item 10. */
-    if (code_host) {
+    if (code_host && code_host->resolve) {
         CodeHostModule supplied = {0};
-        if (!code_host->resolve(code_host_ctx, path, &supplied)) {
-            snprintf(err, errlen, "organelle '%s' is not offered by the host", path);
-            return NULL;
+        if (code_host->resolve(code_host_ctx, path, &supplied)) {
+            return host_native(&supplied, err, errlen);
         }
-        return host_native(&supplied, err, errlen);
+        /* The host did not furnish this one, so this module opens it itself
+         * — its own file, its own settings. A host that wants a say answers;
+         * one that does not, does not, and the guest is none the wiser. */
     }
 #ifdef CODE_WASM
     (void)path;
@@ -1093,6 +1098,9 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     /* Optional as well, and only a `.code` library has one: the point at
      * which this module may let go of its top-level values (item 9). */
     nh->module_release = (void (*)(void))dlsym(handle, "code_module_release");
+    /* And the point at which it hands out what its own organelles pushed.
+     * Only a `.code` library has one, and only a host ever calls it. */
+    nh->module_drain = (void (*)(void))dlsym(handle, "code_module_drain");
 
     /* Also optional: a module that never speaks first doesn't export it.
      * The pusher handed across is *this* runtime's, not the module's own
@@ -1325,6 +1333,13 @@ void code_emit_inbound(void *queue, const CodeValue *value) {
     pthread_cond_broadcast(&code_wakeup_cond);
     pthread_mutex_unlock(&code_wakeup_lock);
 #endif
+    /* And the host's, when this program is a guest. Its own wakeup above is
+     * signalled either way but nobody waits on it: a library's stream ran
+     * once and returned, so the loop that would drain this queue belongs to
+     * whoever opened it. */
+    if (code_host && code_host->wake) {
+        code_host->wake(code_host_ctx);
+    }
 }
 
 /* Whether one linked module still expects to speak. Generated code asks this
@@ -1692,8 +1707,22 @@ static int hosted_resolve(void *host_ctx, const char *ref, CodeHostModule *out) 
     if (guest < 0 || guest >= hosted_guest_count || !hosted_guests[guest].app) return 0;
     char name[128];
     organelle_stem(ref, name, sizeof name);
+    /* **A host furnishes only what it says it furnishes.** If the program
+     * has no `Offer` handler at all, nothing answers and the guest opens its
+     * own organelle, exactly as it would running alone — its own file, its
+     * own settings, isolated. That is the ordinary case: an application's
+     * organelles are its own business, and a host that wants no say has to
+     * write nothing to get none.
+     *
+     * A program that *does* answer is taking that say, and then `Offered` or
+     * anything else decides. Silence and refusal are different answers, and
+     * this is the line between them. */
     CodeValue answer = {0};
     ask_program(&answer, "Offer", hosted_guests[guest].app, name, NULL);
+    if (answer.tag == CODE_NULL) {
+        code_release(&answer);
+        return 0;
+    }
     int offered = is_class(&answer, "Offered");
     code_release(&answer);
 
@@ -1736,7 +1765,20 @@ static int hosted_resolve(void *host_ctx, const char *ref, CodeHostModule *out) 
     return 1;
 }
 
-static const CodeHostVtable hosted_vtable = {hosted_resolve};
+/* A guest's organelle pushed something. Wake this program the same way its
+ * own organelles do, so the one park/drain loop covers guests too — no
+ * polling, and nothing at all while everyone is idle. */
+static void hosted_wake(void *host_ctx) {
+    (void)host_ctx;
+#ifndef CODE_WASM
+    pthread_mutex_lock(&code_wakeup_lock);
+    code_wakeups++;
+    pthread_cond_broadcast(&code_wakeup_cond);
+    pthread_mutex_unlock(&code_wakeup_lock);
+#endif
+}
+
+static const CodeHostVtable hosted_vtable = {hosted_resolve, hosted_wake};
 
 static long long open_hosted_guest(const char *path) {
     if (hosted_guest_count == hosted_guest_cap) {
@@ -1953,6 +1995,26 @@ void code_runtime_unlink_all(void) {
     runtime_organelles = NULL;
     runtime_organelle_count = 0;
     runtime_organelle_cap = 0;
+}
+
+/* Hands every organelle linked while running a turn to deliver whatever its
+ * own organelles pushed.
+ *
+ * Called from the program's own drain, so it happens exactly where the
+ * program already handles its own queues — between statements, and on
+ * waking. A guest with nothing queued costs a lock and a comparison per
+ * organelle it holds; an idle program never gets here at all, because
+ * nothing woke it.
+ *
+ * Organelles that are not `.code` libraries have no drain of their own and
+ * are skipped. */
+void code_runtime_drain_guests(void) {
+    for (long long i = 0; i < runtime_organelle_count; i++) {
+        NativeHandle *nh = runtime_organelles[i].handle;
+        if (nh && nh->module_drain) {
+            nh->module_drain();
+        }
+    }
 }
 
 /* `emit <particle> to <address>` — the runtime-linked half of
