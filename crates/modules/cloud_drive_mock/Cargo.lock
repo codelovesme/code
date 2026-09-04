@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "cloud_drive_mock"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "base64",
  "code-native",
@@ -29,7 +29,7 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "cc",
 ]

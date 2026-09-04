@@ -65,14 +65,14 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "crypto"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "bcrypt",
  "code-native",

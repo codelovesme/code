@@ -1,6 +1,6 @@
 [package]
 name = "code-wasm"
-version = "1.5.1"
+version = "1.5.2"
 edition = "2021"
 description = "wasm32 bridge for the code language interpreter — powers the browser playground."
 license = "GPL-3.0"
