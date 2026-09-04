@@ -6,7 +6,7 @@
 
 [package]
 name = "oauth_mock"
-version = "1.4.0"
+version = "1.5.0"
 edition = "2021"
 description = "The `oauth_mock` native module for the Code programming language — a drop-in for `oauth` that recovers an identity from the code itself, no provider."
 license = "GPL-3.0"

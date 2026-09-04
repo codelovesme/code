@@ -7,7 +7,7 @@
 
 [package]
 name = "strings"
-version = "1.4.0"
+version = "1.5.0"
 edition = "2021"
 description = "The `strings` native module for the Code programming language — Shout, Echo, Split, Join, Trim, Upper, Lower. Written in Rust on code-native; the first first-party module to take that path."
 license = "GPL-3.0"
