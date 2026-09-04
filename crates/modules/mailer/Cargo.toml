@@ -6,7 +6,7 @@
 
 [package]
 name = "mailer"
-version = "1.5.2"
+version = "1.6.0"
 edition = "2021"
 description = "The `mailer` native module for the Code programming language — send email over SMTP (any provider: Gmail, SES, Postmark, a relay of your own)."
 license = "GPL-3.0"
