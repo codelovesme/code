@@ -166,6 +166,14 @@ pub enum Stmt {
     /// at runtime by whichever backend is running, not from statements to
     /// execute.
     ///
+    /// **The name is the organelle.** A module has state, so linking one is
+    /// not attaching a piece of code — it is bringing something into being,
+    /// and two names are two of them. Each link is loaded from its own image
+    /// of the file (`native.rs`'s `module_image`), and a name already taken
+    /// is refused by `verify.rs` before the program starts. Until 2026-09-04
+    /// neither held: a repeated name silently replaced the earlier link, and
+    /// one file linked twice was a single organelle wearing two names.
+    ///
     /// `alias` is mandatory (unlike `Link`'s optional one): with no name,
     /// nothing could ever refer to the module again. It is bound to an
     /// *object* of the module's exported variables (so `alias.name` is

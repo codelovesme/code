@@ -772,6 +772,39 @@ emit Sum { value = [1, 2, 3] } to m get n
 assert n.value = 6
 ```
 
+### A name is an organelle
+
+A module has state — its settings, its connection — so linking one is not
+attaching a piece of code, it is bringing something into being. Two names are
+therefore two of them:
+
+```
+link "jwt.so" as issuer
+link "jwt.so" as verifier
+
+emit Config { secret = "one" } to issuer  get _
+emit Config { secret = "two" } to verifier get _
+```
+
+Two organelles, two secrets, neither aware of the other. An application
+wanting two databases writes two links and gets two.
+
+And a name is only ever one organelle: linking another under a name already
+taken is refused before the program starts.
+
+Both halves of that were wrong until 2026-09-04, and neither said so. A
+repeated name silently replaced the earlier link, so particles went to
+whichever won and answered null for every class the other one handled. And
+linking one file twice gave two names for a single organelle — it looked like
+two and behaved like one, so configuring the second changed what the first
+had already been set up to do.
+
+Under the hood each link is loaded from its own in-memory image of the same
+file: the file on disk stays the single copy, nothing is written anywhere,
+and there is no limit beyond ordinary memory. On a system without that
+facility the older behaviour remains — one instance, shared — so a second
+link is a second name rather than a second organelle.
+
 A native module may also export **variables** (constants), read as ordinary
 fields on the alias. They are deep-copied into the host at `link` time, so
 `m.answer` is a plain value rather than a live reference into the module:
@@ -841,9 +874,9 @@ Four things are worth knowing before reaching for it:
   directory. A top-level `link` is resolved against the *file* that says it,
   which cannot work here: the path does not exist until the program runs, and
   a compiled binary carries no source tree to resolve against.
-- **Same file, same organelle.** The dynamic loader hands back one mapping
-  per path, so linking a file twice gives two names for one organelle — the
-  same address, and it stops only when the last name is gone.
+- **Two links are two organelles**, even of the same file — see [A name is
+  an organelle](#a-name-is-an-organelle). So each has its own address, and
+  stopping one leaves the other running.
 - **Not an organelle that speaks first.** The inbound drain runs over the
   organelles known when the program started, so one linked later would push
   into a queue nobody reads. Refused at `link` rather than silently ignored.

@@ -1,0 +1,8 @@
+| A name is one organelle. Linking another under the same name is refused
+| before the program starts — it used to compile, run, and silently send
+| `m`'s particles to whichever link won.
+link "native_modules/test_math.so" as m
+link "native_modules/jwt.so" as m
+
+emit Double { value = 2 } to m get r
+assert r.value = 4

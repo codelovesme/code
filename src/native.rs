@@ -242,6 +242,12 @@ pub struct NativeModule {
     /// top-level `link` never reaches the end of the module's life before
     /// the process does.
     module_release: Option<ModuleReleaseFn>,
+    /// The in-memory image this instance was loaded from, if it has one.
+    /// Never read: held so the descriptor stays open, because the loader
+    /// identifies an object by the file behind it and reusing the number
+    /// would let a later instance be folded into this one.
+    #[allow(dead_code)]
+    image: Option<std::os::fd::OwnedFd>,
     /// `code_module_serving`, if the module exports it — see `code_abi.h`.
     /// A module that answers non-zero holds the program open, the way a
     /// non-daemon thread holds a JVM open. Most modules export nothing here
@@ -389,10 +395,77 @@ unsafe extern "C" fn push_inbound(queue: *mut c_void, value: *const CodeValueFfi
     queue.push(value);
 }
 
+/// Loads `path` as an object of its own, distinct from every other load of
+/// the same file.
+///
+/// **A name is an organelle, and two names are two organelles.** A module has
+/// state — its settings, its connection — so linking one file twice is not
+/// two views of one thing, it is two things. The loader does not see it that
+/// way: asked for a file it already has, it hands back what it already
+/// loaded, and both names share one set of statics. Measured, and not a
+/// subtlety: configuring the second alias silently changed what the first one
+/// signs with.
+///
+/// So each load gets its own image of the same file, in memory, which the
+/// loader has no reason to associate with any other. Nothing is written
+/// anywhere — the file on disk stays the single copy — and there is no limit
+/// beyond ordinary memory.
+///
+/// `None` where this is not available, and the caller falls back to an
+/// ordinary open: one instance, shared, as before. Must match `runtime.c`'s
+/// `module_image`, which does the same for a compiled program.
+#[cfg(target_os = "linux")]
+fn module_image(path: &str) -> Option<std::os::fd::OwnedFd> {
+    use std::os::fd::FromRawFd;
+
+    let bytes = std::fs::read(path).ok()?;
+    let name = CString::new("code-organelle").ok()?;
+    // SAFETY: `name` is a valid NUL-terminated string for the duration of
+    // the call, and the result is checked before it is owned.
+    let raw = unsafe { libc::memfd_create(name.as_ptr(), libc::MFD_CLOEXEC) };
+    if raw < 0 {
+        return None;
+    }
+    // SAFETY: `raw` is a fresh descriptor this thread owns.
+    let fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(raw) };
+    let mut written = 0usize;
+    while written < bytes.len() {
+        // SAFETY: writing `bytes[written..]` into a descriptor we own.
+        let n = unsafe {
+            libc::write(
+                raw,
+                bytes[written..].as_ptr() as *const std::ffi::c_void,
+                bytes.len() - written,
+            )
+        };
+        if n <= 0 {
+            return None;
+        }
+        written += n as usize;
+    }
+    Some(fd)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn module_image(_path: &str) -> Option<std::os::fd::OwnedFd> {
+    None
+}
+
 impl NativeModule {
     pub fn open(path: &str) -> Result<NativeModule, String> {
-        let lib = unsafe { Library::new(path) }
-            .map_err(|e| format!("cannot load native module '{path}': {e}"))?;
+        // Its own image, so this instance is nobody else's. A failure is not
+        // fatal: the ordinary open still works, it just shares with any
+        // other link of the same file.
+        let image = module_image(path);
+        let lib = match &image {
+            Some(fd) => {
+                use std::os::fd::AsRawFd;
+                let proc = format!("/proc/self/fd/{}", fd.as_raw_fd());
+                unsafe { Library::new(&proc) }.or_else(|_| unsafe { Library::new(path) })
+            }
+            None => unsafe { Library::new(path) },
+        }
+        .map_err(|e| format!("cannot load native module '{path}': {e}"))?;
 
         let version = unsafe {
             lib.get::<VersionFn>(b"code_module_abi_version")
@@ -445,6 +518,7 @@ impl NativeModule {
             .map(|f| *f);
 
         Ok(NativeModule {
+            image,
             lib: ManuallyDrop::new(lib),
             path: path.to_string(),
             has_inbound,

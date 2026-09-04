@@ -76,6 +76,7 @@ version = "1.5.2"
 dependencies = [
  "inkwell",
  "js-sys",
+ "libc",
  "libloading",
  "serde",
  "serde_json",

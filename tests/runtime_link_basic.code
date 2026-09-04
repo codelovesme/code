@@ -40,22 +40,22 @@ assert k._class = "Kept"
 emit Double { value = 5 } to held get later
 assert later.value = 10
 
-| The same file linked twice is the same organelle under two names, exactly
-| as the dynamic loader itself treats it — so the two addresses are equal,
-| and dropping one name does not stop the other.
+| The same file linked twice is **two organelles**, not two names for one. A
+| module has state, so a second link is a second thing — different address,
+| and stopping one leaves the other running.
 SecondName { path } => {
     link path as m
     return Named { address = m }
 }
 
 emit SecondName { path = "tests/native_modules/test_math.so" } to this get second
-assert second.address = held
+assert not second.address = held
 
 unlink second.address
 emit Double { value = 6 } to held get survives
 assert survives.value = 12
 
-| Only the last name actually stops it. Asked from inside a handler,
+| And now stopping it. Asked from inside a handler,
 | because at the top level a failure ends the program rather than becoming a
 | value — the address is stale either way, this is just where it can be
 | looked at.

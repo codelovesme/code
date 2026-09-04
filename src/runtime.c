@@ -16,6 +16,9 @@
 #include "wasm_shim.h"
 #else
 #include <dlfcn.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -844,6 +847,11 @@ typedef struct {
      * but this thread can ever reach the ring. Decides what
      * `code_native_close` may do with the handle. */
     int has_inbound;
+    /* The in-memory image this instance was loaded from, or -1. Held open
+     * for the module's whole life: the loader identifies an object by the
+     * file behind it, so closing this early would let a later instance be
+     * handed the same identity and deduplicated into this one. */
+    int image_fd;
     /* The `dlopen` result, kept only so a runtime-linked organelle can be
      * unloaded again (`code_runtime_unlink`). NULL for a `.a`, which was
      * never opened. A top-level `link` never reads it: that module stays
@@ -941,6 +949,58 @@ static NativeHandle *host_native(const CodeHostModule *supplied, char *err, size
  * time — a host loading a guest — and there the failure has to be a value
  * the program can answer, not the end of the host. Same opening, two
  * reporting rules, one implementation. */
+/* Opens `path` as an object of its own, distinct from every other load of
+ * the same file.
+ *
+ * **A name is an organelle, and two names are two organelles.** A module has
+ * state — its settings, its connection — so linking one twice is not two
+ * views of one thing, it is two things. The loader does not see it that way:
+ * asked for a file it already has, it hands back what it already loaded, and
+ * both names end up sharing one set of statics. Measured, and it is not a
+ * subtlety — configuring the second alias silently changed what the first
+ * one signs with.
+ *
+ * So each load gets its own image of the same file, in memory, which the
+ * loader has no reason to associate with any other. Nothing is written
+ * anywhere: the file on disk stays the single copy, and there is no limit
+ * beyond ordinary memory. (The loader's own namespaces would also work and
+ * cost no copy, but glibc allows fifteen of them in a process — measured —
+ * which is few enough to run out of while holding a handful of
+ * applications.)
+ *
+ * Returns -1 where this is not available, and the caller falls back to an
+ * ordinary open — one instance, shared, as before. */
+static int module_image(const char *path) {
+#if defined(__linux__) && !defined(CODE_WASM)
+    int src = open(path, O_RDONLY | O_CLOEXEC);
+    if (src < 0) {
+        return -1;
+    }
+    int image = memfd_create("code-organelle", MFD_CLOEXEC);
+    if (image < 0) {
+        close(src);
+        return -1;
+    }
+    char buf[65536];
+    for (;;) {
+        ssize_t n = read(src, buf, sizeof buf);
+        if (n == 0) {
+            break;
+        }
+        if (n < 0 || write(image, buf, (size_t)n) != n) {
+            close(src);
+            close(image);
+            return -1;
+        }
+    }
+    close(src);
+    return image;
+#else
+    (void)path;
+    return -1;
+#endif
+}
+
 static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     /* A host, once installed, is the only way out. Not a fallback to opening
      * the file: a guest that could quietly reach past its host is a guest
@@ -959,7 +1019,23 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     snprintf(err, errlen, "native modules are not available in a wasm build");
     return NULL;
 #else
-    void *handle = dlopen(path, RTLD_NOW);
+    /* Its own image, so this instance is nobody else's — see
+     * `module_image`. A failure there is not fatal: the ordinary open still
+     * works, it just shares with any other link of the same file. */
+    int image = module_image(path);
+    void *handle = NULL;
+    if (image >= 0) {
+        char proc[64];
+        snprintf(proc, sizeof proc, "/proc/self/fd/%d", image);
+        handle = dlopen(proc, RTLD_NOW);
+        if (!handle) {
+            close(image);
+            image = -1;
+        }
+    }
+    if (!handle) {
+        handle = dlopen(path, RTLD_NOW);
+    }
     if (!handle) {
         snprintf(err, errlen, "cannot load native module '%s': %s", path, dlerror());
         return NULL;
@@ -994,6 +1070,7 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
      * corruption for a long time. Starting from zero costs nothing and
      * cannot be forgotten. */
     memset(nh, 0, sizeof *nh);
+    nh->image_fd = image;
     nh->lib = handle;
     nh->dispatch = (void (*)(CodeValue *, const CodeValue *))dlsym(handle, "code_module_dispatch");
     nh->release = (void (*)(CodeValue *))dlsym(handle, "code_release");
@@ -1002,6 +1079,9 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
                  path);
         free(nh);
         dlclose(handle);
+        if (image >= 0) {
+            close(image);
+        }
         return NULL;
     }
     /* Optional — a module without it simply has no exported variables. */
@@ -1062,6 +1142,7 @@ void *code_static_open(void) {
     }
     /* See `open_native` for why this is a whole-struct zero. */
     memset(nh, 0, sizeof *nh);
+    nh->image_fd = -1;
     nh->dispatch = NULL;
     nh->release = NULL;
     nh->vars = NULL;
@@ -1421,18 +1502,7 @@ typedef struct {
     /* The path this row was opened from, owned here — what a second `link`
      * of the same file is matched against. NULL once the row is empty. */
     char *path;
-    /* How many live addresses name this row.
-     *
-     * `dlopen` returns the *same* mapping for a path already open, so two
-     * `link`s of one file are two names for one organelle whether this
-     * counts them or not. Counting is what makes that safe: without it the
-     * first `unlink` runs the module's release point and the second address
-     * goes on talking to an organelle that has already let go of everything
-     * it owned — measured, and it answers with freed memory rather than
-     * failing. So the language matches the loader instead of fighting it:
-     * same file, same organelle, same address, released once the last name
-     * for it is gone. */
-    long long refs;
+
     /* Which guest row this program keeps for it, or -1 for an organelle that
      * cannot be hosted. A row, not a pointer — see the hosting tables. */
     long long guest;
@@ -1748,17 +1818,6 @@ void code_runtime_link(CodeValue *out, const CodeValue *path) {
         text = rooted;
     }
 
-    /* Already open? Then this is another name for the same organelle — see
-     * `RuntimeOrganelle.refs`. Answering with the same address is the honest
-     * result: they are the same thing. */
-    for (long long i = 0; i < runtime_organelle_count; i++) {
-        if (runtime_organelles[i].handle && strcmp(runtime_organelles[i].path, text) == 0) {
-            runtime_organelles[i].refs++;
-            organelle_address(out, i);
-            return;
-        }
-    }
-
     char err[256];
     NativeHandle *nh = open_native(text, err, sizeof err);
     if (!nh) {
@@ -1824,20 +1883,15 @@ void code_runtime_link(CodeValue *out, const CodeValue *path) {
     memcpy(kept, text, kept_len + 1);
     runtime_organelles[row].handle = nh;
     runtime_organelles[row].path = kept;
-    runtime_organelles[row].refs = 1;
     runtime_organelles[row].guest = guest;
 
     organelle_address(out, row);
 }
 
-/* Drops one name for a row, releasing and unloading the organelle once the
- * last one is gone. Shared by `code_runtime_unlink` and the end-of-program
- * sweep, which differ only in how they find the row. */
+/* Releases and unloads one organelle. Shared by `code_runtime_unlink` and the
+ * end-of-program sweep, which differ only in how they find the row. */
 static void release_organelle(long long row) {
     RuntimeOrganelle *slot = &runtime_organelles[row];
-    if (--slot->refs > 0) {
-        return;
-    }
     NativeHandle *nh = slot->handle;
     /* Order is the whole of it: the module's own release point runs while
      * its code is still mapped, and only then is the mapping dropped.
@@ -1846,6 +1900,7 @@ static void release_organelle(long long row) {
         nh->module_release();
     }
     void *lib = nh->lib;
+    int image = nh->image_fd;
     /* Frees the handle and drains anything still queued. Safe to free here,
      * unlike at program exit, precisely because `has_inbound` was refused at
      * link time: no other thread holds this pointer. */
@@ -1858,8 +1913,15 @@ static void release_organelle(long long row) {
     if (lib) {
         dlclose(lib);
     }
+    /* After the unmapping, not before: the image is this object's identity
+     * to the loader, and releasing it while the object is still mapped would
+     * let the number be reused for the next one. */
+    if (image >= 0) {
+        close(image);
+    }
 #else
     (void)lib;
+    (void)image;
 #endif
 }
 

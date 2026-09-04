@@ -39,21 +39,6 @@ pub const ORGANELLE_FIELD: &str = "_organelle";
 struct RuntimeOrganelle {
     dispatch: ModuleDispatch,
     release: Rc<dyn Fn()>,
-    /// The path this row was opened from — what a second `link` of the same
-    /// file is matched against.
-    path: String,
-    /// How many live addresses name this row.
-    ///
-    /// `dlopen` returns the *same* mapping for a path already open, so two
-    /// `link`s of one file are two names for one organelle whether this
-    /// counts them or not. Counting is what makes that safe: without it the
-    /// first `unlink` runs the module's release point and the second address
-    /// goes on talking to an organelle that has already let go of everything
-    /// it owned — measured, and it answers with freed memory rather than
-    /// failing. So the language matches the loader instead of fighting it:
-    /// same file, same organelle, same address, released once the last name
-    /// for it is gone. Must match `runtime.c`'s `RuntimeOrganelle`.
-    refs: usize,
     /// Which guest row this program keeps for it, or `None` for an organelle
     /// that cannot be hosted (one built before `code_abi.h` item 10). A row,
     /// not a pointer — see `native.rs`'s hosting tables.
@@ -247,38 +232,17 @@ impl Environment {
         organelle_address(self.runtime_modules.len() - 1)
     }
 
-    #[cfg(feature = "native-modules")]
-    /// The row already holding `path`, if one is open — see
-    /// `RuntimeOrganelle.refs`. Answering with the same address is the honest
-    /// result: they are the same thing.
-    fn reopen_organelle(&mut self, path: &str) -> Option<Value> {
-        let row = self
-            .runtime_modules
-            .iter()
-            .position(|slot| slot.as_ref().is_some_and(|o| o.path == path))?;
-        self.runtime_modules[row]
-            .as_mut()
-            .expect("just matched Some")
-            .refs += 1;
-        Some(organelle_address(row))
-    }
-
-    /// Drops one name for a row, releasing the organelle once the last one
-    /// is gone. Dropping the row is what unloads it: the module's `Drop`
-    /// runs when the last `Rc` inside goes, and the release point has to
-    /// have run before that, while its code is still mapped.
+    /// Releases and drops an organelle. Dropping the row is what unloads it:
+    /// the module's `Drop` runs when the last `Rc` inside goes, and the
+    /// release point has to have run before that, while its code is still
+    /// mapped.
     fn release_organelle(&mut self, row: usize) {
         let Some(slot) = self.runtime_modules.get_mut(row) else {
             return;
         };
-        let Some(organelle) = slot.as_mut() else {
+        let Some(organelle) = slot.take() else {
             return;
         };
-        organelle.refs -= 1;
-        if organelle.refs > 0 {
-            return;
-        }
-        let organelle = slot.take().expect("matched Some");
         // Empty this guest's rows first: its stand-ins must stop answering
         // before it is told to let go of everything, not after.
         #[cfg(feature = "native-modules")]
@@ -874,12 +838,6 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                 } else {
                     format!("./{path}")
                 };
-                // Already open? Then this is another name for the same
-                // organelle — see `RuntimeOrganelle.refs`.
-                if let Some(address) = env.reopen_organelle(path) {
-                    env.declare(alias.clone(), address);
-                    return Ok(Flow::Normal);
-                }
                 let module = NativeModule::open(path)?;
                 // An organelle that speaks first cannot be linked here. The
                 // drain runs over the modules known when the program
@@ -906,8 +864,6 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                 let organelle = RuntimeOrganelle {
                     dispatch: Rc::new(move |v| dispatching.dispatch(v)),
                     release: Rc::new(move || module.release()),
-                    path: path.to_string(),
-                    refs: 1,
                     guest,
                 };
                 let address = env.open_organelle(organelle);

@@ -99,13 +99,35 @@ fn verify_stmts(
                 }
             }
             Stmt::ImportNative { alias, .. } => {
+                // **The name is the organelle.** Linking twice under one name
+                // is refused, whichever files they are.
+                //
+                // Not a matter of taste. Until this check existed, a second
+                // link silently shadowed the first: `link "math.so" as m`
+                // followed by `link "jwt.so" as m` compiled, ran, and sent
+                // `m`'s particles to whichever won — answering null for
+                // every class the other one handled, with nothing said. And
+                // linking the *same* file twice was worse, because it looked
+                // like two organelles and was one: configuring the second
+                // changed the first's settings underneath it.
+                //
+                // Both readings of a repeated name are mistakes, and neither
+                // has a sensible meaning to preserve. Refusing before the
+                // program starts is the whole of the fix for the first, and
+                // half of it for the second — see `Stmt::ImportNative`'s doc
+                // comment for the other half.
+                if !natives.insert(alias.clone()) {
+                    return Err(format!(
+                        "'{alias}' is already linked — a name is one organelle, and linking \
+                         another under the same name would silently replace it"
+                    ));
+                }
                 // The alias serves two roles, so it is recorded in both
                 // namespaces: in `natives` (a separate namespace from
                 // `scopes`, matching `interpreter::Environment::native_modules`)
                 // so `emit ... to <alias>` can dispatch to the module, and in
                 // `scopes` so `alias.name` — the module's exported variables,
                 // bound as an object — resolves as an ordinary field access.
-                natives.insert(alias.clone());
                 scopes.last_mut().unwrap().insert(alias.clone());
             }
             Stmt::Assign { name, value } => {

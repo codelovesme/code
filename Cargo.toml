@@ -26,7 +26,7 @@ llvm = ["dep:inkwell"]
 # the same reason `llvm` is: wasm32-unknown-unknown has no dlopen, and
 # code-wasm's `NoModules` resolver refuses every `link` anyway, so there is
 # nothing for this feature to do there.
-native-modules = ["dep:libloading"]
+native-modules = ["dep:libloading", "dep:libc"]
 # `code install` / `remove` / `ls` (src/module_install.rs): downloads module
 # artifacts over HTTPS (via curl) and pins them in a project lockfile. Off
 # for wasm32-unknown-unknown — the browser host has no filesystem story at
@@ -36,6 +36,11 @@ install = ["dep:serde", "dep:serde_json"]
 [dependencies]
 inkwell = { version = "0.4", features = ["llvm17-0"], optional = true }
 libloading = { version = "0.8", optional = true }
+# Only for `memfd_create`: an organelle is loaded from its own in-memory
+# image so that linking one file twice gives two organelles rather than two
+# names for one (see `native.rs`'s `module_image`). Already in the tree via
+# `libloading`, so this declares a dependency rather than adding one.
+libc = { version = "0.2", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 
