@@ -1,6 +1,6 @@
 [package]
 name = "code-native"
-version = "1.8.3"
+version = "1.8.4"
 edition = "2021"
 description = "Write native .so modules for the Code programming language in Rust — safe CodeValue builders/readers over the real runtime.c, no reimplementation."
 license = "GPL-3.0"

@@ -38,7 +38,7 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "code-native"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "cc",
 ]
@@ -92,7 +92,7 @@ dependencies = [
 
 [[package]]
 name = "http_client"
-version = "1.8.3"
+version = "1.8.4"
 dependencies = [
  "code-native",
  "ureq",

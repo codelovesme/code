@@ -6,7 +6,7 @@
 
 [package]
 name = "blob_storage"
-version = "1.8.3"
+version = "1.8.4"
 edition = "2021"
 description = "The `blob_storage` native module for the Code programming language — put, get, list and delete objects in S3-compatible storage (AWS, MinIO, R2, B2, Spaces)."
 license = "GPL-3.0"

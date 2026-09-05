@@ -445,16 +445,6 @@ jobs:
               localai) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions"]' ;;
               mailer_mock) handlers='["Config", "Send", "Outbox"]' ;;
               net_server) handlers='["Config", "Listen", "Stop"]' ;;
-              router|storage|timer)
-              # Same as `dom`: no browser on a build machine, and the
-              # artifact says so rather than pretending. The half that can do
-              # the work is a wasm archive, which this job does not build.
-              case "$m" in
-                router)  printf 'emit Route { } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
-                storage) printf 'emit Get { key = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
-                timer)   printf 'emit Delay { ms = 1, then = "X" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
-              esac
-              ;;
             membrane) handlers='["Config", "Listen", "Stop"]' ;;
               dom) handlers='["Render"]' ;;
               router) handlers='["Route", "Navigate", "Watch"]' ;;
@@ -477,16 +467,6 @@ jobs:
             case "$m" in
               http_server) setup='"setup": "Config",' ;;
               net_server) setup='"setup": "Config",' ;;
-              router|storage|timer)
-              # Same as `dom`: no browser on a build machine, and the
-              # artifact says so rather than pretending. The half that can do
-              # the work is a wasm archive, which this job does not build.
-              case "$m" in
-                router)  printf 'emit Route { } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
-                storage) printf 'emit Get { key = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
-                timer)   printf 'emit Delay { ms = 1, then = "X" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
-              esac
-              ;;
             membrane) setup='"setup": "Config",' ;;
               jwt|fs|json_store|git|mailer|oauth|mongodb|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
               *) setup='' ;;
