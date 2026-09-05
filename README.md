@@ -830,6 +830,36 @@ wasm can do — the only way to reach a second wasm module is for the host to
 instantiate it and wire the two together, which is the host's business and
 not a `link`.
 
+**A module can be built for both**, and `terminal` is the one that is:
+`crate-type` stays `cdylib` for the `.so`, and the wasm archive is asked for
+on the command line, because a `cdylib` for wasm32 is a whole module of its
+own and fails on the very imports an archive is supposed to leave open:
+
+```bash
+cargo rustc --target wasm32-unknown-unknown --release --crate-type staticlib
+```
+
+Two things differ inside such a module, both by `cfg`: where its output
+goes, and the names of its entry points — unprefixed for a `.so`, prefixed
+for a `.a`. `terminal` prints to stdout on a machine and through one
+imported function in a browser, and an application prints without knowing
+which. A second module called `console` would have made every program
+choose.
+
+**Build a `code-native` module for wasm with LTO on.** Measured on one small
+application, the same source each time:
+
+| the app's module | `.wasm` | gzipped |
+|---|---|---|
+| hand-written, `no_std` | 50 KB | 24 KB |
+| `terminal` on `code-native` | 1.66 MB | 370 KB |
+| the same, `CARGO_PROFILE_RELEASE_LTO=fat` and `OPT_LEVEL=z` | 245 KB | 88 KB |
+
+Without LTO the archive's standard library comes along whole; `--gc-sections`
+at link time does *not* help, which was measured rather than assumed. A
+module that needs nothing from `std` should say `#![no_std]` and costs
+almost nothing at all.
+
 **Rust modules link too, and `no_std` ones cost nothing.** Measured on the
 same one-line module, built three ways and run under Node:
 
@@ -1206,7 +1236,9 @@ flow and for what to keep when you replace the handler — `guarded`, null for
 a class you do not handle, and failures returned as values are the three
 rules that make a module unable to break someone else's program.
 
-First-party modules today: `terminal` (print to stdout), `math`, `strings`,
+First-party modules today: `terminal` (print one line to wherever this
+program's output goes — stdout on a machine, the page's console in a
+browser), `math`, `strings`,
 `env` (the environment, so a port or a secret comes from the deployment
 rather than the source — see [its README](crates/modules/env/README.md)),
 `json` (parse JSON text, or pretty-print it — the two things string

@@ -14,7 +14,22 @@ license = "GPL-3.0"
 repository = "https://github.com/codelovesme/code"
 
 [lib]
+# The `.so` every program on a machine opens while it runs. The wasm build
+# wants the other container — a `.a`, linked into the program because wasm
+# has no way to open one — and asks for it on the command line rather than
+# here, since a `cdylib` for wasm32 would be a whole module of its own and
+# fails to link on the very imports the archive is supposed to leave open:
+#
+#   cargo rustc --target wasm32-unknown-unknown --release --crate-type staticlib
 crate-type = ["cdylib"]
 
 [dependencies]
+
+# On wasm the module is linked *into* the program, so it must bring no
+# runtime of its own — the program already has exactly one. See
+# `code-native`'s `static-module` feature.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+code-native = { path = "../../code-native", default-features = false, features = ["static-module"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 code-native = { path = "../../code-native" }
