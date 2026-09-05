@@ -6,7 +6,7 @@
 
 [package]
 name = "env"
-version = "1.8.0"
+version = "1.8.1"
 edition = "2021"
 description = "The `env` native module for the Code programming language — reads environment variables, so a port or a secret can come from the deployment rather than from the source. Written in Rust on code-native."
 license = "GPL-3.0"

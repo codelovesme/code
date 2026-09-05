@@ -6,7 +6,7 @@
 
 [package]
 name = "mongodb_mock"
-version = "1.8.0"
+version = "1.8.1"
 edition = "2021"
 description = "The `mongodb_mock` native module for the Code programming language — a drop-in for `mongodb` backed by in-memory collections, no server."
 license = "GPL-3.0"
