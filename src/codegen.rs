@@ -198,12 +198,26 @@ struct StaticModuleFns<'a> {
     inbound_reply: Option<FunctionValue<'a>>,
 }
 
+/// A wasm build may link a `.a` but not a `.so`.
+///
+/// Not a restriction so much as the shape of the target: a `.a` is linked
+/// into the program before it is a `.wasm` at all, which is exactly what
+/// putting an application and its modules in **one** module means. A `.so`
+/// would have to be opened while running, and wasm has no such thing — the
+/// only way to reach a second wasm module is for the host to instantiate it
+/// and wire the two together, which is the host's business and not a `link`.
 fn reject_wasm_native_links(stmts: &[Stmt]) -> Result<(), String> {
     for stmt in stmts {
         match stmt {
-            Stmt::ImportNative { path, .. } => {
+            Stmt::ImportNative {
+                path,
+                format: NativeFormat::Dynamic,
+                ..
+            } => {
                 return Err(format!(
-                    "native module '{path}' cannot be linked into wasm; supply modules from the host"
+                    "native module '{path}' cannot be linked into wasm: a .so is opened while \
+                     the program runs, and wasm has no way to open one. Build it as a .a and it \
+                     links into the same module, or supply it from the host"
                 ));
             }
             Stmt::Import { body, .. } | Stmt::Block(body) | Stmt::If { body, .. } => {

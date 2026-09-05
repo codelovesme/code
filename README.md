@@ -822,6 +822,22 @@ very same library the interpreter does. A `.a` static archive is
 `code build` only, since there is no `dlopen` for an archive; those fixtures
 are named `buildonly_*`.
 
+**On wasm, `.a` is the only kind there is**, and that is what puts a whole
+application in one file. `--target wasm` links the program, the runtime and
+every `.a` it linked into a single module, with nothing left to load. A `.so`
+is refused, because opening a library while the program runs is not something
+wasm can do — the only way to reach a second wasm module is for the host to
+instantiate it and wire the two together, which is the host's business and
+not a `link`.
+
+A module built for wasm is compiled for `wasm32-unknown-unknown` and must
+**not** include `src/wasm_shim.h`: that is the runtime's own private libc and
+it defines `memset`, so a module that includes it defines a second one and
+the link fails on the duplicate. Leave those undefined and the runtime in the
+same module answers them. Discovering the module's prefix needs a symbol
+reader that understands wasm objects — the system `nm` reads a native `.a`
+and not this one, so `llvm-nm` is tried after it.
+
 A native module does not have to be written in another language. `code build
 --target shared` (or `static`) builds a `.code` file *as* one: its handlers
 become `code_module_dispatch`, its `export let`s become `code_module_vars`,

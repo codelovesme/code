@@ -135,18 +135,6 @@ mod compile {
                 fs::write(&abi_h_path, CODE_ABI_H).map_err(|e| format!("write code_abi.h: {e}"))?;
             }
 
-            if target == BuildTarget::Wasm {
-                fs::write(&wasm_shim_path, WASM_SHIM_H)
-                    .map_err(|e| format!("write wasm_shim.h: {e}"))?;
-                compile_wasm_runtime(
-                    &runtime_c_path,
-                    &wasm_shim_path,
-                    &abi_h_path,
-                    &runtime_obj_path,
-                )?;
-                return link_wasm(&obj_path, &runtime_obj_path, out_path);
-            }
-
             // Every `.a` static module `link`ed in this program (see
             // `ast::NativeFormat::Static`) — appended after `runtime_c_path`
             // so its unresolved `code_number`/etc. references are satisfied
@@ -165,6 +153,18 @@ mod compile {
                     _ => None,
                 })
                 .collect();
+
+            if target == BuildTarget::Wasm {
+                fs::write(&wasm_shim_path, WASM_SHIM_H)
+                    .map_err(|e| format!("write wasm_shim.h: {e}"))?;
+                compile_wasm_runtime(
+                    &runtime_c_path,
+                    &wasm_shim_path,
+                    &abi_h_path,
+                    &runtime_obj_path,
+                )?;
+                return link_wasm(&obj_path, &runtime_obj_path, &static_modules, out_path);
+            }
 
             match target {
                 BuildTarget::Exe => {
@@ -271,7 +271,15 @@ mod compile {
         )
     }
 
-    fn link_wasm(obj_path: &Path, runtime_obj_path: &Path, out_path: &Path) -> Result<(), String> {
+    /// Links the one `.wasm`: the program, the runtime, and every `.a`
+    /// module the program linked — all of it in a single module, with
+    /// nothing left to load.
+    fn link_wasm(
+        obj_path: &Path,
+        runtime_obj_path: &Path,
+        static_modules: &[&str],
+        out_path: &Path,
+    ) -> Result<(), String> {
         let mut linker = Command::new("wasm-ld");
         if linker.output().is_err() {
             let sysroot = Command::new("rustc")
@@ -311,6 +319,7 @@ mod compile {
                 .arg("--allow-undefined")
                 .arg(obj_path)
                 .arg(runtime_obj_path)
+                .args(static_modules)
                 .arg("-o")
                 .arg(out_path),
             "wasm linker",

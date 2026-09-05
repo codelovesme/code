@@ -357,21 +357,62 @@ pub fn find_project_code_dir(dir: &Path) -> Option<PathBuf> {
 /// `interpreter.rs` refusing a `Static` `ImportNative`, not from a missing
 /// prefix) — consistent with the project's existing reliance on a system
 /// toolchain (`cc`); `nm` ships with the same binutils.
-fn static_module_symbols(path: &str) -> Result<(String, bool, bool, bool), String> {
-    let output = Command::new("nm")
-        .arg("--defined-only")
-        .arg("-g")
-        .arg(path)
-        .output()
-        .map_err(|e| format!("cannot read symbols of '{path}': failed to run nm: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "cannot read symbols of '{path}': nm exited with {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        ));
+/// The archive's defined global symbols, as `nm` prints them.
+///
+/// Two readers, tried in order, because one archive format is not the only
+/// one now. The system `nm` handles a native `.a`; it does not recognise a
+/// wasm object at all. `llvm-nm` reads both, and is what a wasm toolchain
+/// already has.
+///
+/// **An empty result counts as a failure**, and that is the whole subtlety
+/// here. GNU `nm` on an archive of wasm members prints "file format not
+/// recognized" to stderr and still **exits zero** — so a status check alone
+/// falls through with no symbols, and the caller reports a module missing
+/// its dispatch export when the truth is that nothing could read it. A `.a`
+/// with no global symbols at all is not a usable module either, so treating
+/// the two the same costs nothing.
+///
+/// The error names both attempts. A missing symbol reader is a toolchain
+/// problem, and being told only about the second one would send someone
+/// looking in the wrong place.
+fn read_defined_symbols(path: &str) -> Result<String, String> {
+    let mut why = Vec::new();
+    for tool in ["nm", "llvm-nm"] {
+        match Command::new(tool)
+            .arg("--defined-only")
+            .arg("-g")
+            .arg(path)
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                let text = String::from_utf8_lossy(&output.stdout).into_owned();
+                if text.split_whitespace().next().is_some() {
+                    return Ok(text);
+                }
+                why.push(format!(
+                    "{tool} read no symbols{}",
+                    match String::from_utf8_lossy(&output.stderr).trim() {
+                        "" => String::new(),
+                        e => format!(" ({e})"),
+                    }
+                ));
+            }
+            Ok(output) => why.push(format!(
+                "{tool} exited with {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+            Err(e) => why.push(format!("failed to run {tool}: {e}")),
+        }
     }
-    let text = String::from_utf8_lossy(&output.stdout);
+    Err(format!(
+        "cannot read symbols of '{path}': {}",
+        why.join("; ")
+    ))
+}
+
+fn static_module_symbols(path: &str) -> Result<(String, bool, bool, bool), String> {
+    let text = read_defined_symbols(path)?;
     let names: Vec<&str> = text
         .lines()
         .filter_map(|line| line.split_whitespace().last())

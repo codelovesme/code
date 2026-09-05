@@ -329,3 +329,116 @@ fn release_optimizes_and_the_default_does_not() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// An application and its modules in **one** `.wasm`, with nothing left to
+/// load.
+///
+/// This is what a `.a` is for on this target. A `.so` is opened while the
+/// program runs and wasm has no way to do that; a `.a` is linked in before
+/// there is a `.wasm` at all, so the module's code ends up inside the same
+/// module as the application and the runtime. The alternative — several wasm
+/// modules instantiated separately and wired together from JavaScript — is
+/// the host's business and not a `link`.
+///
+/// The module here is C rather than Rust on purpose. A Rust `staticlib` for
+/// wasm32 brings its own standard library and allocator into a link that is
+/// deliberately freestanding, which is a real question and not this one.
+/// This test asks only whether the static-module contract survives the change
+/// of target.
+///
+/// Skipped where the wasm toolchain is not installed. `clang` targeting
+/// wasm32 is needed to compile the module, and a symbol reader that
+/// understands wasm objects (`llvm-nm`) to discover its prefix — the system
+/// `nm` reads a native `.a` and not this one.
+#[test]
+fn a_wasm_build_links_a_static_module_into_the_same_module() {
+    if !tool_exists("clang") || !tool_exists("llvm-nm") {
+        eprintln!("skipped: needs clang and llvm-nm for a wasm .a");
+        return;
+    }
+
+    let dir = temp_dir("wasm-static");
+    let src = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/native_modules/test_wasm_static/test_wasm_static.c");
+    let obj = dir.join("module.o");
+    let archive = dir.join("test_wasm_static.a");
+
+    let compiled = Command::new("clang")
+        .args([
+            "--target=wasm32-unknown-unknown",
+            "-nostdlib",
+            "-fno-builtin",
+        ])
+        .arg("-I")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("src"))
+        .arg("-c")
+        .arg(&src)
+        .arg("-o")
+        .arg(&obj)
+        .output()
+        .expect("run clang for the wasm module");
+    assert!(
+        compiled.status.success(),
+        "clang could not build the wasm module: {}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+
+    // GNU `ar` writes the archive fine — it is only *reading* a wasm member
+    // that it cannot do, which is the loader's problem and not this step's.
+    let archived = Command::new("ar")
+        .arg("rcs")
+        .arg(&archive)
+        .arg(&obj)
+        .status()
+        .expect("run ar");
+    assert!(archived.success(), "ar failed");
+
+    // The program links it by path and emits to it like any other module.
+    let program = dir.join("app.code");
+    fs::write(
+        &program,
+        format!(
+            "link {:?} as m\n\nemit Double {{ value = 21 }} to m get r\nassert r.value = 42\n",
+            archive.to_string_lossy()
+        ),
+    )
+    .expect("write program");
+
+    let out = dir.join("app.wasm");
+    code::compile_file(&program, code::BuildTarget::Wasm, &out, false)
+        .expect("build a wasm program that links a .a module");
+    assert!(out.is_file(), "expected {}", out.display());
+
+    // One file, and the module's answer inside it: the `assert` above is the
+    // check, and it ends the program — which reaches the host as an error
+    // rather than a clean exit — if the module did not multiply.
+    run_wasm_under_node(&dir, &out);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A `.so` still cannot be linked into wasm, and the refusal says why rather
+/// than repeating the old blanket "supply modules from the host".
+#[test]
+fn a_wasm_build_still_refuses_a_shared_module() {
+    let dir = temp_dir("wasm-so");
+    let program = dir.join("app.code");
+    fs::write(&program, "link \"whatever.so\" as m\n").expect("write program");
+    let err = code::compile_file(
+        &program,
+        code::BuildTarget::Wasm,
+        &dir.join("app.wasm"),
+        false,
+    )
+    .expect_err("a .so link must be refused for wasm");
+    assert!(err.contains("wasm"), "{err}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+fn tool_exists(name: &str) -> bool {
+    Command::new(name)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
