@@ -431,8 +431,8 @@ fn release_optimizes_and_the_default_does_not() {
 /// `nm` reads a native `.a` and not this one.
 #[test]
 fn a_wasm_build_links_a_static_module_into_the_same_module() {
-    if !tool_exists("clang") || !tool_exists("llvm-nm") {
-        eprintln!("skipped: needs clang and llvm-nm for a wasm .a");
+    if !tool_exists("clang") {
+        eprintln!("skipped: needs clang to build a wasm .a");
         return;
     }
 
@@ -492,6 +492,86 @@ fn a_wasm_build_links_a_static_module_into_the_same_module() {
     // check, and it ends the program — which reaches the host as an error
     // rather than a clean exit — if the module did not multiply.
     run_wasm_under_node(&dir, &out);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Two archives naming their exports the same way are refused by name.
+///
+/// The linker used to be the one to notice, with `duplicate symbol`. A wasm
+/// link no longer lets it: Rust puts a panic handler in every archive it
+/// produces, so two Rust modules always collide there and duplicates had to
+/// be allowed for a web application to link at all. That is fine for a panic
+/// handler and not fine for a module's exports — one would quietly replace
+/// the other — so the case that actually matters is checked by name instead,
+/// before anything is linked.
+#[test]
+fn two_static_modules_sharing_a_prefix_are_refused() {
+    if !tool_exists("clang") {
+        eprintln!("skipped: needs clang to build a wasm .a");
+        return;
+    }
+
+    let dir = temp_dir("wasm-static-clash");
+    let src = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/native_modules/test_wasm_static/test_wasm_static.c");
+    let obj = dir.join("module.o");
+    let compiled = Command::new("clang")
+        .args([
+            "--target=wasm32-unknown-unknown",
+            "-nostdlib",
+            "-fno-builtin",
+        ])
+        .arg("-I")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("src"))
+        .arg("-c")
+        .arg(&src)
+        .arg("-o")
+        .arg(&obj)
+        .output()
+        .expect("run clang for the wasm module");
+    assert!(
+        compiled.status.success(),
+        "clang could not build the wasm module: {}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+
+    // The same object in two archives: different files, one prefix — which
+    // is exactly the shape a second module built from a copied template
+    // arrives in.
+    let mut archives = Vec::new();
+    for name in ["first.a", "second.a"] {
+        let archive = dir.join(name);
+        let archived = Command::new("ar")
+            .arg("rcs")
+            .arg(&archive)
+            .arg(&obj)
+            .status()
+            .expect("run ar");
+        assert!(archived.success(), "ar failed");
+        archives.push(archive);
+    }
+
+    let program = dir.join("app.code");
+    fs::write(
+        &program,
+        format!(
+            "link {:?} as a\nlink {:?} as b\n\nemit Double {{ value = 21 }} to a get r\n",
+            archives[0].to_string_lossy(),
+            archives[1].to_string_lossy()
+        ),
+    )
+    .expect("write program");
+
+    let out = dir.join("app.wasm");
+    let error = code::compile_file(&program, code::BuildTarget::Wasm, &out, false)
+        .expect_err("two archives sharing a prefix must be refused");
+    assert!(
+        error.contains("wasmmath_code_module_*")
+            && error.contains("first.a")
+            && error.contains("second.a"),
+        "the refusal should name the prefix and both archives, got: {error}"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }

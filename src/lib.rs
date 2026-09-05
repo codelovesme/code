@@ -141,18 +141,39 @@ mod compile {
             // by that plain (non-archive) object regardless of `.a`-vs-.o
             // ordering quirks, while `obj_path`'s own references to
             // `<prefix>_code_module_dispatch` pull the archive member in.
-            let static_modules: Vec<&str> = program
-                .statements
-                .iter()
-                .filter_map(|stmt| match stmt {
-                    Stmt::ImportNative {
-                        path,
-                        format: NativeFormat::Static { .. },
-                        ..
-                    } => Some(path.as_str()),
-                    _ => None,
-                })
-                .collect();
+            let mut static_modules: Vec<&str> = Vec::new();
+            let mut prefixes: Vec<(&str, &str)> = Vec::new();
+            for stmt in &program.statements {
+                if let Stmt::ImportNative {
+                    path,
+                    format: NativeFormat::Static { prefix, .. },
+                    ..
+                } = stmt
+                {
+                    // Two *different* archives answering to the same prefix
+                    // define the same symbols, and one would win silently.
+                    // The linker used to catch that on its own; a wasm link
+                    // no longer lets it (see `link_wasm`), so the check
+                    // belongs here, where it can name both files. The same
+                    // archive linked twice under two names is one archive
+                    // and not a clash.
+                    if let Some((other, _)) = prefixes
+                        .iter()
+                        .find(|(other, p)| p == &prefix.as_str() && *other != path.as_str())
+                    {
+                        return Err(format!(
+                            "cannot link '{path}' beside '{other}': both name their exports \
+                             '{prefix}_code_module_*', so one would quietly replace the other \
+                             — a .a module's prefix must be unique among the archives one \
+                             program links (see code_abi.h's \".a static modules\" section)"
+                        ));
+                    }
+                    prefixes.push((path.as_str(), prefix.as_str()));
+                    if !static_modules.contains(&path.as_str()) {
+                        static_modules.push(path.as_str());
+                    }
+                }
+            }
 
             if target == BuildTarget::Wasm {
                 fs::write(&wasm_shim_path, WASM_SHIM_H)
@@ -331,6 +352,18 @@ mod compile {
                 // and the rest DWARF. Stripped here rather than left to the
                 // person deploying it, who would have to know it was there.
                 .arg("--strip-debug")
+                // Rust puts its panic handler and unwinding personality in
+                // every archive it produces, so any two Rust modules in one
+                // program define them twice — a `no_std` one and a `std` one
+                // above all, which is exactly what a web application links.
+                // Nothing can be done about it from inside a module: a
+                // `staticlib` must carry a panic handler, and the program
+                // that links them is not Rust and has none to offer. Either
+                // definition does the same thing, so the duplicate is
+                // allowed rather than fatal. What this would otherwise have
+                // caught — two modules sharing a prefix — is caught above by
+                // name, with a better error than the linker's.
+                .arg("--allow-multiple-definition")
                 .arg(obj_path)
                 .arg(runtime_obj_path)
                 .args(static_modules)

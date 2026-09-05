@@ -133,15 +133,19 @@ cargo rustc --target wasm32-unknown-unknown --release --crate-type staticlib
 
 ## Why the wasm half brings no standard library
 
-**Two `code-native` modules cannot be linked into one `.wasm` at all.** Each
-carries its own copy of Rust's standard library, so its private symbols end
-up defined twice, and the wasm linker has no flag to forgive that the way a
-native one does. A web application links several modules by definition, so
-the module that is *for* the web is the one that must bring nothing: its wasm
-half is `no_std` and hand-written against `code_abi.h`.
+**It is most of the size** — about 25 KB against 245 KB, per module. A web
+application links several modules by definition, so the module that is *for*
+the web is the one that must bring nothing: its wasm half is `no_std` and
+hand-written against `code_abi.h`.
 
-It is also most of the size — about 25 KB against 245 KB, per module.
+For a while it was worse than a size question. Every archive Rust produces
+carries a panic handler and an unwinding personality, so two Rust modules in
+one program define them twice and the link failed outright. Nothing can be
+done about that from inside a module — a `staticlib` must carry a panic
+handler, and the program that links them is not Rust and has none to offer —
+so `code build` allows the duplicate and checks the case that actually
+matters, two modules sharing an export prefix, by name instead.
 
-The lasting fix is a `no_std` mode for `code-native`, at which point this
-module collapses back into one implementation. Until then: **a module meant
-for wasm brings no standard library.**
+The lasting fix for the size is a `no_std` mode for `code-native`, at which
+point this module collapses back into one implementation. Until then: **a
+module meant for wasm brings no standard library.**

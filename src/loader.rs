@@ -426,12 +426,39 @@ fn archive_index_symbols(path: &str) -> Option<String> {
     Some(text)
 }
 
+/// Every `nm` worth trying, in order.
+///
+/// `llvm-nm` is the one that can read a wasm object, and it is not reliably
+/// installed under that name: Debian ships it as `llvm-nm-19`. Rather than
+/// pick a version, take whatever is on PATH — the alternative is an error
+/// telling someone a module is missing an export it plainly has.
+fn nm_candidates() -> Vec<String> {
+    let mut tools = vec!["nm".to_string(), "llvm-nm".to_string()];
+    if let Some(path) = std::env::var_os("PATH") {
+        let mut versioned: Vec<String> = std::env::split_paths(&path)
+            .filter_map(|dir| std::fs::read_dir(dir).ok())
+            .flatten()
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter(|name| name.starts_with("llvm-nm-"))
+            .collect();
+        // Newest first, so a machine with several picks the one most likely
+        // to know the newest object format.
+        versioned.sort();
+        versioned.dedup();
+        versioned.reverse();
+        tools.extend(versioned);
+    }
+    tools
+}
+
 fn read_defined_symbols(path: &str) -> Result<String, String> {
     if let Some(text) = archive_index_symbols(path) {
         return Ok(text);
     }
     let mut why = Vec::new();
-    for tool in ["nm", "llvm-nm"] {
+    for tool in nm_candidates() {
+        let tool = tool.as_str();
         match Command::new(tool)
             .arg("--defined-only")
             .arg("-g")
