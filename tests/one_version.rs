@@ -4,7 +4,7 @@
 //! and the `code-wasm` npm package used to version independently — each on
 //! its own tag, on its own cadence. That was tidy for whoever cut the release
 //! and useless for whoever consumed it: a user holding `code v0.7.0` and
-//! `terminal 1.0.0` had no way to know whether the two were built against the
+//! `console 1.0.0` had no way to know whether the two were built against the
 //! same ABI without reading the repo.
 //!
 //! So they move together, and this test is what makes that true rather than

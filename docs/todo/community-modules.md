@@ -12,13 +12,13 @@ Three tiers, distinguished by *where the bytes live*:
 | tier | what | how users get it |
 |---|---|---|
 | **core** | `Length` (shipped), `Timestamp` | compiled into the `code` binary — nothing to install, works everywhere including the wasm playground |
-| **first-party modules** | `terminal`, `console`, `math`, `strings`, `env`, `http_client`, `http_server`, `net_client`, `net_server`, … | native: GitHub Releases + `code install <name>`; browser: npm |
+| **first-party modules** | `console`, `console`, `math`, `strings`, `env`, `http_client`, `http_server`, `net_client`, `net_server`, … | native: GitHub Releases + `code install <name>`; browser: npm |
 | **community modules** | anyone's | the author publishes to *their own* GitHub Releases (a template repo provides the CI); consumers install by URL first, by name once an index exists |
 
 The rule separating tier 1 from tier 2: **fundamentals are core**. Only
 what the language itself needs to stay meaningful (`Length`, `Timestamp`)
 is compiled in. Everything else is a module, and modules are things you
-install. Printing leads batch 1 as two host-specific modules — `terminal`
+install. Printing leads batch 1 as two host-specific modules — `console`
 (native) and `console` (browser) — deliberately *not* baked into the
 binary, because keeping the binary free of modules keeps "what ships
 inside `code`" a closed list.
@@ -34,10 +34,10 @@ This keeps every capability story exact — a module either has the
 particle or it doesn't, no "supported except in the browser" footnotes.
 
 Naming: the browser-side twin takes the familiar web name (`console`),
-the native side the plain one (`terminal`) — decided 2026-08-23. Where
+the native side the plain one (`console`) — decided 2026-08-23. Where
 two hosts implement the same capability they share the particle's name
 and result shape (`Print`, `Warn`, `Error`, `Debug`); host-only particles
-make no apology (`Read` in `terminal`, `Group`/`GroupEnd` in `console`).
+make no apology (`Read` in `console`, `Group`/`GroupEnd` in `console`).
 
 Packaging follows the host: native modules ship as GitHub Release assets
 plus `code install`; browser modules ship as npm packages exporting a
@@ -62,7 +62,7 @@ under both `code run` and `code build`.
 Reverses the per-module cadence this document originally described (one
 `modules/<name>/v<semver>` tag per module, each shipping on its own
 schedule). That was convenient for whoever cut the release and useless for
-whoever consumed it: a user holding `code v0.7.0` and `terminal 1.0.0` had no
+whoever consumed it: a user holding `code v0.7.0` and `console 1.0.0` had no
 way to tell whether the two were built against the same ABI without reading
 the repository.
 
@@ -159,8 +159,8 @@ plus a fifth lookup that makes installed layouts reachable: the `link`
 reference maps through the project lockfile onto
 `<root>/<name>/<version>/<asset>` (the layout `code install` writes). Both
 spellings resolve there — the pinned asset outright
-(`terminal-linux-x86_64.so`) or, more cleanly, the module with a native
-extension (`terminal.so` / `terminal.a`), since the lockfile already says
+(`console-linux-x86_64.so`) or, more cleanly, the module with a native
+extension (`console.so` / `console.a`), since the lockfile already says
 which asset that is on this platform. Without the lockfile entry the layout
 lookup has nothing to go on — the lockfile is the single source of truth
 for "what is installed here", and flat vendored layouts keep resolving
@@ -180,7 +180,7 @@ consumers confidence.
 
 Batch 1 (proves the pipeline):
 
-- **terminal** — the native host's console: `Print` (stdout), `Warn` /
+- **console** — the program's output: `Print` (stdout), `Warn` /
   `Error` (stderr, ANSI color when attached to a TTY), `Debug` (silent
   unless `CODE_DEBUG=1`), `Read` (interactive stdin prompt). Being a plain
   `.so`, `Print` just writes stdout in C — no purity seam needed in the
@@ -190,7 +190,7 @@ Batch 1 (proves the pipeline):
   expandable trees), `Warn` / `Error` / `Debug` → their `console.*`
   counterparts, `Group` / `GroupEnd` → `console.group`. No `Read`: there
   is no stdin in a browser, and the module doesn't pretend otherwise.
-  Overlapping particles share names and result shapes with `terminal`'s.
+  Overlapping particles share names and result shapes with `console`'s.
 - **math** — shipped 2026-08-24: `Double`, `Sum`. Written in Rust on
   `code-native`, inheriting the numeric half of `test_math` under the split
   proposal (`Shout`/`Echo` went to **strings**; `test_math` stays a pure
@@ -200,10 +200,10 @@ Batch 1 (proves the pipeline):
   non-number operands refused rather than coerced).
 - **strings** — shipped 2026-08-23: `Shout`, `Echo`, `Split`, `Join`,
   `Trim`, `Upper`, `Lower`. Written in Rust on `code-native` — the first
-  first-party module to take the Rust path. `terminal` followed it on
+  first-party module to take the Rust path. `console` followed it on
   2026-08-28 and **every first-party module is Rust now**.
 
-  The original rationale kept `terminal` in C as the canonical reference
+  The original rationale kept `console` in C as the canonical reference
   implementation — zero framework between a reader and the ABI — so that an
   ABI drift would fail differently in a C module and a Rust one. What
   overturned it is the guarantee a module now owes: it may never end the
@@ -310,7 +310,7 @@ no `code` module handles it. Instead:
 
 - **Stateless where the config is trivial** — a `cost`, a `length` — is a
   per-call parameter with a default. `crypto`, `json`, `strings`, `math`,
-  `env`, `terminal`, `markdown`.
+  `env`, `console`, `markdown`.
 - **A `Config { … }` setup particle where state is genuinely needed** — a
   directory, a secret, a bind address. It returns `ConfigResult { ok }`, and
   every other handler is an `Exception` until it has run (`jwt`, `fs`,
@@ -521,7 +521,7 @@ the same data `code list` reads. It doubles as the de-facto index.
 | # | deliverable | unblocks |
 |---|---|---|
 | A | core `Timestamp` (both backends, fixtures) | the core-handler pattern proven before any module ships |
-| B | `crates/modules/{terminal,math,strings}` + cross-build CI → GitHub Releases, `console` npm package; dogfood by hand | proof the pipeline works |
+| B | `crates/modules/{console,math,strings}` + cross-build CI → GitHub Releases, `console` npm package; dogfood by hand | proof the pipeline works |
 | C | ~~`code install/remove/ls` + resolver fallback chain + lockfile/sha256~~ — shipped 2026-08-23 | users getting modules without copying files |
 | D | ~~`net` module~~ — shipped 2026-08-28, renamed `http_client` 2026-08-29 | the flagship community-facing module |
 | E | ~~template + publish guide~~ — shipped 2026-08-28 as `templates/module/`, in-tree rather than a separate `code-module-template` repo; website Modules page still open | other people publishing |
@@ -529,7 +529,7 @@ the same data `code list` reads. It doubles as the de-facto index.
 
 ## Still open
 
-- `Print` operand policy (both `terminal` and `console`): strings only, or coerce numbers/booleans too?
+- `Print` operand policy (both `console` and `console`): strings only, or coerce numbers/booleans too?
 - ~~Walk-up semantics for `.code/modules/`~~ — decided 2026-08-23 with the
   fallback chain: stop at the nearest `.code/` directory (shared helper
   `find_project_code_dir` in `src/loader.rs`); git-root detection deferred

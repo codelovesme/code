@@ -13,7 +13,7 @@ assert n.value = 3
 let name = user.name
 let rounds = n.value
 
-link "native_modules/terminal.so" as term
+link "native_modules/console.so" as term
 emit Print { value = "$name won $rounds rounds" } to term
 ```
 
@@ -66,9 +66,9 @@ code test                                  # run every fixture in ./tests
 code test tests/parser.code                # ...or just the ones you name
 code format src/ program.code              # canonical layout, rewritten in place
 code format --check tests/                 # writes nothing; non-zero if any differ
-code install terminal                      # fetch a module into ./.code/modules
+code install console                      # fetch a module into ./.code/modules
 code list                                  # what's installed
-code uninstall terminal
+code uninstall console
 code --help                                # or `code help build`, `code build -h`
 code --version
 ```
@@ -765,7 +765,7 @@ against [`src/code_abi.h`](src/code_abi.h) or in Rust against the
 alias, and are reached by `emit`:
 
 ```
-link "native_modules/terminal.so" as term
+link "native_modules/console.so" as term
 emit Print { value = "hello" } to term get r
 assert r.value = 5                | bytes written
 
@@ -830,7 +830,7 @@ wasm can do — the only way to reach a second wasm module is for the host to
 instantiate it and wire the two together, which is the host's business and
 not a `link`.
 
-**A module can be built for both**, and `terminal` is the one that is:
+**A module can be built for both**, and `console` is the one that is:
 `crate-type` stays `cdylib` for the `.so`, and the wasm archive is asked for
 on the command line, because a `cdylib` for wasm32 is a whole module of its
 own and fails on the very imports an archive is supposed to leave open:
@@ -841,7 +841,7 @@ cargo rustc --target wasm32-unknown-unknown --release --crate-type staticlib
 
 Two things differ inside such a module, both by `cfg`: where its output
 goes, and the names of its entry points — unprefixed for a `.so`, prefixed
-for a `.a`. `terminal` prints to stdout on a machine and through one
+for a `.a`. `console` prints to stdout on a machine and through one
 imported function in a browser, and an application prints without knowing
 which. A second module called `console` would have made every program
 choose.
@@ -852,7 +852,7 @@ application, the same source each time:
 | the app's module | `.wasm` | gzipped |
 |---|---|---|
 | hand-written, `no_std` | 50 KB | 24 KB |
-| `terminal` on `code-native` | 1.66 MB | 370 KB |
+| `console` on `code-native` | 1.66 MB | 370 KB |
 | the same, `CARGO_PROFILE_RELEASE_LTO=fat` and `OPT_LEVEL=z` | 245 KB | 88 KB |
 
 Without LTO the archive's standard library comes along whole; `--gc-sections`
@@ -1141,7 +1141,7 @@ the wait ends on a real push, never on a guessed interval. `http_server`'s
 accept thread, nothing holds the program open any more, and `main` finishes.
 
 A module that exports nothing there holds nothing open, so a script that
-links `terminal` and prints a line still ends exactly where it always did.
+links `console` and prints a line still ends exactly where it always did.
 
 **Waiting is still the module's job, never the runtime's.** The runtime blocks
 on its own queue, which is exact; it never sleeps on your behalf or guesses
@@ -1236,7 +1236,7 @@ flow and for what to keep when you replace the handler — `guarded`, null for
 a class you do not handle, and failures returned as values are the three
 rules that make a module unable to break someone else's program.
 
-First-party modules today: `terminal` (print one line to wherever this
+First-party modules today: `console` (print one line to wherever this
 program's output goes — stdout on a machine, the page's console in a
 browser), `math`, `strings`,
 `env` (the environment, so a port or a secret comes from the deployment
@@ -1286,7 +1286,7 @@ server: state lives in memory for the life of the process. Link one in place
 of the real module to run an app with zero credentials.
 `code install <name>` fetches one into `./.code/modules/`, pinned by sha256
 in `./.code/lock.json`; `--global` puts it in `~/.code/modules/` instead. An
-installed module is linked by name — `link "terminal.so" as term` — and the
+installed module is linked by name — `link "console.so" as term` — and the
 lockfile maps that to the platform asset it pinned; `link` also resolves
 against a fixed chain — the script's own directory, then the nearest
 project's `.code/modules/`, then `$CODE_MODULE_PATH`, then `~/.code/modules/`
@@ -1417,7 +1417,7 @@ crates/
   code-native/  the crate for writing native modules in Rust (crates.io)
   code-lsp/     diagnostics, semantic tokens and formatting, over the real
                 lexer/parser and the same `code format` the CLI runs
-  modules/      first-party modules: terminal, math, strings, env, json,
+  modules/      first-party modules: console, math, strings, env, json,
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
                 oauth, mongodb, blob_storage, cloud_drive, localai,
                 http_client, http_server, net_client, net_server — plus

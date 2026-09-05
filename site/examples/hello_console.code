@@ -4,6 +4,6 @@ link "console" as out
 
 emit Print { value = "hello from the playground" } to out get r
 
-| Like `terminal` on the native side, it answers how many characters landed.
-assert r ∈ TerminalResult
+| Like `console` on the native side, it answers how many characters landed.
+assert r ∈ PrintResult
 assert r.value = 25

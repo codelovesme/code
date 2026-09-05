@@ -138,7 +138,7 @@ that changes error semantics needs its own both-mode fixture.
    and the core arm return `Value::Null`. Codegen: `_code_dispatch_this`
    writes null on fallthrough, and a program with *no* handlers at all
    emits a null instead of refusing to compile. `runtime.c`'s core dispatch
-   likewise. Every module — `net`, `strings`, `math`, `terminal`, and the
+   likewise. Every module — `net`, `strings`, `math`, `console`, and the
    four test doubles — returns null for a class it does not handle instead
    of calling `code_runtime_error`.
 
@@ -154,7 +154,7 @@ that changes error semantics needs its own both-mode fixture.
    `net_unknown_handler_is_null.code`.
 2. ~~**Modules return `Exception` instead of aborting**~~ — **shipped
    2026-08-28.** All 44 module-side `code_runtime_error` calls are gone:
-   `net` 12, `strings` 9, `math` 6, `terminal` 3, and the test doubles 14.
+   `net` 12, `strings` 9, `math` 6, `console` 3, and the test doubles 14.
 
    New in the ABI: `code_make_exception(out, source, message, inner)` in
    `runtime.c`, `exception`/`exception_wrapping` in `code-native`, and
@@ -250,7 +250,7 @@ that changes error semantics needs its own both-mode fixture.
    handler is gated on the fields it declares. A field the particle does not
    carry reads as null — as `.field` does everywhere else — and the handler
    runs on that basis. `net` was rewritten around this in phase 2; `core`'s
-   `Length` and `math`/`strings`/`terminal` had kept their gates, producing
+   `Length` and `math`/`strings`/`console` had kept their gates, producing
    two different complaints for `Length { }` and `Length { value = null }`
    when the owner's rule says they are the same particle. The gates are gone,
    `require_value` with them, and `Print { }` now prints "null" rather than

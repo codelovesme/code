@@ -8,7 +8,7 @@
 | the other three modules caught up here.
 link "native_modules/strings.so" as strings
 link "native_modules/math.so" as math
-link "native_modules/terminal.so" as term
+link "native_modules/console.so" as con
 
 | A user-defined handler: `who` is simply null, and the body decides.
 Greet { who } => {
@@ -29,8 +29,8 @@ emit Echo {} to strings get e
 assert e ∈ EchoResult
 assert e.value = null
 
-emit Print {} to term get p
-assert p ∈ TerminalResult
+emit Print {} to con get p
+assert p ∈ PrintResult
 assert p.value = 4
 
 | One that genuinely cannot proceed still fails — on the value, not on its

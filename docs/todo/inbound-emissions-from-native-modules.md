@@ -15,7 +15,7 @@
 Dispatch is strictly request/response: `emit … to <module>` crosses into
 native code and waits for one answer. The old implementation added the other
 direction — a module could *initiate*, queuing particles that the program
-handled later. That is how an event loop works (a `terminal` module pushing
+handled later. That is how an event loop works (a `console` module pushing
 `Key` particles as keys arrive, a server pushing requests), and without it
 modules can only answer, never speak.
 
@@ -216,7 +216,7 @@ in both output modes.
 
   **Shipped: a module with a thread of its own** (2026-08-29). A module may
   now push from a thread the program knows nothing about, which is what a
-  real `terminal` reading keys or a server accepting connections needs — and
+  real `console` reading keys or a server accepting connections needs — and
   what makes an empty `loop { }` wait for something that can actually arrive,
   rather than only serving a *polling* loop
   (`loop { emit Poll {} to src get r … }`). The four items this section

@@ -2,7 +2,7 @@
 //!
 //! The property worth testing is not which files appear but that the program
 //! it writes *works with nothing installed*: the obvious template prints
-//! something, printing needs the `terminal` module, and a new project whose
+//! something, printing needs the `console` module, and a new project whose
 //! first act is a failed `link` is a bad first minute. So this runs the
 //! generated `main.code` for real.
 

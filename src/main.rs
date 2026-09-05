@@ -291,7 +291,7 @@ fn directory_name(dir: &Path) -> String {
 /// decoration:
 ///
 /// - `main.code`, which **runs as written**. The obvious template prints
-///   something, and printing needs the `terminal` module, which is not
+///   something, and printing needs the `console` module, which is not
 ///   installed yet — so the first thing a new project would do is fail. This
 ///   one uses only the language and a core handler, and the next-steps text
 ///   says how to get printing.
@@ -352,8 +352,8 @@ fn cmd_init(args: Vec<String>) -> ExitCode {
     println!("  {where_to}code run");
     println!();
     println!("Printing lives in a module rather than the language:");
-    println!("  code install terminal");
-    println!("  then: link \"terminal.so\" as term");
+    println!("  code install console");
+    println!("  then: link \"console.so\" as term");
     println!("        emit Print {{ value = \"hello\" }} to term");
     ExitCode::SUCCESS
 }
@@ -362,8 +362,8 @@ fn cmd_init(args: Vec<String>) -> ExitCode {
 /// nothing here needs a module — see `cmd_init`.
 const MAIN_TEMPLATE: &str = r#"| A new Code program. `code run main.code` runs this as written.
 |
-| There is no print statement: writing to a terminal is a module's job, not
-| the language's. `code install terminal` gets you one.
+| There is no print statement: writing output is a module's job, not
+| the language's. `code install console` gets you one.
 
 let name = "world"
 let scores = [88, 94, 71]
@@ -694,7 +694,7 @@ fn run_file(path: &str) -> ExitCode {
     // only thing module resolution has to work from.
     match code::run_file(Path::new(path)) {
         // Silent on success: a program's observable output is whatever it
-        // itself emits (through a linked module such as `terminal`), not a
+        // itself emits (through a linked module such as `console`), not a
         // dump of its final bindings. Errors go to stderr.
         Ok(_) => ExitCode::SUCCESS,
         Err(e) => {

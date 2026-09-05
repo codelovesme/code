@@ -79,7 +79,7 @@ fn print_import_and_type_declarations_are_answered_too() {
     let err = error_from("print \"hello\"\n");
     assert!(err.contains("there is no print statement"), "{err}");
     assert!(
-        err.contains("terminal"),
+        err.contains("console"),
         "should point at the module; got:\n{err}"
     );
 

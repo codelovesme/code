@@ -96,6 +96,6 @@ manifest step).
   and the code disagree.
 - [`code-native`](https://docs.rs/code-native) — the Rust API used here.
 - The first-party modules —
-  [`terminal`, `math`, `strings`, `http_client`](https://github.com/codelovesme/code/tree/main/crates/modules)
+  [`console`, `math`, `strings`, `http_client`](https://github.com/codelovesme/code/tree/main/crates/modules)
   — are the worked examples. `http_client` is the one to read for a module that does
   something genuinely fallible.

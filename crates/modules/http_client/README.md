@@ -1,6 +1,6 @@
 # `http_client` — HTTP requests
 
-The first module that reaches something outside the machine. `terminal`
+The first module that reaches something outside the machine. `console`
 writes to a stream, `math` and `strings` are pure; this is the one where the
 outside world can say no.
 

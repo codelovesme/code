@@ -138,8 +138,8 @@ impl FilesystemResolver {
             let lock: crate::module_install::Lockfile = serde_json::from_str(&text).ok()?;
             for entry in lock.modules.values() {
                 // `link` may name the pinned asset outright
-                // (`terminal-linux-x86_64.so`) or, more cleanly, just the
-                // module with a native extension (`terminal.so` / `terminal.a`):
+                // (`console-linux-x86_64.so`) or, more cleanly, just the
+                // module with a native extension (`console.so` / `console.a`):
                 // the lockfile already says which asset that is on this
                 // platform, so the platform suffix need not be written by hand.
                 let asset_ext = Path::new(&entry.asset)

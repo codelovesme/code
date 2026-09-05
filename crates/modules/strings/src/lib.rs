@@ -1,7 +1,7 @@
 //! The `strings` native module — text operations for the Code programming
 //! language, written in Rust on [`code-native`].
 //!
-//! First first-party module to take the Rust path: `terminal` stays C
+//! First first-party module to take the Rust path: `console` stays C
 //! because it is the canonical reference implementation (zero framework
 //! between a reader and the ABI), while everything whose substance is logic
 //! rather than syscalls goes through the crate. That split keeps both paths

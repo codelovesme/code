@@ -32,7 +32,7 @@ the empty particle of that class.**
 
 `Timestamp` is the only one today, but it is not a one-off: the tier list in
 [community-modules.md](community-modules.md) has more no-operand particles
-coming (`terminal`'s `Read`, a `console` `GroupEnd`), so this is the shape of
+coming (`console`'s `Read`, a `console` `GroupEnd`), so this is the shape of
 a whole small family, not a single fixture's wart.
 
 ## Why it is safe to say

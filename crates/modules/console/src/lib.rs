@@ -1,10 +1,13 @@
-//! The `terminal` native module — printing a line to wherever this program's
+//! The `console` native module — printing a line to wherever this program's
 //! output goes, written in Rust on [`code-native`].
+//!
+//! Called `terminal` until 1.8.1. The old name said *where* the line went,
+//! and stopped being true the moment there was a second place for it to go.
 //!
 //! Handlers:
 //!
 //! - `Print` — `{ value = … }`, renders one line and answers
-//!   `TerminalResult` carrying how many characters landed on the wire, so a
+//!   `PrintResult` carrying how many characters landed on the wire, so a
 //!   program can `assert` that the print happened.
 //!
 //! **Where the line goes depends on where the program is running**, and that
@@ -25,7 +28,7 @@
 //! never end the application (`docs/todo/errors-as-particles.md`), and that
 //! is real in Rust and unattainable in C — a forgotten NULL check segfaults
 //! and an integer `100 / 0` raises SIGFPE, neither catchable from anywhere.
-//! `terminal` ships to users, so it takes the path where the promise holds.
+//! `console` ships to users, so it takes the path where the promise holds.
 //! The `.a` doubles under `tests/native_modules/` keep the C header's
 //! declarations exercised.
 
@@ -77,7 +80,7 @@ pub extern "C" fn code_module_abi_version() -> u32 {
 /// discovers it by reading the archive; nothing in the language names it.
 #[cfg(target_arch = "wasm32")]
 #[no_mangle]
-pub extern "C" fn terminal_code_module_abi_version() -> u32 {
+pub extern "C" fn console_code_module_abi_version() -> u32 {
     CODE_ABI_VERSION
 }
 
@@ -88,7 +91,7 @@ pub extern "C" fn terminal_code_module_abi_version() -> u32 {
 /// As [`code_module_dispatch`].
 #[cfg(target_arch = "wasm32")]
 #[no_mangle]
-pub unsafe extern "C" fn terminal_code_module_dispatch(
+pub unsafe extern "C" fn console_code_module_dispatch(
     out: *mut CodeValue,
     particle: *const CodeValue,
 ) {
@@ -115,7 +118,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
 /// As [`code_module_dispatch`].
 unsafe fn dispatch(out: *mut CodeValue, particle: *const CodeValue) {
     let particle = &*particle;
-    guarded(&mut *out, "terminal", |out| {
+    guarded(&mut *out, "console", |out| {
         if read_field_str(particle, "_class") != Some("Print") {
             null(out);
             return;
@@ -134,7 +137,7 @@ unsafe fn dispatch(out: *mut CodeValue, particle: *const CodeValue) {
         // The count is of *characters as rendered*, which is what the C
         // version reported too: `len` there was a byte count over output
         // that `render` keeps ASCII except for a string the caller supplied.
-        make_result(out, c"TerminalResult", |slot| {
+        make_result(out, c"PrintResult", |slot| {
             number(slot, line.len() as f64)
         });
     })

@@ -1017,8 +1017,8 @@ fn absent_construct(name: &str) -> Option<&'static str> {
             Some("there is no `import` — `link \"module.so\" as name` is how a module is reached")
         }
         "print" | "println" | "echo" | "puts" => Some(
-            "there is no print statement — writing to a terminal is a module's job:\n  \
-             code install terminal\n  link \"terminal.so\" as term\n  \
+            "there is no print statement — writing output is a module's job:\n  \
+             code install console\n  link \"console.so\" as term\n  \
              emit Print { value = \"hello\" } to term",
         ),
         _ => None,

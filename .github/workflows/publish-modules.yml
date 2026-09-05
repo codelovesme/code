@@ -4,7 +4,7 @@ on:
   # One version for everything this repo publishes (2026-08-29, reversing the
   # per-module cadence this used to have): a `v*` tag releases the CLI *and*
   # every module at the same number, so a user holding `code v1.1.0` and
-  # `terminal 1.1.0` never has to ask whether the two match.
+  # `console 1.1.0` never has to ask whether the two match.
   push:
     tags: ["v*"]
   # Manual dry-run: builds every platform artifact and uploads them as
@@ -49,7 +49,7 @@ jobs:
   # compiler invocation, and the artifact extension (.so vs .dylib).
   # Every first-party module is Rust on `code-native` since 2026-08-28
   # (`cargo build` inside its standalone workspace — see those crates'
-  # Cargo.toml for why they opt out of the main one). `terminal` was the last
+  # Cargo.toml for why they opt out of the main one). `console` was the last
   # C one; it moved because a module may not end the application and that
   # promise is only keepable in Rust. Asset names follow the distribution
   # doc: <module>-<platform><ext>.
@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, oauth_mock]
     steps:
       - uses: actions/checkout@v4
       # Each module is its own workspace with its own Cargo.lock (see those
@@ -130,7 +130,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [terminal, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, oauth_mock]
     steps:
       - uses: actions/checkout@v4
 
@@ -167,7 +167,7 @@ jobs:
           link "${m}.so" as mod
           EOF
           case "$m" in
-            terminal)
+            console)
               printf 'emit Print { value = "phase B works" } to mod get r\nassert r.value = 13\n' >> dogfood/demo.code
               ;;
             strings)
@@ -361,11 +361,11 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in terminal strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane oauth_mock; do
+          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane oauth_mock; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
-              terminal) handlers='["Print"]' ;;
+              console) handlers='["Print"]' ;;
               strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower"]' ;;
               math) handlers='["Double", "Sum"]' ;;
             env) handlers='["Get", "Require"]' ;;

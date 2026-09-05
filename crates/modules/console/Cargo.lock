@@ -20,6 +20,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "console"
+version = "1.8.0"
+dependencies = [
+ "code-native",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -30,10 +37,3 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
-
-[[package]]
-name = "terminal"
-version = "1.8.0"
-dependencies = [
- "code-native",
-]

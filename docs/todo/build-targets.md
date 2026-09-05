@@ -224,7 +224,7 @@ assuming: **the surface it needs is tiny.** The full list:
 Notably absent: **any floating-point formatting**. `+` in this language
 concatenates string+string and adds number+number, and never converts
 between them (`code_add`), so the runtime never needs to render a double as
-text — the `terminal` module does its own formatting in its own `.c`. That
+text — the `console` module does its own formatting in its own `.c`. That
 one fact is what keeps the shim small; a `%g` implementation would have been
 most of it.
 

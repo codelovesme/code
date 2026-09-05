@@ -34,7 +34,7 @@ const MODULES_DIR_NAME: &str = crate::loader::MODULES_DIR;
 /// One platform's asset inside a module manifest.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct PlatformAsset {
-    /// Asset filename within the release, e.g. `terminal-linux-x86_64.so`.
+    /// Asset filename within the release, e.g. `console-linux-x86_64.so`.
     pub asset: String,
     /// Lowercase hex sha256 of that asset.
     pub sha256: String,
@@ -116,7 +116,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "oauth_mock",
     "process",
     "strings",
-    "terminal",
+    "console",
 ];
 
 /// Where this repository's releases live. Overridable for offline work and
@@ -379,7 +379,7 @@ pub fn release_asset_base(release_url: &str) -> Result<String, String> {
 ///
 /// Appending to the tag page directly is what this did until 2026-08-29, and
 /// it is why `code install <name>` never once worked: GitHub answers
-/// `…/releases/tag/TAG/terminal.json` with **200 and an HTML page** rather
+/// `…/releases/tag/TAG/console.json` with **200 and an HTML page** rather
 /// than a 404, so the failure surfaced as `malformed module manifest:
 /// expected value at line 8 column 1` — the eighth line of GitHub's markup.
 pub fn manifest_url_for(source: &str, name: &str) -> String {
@@ -585,14 +585,14 @@ mod tests {
 
     fn sample_manifest() -> &'static str {
         r#"{
-          "name": "terminal",
+          "name": "console",
           "version": "1.0.0",
           "abi_version": 1,
           "handlers": ["echo"],
           "vars": [],
           "platforms": {
             "linux-x86_64": {
-              "asset": "terminal-linux-x86_64.so",
+              "asset": "console-linux-x86_64.so",
               "sha256": "abc123def456abc123def456abc123def456abc123def456abc123def456abc123"
             }
           }
@@ -602,7 +602,7 @@ mod tests {
     #[test]
     fn manifest_parses_and_looks_up_platforms() {
         let m = Manifest::parse(sample_manifest()).expect("sample manifest parses");
-        assert_eq!(m.name, "terminal");
+        assert_eq!(m.name, "console");
         assert_eq!(m.version, "1.0.0");
         assert_eq!(m.abi_version, 1);
         assert_eq!(m.handlers, vec!["echo"]);
@@ -614,7 +614,7 @@ mod tests {
                 asset.is_some(),
                 "this machine must be covered by the sample"
             );
-            assert_eq!(asset.unwrap().asset, "terminal-linux-x86_64.so");
+            assert_eq!(asset.unwrap().asset, "console-linux-x86_64.so");
         } else {
             assert!(asset.is_none());
         }
@@ -671,12 +671,12 @@ mod tests {
     fn lockfile_round_trips() {
         let mut lock = Lockfile::default();
         lock.modules.insert(
-            "terminal".to_string(),
+            "console".to_string(),
             LockEntry {
-                name: "terminal".to_string(),
+                name: "console".to_string(),
                 version: "1.0.0".to_string(),
                 source: "https://example.org/release".to_string(),
-                asset: "terminal-linux-x86_64.so".to_string(),
+                asset: "console-linux-x86_64.so".to_string(),
                 sha256: "ab".repeat(32),
                 setup: None,
                 global: false,
@@ -694,10 +694,10 @@ mod tests {
 
     #[test]
     fn release_asset_base_maps_tag_to_download() {
-        let url = "https://github.com/o/r/releases/tag/modules/terminal/v1.0.0";
+        let url = "https://github.com/o/r/releases/tag/modules/console/v1.0.0";
         assert_eq!(
             release_asset_base(url).unwrap(),
-            "https://github.com/o/r/releases/download/modules/terminal/v1.0.0"
+            "https://github.com/o/r/releases/download/modules/console/v1.0.0"
         );
         // Trailing slashes are tolerated.
         assert_eq!(
@@ -712,15 +712,15 @@ mod tests {
         // The manifest is an asset, so a tag page has to cross over to
         // `/releases/download/` — appending to the page itself gets HTML back
         // with a 200, which is exactly how this was broken until 2026-08-29.
-        let tag_page = "https://github.com/o/r/releases/tag/modules/terminal/v1.0.0";
+        let tag_page = "https://github.com/o/r/releases/tag/modules/console/v1.0.0";
         assert_eq!(
-            manifest_url_for(tag_page, "terminal"),
-            "https://github.com/o/r/releases/download/modules/terminal/v1.0.0/terminal.json"
+            manifest_url_for(tag_page, "console"),
+            "https://github.com/o/r/releases/download/modules/console/v1.0.0/console.json"
         );
         // A download URL pointing straight at the manifest is itself the
         // manifest — appending `{name}.json` to it would 404.
-        let direct = "https://github.com/o/r/releases/download/v1.0.0/terminal.json";
-        assert_eq!(manifest_url_for(direct, "terminal"), direct);
+        let direct = "https://github.com/o/r/releases/download/v1.0.0/console.json";
+        assert_eq!(manifest_url_for(direct, "console"), direct);
     }
 
     #[test]

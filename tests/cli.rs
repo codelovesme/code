@@ -270,7 +270,7 @@ fn the_module_commands_are_install_uninstall_list() {
     assert!(String::from_utf8_lossy(&out.stdout).contains("installed:"));
 
     // `uninstall` is idempotent, so it answers without a module installed.
-    assert!(code(&dir, &["uninstall", "terminal"]).status.success());
+    assert!(code(&dir, &["uninstall", "console"]).status.success());
 
     for old in ["ls", "rm", "remove"] {
         let out = code(&dir, &[old]);
