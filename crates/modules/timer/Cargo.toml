@@ -1,0 +1,31 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree.
+[workspace]
+
+[package]
+name = "timer"
+version = "1.8.2"
+edition = "2021"
+description = "The `timer` native module for the Code programming language — a particle, later. Written in Rust on code-native."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+# The `.so` every program on a machine opens while it runs. The wasm build —
+# the only one where this module can actually do anything — wants a `.a`, and
+# asks for it on the command line:
+#
+#   cargo rustc --target wasm32-unknown-unknown --release --crate-type staticlib
+crate-type = ["cdylib"]
+
+[dependencies]
+
+# On wasm the module is linked *into* the program, so it brings no runtime of
+# its own — the program already has exactly one.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+code-native = { path = "../../code-native", default-features = false, features = ["static-module"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+code-native = { path = "../../code-native" }

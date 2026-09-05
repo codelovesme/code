@@ -98,17 +98,17 @@
 //! # Why the wasm half is written out by hand
 //!
 //! It is `no_std`, and it does not use `code-native`, which the native half
-//! does. Not a style choice — **two `code-native` modules cannot be linked
-//! into one `.wasm` at all.** Each brings its own copy of Rust's standard
-//! library, so its private symbols (`rust_eh_personality`, the panic
-//! machinery) end up defined twice, and the wasm linker has no flag to
-//! forgive that the way a native one does. A web application links several
-//! modules by definition, so the module that is *for* the web is the one
-//! that has to bring nothing.
+//! does. **It is most of the size**: measured on one small page, `no_std`
+//! costs about 25 KB against 245 KB with the standard library, and that is
+//! paid per module. A web application links several by definition, so the
+//! modules that are *for* the web are the ones that bring nothing.
 //!
-//! It is also most of the size. Measured on one small page, `no_std` costs
-//! about 25 KB against 245 KB with the standard library — and that is paid
-//! per module, since the duplicate copies are exactly the problem above.
+//! For a while it was worse than a size question. Every archive Rust
+//! produces carries a panic handler and an unwinding personality, so two
+//! Rust modules in one program define them twice and the link failed
+//! outright. Nothing can be done about that from inside a module, so
+//! `code build` allows the duplicate and checks the case that actually
+//! matters — two modules sharing an export prefix — by name instead.
 //!
 //! The lasting fix is a `no_std` mode for `code-native` itself, at which
 //! point this file collapses back into one implementation. Until then the

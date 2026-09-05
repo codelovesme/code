@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, router, storage, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
       # Each module is its own workspace with its own Cargo.lock (see those
@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, dom]
+        module: [console, dom, router, storage, timer]
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, router, storage, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
 
@@ -340,6 +340,16 @@ jobs:
               # wasm archive, which this job does not build.
               printf 'emit Render { tree = { tag = "p" } } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code
               ;;
+            router|storage|timer)
+              # Same as `dom`: no browser on a build machine, and the
+              # artifact says so rather than pretending. The half that can do
+              # the work is a wasm archive, which this job does not build.
+              case "$m" in
+                router)  printf 'emit Route { } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+                storage) printf 'emit Get { key = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+                timer)   printf 'emit Delay { ms = 1, then = "X" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+              esac
+              ;;
             membrane)
               # No socket, no thread, nothing pushed — so unlike net_server
               # there is nothing here that could hold the demo open. Run on
@@ -409,7 +419,7 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom oauth_mock; do
+          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom router storage timer oauth_mock; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
@@ -435,8 +445,21 @@ jobs:
               localai) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions"]' ;;
               mailer_mock) handlers='["Config", "Send", "Outbox"]' ;;
               net_server) handlers='["Config", "Listen", "Stop"]' ;;
-              membrane) handlers='["Config", "Listen", "Stop"]' ;;
+              router|storage|timer)
+              # Same as `dom`: no browser on a build machine, and the
+              # artifact says so rather than pretending. The half that can do
+              # the work is a wasm archive, which this job does not build.
+              case "$m" in
+                router)  printf 'emit Route { } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+                storage) printf 'emit Get { key = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+                timer)   printf 'emit Delay { ms = 1, then = "X" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+              esac
+              ;;
+            membrane) handlers='["Config", "Listen", "Stop"]' ;;
               dom) handlers='["Render"]' ;;
+              router) handlers='["Route", "Navigate", "Watch"]' ;;
+              storage) handlers='["Get", "Set", "Remove"]' ;;
+              timer) handlers='["Delay", "Cancel"]' ;;
               net_client) handlers='["Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb_mock) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;
@@ -454,7 +477,17 @@ jobs:
             case "$m" in
               http_server) setup='"setup": "Config",' ;;
               net_server) setup='"setup": "Config",' ;;
-              membrane) setup='"setup": "Config",' ;;
+              router|storage|timer)
+              # Same as `dom`: no browser on a build machine, and the
+              # artifact says so rather than pretending. The half that can do
+              # the work is a wasm archive, which this job does not build.
+              case "$m" in
+                router)  printf 'emit Route { } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+                storage) printf 'emit Get { key = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+                timer)   printf 'emit Delay { ms = 1, then = "X" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+              esac
+              ;;
+            membrane) setup='"setup": "Config",' ;;
               jwt|fs|json_store|git|mailer|oauth|mongodb|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
               *) setup='' ;;
             esac

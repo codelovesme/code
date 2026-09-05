@@ -1,0 +1,55 @@
+# `router` — where in the application the reader is
+
+```code
+link "router.a" as router
+
+emit Watch { then = "Went" } to router get w
+emit Route { } to router get here
+emit Draw { path = here.value } to this get _
+
+Went { path } => {
+    | every change of path arrives here: a link, Back, Forward, a typed address
+}
+```
+
+## The handlers
+
+```
+Route { }             → RouteResult { value }     | the path shown now
+Navigate { path }     → NavigateResult { ok }     | go there
+Watch { then }        → WatchResult { ok }        | and tell me when it changes
+```
+
+`Watch` names the class the application wants back. From then on every change
+of the path arrives as a particle of that class, carrying the new path as
+`value`.
+
+`Navigate` fires it too. An application that draws in one place — the handler
+— does not then have to draw again at every call site, and the two ways a
+path can change stop being two paths through the code.
+
+## Naming the class in advance
+
+The application says what an event should become *before* it happens, and the
+page can only fire what it was given. That is the same rule `dom` follows for
+a click, for the same reason: what comes **in** from a page must be as narrow
+as what goes out, or a page could reach any handler in the program by name.
+
+## Where it works
+
+**A browser.** On a machine every handler answers an `Exception` rather than
+inventing a path — a program that thought it knew where it was would draw the
+wrong page and never find out why. It is still linkable there, so one
+application can be built both ways and ask
+[`Linked`](../../../README.md#linked) which it is.
+
+For wasm it is built as an archive linked into the program:
+
+```bash
+cargo rustc --target wasm32-unknown-unknown --release --crate-type staticlib
+```
+
+Its page half is in [`web/host.mjs`](../../../web/host.mjs), with every other
+browser module's. It routes on the URL hash, because a page served as a file
+has nothing else it can change without asking a server for a URL that does
+not exist.

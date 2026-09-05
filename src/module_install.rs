@@ -118,6 +118,9 @@ pub const FIRST_PARTY: &[&str] = &[
     "strings",
     "console",
     "dom",
+    "router",
+    "storage",
+    "timer",
 ];
 
 /// Where this repository's releases live. Overridable for offline work and
