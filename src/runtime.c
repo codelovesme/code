@@ -1652,6 +1652,95 @@ void code_set_program_dispatch(void (*fn)(CodeValue *out, const CodeValue *parti
     code_program_dispatch = fn;
 }
 
+/* ---- Events — a particle built where the event happens -------------------
+ *
+ * What a browser needs and a socket does not: the page fires back. While it
+ * is drawing, the program names the *class* an event should become — a click
+ * on this button is an `Add`, a keystroke in this box is a `Typed`. When it
+ * happens the host says which class fired and what the thing it happened to
+ * holds, the particle is built here from those two, and the program's own
+ * handlers answer it. Nothing is kept between the drawing and the firing:
+ * there is no table of live listeners to grow, go stale, or be swept.
+ *
+ * The element's own value is what lets one shape serve every component. A
+ * button carries whatever the program wrote on it, a text box carries what
+ * the reader typed, a list carries what was chosen — all of them arrive as
+ * `value`, so a handler for one is written like a handler for any other.
+ *
+ * Both strings are read out of buffers of ours, and the host is told how much
+ * room each has. A page has no allocator of this program's to borrow, and
+ * letting it choose an address in this program's memory would be letting it
+ * write anywhere. One buffer each, refilled per event, because events are
+ * handled one at a time — `code_event_fire` has returned before the next can
+ * be sent.
+ *
+ * Not the inbound queue (`code_module_set_inbound`), on purpose. That is for
+ * a module speaking on its own initiative into a program that is running a
+ * loop. This is the host calling *in*, already inside a call. */
+
+#define CODE_EVENT_CLASS_CAP 256
+#define CODE_EVENT_TEXT_CAP 8192
+static char code_event_class_buf[CODE_EVENT_CLASS_CAP];
+static char code_event_text_buf[CODE_EVENT_TEXT_CAP];
+
+char *code_event_class(void) { return code_event_class_buf; }
+
+long long code_event_class_capacity(void) { return CODE_EVENT_CLASS_CAP; }
+
+char *code_event_text(void) { return code_event_text_buf; }
+
+long long code_event_text_capacity(void) { return CODE_EVENT_TEXT_CAP; }
+
+/* "A `<class>` happened, to something holding `<text>`."
+ *
+ * A negative `text_len` means the event carried no value, and then the
+ * particle has no `value` field rather than an empty one: a click on a plain
+ * button is `Add {}`, which is what a gene handler for it reads like.
+ *
+ * Lengths beyond a buffer are clamped rather than refused — a host that
+ * overfills has already been told the capacity, and a truncated keystroke is
+ * a better answer than a silent nothing. A class longer than its buffer is
+ * the exception: a truncated class name is a *different* class, so that one
+ * is refused.
+ *
+ * The answer a handler returns is released rather than given back: an event
+ * is told, not asked. */
+void code_event_fire(long long class_len, long long text_len) {
+    if (!code_program_dispatch) {
+        return;
+    }
+    if (class_len <= 0 || class_len >= CODE_EVENT_CLASS_CAP) {
+        return;
+    }
+    code_event_class_buf[class_len] = 0;
+
+    const char *keys[2] = {"_class", "value"};
+    _Alignas(8) char slots[2 * CODE_VALUE_SLOT_SIZE] = {0};
+    long long fields = 1;
+    /* Owned, both of them: these buffers are refilled by the next event,
+     * while a handler may keep what it was handed for as long as it likes. */
+    code_str_owned(slot_at(slots, 0), code_event_class_buf);
+    if (text_len >= 0) {
+        if (text_len >= CODE_EVENT_TEXT_CAP) {
+            text_len = CODE_EVENT_TEXT_CAP - 1;
+        }
+        code_event_text_buf[text_len] = 0;
+        code_str_owned(slot_at(slots, 1), code_event_text_buf);
+        fields = 2;
+    }
+
+    CodeValue particle = {0};
+    code_object(&particle, keys, slots, fields);
+    for (long long i = 0; i < fields; i++) {
+        code_release(slot_at(slots, i));
+    }
+
+    CodeValue answer = {0};
+    code_program_dispatch(&answer, &particle);
+    code_release(&answer);
+    code_release(&particle);
+}
+
 /* The module's *name*, from whatever path the guest was compiled with.
  *
  * A host's handler wants to say `if name = "net_server"`. What arrives is a

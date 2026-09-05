@@ -1,0 +1,32 @@
+| Events — what a page fires back.
+|
+| Nothing here fires: these handlers wait for a host to say an event
+| happened, and no host in this process does. Run either ordinary way, the
+| fixture proves that it compiles and leaks nothing. `tests/build_targets.rs`
+| builds it for wasm and fires the events from a page, where the handlers
+| below become the check.
+|
+| Each one answers by making a *fractional* number into text, which is the
+| one thing a program with no modules can do that a page can see: a
+| freestanding build cannot format a double and asks its host to
+| (`src/wasm_shim.h`), so the page counts those calls and knows both that the
+| handler ran and what it was handed. A `return` would tell it nothing —
+| `code_event_fire` releases the answer, because an event is told, not asked.
+
+Clicked { value } => {
+    if value = "merhaba" {
+        let half = 0.5
+        let seen = "$half"
+    }
+    return Fine {}
+}
+
+Bare { value } => {
+    | An event with nothing to carry makes a particle with no `value` field
+    | at all, rather than one holding "".
+    if value = null {
+        let quarter = 0.25
+        let seen = "$quarter"
+    }
+    return Fine {}
+}

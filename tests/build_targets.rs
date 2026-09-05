@@ -161,6 +161,85 @@ fn wasm_spells_numbers_the_way_the_other_modes_do() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A page fires back, and the program's own handler answers it.
+///
+/// Four things are held here: the value the page sent arrives as a `value`
+/// field, an event that carried nothing leaves the field off altogether, a
+/// class nobody handles is silence rather than an error, and — the one that
+/// took longest to see — all of this happens *after* `main` has returned. On
+/// a page that is not the program ending, so a wasm build skips the
+/// end-of-run sweep; with the sweep in place the first click found a program
+/// whose state had already been freed.
+///
+/// The handlers report by making a fractional number into text, which a
+/// freestanding build cannot do for itself and asks the host to. Counting
+/// those calls is what tells a wrong value from a right one: an assert would
+/// not do, because a failing assert inside a handler is an `Exception` handed
+/// back to whoever emitted, not the end of the program.
+#[test]
+fn a_page_fires_events_back_into_the_program() {
+    let dir = temp_dir("wasm-events");
+    let out = dir.join("events.wasm");
+    code::compile_file(
+        &fixture("wasm_events.code"),
+        code::BuildTarget::Wasm,
+        &out,
+        false,
+    )
+    .expect("build wasm_events.code --target wasm");
+
+    let probe = dir.join("fire.mjs");
+    fs::write(
+        &probe,
+        format!(
+            "import {{ readFileSync }} from 'node:fs';\n\
+             {WASM_HOST_JS}\
+             let answered = 0;\n\
+             const spelled = env.code_host_number_exact;\n\
+             env.code_host_number_exact = (v, p, c) => {{ answered++; return spelled(v, p, c); }};\n\
+             const {{ instance }} = await WebAssembly.instantiate(readFileSync({out:?}), {{ env }});\n\
+             memory = instance.exports.memory;\n\
+             if (instance.exports.main() !== 0) throw new Error('main returned an error');\n\
+             const e = instance.exports;\n\
+             const classAt = e.code_event_class(), classCap = Number(e.code_event_class_capacity());\n\
+             const textAt = e.code_event_text(), textCap = Number(e.code_event_text_capacity());\n\
+             const write = (s, at, cap) => {{\n\
+               const b = enc.encode(s);\n\
+               if (b.length >= cap) throw new Error('event string does not fit');\n\
+               new Uint8Array(memory.buffer).set(b, at);\n\
+               return BigInt(b.length);\n\
+             }};\n\
+             const fire = (cls, value) => {{\n\
+               const before = answered;\n\
+               const n = write(cls, classAt, classCap);\n\
+               const v = value === null ? -1n : write(value, textAt, textCap);\n\
+               e.code_event_fire(n, v);\n\
+               return answered - before;\n\
+             }};\n\
+             const check = (what, got, want) => {{\n\
+               if (got !== want) throw new Error(what + ': answered ' + got + ', wanted ' + want);\n\
+             }};\n\
+             check('the value the page sent did not reach the handler', fire('Clicked', 'merhaba'), 1);\n\
+             check('a different value was treated as the right one', fire('Clicked', 'baska'), 0);\n\
+             check('an event carrying nothing still arrived with a value', fire('Bare', null), 1);\n\
+             check('an event carrying nothing was not recognised', fire('Bare', ''), 0);\n\
+             check('a class nobody handles was not silent', fire('Nobody', 'x'), 0);\n"
+        ),
+    )
+    .expect("write event probe");
+
+    let output = Command::new("node")
+        .arg(&probe)
+        .output()
+        .expect("run wasm under node");
+    assert!(
+        output.status.success(),
+        "firing events into the module failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// Instantiate `module` under Node with the host above and run its `main`,
 /// failing the test with whatever Node reported if it does not come back 0.
 fn run_wasm_under_node(dir: &Path, module: &Path) {

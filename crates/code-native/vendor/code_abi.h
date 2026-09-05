@@ -342,6 +342,36 @@ void code_module_set_host(const CodeHostVtable *host, void *host_ctx);
  * `loader.rs`), so `link "libfoo.a" as m` needs no syntax to name the
  * prefix — it just has to be unique. */
 
+/* ---- Events: a particle built where the event happens -------------------
+ *
+ * For a module whose world calls *in* — a page, above all. While it is
+ * drawing, the program names the *class* an event should become: a click on
+ * this button is an `Add`, a keystroke in this box is a `Typed`. The host
+ * says, when it happens, which class fired and what the thing it happened to
+ * holds; the particle is built from those two and the program's own handlers
+ * answer it. Nothing is held between the drawing and the firing.
+ *
+ * The element's own value is what lets one shape serve every component: a
+ * button carries what the program wrote on it, a text box what the reader
+ * typed, a list what was chosen — all of them arrive as a `value` field. A
+ * negative `text_len` means the event carried none, and then the particle has
+ * no `value` field rather than an empty one.
+ *
+ * Both strings are read out of the runtime's own buffers rather than from
+ * addresses of the host's: a page has no allocator of this program's to
+ * borrow, and letting it choose where to write in this program's memory would
+ * be letting it write anywhere. Fill them, then fire; one event at a time,
+ * since `code_event_fire` has returned before the next can be sent.
+ *
+ * Not `code_module_set_inbound`, which is for a module speaking on its own
+ * initiative into a program running a loop. This is the host calling in,
+ * already inside a call. */
+char *code_event_class(void);
+long long code_event_class_capacity(void);
+char *code_event_text(void);
+long long code_event_text_capacity(void);
+void code_event_fire(long long class_len, long long text_len);
+
 void code_number(CodeValue *out, double n);
 /* Borrows `s` — the value keeps the pointer rather than the bytes, so `s`
  * must outlive it. Correct for a string literal, wrong for anything built at

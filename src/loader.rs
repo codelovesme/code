@@ -375,7 +375,61 @@ pub fn find_project_code_dir(dir: &Path) -> Option<PathBuf> {
 /// The error names both attempts. A missing symbol reader is a toolchain
 /// problem, and being told only about the second one would send someone
 /// looking in the wrong place.
+/// The defined symbols an archive lists in its own index, without asking a
+/// tool for them.
+///
+/// `ar` writes a symbol index as the archive's first member — a map from every
+/// defined external symbol to the member defining it — and that is precisely
+/// the list wanted here. Reading it directly matters because the alternative
+/// does not work: GNU `nm` cannot read wasm objects, and rather than failing
+/// it prints "file format not recognized" and *exits zero*, which once cost a
+/// long hunt for a missing export the module plainly had. `llvm-nm` can read
+/// them but is not reliably installed under that name; on Debian it arrives
+/// as `llvm-nm-19`. The index is the same handful of bytes in either case.
+///
+/// `None` for anything unexpected — no index, an old BSD `__.SYMDEF`, a
+/// truncated header — and then the `nm` path below still gets its turn.
+fn archive_index_symbols(path: &str) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    if !bytes.starts_with(b"!<arch>\n") {
+        return None;
+    }
+    let header = bytes.get(8..68)?;
+    let name = std::str::from_utf8(&header[..16]).ok()?.trim_end();
+    // Sizes in an `ar` header are decimal text, space-padded.
+    let size: usize = std::str::from_utf8(&header[48..58])
+        .ok()?
+        .trim_end()
+        .parse()
+        .ok()?;
+    let data = bytes.get(68..68 + size)?;
+
+    // "/" is the 32-bit index, "/SYM64/" the same thing with 64-bit offsets;
+    // both are a count, that many offsets, then the names.
+    let width = match name {
+        "/" => 4,
+        "/SYM64/" => 8,
+        _ => return None,
+    };
+    let count = match width {
+        4 => u32::from_be_bytes(data.get(..4)?.try_into().ok()?) as usize,
+        _ => u64::from_be_bytes(data.get(..8)?.try_into().ok()?) as usize,
+    };
+    let names = data.get(width * (count + 1)..)?;
+    let text = names
+        .split(|b| *b == 0)
+        .take(count)
+        .filter_map(|n| std::str::from_utf8(n).ok())
+        .collect::<Vec<_>>()
+        .join("\n");
+    text.split_whitespace().next()?;
+    Some(text)
+}
+
 fn read_defined_symbols(path: &str) -> Result<String, String> {
+    if let Some(text) = archive_index_symbols(path) {
+        return Ok(text);
+    }
     let mut why = Vec::new();
     for tool in ["nm", "llvm-nm"] {
         match Command::new(tool)

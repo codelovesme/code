@@ -9,7 +9,7 @@
 //!
 //! # The tree is a value, not markup
 //!
-//! A node is `{ tag, attrs?, children? }` and a string is a text node:
+//! A node is `{ tag, attrs?, on?, children? }` and a string is a text node:
 //!
 //! ```text
 //! { tag = "ul", children = [
@@ -17,11 +17,37 @@
 //! ] }
 //! ```
 //!
-//! That is the whole vocabulary. There is **no raw HTML, no event handler and
-//! no property assignment** — a tree can describe elements, attributes and
-//! text, and nothing else. So a tree built out of someone's name or a
-//! translated string is data all the way to the page and cannot become code
-//! on the way. The page's half is held to the same rule.
+//! That is the whole vocabulary. There is **no raw HTML and no property
+//! assignment** — a tree can describe elements, attributes, events and text,
+//! and nothing else. So a tree built out of someone's name or a translated
+//! string is data all the way to the page and cannot become code on the way.
+//! The page's half is held to the same rule.
+//!
+//! # Events
+//!
+//! `on` maps an event name to **the particle it means**:
+//!
+//! ```text
+//! { tag = "button", value = "7", on = { click = "Remove" }, children = ["Sil"] }
+//! { tag = "input",  on = { input = "Typed" } }
+//! ```
+//!
+//! An `on` entry names a **class**, not a particle. When the event happens the
+//! page fires that class together with the element's own value, and the
+//! runtime builds the particle: `Remove { value = "7" }`, `Typed { value =
+//! "ne yazdiysa" }`. The program answers it with an ordinary handler, written
+//! in a gene like any other.
+//!
+//! The element's value is what lets one shape serve every component. A button
+//! carries whatever the program wrote on it, a text box what the reader typed,
+//! a list what was chosen — all of them arrive the same way, so a handler for
+//! one reads like a handler for any other. An event with nothing to carry
+//! makes a particle with no `value` field at all.
+//!
+//! **A listener is never a function, and nothing is held between renders.**
+//! `on` is data like every other field: this module serialises it and forgets
+//! it. There is no table of live listeners to grow, go stale, or be swept, and
+//! a page redrawn a thousand times costs exactly what one render costs.
 //!
 //! `tree` may also be a **string**, which is taken as JSON that is already in
 //! this shape and passed through untouched. That is for an application that
@@ -159,10 +185,20 @@ mod page {
     // fail in a way this module could act on; it answers non-zero when the
     // selector matched.
     extern "C" {
-        fn code_web_render(json: *const u8, json_len: usize, into: *const u8, into_len: usize) -> i32;
+        fn code_web_render(
+            json: *const u8,
+            json_len: usize,
+            into: *const u8,
+            into_len: usize,
+        ) -> i32;
         fn code_str(out: *mut CodeValue, s: *const c_char);
         fn code_bool(out: *mut CodeValue, b: i32);
-        fn code_object(out: *mut CodeValue, keys: *const *const c_char, values: *mut c_void, len: i64);
+        fn code_object(
+            out: *mut CodeValue,
+            keys: *const *const c_char,
+            values: *mut c_void,
+            len: i64,
+        );
         fn code_release(v: *mut CodeValue);
     }
 
@@ -171,6 +207,24 @@ mod page {
     /// draw it in pieces. Overflow is refused rather than truncated — half a
     /// tree is not a smaller tree.
     const CAP: usize = 256 * 1024;
+
+    /// One buffer for the module, not one per call.
+    ///
+    /// It has to live somewhere, and the stack is not it: wasm-ld gives a
+    /// module 64 KB of stack by default, so a quarter-megabyte frame walks
+    /// straight off the bottom of memory — which is exactly what it did.
+    /// Here it is uninitialised space in the module's own memory, costing
+    /// nothing in the file and nothing to zero on the way in.
+    ///
+    /// Single-threaded, and a render finishes before another can start —
+    /// with one exception, guarded below: the page could fire an event while
+    /// it is being handed this buffer.
+    static mut BUF: Buf = Buf {
+        bytes: [0; CAP],
+        len: 0,
+        full: false,
+    };
+    static mut RENDERING: bool = false;
 
     struct Buf {
         bytes: [u8; CAP],
@@ -272,6 +326,8 @@ mod page {
         }
     }
 
+    /// Serialises `v` — every field of it, `on` included: a listener is a
+    /// class name, which is data like anything else here.
     unsafe fn write_json(b: &mut Buf, v: &CodeValue) {
         match v.tag {
             STR => b.string(text_of(v).unwrap_or(b"")),
@@ -294,7 +350,8 @@ mod page {
                     if i > 0 {
                         b.byte(b',');
                     }
-                    b.string(CStr::from_ptr(*v.keys.offset(i as isize)).to_bytes());
+                    let key = CStr::from_ptr(*v.keys.offset(i as isize)).to_bytes();
+                    b.string(key);
                     b.byte(b':');
                     write_json(b, slot(v, i));
                 }
@@ -338,13 +395,23 @@ mod page {
                 let into = field(particle, "into")
                     .and_then(|v| text_of(v))
                     .unwrap_or(b"body");
-                let mut buf = Buf { bytes: [0; CAP], len: 0, full: false };
+                // Refused rather than corrupted: the outer render is still
+                // reading the buffer this one would overwrite. Only a page
+                // that fires an event while being rendered into gets here.
+                if RENDERING {
+                    answer(out, c"RenderResult", false);
+                    return;
+                }
+                RENDERING = true;
+                let buf = &mut *core::ptr::addr_of_mut!(BUF);
+                buf.len = 0;
+                buf.full = false;
 
                 // One payload carrying both halves — the rules and the tree
                 // — so a page needs nothing beside the application.
                 buf.push(b"{\"styles\":");
                 match field(particle, "styles") {
-                    Some(styles) => write_json(&mut buf, styles),
+                    Some(styles) => write_json(buf, styles),
                     None => buf.push(b"null"),
                 }
                 buf.push(b",\"tree\":");
@@ -353,13 +420,15 @@ mod page {
                     // application that built the text itself is not made to
                     // pay for a second pass.
                     Some(json) => buf.push(json),
-                    None => write_json(&mut buf, tree),
+                    None => write_json(buf, tree),
                 }
                 buf.push(b"}");
 
                 if !buf.full {
-                    ok = code_web_render(buf.bytes.as_ptr(), buf.len, into.as_ptr(), into.len()) != 0;
+                    ok = code_web_render(buf.bytes.as_ptr(), buf.len, into.as_ptr(), into.len())
+                        != 0;
                 }
+                RENDERING = false;
             }
             answer(out, c"RenderResult", ok);
             return;

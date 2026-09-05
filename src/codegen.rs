@@ -825,8 +825,10 @@ pub fn compile_to_object(
     gen.gen_drain_body()?;
     // After the last statement, before the sweep: a module that is still
     // serving holds the program open, exactly as `interpreter::keep_alive`
-    // does. A library never does this — its `_code_init` has to return.
-    if !target.is_library() {
+    // does. A library never does this — its `_code_init` has to return, and
+    // neither does wasm, where `main` must hand control back to the page
+    // (see the sweep below for why that is not the program ending).
+    if !target.is_library() && target != BuildTarget::Wasm {
         gen.gen_keep_alive()?;
     }
     // A library sweeps nothing, and this is the ABI contract rather than an
@@ -837,8 +839,17 @@ pub fn compile_to_object(
     // also be a use-after-free on the spot: `_code_init` runs before
     // `code_module_vars` copies anything out, so a swept `export let` is read
     // after its block is freed. Private top-level `let`s stay for the same
-    // reason a handler may name one. `Exe` and `Wasm` are unchanged.
-    if !target.is_library() {
+    // reason a handler may name one. `Exe` is unchanged.
+    //
+    // Wasm is excluded for a different reason, and it is the one that took
+    // longest to see: **in a browser, `main` returning is not the program
+    // ending.** The page is still there, and the next thing it does may be to
+    // fire an event back in. A program that swept on the way out of `main`
+    // would answer that first click with its modules unlinked and its
+    // top-level state freed. What ends a wasm program is the page going away,
+    // and the browser reclaims the whole instance when it does — so there is
+    // nothing here for the sweep to do that is not already done.
+    if !target.is_library() && target != BuildTarget::Wasm {
         gen.emit_cleanup(fn_check_leaks)?;
     }
     // Last, once every handler function exists to be dispatched to.

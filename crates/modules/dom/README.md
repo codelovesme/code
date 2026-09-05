@@ -46,6 +46,38 @@ strings so a serialised tree can never close a tag.
 `tree` may also be a **string**, taken as JSON already in this shape and
 passed through untouched — for an application that built the text itself.
 
+## A click is a particle
+
+A node may say what an event on it *means*:
+
+```code
+{ tag = "input",  on = { input = "Typed" } }
+{ tag = "button", attrs = { value = "7" }, on = { click = "Remove" } }
+```
+
+`on` maps an event name to a **class**. When it happens, the page fires that
+class together with the element's own value and the runtime builds the
+particle — `Typed { value = "ne yazdıysa" }`, `Remove { value = "7" }` — and
+the program answers it with an ordinary handler:
+
+```code
+Typed { value } => {
+    draft = value
+    return Noted {}
+}
+```
+
+The element's value is what lets one shape serve every component. A button
+carries what the program wrote on it, a text box what the reader typed, a list
+what was chosen; all of them arrive the same way, so a handler for one reads
+like a handler for any other. An event with nothing to carry — a click on a
+plain button — makes a particle with no `value` field at all.
+
+**A listener is never a function, and nothing is held between renders.** `on`
+is data like every other field: this module serialises it and forgets it.
+There is no table of live listeners to grow, go stale or be swept, and a page
+redrawn a thousand times costs exactly what one render costs.
+
 ## Appearance travels with it, but not on the nodes
 
 A node says what it *is*:
@@ -80,6 +112,12 @@ The page's half is small — parse the JSON, create elements, set attributes,
 append children — and it must refuse anything else. An `on*` attribute, an
 `innerHTML`, a property set by name: none of those can be reachable, or the
 guarantee above is gone.
+
+Going the other way it calls `code_event_fire`, having written the class and
+the value into the runtime's own buffers (`code_event_class`,
+`code_event_text`, and the two capacities). The buffers are the runtime's on
+purpose: a page choosing where to write in the program's memory could write
+anywhere.
 
 ## Where it works
 

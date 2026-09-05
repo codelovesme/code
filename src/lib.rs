@@ -315,8 +315,22 @@ mod compile {
             linker
                 .arg("--no-entry")
                 .arg("--export=main")
+                // How a page calls back in. A program that draws nothing
+                // never fires anything, so exporting these costs a few table
+                // entries and nothing else.
+                .arg("--export=code_event_fire")
+                .arg("--export=code_event_class")
+                .arg("--export=code_event_class_capacity")
+                .arg("--export=code_event_text")
+                .arg("--export=code_event_text_capacity")
                 .arg("--export-memory")
                 .arg("--allow-undefined")
+                // A wasm module is something a browser downloads, and the
+                // debug information a Rust module archive carries is most of
+                // the file: 624 KB of one measured module was 25 KB of code
+                // and the rest DWARF. Stripped here rather than left to the
+                // person deploying it, who would have to know it was there.
+                .arg("--strip-debug")
                 .arg(obj_path)
                 .arg(runtime_obj_path)
                 .args(static_modules)
