@@ -1,4 +1,4 @@
-| Events — what a page fires back.
+| Events — what a host fires back.
 |
 | Nothing here fires: these handlers wait for a host to say an event
 | happened, and no host in this process does. Run either ordinary way, the
@@ -13,20 +13,44 @@
 | handler ran and what it was handed. A `return` would tell it nothing —
 | `code_event_fire` releases the answer, because an event is told, not asked.
 
-Clicked { value } => {
-    if value = "merhaba" {
-        let half = 0.5
-        let seen = "$half"
+| A whole particle, with fields of the application's own choosing.
+Removed { id, confirmed } => {
+    if id = 7 {
+        if confirmed {
+            let half = 0.5
+            let seen = "$half"
+        }
     }
     return Fine {}
 }
 
-Bare { value } => {
-    | An event with nothing to carry makes a particle with no `value` field
-    | at all, rather than one holding "".
-    if value = null {
-        let quarter = 0.25
-        let seen = "$quarter"
+| Every kind a page can write down, arriving as itself rather than as text.
+Kinds { count, ratio, on, off, nothing, list, nested } => {
+    if count = 3 {
+        if ratio = 1.5 {
+            if on {
+                if not off {
+                    if nothing = null {
+                        if list[1] = "b" {
+                            if nested.deep = "yes" {
+                                let quarter = 0.25
+                                let seen = "$quarter"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return Fine {}
+}
+
+| Text a page writes as JSON: escapes, and a character above ASCII.
+Typed { value } => {
+    if value = "a\"b\\c
+d — ç" {
+        let eighth = 0.125
+        let seen = "$eighth"
     }
     return Fine {}
 }

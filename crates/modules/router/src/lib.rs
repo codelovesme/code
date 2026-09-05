@@ -8,15 +8,15 @@
 //! - `Watch { then }` — answers `WatchResult { ok }`, and from then on every
 //!   change of the path — a link, Back, Forward, an address typed by hand —
 //!   arrives as a particle of class `then`, carrying the new path as
-//!   `value`.
+//!   `path`.
 //!
 //! # Watching is the whole of it
 //!
 //! ```text
 //! emit Watch { then = "Went" } to router get w
 //!
-//! Went { value } => {
-//!     ...draw the page for `value`
+//! Went { path } => {
+//!     ...draw the page for `path`
 //! }
 //! ```
 //!

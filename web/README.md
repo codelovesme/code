@@ -53,16 +53,23 @@ value the application then works with.
 ## Going the other way
 
 Three of these call *in*: a click, a change of path, a delay that elapsed.
-The application says, in advance, what class an event should become — `on = {
-click = "Add" }`, `Watch { then = "Went" }`, `Delay { then = "Rang" }` — and
-this file fires that class with one piece of text alongside. The runtime
-builds the particle from those two and the application's own handler answers
-it.
+The application says, in advance, what the event should *mean* — a whole
+particle, written where it is drawn:
 
-So what arrives always has the same shape — a class and at most one piece of
-text — and a handler can be written against that. It is not a boundary:
-nothing stops a page from naming a class the application never offered it, and
-anything that would is already able to write to the program's memory directly.
-The place where an application really is separate from what talks to it is the
-network, and that is where its answer to "who is allowed to ask for this"
-belongs.
+```code
+{ tag = "button", on = { click = { _class = "Remove", id = 7 } } }
+```
+
+This file sends that back as JSON when it happens, adding what it learned in
+the meantime: the element's value for a click or a keystroke, the new `path`
+for a route, the `value` a delay was given. The runtime reads it into a
+particle and the application's own handler answers it.
+
+`on = { click = "Add" }` is the short way of writing `{ _class = "Add" }`, for
+an event with nothing else to say.
+
+It is not a boundary. Nothing stops a page from sending a particle the
+application never offered it, and anything that would is already able to write
+to the program's memory directly. The place where an application really is
+separate from what talks to it is the network, and that is where its answer to
+"who is allowed to ask for this" belongs.

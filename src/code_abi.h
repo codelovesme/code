@@ -342,37 +342,36 @@ void code_module_set_host(const CodeHostVtable *host, void *host_ctx);
  * `loader.rs`), so `link "libfoo.a" as m` needs no syntax to name the
  * prefix — it just has to be unique. */
 
-/* ---- Events: a particle built where the event happens -------------------
+/* ---- Events: a whole particle, from where the event happens --------------
  *
  * For a module whose world calls *in* — a page, above all. While it is
- * drawing, the program names the *class* an event should become: a click on
- * this button is an `Add`, a keystroke in this box is a `Typed`. The host
- * says, when it happens, which class fired and what the thing it happened to
- * holds; the particle is built from those two and the program's own handlers
- * answer it. Nothing is held between the drawing and the firing.
+ * drawing, the program says what an event should *mean*: a click on this
+ * button is a `Remove { id = 7 }`, a keystroke in this box is a `Typed`. When
+ * it happens the host sends that back, with whatever it learned in the
+ * meantime, and the program's own handlers answer it. Nothing is held between
+ * the drawing and the firing.
  *
- * The element's own value is what lets one shape serve every component: a
- * button carries what the program wrote on it, a text box what the reader
- * typed, a list what was chosen — all of them arrive as a `value` field. A
- * negative `text_len` means the event carried none, and then the particle has
- * no `value` field rather than an empty one.
+ * It arrives as JSON, because the host is a page and that is the page's own
+ * way of writing a value down: fill the buffer, then fire with the length.
+ * The result must be an object with a `_class` string; anything else is
+ * refused, and a refused event is one the program never hears about. A
+ * handler is written for a particle, and half of one is not it.
  *
- * Both strings are read out of the runtime's own buffers rather than from
- * addresses of the host's, so that nothing here trusts an address or a length
- * that came from outside. That is containment, not protection: a page and the
- * module it loaded share one linear memory and there is no boundary between
- * them. It keeps an honest host's mistake from becoming a corrupt value the
- * program works with. Fill them, then fire; one event at a time, since
- * `code_event_fire` has returned before the next can be sent.
+ * The buffer is the runtime's rather than an address of the host's, so that
+ * nothing here trusts an address or a length that came from outside. That is
+ * containment, not protection: a page and the module it loaded share one
+ * linear memory and there is no boundary between them. It keeps an honest
+ * host's mistake from becoming a corrupt value the program works with.
+ *
+ * One event at a time, since `code_event_fire` has returned before the next
+ * can be sent.
  *
  * Not `code_module_set_inbound`, which is for a module speaking on its own
  * initiative into a program running a loop. This is the host calling in,
  * already inside a call. */
-char *code_event_class(void);
-long long code_event_class_capacity(void);
 char *code_event_text(void);
 long long code_event_text_capacity(void);
-void code_event_fire(long long class_len, long long text_len);
+void code_event_fire(long long len);
 
 void code_number(CodeValue *out, double n);
 /* Borrows `s` — the value keeps the pointer rather than the bytes, so `s`

@@ -17,9 +17,11 @@
 //     reached by name, no handler built from text. A tree built out of
 //     someone's name is data all the way to the page and cannot become code
 //     on the way.
-//   - **The page never chooses an address in the program's memory.** When
-//     something has to come back — a stored value, the current path — the
-//     module hands over a buffer of its own and how much room it has.
+//   - **Nothing trusts an address or a length that came from outside.** When
+//     something has to cross — a stored value, the current path, a particle
+//     fired back — the module hands over a buffer of its own and how much
+//     room it has. Containment of an honest mistake, not a boundary: this
+//     file and the module share one memory.
 //
 // Usage:
 //
@@ -59,6 +61,16 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
 
   // ---- dom ----------------------------------------------------------------
 
+  /// `"Add"` or `{ _class: "Add", ... }` — both are how an application says
+  /// what an event means, and anything else is not one.
+  function asParticle(wanted) {
+    if (typeof wanted === "string") return wanted ? { _class: wanted } : null;
+    if (wanted && typeof wanted === "object" && typeof wanted._class === "string") {
+      return wanted;
+    }
+    return null;
+  }
+
   // What an event carries, as one piece of text: what the reader typed, or
   // what the application wrote on the element. Anything else carries nothing
   // and says so, so a plain button makes a particle with no `value` field.
@@ -80,13 +92,19 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
       if (/^on/i.test(k)) continue; // never an event handler
       el.setAttribute(k, String(v));
     }
-    // `on` maps an event name to the *class* the application wants back.
-    // Nothing is registered and nothing is held: the class travels out in the
-    // payload and comes back in when the event happens, and the runtime
-    // builds the particle at that moment.
-    for (const [event, className] of Object.entries(spec.on || {})) {
-      if (typeof className !== "string" || className === "") continue;
-      el.addEventListener(event, (e) => fire(className, eventValue(e.target || el)));
+    // `on` maps an event name to the *particle* the application wants back —
+    // a whole one, written in the tree, or just its class when there is
+    // nothing else to say. Nothing is registered and nothing is held: it
+    // travels out in the payload and comes back in when the event happens.
+    for (const [event, wanted] of Object.entries(spec.on || {})) {
+      const particle = asParticle(wanted);
+      if (!particle) continue;
+      el.addEventListener(event, (e) => {
+        const value = eventValue(e.target || el);
+        // What the element holds, added only when the application did not
+        // say it itself — an `on` that names `value` means that value.
+        fire(value === null || "value" in particle ? particle : { ...particle, value });
+      });
     }
     for (const child of spec.children || []) el.appendChild(node(child));
     return el;
@@ -230,7 +248,7 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
       watching = className;
       if (!env.code_web_route_watch.armed) {
         globalThis.addEventListener?.("hashchange", () => {
-          if (watching) fire(watching, currentRoute());
+          if (watching) fire({ _class: watching, path: currentRoute() });
         });
         env.code_web_route_watch.armed = true;
       }
@@ -247,7 +265,7 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
       const id = nextTimer++;
       const handle = setTimeout(() => {
         pending.delete(id);
-        fire(className, value);
+        fire(value === null ? { _class: className } : { _class: className, value });
       }, ms);
       pending.set(id, handle);
       return id;
@@ -273,20 +291,14 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
       const e = instance.exports;
       memory = e.memory;
 
-      // Both strings go into buffers the runtime owns, and it says how much
-      // room each has.
-      const classAt = e.code_event_class();
-      const classCap = Number(e.code_event_class_capacity());
-      const textAt = e.code_event_text();
-      const textCap = Number(e.code_event_text_capacity());
-      const writeCapped = (s, at, cap) => writeInto(s, at, cap - 1);
+      // The particle goes into a buffer the runtime owns, as JSON, and it
+      // says how much room there is.
+      const at = e.code_event_text();
+      const cap = Number(e.code_event_text_capacity());
 
-      fire = (className, value) => {
-        const n = writeCapped(className, classAt, classCap);
-        // A negative length says the event carried nothing, which is not the
-        // same as carrying "".
-        const v = value === null ? -1 : writeCapped(value, textAt, textCap);
-        e.code_event_fire(BigInt(n), BigInt(v));
+      fire = (particle) => {
+        const n = writeInto(JSON.stringify(particle), at, cap);
+        e.code_event_fire(BigInt(n));
       };
 
       return e.main();

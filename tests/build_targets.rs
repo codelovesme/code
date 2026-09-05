@@ -161,21 +161,25 @@ fn wasm_spells_numbers_the_way_the_other_modes_do() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// A page fires back, and the program's own handler answers it.
+/// A page fires back a whole particle, and the program's own handler answers
+/// it.
 ///
-/// Four things are held here: the value the page sent arrives as a `value`
-/// field, an event that carried nothing leaves the field off altogether, a
-/// class nobody handles is silence rather than an error, and — the one that
-/// took longest to see — all of this happens *after* `main` has returned. On
-/// a page that is not the program ending, so a wasm build skips the
-/// end-of-run sweep; with the sweep in place the first click found a program
-/// whose state had already been freed.
+/// What is held here: fields of the application's own choosing arrive as
+/// themselves — a number is a number, `true` is a Bool, a list is a list, a
+/// nested object is an object — text keeps its escapes and its non-ASCII, a
+/// particle nobody handles is silence rather than an error, and text that is
+/// not a particle at all is refused rather than half-read.
+///
+/// And the one that took longest to see: all of this happens *after* `main`
+/// has returned. On a page that is not the program ending, so a wasm build
+/// skips the end-of-run sweep; with the sweep in place the first click found
+/// a program whose state had already been freed.
 ///
 /// The handlers report by making a fractional number into text, which a
 /// freestanding build cannot do for itself and asks the host to. Counting
-/// those calls is what tells a wrong value from a right one: an assert would
-/// not do, because a failing assert inside a handler is an `Exception` handed
-/// back to whoever emitted, not the end of the program.
+/// those calls is what tells a right particle from a wrong one: an assert
+/// would not do, because a failing assert inside a handler is an `Exception`
+/// handed back to whoever emitted, not the end of the program.
 #[test]
 fn a_page_fires_events_back_into_the_program() {
     let dir = temp_dir("wasm-events");
@@ -201,29 +205,32 @@ fn a_page_fires_events_back_into_the_program() {
              memory = instance.exports.memory;\n\
              if (instance.exports.main() !== 0) throw new Error('main returned an error');\n\
              const e = instance.exports;\n\
-             const classAt = e.code_event_class(), classCap = Number(e.code_event_class_capacity());\n\
-             const textAt = e.code_event_text(), textCap = Number(e.code_event_text_capacity());\n\
-             const write = (s, at, cap) => {{\n\
-               const b = enc.encode(s);\n\
-               if (b.length >= cap) throw new Error('event string does not fit');\n\
+             const at = e.code_event_text(), cap = Number(e.code_event_text_capacity());\n\
+             const send = (text) => {{\n\
+               const b = enc.encode(text);\n\
+               if (b.length > cap) throw new Error('event does not fit');\n\
                new Uint8Array(memory.buffer).set(b, at);\n\
-               return BigInt(b.length);\n\
-             }};\n\
-             const fire = (cls, value) => {{\n\
                const before = answered;\n\
-               const n = write(cls, classAt, classCap);\n\
-               const v = value === null ? -1n : write(value, textAt, textCap);\n\
-               e.code_event_fire(n, v);\n\
+               e.code_event_fire(BigInt(b.length));\n\
                return answered - before;\n\
              }};\n\
+             const fire = (particle) => send(JSON.stringify(particle));\n\
              const check = (what, got, want) => {{\n\
                if (got !== want) throw new Error(what + ': answered ' + got + ', wanted ' + want);\n\
              }};\n\
-             check('the value the page sent did not reach the handler', fire('Clicked', 'merhaba'), 1);\n\
-             check('a different value was treated as the right one', fire('Clicked', 'baska'), 0);\n\
-             check('an event carrying nothing still arrived with a value', fire('Bare', null), 1);\n\
-             check('an event carrying nothing was not recognised', fire('Bare', ''), 0);\n\
-             check('a class nobody handles was not silent', fire('Nobody', 'x'), 0);\n"
+             check('a particle with fields of its own did not arrive whole',\n\
+               fire({{ _class: 'Removed', id: 7, confirmed: true }}), 1);\n\
+             check('a different field value was treated as the right one',\n\
+               fire({{ _class: 'Removed', id: 8, confirmed: true }}), 0);\n\
+             check('every kind did not arrive as itself',\n\
+               fire({{ _class: 'Kinds', count: 3, ratio: 1.5, on: true, off: false,\n\
+                       nothing: null, list: ['a', 'b'], nested: {{ deep: 'yes' }} }}), 1);\n\
+             check('text lost an escape or a character above ASCII',\n\
+               fire({{ _class: 'Typed', value: 'a\"b\\\\c\\nd \\u2014 \\u00e7' }}), 1);\n\
+             check('a class nobody handles was not silent', fire({{ _class: 'Nobody' }}), 0);\n\
+             check('text that is not JSON was not refused', send('not json at all'), 0);\n\
+             check('a value that is not an object was not refused', send('[1, 2]'), 0);\n\
+             check('an object with no _class was not refused', send('{{\"id\": 7}}'), 0);\n"
         ),
     )
     .expect("write event probe");

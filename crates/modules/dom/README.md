@@ -48,35 +48,39 @@ passed through untouched — for an application that built the text itself.
 
 ## A click is a particle
 
-A node may say what an event on it *means*:
+A node may say what an event on it *means* — a whole particle, written where
+the node is:
 
 ```code
+{ tag = "button", on = { click = { _class = "Remove", id = 7 } } }
 { tag = "input",  on = { input = "Typed" } }
-{ tag = "button", attrs = { value = "7" }, on = { click = "Remove" } }
 ```
 
-`on` maps an event name to a **class**. When it happens, the page fires that
-class together with the element's own value and the runtime builds the
-particle — `Typed { value = "ne yazdıysa" }`, `Remove { value = "7" }` — and
-the program answers it with an ordinary handler:
+Fields and all, exactly as the handler will receive them. `on = { click =
+"Add" }` is the short way of writing `{ _class = "Add" }`, for an event with
+nothing else to say.
+
+When it happens the page sends that back, adding what the element holds — the
+text a reader typed, or whatever the application wrote on the node — as
+`value`, unless the particle already names one:
 
 ```code
+Remove { id } => { ... }
 Typed { value } => {
     draft = value
     return Noted {}
 }
 ```
 
-The element's value is what lets one shape serve every component. A button
-carries what the program wrote on it, a text box what the reader typed, a list
-what was chosen; all of them arrive the same way, so a handler for one reads
-like a handler for any other. An event with nothing to carry — a click on a
-plain button — makes a particle with no `value` field at all.
+So one shape serves every component. A text box carries what the reader typed,
+a list what was chosen, a button whatever the application put on it — and a
+button that needs to say *which* row it belongs to says so in the particle
+rather than smuggling it through a value.
 
 **A listener is never a function, and nothing is held between renders.** `on`
 is data like every other field: this module serialises it and forgets it.
 There is no table of live listeners to grow, go stale or be swept, and a page
-redrawn a thousand times costs exactly what one render costs.
+redrawn a thousand times costs one render.
 
 ## Appearance travels with it, but not on the nodes
 

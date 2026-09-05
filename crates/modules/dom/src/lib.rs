@@ -28,26 +28,25 @@
 //! `on` maps an event name to **the particle it means**:
 //!
 //! ```text
-//! { tag = "button", value = "7", on = { click = "Remove" }, children = ["Sil"] }
+//! { tag = "button", on = { click = { _class = "Remove", id = 7 } } }
 //! { tag = "input",  on = { input = "Typed" } }
 //! ```
 //!
-//! An `on` entry names a **class**, not a particle. When the event happens the
-//! page fires that class together with the element's own value, and the
-//! runtime builds the particle: `Remove { value = "7" }`, `Typed { value =
-//! "ne yazdiysa" }`. The program answers it with an ordinary handler, written
-//! in a gene like any other.
+//! A whole particle, written where the node is: fields and all, exactly as
+//! the handler will receive them. `on = { click = "Add" }` is the short way
+//! of writing `{ _class = "Add" }`, for an event with nothing else to say.
 //!
-//! The element's value is what lets one shape serve every component. A button
-//! carries whatever the program wrote on it, a text box what the reader typed,
-//! a list what was chosen — all of them arrive the same way, so a handler for
-//! one reads like a handler for any other. An event with nothing to carry
-//! makes a particle with no `value` field at all.
+//! When it happens the page sends that back, adding what the element holds —
+//! the text a reader typed, or whatever the application wrote on the node —
+//! as `value`, unless the particle already names one. So `Remove { id = 7 }`
+//! arrives with its `id`, and `Typed { value = "ne yazdiysa" }` arrives with
+//! what was typed, and the application answers both with an ordinary handler
+//! written in a gene like any other.
 //!
 //! **A listener is never a function, and nothing is held between renders.**
 //! `on` is data like every other field: this module serialises it and forgets
-//! it. There is no table of live listeners to grow, go stale, or be swept, and
-//! a page redrawn a thousand times costs exactly what one render costs.
+//! it. There is no table of live listeners to grow, go stale, or be swept,
+//! and a page redrawn a thousand times costs exactly what one render costs.
 //!
 //! `tree` may also be a **string**, which is taken as JSON that is already in
 //! this shape and passed through untouched. That is for an application that

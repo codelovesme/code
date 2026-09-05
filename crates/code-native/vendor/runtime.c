@@ -1652,24 +1652,25 @@ void code_set_program_dispatch(void (*fn)(CodeValue *out, const CodeValue *parti
     code_program_dispatch = fn;
 }
 
-/* ---- Events — a particle built where the event happens -------------------
+/* ---- Events — a whole particle, built where the event happens ------------
  *
  * What a browser needs and a socket does not: the page fires back. While it
- * is drawing, the program names the *class* an event should become — a click
- * on this button is an `Add`, a keystroke in this box is a `Typed`. When it
- * happens the host says which class fired and what the thing it happened to
- * holds, the particle is built here from those two, and the program's own
- * handlers answer it. Nothing is kept between the drawing and the firing:
- * there is no table of live listeners to grow, go stale, or be swept.
+ * is drawing, the program says what an event should *mean* — a click on this
+ * button is a `Remove { id = 7 }`, a keystroke in this box is a `Typed`. When
+ * it happens the host sends that back, with whatever it learned in the
+ * meantime, and the program's own handlers answer it. Nothing is kept
+ * between the drawing and the firing: there is no table of live listeners to
+ * grow, go stale, or be swept.
  *
- * The element's own value is what lets one shape serve every component. A
- * button carries whatever the program wrote on it, a text box carries what
- * the reader typed, a list carries what was chosen — all of them arrive as
- * `value`, so a handler for one is written like a handler for any other.
+ * It arrives as JSON, because the host is a page and that is the page's own
+ * way of writing a value down. A whole particle, not a class and one string:
+ * an event is an event *about* something, and `Remove { id = 7, confirmed =
+ * true }` is what the program wants to receive, not two fields it has to
+ * reassemble.
  *
- * Both strings are read out of buffers of ours, and the host is told how much
- * room each has, so that nothing here ever trusts an address or a length that
- * came from outside: the reads stay inside this program's own array, bounded
+ * The text is read out of a buffer of ours, and the host is told how much
+ * room it has, so that nothing here ever trusts an address or a length that
+ * came from outside: the read stays inside this program's own array, bounded
  * by a capacity this program set.
  *
  * That is containment, not protection, and the difference is worth being
@@ -1681,68 +1682,425 @@ void code_set_program_dispatch(void (*fn)(CodeValue *out, const CodeValue *parti
  * in lives somewhere else entirely: on the other side of the network, where
  * the two really are separate.
  *
- * One buffer each, refilled per event, because events are handled one at a
- * time — `code_event_fire` has returned before the next can be sent.
+ * One buffer, refilled per event, because events are handled one at a time —
+ * `code_event_fire` has returned before the next can be sent.
  *
  * Not the inbound queue (`code_module_set_inbound`), on purpose. That is for
  * a module speaking on its own initiative into a program that is running a
  * loop. This is the host calling *in*, already inside a call. */
 
-#define CODE_EVENT_CLASS_CAP 256
-#define CODE_EVENT_TEXT_CAP 8192
-static char code_event_class_buf[CODE_EVENT_CLASS_CAP];
-static char code_event_text_buf[CODE_EVENT_TEXT_CAP];
+#define CODE_EVENT_CAP 65536
+static char code_event_buf[CODE_EVENT_CAP + 1];
 
-char *code_event_class(void) { return code_event_class_buf; }
+char *code_event_text(void) { return code_event_buf; }
 
-long long code_event_class_capacity(void) { return CODE_EVENT_CLASS_CAP; }
+long long code_event_text_capacity(void) { return CODE_EVENT_CAP; }
 
-char *code_event_text(void) { return code_event_text_buf; }
-
-long long code_event_text_capacity(void) { return CODE_EVENT_TEXT_CAP; }
-
-/* "A `<class>` happened, to something holding `<text>`."
+/* ---- A JSON reader, for that one job -------------------------------------
  *
- * A negative `text_len` means the event carried no value, and then the
- * particle has no `value` field rather than an empty one: a click on a plain
- * button is `Add {}`, which is what a gene handler for it reads like.
+ * Small on purpose. It reads what `JSON.stringify` writes and nothing more:
+ * no comments, no trailing commas, no NaN. What it does not understand it
+ * refuses, and a refused event is one the program never hears about — better
+ * than a particle assembled out of a guess.
  *
- * Lengths beyond a buffer are clamped rather than refused — a host that
- * overfills has already been told the capacity, and a truncated keystroke is
- * a better answer than a silent nothing. A class longer than its buffer is
- * the exception: a truncated class name is a *different* class, so that one
- * is refused.
+ * Numbers go through the same `number_parse` the language itself uses — which
+ * on a freestanding build is a question asked of the host — so a number
+ * spelled by a page and one spelled by the language agree. */
+
+static double number_parse(const char *text, size_t len);
+
+typedef struct {
+    const char *at;
+    const char *end;
+    int failed;
+} JsonReader;
+
+static int json_value(JsonReader *r, CodeValue *out);
+
+static void json_space(JsonReader *r) {
+    while (r->at < r->end && (*r->at == ' ' || *r->at == '\t' || *r->at == '\n' || *r->at == '\r')) {
+        r->at++;
+    }
+}
+
+static int json_char(JsonReader *r, char c) {
+    json_space(r);
+    if (r->at < r->end && *r->at == c) {
+        r->at++;
+        return 1;
+    }
+    return 0;
+}
+
+/* Writes one code point out as UTF-8. The only place this reader builds
+ * bytes the input did not already contain — `\uXXXX` is how JSON spells
+ * anything above ASCII, and a page will produce it for a name with an accent
+ * in it. */
+static void json_utf8(char **w, unsigned int cp) {
+    if (cp < 0x80) {
+        *(*w)++ = (char)cp;
+    } else if (cp < 0x800) {
+        *(*w)++ = (char)(0xC0 | (cp >> 6));
+        *(*w)++ = (char)(0x80 | (cp & 0x3F));
+    } else {
+        *(*w)++ = (char)(0xE0 | (cp >> 12));
+        *(*w)++ = (char)(0x80 | ((cp >> 6) & 0x3F));
+        *(*w)++ = (char)(0x80 | (cp & 0x3F));
+    }
+}
+
+static unsigned int json_hex4(JsonReader *r) {
+    unsigned int n = 0;
+    for (int i = 0; i < 4; i++) {
+        if (r->at >= r->end) {
+            r->failed = 1;
+            return 0;
+        }
+        char c = *r->at++;
+        n <<= 4;
+        if (c >= '0' && c <= '9') {
+            n |= (unsigned int)(c - '0');
+        } else if (c >= 'a' && c <= 'f') {
+            n |= (unsigned int)(c - 'a' + 10);
+        } else if (c >= 'A' && c <= 'F') {
+            n |= (unsigned int)(c - 'A' + 10);
+        } else {
+            r->failed = 1;
+            return 0;
+        }
+    }
+    return n;
+}
+
+/* Reads a string into freshly allocated bytes. The caller owns them and
+ * frees them; every escape shrinks the text or leaves it the same length, so
+ * the input's own length is always enough room. */
+static char *json_string(JsonReader *r) {
+    if (!json_char(r, '"')) {
+        r->failed = 1;
+        return NULL;
+    }
+    char *text = malloc((size_t)(r->end - r->at) + 1);
+    if (!text) {
+        r->failed = 1;
+        return NULL;
+    }
+    char *w = text;
+    while (r->at < r->end) {
+        char c = *r->at++;
+        if (c == '"') {
+            *w = 0;
+            return text;
+        }
+        if (c != '\\') {
+            *w++ = c;
+            continue;
+        }
+        if (r->at >= r->end) {
+            break;
+        }
+        char esc = *r->at++;
+        switch (esc) {
+        case '"': *w++ = '"'; break;
+        case '\\': *w++ = '\\'; break;
+        case '/': *w++ = '/'; break;
+        case 'b': *w++ = '\b'; break;
+        case 'f': *w++ = '\f'; break;
+        case 'n': *w++ = '\n'; break;
+        case 'r': *w++ = '\r'; break;
+        case 't': *w++ = '\t'; break;
+        case 'u': {
+            unsigned int cp = json_hex4(r);
+            if (r->failed) {
+                free(text);
+                return NULL;
+            }
+            /* A surrogate pair is two escapes for one character; anything
+             * else that looks like half a pair is passed through as itself
+             * rather than refused, since it is text either way. */
+            if (cp >= 0xD800 && cp <= 0xDBFF && r->end - r->at >= 6 && r->at[0] == '\\' &&
+                r->at[1] == 'u') {
+                const char *save = r->at;
+                r->at += 2;
+                unsigned int low = json_hex4(r);
+                if (!r->failed && low >= 0xDC00 && low <= 0xDFFF) {
+                    cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                    *w++ = (char)(0xF0 | (cp >> 18));
+                    *w++ = (char)(0x80 | ((cp >> 12) & 0x3F));
+                    *w++ = (char)(0x80 | ((cp >> 6) & 0x3F));
+                    *w++ = (char)(0x80 | (cp & 0x3F));
+                    break;
+                }
+                r->failed = 0;
+                r->at = save;
+            }
+            json_utf8(&w, cp);
+            break;
+        }
+        default:
+            free(text);
+            r->failed = 1;
+            return NULL;
+        }
+    }
+    free(text);
+    r->failed = 1;
+    return NULL;
+}
+
+/* Compared byte by byte rather than with `memcmp`, which the freestanding
+ * build does not have — and for three words of four or five letters, a loop
+ * is the whole of it. */
+static int json_literal(JsonReader *r, const char *word) {
+    size_t n = strlen(word);
+    if ((size_t)(r->end - r->at) < n) {
+        return 0;
+    }
+    for (size_t i = 0; i < n; i++) {
+        if (r->at[i] != word[i]) {
+            return 0;
+        }
+    }
+    r->at += n;
+    return 1;
+}
+
+/* An array or an object, both of which are a list of values with the same
+ * bookkeeping — grown by doubling, released as one on failure. */
+typedef struct {
+    void *values;
+    const char **keys;
+    long long len;
+    long long cap;
+} JsonList;
+
+static int json_list_room(JsonList *list, int with_keys) {
+    if (list->len < list->cap) {
+        return 1;
+    }
+    long long cap = list->cap ? list->cap * 2 : 8;
+    void *values = realloc(list->values, (size_t)cap * CODE_VALUE_SLOT_SIZE);
+    if (!values) {
+        return 0;
+    }
+    list->values = values;
+    memset((char *)list->values + (size_t)list->len * CODE_VALUE_SLOT_SIZE, 0,
+           (size_t)(cap - list->len) * CODE_VALUE_SLOT_SIZE);
+    if (with_keys) {
+        const char **keys = realloc(list->keys, (size_t)cap * sizeof(const char *));
+        if (!keys) {
+            return 0;
+        }
+        list->keys = keys;
+    }
+    list->cap = cap;
+    return 1;
+}
+
+static void json_list_free(JsonList *list, int with_keys) {
+    for (long long i = 0; i < list->len; i++) {
+        code_release(slot_at(list->values, i));
+        if (with_keys) {
+            free((void *)list->keys[i]);
+        }
+    }
+    free(list->values);
+    free(list->keys);
+}
+
+static int json_array(JsonReader *r, CodeValue *out) {
+    JsonList list = {0};
+    if (json_char(r, ']')) {
+        code_array(out, NULL, 0);
+        return 1;
+    }
+    for (;;) {
+        if (!json_list_room(&list, 0)) {
+            r->failed = 1;
+            break;
+        }
+        if (!json_value(r, slot_at(list.values, list.len))) {
+            break;
+        }
+        list.len++;
+        if (json_char(r, ',')) {
+            continue;
+        }
+        if (json_char(r, ']')) {
+            code_array(out, list.values, list.len);
+            json_list_free(&list, 0);
+            return 1;
+        }
+        r->failed = 1;
+        break;
+    }
+    json_list_free(&list, 0);
+    return 0;
+}
+
+static int json_object(JsonReader *r, CodeValue *out) {
+    JsonList list = {0};
+    if (json_char(r, '}')) {
+        code_object(out, NULL, NULL, 0);
+        return 1;
+    }
+    for (;;) {
+        if (!json_list_room(&list, 1)) {
+            r->failed = 1;
+            break;
+        }
+        json_space(r);
+        char *key = json_string(r);
+        if (!key) {
+            break;
+        }
+        list.keys[list.len] = key;
+        if (!json_char(r, ':') || !json_value(r, slot_at(list.values, list.len))) {
+            free(key);
+            r->failed = 1;
+            break;
+        }
+        list.len++;
+        if (json_char(r, ',')) {
+            continue;
+        }
+        if (json_char(r, '}')) {
+            code_object(out, list.keys, list.values, list.len);
+            json_list_free(&list, 1);
+            return 1;
+        }
+        r->failed = 1;
+        break;
+    }
+    json_list_free(&list, 1);
+    return 0;
+}
+
+static int json_value(JsonReader *r, CodeValue *out) {
+    json_space(r);
+    if (r->at >= r->end) {
+        r->failed = 1;
+        return 0;
+    }
+    char c = *r->at;
+    if (c == '{') {
+        r->at++;
+        return json_object(r, out);
+    }
+    if (c == '[') {
+        r->at++;
+        return json_array(r, out);
+    }
+    if (c == '"') {
+        char *text = json_string(r);
+        if (!text) {
+            return 0;
+        }
+        code_str_owned(out, text);
+        free(text);
+        return 1;
+    }
+    if (json_literal(r, "true")) {
+        code_bool(out, 1);
+        return 1;
+    }
+    if (json_literal(r, "false")) {
+        code_bool(out, 0);
+        return 1;
+    }
+    if (json_literal(r, "null")) {
+        code_null(out);
+        return 1;
+    }
+    if (c == '-' || (c >= '0' && c <= '9')) {
+        /* The extent is found here rather than left to the parser, which is
+         * handed a length: the buffer is not a C string past `end`, and a
+         * number is the one value whose end is not marked by a character of
+         * its own. */
+        const char *start = r->at;
+        if (*r->at == '-') {
+            r->at++;
+        }
+        while (r->at < r->end && *r->at >= '0' && *r->at <= '9') {
+            r->at++;
+        }
+        if (r->at < r->end && *r->at == '.') {
+            r->at++;
+            while (r->at < r->end && *r->at >= '0' && *r->at <= '9') {
+                r->at++;
+            }
+        }
+        if (r->at < r->end && (*r->at == 'e' || *r->at == 'E')) {
+            const char *exp = r->at;
+            r->at++;
+            if (r->at < r->end && (*r->at == '+' || *r->at == '-')) {
+                r->at++;
+            }
+            if (r->at < r->end && *r->at >= '0' && *r->at <= '9') {
+                while (r->at < r->end && *r->at >= '0' && *r->at <= '9') {
+                    r->at++;
+                }
+            } else {
+                r->at = exp;
+            }
+        }
+        if (r->at == start || (r->at == start + 1 && *start == '-')) {
+            r->failed = 1;
+            return 0;
+        }
+        code_number(out, number_parse(start, (size_t)(r->at - start)));
+        return 1;
+    }
+    r->failed = 1;
+    return 0;
+}
+
+/* "This happened." The buffer holds the particle as JSON; `len` says how much
+ * of it the host wrote.
+ *
+ * Refused rather than guessed at, on every path where the answer is not
+ * clear: text that is not JSON, JSON that is not an object, an object with no
+ * `_class` string. A refused event is one the program never hears about,
+ * which is what the program would want — a handler is written for a particle,
+ * and half of one is not it.
  *
  * The answer a handler returns is released rather than given back: an event
  * is told, not asked. */
-void code_event_fire(long long class_len, long long text_len) {
+void code_event_fire(long long len) {
     if (!code_program_dispatch) {
         return;
     }
-    if (class_len <= 0 || class_len >= CODE_EVENT_CLASS_CAP) {
+    if (len <= 0) {
         return;
     }
-    code_event_class_buf[class_len] = 0;
-
-    const char *keys[2] = {"_class", "value"};
-    _Alignas(8) char slots[2 * CODE_VALUE_SLOT_SIZE] = {0};
-    long long fields = 1;
-    /* Owned, both of them: these buffers are refilled by the next event,
-     * while a handler may keep what it was handed for as long as it likes. */
-    code_str_owned(slot_at(slots, 0), code_event_class_buf);
-    if (text_len >= 0) {
-        if (text_len >= CODE_EVENT_TEXT_CAP) {
-            text_len = CODE_EVENT_TEXT_CAP - 1;
-        }
-        code_event_text_buf[text_len] = 0;
-        code_str_owned(slot_at(slots, 1), code_event_text_buf);
-        fields = 2;
+    if (len > CODE_EVENT_CAP) {
+        len = CODE_EVENT_CAP;
     }
+    code_event_buf[len] = 0;
 
+    JsonReader reader = {code_event_buf, code_event_buf + len, 0};
     CodeValue particle = {0};
-    code_object(&particle, keys, slots, fields);
-    for (long long i = 0; i < fields; i++) {
-        code_release(slot_at(slots, i));
+    if (!json_value(&reader, &particle) || reader.failed) {
+        code_release(&particle);
+        return;
+    }
+    /* An object with a `_class` string, or nothing: dispatch is by class, so
+     * a value without one could not be delivered anywhere. */
+    if (particle.tag != CODE_OBJECT) {
+        code_release(&particle);
+        return;
+    }
+    int named = 0;
+    for (long long i = 0; i < particle.len; i++) {
+        if (strcmp(particle.keys[i], "_class") == 0 &&
+            slot_at(particle.items, i)->tag == CODE_STR) {
+            named = 1;
+            break;
+        }
+    }
+    if (!named) {
+        code_release(&particle);
+        return;
     }
 
     CodeValue answer = {0};

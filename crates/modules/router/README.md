@@ -22,7 +22,7 @@ Watch { then }        → WatchResult { ok }        | and tell me when it change
 
 `Watch` names the class the application wants back. From then on every change
 of the path arrives as a particle of that class, carrying the new path as
-`value`.
+`path`.
 
 `Navigate` fires it too. An application that draws in one place — the handler
 — does not then have to draw again at every call site, and the two ways a
