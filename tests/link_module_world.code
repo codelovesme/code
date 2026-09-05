@@ -1,0 +1,21 @@
+| A linked file's handlers see that file, and it survives the link.
+|
+| `count` is declared in the module's top level, which is over by the time
+| any of this runs — but its handlers still change it and still agree about
+| it. That is what makes a module able to hold anything at all: the world its
+| handlers were written in outlives the statements that built it.
+link "modules/isolated_world.code"
+
+| What it exported travelled up. What it kept did not: `count` is not a name
+| here, which `fail_link_private_flatten.code` holds from the other side.
+assert started = "yes"
+
+emit Bump { by = 2 } to this get first
+assert first.total = 2
+
+| A second handler in the same file, sharing the one world.
+emit Bump { by = 5 } to this get second
+assert second.total = 7
+
+emit Total {} to this get seen
+assert seen.total = 7

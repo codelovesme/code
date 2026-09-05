@@ -756,6 +756,35 @@ assert shared.greeting = "hello"
 assert shared.hidden = null       | private: an ordinary missing field
 ```
 
+**A link has a direction.** What a module exports travels *up* to whoever
+linked it; nothing travels down. A module cannot name anything in the file
+that linked it — exported or not — and does not know it was linked at all.
+Its one way back up is `emit ... to base`, which reaches handlers, never
+names.
+
+That world is the module's, and it is where its handlers live:
+
+```
+| counter.code
+let count = 0                     | private, and it survives the link
+
+Bump { by } => {
+    count = count + by            | the file it was written in
+    return Bumped { total = count }
+}
+```
+
+```
+link "counter"
+emit Bump { by = 2 } to this get r
+assert r.total = 2
+```
+
+A handler belongs to the file it was written in, and that file's top level
+is its whole world — still there long after the `link` that ran it, because
+the statements are over and the handlers are not. Two modules can each keep
+a `count` and neither can reach the other's.
+
 `link` is top-level only for a source module. Cycles and duplicate links
 are errors. (An *module* may also be linked from inside a handler, while
 the program runs — see [Linking while the program runs](#linking-while-the-program-runs).)

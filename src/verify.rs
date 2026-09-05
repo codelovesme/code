@@ -78,13 +78,23 @@ fn verify_stmts(
                 alias,
                 body,
                 exports,
+                file: _,
             } => {
-                scopes.push(HashSet::new());
+                // A linked file is a world of its own, and the link has a
+                // *direction*: what it exports travels up to whoever linked
+                // it, and nothing travels down. So the body is checked
+                // against a fresh stack rather than one stacked on this
+                // file's — a module cannot see the names of a program that
+                // links it, exported or not, and does not know it was
+                // linked at all. Its one way back is `emit ... to base`,
+                // which reaches handlers, not names.
+                let enclosing = std::mem::replace(scopes, vec![HashSet::new()]);
                 // One level further out in the module graph — where `to
                 // base` becomes legal, and where its parent lives.
                 let result = verify_stmts(body, scopes, natives, depth + 1);
-                scopes.pop();
+                let module_scope = std::mem::replace(scopes, enclosing);
                 result?;
+                let _ = module_scope;
                 // The module's own scope is gone; only what it exported is
                 // reachable from here.
                 match alias {

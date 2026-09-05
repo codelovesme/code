@@ -589,6 +589,7 @@ pub fn load(entry: &str, resolver: &dyn ModuleResolver) -> Result<Program, Strin
     };
     let mut loader = Loader {
         resolver,
+        next_file: 1,
         // The entry goes on the stack too, so a module that links the program
         // back is caught as a cycle rather than loaded a second time.
         visiting: vec![identity.clone()],
@@ -607,6 +608,9 @@ pub fn load(entry: &str, resolver: &dyn ModuleResolver) -> Result<Program, Strin
 
 struct Loader<'a> {
     resolver: &'a dyn ModuleResolver,
+    /// The number the next folded-in file gets. The entry is 0, so this
+    /// starts at 1 — see `Stmt::Import`'s `file`.
+    next_file: usize,
     /// Identities currently being loaded, outermost first. A reference that
     /// is already in here is a cycle; keeping the whole stack rather than a
     /// `HashSet` is what lets the error name the loop.
@@ -698,10 +702,16 @@ impl Loader<'_> {
             })
             .collect();
 
+        // Taken *after* the body is loaded, so a file's own links are
+        // numbered before it is. Any unique number would do — the world it
+        // names is found by this number, not by where it sits.
+        let file = self.next_file;
+        self.next_file += 1;
         Ok(Stmt::Import {
             alias,
             body: module.statements,
             exports,
+            file,
         })
     }
 }

@@ -95,6 +95,21 @@ fn address_row(value: &Value) -> Result<usize, String> {
 /// an error — variables are untyped, only Values are.
 pub struct Environment {
     scopes: Vec<HashMap<String, Value>>,
+    /// Every linked file's top level, kept for as long as the program runs.
+    ///
+    /// A handler belongs to the file it was written in, and that file's names
+    /// are its whole world — so the world has to outlive the `link` that ran
+    /// it. The statements are over; the handlers are not.
+    ///
+    /// The file *currently running* is the exception: its scope is moved out
+    /// of here and sits at the bottom of `scopes`, leaving an empty entry
+    /// behind. `current_file` says which one that is. Moved rather than
+    /// shared because a handler writing to `count` has to be writing to the
+    /// same map its file's top level declared.
+    file_scopes: Vec<HashMap<String, Value>>,
+    /// Which file's statements are running — the index whose `file_scopes`
+    /// entry is currently empty because `scopes[0]` holds it.
+    current_file: usize,
     /// Linked modules' dispatch entry points, by alias — a separate
     /// namespace from `scopes`, not a `Value`: this language has no
     /// function-value kind a handler could be represented as, so a module is
@@ -169,6 +184,12 @@ struct HandlerBody {
     fields: Vec<String>,
     body: Vec<Stmt>,
     defining_depth: usize,
+    /// The file this handler was written in — `Environment::file_scopes`'
+    /// index, and the only world the body can see. A handler in a linked
+    /// file cannot reach the names of the program that linked it, exported
+    /// or not: the link has a direction, and the way back up is `emit ... to
+    /// base`, which reaches handlers rather than names.
+    file: usize,
 }
 
 /// Derived `Debug` doesn't work once a field holds a `dyn Fn` (no `Debug`
@@ -191,6 +212,8 @@ impl Default for Environment {
     fn default() -> Self {
         Environment {
             scopes: vec![HashMap::new()],
+            file_scopes: vec![HashMap::new()],
+            current_file: 0,
             modules: HashMap::new(),
             available_modules: HashMap::new(),
             runtime_modules: Vec::new(),
@@ -620,7 +643,12 @@ pub type InboundReply = Rc<dyn Fn(&Value, &Value)>;
 /// level too, so its handlers join the same program-wide table) and nothing
 /// else: the parser already rejects a definition inside an `if`, a block, or
 /// a loop.
-fn register_handlers(stmts: &[Stmt], env: &mut Environment, depth: usize) -> Result<(), String> {
+fn register_handlers(
+    stmts: &[Stmt],
+    env: &mut Environment,
+    depth: usize,
+    file: usize,
+) -> Result<(), String> {
     for stmt in stmts {
         match stmt {
             Stmt::HandlerDef {
@@ -637,6 +665,7 @@ fn register_handlers(stmts: &[Stmt], env: &mut Environment, depth: usize) -> Res
                     fields: fields.clone(),
                     body: body.clone(),
                     defining_depth: depth,
+                    file,
                 });
                 // Every level joins the program-wide table — that is what
                 // `to this` and the inbound drain dispatch against — and
@@ -648,7 +677,15 @@ fn register_handlers(stmts: &[Stmt], env: &mut Environment, depth: usize) -> Res
                 }
                 env.handler_tables[depth].insert(class_name.clone(), handler);
             }
-            Stmt::Import { body, .. } => register_handlers(body, env, depth + 1)?,
+            Stmt::Import { body, file, .. } => {
+                // Room for the file's world, made before anything can run:
+                // handlers are hoisted, so one may be reached before the
+                // `link` that would otherwise create it.
+                if env.file_scopes.len() <= *file {
+                    env.file_scopes.resize_with(file + 1, HashMap::new);
+                }
+                register_handlers(body, env, depth + 1, *file)?
+            }
             _ => {}
         }
     }
@@ -666,7 +703,7 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 /// a `JsBridge`-formatted `ImportNative` only ever checks an alias is
 /// already present, never resolves one itself (see that arm below).
 pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, String> {
-    register_handlers(&program.statements, &mut env, 0)?;
+    register_handlers(&program.statements, &mut env, 0, 0)?;
     crate::handlers::check_cycles(program)?;
     // The same pre-run check `code build` has always run (`verify.rs`, which
     // is where it moved out of `codegen.rs` on 2026-08-28 so both backends
@@ -965,30 +1002,51 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             alias,
             body,
             exports,
+            file,
         } => {
             // Produce the exported name/value pairs, then bind them. The two
             // halves are kept separate because a native module would supply
             // the pairs from a descriptor instead of from a body, and reuse
             // the binding half unchanged (see `ast::Stmt::Import`).
-            env.push_scope();
+            //
+            // The linking file's world goes home first and the linked one
+            // starts empty. That is the direction: what a module exports
+            // travels up, and nothing travels down — a module cannot see the
+            // names of whoever linked it, and does not know it was linked.
+            // `link` is top-level only, so there is exactly one frame to put
+            // away here.
+            let caller_file = env.current_file;
+            let caller_scope = env.scopes.pop().unwrap_or_default();
+            env.file_scopes[caller_file] = caller_scope;
+            env.current_file = *file;
+            env.scopes.push(std::mem::take(&mut env.file_scopes[*file]));
+
             // Depth bookkeeping for `emit … to base`: statements in the
             // body sit one level further out in the module graph. Decrement
             // on every path — the body may fail.
             env.module_depth += 1;
             let result = exec_body(body, env);
             env.module_depth -= 1;
+
+            // Kept rather than dropped: the file's handlers are still to
+            // run, and this is the world they run in.
+            let module_scope = env.scopes.pop().unwrap_or_default();
             let pairs = result.and_then(|_| {
                 exports
                     .iter()
                     .map(|name| {
-                        env.get(name)
+                        module_scope
+                            .get(name)
                             .cloned()
                             .map(|value| (name.clone(), value))
                             .ok_or_else(|| format!("module exports '{name}' but never defines it"))
                     })
                     .collect::<Result<Vec<_>, _>>()
             });
-            env.pop_scope();
+            env.file_scopes[*file] = module_scope;
+            env.current_file = caller_file;
+            env.scopes
+                .push(std::mem::take(&mut env.file_scopes[caller_file]));
             let pairs = pairs?;
 
             match alias {
@@ -1343,10 +1401,22 @@ fn run_handler(
         )));
     }
 
-    // Everything but the top-level frame steps aside for the call — and so
-    // does the depth counter: a `to base` inside the body must mean this
-    // handler's own parent, not the caller's, no matter who emitted here.
-    let saved: Vec<HashMap<String, Value>> = env.scopes.drain(1..).collect();
+    // The caller's world steps aside entirely, and the handler's own file
+    // takes its place: a handler sees the file it was written in and nothing
+    // else, whoever emitted to it and from wherever. The caller's file scope
+    // goes home first so that a handler in the *same* file finds the one map
+    // its top level declared, rather than a second copy of it.
+    //
+    // The depth counter steps aside for the same reason: a `to base` inside
+    // the body must mean this handler's own parent, not the caller's.
+    let mut saved: Vec<HashMap<String, Value>> = std::mem::take(&mut env.scopes);
+    let caller_file = env.current_file;
+    if !saved.is_empty() {
+        env.file_scopes[caller_file] = saved.remove(0);
+    }
+    env.current_file = handler.file;
+    env.scopes
+        .push(std::mem::take(&mut env.file_scopes[handler.file]));
     let saved_depth = std::mem::replace(&mut env.module_depth, handler.defining_depth);
 
     // A listed field the particle doesn't carry is null — the same answer
@@ -1394,6 +1464,12 @@ fn run_handler(
         Err(e) => Ok(exception(e)),
     };
 
+    // The handler's file keeps whatever the body changed, and the caller
+    // gets its own world back.
+    env.file_scopes[handler.file] = env.scopes.pop().unwrap_or_default();
+    env.current_file = caller_file;
+    env.scopes
+        .push(std::mem::take(&mut env.file_scopes[caller_file]));
     env.scopes.extend(saved);
     env.module_depth = saved_depth;
     env.active.remove(class);

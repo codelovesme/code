@@ -1,0 +1,16 @@
+| A module's own world: its top level, and the handlers that live in it.
+|
+| Nothing here can name anything in whoever linked this file, so `count` and
+| `Bump` have to be together to work at all — which is the point. Its one way
+| back up is `emit ... to base`, and that reaches handlers, never names.
+let count = 0
+export let started = "yes"
+
+Bump { by } => {
+    count = count + by
+    return Bumped { total = count }
+}
+
+Total {} => {
+    return Counted { total = count }
+}

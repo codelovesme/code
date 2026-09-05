@@ -1,0 +1,10 @@
+| The same rule for a handler, which is where it used to leak: a handler
+| defined in a linked file used to be handed the *program's* top level rather
+| than its own file's, so it could read a name out here while being blind to
+| the one written directly above it. Both halves of that are fixed; this
+| holds the half that must stay refused.
+let secret = 5
+
+link "modules/handler_peeks_upward.code"
+
+emit Peek {} to this get r

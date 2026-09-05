@@ -159,6 +159,17 @@ pub enum Stmt {
         alias: Option<String>,
         body: Vec<Stmt>,
         exports: Vec<String>,
+        /// Which linked file this is, numbered by the loader — the entry is
+        /// 0 and every folded-in file gets the next number.
+        ///
+        /// A file's top level is a world of its own and its handlers live in
+        /// it, so that world has to outlive the `link` that ran it: the
+        /// statements are over, the handlers are not. This is the name the
+        /// interpreter keeps it under (`Environment::file_scopes`). Two
+        /// links of the same file are two numbers and two worlds, which is
+        /// what `ImportNative`'s doc comment says of a native module for the
+        /// same reason.
+        file: usize,
     },
     /// A resolved native-module `Link` (`link "x.so" as x`), produced only
     /// by `loader.rs`. Unlike `Import`, there is no `body` to run — a

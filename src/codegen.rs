@@ -2330,6 +2330,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 alias,
                 body,
                 exports,
+                file: _,
             } => {
                 // Depth bookkeeping for `emit ... to base`: the body's
                 // statements sit one level further out in the module graph.
@@ -2641,8 +2642,8 @@ impl<'a, 'm> Gen<'a, 'm> {
         Ok(())
     }
 
-    /// A resolved `link`. The module's body runs in its own scope, and only
-    /// what it exported survives that scope closing.
+    /// A resolved `link`. The module's body runs in a world of its own, and
+    /// only what it exported survives that world closing.
     ///
     /// Nothing here is module-specific machinery: the alias case builds an
     /// ordinary object out of the exported names — literally by handing
@@ -2657,7 +2658,14 @@ impl<'a, 'm> Gen<'a, 'm> {
         body: &[Stmt],
         exports: &[String],
     ) -> Result<(), String> {
-        self.env.push(HashMap::new());
+        // The linked file is a world of its own: a fresh stack, not one
+        // stacked on this file's. That is the direction of a link — what a
+        // module exports travels up to whoever linked it, and nothing
+        // travels down, so its statements and its handlers cannot name
+        // anything out here. `gen_handler` keeps the bottom frame of
+        // whatever stack it finds, which is now exactly the file the
+        // handler is written in.
+        let enclosing = std::mem::replace(&mut self.env, vec![HashMap::new()]);
         for stmt in body {
             self.gen_stmt(stmt)?;
         }
@@ -2681,7 +2689,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .ok_or_else(|| format!("module exports '{name}' but never defines it"))?;
             pairs.push((name.clone(), slot));
         }
-        self.env.pop();
+        self.env = enclosing;
 
         match (alias, object) {
             (Some(alias), Some(object)) => {

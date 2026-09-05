@@ -1,0 +1,7 @@
+| A module cannot see the names of whoever linked it, declared before the
+| link or after it. The link has a direction: what a module exports travels
+| up, and nothing travels down — it does not even know it was linked. Its way
+| back up is `emit ... to base`, which reaches handlers, never names.
+let secret = 5
+
+link "modules/peeks_upward.code"
