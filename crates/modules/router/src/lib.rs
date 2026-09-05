@@ -20,10 +20,17 @@
 //! }
 //! ```
 //!
-//! The application names the class it wants back, in advance, and the page
-//! can only fire what it was given — the same rule `dom` follows for a click,
-//! and for the same reason: what comes *in* from a page must be as narrow as
-//! what goes out, or a page could reach any handler in the program by name.
+//! The application names the class it wants back, in advance — the same rule
+//! `dom` follows for a click. What that buys is a fixed *shape*: what arrives
+//! is always a class and at most one piece of text, so a page cannot invent a
+//! particle with fields of its own choosing.
+//!
+//! It is not a boundary, and it is worth saying so plainly. A page and the
+//! module it loaded share one memory, and nothing stops a page from naming a
+//! class the application never offered it. Anything that could is already
+//! able to write to that memory directly. What actually protects an
+//! application from the page it runs in is on the other side of the network,
+//! where the two really are separate.
 //!
 //! `Navigate` fires it too. An application that draws in one place — the
 //! handler — does not then have to draw again at every call site, and the
@@ -134,10 +141,12 @@ mod page {
 
     /// Where the page writes the path when asked for it.
     ///
-    /// A buffer of ours rather than an address of the page's: a page choosing
-    /// where to write in this program's memory could write anywhere. Longer
-    /// than any path a browser will carry, and a longer one is cut rather
-    /// than refused.
+    /// A buffer of ours rather than an address of the page's, so this module
+    /// never trusts an address or a length that came from outside: the read
+    /// stays inside its own array, bounded by a capacity it set. Containment
+    /// rather than protection — the page can reach this memory whichever way
+    /// it is asked to. Longer than any path a browser will carry, and a
+    /// longer one is cut rather than refused.
     const CAP: usize = 4096;
     static mut PATH: [u8; CAP + 1] = [0; CAP + 1];
 

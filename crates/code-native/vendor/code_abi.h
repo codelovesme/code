@@ -358,10 +358,12 @@ void code_module_set_host(const CodeHostVtable *host, void *host_ctx);
  * no `value` field rather than an empty one.
  *
  * Both strings are read out of the runtime's own buffers rather than from
- * addresses of the host's: a page has no allocator of this program's to
- * borrow, and letting it choose where to write in this program's memory would
- * be letting it write anywhere. Fill them, then fire; one event at a time,
- * since `code_event_fire` has returned before the next can be sent.
+ * addresses of the host's, so that nothing here trusts an address or a length
+ * that came from outside. That is containment, not protection: a page and the
+ * module it loaded share one linear memory and there is no boundary between
+ * them. It keeps an honest host's mistake from becoming a corrupt value the
+ * program works with. Fill them, then fire; one event at a time, since
+ * `code_event_fire` has returned before the next can be sent.
  *
  * Not `code_module_set_inbound`, which is for a module speaking on its own
  * initiative into a program running a loop. This is the host calling in,

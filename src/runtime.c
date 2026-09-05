@@ -1668,11 +1668,21 @@ void code_set_program_dispatch(void (*fn)(CodeValue *out, const CodeValue *parti
  * `value`, so a handler for one is written like a handler for any other.
  *
  * Both strings are read out of buffers of ours, and the host is told how much
- * room each has. A page has no allocator of this program's to borrow, and
- * letting it choose an address in this program's memory would be letting it
- * write anywhere. One buffer each, refilled per event, because events are
- * handled one at a time — `code_event_fire` has returned before the next can
- * be sent.
+ * room each has, so that nothing here ever trusts an address or a length that
+ * came from outside: the reads stay inside this program's own array, bounded
+ * by a capacity this program set.
+ *
+ * That is containment, not protection, and the difference is worth being
+ * exact about. A page and the module it loaded share one linear memory, and
+ * the page can read and write all of it whenever it likes — there is no
+ * boundary between them and there cannot be one. What this buys is that an
+ * honest host's mistake stops here instead of becoming a corrupt value the
+ * program then works with. Whatever protects a program from the page it runs
+ * in lives somewhere else entirely: on the other side of the network, where
+ * the two really are separate.
+ *
+ * One buffer each, refilled per event, because events are handled one at a
+ * time — `code_event_fire` has returned before the next can be sent.
  *
  * Not the inbound queue (`code_module_set_inbound`), on purpose. That is for
  * a module speaking on its own initiative into a program that is running a

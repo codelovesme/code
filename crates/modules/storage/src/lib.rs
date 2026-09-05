@@ -42,10 +42,10 @@
 //! `code_web_storage_remove`. `web/host.mjs` in this repository supplies all
 //! of them, for every browser module at once.
 //!
-//! The page never chooses where to write in the program's memory: reading a
-//! value means writing into a buffer of this module's, whose address and
-//! capacity it is given. That is the same rule the event path follows, for
-//! the same reason.
+//! Reading a value means the page writes into a buffer of this module's,
+//! whose address and capacity it is given — so nothing here trusts an address
+//! or a length that came from outside. The same rule the event path follows,
+//! and see `router`'s file for what it does and does not buy.
 //!
 //! Its wasm half is `no_std` and hand-written against `code_abi.h` — see
 //! `dom`'s file for why a module meant for the browser brings no standard
@@ -140,11 +140,15 @@ mod page {
 
     /// Where the page writes a value it was asked for.
     ///
-    /// A buffer of ours rather than an address of the page's: a page choosing
-    /// where to write in this program's memory could write anywhere. One
-    /// buffer, refilled per read, because a read has finished before the next
-    /// can start. A stored value longer than this is answered as far as it
-    /// fits rather than refused — the bound is generous, and half a
+    /// A buffer of ours rather than an address of the page's, so this module
+    /// never trusts an address or a length that came from outside: the read
+    /// stays inside its own array, bounded by a capacity it set. Containment
+    /// rather than protection — the page can reach this memory whichever way
+    /// it is asked to.
+    ///
+    /// One buffer, refilled per read, because a read has finished before the
+    /// next can start. A stored value longer than this is answered as far as
+    /// it fits rather than refused — the bound is generous, and half a
     /// remembered string is better than a program that cannot start.
     const CAP: usize = 64 * 1024;
     static mut READ: [u8; CAP + 1] = [0; CAP + 1];

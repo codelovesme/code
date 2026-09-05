@@ -30,10 +30,17 @@ path can change stop being two paths through the code.
 
 ## Naming the class in advance
 
-The application says what an event should become *before* it happens, and the
-page can only fire what it was given. That is the same rule `dom` follows for
-a click, for the same reason: what comes **in** from a page must be as narrow
-as what goes out, or a page could reach any handler in the program by name.
+The application says what an event should become *before* it happens — the
+same rule `dom` follows for a click. What it buys is a fixed **shape**: what
+arrives is a class and at most one piece of text, so a page cannot invent a
+particle with fields of its own choosing, and a handler can be written against
+that.
+
+It is not a boundary. A page and the module it loaded share one memory, and
+nothing stops a page from naming a class the application never offered it —
+anything that could is already able to write to that memory directly. What
+protects an application from the page it runs in is on the other side of the
+network, where the two really are separate.
 
 ## Where it works
 

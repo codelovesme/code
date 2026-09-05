@@ -115,9 +115,15 @@ guarantee above is gone.
 
 Going the other way it calls `code_event_fire`, having written the class and
 the value into the runtime's own buffers (`code_event_class`,
-`code_event_text`, and the two capacities). The buffers are the runtime's on
-purpose: a page choosing where to write in the program's memory could write
-anywhere.
+`code_event_text`, and the two capacities). The buffers are the runtime's so
+that nothing trusts an address or a length that came from outside — the reads
+stay inside the program's own arrays, bounded by capacities it set.
+
+That is containment, not a boundary: a page and the module it loaded share one
+memory, and a page that wanted to could write to it directly. It keeps an
+honest page's mistake from becoming a corrupt value the application works
+with. What protects an application from the page it runs in is on the other
+side of the network.
 
 ## Where it works
 

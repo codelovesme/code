@@ -17,10 +17,11 @@
 //! }
 //! ```
 //!
-//! The application names the class it wants back, in advance, and the host
-//! can only fire what it was given — the same rule `dom` follows for a click
-//! and `router` for a path, and for the same reason: what comes *in* must be
-//! as narrow as what goes out.
+//! The application names the class it wants back, in advance — the same rule
+//! `dom` follows for a click and `router` for a path. What it buys is a fixed
+//! shape: what arrives is a class and at most one piece of text. It is not a
+//! boundary; see `router`'s file for why there cannot be one between a page
+//! and the module it loaded.
 //!
 //! **Nothing repeats on its own.** A delay fires once; a handler that wants
 //! a heartbeat asks for the next one itself. Repeating would mean a timer

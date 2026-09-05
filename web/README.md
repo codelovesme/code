@@ -40,19 +40,29 @@ name, no handler built from text. A tree built out of someone's name is data
 all the way to the page and cannot become code on the way. The `dom` module's
 side is held to the same rule.
 
-**The page never chooses an address in the program's memory.** When something
-has to come back — a stored value, the current path, the text an event
-carries — the module hands over a buffer of its own and says how much room it
-has. A page that could name an address could write anywhere.
+**Nothing trusts an address or a length that came from outside.** When
+something has to come back — a stored value, the current path, the text an
+event carries — the module hands over a buffer of its own and says how much
+room it has, so its reads stay inside its own array.
+
+That is containment, not a boundary. This file and the module share one
+memory; anything running in the page can read and write all of it. What it
+buys is that an honest mistake here stops here, instead of becoming a corrupt
+value the application then works with.
 
 ## Going the other way
 
 Three of these call *in*: a click, a change of path, a delay that elapsed.
-None of them invents a particle. The application says, in advance, what class
-an event should become — `on = { click = "Add" }`, `Watch { then = "Went" }`,
-`Delay { then = "Rang" }` — and the page can only fire what it was given,
-with one piece of text alongside. The runtime builds the particle from those
-two and the application's own handler answers it.
+The application says, in advance, what class an event should become — `on = {
+click = "Add" }`, `Watch { then = "Went" }`, `Delay { then = "Rang" }` — and
+this file fires that class with one piece of text alongside. The runtime
+builds the particle from those two and the application's own handler answers
+it.
 
-So the wire coming in is exactly as narrow as the wire going out. A page
-cannot reach a handler the application did not offer it.
+So what arrives always has the same shape — a class and at most one piece of
+text — and a handler can be written against that. It is not a boundary:
+nothing stops a page from naming a class the application never offered it, and
+anything that would is already able to write to the program's memory directly.
+The place where an application really is separate from what talks to it is the
+network, and that is where its answer to "who is allowed to ask for this"
+belongs.
