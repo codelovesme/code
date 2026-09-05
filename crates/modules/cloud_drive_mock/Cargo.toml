@@ -6,7 +6,7 @@
 
 [package]
 name = "cloud_drive_mock"
-version = "1.8.1"
+version = "1.8.2"
 edition = "2021"
 description = "The `cloud_drive_mock` native module for the Code programming language — a drop-in for `cloud_drive` backed by an in-memory file store, no Google."
 license = "GPL-3.0"

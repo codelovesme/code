@@ -6,7 +6,7 @@
 
 [package]
 name = "localai"
-version = "1.8.1"
+version = "1.8.2"
 edition = "2021"
 description = "The `localai` native module for the Code programming language — chat completions and audio transcription over an OpenAI-compatible endpoint."
 license = "GPL-3.0"
