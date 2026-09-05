@@ -1238,7 +1238,9 @@ rules that make a module unable to break someone else's program.
 
 First-party modules today: `console` (print one line to wherever this
 program's output goes — stdout on a machine, the page's console in a
-browser), `math`, `strings`,
+browser), `dom` (a page drawn from a value: a tree of tags, attributes and
+text, and nothing else — see [its README](crates/modules/dom/README.md)),
+`math`, `strings`,
 `env` (the environment, so a port or a secret comes from the deployment
 rather than the source — see [its README](crates/modules/env/README.md)),
 `json` (parse JSON text, or pretty-print it — the two things string
@@ -1417,7 +1419,7 @@ crates/
   code-native/  the crate for writing native modules in Rust (crates.io)
   code-lsp/     diagnostics, semantic tokens and formatting, over the real
                 lexer/parser and the same `code format` the CLI runs
-  modules/      first-party modules: console, math, strings, env, json,
+  modules/      first-party modules: console, dom, math, strings, env, json,
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
                 oauth, mongodb, blob_storage, cloud_drive, localai,
                 http_client, http_server, net_client, net_server — plus
