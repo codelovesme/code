@@ -784,3 +784,83 @@ assert done._class = "Stopped"
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A stopped application starts again, and comes back new.
+///
+/// Stopping is release *and* unload: everything it owned is freed and its
+/// code is unmapped. So starting it again is not resuming anything — it is a
+/// fresh instance from the same file, counting from the beginning.
+///
+/// That it works at all is the per-link image: each `link` loads from its own
+/// copy in memory, so a second one is a genuinely different object to the
+/// loader and runs its own top level. Before that, a released library linked
+/// again did not initialise, and went on using what the release had just
+/// freed.
+///
+/// The counter is the whole test. Survived state would show up as a count
+/// that kept climbing; a fresh instance counts from one.
+#[test]
+fn a_stopped_application_starts_again_and_comes_back_new() {
+    let dir = temp_dir("restart");
+    build(
+        &dir,
+        "guest",
+        r#"| State of its own, so a restart can be told from a survival.
+let seen = 0
+let greeting = "hello " + ""
+
+Work { } => {
+    seen = seen + 1
+    return Done { seen = seen, greeting = greeting }
+}
+"#,
+        code::BuildTarget::Shared,
+        "guest.so",
+    );
+    fs::write(
+        dir.join("main.code"),
+        r#"let app = null
+
+Start { } => {
+    link "./guest.so" as a
+    app = a
+    return Started { }
+}
+
+Ask { } => {
+    emit Work { } to app get r
+    return r
+}
+
+Stop { } => {
+    unlink app
+    return Stopped { }
+}
+
+emit Start { } to this get _
+emit Ask { } to this get _
+emit Ask { } to this get twice
+assert twice.seen = 2
+
+emit Stop { } to this get s
+assert s._class = "Stopped"
+
+| Same file, started again — and it must come back from the beginning.
+emit Start { } to this get _
+emit Ask { } to this get again
+assert again.seen = 1
+assert again.greeting = "hello "
+
+| And it is still a working application, not a husk.
+emit Ask { } to this get more
+assert more.seen = 2
+"#,
+    )
+    .expect("write host");
+    run_both_ways(
+        &dir,
+        "a stopped application did not start again, or came back carrying state",
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
