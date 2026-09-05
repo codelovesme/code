@@ -6,7 +6,7 @@
 
 [package]
 name = "storage"
-version = "1.8.2"
+version = "1.8.3"
 edition = "2021"
 description = "The `storage` native module for the Code programming language — what the browser remembers between visits. Written in Rust on code-native."
 license = "GPL-3.0"

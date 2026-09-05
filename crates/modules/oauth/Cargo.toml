@@ -6,7 +6,7 @@
 
 [package]
 name = "oauth"
-version = "1.8.2"
+version = "1.8.3"
 edition = "2021"
 description = "The `oauth` native module for the Code programming language — the OAuth 2.0 authorization-code flow for one provider."
 license = "GPL-3.0"

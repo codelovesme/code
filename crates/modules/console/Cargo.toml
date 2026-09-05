@@ -7,7 +7,7 @@
 
 [package]
 name = "console"
-version = "1.8.2"
+version = "1.8.3"
 edition = "2021"
 description = "The `console` native module for the Code programming language — Print one line to wherever the program's output goes: stdout on a machine, the page's console in a browser. Written in Rust on code-native."
 license = "GPL-3.0"
