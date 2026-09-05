@@ -161,8 +161,11 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         );
         let built = crate_dir.join(format!("target/release/lib{stem}.so"));
         let dest = modules_dir.join(format!("{stem}.so"));
-        fs::rename(&built, &dest).unwrap_or_else(|e| {
-            panic!("cannot move {} to {}: {e}", built.display(), dest.display())
+        // Copied, not moved: `tests/hosted_app.rs` builds the same crates
+        // for itself and takes them from `target/release/`, and a move would
+        // pull the file out from under it whenever the two suites overlap.
+        fs::copy(&built, &dest).unwrap_or_else(|e| {
+            panic!("cannot copy {} to {}: {e}", built.display(), dest.display())
         });
     }
 }

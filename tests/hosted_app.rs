@@ -48,6 +48,37 @@ fn build(dir: &Path, name: &str, source: &str, target: code::BuildTarget, out: &
     artifact
 }
 
+/// Builds one real module and puts it where a guest can `link` it.
+///
+/// Built here rather than taken from `tests/native_modules/`, because what is
+/// there is put there by `run_language_tests.rs` — a different test binary,
+/// which may not have run yet. Depending on it made these tests pass locally
+/// (where an earlier full run had left the files behind) and fail on CI,
+/// where the two suites start together. `cargo`'s own lock serialises the
+/// overlapping builds.
+fn module(stem: &str, dest: &Path) {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    // The `test_*` doubles live beside the fixtures; the shipped modules live
+    // under `crates/modules/`. Same split `run_language_tests.rs` makes.
+    let crate_dir = if stem.starts_with("test_") {
+        manifest_dir.join("tests/native_modules").join(stem)
+    } else {
+        manifest_dir.join("crates/modules").join(stem)
+    };
+    let status = Command::new("cargo")
+        .args(["build", "--release"])
+        .current_dir(&crate_dir)
+        .status()
+        .unwrap_or_else(|e| panic!("failed to run cargo for {stem}: {e}"));
+    assert!(status.success(), "cargo failed to build {stem}");
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).expect("create module directory");
+    }
+    let built = crate_dir.join(format!("target/release/lib{stem}.so"));
+    fs::copy(&built, dest)
+        .unwrap_or_else(|e| panic!("cannot copy {} to {}: {e}", built.display(), dest.display()));
+}
+
 fn stderr_of(output: &std::process::Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
@@ -317,12 +348,7 @@ assert r.text = "hello x"
 #[test]
 fn a_guest_reaches_the_hosts_organelles_not_its_own() {
     let dir = temp_dir("offer");
-    fs::create_dir_all(dir.join("native_modules")).expect("create module dir");
-    fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/native_modules/test_math.so"),
-        dir.join("native_modules/test_math.so"),
-    )
-    .expect("copy the real module next to the guest");
+    module("test_math", &dir.join("native_modules/test_math.so"));
 
     const GUEST: &str = r#"link "native_modules/test_math.so" as m
 
@@ -399,12 +425,7 @@ assert r.value = 30
 #[test]
 fn a_refused_organelle_refuses_rather_than_ending_the_host() {
     let dir = temp_dir("refused");
-    fs::create_dir_all(dir.join("native_modules")).expect("create module dir");
-    fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/native_modules/test_math.so"),
-        dir.join("native_modules/test_math.so"),
-    )
-    .expect("copy a module the host will refuse");
+    module("test_math", &dir.join("native_modules/test_math.so"));
 
     build(
         &dir,
@@ -458,12 +479,7 @@ assert r.message = "organelle 'test_math' is not offered by the host"
 #[test]
 fn a_host_may_offer_one_guest_what_it_denies_another() {
     let dir = temp_dir("perguest");
-    fs::create_dir_all(dir.join("native_modules")).expect("create module dir");
-    fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/native_modules/test_math.so"),
-        dir.join("native_modules/test_math.so"),
-    )
-    .expect("copy the module");
+    module("test_math", &dir.join("native_modules/test_math.so"));
 
     const ASKS: &str = r#"link "native_modules/test_math.so" as m
 
@@ -528,12 +544,7 @@ assert no.answer = "Exception"
 fn a_host_sees_an_organelle_by_name_whatever_path_the_guest_carries() {
     let dir = temp_dir("naming");
     let nested = dir.join(".code/modules/test_math/9.9.9");
-    fs::create_dir_all(&nested).expect("create module dir");
-    fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/native_modules/test_math.so"),
-        nested.join("test_math-linux-x86_64.so"),
-    )
-    .expect("copy the module under a release-shaped name");
+    module("test_math", &nested.join("test_math-linux-x86_64.so"));
 
     build(
         &dir,
@@ -598,12 +609,7 @@ assert r.value = 30
 #[test]
 fn a_guest_owns_its_organelles_and_hears_them() {
     let dir = temp_dir("owned");
-    fs::create_dir_all(dir.join("native_modules")).expect("create module dir");
-    fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/native_modules/http_client.so"),
-        dir.join("native_modules/http_client.so"),
-    )
-    .expect("copy the organelle the guest will open for itself");
+    module("http_client", &dir.join("native_modules/http_client.so"));
 
     build(
         &dir,
@@ -692,12 +698,7 @@ assert answer.heard
 #[test]
 fn an_application_that_is_still_working_is_not_unloaded() {
     let dir = temp_dir("working");
-    fs::create_dir_all(dir.join("native_modules")).expect("create module dir");
-    fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/native_modules/net_server.so"),
-        dir.join("native_modules/net_server.so"),
-    )
-    .expect("copy the door the application will open for itself");
+    module("net_server", &dir.join("native_modules/net_server.so"));
 
     build(
         &dir,
