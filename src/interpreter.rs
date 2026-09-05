@@ -42,6 +42,9 @@ struct RuntimeOrganelle {
     /// Hands it a turn to deliver whatever its own organelles pushed. A
     /// library has queues but no loop of its own — see `NativeModule::drain`.
     drain: Rc<dyn Fn()>,
+    /// Whether anything it holds is still working — what decides if it can
+    /// be unloaded at all.
+    serving: Rc<dyn Fn() -> bool>,
     /// Which guest row this program keeps for it, or `None` for an organelle
     /// that cannot be hosted (one built before `code_abi.h` item 10). A row,
     /// not a pointer — see `native.rs`'s hosting tables.
@@ -287,7 +290,20 @@ impl Environment {
     fn close_organelle(&mut self, address: &Value) -> Result<(), String> {
         let row = address_row(address)?;
         match self.runtime_modules.get(row) {
-            Some(Some(_)) => {
+            Some(Some(organelle)) => {
+                // Refused while anything it holds is still working —
+                // unmapping code a thread is running in is a crash, not a
+                // risk. See `runtime.c`'s `code_runtime_unlink`, which this
+                // must match: a failure rather than a silent skip, so a host
+                // can say the application is still running instead of
+                // marking something stopped that is still answering.
+                if (organelle.serving)() {
+                    return Err(
+                        "this organelle is still working — stop what it holds before \
+                         unlinking it"
+                            .to_string(),
+                    );
+                }
                 self.release_organelle(row);
                 Ok(())
             }
@@ -884,10 +900,12 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                 let module = Rc::new(module);
                 let dispatching = Rc::clone(&module);
                 let draining = Rc::clone(&module);
+                let asking = Rc::clone(&module);
                 let organelle = RuntimeOrganelle {
                     dispatch: Rc::new(move |v| dispatching.dispatch(v)),
                     release: Rc::new(move || module.release()),
                     drain: Rc::new(move || draining.drain()),
+                    serving: Rc::new(move || asking.serving()),
                     guest,
                 };
                 let address = env.open_organelle(organelle);

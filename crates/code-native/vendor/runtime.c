@@ -1978,7 +1978,25 @@ static void release_organelle(long long row) {
  * while its code is still mapped, and only then is the mapping dropped.
  * Reversed, the release would be a call into unmapped memory. */
 void code_runtime_unlink(const CodeValue *address) {
-    if (!organelle_at(address)) {
+    NativeHandle *nh = organelle_at(address);
+    if (!nh) {
+        return;
+    }
+    /* **Refused while anything it holds is still working.** Unmapping code a
+     * thread is running in is not a risk to weigh, it is a crash; and an
+     * organelle that still answers "yes" to `code_native_serving` has one.
+     *
+     * The answer is an observation, not a promise: a door turns its own to
+     * no as the last act of its accepting thread, after that loop has
+     * exited, and counts requests taken but not yet answered separately. So
+     * a refusal here means something is genuinely still running.
+     *
+     * A failure rather than a silent skip, because the caller has to know.
+     * Told it did not happen, a host can say so and leave the application
+     * listed as running; told nothing, it would mark something stopped that
+     * is still answering on its own port. */
+    if (code_native_serving(nh)) {
+        fail("this organelle is still working — stop what it holds before unlinking it");
         return;
     }
     release_organelle(organelle_row(address));
@@ -1992,6 +2010,13 @@ void code_runtime_unlink(const CodeValue *address) {
  * `code_check_leaks` looks. */
 void code_runtime_unlink_all(void) {
     for (long long i = 0; i < runtime_organelle_count; i++) {
+        /* Left alone while it is still working, for the same reason `unlink`
+         * refuses: releasing its values and unmapping its code out from
+         * under a running thread is a crash on the way out. The process is
+         * ending anyway, so what is skipped costs nothing. */
+        if (runtime_organelles[i].handle && code_native_serving(runtime_organelles[i].handle)) {
+            continue;
+        }
         while (runtime_organelles[i].handle) {
             release_organelle(i);
         }

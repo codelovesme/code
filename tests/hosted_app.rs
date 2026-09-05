@@ -670,3 +670,117 @@ assert answer.heard
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// An application that is still working cannot be unloaded, and says so.
+///
+/// Unmapping code a thread is running in is not a risk to weigh, it is a
+/// crash. So `unlink` asks first — and the question is `code_abi.h` item 8,
+/// the same one that keeps a program alive past its last statement, asked of
+/// a held application rather than of an organelle. Its answer is computed
+/// from the organelles it holds, exactly as a program computes its own.
+///
+/// It refuses rather than skipping silently, and that matters: told nothing,
+/// a host would mark something stopped that is still answering on its own
+/// port.
+///
+/// Then the other half. Only the application knows what it opened, so it is
+/// told to close and does it itself — the host never touches an organelle it
+/// did not lend. And stopping a door is not instantaneous: `Stop` asks, and
+/// the accepting thread turns its own answer to no as its *last act*, after
+/// its loop has exited. So this asserts that the application becomes
+/// unloadable, not that it is unloadable the same instant.
+#[test]
+fn an_application_that_is_still_working_is_not_unloaded() {
+    let dir = temp_dir("working");
+    fs::create_dir_all(dir.join("native_modules")).expect("create module dir");
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/native_modules/net_server.so"),
+        dir.join("native_modules/net_server.so"),
+    )
+    .expect("copy the door the application will open for itself");
+
+    build(
+        &dir,
+        "guest",
+        r#"| An application that owns a real door, and knows how to shut it.
+link "native_modules/net_server.so" as door
+
+Impulse { particle } => {
+    return Pong { }
+}
+
+| What a host says when it is stopping this application. Only this
+| application knows what it opened, so only it can close it.
+Closing { } => {
+    emit Stop { } to door get s
+    return Closed { ok = s.ok }
+}
+
+emit Config { port = 0 } to door get c
+emit Listen { } to door get l
+assert l.ok
+"#,
+        code::BuildTarget::Shared,
+        "guest.so",
+    );
+    fs::write(
+        dir.join("main.code"),
+        r#"let app = null
+
+Start { } => {
+    link "./guest.so" as a
+    app = a
+    emit Wake { } to a get _
+    return Started { }
+}
+
+TryStop { } => {
+    unlink app
+    return Stopped { }
+}
+
+Close { } => {
+    emit Closing { } to app get c
+    return c
+}
+
+emit Start { } to this get s
+assert s._class = "Started"
+
+| Its door is open, so unloading it is refused — and answered, not ignored.
+emit TryStop { } to this get refused
+assert refused._class = "Exception"
+
+| Told to close, it closes what it opened.
+emit Close { } to this get closed
+assert closed.ok
+
+| And then it becomes unloadable. Not at once: the accepting thread turns
+| its own answer to no as its last act, so this waits for that to happen
+| rather than assuming it already has.
+let done = null
+loop attempt over [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] {
+    let spins = 0
+    loop {
+        spins = spins + 1
+        if spins > 300000 {
+            break
+        }
+    }
+    emit TryStop { } to this get answer
+    done = answer
+    if answer._class = "Stopped" {
+        break
+    }
+}
+assert done._class = "Stopped"
+"#,
+    )
+    .expect("write host");
+    run_both_ways(
+        &dir,
+        "an application was unloaded while still working, or never became stoppable",
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}

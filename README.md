@@ -866,6 +866,21 @@ release point ([`code_abi.h`](src/code_abi.h) item 9) and unloads it, so a
 program ends is released the same way, as part of the same sweep that
 releases everything else.
 
+**It refuses while anything the organelle holds is still working.** Unmapping
+code a thread is running in is not a risk to weigh, it is a crash — so
+`unlink` asks first, and the question is the same one that keeps a program
+alive past its last statement, asked of a held application rather than of an
+organelle. Its answer is an observation, not a promise: a door turns its own
+to no as the *last act* of its accepting thread, after that loop has exited.
+
+A refusal, not a silent skip. Told nothing, a host would mark something
+stopped that is still answering on its own port.
+
+Only the application knows what it opened, so a host that wants it gone tells
+*it* and lets it close its own organelles. And stopping a door is not
+instantaneous — `Stop` asks, and the thread finishes shortly after — so a
+host expecting to unload asks again rather than assuming.
+
 Four things are worth knowing before reaching for it:
 
 - **Organelles only.** A `.code` source would mean adding handlers while the

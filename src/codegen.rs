@@ -131,6 +131,7 @@ fn hide_internal_symbols(module: &Module<'_>, lib_mode: &LibraryMode) {
             "code_module_vars",
             "code_module_release",
             "code_module_drain",
+            "code_module_serving",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -3649,6 +3650,17 @@ impl<'a, 'm> Gen<'a, 'm> {
             LibraryMode::Static { prefix } => format!("{prefix}_"),
         };
 
+        // Taken before anything below, because `emit_cleanup` — which the
+        // release point runs — empties `native_links` on its way through.
+        let held: Vec<PointerValue<'a>> = self
+            .native_links
+            .values()
+            .filter_map(|link| match link {
+                NativeLink::Dynamic(slot) => Some(*slot),
+                NativeLink::Static { .. } => None,
+            })
+            .collect();
+
         // First, because all three entry points below call it and it defines
         // the guard global they share.
         let lazy_init = self.lazy_init_fn()?;
@@ -3839,6 +3851,72 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .build_call(inner, &[], "")
                     .map_err(|e| e.to_string())?;
                 self.builder.build_return(None).map_err(|e| e.to_string())?;
+            }
+        }
+
+        // Optional: whether anything this module holds is still working —
+        // `code_abi.h` item 8, asked of a library rather than of an organelle.
+        //
+        // A program already asks this of every organelle it holds, and stays
+        // up while any says yes; that is what keeps a server running past its
+        // last statement. A held application needs the same question asked
+        // *of it*, because whoever holds it has to know whether unloading it
+        // is safe — its code cannot be unmapped while a thread is still
+        // running in it.
+        //
+        // And the answer is an observation rather than a promise. A door
+        // turns its own answer to no as the last act of its accepting
+        // thread, after that loop has exited, and counts requests taken but
+        // not yet answered separately. So no here means the threads are
+        // finished and nothing is mid-flight — not merely that stopping was
+        // requested.
+        //
+        // What it cannot see is an organelle that started a thread and never
+        // reported working at all. Nothing can, from outside. The guarantee
+        // is "nothing this module holds says it is still working", which is
+        // exactly the bar a program's own exit already uses.
+        if matches!(lib_mode, LibraryMode::Shared) {
+            let handles = held;
+            if !handles.is_empty() {
+                let serving_fn = self.module.add_function(
+                    "code_module_serving",
+                    self.i32_ty.fn_type(&[], false),
+                    None,
+                );
+                let entry = self.context.append_basic_block(serving_fn, "entry");
+                self.builder.position_at_end(entry);
+                let zero = self.i32_ty.const_zero();
+                let mut any = self.context.bool_type().const_zero();
+                for slot in handles {
+                    let handle = self
+                        .builder
+                        .build_load(self.i8_ptr_ty, slot, "native_handle")
+                        .map_err(|e| e.to_string())?
+                        .into_pointer_value();
+                    let answer = self
+                        .builder
+                        .build_call(self.fn_native_serving, &[handle.into()], "serving")
+                        .map_err(|e| e.to_string())?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| "code_native_serving returned nothing".to_string())?
+                        .into_int_value();
+                    let is_serving = self
+                        .builder
+                        .build_int_compare(inkwell::IntPredicate::NE, answer, zero, "is_serving")
+                        .map_err(|e| e.to_string())?;
+                    any = self
+                        .builder
+                        .build_or(any, is_serving, "any_serving")
+                        .map_err(|e| e.to_string())?;
+                }
+                let widened = self
+                    .builder
+                    .build_int_z_extend(any, self.i32_ty, "serving_i32")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_return(Some(&widened))
+                    .map_err(|e| e.to_string())?;
             }
         }
 
