@@ -1547,6 +1547,22 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
         _ => return Ok(Value::Null),
     };
     match class.as_ref() {
+        // Whether this program is being held by another one — see
+        // `code_abi.h` item 10.
+        //
+        // Always false here, and not a divergence from `runtime.c`: an
+        // interpreted program cannot be a guest at all, because a guest is a
+        // loaded library. The question is about this run, not about the
+        // program, and for an interpreted run the answer is genuinely no.
+        //
+        // What it is for: an application that wants to behave differently
+        // held than alone can ask rather than being built twice. Its door is
+        // the usual reason — `net_server` on its own, a `membrane` when held
+        // — and `link` inside an `if` is how the choice is made.
+        "Hosted" => Ok(Value::Object(Rc::new(vec![
+            ("_class".to_string(), Value::Str("HostedResult".into())),
+            ("value".to_string(), Value::Bool(false)),
+        ]))),
         "Timestamp" => {
             // Whole seconds since the Unix epoch — the old language's
             // `Timestamp` did exactly this, and human-readable formatting

@@ -512,8 +512,9 @@ assert n.value = 3
 
 - **`to core`** dispatches to a handler compiled into the runtime itself.
   Core stays deliberately minimal: `Length` (of an Array, or of a Str in
-  characters — not bytes) and `Timestamp` (Unix seconds). Every core result
-  comes back as a *particle*, never a bare value.
+  characters — not bytes), `Timestamp` (Unix seconds), and
+  [`Hosted`](#hosted) (whether another program is holding this one). Every
+  core result comes back as a *particle*, never a bare value.
 - **`to this`** dispatches to a handler the program
   [defines itself](#handlers).
 - **`to <alias>`** dispatches to a [linked module](#modules).
@@ -946,6 +947,35 @@ denied. An organelle the host does not offer is not a failed `link` — it is an
 organelle that refuses: the guest links it and gets an `Exception` on first
 use, the way it would from a network that is not there. A host is never ended
 by its own policy.
+
+#### Hosted
+
+An application does not have to be built twice to be held. `Hosted` asks the
+runtime which of the two this run is:
+
+```
+emit Hosted to core get where
+
+if where.value {
+    link "membrane.so" as door        | held: the host stands behind the door
+} else {
+    link "net_server.so" as door      | alone: open the port
+}
+```
+
+One source, one binary, both lives. `link` inside an `if` is what makes it
+work — the choice is a value, so it can be made while running.
+
+The answer is about **this run**, not about the program. `code run` always
+says no, because an interpreted program cannot be a guest at all: a guest is
+a loaded library, and the interpreter never becomes one. The same source
+built with `--target shared` and handed to a host says yes, and says it from
+the first line — a host installs itself before the guest's first statement.
+
+It is worth asking only when the answer changes what the program *does*. A
+door is the usual reason. Behaviour that differs for no reason but where it
+is running is the thing this is not for: an application should mean the same
+thing in both places.
 
 ### A module may never end the program
 

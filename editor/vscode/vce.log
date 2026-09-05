@@ -1,0 +1,2 @@
+[43m[30m WARNING [39m[49m This extension consists of [1m317[22m files, out of which [1m164[22m are JavaScript files. For performance reasons, you should bundle your extension: [4mhttps://aka.ms/vscode-bundle-extension[24m. You should also exclude unnecessary files by adding them to your .vscodeignore: [4mhttps://aka.ms/vscode-vscodeignore[24m.
+

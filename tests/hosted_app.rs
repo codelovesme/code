@@ -864,3 +864,81 @@ assert more.seen = 2
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// An application can ask where it is running, and pick its door from the
+/// answer.
+///
+/// This is the one thing a guest is allowed to know about being held, and it
+/// exists for a single reason: a door. Alone, an application opens a port;
+/// held, it cannot, because a thread that outlives it cannot be unloaded. Two
+/// builds would solve that and break the rule the rest of this file defends,
+/// so instead `Hosted` makes it one build and a runtime decision.
+///
+/// The guest below asks and *records* the answer rather than acting on it, so
+/// the test can read back what it was told. Standalone it must say no in both
+/// output modes; the same `.so`, linked by a host, must say yes.
+#[test]
+fn an_application_can_ask_whether_it_is_being_held() {
+    let dir = temp_dir("hosted");
+
+    // The question, asked at the top level — before any handler runs, which
+    // is where an application would really ask it, on its way to choosing a
+    // door.
+    const ASKS: &str = r#"emit Hosted to core get where
+export let door = "net_server"
+if where.value { door = "membrane" }
+
+Where { } => {
+    return Answer { held = where.value, door = door }
+}
+"#;
+
+    build(&dir, "guest", ASKS, code::BuildTarget::Shared, "guest.so");
+
+    // Alone: no, and it reaches for a real port.
+    let alone = dir.join("alone.code");
+    fs::write(
+        &alone,
+        format!(
+            "{ASKS}\nemit Where to this get a\nassert not a.held\nassert a.door = \"net_server\"\n"
+        ),
+    )
+    .expect("write standalone");
+    let out = Command::new(env!("CARGO_BIN_EXE_code"))
+        .arg("run")
+        .arg("alone.code")
+        .current_dir(&dir)
+        .output()
+        .expect("spawn code run");
+    assert!(
+        out.status.success(),
+        "an application running on its own thinks it is held:\n{}",
+        stderr_of(&out)
+    );
+
+    // Held: yes, from the same file — and it picks the other door. The host
+    // asks twice around an `unlink`, because the answer comes from state the
+    // release point tears down, and a second link must still get it right.
+    fs::write(
+        dir.join("main.code"),
+        r#"Ask { } => {
+    link "guest.so" as app
+    emit Where { } to app get a
+    unlink app
+    return a
+}
+
+emit Ask { } to this get first
+assert first.held
+assert first.door = "membrane"
+
+emit Ask { } to this get second
+assert second.held
+assert second.door = "membrane"
+"#,
+    )
+    .expect("write host");
+    run_both_ways(&dir, "a held application does not know that it is held");
+
+    let _ = fs::remove_dir_all(&dir);
+}

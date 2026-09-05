@@ -686,6 +686,12 @@ void code_make_exception(CodeValue *out, const char *source, const char *message
     }
 }
 
+/* Defined with the rest of the hosting half further down, and declared here
+ * because `Hosted` is answered in core dispatch, which comes first in this
+ * file. A tentative definition, so the one below with its initialiser is the
+ * definition. */
+static const CodeHostVtable *code_host;
+
 void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
     /* `code_check_emittable` ran at the emit site, so a `_class` is here. A
      * non-Str one is not a class core knows, and core answers null like any
@@ -697,6 +703,30 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
     const CodeValue *class_val = find_field(particle, "_class");
     if (!class_val || class_val->tag != CODE_STR) {
         code_null(out);
+        return;
+    }
+
+    if (strcmp(class_val->str, "Hosted") == 0) {
+        /* Whether this program is being held by another one — see
+         * `code_abi.h` item 10. True exactly when a host installed itself,
+         * which it does before the first statement runs, so this answers
+         * correctly from the very first line.
+         *
+         * What it is for: an application that wants to behave differently
+         * held than alone can ask, rather than being built twice. Its door
+         * is the usual reason — `net_server` on its own, a `membrane` when
+         * held — and `link` inside an `if` is how the choice is made.
+         *
+         * The two output modes answer differently here and that is not a
+         * divergence: an interpreted program cannot be a guest at all (a
+         * guest is a loaded library), so `code run` always answers false.
+         * The question is about this run, not about the program.
+         *
+         * Must match interpreter.rs's `dispatch_core`. */
+        CodeValue answer = {0};
+        code_bool(&answer, code_host != NULL);
+        code_make_result(out, "HostedResult", &answer);
+        code_release(&answer);
         return;
     }
 
