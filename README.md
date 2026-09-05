@@ -513,7 +513,8 @@ assert n.value = 3
 - **`to core`** dispatches to a handler compiled into the runtime itself.
   Core stays deliberately minimal: `Length` (of an Array, or of a Str in
   characters — not bytes), `Timestamp` (Unix seconds), and
-  [`Hosted`](#hosted) (whether another program is holding this one). Every
+  [`Linked`](#linked) (whether this run is a module somebody linked, rather
+  than a program of its own). Every
   core result comes back as a *particle*, never a bare value.
 - **`to this`** dispatches to a handler the program
   [defines itself](#handlers).
@@ -755,7 +756,7 @@ assert shared.hidden = null       | private: an ordinary missing field
 ```
 
 `link` is top-level only for a source module. Cycles and duplicate links
-are errors. (An *organelle* may also be linked from inside a handler, while
+are errors. (An *module* may also be linked from inside a handler, while
 the program runs — see [Linking while the program runs](#linking-while-the-program-runs).)
 
 **Native modules** are shared libraries that provide handlers, written in C
@@ -773,7 +774,7 @@ emit Sum { value = [1, 2, 3] } to m get n
 assert n.value = 6
 ```
 
-### A name is an organelle
+### A name is a module
 
 A module has state — its settings, its connection — so linking one is not
 attaching a piece of code, it is bringing something into being. Two names are
@@ -787,16 +788,16 @@ emit Config { secret = "one" } to issuer  get _
 emit Config { secret = "two" } to verifier get _
 ```
 
-Two organelles, two secrets, neither aware of the other. An application
+Two modules, two secrets, neither aware of the other. An application
 wanting two databases writes two links and gets two.
 
-And a name is only ever one organelle: linking another under a name already
+And a name is only ever one module: linking another under a name already
 taken is refused before the program starts.
 
 Both halves of that were wrong until 2026-09-04, and neither said so. A
 repeated name silently replaced the earlier link, so particles went to
 whichever won and answered null for every class the other one handled. And
-linking one file twice gave two names for a single organelle — it looked like
+linking one file twice gave two names for a single module — it looked like
 two and behaved like one, so configuring the second changed what the first
 had already been set up to do.
 
@@ -804,7 +805,7 @@ Under the hood each link is loaded from its own in-memory image of the same
 file: the file on disk stays the single copy, nothing is written anywhere,
 and there is no limit beyond ordinary memory. On a system without that
 facility the older behaviour remains — one instance, shared — so a second
-link is a second name rather than a second organelle.
+link is a second name rather than a second module.
 
 A native module may also export **variables** (constants), read as ordinary
 fields on the alias. They are deep-copied into the host at `link` time, so
@@ -842,7 +843,7 @@ the same rule a source `link` follows.
 
 ### Linking while the program runs
 
-`link` inside a handler body opens an organelle the program only worked out
+`link` inside a handler body opens a module the program only worked out
 while running. The path is an expression rather than a quoted literal, and
 the name it binds is an ordinary variable holding an **address** rather than
 a compile-time alias — so it can be kept, passed around, and stored:
@@ -861,39 +862,39 @@ shared`, and a host can start it, talk to it, and stop it — without the
 application knowing it is a guest. It is the same source either way: run it
 on its own, or hand its `.so` to a host.
 
-`unlink` is what makes stopping mean something. It calls the organelle's
+`unlink` is what makes stopping mean something. It calls the module's
 release point ([`code_abi.h`](src/code_abi.h) item 9) and unloads it, so a
 `.code` guest gives back every block it owned. A guest still linked when the
 program ends is released the same way, as part of the same sweep that
 releases everything else.
 
-**It refuses while anything the organelle holds is still working.** Unmapping
+**It refuses while anything the module holds is still working.** Unmapping
 code a thread is running in is not a risk to weigh, it is a crash — so
 `unlink` asks first, and the question is the same one that keeps a program
 alive past its last statement, asked of a held application rather than of an
-organelle. Its answer is an observation, not a promise: a door turns its own
+module. Its answer is an observation, not a promise: a door turns its own
 to no as the *last act* of its accepting thread, after that loop has exited.
 
 A refusal, not a silent skip. Told nothing, a host would mark something
 stopped that is still answering on its own port.
 
 Only the application knows what it opened, so a host that wants it gone tells
-*it* and lets it close its own organelles. And stopping a door is not
+*it* and lets it close its own modules. And stopping a door is not
 instantaneous — `Stop` asks, and the thread finishes shortly after — so a
 host expecting to unload asks again rather than assuming.
 
 Four things are worth knowing before reaching for it:
 
-- **Organelles only.** A `.code` source would mean adding handlers while the
+- **Modules only.** A `.code` source would mean adding handlers while the
   program runs, and a `.a` is already part of the binary. Only a `.so`.
 - **The path is a path**, taken as written and relative to the working
   directory. A top-level `link` is resolved against the *file* that says it,
   which cannot work here: the path does not exist until the program runs, and
   a compiled binary carries no source tree to resolve against.
-- **Two links are two organelles**, even of the same file — see [A name is
-  an organelle](#a-name-is-an-organelle). So each has its own address, and
+- **Two links are two modules**, even of the same file — see [A name is
+  a module](#a-name-is-an-module). So each has its own address, and
   stopping one leaves the other running.
-- **An organelle that speaks first is heard.** Its queue joins the same list
+- **A module that speaks first is heard.** Its queue joins the same list
   a top-level `link` adds to, and leaves it again on `unlink` — so a door
   opened while the program runs is drained by the same loop, and holds the
   program open the same way. This was refused until 1.7.1, when choosing a
@@ -901,26 +902,26 @@ Four things are worth knowing before reaching for it:
 
 Everything that can go wrong here is a value, not the end of the program — a
 missing file, a stale address, the wrong kind of value. A program that opens
-organelles it worked out at runtime has to survive the ones it cannot open.
+modules it worked out at runtime has to survive the ones it cannot open.
 
-**A guest owns its organelles, unless the host says otherwise.** By default a
+**A guest owns its modules, unless the host says otherwise.** By default a
 hosted application opens its own — its own file, its own settings, isolated,
 exactly as it would running alone. Two applications wanting two databases get
 two, and neither can reach the other's.
 
-And it hears them. An organelle may speak without being asked, into a queue
+And it hears them. A module may speak without being asked, into a queue
 that a *program's* loop empties; a guest is a library whose stream ran once
 and returned, so nothing of its own ever would. Its pushes wake the host
 instead, and the host's own drain hands each guest its turn. One loop, no
 polling, and nothing at all while everyone is idle.
 
 **A host that wants a say takes it by answering.** Define an `Offer` handler
-and the host decides what a guest gets — its own organelle, a stand-in, or
+and the host decides what a guest gets — the host's own copy, a stand-in, or
 nothing. Write no such handler and the host furnishes nothing, which is how a
 host stays out of an application's business without saying so.
 
 The one thing a host has to answer for is the guest's **door**, because that
-is the one organelle an application cannot own and still be held: a door has
+is the one module an application cannot own and still be held: a door has
 a thread, a thread that outlives the application cannot be unloaded, and an
 application that cannot be unloaded never gives its memory back. So an
 application built to be held names [`membrane`](crates/modules/membrane) where
@@ -929,7 +930,7 @@ word in its manifest — and its host stands behind that name.
 
 The host answers in its own handlers. A guest's `link` arrives as
 `Offer { app, name }`, and each `emit` to what it was given arrives as
-`Organelle { app, name, particle }`:
+`Module { app, name, particle }`:
 
 ```
 Offer { app, name } => {
@@ -937,7 +938,7 @@ Offer { app, name } => {
     return Denied { }
 }
 
-Organelle { app, name, particle } => {
+Module { app, name, particle } => {
     if particle._class = "Listen" { return ListenResult { ok = true, port = 0 } }
     emit particle to net get answer
     return answer
@@ -945,39 +946,46 @@ Organelle { app, name, particle } => {
 ```
 
 `app` says which guest is asking, so one may be offered what another is
-denied. An organelle the host does not offer is not a failed `link` — it is an
-organelle that refuses: the guest links it and gets an `Exception` on first
+denied. A module the host does not offer is not a failed `link` — it is an
+module that refuses: the guest links it and gets an `Exception` on first
 use, the way it would from a network that is not there. A host is never ended
 by its own policy.
 
-#### Hosted
+#### Linked
 
-An application does not have to be built twice to be held. `Hosted` asks the
-runtime which of the two this run is:
+The one thing an application can ask about its own situation, and it is not
+a question about hosting: **am I a module somebody linked, or am I the
+program?**
 
 ```
-emit Hosted to core get where
+emit Linked to core get me
 
-if where.value {
-    link "membrane.so" as door        | held: the host stands behind the door
+if me.value {
+    link "membrane.so" as door        | a module: my linker stands behind it
 } else {
-    link "net_server.so" as door      | alone: open the port
+    link "net_server.so" as door      | the program: open the port
 }
 ```
 
-One source, one binary, both lives. `link` inside an `if` is what makes it
-work — the choice is a value, so it can be made while running.
+One source, one binary each way, both lives — `link` inside an `if` is what
+makes it a choice, since the answer is an ordinary value.
 
-The answer is about **this run**, not about the program. `code run` always
-says no, because an interpreted program cannot be a guest at all: a guest is
-a loaded library, and the interpreter never becomes one. The same source
-built with `--target shared` and handed to a host says yes, and says it from
-the first line — a host installs itself before the guest's first statement.
+**Answered from the build, not from anything at runtime.** A `--target
+shared` build is the only thing a linker reaches into, and it says so in its
+own start-up, before its first statement. Nothing has to be installed, nobody
+has to tell it, and no state is kept. `code run` always says no: an
+interpreted run is a program.
 
-It is worth asking only when the answer changes what the program *does*. A
-door is the usual reason. Behaviour that differs for no reason but where it
-is running is the thing this is not for: an application should mean the same
-thing in both places.
+**Ask it when the answer changes what is correct**, which is a short list. A
+module that leaves a thread running past its release point can never be
+unloaded, so a door of your own is the usual reason. Ending the process and
+reading command-line arguments are the same kind of thing — right for a
+program, wrong for a part of one.
+
+**It deliberately does not say whether anyone is standing behind you.** That
+is not this layer's question. A module finds that out by asking the thing
+that would need an answer: [`membrane`](crates/modules/membrane) tells a
+program plainly when no host is there.
 
 ### A module may never end the program
 

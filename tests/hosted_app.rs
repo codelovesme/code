@@ -222,9 +222,9 @@ loop i over [1, 2, 3, 4, 5] {
 /// Two applications at once, each its own address, each stopped on its own.
 ///
 /// Two *files*, deliberately: the dynamic loader hands back the same mapping
-/// for a path already open, so linking one file twice is one organelle under
+/// for a path already open, so linking one file twice is one module under
 /// two names (which `tests/runtime_link_basic.code` covers). Separate guests
-/// are separate organelles, and this is where "the host talks to each one
+/// are separate modules, and this is where "the host talks to each one
 /// separately" is actually tested.
 #[test]
 fn two_guests_are_held_and_stopped_independently() {
@@ -279,7 +279,7 @@ assert ra.text = "hello one"
 emit AskB { who = "two" } to this get rb
 assert rb.text = "hello two"
 
-| Separate files, so separate organelles: the two addresses are not equal.
+| Separate files, so separate modules: the two addresses are not equal.
 assert not a = b
 
 emit StopA { } to this get stopped
@@ -338,15 +338,15 @@ assert r.text = "hello x"
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// A guest gets the *host's* organelles, not its own.
+/// A guest gets the *host's* modules, not its own.
 ///
 /// This is the constraint the whole design exists for. The guest links an
-/// organelle by name and uses it, exactly as it would running alone — and
+/// module by name and uses it, exactly as it would running alone — and
 /// what it reaches is whatever the host chose to put there. The numbers are
 /// picked so the two are impossible to confuse: the real module doubles, the
 /// host's stand-in multiplies by ten.
 #[test]
-fn a_guest_reaches_the_hosts_organelles_not_its_own() {
+fn a_guest_reaches_the_hosts_modules_not_its_own() {
     let dir = temp_dir("offer");
     module("test_math", &dir.join("native_modules/test_math.so"));
 
@@ -387,7 +387,7 @@ Work { value } => {
     return Denied { }
 }
 
-Organelle { app, name, particle } => {
+Module { app, name, particle } => {
     if particle._class = "Double" { return DoubleResult { value = particle.value * 10 } }
     return Denied { }
 }
@@ -406,13 +406,13 @@ assert r.value = 30
     .expect("write host");
     run_both_ways(
         &dir,
-        "a hosted guest reached its own organelle, not the host's",
+        "a hosted guest reached its own module, not the host's",
     );
 
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// A host that refuses an organelle survives refusing it.
+/// A host that refuses a module survives refusing it.
 ///
 /// The obvious reading of "strict" would be to fail the guest's `link`. That
 /// cannot be it: a guest's top-level `link` failing ends the guest, and a
@@ -420,10 +420,10 @@ assert r.value = 30
 /// host would be killed by its own policy, by a guest it deliberately said no
 /// to. Measured, before this behaved otherwise.
 ///
-/// So a refused organelle is one that refuses. The guest links it and finds
+/// So a refused module is one that refuses. The guest links it and finds
 /// out on first use, the way it would find out about an unreachable network.
 #[test]
-fn a_refused_organelle_refuses_rather_than_ending_the_host() {
+fn a_refused_module_refuses_rather_than_ending_the_host() {
     let dir = temp_dir("refused");
     module("test_math", &dir.join("native_modules/test_math.so"));
 
@@ -458,11 +458,11 @@ Run { } => {
 emit Run { } to this get r
 assert r._class = "Done"
 assert r.answer = "Exception"
-assert r.message = "organelle 'test_math' is not offered by the host"
+assert r.message = "module 'test_math' is not offered by the host"
 "#,
     )
     .expect("write host");
-    run_both_ways(&dir, "a refused organelle did not refuse cleanly");
+    run_both_ways(&dir, "a refused module did not refuse cleanly");
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -504,7 +504,7 @@ Work { value } => {
     return Denied { }
 }
 
-Organelle { app, name, particle } => {
+Module { app, name, particle } => {
     return DoubleResult { value = 1 }
 }
 
@@ -529,7 +529,7 @@ assert no.answer = "Exception"
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// The name a host matches on is the organelle's, not the file's.
+/// The name a host matches on is the module's, not the file's.
 ///
 /// A guest is compiled against whatever path its module resolver produced,
 /// and in a real project that is a versioned, platform-suffixed asset deep
@@ -541,7 +541,7 @@ assert no.answer = "Exception"
 /// `net_server-linux-x86_64` and was refused by a host that offers
 /// `net_server`.
 #[test]
-fn a_host_sees_an_organelle_by_name_whatever_path_the_guest_carries() {
+fn a_host_sees_an_module_by_name_whatever_path_the_guest_carries() {
     let dir = temp_dir("naming");
     let nested = dir.join(".code/modules/test_math/9.9.9");
     module("test_math", &nested.join("test_math-linux-x86_64.so"));
@@ -567,7 +567,7 @@ Offer { app, name } => {
     return Denied { }
 }
 
-Organelle { app, name, particle } => {
+Module { app, name, particle } => {
     if name = "test_math" { return DoubleResult { value = particle.value * 10 } }
     return Denied { }
 }
@@ -584,30 +584,30 @@ assert r.value = 30
 "#,
     )
     .expect("write host");
-    run_both_ways(&dir, "the host did not recognise the organelle by name");
+    run_both_ways(&dir, "the host did not recognise the module by name");
 
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// A guest owns its own organelles, and hears what they say.
+/// A guest owns its own modules, and hears what they say.
 ///
 /// Two things at once, and they are the same thing. The host installs itself
 /// on every guest, but a host with no `Offer` handler furnishes nothing — so
-/// the guest opens its own organelle, its own file, its own settings, just as
+/// the guest opens its own module, its own file, its own settings, just as
 /// it would running alone.
 ///
-/// And then it hears it. An organelle may speak without being asked, into a
+/// And then it hears it. A module may speak without being asked, into a
 /// queue that a *program's* loop empties — but a guest is a library whose
 /// stream ran once and returned, so nothing of its own would ever empty it.
 /// Its pushes ring the host's bell instead, and the host's own drain hands
 /// the guest its turn. One loop, no polling, and nothing at all while
 /// everyone is idle.
 ///
-/// A refused port is the cheapest way to make an organelle speak: no network
+/// A refused port is the cheapest way to make a module speak: no network
 /// is needed, and `http_client` reports the refusal as an `Exception` it
 /// pushes rather than as the answer it returns.
 #[test]
-fn a_guest_owns_its_organelles_and_hears_them() {
+fn a_guest_owns_its_modules_and_hears_them() {
     let dir = temp_dir("owned");
     module("http_client", &dir.join("native_modules/http_client.so"));
 
@@ -637,7 +637,7 @@ Exception { source, message } => {
     fs::write(
         dir.join("main.code"),
         r#"| A host that offers nothing: no `Offer` handler at all, so the guest
-| below opens its own organelle rather than being furnished one.
+| below opens its own module rather than being furnished one.
 let app = null
 
 Start { } => {
@@ -659,7 +659,7 @@ Ask { } => {
 emit Start { } to this get s
 assert s._class = "Started"
 
-| Its own organelle answered — a refused connection, not a refusal to lend.
+| Its own module answered — a refused connection, not a refusal to lend.
 emit Work { } to this get done
 assert not done.ok
 
@@ -669,10 +669,7 @@ assert answer.heard
 "#,
     )
     .expect("write host");
-    run_both_ways(
-        &dir,
-        "a guest did not own or did not hear its own organelle",
-    );
+    run_both_ways(&dir, "a guest did not own or did not hear its own module");
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -682,15 +679,15 @@ assert answer.heard
 /// Unmapping code a thread is running in is not a risk to weigh, it is a
 /// crash. So `unlink` asks first — and the question is `code_abi.h` item 8,
 /// the same one that keeps a program alive past its last statement, asked of
-/// a held application rather than of an organelle. Its answer is computed
-/// from the organelles it holds, exactly as a program computes its own.
+/// a held application rather than of a module. Its answer is computed
+/// from the modules it holds, exactly as a program computes its own.
 ///
 /// It refuses rather than skipping silently, and that matters: told nothing,
 /// a host would mark something stopped that is still answering on its own
 /// port.
 ///
 /// Then the other half. Only the application knows what it opened, so it is
-/// told to close and does it itself — the host never touches an organelle it
+/// told to close and does it itself — the host never touches a module it
 /// did not lend. And stopping a door is not instantaneous: `Stop` asks, and
 /// the accepting thread turns its own answer to no as its *last act*, after
 /// its loop has exited. So this asserts that the application becomes
@@ -866,26 +863,27 @@ assert more.seen = 2
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// An application can ask where it is running, and pick its door from the
-/// answer.
+/// An application can ask which kind of build it is, and pick its door from
+/// the answer.
 ///
-/// This is the one thing a guest is allowed to know about being held, and it
-/// exists for a single reason: a door. Alone, an application opens a port;
-/// held, it cannot, because a thread that outlives it cannot be unloaded. Two
-/// builds would solve that and break the rule the rest of this file defends,
-/// so instead `Hosted` makes it one build and a runtime decision.
+/// Not a question about hosting — a `--target shared` build says yes whoever
+/// links it — but it is what makes one source hostable. A door of your own
+/// leaves a thread running past the release point, and a module with such a
+/// thread can never be unloaded. Two builds would solve that and break the
+/// rule the rest of this file defends; `Linked` makes it one build instead.
 ///
 /// The guest below asks and *records* the answer rather than acting on it, so
-/// the test can read back what it was told. Standalone it must say no in both
-/// output modes; the same `.so`, linked by a host, must say yes.
+/// the test can read back what it was told. Built as a program it must say no
+/// in both output modes; the same source built `--target shared` must say
+/// yes.
 #[test]
-fn an_application_can_ask_whether_it_is_being_held() {
+fn an_application_can_ask_which_kind_of_build_it_is() {
     let dir = temp_dir("hosted");
 
     // The question, asked at the top level — before any handler runs, which
     // is where an application would really ask it, on its way to choosing a
     // door.
-    const ASKS: &str = r#"emit Hosted to core get where
+    const ASKS: &str = r#"emit Linked to core get where
 export let door = "net_server"
 if where.value { door = "membrane" }
 
@@ -913,13 +911,13 @@ Where { } => {
         .expect("spawn code run");
     assert!(
         out.status.success(),
-        "an application running on its own thinks it is held:\n{}",
+        "a program build thinks it was linked:\n{}",
         stderr_of(&out)
     );
 
-    // Held: yes, from the same file — and it picks the other door. The host
-    // asks twice around an `unlink`, because the answer comes from state the
-    // release point tears down, and a second link must still get it right.
+    // Linked: yes, from the same file — and it picks the other door. Asked
+    // twice around an `unlink`, because a second link of the same file must
+    // still get it right.
     fs::write(
         dir.join("main.code"),
         r#"Ask { } => {
@@ -939,7 +937,7 @@ assert second.door = "membrane"
 "#,
     )
     .expect("write host");
-    run_both_ways(&dir, "a held application does not know that it is held");
+    run_both_ways(&dir, "a linked module does not know that it was linked");
 
     let _ = fs::remove_dir_all(&dir);
 }

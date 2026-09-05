@@ -1,7 +1,7 @@
 # Answering a guest's own `link`
 
 **Shipped 2026-09-04.** A program that opens another program while it runs can
-now furnish that guest's organelles instead of letting it open its own. This
+now furnish that guest's modules instead of letting it open its own. This
 document is kept because the bug that held it up for two rewrites is worth
 never repeating.
 
@@ -16,7 +16,7 @@ to take it back.
 Three constraints, in the owner's words:
 
 1. The guest's source does not change. The same file runs alone or hosted.
-2. The guest shares the host's organelles rather than opening its own.
+2. The guest shares the host's modules rather than opening its own.
 3. Stopping the guest reclaims everything, including whatever it was lent.
 
 ## The shape
@@ -34,12 +34,12 @@ exactly the statements this intercepts.
 dispatch, exported values and `serving` all route through it.
 
 **The host's answers are its own handlers**, which is the point: nothing in
-the runtime knows what an organelle is for. A guest's `link` becomes
+the runtime knows what a module is for. A guest's `link` becomes
 `Offer { app, name }` and each `emit` to a stand-in becomes
-`Organelle { app, name, particle }`, both asked of the hosting program's
+`Module { app, name, particle }`, both asked of the hosting program's
 dispatch chain — `code_set_program_dispatch` hands that chain to `runtime.c`
 at startup, since only codegen knows its name. `app` is the path the host
-linked the guest from; `name` is the organelle's stem, so a host handler reads
+linked the guest from; `name` is the module's stem, so a host handler reads
 `if name = "net_server"` rather than matching whatever spelling was baked into
 the guest. `native.rs` mirrors all of it for `code run`.
 
@@ -49,8 +49,8 @@ Three rules that are not obvious and are load-bearing:
   not offer that", and the guest's `link` then fails — but a guest's top-level
   `link` failing ends the guest, and a fatal error inside a module ends the
   process it was loaded into. A host would be killed by its own policy, by a
-  guest it deliberately said no to. So a refused organelle is handed over *as
-  an organelle that refuses*: the guest links it and every particle it sends
+  guest it deliberately said no to. So a refused module is handed over *as
+  a module that refuses*: the guest links it and every particle it sends
   gets an `Exception`, which is the language's rule everywhere else.
 - **The particle a guest sends is deep-copied**, not `code_copy`d, on the way
   into the host's handlers. It was built by the guest's own copy of the

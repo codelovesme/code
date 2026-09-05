@@ -1,4 +1,4 @@
-| A name is one organelle. Linking another under the same name is refused
+| A name is one module. Linking another under the same name is refused
 | before the program starts — it used to compile, run, and silently send
 | `m`'s particles to whichever link won.
 link "native_modules/test_math.so" as m

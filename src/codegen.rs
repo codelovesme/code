@@ -365,7 +365,7 @@ pub fn compile_to_object(
     );
     // The three runtime-linking entry points (`ast::Stmt::LinkRuntime`).
     // All three take values rather than a handle, because a runtime-linked
-    // organelle has no compile-time alias to hold a handle for — the program
+    // module has no compile-time alias to hold a handle for — the program
     // holds an address value instead.
     let fn_runtime_link = module.add_function(
         "code_runtime_link",
@@ -386,7 +386,10 @@ pub fn compile_to_object(
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
-    // Organelles linked while running: their queues, and whether one of them
+    // What `Linked` answers. Called only from a library's start-up, which is
+    // the whole of how the runtime knows which kind of build it is in.
+    let fn_set_linked = module.add_function("code_set_linked", void_ty.fn_type(&[], false), None);
+    // Modules linked while running: their queues, and whether one of them
     // is still working. The compile-time list cannot answer either question.
     let fn_runtime_drain_speakers = module.add_function(
         "code_runtime_drain_speakers",
@@ -739,6 +742,7 @@ pub fn compile_to_object(
         fn_runtime_drain_speakers,
         fn_runtime_any_serving,
         fn_set_program_dispatch,
+        fn_set_linked,
         fn_runtime_dispatch,
         fn_native_dispatch,
         fn_native_vars_object,
@@ -958,12 +962,14 @@ struct Gen<'a, 'm> {
     fn_runtime_unlink_all: FunctionValue<'a>,
     fn_runtime_drain_guests: FunctionValue<'a>,
     /// `runtime.c`'s `code_runtime_drain_speakers` — the inbound queues of
-    /// organelles linked while the program ran. See `gen_drain_body`.
+    /// modules linked while the program ran. See `gen_drain_body`.
     fn_runtime_drain_speakers: FunctionValue<'a>,
     /// `runtime.c`'s `code_runtime_any_serving` — whether one of those is
     /// still working. See `gen_keep_alive`.
     fn_runtime_any_serving: FunctionValue<'a>,
     fn_set_program_dispatch: FunctionValue<'a>,
+    /// `runtime.c`'s `code_set_linked` — see `lazy_init_fn`, its only caller.
+    fn_set_linked: FunctionValue<'a>,
     fn_runtime_dispatch: FunctionValue<'a>,
     fn_native_dispatch: FunctionValue<'a>,
     fn_native_vars_object: FunctionValue<'a>,
@@ -1080,7 +1086,7 @@ struct Gen<'a, 'm> {
     /// ordinary call rather than anything the emit site has to know about.
     dispatch_fn: Option<FunctionValue<'a>>,
     /// Whether this program contains a `link` that runs while it does. Such
-    /// a program may hold organelles nothing here can see, so its drain has
+    /// a program may hold modules nothing here can see, so its drain has
     /// to be called even when it linked none of its own.
     links_at_runtime: bool,
     /// The generated `_code_dispatch_base_<depth>` chain, one per level of
@@ -1529,7 +1535,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             return Ok(());
         };
         // Nothing to drain from, so don't pay a call per statement — unless
-        // this program can open organelles while it runs, in which case what
+        // this program can open modules while it runs, in which case what
         // there is to drain is not knowable from here. A guest is a library:
         // it has queues and no loop of its own, so this program's drain is
         // the only thing that will ever empty them.
@@ -1706,14 +1712,14 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.builder.position_at_end(entry);
 
         // Guests first, and before the early return below: a host may hold
-        // applications while linking no speaking organelle of its own, and
+        // applications while linking no speaking module of its own, and
         // its guests' queues still have to be emptied. This is where the one
         // park/drain loop reaches them — no polling anywhere.
         self.builder
             .build_call(self.fn_runtime_drain_guests, &[], "")
             .map_err(|e| e.to_string())?;
 
-        // And organelles this program linked while running, which are not in
+        // And modules this program linked while running, which are not in
         // the list below because they were not knowable when it was built. A
         // door chosen at runtime pushes into a queue only this reaches.
         self.builder
@@ -3033,11 +3039,11 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// slot because the alias is a compile-time name every `emit` to it can
     /// address directly. Here the alias is an ordinary binding holding an
     /// address value, so it lives in a slot like any other `let` — and the
-    /// same `link` statement running twice opens two organelles and binds
+    /// same `link` statement running twice opens two modules and binds
     /// two different addresses, which a global could not represent.
     fn gen_link_runtime(&mut self, alias: &str, path: &Expr) -> Result<(), String> {
         let path_ptr = self.gen_expr(path)?;
-        let temp = self.alloc_temp("organelle_address")?;
+        let temp = self.alloc_temp("module_address")?;
         self.builder
             .build_call(self.fn_runtime_link, &[temp.into(), path_ptr.into()], "")
             .map_err(|e| e.to_string())?;
@@ -3875,7 +3881,7 @@ impl<'a, 'm> Gen<'a, 'm> {
 
         // Optional: this module's own inbound drain, run once on request.
         //
-        // A library has queues — an organelle it linked may push — but no
+        // A library has queues — a module it linked may push — but no
         // loop of its own to empty them: its stream is `_code_init`, which
         // ran once and returned. So whoever opened it does the emptying, and
         // this is where they reach in.
@@ -3903,9 +3909,9 @@ impl<'a, 'm> Gen<'a, 'm> {
         }
 
         // Optional: whether anything this module holds is still working —
-        // `code_abi.h` item 8, asked of a library rather than of an organelle.
+        // `code_abi.h` item 8, asked of a library rather than of a module.
         //
-        // A program already asks this of every organelle it holds, and stays
+        // A program already asks this of every module it holds, and stays
         // up while any says yes; that is what keeps a server running past its
         // last statement. A held application needs the same question asked
         // *of it*, because whoever holds it has to know whether unloading it
@@ -3919,7 +3925,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         // finished and nothing is mid-flight — not merely that stopping was
         // requested.
         //
-        // What it cannot see is an organelle that started a thread and never
+        // What it cannot see is a module that started a thread and never
         // reported working at all. Nothing can, from outside. The guarantee
         // is "nothing this module holds says it is still working", which is
         // exactly the bar a program's own exit already uses.
@@ -4044,6 +4050,13 @@ impl<'a, 'm> Gen<'a, 'm> {
         // initialization would otherwise re-enter this and recurse forever.
         self.builder
             .build_store(flag.as_pointer_value(), self.i32_ty.const_int(1, false))
+            .map_err(|e| e.to_string())?;
+        // This function exists only in a library build — it is what a linker
+        // reaches this code through — so reaching it is itself the answer to
+        // `Linked`. Said before the stream runs, because the first statement
+        // may already be the one asking.
+        self.builder
+            .build_call(self.fn_set_linked, &[], "")
             .map_err(|e| e.to_string())?;
         self.builder
             .build_call(self.stream_fn, &[], "")

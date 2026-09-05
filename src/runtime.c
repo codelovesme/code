@@ -686,11 +686,17 @@ void code_make_exception(CodeValue *out, const char *source, const char *message
     }
 }
 
-/* Defined with the rest of the hosting half further down, and declared here
- * because `Hosted` is answered in core dispatch, which comes first in this
- * file. A tentative definition, so the one below with its initialiser is the
- * definition. */
-static const CodeHostVtable *code_host;
+/* Whether this run is a linked module rather than a program of its own —
+ * what `Linked` answers, just above.
+ *
+ * Set once, from the generated start-up of a `--target shared` build, before
+ * a single statement of it runs (see codegen.rs's `lazy_init_fn`). Nothing
+ * else writes it, and nothing ever clears it: what a build *is* does not
+ * change while it runs. Zero for a program and for the interpreter, which is
+ * the right answer for both. */
+static int code_linked = 0;
+
+void code_set_linked(void) { code_linked = 1; }
 
 void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
     /* `code_check_emittable` ran at the emit site, so a `_class` is here. A
@@ -706,26 +712,34 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
         return;
     }
 
-    if (strcmp(class_val->str, "Hosted") == 0) {
-        /* Whether this program is being held by another one — see
-         * `code_abi.h` item 10. True exactly when a host installed itself,
-         * which it does before the first statement runs, so this answers
-         * correctly from the very first line.
+    if (strcmp(class_val->str, "Linked") == 0) {
+        /* Whether this run is a module another program linked, rather than a
+         * program of its own.
          *
-         * What it is for: an application that wants to behave differently
-         * held than alone can ask, rather than being built twice. Its door
-         * is the usual reason — `net_server` on its own, a `membrane` when
-         * held — and `link` inside an `if` is how the choice is made.
+         * Answered from the build, not from anything at runtime: `--target
+         * shared` produces something to be linked and says so in its own
+         * start-up, and no other target does. Nobody has to install
+         * anything, tell it anything, or be present for it to be right.
          *
-         * The two output modes answer differently here and that is not a
-         * divergence: an interpreted program cannot be a guest at all (a
-         * guest is a loaded library), so `code run` always answers false.
-         * The question is about this run, not about the program.
+         * What it is for: the same source can be built both ways, and a few
+         * things are only correct in one of them. Opening a listening socket
+         * of your own is the usual one — a module that leaves a thread
+         * running past its release point can never be unloaded, so a module
+         * that may be linked reaches for a door its linker stands behind
+         * instead. Reading command-line arguments and ending the process are
+         * the same kind of thing: correct for a program, wrong for a part of
+         * one.
+         *
+         * What it deliberately does *not* say is whether anyone is standing
+         * behind you. That is not this layer's question, and a module asks
+         * it of the thing that would need an answer.
+         *
+         * `code run` always says no: an interpreted run is a program.
          *
          * Must match interpreter.rs's `dispatch_core`. */
         CodeValue answer = {0};
-        code_bool(&answer, code_host != NULL);
-        code_make_result(out, "HostedResult", &answer);
+        code_bool(&answer, code_linked != 0);
+        code_make_result(out, "LinkedResult", &answer);
         code_release(&answer);
         return;
     }
@@ -887,14 +901,14 @@ typedef struct {
      * file behind it, so closing this early would let a later instance be
      * handed the same identity and deduplicated into this one. */
     int image_fd;
-    /* The `dlopen` result, kept only so a runtime-linked organelle can be
+    /* The `dlopen` result, kept only so a runtime-linked module can be
      * unloaded again (`code_runtime_unlink`). NULL for a `.a`, which was
      * never opened. A top-level `link` never reads it: that module stays
      * mapped for the life of the process, which is what lets an exported
      * value's key strings be borrowed rather than copied (see
      * `code_native_vars_object`). */
     void *lib;
-    /* Set when this organelle was supplied by a host rather than opened from
+    /* Set when this module was supplied by a host rather than opened from
      * a file (`code_abi.h` item 10). Every crossing below — dispatch,
      * exported values, whether it is still serving — goes through `host`
      * instead of the `dlsym`'d pointers above, which are all NULL then. */
@@ -907,7 +921,7 @@ typedef struct {
     void (*module_release)(void);
     /* Optional `code_module_drain` — runs this module's own inbound drain
      * once. A library has queues but no loop of its own to empty them, so a
-     * host calls this when the guest's organelles have pushed something. */
+     * host calls this when the guest's modules have pushed something. */
     void (*module_drain)(void);
     /* Set at cleanup: the program is done, and a push arriving after it is
      * dropped rather than queued. Without it a module thread still running
@@ -954,12 +968,12 @@ void code_module_set_host(const CodeHostVtable *host, void *host_ctx) {
     code_host_ctx = host_ctx;
 }
 
-/* Builds a handle around an organelle the host supplied. No `dlopen`, no
+/* Builds a handle around a module the host supplied. No `dlopen`, no
  * symbols, no mapping of its own: everything this handle can do, it does by
  * calling back through the host. */
 static NativeHandle *host_native(const CodeHostModule *supplied, char *err, size_t errlen) {
     if (!supplied->dispatch || !supplied->release) {
-        snprintf(err, errlen, "the host offered an organelle with no dispatch");
+        snprintf(err, errlen, "the host offered a module with no dispatch");
         return NULL;
     }
     NativeHandle *nh = malloc(sizeof(NativeHandle));
@@ -969,10 +983,10 @@ static NativeHandle *host_native(const CodeHostModule *supplied, char *err, size
     memset(nh, 0, sizeof *nh);
     nh->from_host = 1;
     nh->host = *supplied;
-    /* A host-supplied organelle never pushes. It cannot: the queue and its
+    /* A host-supplied module never pushes. It cannot: the queue and its
      * drain belong to *this* module's runtime, while the thing actually
      * doing the work lives in the host's. Anything that has to speak first
-     * is the host's own organelle, spoken for on the host's side. */
+     * is the host's own module, spoken for on the host's side. */
     nh->has_inbound = 0;
     code_mutex_init(&nh->lock);
     return nh;
@@ -991,7 +1005,7 @@ static NativeHandle *host_native(const CodeHostModule *supplied, char *err, size
 /* Opens `path` as an object of its own, distinct from every other load of
  * the same file.
  *
- * **A name is an organelle, and two names are two organelles.** A module has
+ * **A name is a module, and two names are two modules.** A module has
  * state — its settings, its connection — so linking one twice is not two
  * views of one thing, it is two things. The loader does not see it that way:
  * asked for a file it already has, it hands back what it already loaded, and
@@ -1015,7 +1029,7 @@ static int module_image(const char *path) {
     if (src < 0) {
         return -1;
     }
-    int image = memfd_create("code-organelle", MFD_CLOEXEC);
+    int image = memfd_create("code-module", MFD_CLOEXEC);
     if (image < 0) {
         close(src);
         return -1;
@@ -1103,7 +1117,7 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
      * that is exactly the promise that broke: a field added to this struct
      * later was set on the other two construction paths and missed here, so
      * a freshly opened module inherited whatever the last freed handle had
-     * left in that byte. It read as "this organelle was supplied by a host",
+     * left in that byte. It read as "this module was supplied by a host",
      * and the module was never called at all — the program dispatched into
      * the wrong thing entirely, only when the allocator happened to hand
      * back a dirty block, which made it look like a layout-sensitive
@@ -1133,7 +1147,7 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     /* Optional as well, and only a `.code` library has one: the point at
      * which this module may let go of its top-level values (item 9). */
     nh->module_release = (void (*)(void))dlsym(handle, "code_module_release");
-    /* And the point at which it hands out what its own organelles pushed.
+    /* And the point at which it hands out what its own modules pushed.
      * Only a `.code` library has one, and only a host ever calls it. */
     nh->module_drain = (void (*)(void))dlsym(handle, "code_module_drain");
 
@@ -1521,7 +1535,7 @@ void code_native_dispatch(void *handle, CodeValue *out, const CodeValue *particl
         /* Only reachable through a stale alias: a library that was released
          * and then dispatched to without being initialised again. Saying so
          * beats dereferencing the closed handle. */
-        fail("this organelle was released");
+        fail("this module was released");
         return;
     }
     NativeHandle *nh = (NativeHandle *)handle;
@@ -1531,20 +1545,20 @@ void code_native_dispatch(void *handle, CodeValue *out, const CodeValue *particl
     nh->release(&result);
 }
 
-/* ---- Organelles linked while the program is running ---------------------
+/* ---- Modules linked while the program is running ---------------------
  *
  * `link <expr> as <name>` inside a handler (see `ast::Stmt::LinkRuntime`).
- * Everything below exists because such an organelle has no alias to be found
+ * Everything below exists because such a module has no alias to be found
  * by: the program holds it as an ordinary value and may pass it around, so
  * this table is the only thing that outlives the binding.
  *
  * Rows are appended and never reused, even after `unlink` empties one. Reuse
  * would turn a stale address into a *live* one naming an unrelated
- * organelle — the exact failure this table exists to prevent — and an
+ * module — the exact failure this table exists to prevent — and an
  * ever-growing array of NULLs is much the cheaper problem.
  *
  * Not locked. Every one of these runs on the thread executing the program's
- * statements, the same thread that drains the inbound ring, and an organelle
+ * statements, the same thread that drains the inbound ring, and a module
  * that could speak from a thread of its own is refused at link time. */
 typedef struct HostedGuest HostedGuest;
 typedef struct {
@@ -1553,54 +1567,54 @@ typedef struct {
      * of the same file is matched against. NULL once the row is empty. */
     char *path;
 
-    /* Which guest row this program keeps for it, or -1 for an organelle that
+    /* Which guest row this program keeps for it, or -1 for a module that
      * cannot be hosted. A row, not a pointer — see the hosting tables. */
     long long guest;
-} RuntimeOrganelle;
+} RuntimeModule;
 
-static RuntimeOrganelle *runtime_organelles = NULL;
-static long long runtime_organelle_count = 0;
-static long long runtime_organelle_cap = 0;
+static RuntimeModule *runtime_modules = NULL;
+static long long runtime_module_count = 0;
+static long long runtime_module_cap = 0;
 
 /* The field an address value carries, kept in step with
- * `interpreter::ORGANELLE_FIELD` — the two backends mint the same value. */
-#define CODE_ORGANELLE_FIELD "_organelle"
+ * `interpreter::MODULE_FIELD` — the two backends mint the same value. */
+#define CODE_MODULE_FIELD "_module"
 
 /* The row an address names, or -1 with the reason failed. Strict about the
  * shape on purpose: an address is something the runtime minted, so anything
  * else is a program mistake worth naming precisely rather than a lookup that
  * quietly finds nothing. */
-static long long organelle_row(const CodeValue *address) {
+static long long module_row(const CodeValue *address) {
     if (address->tag != CODE_OBJECT) {
-        fail("expected an organelle address (from a 'link' inside a handler)");
+        fail("expected a module address (from a 'link' inside a handler)");
         return -1;
     }
-    const CodeValue *row = find_field(address, CODE_ORGANELLE_FIELD);
+    const CodeValue *row = find_field(address, CODE_MODULE_FIELD);
     if (!row || row->tag != CODE_NUMBER || row->number < 0) {
-        fail("expected an organelle address (from a 'link' inside a handler)");
+        fail("expected a module address (from a 'link' inside a handler)");
         return -1;
     }
     return (long long)row->number;
 }
 
-/* The organelle a valid address names, or NULL with the reason failed. Both
+/* The module a valid address names, or NULL with the reason failed. Both
  * readings of "nothing here" — a row past the end and a row `unlink` emptied
  * — are the same mistake seen from the program's side, so they read alike. */
-static NativeHandle *organelle_at(const CodeValue *address) {
-    long long row = organelle_row(address);
+static NativeHandle *module_at(const CodeValue *address) {
+    long long row = module_row(address);
     if (row < 0) {
         return NULL;
     }
-    if (row >= runtime_organelle_count || !runtime_organelles[row].handle) {
-        fail("this organelle has been unlinked");
+    if (row >= runtime_module_count || !runtime_modules[row].handle) {
+        fail("this module has been unlinked");
         return NULL;
     }
-    return runtime_organelles[row].handle;
+    return runtime_modules[row].handle;
 }
 
 /* Writes the address value for `row` into `out`. */
-static void organelle_address(CodeValue *out, long long row) {
-    const char *keys[1] = {CODE_ORGANELLE_FIELD};
+static void module_address(CodeValue *out, long long row) {
+    const char *keys[1] = {CODE_MODULE_FIELD};
     _Alignas(8) char slots[CODE_VALUE_SLOT_SIZE] = {0};
     code_number(slot_at(slots, 0), (double)row);
     code_object(out, keys, slots, 1);
@@ -1616,14 +1630,14 @@ typedef struct {
     long long guest;
     char *name;
     int offered;
-} HostedOrganelle;
+} HostedModule;
 
 static HostedGuest *hosted_guests = NULL;
 static long long hosted_guest_count = 0;
 static long long hosted_guest_cap = 0;
-static HostedOrganelle *hosted_organelles = NULL;
-static long long hosted_organelle_count = 0;
-static long long hosted_organelle_cap = 0;
+static HostedModule *hosted_modules = NULL;
+static long long hosted_module_count = 0;
+static long long hosted_module_cap = 0;
 
 static void *row_handle(long long row) { return (void *)(uintptr_t)(row + 1); }
 static long long handle_row(void *handle) { return (long long)(uintptr_t)handle - 1; }
@@ -1638,7 +1652,7 @@ void code_set_program_dispatch(void (*fn)(CodeValue *out, const CodeValue *parti
     code_program_dispatch = fn;
 }
 
-/* The organelle's *name*, from whatever path the guest was compiled with.
+/* The module's *name*, from whatever path the guest was compiled with.
  *
  * A host's handler wants to say `if name = "net_server"`. What arrives is a
  * path, and which path depends on how the guest was built: a bare
@@ -1654,7 +1668,7 @@ void code_set_program_dispatch(void (*fn)(CodeValue *out, const CodeValue *parti
  * asset convention appends `-<os>-<arch>`. So a hyphen is always the start
  * of the platform suffix and never part of the name. If that convention
  * changes, this is where it breaks. */
-static void organelle_stem(const char *ref, char *out, size_t outlen) {
+static void module_stem(const char *ref, char *out, size_t outlen) {
     const char *start = ref;
     for (const char *c = ref; *c; c++) {
         if (*c == '/') start = c + 1;
@@ -1704,7 +1718,7 @@ static int is_class(const CodeValue *v, const char *class_name) {
     return cls && cls->tag == CODE_STR && cls->str && strcmp(cls->str, class_name) == 0;
 }
 
-/* What a guest's `emit ... to <organelle>` becomes: an `Organelle` particle
+/* What a guest's `emit ... to <module>` becomes: an `Module` particle
  * asked of the host's own handlers, on the host's thread, as an ordinary
  * nested handler call.
  *
@@ -1716,19 +1730,19 @@ static int is_class(const CodeValue *v, const char *class_name) {
  * into the same guest gets an `Exception` rather than a hang. */
 static void hosted_dispatch(void *ctx, CodeValue *out, const CodeValue *particle) {
     long long row = handle_row(ctx);
-    if (row < 0 || row >= hosted_organelle_count || !hosted_organelles[row].name) {
-        code_make_exception(out, "host", "this organelle's application has been stopped", NULL);
+    if (row < 0 || row >= hosted_module_count || !hosted_modules[row].name) {
+        code_make_exception(out, "host", "this module's application has been stopped", NULL);
         return;
     }
-    HostedOrganelle *o = &hosted_organelles[row];
+    HostedModule *o = &hosted_modules[row];
     if (!o->offered) {
         char msg[256];
-        snprintf(msg, sizeof msg, "organelle '%s' is not offered by the host", o->name);
+        snprintf(msg, sizeof msg, "module '%s' is not offered by the host", o->name);
         code_make_exception(out, "host", msg, NULL);
         return;
     }
     const char *app = hosted_guests[o->guest].app;
-    ask_program(out, "Organelle", app ? app : "", o->name, particle);
+    ask_program(out, "Module", app ? app : "", o->name, particle);
 }
 
 static void hosted_release(void *ctx, CodeValue *v) {
@@ -1736,17 +1750,17 @@ static void hosted_release(void *ctx, CodeValue *v) {
     code_release(v);
 }
 
-/* A guest is asking for an organelle. The program decides. */
+/* A guest is asking for a module. The program decides. */
 static int hosted_resolve(void *host_ctx, const char *ref, CodeHostModule *out) {
     long long guest = handle_row(host_ctx);
     if (guest < 0 || guest >= hosted_guest_count || !hosted_guests[guest].app) return 0;
     char name[128];
-    organelle_stem(ref, name, sizeof name);
+    module_stem(ref, name, sizeof name);
     /* **A host furnishes only what it says it furnishes.** If the program
      * has no `Offer` handler at all, nothing answers and the guest opens its
-     * own organelle, exactly as it would running alone — its own file, its
+     * own module, exactly as it would running alone — its own file, its
      * own settings, isolated. That is the ordinary case: an application's
-     * organelles are its own business, and a host that wants no say has to
+     * modules are its own business, and a host that wants no say has to
      * write nothing to get none.
      *
      * A program that *does* answer is taking that say, and then `Offered` or
@@ -1767,41 +1781,41 @@ static int hosted_resolve(void *host_ctx, const char *ref, CodeHostModule *out) 
      * The ABI lets a host answer "I do not offer that", and the guest's
      * `link` then fails. But a guest's top-level `link` failing ends the
      * guest — and a fatal error inside a module ends the process it was
-     * loaded into. So a host that refused an organelle would be killed by
+     * loaded into. So a host that refused a module would be killed by
      * its own policy, by a guest it deliberately said no to. Measured, and
      * exactly backwards.
      *
-     * So a refused organelle is handed over as an organelle that refuses:
+     * So a refused module is handed over as a module that refuses:
      * the guest links it, and every particle it sends gets an `Exception`.
      * That is the language's own rule everywhere else — trouble is a value,
      * not the end of the program. */
-    if (hosted_organelle_count == hosted_organelle_cap) {
-        long long cap = hosted_organelle_cap ? hosted_organelle_cap * 2 : 8;
-        HostedOrganelle *grown = realloc(hosted_organelles, (size_t)cap * sizeof(HostedOrganelle));
+    if (hosted_module_count == hosted_module_cap) {
+        long long cap = hosted_module_cap ? hosted_module_cap * 2 : 8;
+        HostedModule *grown = realloc(hosted_modules, (size_t)cap * sizeof(HostedModule));
         if (!grown) code_runtime_error("out of memory");
-        hosted_organelles = grown;
-        hosted_organelle_cap = cap;
+        hosted_modules = grown;
+        hosted_module_cap = cap;
     }
     char *kept = malloc(strlen(name) + 1);
     if (!kept) code_runtime_error("out of memory");
     memcpy(kept, name, strlen(name) + 1);
-    long long row = hosted_organelle_count++;
-    hosted_organelles[row].guest = guest;
-    hosted_organelles[row].name = kept;
-    hosted_organelles[row].offered = offered;
+    long long row = hosted_module_count++;
+    hosted_modules[row].guest = guest;
+    hosted_modules[row].name = kept;
+    hosted_modules[row].offered = offered;
     out->dispatch = hosted_dispatch;
     out->release = hosted_release;
     /* No exported values and nothing held open. A stand-in is reached only
      * by `emit`, and what actually holds the program up is the host's own
-     * organelle, which the host holds directly. */
+     * module, which the host holds directly. */
     out->vars = NULL;
     out->serving = NULL;
     out->ctx = row_handle(row);
     return 1;
 }
 
-/* A guest's organelle pushed something. Wake this program the same way its
- * own organelles do, so the one park/drain loop covers guests too — no
+/* A guest's module pushed something. Wake this program the same way its
+ * own modules do, so the one park/drain loop covers guests too — no
  * polling, and nothing at all while everyone is idle. */
 static void hosted_wake(void *host_ctx) {
     (void)host_ctx;
@@ -1836,17 +1850,17 @@ static long long open_hosted_guest(const char *path) {
  * so. */
 static void close_hosted_guest(long long guest) {
     if (guest < 0 || guest >= hosted_guest_count) return;
-    for (long long i = 0; i < hosted_organelle_count; i++) {
-        if (hosted_organelles[i].name && hosted_organelles[i].guest == guest) {
-            free(hosted_organelles[i].name);
-            hosted_organelles[i].name = NULL;
+    for (long long i = 0; i < hosted_module_count; i++) {
+        if (hosted_modules[i].name && hosted_modules[i].guest == guest) {
+            free(hosted_modules[i].name);
+            hosted_modules[i].name = NULL;
         }
     }
     free(hosted_guests[guest].app);
     hosted_guests[guest].app = NULL;
 }
 
-/* `link <path> as <name>` inside a handler: opens the organelle and answers
+/* `link <path> as <name>` inside a handler: opens the module and answers
  * with the address value naming it. On any failure `out` is null and the
  * frame's landing block turns the failure into an `Exception` — a host must
  * survive a guest it cannot load. */
@@ -1865,7 +1879,7 @@ void code_runtime_link(CodeValue *out, const CodeValue *path) {
     if (n < 3 || strcmp(text + n - 3, ".so") != 0) {
         char msg[256];
         snprintf(msg, sizeof msg,
-                 "'link %s' inside a handler can only open an organelle ('.so')", text);
+                 "'link %s' inside a handler can only open a module ('.so')", text);
         fail(msg);
         return;
     }
@@ -1901,7 +1915,7 @@ void code_runtime_link(CodeValue *out, const CodeValue *path) {
         fail(err);
         return;
     }
-    /* An organelle that speaks first used to be refused here, because the
+    /* A module that speaks first used to be refused here, because the
      * generated drain ran only over the modules known when the program
      * started and a queue appearing later would never be read. It is
      * listened to now: `code_runtime_drain_speakers` empties these queues
@@ -1911,21 +1925,21 @@ void code_runtime_link(CodeValue *out, const CodeValue *path) {
      * be held cannot know at build time whether it is opening a port or
      * being given a membrane. */
 
-    if (runtime_organelle_count == runtime_organelle_cap) {
-        long long cap = runtime_organelle_cap ? runtime_organelle_cap * 2 : 8;
-        RuntimeOrganelle *grown =
-            realloc(runtime_organelles, (size_t)cap * sizeof(RuntimeOrganelle));
+    if (runtime_module_count == runtime_module_cap) {
+        long long cap = runtime_module_cap ? runtime_module_cap * 2 : 8;
+        RuntimeModule *grown =
+            realloc(runtime_modules, (size_t)cap * sizeof(RuntimeModule));
         if (!grown) {
             code_runtime_error("out of memory");
         }
-        runtime_organelles = grown;
-        runtime_organelle_cap = cap;
+        runtime_modules = grown;
+        runtime_module_cap = cap;
     }
-    long long row = runtime_organelle_count++;
+    long long row = runtime_module_count++;
     /* Become its host, if it can be hosted. From here on every `link` inside
-     * this organelle asks this program's handlers instead of the
+     * this module asks this program's handlers instead of the
      * filesystem — which is what lets a guest share what the host already
-     * has rather than opening its own. An organelle built before this
+     * has rather than opening its own. A module built before this
      * existed has no such symbol and is simply left to open its own; it can
      * still be linked and talked to, it just cannot be furnished. */
     long long guest = -1;
@@ -1950,17 +1964,17 @@ void code_runtime_link(CodeValue *out, const CodeValue *path) {
         code_runtime_error("out of memory");
     }
     memcpy(kept, text, kept_len + 1);
-    runtime_organelles[row].handle = nh;
-    runtime_organelles[row].path = kept;
-    runtime_organelles[row].guest = guest;
+    runtime_modules[row].handle = nh;
+    runtime_modules[row].path = kept;
+    runtime_modules[row].guest = guest;
 
-    organelle_address(out, row);
+    module_address(out, row);
 }
 
-/* Releases and unloads one organelle. Shared by `code_runtime_unlink` and the
+/* Releases and unloads one module. Shared by `code_runtime_unlink` and the
  * end-of-program sweep, which differ only in how they find the row. */
-static void release_organelle(long long row) {
-    RuntimeOrganelle *slot = &runtime_organelles[row];
+static void release_module(long long row) {
+    RuntimeModule *slot = &runtime_modules[row];
     NativeHandle *nh = slot->handle;
     /* Order is the whole of it: the module's own release point runs while
      * its code is still mapped, and only then is the mapping dropped.
@@ -1971,9 +1985,9 @@ static void release_organelle(long long row) {
     void *lib = nh->lib;
     int image = nh->image_fd;
     /* Frees the handle and drains anything still queued. Safe to free here
-     * because the only caller that can reach a live organelle refuses while
+     * because the only caller that can reach a live module refuses while
      * it is still serving, and the end-of-program sweep skips those: an
-     * organelle that answers no to `code_native_serving` has no thread left
+     * module that answers no to `code_native_serving` has no thread left
      * to hold this pointer. */
     code_native_close(nh);
     close_hosted_guest(slot->guest);
@@ -2002,13 +2016,13 @@ static void release_organelle(long long row) {
  * while its code is still mapped, and only then is the mapping dropped.
  * Reversed, the release would be a call into unmapped memory. */
 void code_runtime_unlink(const CodeValue *address) {
-    NativeHandle *nh = organelle_at(address);
+    NativeHandle *nh = module_at(address);
     if (!nh) {
         return;
     }
     /* **Refused while anything it holds is still working.** Unmapping code a
      * thread is running in is not a risk to weigh, it is a crash; and an
-     * organelle that still answers "yes" to `code_native_serving` has one.
+     * module that still answers "yes" to `code_native_serving` has one.
      *
      * The answer is an observation, not a promise: a door turns its own to
      * no as the last act of its accepting thread, after that loop has
@@ -2020,10 +2034,10 @@ void code_runtime_unlink(const CodeValue *address) {
      * listed as running; told nothing, it would mark something stopped that
      * is still answering on its own port. */
     if (code_native_serving(nh)) {
-        fail("this organelle is still working — stop what it holds before unlinking it");
+        fail("this module is still working — stop what it holds before unlinking it");
         return;
     }
-    release_organelle(organelle_row(address));
+    release_module(module_row(address));
 }
 
 /* Closes whatever is still linked when the program ends — the same "owns
@@ -2033,49 +2047,49 @@ void code_runtime_unlink(const CodeValue *address) {
  * to guarantee. Called from the sweep generated at the end of `main`, before
  * `code_check_leaks` looks. */
 void code_runtime_unlink_all(void) {
-    for (long long i = 0; i < runtime_organelle_count; i++) {
+    for (long long i = 0; i < runtime_module_count; i++) {
         /* Left alone while it is still working, for the same reason `unlink`
          * refuses: releasing its values and unmapping its code out from
          * under a running thread is a crash on the way out. The process is
          * ending anyway, so what is skipped costs nothing. */
-        if (runtime_organelles[i].handle && code_native_serving(runtime_organelles[i].handle)) {
+        if (runtime_modules[i].handle && code_native_serving(runtime_modules[i].handle)) {
             continue;
         }
-        while (runtime_organelles[i].handle) {
-            release_organelle(i);
+        while (runtime_modules[i].handle) {
+            release_module(i);
         }
     }
-    free(runtime_organelles);
-    runtime_organelles = NULL;
-    runtime_organelle_count = 0;
-    runtime_organelle_cap = 0;
+    free(runtime_modules);
+    runtime_modules = NULL;
+    runtime_module_count = 0;
+    runtime_module_cap = 0;
 }
 
-/* Hands every organelle linked while running a turn to deliver whatever its
- * own organelles pushed.
+/* Hands every module linked while running a turn to deliver whatever its
+ * own modules pushed.
  *
  * Called from the program's own drain, so it happens exactly where the
  * program already handles its own queues — between statements, and on
  * waking. A guest with nothing queued costs a lock and a comparison per
- * organelle it holds; an idle program never gets here at all, because
+ * module it holds; an idle program never gets here at all, because
  * nothing woke it.
  *
- * Organelles that are not `.code` libraries have no drain of their own and
+ * Modules that are not `.code` libraries have no drain of their own and
  * are skipped. */
 void code_runtime_drain_guests(void) {
-    for (long long i = 0; i < runtime_organelle_count; i++) {
-        NativeHandle *nh = runtime_organelles[i].handle;
+    for (long long i = 0; i < runtime_module_count; i++) {
+        NativeHandle *nh = runtime_modules[i].handle;
         if (nh && nh->module_drain) {
             nh->module_drain();
         }
     }
 }
 
-/* Empties the inbound queues of organelles linked while the program ran, the
+/* Empties the inbound queues of modules linked while the program ran, the
  * way the generated drain empties the ones linked at the top level.
  *
  * Same three steps, in the same order: take the oldest particle, ask the
- * program's handlers for an answer, hand that answer back to the organelle
+ * program's handlers for an answer, hand that answer back to the module
  * that pushed. A class the program has no handler for is *dropped* rather
  * than made an error — the rule top-level modules already live under, and
  * for the same reason: a module speaks on its own initiative, and a
@@ -2092,8 +2106,8 @@ void code_runtime_drain_speakers(void) {
     int more = 1;
     while (more) {
         more = 0;
-        for (long long i = 0; i < runtime_organelle_count; i++) {
-            NativeHandle *nh = runtime_organelles[i].handle;
+        for (long long i = 0; i < runtime_module_count; i++) {
+            NativeHandle *nh = runtime_modules[i].handle;
             if (!nh || !nh->has_inbound) {
                 continue;
             }
@@ -2115,7 +2129,7 @@ void code_runtime_drain_speakers(void) {
     }
 }
 
-/* Whether any organelle linked while the program ran still expects to speak
+/* Whether any module linked while the program ran still expects to speak
  * — the runtime-linked half of the condition that holds a program open past
  * its last statement.
  *
@@ -2123,8 +2137,8 @@ void code_runtime_drain_speakers(void) {
  * ask, so without this it would reach the end of `main` and exit while its
  * own listener was still accepting. */
 int code_runtime_any_serving(void) {
-    for (long long i = 0; i < runtime_organelle_count; i++) {
-        NativeHandle *nh = runtime_organelles[i].handle;
+    for (long long i = 0; i < runtime_module_count; i++) {
+        NativeHandle *nh = runtime_modules[i].handle;
         if (nh && code_native_serving(nh)) {
             return 1;
         }
@@ -2136,7 +2150,7 @@ int code_runtime_any_serving(void) {
  * `code_native_dispatch`, which takes an alias's handle directly. */
 void code_runtime_dispatch(CodeValue *out, const CodeValue *address, const CodeValue *particle) {
     code_null(out);
-    NativeHandle *nh = organelle_at(address);
+    NativeHandle *nh = module_at(address);
     if (!nh) {
         return;
     }

@@ -166,13 +166,13 @@ pub enum Stmt {
     /// at runtime by whichever backend is running, not from statements to
     /// execute.
     ///
-    /// **The name is the organelle.** A module has state, so linking one is
+    /// **The name is the module.** A module has state, so linking one is
     /// not attaching a piece of code — it is bringing something into being,
     /// and two names are two of them. Each link is loaded from its own image
     /// of the file (`native.rs`'s `module_image`), and a name already taken
     /// is refused by `verify.rs` before the program starts. Until 2026-09-04
     /// neither held: a repeated name silently replaced the earlier link, and
-    /// one file linked twice was a single organelle wearing two names.
+    /// one file linked twice was a single module wearing two names.
     ///
     /// `alias` is mandatory (unlike `Link`'s optional one): with no name,
     /// nothing could ever refer to the module again. It is bound to an
@@ -187,7 +187,7 @@ pub enum Stmt {
         format: NativeFormat,
     },
     /// `link <expr> as <alias>` written **inside a handler body** — an
-    /// organelle bound while the program is already running.
+    /// module bound while the program is already running.
     ///
     /// Kept separate from `Link`/`ImportNative` rather than folded into
     /// them, because the two differ in what is knowable and when.
@@ -201,19 +201,19 @@ pub enum Stmt {
     /// link time and has nothing to open.
     ///
     /// `alias` is bound to an **address value** — an ordinary object
-    /// `{ "_organelle": <n> }` naming a row in the runtime's table of open
-    /// organelles. Deliberately an ordinary value rather than a seventh
+    /// `{ "_module": <n> }` naming a row in the runtime's table of open
+    /// modules. Deliberately an ordinary value rather than a seventh
     /// value kind: the language has six JSON-shaped kinds and this changes
     /// none of them. The address is what `emit ... to <alias>` dispatches
     /// through (`EmitTarget::Address`), and what `Unlink` closes.
     LinkRuntime { alias: String, path: Expr },
     /// `unlink <expr>` — the symmetric half of `LinkRuntime`. Calls the
-    /// organelle's release point (`code_module_release`, `code_abi.h` item
+    /// module's release point (`code_module_release`, `code_abi.h` item
     /// 10) when it has one, unloads it, and invalidates the address, so a
     /// later `emit` through the same value is a clean `Exception` rather
     /// than a call into unmapped code.
     ///
-    /// Only ever closes an organelle opened by `LinkRuntime`. A top-level
+    /// Only ever closes a module opened by `LinkRuntime`. A top-level
     /// `link`'s module has no address to name it by and stays for the life
     /// of the process, exactly as before.
     Unlink(Expr),

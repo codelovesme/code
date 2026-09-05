@@ -99,7 +99,7 @@ fn verify_stmts(
                 }
             }
             Stmt::ImportNative { alias, .. } => {
-                // **The name is the organelle.** Linking twice under one name
+                // **The name is the module.** Linking twice under one name
                 // is refused, whichever files they are.
                 //
                 // Not a matter of taste. Until this check existed, a second
@@ -108,7 +108,7 @@ fn verify_stmts(
                 // `m`'s particles to whichever won — answering null for
                 // every class the other one handled, with nothing said. And
                 // linking the *same* file twice was worse, because it looked
-                // like two organelles and was one: configuring the second
+                // like two modules and was one: configuring the second
                 // changed the first's settings underneath it.
                 //
                 // Both readings of a repeated name are mistakes, and neither
@@ -118,7 +118,7 @@ fn verify_stmts(
                 // comment for the other half.
                 if !natives.insert(alias.clone()) {
                     return Err(format!(
-                        "'{alias}' is already linked — a name is one organelle, and linking \
+                        "'{alias}' is already linked — a name is one module, and linking \
                          another under the same name would silently replace it"
                     ));
                 }

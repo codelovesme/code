@@ -70,7 +70,7 @@ pub enum Token {
     Break,
     Continue,
     Link,
-    /// `unlink <expr>` — closes an organelle opened by a `link` that ran
+    /// `unlink <expr>` — closes a module opened by a `link` that ran
     /// inside a handler. A reserved word rather than a core particle so it
     /// reads as the exact mirror of `link`, and so `let unlink = ...` is a
     /// parse error instead of quietly shadowing it.

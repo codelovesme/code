@@ -1,10 +1,10 @@
-| A name is an organelle, and two names are two organelles.
+| A name is a module, and two names are two modules.
 |
 | Both halves of that were wrong until 2026-09-04, and neither failed loudly.
-| Linking two *different* organelles under one name compiled and ran, with
+| Linking two *different* modules under one name compiled and ran, with
 | the second silently replacing the first — so particles went to whichever
 | won and answered null for every class the other one handled. And linking
-| the *same* file twice looked like two organelles and was one: configuring
+| the *same* file twice looked like two modules and was one: configuring
 | the second changed the first's settings underneath it.
 |
 | The first is refused before the program starts (see
@@ -18,7 +18,7 @@ assert a.ok
 emit Config { secret = "second-secret" } to second get b
 assert b.ok
 
-| Two organelles, so the same claim signed by each is a different token.
+| Two modules, so the same claim signed by each is a different token.
 emit Sign { sub = "someone" } to first get one
 emit Sign { sub = "someone" } to second get two
 assert not one.token = two.token
@@ -37,6 +37,6 @@ emit Decode { token = two.token } to second get hers
 assert hers.valid
 
 | Values a module exports are its own too — read through the name, from that
-| organelle, not from whichever happened to load first.
+| module, not from whichever happened to load first.
 link "native_modules/test_math.so" as m
 assert m.answer = 42

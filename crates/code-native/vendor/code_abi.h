@@ -103,7 +103,7 @@
  *      four above — the ABI version does not move.
  *
  *  10. *Optionally* be **hosted**: when a program opens this module while it
- *      is running, it may furnish the module's own organelles rather than
+ *      is running, it may furnish the modules this one links rather than
  *      letting it open them itself. See "Being hosted" further down for the
  *      two structs and the one function, and for why a hosted module's
  *      `link` is not allowed to fall back to the filesystem.
@@ -234,7 +234,7 @@ typedef struct CodeVarList {
 
 /* ---- Being hosted: item 10 -----------------------------------------------
  *
- * A module normally finds its own organelles: a `link` inside it opens the
+ * A module normally finds its own modules: a `link` inside it opens the
  * file it names. When a *program* opens a module while it is running
  * (`ast::Stmt::LinkRuntime`), that is the wrong answer — the guest would
  * bind its own port and hold its own connections, and the host it is running
@@ -245,9 +245,9 @@ typedef struct CodeVarList {
  * rather than the filesystem.
  *
  * **A host furnishes only what it says it furnishes.** `resolve` may decline,
- * and then the module opens the file itself — its own organelle, its own
+ * and then the module opens the file itself — its own copy, its own
  * settings, isolated, exactly as it would with no host at all. That is the
- * ordinary case: an application's organelles are its own business, and a
+ * ordinary case: what an application links is its own business, and a
  * host that wants no say has to write nothing to get none. A host that does
  * answer is taking that say, and what it hands back is what the guest gets.
  *
@@ -263,7 +263,7 @@ typedef struct CodeVarList {
  * store them, hand them back, never dereference them.
  */
 
-/* One organelle, as the host supplies it.
+/* One module, as the host supplies it.
  *
  * The mirror of the `code_module_*` exports, with a `ctx` threaded through
  * every one — because the host is answering on behalf of a *particular*

@@ -1,5 +1,5 @@
 | Every way a `link` inside a handler can go wrong is a value, not the end of
-| the program. That is the point: a program that opens organelles it worked
+| the program. That is the point: a program that opens modules it worked
 | out at runtime has to survive the ones it cannot open, the same way
 | `http_client_unreachable.code` survives a refused connection.
 
@@ -19,12 +19,12 @@ assert a._class = "Exception"
 
 | A `.a` is linked into this binary at build time and has nothing to open; a
 | `.code` source would mean adding handlers while the program runs. Only a
-| `.so` is an organelle in the sense this statement means.
-NotAnOrganelle {} => {
+| `.so` is a module in the sense this statement means.
+NotAnModule {} => {
     link "tests/native_modules/test_math_static.a" as m
     return Loaded {}
 }
-emit NotAnOrganelle {} to this get b
+emit NotAnModule {} to this get b
 assert b._class = "Exception"
 
 | The path is a value, so it can be the wrong kind of value.
@@ -38,7 +38,7 @@ assert d._class = "Exception"
 | An address is something the runtime minted. Anything else emitted to is a
 | mistake worth naming, not a lookup that quietly finds nothing.
 Forged {} => {
-    let fake = { "_organelle" = 99 }
+    let fake = { "_module" = 99 }
     emit Double { value = 1 } to fake get r
     return r
 }
@@ -55,7 +55,7 @@ assert f._class = "Exception"
 
 | Unlinking something that was never linked, and unlinking twice.
 UnlinkForged {} => {
-    let fake = { "_organelle" = 99 }
+    let fake = { "_module" = 99 }
     unlink fake
     return Unlinked {}
 }

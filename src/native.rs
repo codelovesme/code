@@ -398,7 +398,7 @@ unsafe extern "C" fn push_inbound(queue: *mut c_void, value: *const CodeValueFfi
 /// Loads `path` as an object of its own, distinct from every other load of
 /// the same file.
 ///
-/// **A name is an organelle, and two names are two organelles.** A module has
+/// **A name is a module, and two names are two modules.** A module has
 /// state — its settings, its connection — so linking one file twice is not
 /// two views of one thing, it is two things. The loader does not see it that
 /// way: asked for a file it already has, it hands back what it already
@@ -419,7 +419,7 @@ fn module_image(path: &str) -> Option<std::os::fd::OwnedFd> {
     use std::os::fd::FromRawFd;
 
     let bytes = std::fs::read(path).ok()?;
-    let name = CString::new("code-organelle").ok()?;
+    let name = CString::new("code-module").ok()?;
     // SAFETY: `name` is a valid NUL-terminated string for the duration of
     // the call, and the result is checked before it is owned.
     let raw = unsafe { libc::memfd_create(name.as_ptr(), libc::MFD_CLOEXEC) };
@@ -542,7 +542,7 @@ impl NativeModule {
         self.has_inbound
     }
 
-    /// Hand this module a turn to deliver whatever its own organelles
+    /// Hand this module a turn to deliver whatever its own modules
     /// pushed. A no-op for one that linked nothing speaking first, and for
     /// anything that is not a `.code` library.
     ///
@@ -688,7 +688,7 @@ impl NativeModule {
  * a guest identically.
  *
  * Everything a host decides is decided in its own handlers. Nothing here
- * knows what an organelle is for; it turns the guest's C-level question into
+ * knows what a module is for; it turns the guest's C-level question into
  * a particle, asks the program, and turns the answer back.
  *
  * The tables below are addressed by row and a row is emptied rather than
@@ -696,7 +696,7 @@ impl NativeModule {
  * across the ABI may be an address into this side's bookkeeping.
  */
 
-/// `CodeHostModule` — one organelle as the host supplies it.
+/// `CodeHostModule` — one module as the host supplies it.
 #[repr(C)]
 struct CodeHostModuleFfi {
     dispatch: Option<unsafe extern "C" fn(*mut c_void, *mut CodeValueFfi, *const CodeValueFfi)>,
@@ -716,7 +716,7 @@ struct CodeHostVtableFfi {
 
 type SetHostFn = unsafe extern "C" fn(*const CodeHostVtableFfi, *mut c_void);
 
-/// One organelle standing in for another, on behalf of one guest.
+/// One module standing in for another, on behalf of one guest.
 struct StandIn {
     guest: usize,
     name: String,
@@ -749,11 +749,11 @@ thread_local! {
     static HOSTING: std::cell::RefCell<Hosting> = std::cell::RefCell::new(Hosting::default());
 }
 
-/// How a guest's organelle wakes this program.
+/// How a guest's module wakes this program.
 ///
 /// Deliberately not in `Hosting` above: that is a thread local, and this is
-/// called from whichever thread the guest's organelle pushed on. The same
-/// wakeup a program's own organelles signal, so one park covers both.
+/// called from whichever thread the guest's module pushed on. The same
+/// wakeup a program's own modules signal, so one park covers both.
 static HOST_WAKEUP: Mutex<Option<std::sync::Arc<crate::interpreter::Wakeup>>> = Mutex::new(None);
 
 /// Rows travel across the ABI as handles: row + 1, so the zero handle is
@@ -766,11 +766,11 @@ fn handle_row(handle: *mut c_void) -> Option<usize> {
     (handle as usize).checked_sub(1)
 }
 
-/// The organelle's *name*, from whatever path the guest was compiled with —
-/// see `runtime.c`'s `organelle_stem` for why the first hyphen ends it, and
+/// The module's *name*, from whatever path the guest was compiled with —
+/// see `runtime.c`'s `module_stem` for why the first hyphen ends it, and
 /// what that assumes. The two must agree exactly: a host handler matching on
 /// this name has to see the same thing in both output modes.
-fn organelle_stem(reference: &str) -> String {
+fn module_stem(reference: &str) -> String {
     let base = reference.rsplit('/').next().unwrap_or(reference);
     let base = base.strip_suffix(".so").unwrap_or(base);
     base.split('-').next().unwrap_or(base).to_string()
@@ -816,7 +816,7 @@ fn ask(particle: &Value) -> Value {
     crate::interpreter::ask_program(particle, env)
 }
 
-/// What a guest's `emit ... to <organelle>` becomes: an `Organelle` particle
+/// What a guest's `emit ... to <module>` becomes: an `Module` particle
 /// asked of the host's own handlers, on the host's thread, as an ordinary
 /// nested handler call.
 ///
@@ -844,7 +844,7 @@ unsafe extern "C" fn hosted_dispatch(
         Some((_, name, false)) => crate::interpreter::hosting_refusal(&name),
         Some((app, name, true)) => {
             let sent = unsafe { ffi_to_value(&*particle) };
-            ask(&hosting_particle("Organelle", &app, &name, Some(sent)))
+            ask(&hosting_particle("Module", &app, &name, Some(sent)))
         }
     };
 
@@ -857,11 +857,11 @@ unsafe extern "C" fn hosted_dispatch(
     unsafe { *out = built };
 }
 
-/// A guest's organelle pushed something. Wake this program the same way its
-/// own organelles do, so the one park covers guests too — no polling, and
+/// A guest's module pushed something. Wake this program the same way its
+/// own modules do, so the one park covers guests too — no polling, and
 /// nothing at all while everyone is idle.
 ///
-/// Reached from the organelle's own thread, which is why the wakeup lives in
+/// Reached from the module's own thread, which is why the wakeup lives in
 /// a global rather than beside the rest of the hosting state.
 unsafe extern "C" fn hosted_wake(_host_ctx: *mut c_void) {
     let wakeup = HOST_WAKEUP
@@ -882,7 +882,7 @@ unsafe extern "C" fn hosted_release(_ctx: *mut c_void, _v: *mut CodeValueFfi) {
     });
 }
 
-/// A guest is asking for an organelle. The program decides.
+/// A guest is asking for a module. The program decides.
 unsafe extern "C" fn hosted_resolve(
     host_ctx: *mut c_void,
     reference: *const c_char,
@@ -897,10 +897,10 @@ unsafe extern "C" fn hosted_resolve(
     let reference = unsafe { CStr::from_ptr(reference) }
         .to_string_lossy()
         .into_owned();
-    let name = organelle_stem(&reference);
+    let name = module_stem(&reference);
 
     // **A host furnishes only what it says it furnishes.** With no `Offer`
-    // handler nothing answers, and the guest opens its own organelle exactly
+    // handler nothing answers, and the guest opens its own module exactly
     // as it would running alone — its own file, its own settings, isolated.
     // A host that wants no say writes nothing to get none. One that answers
     // is taking that say, and then `Offered` or anything else decides.
@@ -916,10 +916,10 @@ unsafe extern "C" fn hosted_resolve(
     // lets a host answer "I do not offer that", and the guest's `link` then
     // fails — but a guest's top-level `link` failing ends the guest, and a
     // fatal error inside a module ends the process it was loaded into. So a
-    // host that refused an organelle would be killed by its own policy, by a
+    // host that refused a module would be killed by its own policy, by a
     // guest it deliberately said no to.
     //
-    // Instead a refused organelle is handed over as an organelle that
+    // Instead a refused module is handed over as a module that
     // refuses: the guest links it, and every particle it sends gets an
     // `Exception`. Must match `runtime.c`'s `hosted_resolve`.
     let row = HOSTING.with(|h| {
@@ -938,7 +938,7 @@ unsafe extern "C" fn hosted_resolve(
             release: Some(hosted_release),
             // No exported values and nothing held open. A stand-in is
             // reached only by `emit`, and what actually holds the program up
-            // is the host's own organelle, which the host holds directly.
+            // is the host's own module, which the host holds directly.
             vars: None,
             serving: None,
             ctx: row_handle(row),
@@ -952,7 +952,7 @@ static HOSTED_VTABLE: CodeHostVtableFfi = CodeHostVtableFfi {
     wake: hosted_wake,
 };
 
-/// How a guest's organelle wakes this program — see `hosted_wake`. Set when
+/// How a guest's module wakes this program — see `hosted_wake`. Set when
 /// the first guest is hosted; one program per process, so one wakeup.
 pub fn set_host_wakeup(wakeup: std::sync::Arc<crate::interpreter::Wakeup>) {
     *HOST_WAKEUP.lock().unwrap_or_else(|e| e.into_inner()) = Some(wakeup);

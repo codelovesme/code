@@ -1,6 +1,6 @@
 | `link` inside a handler: the path is a value, and the name it binds is an
 | ordinary variable holding an address rather than a compile-time alias. This
-| is what lets a program open an organelle it only learned about while
+| is what lets a program open a module it only learned about while
 | running — see `ast::Stmt::LinkRuntime`.
 
 | A note on the paths below. A top-level `link` is resolved by `loader.rs`
@@ -40,7 +40,7 @@ assert k._class = "Kept"
 emit Double { value = 5 } to held get later
 assert later.value = 10
 
-| The same file linked twice is **two organelles**, not two names for one. A
+| The same file linked twice is **two modules**, not two names for one. A
 | module has state, so a second link is a second thing — different address,
 | and stopping one leaves the other running.
 SecondName { path } => {
@@ -68,7 +68,7 @@ unlink held
 emit Stale {} to this get gone
 assert gone._class = "Exception"
 
-| An organelle that speaks first can be linked here too, and is heard: its
+| A module that speaks first can be linked here too, and is heard: its
 | queue joins the same list a top-level `link` adds to, so the program's own
 | drain empties it and each answer goes back to the module that pushed.
 |
@@ -97,6 +97,6 @@ assert a.count = 3
 assert a.last = 102
 
 | And it can be stopped again — which is only true because it stopped
-| speaking first: `unlink` refuses while anything an organelle holds is
+| speaking first: `unlink` refuses while anything a module holds is
 | still working.
 unlink door

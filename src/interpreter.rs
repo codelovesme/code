@@ -27,39 +27,39 @@ pub type ModuleDispatch = Rc<dyn Fn(&Value) -> Result<Value, String>>;
 /// reason `_class` is: it names something the runtime put there, not
 /// something the program wrote, and the prefix is what keeps the two from
 /// ever being confused for each other.
-pub const ORGANELLE_FIELD: &str = "_organelle";
+pub const MODULE_FIELD: &str = "_module";
 
-/// One organelle opened by a `link` inside a handler — see
+/// One module opened by a `link` inside a handler — see
 /// `ast::Stmt::LinkRuntime`.
 ///
 /// Unloading is not a method here: it happens when the row holding this is
 /// dropped, because that is when the last `Rc` to the underlying module
 /// goes. `release` is the *other* half, and has to run first — the module's
 /// own "you may let go now" point, while its code is still mapped.
-struct RuntimeOrganelle {
+struct RuntimeModule {
     dispatch: ModuleDispatch,
     release: Rc<dyn Fn()>,
-    /// Hands it a turn to deliver whatever its own organelles pushed. A
+    /// Hands it a turn to deliver whatever its own modules pushed. A
     /// library has queues but no loop of its own — see `NativeModule::drain`.
     drain: Rc<dyn Fn()>,
     /// Whether anything it holds is still working — what decides if it can
     /// be unloaded at all.
     serving: Rc<dyn Fn() -> bool>,
-    /// Which guest row this program keeps for it, or `None` for an organelle
+    /// Which guest row this program keeps for it, or `None` for a module
     /// that cannot be hosted (one built before `code_abi.h` item 10). A row,
     /// not a pointer — see `native.rs`'s hosting tables.
     #[cfg(feature = "native-modules")]
     guest: Option<usize>,
-    /// Which `Environment::inbound` row listens to it, for an organelle that
+    /// Which `Environment::inbound` row listens to it, for a module that
     /// speaks first — `None` for the rest, which is most of them.
     inbound: Option<usize>,
 }
 
 /// The value a `link` inside a handler binds: an ordinary object, so
 /// nothing about the language's six value kinds changes.
-fn organelle_address(row: usize) -> Value {
+fn module_address(row: usize) -> Value {
     Value::Object(Rc::new(vec![(
-        ORGANELLE_FIELD.to_string(),
+        MODULE_FIELD.to_string(),
         Value::Number(row as f64),
     )]))
 }
@@ -71,14 +71,14 @@ fn organelle_address(row: usize) -> Value {
 fn address_row(value: &Value) -> Result<usize, String> {
     let Value::Object(fields) = value else {
         return Err(format!(
-            "expected an organelle address (from a 'link' inside a handler), found {}",
+            "expected a module address (from a 'link' inside a handler), found {}",
             a_type_name(value)
         ));
     };
-    match fields.iter().find(|(k, _)| k == ORGANELLE_FIELD) {
+    match fields.iter().find(|(k, _)| k == MODULE_FIELD) {
         Some((_, Value::Number(n))) if *n >= 0.0 && n.fract() == 0.0 => Ok(*n as usize),
         _ => Err(
-            "expected an organelle address (from a 'link' inside a handler), found an \
+            "expected a module address (from a 'link' inside a handler), found an \
              ordinary object"
                 .to_string(),
         ),
@@ -112,7 +112,7 @@ pub struct Environment {
     /// promotes it into `modules`/a binding under `alias` when it runs — see
     /// `provide_module` and that `exec` arm.
     available_modules: HashMap<String, (Value, ModuleDispatch)>,
-    /// Organelles opened by a `link` that ran *inside a handler*
+    /// Modules opened by a `link` that ran *inside a handler*
     /// (`Stmt::LinkRuntime`), indexed by the number an address value
     /// carries. Separate from `modules` because these have no alias to be
     /// found by — the program holds them as values and may pass them
@@ -121,8 +121,8 @@ pub struct Environment {
     /// `unlink` leaves a `None` behind rather than removing the row: an
     /// address the program is still holding then names an empty row and
     /// answers with an `Exception`, instead of silently naming whichever
-    /// organelle was opened next.
-    runtime_modules: Vec<Option<RuntimeOrganelle>>,
+    /// module was opened next.
+    runtime_modules: Vec<Option<RuntimeModule>>,
     /// Handlers the program defines itself (`Stmt::HandlerDef`), by class
     /// name. Flat and program-wide rather than scoped, because a definition
     /// is top-level only — and collected in one pass *before* execution
@@ -229,42 +229,42 @@ impl Environment {
     }
 
     #[cfg(feature = "native-modules")]
-    /// Files a runtime-linked organelle and hands back the address value
+    /// Files a runtime-linked module and hands back the address value
     /// naming it — see `ast::Stmt::LinkRuntime`.
     ///
     /// Rows are appended and never reused, even after `unlink` empties one.
     /// Reuse would make a stale address a *live* one pointing at an
-    /// unrelated organelle, which is the one failure this table exists to
+    /// unrelated module, which is the one failure this table exists to
     /// prevent; an ever-growing `Vec` of `None`s is the cheaper problem.
-    fn open_organelle(&mut self, organelle: RuntimeOrganelle) -> Value {
-        self.runtime_modules.push(Some(organelle));
-        organelle_address(self.runtime_modules.len() - 1)
+    fn open_module(&mut self, module: RuntimeModule) -> Value {
+        self.runtime_modules.push(Some(module));
+        module_address(self.runtime_modules.len() - 1)
     }
 
-    /// Releases and drops an organelle. Dropping the row is what unloads it:
+    /// Releases and drops a module. Dropping the row is what unloads it:
     /// the module's `Drop` runs when the last `Rc` inside goes, and the
     /// release point has to have run before that, while its code is still
     /// mapped.
-    fn release_organelle(&mut self, row: usize) {
+    fn release_module(&mut self, row: usize) {
         let Some(slot) = self.runtime_modules.get_mut(row) else {
             return;
         };
-        let Some(organelle) = slot.take() else {
+        let Some(module) = slot.take() else {
             return;
         };
         // Empty this guest's rows first: its stand-ins must stop answering
         // before it is told to let go of everything, not after.
         #[cfg(feature = "native-modules")]
-        if let Some(guest) = organelle.guest {
+        if let Some(guest) = module.guest {
             crate::native::close_hosted_guest(guest);
         }
         // And stop listening to it, for the same reason and one more: the
         // row holds the `Rc`s that keep the module loaded, so a row left
-        // behind is an organelle that never unloads.
-        if let Some(row) = organelle.inbound {
+        // behind is a module that never unloads.
+        if let Some(row) = module.inbound {
             self.drop_inbound(row);
         }
-        (organelle.release)();
+        (module.release)();
     }
 
     /// Closes whatever is still linked when the program ends — the same
@@ -275,48 +275,46 @@ impl Environment {
     fn unlink_all(&mut self) {
         for row in 0..self.runtime_modules.len() {
             while self.runtime_modules[row].is_some() {
-                self.release_organelle(row);
+                self.release_module(row);
             }
         }
     }
 
     /// The dispatcher an address names, or an error saying why not.
-    fn organelle_at(&self, address: &Value) -> Result<ModuleDispatch, String> {
+    fn module_at(&self, address: &Value) -> Result<ModuleDispatch, String> {
         let row = address_row(address)?;
         match self.runtime_modules.get(row) {
-            Some(Some(organelle)) => Ok(Rc::clone(&organelle.dispatch)),
+            Some(Some(module)) => Ok(Rc::clone(&module.dispatch)),
             // Both readings of "nothing here" are the same mistake from the
             // program's side — an address that named something once and
             // does not now — so they read the same.
-            Some(None) | None => Err("this organelle has been unlinked".to_string()),
+            Some(None) | None => Err("this module has been unlinked".to_string()),
         }
     }
 
-    /// Releases and drops a runtime-linked organelle. Dropping the row is
+    /// Releases and drops a runtime-linked module. Dropping the row is
     /// what unloads it: the module's `Drop` runs once the last `Rc` inside
     /// the row goes, and the release point has to have run before that,
     /// while its code is still mapped.
-    fn close_organelle(&mut self, address: &Value) -> Result<(), String> {
+    fn close_module(&mut self, address: &Value) -> Result<(), String> {
         let row = address_row(address)?;
         match self.runtime_modules.get(row) {
-            Some(Some(organelle)) => {
+            Some(Some(module)) => {
                 // Refused while anything it holds is still working —
                 // unmapping code a thread is running in is a crash, not a
                 // risk. See `runtime.c`'s `code_runtime_unlink`, which this
                 // must match: a failure rather than a silent skip, so a host
                 // can say the application is still running instead of
                 // marking something stopped that is still answering.
-                if (organelle.serving)() {
-                    return Err(
-                        "this organelle is still working — stop what it holds before \
+                if (module.serving)() {
+                    return Err("this module is still working — stop what it holds before \
                          unlinking it"
-                            .to_string(),
-                    );
+                        .to_string());
                 }
-                self.release_organelle(row);
+                self.release_module(row);
                 Ok(())
             }
-            Some(None) | None => Err("this organelle has already been unlinked".to_string()),
+            Some(None) | None => Err("this module has already been unlinked".to_string()),
         }
     }
 
@@ -346,7 +344,7 @@ impl Environment {
 
     /// Stops listening to one source, without disturbing the rows around it.
     ///
-    /// An organelle linked while the program runs can also be unlinked while
+    /// A module linked while the program runs can also be unlinked while
     /// it runs, and then this program must stop draining it — and, just as
     /// importantly, stop holding the `Rc`s inside its row, which are what
     /// keep the module loaded. Overwritten rather than removed because every
@@ -878,7 +876,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                 // parser because there is no value until now.
                 if !path.ends_with(".so") {
                     return Err(format!(
-                        "'link {path}' inside a handler can only open an organelle ('.so') \
+                        "'link {path}' inside a handler can only open a module ('.so') \
                          — a '.code' source would add handlers while the program runs, and \
                          a '.a' is already part of this binary"
                     ));
@@ -900,7 +898,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     format!("./{path}")
                 };
                 let module = NativeModule::open(path)?;
-                // An organelle that speaks first used to be refused here,
+                // A module that speaks first used to be refused here,
                 // because the drain ran only over the modules known when the
                 // program started. It is listened to now: its queue joins
                 // the same list a top-level `link` adds to, and leaves it
@@ -917,14 +915,14 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     queue
                 });
                 // Become its host before anything else touches it: from
-                // here on every `link` inside this organelle asks this
+                // here on every `link` inside this module asks this
                 // program's handlers instead of the filesystem, which is
                 // what lets a guest share what the host already has rather
                 // than opening its own.
                 let env_ptr: *mut Environment = env;
                 let guest = unsafe { module.host(path, env_ptr) };
-                // How its organelles wake this program: the same wakeup
-                // this program's own organelles signal, so one park covers
+                // How its modules wake this program: the same wakeup
+                // this program's own modules signal, so one park covers
                 // both and nothing polls.
                 crate::native::set_host_wakeup(env.wakeup());
                 let module = Rc::new(module);
@@ -940,7 +938,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                         Rc::new(move || serving.serving()),
                     )
                 });
-                let organelle = RuntimeOrganelle {
+                let module = RuntimeModule {
                     dispatch: Rc::new(move |v| dispatching.dispatch(v)),
                     release: Rc::new(move || module.release()),
                     drain: Rc::new(move || draining.drain()),
@@ -948,7 +946,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     guest,
                     inbound,
                 };
-                let address = env.open_organelle(organelle);
+                let address = env.open_module(module);
                 env.declare(alias.clone(), address);
                 Ok(Flow::Normal)
             }
@@ -960,7 +958,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
         }
         Stmt::Unlink(address) => {
             let address = eval(address, env)?;
-            env.close_organelle(&address)?;
+            env.close_module(&address)?;
             Ok(Flow::Normal)
         }
         Stmt::Import {
@@ -1157,7 +1155,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                                 .get(alias)
                                 .cloned()
                                 .ok_or_else(|| format!("no linked module named '{alias}'"))?;
-                            let dispatch = env.organelle_at(&address)?;
+                            let dispatch = env.module_at(&address)?;
                             dispatch(&value)?
                         }
                     }
@@ -1257,17 +1255,17 @@ pub fn ask_program(particle: &Value, env: &mut Environment) -> Value {
     }
 }
 
-/// What a guest gets when it emits to an organelle its host refused. Must
+/// What a guest gets when it emits to a module its host refused. Must
 /// stay word for word identical to `runtime.c`'s: the same program run both
 /// ways must answer the same.
 pub fn hosting_refusal(name: &str) -> Value {
-    host_exception(format!("organelle '{name}' is not offered by the host"))
+    host_exception(format!("module '{name}' is not offered by the host"))
 }
 
 /// What a guest gets when it emits through a stand-in whose application has
 /// been stopped — its handle still names a row, and the row is empty.
 pub fn hosting_stopped() -> Value {
-    host_exception("this organelle's application has been stopped".to_string())
+    host_exception("this module's application has been stopped".to_string())
 }
 
 fn host_exception(message: String) -> Value {
@@ -1587,20 +1585,20 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
         _ => return Ok(Value::Null),
     };
     match class.as_ref() {
-        // Whether this program is being held by another one — see
-        // `code_abi.h` item 10.
+        // Whether this run is a module another program linked, rather than a
+        // program of its own.
         //
         // Always false here, and not a divergence from `runtime.c`: an
-        // interpreted program cannot be a guest at all, because a guest is a
-        // loaded library. The question is about this run, not about the
-        // program, and for an interpreted run the answer is genuinely no.
+        // interpreted run is a program. Only a `--target shared` build is
+        // something a linker reaches into, and it says so in its own
+        // start-up.
         //
-        // What it is for: an application that wants to behave differently
-        // held than alone can ask rather than being built twice. Its door is
-        // the usual reason — `net_server` on its own, a `membrane` when held
-        // — and `link` inside an `if` is how the choice is made.
-        "Hosted" => Ok(Value::Object(Rc::new(vec![
-            ("_class".to_string(), Value::Str("HostedResult".into())),
+        // What it is for: the same source can be built both ways, and a few
+        // things are only correct in one of them — opening a listening
+        // socket of your own above all, since a thread that outlives a
+        // module's release point makes it impossible to unload.
+        "Linked" => Ok(Value::Object(Rc::new(vec![
+            ("_class".to_string(), Value::Str("LinkedResult".into())),
             ("value".to_string(), Value::Bool(false)),
         ]))),
         "Timestamp" => {
