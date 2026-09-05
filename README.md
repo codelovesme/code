@@ -830,6 +830,22 @@ wasm can do — the only way to reach a second wasm module is for the host to
 instantiate it and wire the two together, which is the host's business and
 not a `link`.
 
+**Rust modules link too, and `no_std` ones cost nothing.** Measured on the
+same one-line module, built three ways and run under Node:
+
+| module | `.wasm` | gzipped |
+|---|---|---|
+| C | 25.2 KB | 12.4 KB |
+| Rust, `no_std` | 24.7 KB | 12.3 KB |
+| Rust, with `std` | 99.3 KB | 33.8 KB |
+
+Rust's standard library and the freestanding runtime coexist in one module
+without colliding — the worry that they would not is simply wrong. What
+`std` costs is size: about 75 KB, and **once**, not per module, since the
+second Rust module linked reuses what the first pulled in. A module that
+needs nothing from `std` should still say `#![no_std]`, at which point Rust
+is no heavier than C.
+
 A module built for wasm is compiled for `wasm32-unknown-unknown` and must
 **not** include `src/wasm_shim.h`: that is the runtime's own private libc and
 it defines `memset`, so a module that includes it defines a second one and
