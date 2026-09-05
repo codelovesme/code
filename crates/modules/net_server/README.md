@@ -132,17 +132,43 @@ and the policy it would have enforced is a program's to write.
 
 ## The wire
 
-A four-byte big-endian length, then that many bytes of JSON:
+One POST, the body is the particle, the path is the app:
 
 ```
-[len: u32 BE][{"app": "…", "particle": { "_class": "…", … }}]
+POST /ping-api HTTP/1.1
+content-type: application/json
+
+{"_class": "Ping", "value": 1}
 ```
 
-The answer comes back the same way, as the returned particle. Nothing about
-it suggests a protocol to a reader, which is the point: this and `net_client`
-are two ends of one pipe, not an implementation of somebody else's standard.
-JSON because the language's value model *is* JSON's six kinds, so a particle
-crosses without a translation layer to argue with.
+The answer comes back as the returned particle, with status 200 whatever it
+says. A `Denied` is an answer, not a transport failure — the status line is
+about whether the *door* worked. JSON because the language's value model *is*
+JSON's six kinds, so a particle crosses without a translation layer to argue
+with.
+
+Nothing wraps anything, so `curl -d '{"_class":"Ping"}'
+http://127.0.0.1:9000/ping-api` is a whole request.
+
+**It used to be a framing of our own** — a four-byte length, then that many
+bytes. Smaller and simpler to read, with one fatal property: a browser cannot
+speak it. A browser opens no raw sockets, so an application in a page could
+never reach a program, whatever else it could reach. HTTP costs a few hundred
+bytes per request and buys the rest of the world with them: a proxy in front,
+TLS terminated by something that already knows how, a request visible in
+devtools, and `curl` when something is wrong.
+
+**What did not change is the shape**, which is what this module is for. A
+particle arrives, the program's handlers answer it, the answer goes back;
+there is still no path to design and no method to choose. HTTP here is only
+how the bytes travel — which is why this is still not `http_server`, whose
+job is the opposite one.
+
+**A browser has to be told it may read the answer.** `Config { allow_origin }`
+sets that header, open by default: this door carries a token it never opens,
+and the handler that reads the token is where "who is allowed to ask for
+this" is decided. An origin check here would look like an answer to that
+question without being one.
 
 **No TLS.** A server facing the public internet belongs behind something that
 terminates it.

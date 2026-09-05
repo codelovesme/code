@@ -182,7 +182,7 @@ assert l.ok
                 r#"link "net_client.so" as net
 
 emit Send {{
-    url = "euglena://127.0.0.1:{port}/demo",
+    url = "http://127.0.0.1:{port}/demo",
     particle = Impulse {{ token = "t1", particle = Ping {{ value = 41 }} }}
 }} to net get answer
 
@@ -208,7 +208,7 @@ assert answer.inner.value = 42
                 r#"link "net_client.so" as net
 
 emit Send {{
-    url = "euglena://127.0.0.1:{port}/demo",
+    url = "http://127.0.0.1:{port}/demo",
     particle = Impulse {{ token = "", particle = Ping {{ value = 1 }} }}
 }} to net get answer
 
@@ -232,7 +232,7 @@ assert answer.reason = "no token"
                 r#"link "net_client.so" as net
 
 emit Send {{
-    url = "euglena://127.0.0.1:{port}/demo",
+    url = "http://127.0.0.1:{port}/demo",
     particle = Whatever {{ }}
 }} to net get answer
 
@@ -316,7 +316,7 @@ assert l.ok
             &ping,
             format!(
                 r#"link "net_client.so" as net
-emit Send {{ url = "euglena://127.0.0.1:{port}", particle = Ping {{ }} }} to net get r
+emit Send {{ url = "http://127.0.0.1:{port}", particle = Ping {{ }} }} to net get r
 assert r ∈ Pong
 "#
             ),
@@ -333,7 +333,7 @@ assert r ∈ Pong
             &quit,
             format!(
                 r#"link "net_client.so" as net
-emit Send {{ url = "euglena://127.0.0.1:{port}", particle = Quit {{ }} }} to net get r
+emit Send {{ url = "http://127.0.0.1:{port}", particle = Quit {{ }} }} to net get r
 assert r ∈ Bye
 "#
             ),
@@ -411,7 +411,7 @@ assert l.ok
                 &source,
                 format!(
                     r#"link "net_client.so" as net
-emit Send {{ url = "euglena://127.0.0.1:{port}/a", particle = Echo {{ n = {n} }} }} to net get r
+emit Send {{ url = "http://127.0.0.1:{port}/a", particle = Echo {{ n = {n} }} }} to net get r
 assert r ∈ Echoed
 assert r.n = {n}
 "#
@@ -496,11 +496,17 @@ assert l.ok
     // Connect and say nothing, holding it open for longer than the test.
     let _stalled = TcpStream::connect(("127.0.0.1", port)).expect("open a stalled connection");
 
-    // A second connection asks it to quit, framed the way net_client does:
-    // four big-endian length bytes, then the JSON envelope.
+    // A second connection asks it to quit, written the way net_client does:
+    // a POST whose body is the particle. By hand here rather than through the
+    // module, because the point is that the *stalled* one is not in the way.
     let mut quit = TcpStream::connect(("127.0.0.1", port)).expect("open the quit connection");
-    let body = br#"{"app":"","particle":{"_class":"Quit"}}"#;
-    quit.write_all(&(body.len() as u32).to_be_bytes())
+    let body = br#"{"_class":"Quit"}"#;
+    let head = format!(
+        "POST / HTTP/1.1\r\nhost: 127.0.0.1:{port}\r\ncontent-type: application/json\r\n\
+         content-length: {}\r\nconnection: close\r\n\r\n",
+        body.len()
+    );
+    quit.write_all(head.as_bytes())
         .and_then(|()| quit.write_all(body))
         .expect("send Quit");
 

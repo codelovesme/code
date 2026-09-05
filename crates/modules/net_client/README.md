@@ -7,7 +7,7 @@ to give it: where to send, and what to send.
 link "net_client.so" as net
 
 emit Send {
-    url = "euglena://127.0.0.1:9000/ping-api",
+    url = "http://127.0.0.1:9000/ping-api",
     particle = Impulse { token = "…", particle = Ping { value = 1 } }
 } to net get answer
 
@@ -22,7 +22,7 @@ Send { url, particle, timeout_ms? } → whatever the far side's handlers returne
 
 | Field | Kind | Default | Meaning |
 |---|---|---|---|
-| `url` | String | — | `euglena://host:port/app`. Required |
+| `url` | String | — | `http://host:port/app`. Required |
 | `particle` | Particle | — | sent as written, `_class` and all. Required |
 | `timeout_ms` | Number | `10000` | connect, send and read deadline. A positive number |
 
@@ -32,17 +32,17 @@ when nothing there handled the class — a real answer, not a timeout.
 ## The url names a host and an app, and nothing else
 
 ```
-euglena://127.0.0.1:9000/ping-api
+http://127.0.0.1:9000/ping-api
 └─ scheme ┘└── host:port ──┘└ app ┘
 ```
 
 No path beyond the app segment, no method, no query. There is nothing to
 design: a particle already says what it wants by its class. The app segment is
-optional — `euglena://host:port` is a program that serves only itself — and it
+optional — `http://host:port` is a program that serves only itself — and it
 reaches the far side as a field, so a runtime hosting several apps can route
 on it.
 
-A url with a scheme other than `euglena://`, without a port, or with more than
+A url with a scheme other than `http://`, without a port, or with more than
 one path segment is an `Exception` naming what was wrong.
 
 ## It does not build the envelope
@@ -63,7 +63,7 @@ the program can read. Never a dead program: a module may not end the
 application, and this one has more ways to fail than most.
 
 ```code
-emit Send { url = "euglena://127.0.0.1:1/x", particle = Ping { } } to net get r
+emit Send { url = "http://127.0.0.1:1/x", particle = Ping { } } to net get r
 assert r ∈ Exception
 assert r.source = "net_client"
 ```
@@ -77,8 +77,12 @@ this module would then have to invalidate.
 
 ## The wire
 
-A four-byte big-endian length, then that many bytes of JSON. See
-[`net_server`](../net_server#the-wire) for the shape and why it is not HTTP.
+One POST, the body is the particle, the path is the app. See
+[`net_server`](../net_server#the-wire) for the shape, and for why a framing of
+our own had to go.
+
+**No TLS.** `https://` is refused rather than sent in the clear; put a proxy
+in front and send it `http://`.
 
 ## Build
 

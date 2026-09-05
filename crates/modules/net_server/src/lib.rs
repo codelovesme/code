@@ -8,7 +8,8 @@
 //!
 //! Three handlers, the same shape `http_server` settled on:
 //!
-//! - `Config { port?, host?, max_particle_bytes?, response_timeout_seconds? }`
+//! - `Config { port?, host?, max_particle_bytes?, response_timeout_seconds?,
+//!   allow_origin? }`
 //!   → `ConfigResult { ok }` — the setup particle. Optional (the defaults are
 //!   loopback and an OS-chosen port); an `Exception` after `Listen`.
 //! - `Listen {}` → `ListenResult { ok, port, message }` — binds and starts
@@ -176,6 +177,10 @@ struct ServerConfig {
     port: u16,
     max_bytes: usize,
     timeout: f64,
+    /// What a browser is told about who may read the answer. Open by
+    /// default — see `write_response` for why an origin check here would be
+    /// an answer to a question this module does not ask.
+    allow_origin: String,
 }
 
 impl Default for ServerConfig {
@@ -188,6 +193,7 @@ impl Default for ServerConfig {
             port: 0,
             max_bytes: DEFAULT_MAX_PARTICLE_BYTES as usize,
             timeout: DEFAULT_RESPONSE_TIMEOUT_SECONDS,
+            allow_origin: "*".to_string(),
         }
     }
 }
@@ -268,7 +274,8 @@ fn answered(particle: &CodeValue, result: &CodeValue) {
 // Handlers
 // ---------------------------------------------------------------------------
 
-/// `Config { port?, host?, max_particle_bytes?, response_timeout_seconds? }`
+/// `Config { port?, host?, max_particle_bytes?, response_timeout_seconds?,
+/// allow_origin? }`
 /// → `ConfigResult { ok }`. Optional; an `Exception` once `Listen` has run,
 /// because the socket is already bound and a later change would be a lie.
 fn handle_config(out: &mut CodeValue, particle: &CodeValue) {
@@ -313,6 +320,17 @@ fn handle_config(out: &mut CodeValue, particle: &CodeValue) {
             return;
         }
         cfg.timeout = t;
+    }
+    if let Some(origin) = find_field(particle, "allow_origin").and_then(read_str) {
+        if origin.is_empty() {
+            exception(
+                out,
+                "net_server",
+                "allow_origin must name an origin, or \"*\" for any",
+            );
+            return;
+        }
+        cfg.allow_origin = origin.to_string();
     }
 
     *CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = Some(cfg);
@@ -433,49 +451,66 @@ fn accept_loop(listener: TcpListener, cfg: ServerConfig) {
     report_log("Info", "stopped listening");
 }
 
-/// One connection, start to finish: read the frame, hand the particle to the
-/// program, wait for the answer, frame it back.
+/// One connection, start to finish: read the request, hand the particle to
+/// the program, wait for the answer, write it back.
 fn serve(mut stream: TcpStream, cfg: ServerConfig) {
-    // Bound the read. `read_exact` blocks for ever on a client that connects
-    // and then says nothing, and since this connection is counted in
-    // `IN_FLIGHT` a stalled one would hold the whole program open — `Stop`
-    // included. The same `timeout` that bounds waiting for the program
-    // bounds waiting for the sender.
+    // Bound the read. A client that connects and then says nothing would
+    // block for ever, and since this connection is counted in `IN_FLIGHT` a
+    // stalled one would hold the whole program open — `Stop` included. The
+    // same `timeout` that bounds waiting for the program bounds waiting for
+    // the sender.
     let _ = stream.set_read_timeout(Some(Duration::from_secs_f64(cfg.timeout)));
 
-    let envelope = match read_frame(&mut stream, cfg.max_bytes) {
-        Ok(bytes) => bytes,
+    let request = match read_request(&mut stream, cfg.max_bytes) {
+        Ok(request) => request,
         Err(message) => {
-            report_log("Warn", &format!("bad frame: {message}"));
-            let _ = write_frame(&mut stream, &error_json(&message));
+            report_log("Warn", &format!("bad request: {message}"));
+            let _ = write_response(&mut stream, 400, &cfg, Some(&error_json(&message)));
             return;
         }
     };
 
-    let envelope: Json = match serde_json::from_slice(&envelope) {
+    // A browser asks before it sends: same-origin is the default, and a page
+    // on another origin has to be told this door is open to it. Answered
+    // before anything else, because a preflight carries no body and means no
+    // work.
+    if request.method == "OPTIONS" {
+        let _ = write_response(&mut stream, 204, &cfg, None);
+        return;
+    }
+    if request.method != "POST" {
+        let message = format!(
+            "this door takes POST, not {} — a particle is sent, not fetched",
+            request.method
+        );
+        let _ = write_response(&mut stream, 405, &cfg, Some(&error_json(&message)));
+        return;
+    }
+
+    // **The body is the particle**, and the path is the app. Nothing wraps
+    // anything: a sender writes what it wants to say and nothing else, and
+    // `curl -d '{"_class":"Ping"}' http://host:9000/ping-api` is a whole
+    // request. The app reaches the program as a field, so a runtime hosting
+    // several can route on it.
+    let particle: Json = match serde_json::from_slice(&request.body) {
         Ok(json) => json,
         Err(e) => {
-            let message = format!("frame is not JSON: {e}");
+            let message = format!("body is not JSON: {e}");
             report_log("Warn", &message);
-            let _ = write_frame(&mut stream, &error_json(&message));
+            let _ = write_response(&mut stream, 400, &cfg, Some(&error_json(&message)));
             return;
         }
     };
-
-    // `{ app, particle }` — what net_client puts on the wire. The app comes
-    // from the url's path segment and is handed to the program as a field, so
-    // a runtime hosting several apps can route on it.
-    let app = envelope.get("app").and_then(Json::as_str).unwrap_or("");
-    let Some(particle) = envelope.get("particle").filter(|p| p.is_object()) else {
-        let message = "frame has no `particle` object".to_string();
+    if !particle.is_object() {
+        let message = "body is not a particle — a particle is an object".to_string();
         report_log("Warn", &message);
-        let _ = write_frame(&mut stream, &error_json(&message));
+        let _ = write_response(&mut stream, 400, &cfg, Some(&error_json(&message)));
         return;
-    };
+    }
     if particle.get("_class").and_then(Json::as_str).is_none() {
         let message = "particle has no `_class`".to_string();
         report_log("Warn", &message);
-        let _ = write_frame(&mut stream, &error_json(&message));
+        let _ = write_response(&mut stream, 400, &cfg, Some(&error_json(&message)));
         return;
     }
 
@@ -488,11 +523,15 @@ fn serve(mut stream: TcpStream, cfg: ServerConfig) {
         }
     }
 
-    push_particle(particle, app, id);
+    push_particle(&particle, &request.app, id);
 
     match rx.recv_timeout(Duration::from_secs_f64(cfg.timeout)) {
         Ok(answer) => {
-            let _ = write_frame(&mut stream, &answer);
+            // 200 whatever the handler said. A `Denied` is an answer, not a
+            // transport failure, and a sender reads it by its class like any
+            // other particle — the status line is about whether the *door*
+            // worked.
+            let _ = write_response(&mut stream, 200, &cfg, Some(&answer));
         }
         Err(_) => {
             // Drop the slot first, so a late answer is told nobody is waiting
@@ -504,44 +543,162 @@ fn serve(mut stream: TcpStream, cfg: ServerConfig) {
             drop(pending);
             let message = format!("the program did not answer within {}s", cfg.timeout);
             report_exception(&message);
-            let _ = write_frame(&mut stream, &error_json(&message));
+            let _ = write_response(&mut stream, 504, &cfg, Some(&error_json(&message)));
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// The wire: a four-byte big-endian length, then that many bytes of JSON
+// The wire: HTTP, one POST, the body is the particle
+//
+// It used to be a four-byte length and then that many bytes of JSON. Smaller
+// on the wire and simpler to read, and it had one fatal property: **a browser
+// cannot speak it.** A browser opens no raw sockets — HTTP and WebSocket are
+// all it has — so a framing of our own meant no application in a page could
+// ever reach a program, whatever else it could reach.
+//
+// HTTP costs a few hundred bytes per request and buys the rest of the world
+// with them: a proxy in front, TLS terminated by something that already knows
+// how, a request visible in a browser's devtools, and `curl` when something is
+// wrong. The custom frame was invisible to all of it.
+//
+// What did *not* change is the shape, which is what this module is for: a
+// particle arrives, the program's handlers answer it, the answer goes back.
+// There is still no path to design and no method to choose. HTTP here is only
+// how the bytes travel.
+//
+// Written by hand rather than shared with `http_server`, whose job is the
+// opposite one — giving a program paths, methods and status codes to answer
+// with. What is needed here is one method at one path with one content type,
+// which is a small enough slice that having it twice is cheaper than having a
+// crate between them.
 // ---------------------------------------------------------------------------
 
-fn read_frame(stream: &mut TcpStream, max_bytes: usize) -> Result<Vec<u8>, String> {
-    let mut len = [0u8; 4];
-    stream
-        .read_exact(&mut len)
-        .map_err(|e| format!("cannot read the length prefix: {e}"))?;
-    let len = u32::from_be_bytes(len) as usize;
-    if len == 0 {
-        return Err("zero-length frame".to_string());
-    }
-    if len > max_bytes {
-        return Err(format!(
-            "frame is {len} bytes, over the {max_bytes}-byte max_particle_bytes"
-        ));
-    }
-    let mut body = vec![0u8; len];
-    stream
-        .read_exact(&mut body)
-        .map_err(|e| format!("frame is shorter than its length prefix: {e}"))?;
-    Ok(body)
+/// How much of a request may be headers. Generous for anything a sender here
+/// would send, and a bound, because a client that never sends the blank line
+/// would otherwise be read for ever.
+const MAX_HEAD_BYTES: usize = 16 * 1024;
+
+struct Request {
+    method: String,
+    /// The url's path segment, which names the app — `/ping-api` is
+    /// `"ping-api"`, and `/` is `""`. Never more than one segment deep:
+    /// there is nothing further to say, since a particle already says what it
+    /// wants by its class.
+    app: String,
+    body: Vec<u8>,
 }
 
-fn write_frame(stream: &mut TcpStream, value: &Json) -> std::io::Result<()> {
-    let body = serde_json::to_vec(value).unwrap_or_else(|_| b"null".to_vec());
-    stream.write_all(&(body.len() as u32).to_be_bytes())?;
-    stream.write_all(&body)?;
+fn read_request(stream: &mut TcpStream, max_bytes: usize) -> Result<Request, String> {
+    let mut head = Vec::new();
+    let mut byte = [0u8; 1];
+    // Byte at a time until the blank line. A request head is small and read
+    // once per connection, and reading further would mean buffering part of a
+    // body this function has not yet decided it will accept.
+    loop {
+        match stream.read(&mut byte) {
+            Ok(0) => return Err("the sender closed before finishing its request".to_string()),
+            Ok(_) => head.push(byte[0]),
+            Err(e) => return Err(format!("cannot read the request: {e}")),
+        }
+        if head.ends_with(b"\r\n\r\n") {
+            break;
+        }
+        if head.len() > MAX_HEAD_BYTES {
+            return Err(format!("request head is over {MAX_HEAD_BYTES} bytes"));
+        }
+    }
+
+    let head = String::from_utf8_lossy(&head).into_owned();
+    let mut lines = head.split("\r\n");
+    let start = lines.next().unwrap_or_default();
+    let mut parts = start.split(' ');
+    let method = parts.next().unwrap_or_default().to_string();
+    let target = parts.next().unwrap_or_default();
+    if method.is_empty() || target.is_empty() {
+        return Err("not an HTTP request".to_string());
+    }
+    // Query and fragment are dropped rather than refused: a browser or a
+    // proxy may add either, and neither means anything here.
+    let path = target.split(['?', '#']).next().unwrap_or("/");
+    let app = path.trim_matches('/').split('/').next().unwrap_or("");
+
+    let mut length = 0usize;
+    for line in lines {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.trim().eq_ignore_ascii_case("content-length") {
+            length = value.trim().parse().unwrap_or(0);
+        }
+    }
+    if length > max_bytes {
+        return Err(format!(
+            "body is {length} bytes, over the {max_bytes}-byte max_particle_bytes"
+        ));
+    }
+
+    let mut body = vec![0u8; length];
+    if length > 0 {
+        stream
+            .read_exact(&mut body)
+            .map_err(|e| format!("body is shorter than its content-length: {e}"))?;
+    }
+
+    Ok(Request {
+        method,
+        app: app.to_string(),
+        body,
+    })
+}
+
+fn write_response(
+    stream: &mut TcpStream,
+    status: u16,
+    cfg: &ServerConfig,
+    value: Option<&Json>,
+) -> std::io::Result<()> {
+    let reason = match status {
+        200 => "OK",
+        204 => "No Content",
+        400 => "Bad Request",
+        405 => "Method Not Allowed",
+        504 => "Gateway Timeout",
+        _ => "Error",
+    };
+    let body = value
+        .map(|v| serde_json::to_vec(v).unwrap_or_else(|_| b"null".to_vec()))
+        .unwrap_or_default();
+
+    let mut head = format!("HTTP/1.1 {status} {reason}\r\n");
+    head.push_str("content-type: application/json\r\n");
+    head.push_str(&format!("content-length: {}\r\n", body.len()));
+    // What a browser has to be told before it will let a page read the
+    // answer. Configurable, and open by default, because this door has no
+    // notion of who is knocking: it carries a token it never opens, and the
+    // handler that reads that token is where "who is allowed to ask for this"
+    // is decided. An origin check here would look like an answer to that
+    // question without being one.
+    head.push_str(&format!(
+        "access-control-allow-origin: {}\r\n",
+        cfg.allow_origin
+    ));
+    head.push_str("access-control-allow-headers: content-type\r\n");
+    head.push_str("access-control-allow-methods: POST, OPTIONS\r\n");
+    head.push_str("access-control-max-age: 86400\r\n");
+    // One request per connection. Keep-alive would mean tracking which
+    // connections are idle and which are mid-request, and every sender here
+    // asks one question at a time.
+    head.push_str("connection: close\r\n\r\n");
+
+    stream.write_all(head.as_bytes())?;
+    if !body.is_empty() {
+        stream.write_all(&body)?;
+    }
     stream.flush()
 }
 
-/// What a sender is told when the frame never reached a handler. An
+/// What a sender is told when the request never reached a handler. An
 /// `Exception` particle, so the far side reads it the same way it reads any
 /// other failure in this language.
 fn error_json(message: &str) -> Json {

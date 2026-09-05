@@ -11,7 +11,7 @@
 //! link "net_client.so" as net
 //!
 //! emit Send {
-//!     url = "euglena://127.0.0.1:9000/ping-api",
+//!     url = "http://127.0.0.1:9000/ping-api",
 //!     particle = Impulse { token = "…", particle = Ping { value = 1 } }
 //! } to net get answer
 //! assert answer ∈ Pong
@@ -27,8 +27,8 @@
 //! **The url names a host and an app**, and nothing else:
 //!
 //! ```text
-//! euglena://127.0.0.1:9000/ping-api
-//! └─ scheme ┘└─ host:port ┘└─ app ┘
+//! http://127.0.0.1:9000/ping-api
+//! └ scheme ┘└─ host:port ┘└─ app ┘
 //! ```
 //!
 //! No path beyond the app segment, no method, no query. There is nothing to
@@ -37,8 +37,10 @@
 //! hosting several apps can route on it; a program serving only itself can
 //! leave it off.
 //!
-//! **The wire is framed, not HTTP** — a four-byte big-endian length, then that
-//! many bytes of JSON. See `net_server`'s own docs for why.
+//! **The wire is HTTP**: one POST, the body is the particle, the path is the
+//! app. So `curl -d '{"_class":"Ping"}' http://127.0.0.1:9000/ping-api` is a
+//! whole request, and a browser can send one too — which a framing of our own
+//! made impossible. See `net_server`'s own docs for the rest of why.
 //!
 //! **`Send` blocks**, like `http_client`'s handlers do, and bounds the block:
 //! `timeout_ms` defaults rather than waiting forever, because nothing in the
@@ -62,9 +64,11 @@ const DEFAULT_TIMEOUT_MS: f64 = 10_000.0;
 const MAX_ANSWER_BYTES: usize = 1_048_576;
 
 /// The scheme the url carries. Named rather than a protocol, because there is
-/// no protocol here to name: `euglena://` says "a particle goes to an app",
-/// which is all this transport does.
-const SCHEME: &str = "euglena://";
+/// The url is an address on the network and says so. It used to spell itself
+/// `euglena://`, which named the shape rather than the transport — and a
+/// scheme that lies about the transport is a url nothing else can be handed:
+/// not `curl`, not a browser, not a proxy.
+const SCHEME: &str = "http://";
 
 #[no_mangle]
 pub extern "C" fn code_module_abi_version() -> u32 {
@@ -124,24 +128,29 @@ fn handle_send(out: &mut CodeValue, incoming: &CodeValue) {
     };
     let timeout = Duration::from_millis(timeout_ms as u64);
 
-    let mut envelope = serde_json::Map::new();
-    envelope.insert("app".to_string(), Json::String(app.to_string()));
-    envelope.insert("particle".to_string(), to_json(payload));
-
-    match round_trip(&host_port, &Json::Object(envelope), timeout) {
+    match round_trip(&host_port, &app, &to_json(payload), timeout) {
         Ok(answer) => from_json(out, &answer),
         Err(message) => exception(out, "net_client", &message),
     }
 }
 
-/// `euglena://host:port/app` → `("host:port", "app")`.
+/// `http://host:port/app` → `("host:port", "app")`.
 ///
-/// The app segment is optional: `euglena://host:port` is a program that serves
+/// The app segment is optional: `http://host:port` is a program that serves
 /// only itself, and the far side gets an empty `app`.
 fn split_url(url: &str) -> Result<(String, String), String> {
     let rest = url
         .strip_prefix(SCHEME)
-        .ok_or_else(|| format!("url must start with `{SCHEME}` — got '{url}'"))?;
+        .ok_or_else(|| match url.strip_prefix("https://") {
+            // Worth its own sentence: this module speaks no TLS, and a url
+            // that says `https` and is then sent in the clear would be the
+            // worst kind of working.
+            Some(_) => format!(
+                "`https://` needs TLS, which this module does not speak — put a proxy in \
+                 front and send it `{SCHEME}`, got '{url}'"
+            ),
+            None => format!("url must start with `{SCHEME}` — got '{url}'"),
+        })?;
     let (host_port, app) = match rest.split_once('/') {
         Some((host_port, app)) => (host_port, app),
         None => (rest, ""),
@@ -162,12 +171,21 @@ fn split_url(url: &str) -> Result<(String, String), String> {
     Ok((host_port.to_string(), app.to_string()))
 }
 
-/// Connect, send one frame, read one frame, close.
+/// Connect, POST the particle, read the answer, close.
 ///
 /// No connection reuse: a particle is one exchange, and a pool would be state
 /// this module would then have to invalidate. `net_server` closes its side
-/// after answering for the same reason.
-fn round_trip(host_port: &str, envelope: &Json, timeout: Duration) -> Result<Json, String> {
+/// after answering for the same reason, and says so with `connection: close`.
+///
+/// Written by hand rather than reaching for an HTTP client: what is needed is
+/// one request with one header and a body, and a response whose only
+/// interesting header is its length.
+fn round_trip(
+    host_port: &str,
+    app: &str,
+    particle: &Json,
+    timeout: Duration,
+) -> Result<Json, String> {
     let addr = host_port
         .to_socket_addrs()
         .map_err(|e| format!("cannot resolve '{host_port}': {e}"))?
@@ -181,32 +199,60 @@ fn round_trip(host_port: &str, envelope: &Json, timeout: Duration) -> Result<Jso
         .and_then(|_| stream.set_write_timeout(Some(timeout)))
         .map_err(|e| format!("cannot set a timeout on '{host_port}': {e}"))?;
 
-    let body = serde_json::to_vec(envelope).map_err(|e| format!("cannot encode: {e}"))?;
+    // The body is the particle, and the path is the app. Nothing wraps
+    // anything, which is also what makes this a request anyone can send:
+    // `curl -d '{"_class":"Ping"}' http://host:port/app` is the whole of it.
+    let body = serde_json::to_vec(particle).map_err(|e| format!("cannot encode: {e}"))?;
+    let head = format!(
+        "POST /{app} HTTP/1.1\r\n\
+         host: {host_port}\r\n\
+         content-type: application/json\r\n\
+         content-length: {}\r\n\
+         connection: close\r\n\r\n",
+        body.len()
+    );
     stream
-        .write_all(&(body.len() as u32).to_be_bytes())
+        .write_all(head.as_bytes())
         .and_then(|_| stream.write_all(&body))
         .and_then(|_| stream.flush())
         .map_err(|e| format!("cannot send to '{host_port}': {e}"))?;
 
-    let mut len = [0u8; 4];
-    stream
-        .read_exact(&mut len)
-        .map_err(|e| format!("no answer from '{host_port}': {e}"))?;
-    let len = u32::from_be_bytes(len) as usize;
-    if len == 0 {
-        return Err(format!("'{host_port}' answered with an empty frame"));
+    // Read it all: the far side closes after answering, so end-of-stream is
+    // the end of the response and there is no length to trust.
+    let mut answer = Vec::new();
+    let mut chunk = [0u8; 4096];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+                answer.extend_from_slice(&chunk[..n]);
+                if answer.len() > MAX_ANSWER_BYTES {
+                    return Err(format!(
+                        "'{host_port}' answered with over the {MAX_ANSWER_BYTES}-byte cap"
+                    ));
+                }
+            }
+            Err(e) => return Err(format!("no answer from '{host_port}': {e}")),
+        }
     }
-    if len > MAX_ANSWER_BYTES {
-        return Err(format!(
-            "'{host_port}' answered with {len} bytes, over the {MAX_ANSWER_BYTES}-byte cap"
-        ));
-    }
-    let mut answer = vec![0u8; len];
-    stream
-        .read_exact(&mut answer)
-        .map_err(|e| format!("answer from '{host_port}' is short: {e}"))?;
 
-    serde_json::from_slice(&answer)
+    let split = answer
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .ok_or_else(|| format!("'{host_port}' answered without a complete head"))?;
+    let body = &answer[split + 4..];
+    if body.is_empty() {
+        // A status line worth repeating: this is what a sender sees when it
+        // reached something that is not a `net_server` at all.
+        let status = String::from_utf8_lossy(&answer[..split])
+            .lines()
+            .next()
+            .unwrap_or("")
+            .to_string();
+        return Err(format!("'{host_port}' answered with no body ({status})"));
+    }
+
+    serde_json::from_slice(body)
         .map_err(|e| format!("answer from '{host_port}' is not JSON: {e}"))
 }
 
