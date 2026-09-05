@@ -4,15 +4,15 @@
 link "native_modules/net_client.so" as net
 
 | A url has to name the transport.
-emit Send { url = "http://127.0.0.1:9/x", particle = Ping { } } to net get scheme
+emit Send { url = "http://127.0.0.1:9/x", particle = Ping {} } to net get scheme
 assert scheme ∈ Exception
 
 | ...and a port, since there is no default to guess.
-emit Send { url = "euglena://127.0.0.1/x", particle = Ping { } } to net get noport
+emit Send { url = "euglena://127.0.0.1/x", particle = Ping {} } to net get noport
 assert noport ∈ Exception
 
 | This transport has no paths — one app segment is all a url carries.
-emit Send { url = "euglena://127.0.0.1:9/a/b", particle = Ping { } } to net get deep
+emit Send { url = "euglena://127.0.0.1:9/a/b", particle = Ping {} } to net get deep
 assert deep ∈ Exception
 
 | A particle is an object with a class. A number is not one.
@@ -24,5 +24,5 @@ emit Send { url = "euglena://127.0.0.1:9/x" } to net get missing
 assert missing ∈ Exception
 
 | A timeout has to be a positive number.
-emit Send { url = "euglena://127.0.0.1:9/x", particle = Ping { }, timeout_ms = 0 } to net get zero
+emit Send { url = "euglena://127.0.0.1:9/x", particle = Ping {}, timeout_ms = 0 } to net get zero
 assert zero ∈ Exception

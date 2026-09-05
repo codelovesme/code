@@ -4,7 +4,7 @@
 |
 | The yes side needs a host, so it lives in `tests/hosted_app.rs`.
 
-emit Hosted { } to core get where
+emit Hosted {} to core get where
 assert where ∈ HostedResult
 assert where._class = "HostedResult"
 assert where.value ∈ Boolean

@@ -12,17 +12,17 @@ link "native_modules/membrane.so" as door
 emit Config { host = "127.0.0.1", port = 8080 } to door get c
 assert c.ok
 
-emit Listen { } to door get l
+emit Listen {} to door get l
 assert not l.ok
 assert l.port = 0
 assert not l.message = null
 
 | And stopping answers `ok` either way, so one shutdown path works whether or
 | not anything was ever started.
-emit Stop { } to door get s
+emit Stop {} to door get s
 assert s.ok
 
 | The vocabulary is net_server's word for word, so nothing else is here: a
 | class this module does not handle is null, like any other recipient.
-emit Whatever { } to door get nothing
+emit Whatever {} to door get nothing
 assert nothing = null

@@ -10,73 +10,73 @@
 | binary carries no source tree to resolve against. So it is taken as an
 | ordinary path, relative to the working directory — and these fixtures run
 | from the crate root.
-Missing { } => {
+Missing {} => {
     link "tests/native_modules/nosuch.so" as m
-    return Loaded { }
+    return Loaded {}
 }
-emit Missing { } to this get a
+emit Missing {} to this get a
 assert a._class = "Exception"
 
 | A `.a` is linked into this binary at build time and has nothing to open; a
 | `.code` source would mean adding handlers while the program runs. Only a
 | `.so` is an organelle in the sense this statement means.
-NotAnOrganelle { } => {
+NotAnOrganelle {} => {
     link "tests/native_modules/test_math_static.a" as m
-    return Loaded { }
+    return Loaded {}
 }
-emit NotAnOrganelle { } to this get b
+emit NotAnOrganelle {} to this get b
 assert b._class = "Exception"
 
 | An organelle that speaks first is refused: the drain runs over the modules
 | known when the program started, so a queue that appeared later would never
 | be read and nothing it pushed would ever be handled.
-SpeaksFirst { } => {
+SpeaksFirst {} => {
     link "tests/native_modules/test_events.so" as m
-    return Loaded { }
+    return Loaded {}
 }
-emit SpeaksFirst { } to this get c
+emit SpeaksFirst {} to this get c
 assert c._class = "Exception"
 
 | The path is a value, so it can be the wrong kind of value.
-NotAPath { } => {
+NotAPath {} => {
     link 5 as m
-    return Loaded { }
+    return Loaded {}
 }
-emit NotAPath { } to this get d
+emit NotAPath {} to this get d
 assert d._class = "Exception"
 
 | An address is something the runtime minted. Anything else emitted to is a
 | mistake worth naming, not a lookup that quietly finds nothing.
-Forged { } => {
+Forged {} => {
     let fake = { "_organelle" = 99 }
     emit Double { value = 1 } to fake get r
     return r
 }
-emit Forged { } to this get e
+emit Forged {} to this get e
 assert e._class = "Exception"
 
-NotAnAddress { } => {
+NotAnAddress {} => {
     let nope = 5
     emit Double { value = 1 } to nope get r
     return r
 }
-emit NotAnAddress { } to this get f
+emit NotAnAddress {} to this get f
 assert f._class = "Exception"
 
 | Unlinking something that was never linked, and unlinking twice.
-UnlinkForged { } => {
+UnlinkForged {} => {
     let fake = { "_organelle" = 99 }
     unlink fake
-    return Unlinked { }
+    return Unlinked {}
 }
-emit UnlinkForged { } to this get g
+emit UnlinkForged {} to this get g
 assert g._class = "Exception"
 
-UnlinkTwice { } => {
+UnlinkTwice {} => {
     link "tests/native_modules/test_math.so" as m
     unlink m
     unlink m
-    return Unlinked { }
+    return Unlinked {}
 }
-emit UnlinkTwice { } to this get h
+emit UnlinkTwice {} to this get h
 assert h._class = "Exception"

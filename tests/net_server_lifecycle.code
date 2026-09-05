@@ -5,19 +5,19 @@
 link "native_modules/net_server.so" as net
 
 | Stop before Listen is a mistake worth naming rather than a silent no-op.
-emit Stop { } to net get early
+emit Stop {} to net get early
 assert early ∈ Exception
 assert early.source = "net_server"
 
 emit Config { port = 0 } to net get c
 assert c.ok
 
-emit Listen { } to net get l
+emit Listen {} to net get l
 assert l.ok
 assert l.port > 0
 
 | One Listen per program: the socket is already bound.
-emit Listen { } to net get again
+emit Listen {} to net get again
 assert not again.ok
 
 | Config after Listen would be a lie — the socket is bound.
@@ -25,5 +25,5 @@ emit Config { port = 0 } to net get late
 assert late ∈ Exception
 
 | And Stop lets the program end, which is the only reason it can finish here.
-emit Stop { } to net get s
+emit Stop {} to net get s
 assert s.ok
