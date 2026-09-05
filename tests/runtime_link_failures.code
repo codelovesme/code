@@ -27,16 +27,6 @@ NotAnOrganelle {} => {
 emit NotAnOrganelle {} to this get b
 assert b._class = "Exception"
 
-| An organelle that speaks first is refused: the drain runs over the modules
-| known when the program started, so a queue that appeared later would never
-| be read and nothing it pushed would ever be handled.
-SpeaksFirst {} => {
-    link "tests/native_modules/test_events.so" as m
-    return Loaded {}
-}
-emit SpeaksFirst {} to this get c
-assert c._class = "Exception"
-
 | The path is a value, so it can be the wrong kind of value.
 NotAPath {} => {
     link 5 as m

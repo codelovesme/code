@@ -386,6 +386,15 @@ pub fn compile_to_object(
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
+    // Organelles linked while running: their queues, and whether one of them
+    // is still working. The compile-time list cannot answer either question.
+    let fn_runtime_drain_speakers = module.add_function(
+        "code_runtime_drain_speakers",
+        void_ty.fn_type(&[], false),
+        None,
+    );
+    let fn_runtime_any_serving =
+        module.add_function("code_runtime_any_serving", i32_ty.fn_type(&[], false), None);
     let fn_runtime_drain_guests = module.add_function(
         "code_runtime_drain_guests",
         void_ty.fn_type(&[], false),
@@ -727,6 +736,8 @@ pub fn compile_to_object(
         fn_runtime_unlink,
         fn_runtime_unlink_all,
         fn_runtime_drain_guests,
+        fn_runtime_drain_speakers,
+        fn_runtime_any_serving,
         fn_set_program_dispatch,
         fn_runtime_dispatch,
         fn_native_dispatch,
@@ -946,6 +957,12 @@ struct Gen<'a, 'm> {
     fn_runtime_unlink: FunctionValue<'a>,
     fn_runtime_unlink_all: FunctionValue<'a>,
     fn_runtime_drain_guests: FunctionValue<'a>,
+    /// `runtime.c`'s `code_runtime_drain_speakers` — the inbound queues of
+    /// organelles linked while the program ran. See `gen_drain_body`.
+    fn_runtime_drain_speakers: FunctionValue<'a>,
+    /// `runtime.c`'s `code_runtime_any_serving` — whether one of those is
+    /// still working. See `gen_keep_alive`.
+    fn_runtime_any_serving: FunctionValue<'a>,
     fn_set_program_dispatch: FunctionValue<'a>,
     fn_runtime_dispatch: FunctionValue<'a>,
     fn_native_dispatch: FunctionValue<'a>,
@@ -1572,7 +1589,10 @@ impl<'a, 'm> Gen<'a, 'm> {
                 NativeLink::Static { .. } => None,
             })
             .collect();
-        if handles.is_empty() {
+        // Empty *and* unable to open anything later means there is nothing
+        // that could ever hold this program open — skip the loop entirely.
+        // A program that links while running cannot say that from here.
+        if handles.is_empty() && !self.links_at_runtime {
             return Ok(());
         }
 
@@ -1593,6 +1613,27 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.builder.position_at_end(head);
         let zero = self.i32_ty.const_zero();
         let mut serving = self.context.bool_type().const_zero();
+        if self.links_at_runtime {
+            // Asked every time round rather than once: what this program has
+            // open changes while it runs.
+            let answer = self
+                .builder
+                .build_call(self.fn_runtime_any_serving, &[], "runtime_serving")
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .left()
+                .ok_or_else(|| "code_runtime_any_serving returned nothing".to_string())?
+                .into_int_value();
+            serving = self
+                .builder
+                .build_int_compare(
+                    inkwell::IntPredicate::NE,
+                    answer,
+                    zero,
+                    "runtime_is_serving",
+                )
+                .map_err(|e| e.to_string())?;
+        }
         for slot in handles {
             let handle = self
                 .builder
@@ -1670,6 +1711,13 @@ impl<'a, 'm> Gen<'a, 'm> {
         // park/drain loop reaches them — no polling anywhere.
         self.builder
             .build_call(self.fn_runtime_drain_guests, &[], "")
+            .map_err(|e| e.to_string())?;
+
+        // And organelles this program linked while running, which are not in
+        // the list below because they were not knowable when it was built. A
+        // door chosen at runtime pushes into a queue only this reaches.
+        self.builder
+            .build_call(self.fn_runtime_drain_speakers, &[], "")
             .map_err(|e| e.to_string())?;
 
         if handles.is_empty() {

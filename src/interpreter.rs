@@ -50,6 +50,9 @@ struct RuntimeOrganelle {
     /// not a pointer — see `native.rs`'s hosting tables.
     #[cfg(feature = "native-modules")]
     guest: Option<usize>,
+    /// Which `Environment::inbound` row listens to it, for an organelle that
+    /// speaks first — `None` for the rest, which is most of them.
+    inbound: Option<usize>,
 }
 
 /// The value a `link` inside a handler binds: an ordinary object, so
@@ -255,6 +258,12 @@ impl Environment {
         if let Some(guest) = organelle.guest {
             crate::native::close_hosted_guest(guest);
         }
+        // And stop listening to it, for the same reason and one more: the
+        // row holds the `Rc`s that keep the module loaded, so a row left
+        // behind is an organelle that never unloads.
+        if let Some(row) = organelle.inbound {
+            self.drop_inbound(row);
+        }
         (organelle.release)();
     }
 
@@ -326,12 +335,30 @@ impl Environment {
         drain: Rc<dyn Fn() -> Vec<Value>>,
         reply: InboundReply,
         serving: Rc<dyn Fn() -> bool>,
-    ) {
+    ) -> usize {
         self.inbound.push(InboundSource {
             drain,
             reply,
             serving,
         });
+        self.inbound.len() - 1
+    }
+
+    /// Stops listening to one source, without disturbing the rows around it.
+    ///
+    /// An organelle linked while the program runs can also be unlinked while
+    /// it runs, and then this program must stop draining it — and, just as
+    /// importantly, stop holding the `Rc`s inside its row, which are what
+    /// keep the module loaded. Overwritten rather than removed because every
+    /// other row's index is an identity that outlives it.
+    fn drop_inbound(&mut self, row: usize) {
+        if let Some(slot) = self.inbound.get_mut(row) {
+            *slot = InboundSource {
+                drain: Rc::new(Vec::new),
+                reply: Rc::new(|_, _| {}),
+                serving: Rc::new(|| false),
+            };
+        }
     }
 
     pub fn provide_module(&mut self, name: &str, vars: Value, dispatch: ModuleDispatch) {
@@ -873,19 +900,22 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     format!("./{path}")
                 };
                 let module = NativeModule::open(path)?;
-                // An organelle that speaks first cannot be linked here. The
-                // drain runs over the modules known when the program
-                // started, so a queue that appears later is never read, and
-                // nothing this module pushed would ever be handled — a
-                // silence far worse than a refusal. Guests do not push
-                // (`codegen.rs`'s `define_library_exports` deliberately
-                // exports no inbound), so this costs them nothing.
-                if module.has_inbound() {
-                    return Err(format!(
-                        "'link {path}' inside a handler: this organelle speaks first, and \
-                         only organelles linked at the top level are ever listened to"
-                    ));
-                }
+                // An organelle that speaks first used to be refused here,
+                // because the drain ran only over the modules known when the
+                // program started. It is listened to now: its queue joins
+                // the same list a top-level `link` adds to, and leaves it
+                // again on `unlink`. So a door can be chosen while the
+                // program runs — which is the point, since an application
+                // that may be held cannot know at build time whether it is
+                // opening a port or being given a membrane. Must match
+                // `runtime.c`'s `code_runtime_link`.
+                let inbound = module.has_inbound().then(|| {
+                    let queue = module.inbound_handle();
+                    // Which environment to wake: this one, the same as for a
+                    // top-level link, so one park covers everything.
+                    queue.wake(env.wakeup());
+                    queue
+                });
                 // Become its host before anything else touches it: from
                 // here on every `link` inside this organelle asks this
                 // program's handlers instead of the filesystem, which is
@@ -901,12 +931,22 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                 let dispatching = Rc::clone(&module);
                 let draining = Rc::clone(&module);
                 let asking = Rc::clone(&module);
+                let inbound = inbound.map(|queue| {
+                    let replying = Rc::clone(&module);
+                    let serving = Rc::clone(&module);
+                    env.link_inbound(
+                        Rc::new(move || queue.take()),
+                        Rc::new(move |particle, answer| replying.reply(particle, answer)),
+                        Rc::new(move || serving.serving()),
+                    )
+                });
                 let organelle = RuntimeOrganelle {
                     dispatch: Rc::new(move |v| dispatching.dispatch(v)),
                     release: Rc::new(move || module.release()),
                     drain: Rc::new(move || draining.drain()),
                     serving: Rc::new(move || asking.serving()),
                     guest,
+                    inbound,
                 };
                 let address = env.open_organelle(organelle);
                 env.declare(alias.clone(), address);

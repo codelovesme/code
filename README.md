@@ -893,9 +893,11 @@ Four things are worth knowing before reaching for it:
 - **Two links are two organelles**, even of the same file — see [A name is
   an organelle](#a-name-is-an-organelle). So each has its own address, and
   stopping one leaves the other running.
-- **Not an organelle that speaks first.** The inbound drain runs over the
-  organelles known when the program started, so one linked later would push
-  into a queue nobody reads. Refused at `link` rather than silently ignored.
+- **An organelle that speaks first is heard.** Its queue joins the same list
+  a top-level `link` adds to, and leaves it again on `unlink` — so a door
+  opened while the program runs is drained by the same loop, and holds the
+  program open the same way. This was refused until 1.7.1, when choosing a
+  door at runtime became the point.
 
 Everything that can go wrong here is a value, not the end of the program — a
 missing file, a stale address, the wrong kind of value. A program that opens

@@ -67,3 +67,36 @@ Stale {} => {
 unlink held
 emit Stale {} to this get gone
 assert gone._class = "Exception"
+
+| An organelle that speaks first can be linked here too, and is heard: its
+| queue joins the same list a top-level `link` adds to, so the program's own
+| drain empties it and each answer goes back to the module that pushed.
+|
+| This is what lets an application choose its door while running — it cannot
+| know at build time whether it is opening a port of its own or being handed
+| one by a host.
+Tick { value } => {
+    return Ack { value = value + 100 }
+}
+
+Speaking {} => {
+    link "tests/native_modules/test_events.so" as ev
+    emit Start { value = 3 } to ev get started
+    assert started.value = 3
+    return Opened { door = ev }
+}
+
+emit Speaking {} to this get spoke
+assert spoke._class = "Opened"
+let door = spoke.door
+
+| The three ticks have been handled by here, and each answer went back —
+| through a queue that did not exist when this program started.
+emit Answers {} to door get a
+assert a.count = 3
+assert a.last = 102
+
+| And it can be stopped again — which is only true because it stopped
+| speaking first: `unlink` refuses while anything an organelle holds is
+| still working.
+unlink door

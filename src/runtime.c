@@ -1901,23 +1901,15 @@ void code_runtime_link(CodeValue *out, const CodeValue *path) {
         fail(err);
         return;
     }
-    /* An organelle that speaks first cannot be linked here. The drain runs
-     * over the modules known when the program started, so a queue that
-     * appears later is never read and nothing it pushed would ever be
-     * handled — a silence far worse than a refusal. */
-    if (nh->has_inbound) {
-        /* Wide enough for the sentence plus a rooted path — `text` may be up
-         * to `sizeof rooted`, and `snprintf` truncating a diagnostic is not
-         * a bug but it is a warning on every module build. */
-        char msg[768];
-        snprintf(msg, sizeof msg,
-                 "'link %s' inside a handler: this organelle speaks first, and only "
-                 "organelles linked at the top level are ever listened to",
-                 text);
-        fail(msg);
-        code_native_close(nh);
-        return;
-    }
+    /* An organelle that speaks first used to be refused here, because the
+     * generated drain ran only over the modules known when the program
+     * started and a queue appearing later would never be read. It is
+     * listened to now: `code_runtime_drain_speakers` empties these queues
+     * from the same loop, and `code_runtime_any_serving` keeps the program
+     * up while one of them is still working. So a door can be chosen while
+     * the program runs — which is the point, since an application that may
+     * be held cannot know at build time whether it is opening a port or
+     * being given a membrane. */
 
     if (runtime_organelle_count == runtime_organelle_cap) {
         long long cap = runtime_organelle_cap ? runtime_organelle_cap * 2 : 8;
@@ -1978,9 +1970,11 @@ static void release_organelle(long long row) {
     }
     void *lib = nh->lib;
     int image = nh->image_fd;
-    /* Frees the handle and drains anything still queued. Safe to free here,
-     * unlike at program exit, precisely because `has_inbound` was refused at
-     * link time: no other thread holds this pointer. */
+    /* Frees the handle and drains anything still queued. Safe to free here
+     * because the only caller that can reach a live organelle refuses while
+     * it is still serving, and the end-of-program sweep skips those: an
+     * organelle that answers no to `code_native_serving` has no thread left
+     * to hold this pointer. */
     code_native_close(nh);
     close_hosted_guest(slot->guest);
     free(slot->path);
@@ -2075,6 +2069,67 @@ void code_runtime_drain_guests(void) {
             nh->module_drain();
         }
     }
+}
+
+/* Empties the inbound queues of organelles linked while the program ran, the
+ * way the generated drain empties the ones linked at the top level.
+ *
+ * Same three steps, in the same order: take the oldest particle, ask the
+ * program's handlers for an answer, hand that answer back to the organelle
+ * that pushed. A class the program has no handler for is *dropped* rather
+ * than made an error — the rule top-level modules already live under, and
+ * for the same reason: a module speaks on its own initiative, and a
+ * diagnostic nobody asked to hear is not a mistake by the program.
+ *
+ * Loops until every queue is empty, because answering one particle commonly
+ * produces another.
+ *
+ * Without `code_program_dispatch` there is nothing to ask, and every
+ * particle is answered with null. That is the honest answer rather than a
+ * dropped one — a door has to turn "nobody replied" into a status either
+ * way. */
+void code_runtime_drain_speakers(void) {
+    int more = 1;
+    while (more) {
+        more = 0;
+        for (long long i = 0; i < runtime_organelle_count; i++) {
+            NativeHandle *nh = runtime_organelles[i].handle;
+            if (!nh || !nh->has_inbound) {
+                continue;
+            }
+            CodeValue particle = {0};
+            while (code_poll_inbound(nh, &particle)) {
+                more = 1;
+                CodeValue answer = {0};
+                if (code_program_dispatch) {
+                    code_program_dispatch(&answer, &particle);
+                } else {
+                    code_null(&answer);
+                }
+                code_native_reply(nh, &particle, &answer);
+                code_release(&answer);
+                code_release(&particle);
+                memset(&particle, 0, sizeof particle);
+            }
+        }
+    }
+}
+
+/* Whether any organelle linked while the program ran still expects to speak
+ * — the runtime-linked half of the condition that holds a program open past
+ * its last statement.
+ *
+ * A program that chose its door while running has no compile-time handle to
+ * ask, so without this it would reach the end of `main` and exit while its
+ * own listener was still accepting. */
+int code_runtime_any_serving(void) {
+    for (long long i = 0; i < runtime_organelle_count; i++) {
+        NativeHandle *nh = runtime_organelles[i].handle;
+        if (nh && code_native_serving(nh)) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 /* `emit <particle> to <address>` — the runtime-linked half of
