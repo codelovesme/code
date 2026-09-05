@@ -14,7 +14,7 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "cc",
 ]
@@ -61,7 +61,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "net_client"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "code-native",
  "serde_json",
