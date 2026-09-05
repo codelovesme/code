@@ -161,7 +161,8 @@ fn wasm_spells_numbers_the_way_the_other_modes_do() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// A wasm build writes the page's half beside the module.
+/// A wasm build writes the page's half beside the module, holding the halves
+/// of the modules it linked and no others.
 ///
 /// The two are one artifact in two pieces: every browser module leaves a
 /// function undefined for the page to fill in, and so does the language,
@@ -169,6 +170,11 @@ fn wasm_spells_numbers_the_way_the_other_modes_do() {
 /// than making it something to install is what keeps them the same age —
 /// nothing fetches it and nothing pins it, so it cannot be a version behind
 /// the runtime it answers.
+///
+/// An extra import would be harmless — a module fails to instantiate for one
+/// it *needs* and does not have, never for one it was handed anyway — so what
+/// this holds is not correctness but honesty: an application does not carry
+/// the browser half of a module it never mentioned.
 #[test]
 fn a_wasm_build_writes_the_pages_half_beside_it() {
     let dir = temp_dir("wasm-host");
@@ -186,12 +192,14 @@ fn a_wasm_build_writes_the_pages_half_beside_it() {
     // same directory, and the `import` is a sibling path.
     let host = out.parent().unwrap().join("host.mjs");
     let text = fs::read_to_string(&host).expect("host.mjs written beside the module");
+
+    // The language's own half is always there — a freestanding build cannot
+    // tell the time or spell a fraction and asks for both.
     for needed in [
         "code_host_now",
-        "code_web_render",
-        "code_web_storage_get",
-        "code_web_route_watch",
-        "code_web_timer_set",
+        "code_host_error",
+        "code_host_number_exact",
+        "code_host_number_parse",
         "code_event_fire",
     ] {
         assert!(
@@ -200,6 +208,11 @@ fn a_wasm_build_writes_the_pages_half_beside_it() {
              fail to instantiate with nothing said about why"
         );
     }
+    // This program linked no modules, so it carries no module's half.
+    assert!(
+        !text.contains("code_web_"),
+        "a program that linked no browser module still carries one's half"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -650,4 +663,52 @@ fn tool_exists(name: &str) -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+/// The page's half is composed from the modules a program linked.
+///
+/// A module for the browser is two pieces of code and keeps them together —
+/// its `page.mjs` sits beside its Rust — so this is the step that puts the
+/// second halves of exactly the linked ones into one file. Held here rather
+/// than only through a build, so the shape of the composition is checked
+/// without compiling anything.
+#[test]
+fn the_pages_half_holds_the_linked_modules_and_no_others() {
+    let none = code::web_host_source(&[]);
+    assert!(
+        none.contains("code_host_now") && !none.contains("code_web_"),
+        "a program that linked nothing still carries a module's half"
+    );
+
+    let console = code::web_host_source(&["console"]);
+    assert!(
+        console.contains("code_web_log"),
+        "console's half is missing"
+    );
+    assert!(
+        !console.contains("code_web_render"),
+        "an application that linked only `console` carries `dom`'s half too"
+    );
+
+    let two = code::web_host_source(&["dom", "storage"]);
+    for needed in ["code_web_render", "code_web_storage_get"] {
+        assert!(two.contains(needed), "'{needed}' is missing");
+    }
+    assert!(
+        !two.contains("code_web_timer_set"),
+        "a module nobody linked came along anyway"
+    );
+
+    // Most `.a`s a wasm program links have nothing to say to a page, and
+    // that is not an error — it is what a module without a browser half is.
+    let plain = code::web_host_source(&["wasmmath"]);
+    assert_eq!(
+        plain, none,
+        "a module with no browser half changed the file"
+    );
+
+    // Nothing is left of the marker the halves are pasted into: a stray
+    // comment would be harmless, a stray one *inside an array literal* is
+    // how a trailing comma becomes a syntax error in the page.
+    assert!(!two.contains("__CODE_WEB_PARTS__"));
 }

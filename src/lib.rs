@@ -61,14 +61,46 @@ mod compile {
     const CODE_ABI_H: &str = include_str!("code_abi.h");
     /// Freestanding libc-shaped helpers used only by the wasm runtime build.
     const WASM_SHIM_H: &str = include_str!("wasm_shim.h");
-    /// The page's half of every browser module, written beside a wasm build.
+    /// The language's own half of a page: the four functions a host with no
+    /// operating system has to supply, and the wiring that lets a page fire a
+    /// particle back.
     ///
     /// Embedded for the same reason as the three above, and belonging to a
-    /// build for a stronger one: a `.wasm` and this file are one artifact in
-    /// two pieces. The compiler knows which runtime it linked and which
-    /// modules went in, so the half that answers them cannot be a version
-    /// behind — it came out of the same binary in the same second.
-    const WEB_HOST_JS: &str = include_str!("../web/host.mjs");
+    /// build for a stronger one: a `.wasm` and the JavaScript that answers its
+    /// imports are one artifact in two pieces. The compiler knows which
+    /// runtime it linked and which modules went in, so the half that answers
+    /// them cannot be a version behind — it came out of the same binary in
+    /// the same second.
+    const WEB_RUNTIME_JS: &str = include_str!("../web/runtime.mjs");
+    /// Where the module halves go, verbatim, inside `PARTS`.
+    const WEB_PARTS_MARK: &str = "//__CODE_WEB_PARTS__";
+    /// Each browser module's own half, by the prefix its `.a` exports under.
+    ///
+    /// A module is two pieces of code and keeps them together — its
+    /// `page.mjs` sits beside its Rust — so this table is a list of which
+    /// modules have a browser half at all, not a second implementation of
+    /// them.
+    ///
+    /// Embedded rather than read out of the archive the program linked, which
+    /// is the honest limit here: **a module from outside this repository
+    /// cannot bring its own half.** Putting it inside the `.a` was tried and
+    /// makes the wasm linker warn on every build ("archive member is neither
+    /// Wasm object file nor LLVM bitcode"); the way out is a second published
+    /// asset beside the archive, which is release, install and lockfile work
+    /// nobody needs yet.
+    const WEB_MODULE_PARTS: &[(&str, &str)] = &[
+        (
+            "console",
+            include_str!("../crates/modules/console/page.mjs"),
+        ),
+        ("dom", include_str!("../crates/modules/dom/page.mjs")),
+        ("router", include_str!("../crates/modules/router/page.mjs")),
+        (
+            "storage",
+            include_str!("../crates/modules/storage/page.mjs"),
+        ),
+        ("timer", include_str!("../crates/modules/timer/page.mjs")),
+    ];
 
     /// Distinguishes concurrent builds *within* one process; the pid
     /// distinguishes them across processes. See `scratch_dir`.
@@ -193,7 +225,7 @@ mod compile {
                     &runtime_obj_path,
                 )?;
                 link_wasm(&obj_path, &runtime_obj_path, &static_modules, out_path)?;
-                return write_web_host(out_path);
+                return write_web_host(out_path, &prefixes);
             }
 
             match target {
@@ -316,10 +348,36 @@ mod compile {
     /// Overwritten every build, and named the same every time so a page's
     /// `import` never has to change. It is output, not source: a project
     /// ignores it the way it ignores the `.wasm` beside it.
-    fn write_web_host(out_path: &Path) -> Result<(), String> {
+    fn write_web_host(out_path: &Path, linked: &[(&str, &str)]) -> Result<(), String> {
+        let prefixes: Vec<&str> = linked.iter().map(|(_, prefix)| *prefix).collect();
         let beside = out_path.parent().unwrap_or(Path::new("."));
         let host = beside.join("host.mjs");
-        fs::write(&host, WEB_HOST_JS).map_err(|e| format!("write {}: {e}", host.display()))
+        fs::write(&host, web_host_source(&prefixes))
+            .map_err(|e| format!("write {}: {e}", host.display()))
+    }
+
+    /// The page's half for a program that linked `prefixes`.
+    ///
+    /// Only the halves of the modules actually linked. An extra import is
+    /// harmless — a module fails to instantiate for one it *needs* and does
+    /// not have, never for one it was handed anyway — so this is not about
+    /// correctness but about an application not carrying the browser half of
+    /// a module it never mentioned.
+    ///
+    /// A prefix with no half is simply not one of these modules: every `.a` a
+    /// wasm program links comes through here, and most of them have nothing
+    /// to say to a page.
+    pub fn web_host_source(prefixes: &[&str]) -> String {
+        let parts: Vec<&str> = prefixes
+            .iter()
+            .filter_map(|prefix| {
+                WEB_MODULE_PARTS
+                    .iter()
+                    .find(|(name, _)| name == prefix)
+                    .map(|(_, js)| *js)
+            })
+            .collect();
+        WEB_RUNTIME_JS.replace(WEB_PARTS_MARK, &parts.join(",\n"))
     }
 
     fn link_wasm(
@@ -417,3 +475,5 @@ mod compile {
 pub use codegen::BuildTarget;
 #[cfg(feature = "llvm")]
 pub use compile::compile_file;
+#[cfg(feature = "llvm")]
+pub use compile::web_host_source;

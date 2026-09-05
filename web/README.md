@@ -1,32 +1,25 @@
-# `web/host.mjs` — the page's half of the browser modules
-
-**A wasm build writes this file beside the module it built.** It is output,
-not something to fetch or pin: the compiler knows which runtime it linked and
-which modules went in, so the half that answers them came out of the same
-binary in the same second and cannot be a version behind. An application
-ignores it the way it ignores the `.wasm` next to it. The copy here is the
-source it is emitted from.
+# The page's half of the browser modules
 
 A module for the browser is two pieces of code. One is compiled into the
 `.wasm`: it takes a particle, works out what was asked, and calls a function
 it deliberately left undefined. The other is that function, written in the
-only language that can reach a page. **Neither is a module on its own.**
+only language that can reach a page. **Neither is a module on its own**, so a
+module keeps both halves together — its `page.mjs` sits beside its Rust.
 
-This file is the second half of all of them at once:
+`runtime.mjs` here is the part that belongs to no module in particular: the
+four functions the language itself needs from a host with no operating system
+(a clock, an error sink, and turning a double into text and back — a
+freestanding build cannot compute those and asks), plus the wiring that lets
+a page fire a particle back.
 
-| Module | What the page supplies |
-|---|---|
-| `console` | `code_web_log` |
-| `dom` | `code_web_render` |
-| `storage` | `code_web_storage_get` / `_set` / `_remove` |
-| `router` | `code_web_route_get` / `_set` / `_watch` |
-| `timer` | `code_web_timer_set` / `_clear` |
+**`code build --target wasm` writes the two together**, as `host.mjs`, beside
+the module it built — `runtime.mjs` with the halves of the modules the
+program actually linked pasted in. So:
 
-plus the four the language itself needs from a host with no operating system
-(the clock, the error sink, and turning a double into text and back — a
-freestanding build cannot compute those and asks).
-
-A module the application did not link costs nothing but an unused import.
+- an application carries what it linked and not one line more;
+- the two halves come out of the same binary in the same second, and cannot
+  be a version behind each other;
+- there is nothing to install, pin, or keep in step by hand.
 
 ```html
 <div id="app"></div>
@@ -40,17 +33,35 @@ A module the application did not link costs nothing but an unused import.
 the instance — or for a test that hands over a document of its own and checks
 what the application drew, with no browser involved.
 
+## Which modules have one
+
+| Module | What the page supplies |
+|---|---|
+| `console` | `code_web_log` |
+| `dom` | `code_web_render` |
+| `storage` | `code_web_storage_get` / `_set` / `_remove` |
+| `router` | `code_web_route_get` / `_set` / `_watch` |
+| `timer` | `code_web_timer_set` / `_clear` |
+
+**A module from outside this repository cannot bring its own half yet**, and
+that is the honest limit of this design. The halves are embedded in the
+compiler and chosen by the prefix a `.a` exports under. Putting the file
+inside the archive was tried: it links, but the wasm linker warns on every
+build that the member is neither an object nor bitcode. The way out is a
+second published asset beside the archive — release, install and lockfile
+work that nothing needs yet.
+
 ## Two rules run through all of it
 
-**Nothing here interprets.** No `innerHTML`, no `eval`, no property reached by
+**Nothing interprets.** No `innerHTML`, no `eval`, no property reached by
 name, no handler built from text. A tree built out of someone's name is data
-all the way to the page and cannot become code on the way. The `dom` module's
-side is held to the same rule.
+all the way to the page and cannot become code on the way. Each module's half
+is held to the same rule as its other half.
 
 **Nothing trusts an address or a length that came from outside.** When
-something has to come back — a stored value, the current path, the text an
-event carries — the module hands over a buffer of its own and says how much
-room it has, so its reads stay inside its own array.
+something has to come back — a stored value, the current path, a particle
+fired back — the module hands over a buffer of its own and says how much room
+it has, so its reads stay inside its own array.
 
 That is containment, not a boundary. This file and the module share one
 memory; anything running in the page can read and write all of it. What it
@@ -67,7 +78,7 @@ particle, written where it is drawn:
 { tag = "button", on = { click = { _class = "Remove", id = 7 } } }
 ```
 
-This file sends that back as JSON when it happens, adding what it learned in
+The page sends that back as JSON when it happens, adding what it learned in
 the meantime: the element's value for a click or a keystroke, the new `path`
 for a route, the `value` a delay was given. The runtime reads it into a
 particle and the application's own handler answers it.
