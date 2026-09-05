@@ -1239,7 +1239,8 @@ rules that make a module unable to break someone else's program.
 First-party modules today: `console` (print one line to wherever this
 program's output goes — stdout on a machine, the page's console in a
 browser), `dom` (a page drawn from a value: a tree of tags, attributes and
-text, and nothing else — see [its README](crates/modules/dom/README.md)),
+text, with its stylesheet in the same particle and nothing else in either —
+see [its README](crates/modules/dom/README.md)),
 `math`, `strings`,
 `env` (the environment, so a port or a secret comes from the deployment
 rather than the source — see [its README](crates/modules/env/README.md)),

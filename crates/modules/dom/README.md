@@ -5,6 +5,10 @@ link "dom.so" as dom
 
 emit Render {
     into = "#app",
+    styles = {
+        ".cart"  = { "max-width" = "24rem", padding = "1rem 1.4rem" },
+        ".total" = { "font-weight" = "600" }
+    },
     tree = {
         tag = "section",
         attrs = { class = "cart" },
@@ -17,16 +21,18 @@ emit Render {
 assert r.ok
 ```
 
-## Handlers
+## The handler
 
 ```
-Render { into?, tree } → RenderResult { ok }
-Style  { css }         → StyleResult  { ok }
+Render { into?, styles?, tree } → RenderResult { ok }
 ```
 
 `into` is a CSS selector, `"body"` by default; `ok` is false when it matched
-nothing. `Style` replaces the sheet it put there last time rather than
-stacking a new one, so an application can restyle itself.
+nothing. `styles` replaces the sheet set last time rather than stacking a new
+one, so an application can restyle itself.
+
+One handler, one payload. The rules and the tree travel together, because
+they describe one page.
 
 ## The tree is a value, not markup
 
@@ -40,7 +46,7 @@ strings so a serialised tree can never close a tag.
 `tree` may also be a **string**, taken as JSON already in this shape and
 passed through untouched — for an application that built the text itself.
 
-## Appearance does not belong in the tree
+## Appearance travels with it, but not on the nodes
 
 A node says what it *is*:
 
@@ -48,17 +54,27 @@ A node says what it *is*:
 { tag = "p", attrs = { class = "total" }, children = ["Toplam: $total TL"] }
 ```
 
-No colour, no position, no spacing. What `total` looks like belongs in a
-stylesheet — a file the page loads, or one the application sends through
-`Style` if it would rather ship a single file. Keeping appearance out is
-what stops the code that builds a page from becoming the page's design.
+No colour, no position, no spacing. Those are in `styles`, once, keyed by
+selector — **in the same particle**, so there is no stylesheet file to keep
+in step with the application and nothing to serve beside it.
+
+That split is the point. Written onto every node, appearance would make the
+code that builds a page *be* the page's design, which is what a gene must not
+turn into. A genuinely per-node value — a bar's width computed from data — is
+an ordinary attribute (`attrs = { style = "width: 40%" }`) and needs nothing
+from this module.
+
+`styles` is a value, not CSS text: selector to properties to values. So there
+is no stylesheet to parse, and nothing that could end a rule early and start
+a different one. The page drops `{`, `}`, `<` and `>` from every name and
+value on top of that.
 
 ## What the page has to supply
 
-Two imported functions, and they are the only things this module can reach:
-one that renders a tree into a selector, one that sets the stylesheet. Both
-take text and answer whether they matched. A page that supplies neither gets
-a link error naming them, rather than a module that silently draws nowhere.
+One imported function, and it is the only thing this module can reach: it
+takes the payload and the selector, and answers whether the selector matched.
+A page that supplies nothing gets a link error naming it, rather than a
+module that silently draws nowhere.
 
 The page's half is small — parse the JSON, create elements, set attributes,
 append children — and it must refuse anything else. An `on*` attribute, an

@@ -1,4 +1,4 @@
-| `dom` draws in a browser, and this is not one. Every handler answers an
+| `dom` draws in a browser, and this is not one. `Render` answers an
 | Exception rather than pretending to draw — an application drawing into
 | nothing is a mistake worth naming, not a page that happened to be empty.
 |
@@ -8,12 +8,13 @@
 
 link "native_modules/dom.so" as dom
 
-emit Render { into = "#app", tree = { tag = "p", children = ["hi"] } } to dom get r
+emit Render {
+    into = "#app",
+    styles = { ".total" = { "font-weight" = "600" } },
+    tree = { tag = "p", attrs = { class = "total" }, children = ["hi"] }
+} to dom get r
 assert r ∈ Exception
 assert r.source = "dom"
-
-emit Style { css = "p { color: red }" } to dom get s
-assert s ∈ Exception
 
 | A class it does not handle is null, not an error: the particle may have
 | been meant for something else entirely.

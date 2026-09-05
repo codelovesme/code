@@ -298,7 +298,7 @@ jobs:
               # checks: the artifact loads, routes, and answers an Exception
               # rather than pretending to draw. The half that can draw is a
               # wasm archive, which this job does not build.
-              printf 'emit Render { tree = { tag = "p" } } to mod get r\nassert r ∈ Exception\nemit Style { css = "p{}" } to mod get s\nassert s ∈ Exception\n' >> dogfood/demo.code
+              printf 'emit Render { tree = { tag = "p" } } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code
               ;;
             membrane)
               # No socket, no thread, nothing pushed — so unlike net_server
@@ -395,7 +395,7 @@ jobs:
               mailer_mock) handlers='["Config", "Send", "Outbox"]' ;;
               net_server) handlers='["Config", "Listen", "Stop"]' ;;
               membrane) handlers='["Config", "Listen", "Stop"]' ;;
-              dom) handlers='["Render", "Style"]' ;;
+              dom) handlers='["Render"]' ;;
               net_client) handlers='["Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb_mock) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;

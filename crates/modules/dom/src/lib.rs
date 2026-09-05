@@ -2,12 +2,10 @@
 //!
 //! Handlers:
 //!
-//! - `Render { into?, tree }` — replaces the contents of `into` (a CSS
-//!   selector, `"body"` by default) with `tree`, and answers
-//!   `RenderResult { ok }`. `ok` is false when the selector matched nothing.
-//! - `Style { css }` — puts a stylesheet on the page, answering
-//!   `StyleResult { ok }`. Sending it again replaces what it put there
-//!   before, so an application can restyle itself without stacking sheets.
+//! - `Render { into?, styles?, tree }` — replaces the contents of `into` (a
+//!   CSS selector, `"body"` by default) with `tree`, sets `styles` as the
+//!   page's stylesheet, and answers `RenderResult { ok }`. `ok` is false when
+//!   the selector matched nothing.
 //!
 //! # The tree is a value, not markup
 //!
@@ -32,10 +30,32 @@
 //!
 //! # Where appearance lives
 //!
-//! Not here. A node says what it *is* — `class = "total"` — and what that
-//! looks like belongs in a stylesheet, either a file the page loads or one
-//! sent through `Style`. Keeping colours and positions out of the tree is
-//! what stops the code that builds a page from becoming the page's design.
+//! In the same particle, and **not on the nodes**:
+//!
+//! ```text
+//! emit Render {
+//!     styles = {
+//!         ".cart"  = { "max-width" = "24rem", padding = "1rem" },
+//!         ".total" = { "font-weight" = "600" }
+//!     },
+//!     tree = { tag = "p", attrs = { class = "total" }, children = ["57 TL"] }
+//! } to dom
+//! ```
+//!
+//! A node says what it *is* — `class = "total"` — and the rules say what that
+//! looks like, once, in one place. Both travel in the same JSON, so there is
+//! no stylesheet file to keep in step with the application and nothing to
+//! serve beside it.
+//!
+//! That split is the whole point. Colours and positions written onto every
+//! node would make the code that builds a page *be* the page's design, which
+//! is exactly what a gene should not turn into. A genuinely per-node value —
+//! a bar's width computed from data — is an ordinary attribute
+//! (`attrs = { style = "width: 40%" }`) and needs nothing from this module.
+//!
+//! `styles` is a value, not CSS text: selector to properties to values. So
+//! there is no stylesheet to parse, and nothing that could end a rule early
+//! and start a different one.
 //!
 //! # Where it works
 //!
@@ -45,9 +65,9 @@
 //! application can be built for both and find out at runtime (`Linked`)
 //! which it is.
 //!
-//! The page supplies two functions, and they are the only things this module
-//! can reach: one that renders a tree into a selector, and one that sets the
-//! stylesheet. Both take text and answer whether they matched.
+//! The page supplies one function, and it is the only thing this module can
+//! reach: it takes the JSON and the selector, and answers whether the
+//! selector matched.
 //!
 //! # Why the wasm half is written out by hand
 //!
@@ -100,7 +120,7 @@ mod machine {
                 // A class this module does not handle answers null and does
                 // not end the program: it may have been meant for something
                 // else entirely.
-                Some("Render") | Some("Style") => exception(out, "dom", NO_PAGE),
+                Some("Render") => exception(out, "dom", NO_PAGE),
                 _ => null(out),
             }
         })
@@ -135,12 +155,11 @@ mod page {
         pub len: i64,
     }
 
-    // The page's half, and the only things this module can reach. Neither can
-    // fail in a way it could act on; both answer non-zero when they found
-    // what they were pointed at.
+    // The page's half, and the only thing this module can reach. It cannot
+    // fail in a way this module could act on; it answers non-zero when the
+    // selector matched.
     extern "C" {
         fn code_web_render(json: *const u8, json_len: usize, into: *const u8, into_len: usize) -> i32;
-        fn code_web_style(css: *const u8, css_len: usize) -> i32;
         fn code_str(out: *mut CodeValue, s: *const c_char);
         fn code_bool(out: *mut CodeValue, b: i32);
         fn code_object(out: *mut CodeValue, keys: *const *const c_char, values: *mut c_void, len: i64);
@@ -320,6 +339,15 @@ mod page {
                     .and_then(|v| text_of(v))
                     .unwrap_or(b"body");
                 let mut buf = Buf { bytes: [0; CAP], len: 0, full: false };
+
+                // One payload carrying both halves — the rules and the tree
+                // — so a page needs nothing beside the application.
+                buf.push(b"{\"styles\":");
+                match field(particle, "styles") {
+                    Some(styles) => write_json(&mut buf, styles),
+                    None => buf.push(b"null"),
+                }
+                buf.push(b",\"tree\":");
                 match text_of(tree) {
                     // Already JSON in this shape — passed through, so an
                     // application that built the text itself is not made to
@@ -327,20 +355,13 @@ mod page {
                     Some(json) => buf.push(json),
                     None => write_json(&mut buf, tree),
                 }
+                buf.push(b"}");
+
                 if !buf.full {
                     ok = code_web_render(buf.bytes.as_ptr(), buf.len, into.as_ptr(), into.len()) != 0;
                 }
             }
             answer(out, c"RenderResult", ok);
-            return;
-        }
-
-        if class == Some(b"Style".as_ref()) {
-            let ok = match field(particle, "css").and_then(|v| text_of(v)) {
-                Some(css) => code_web_style(css.as_ptr(), css.len()) != 0,
-                None => false,
-            };
-            answer(out, c"StyleResult", ok);
             return;
         }
 
