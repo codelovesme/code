@@ -450,15 +450,21 @@ pub struct InstalledModule {
 }
 
 /// Install `reference` (first-party name or full URL) into `scope`, from
-/// `cwd`. Downloads the asset for the current platform, verifies its sha256
-/// against the manifest, lays it down under `<root>/<name>/<version>/`, and
-/// records a lock entry. An existing identical install is left alone; a
-/// different one is replaced.
+/// `cwd`. Downloads the asset for `platform` — the machine's own when `None`
+/// — verifies its sha256 against the manifest, lays it down under
+/// `<root>/<name>/<version>/`, and records a lock entry. An existing
+/// identical install is left alone; a different one is replaced.
+///
+/// `platform` is asked for rather than assumed because a browser application
+/// does not run on the machine that builds it: `wasm32` is a real target with
+/// no host to detect it from, and installing the machine's `.so` for a page
+/// would be installing something that cannot be opened there.
 pub fn install(
     cwd: &Path,
     reference: &str,
     scope: InstallScope,
     cli_version: &str,
+    platform: Option<&str>,
 ) -> Result<InstalledModule, String> {
     let (name, version, source) = resolve_reference(reference, cli_version)?;
 
@@ -484,10 +490,21 @@ pub fn install(
         ));
     }
 
-    let platform = current_platform();
-    let asset = manifest
-        .platform(platform)
-        .ok_or_else(|| format!("module '{name}' has no artifact for this platform ({platform})"))?;
+    let platform = match platform {
+        Some(platform) => platform,
+        None => current_platform(),
+    };
+    let asset = manifest.platform(platform).ok_or_else(|| {
+        let mut offered: Vec<&str> = manifest.platforms.keys().map(|k| k.as_str()).collect();
+        offered.sort_unstable();
+        format!(
+            "module '{name}' has no artifact for {platform} — this release offers {}",
+            match offered.as_slice() {
+                [] => "none at all".to_string(),
+                names => names.join(", "),
+            }
+        )
+    })?;
 
     let dir = install_dir(&root, &name, &version)?;
     let dest = dir.join(asset.asset.clone());
@@ -595,9 +612,26 @@ mod tests {
             "linux-x86_64": {
               "asset": "console-linux-x86_64.so",
               "sha256": "abc123def456abc123def456abc123def456abc123def456abc123def456abc123"
+            },
+            "wasm32": {
+              "asset": "console-wasm32.a",
+              "sha256": "def456abc123def456abc123def456abc123def456abc123def456abc123def4"
             }
           }
         }"#
+    }
+
+    /// `wasm32` is a platform like any other in this table, and it is the one
+    /// that cannot be detected: an application built for a browser does not
+    /// run where it was built, so `code install --platform wasm32` asks for
+    /// it by name. The archive extension is the visible difference — a page
+    /// has no dlopen, so what it needs is linked in rather than opened.
+    #[test]
+    fn a_manifest_offers_the_browser_archive_alongside_the_machine_library() {
+        let m = Manifest::parse(sample_manifest()).expect("sample manifest parses");
+        let wasm = m.platform("wasm32").expect("wasm32 is offered");
+        assert_eq!(wasm.asset, "console-wasm32.a");
+        assert!(m.platform("wasm64").is_none(), "only what is listed");
     }
 
     #[test]

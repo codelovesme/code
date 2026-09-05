@@ -88,6 +88,46 @@ jobs:
           name: module-${{ matrix.module }}-linux-x86_64
           path: "dist/*.so"
 
+  # The browser's half. A module a web application links has to arrive as a
+  # `.a`, not a `.so`: a page has no dlopen, so what it needs is linked *into*
+  # the module rather than opened beside it.
+  #
+  # A short list on purpose. Most modules reach for a socket, a file or a
+  # clock and do not compile for `wasm32-unknown-unknown` at all; the two
+  # here are the two a page can use, and a third joins them by being added
+  # to this list and building.
+  build-wasm32:
+    name: Build ${{ matrix.module }} (wasm32)
+    needs: resolve
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [console, dom]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/modules/${{ matrix.module }}
+      - name: Add the target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Compile
+        run: |
+          set -euo pipefail
+          m="${{ matrix.module }}"
+          mkdir -p dist
+          # A cdylib is a whole module and fails to link on the very imports
+          # an archive is supposed to leave open, so the crate type is asked
+          # for here rather than in Cargo.toml.
+          (cd "crates/modules/$m" \
+            && cargo rustc --target wasm32-unknown-unknown --release --crate-type staticlib)
+          mv "crates/modules/$m/target/wasm32-unknown-unknown/release/lib$m.a" \
+             "dist/${m}-wasm32.a"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-${{ matrix.module }}-wasm32
+          path: "dist/*.a"
+
   # The `code` binary every dogfood job below needs — built once here rather
   # than 27 times over there. That is what it used to be: each of the 27
   # matrix jobs installed LLVM 17 from apt and compiled the whole compiler,
@@ -348,6 +388,7 @@ jobs:
       [
         resolve,
         build-linux-x86_64,
+        build-wasm32,
         dogfood,
       ]
     runs-on: ubuntu-latest
@@ -362,7 +403,7 @@ jobs:
           path: dist
           pattern: module-*
       - name: Flatten into dist/
-        run: find dist -type f \( -name '*.so' -o -name '*.dylib' \) -exec mv {} dist/ \;
+        run: find dist -type f \( -name '*.so' -o -name '*.dylib' -o -name '*.a' \) -exec mv {} dist/ \;
       - name: Write one module.json per module
         run: |
           set -euo pipefail
@@ -417,6 +458,15 @@ jobs:
               jwt|fs|json_store|git|mailer|oauth|mongodb|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
               *) setup='' ;;
             esac
+            # The browser archive, for the few modules that have one. Absent
+            # rather than empty for the rest: a platform key that exists is a
+            # promise the bytes are there, and `code install --platform` says
+            # what a release does offer when asked for one it does not.
+            wasm32=''
+            if [ -f "dist/${m}-wasm32.a" ]; then
+              wasm32=",
+              \"wasm32\": { \"asset\": \"${m}-wasm32.a\", \"sha256\": \"$(sum ${m}-wasm32.a)\" }"
+            fi
             cat > "dist/${m}.json" <<EOF
           {
             "name": "${m}",
@@ -426,7 +476,7 @@ jobs:
             "vars": [],
             ${setup}
             "platforms": {
-              "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" }
+              "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" }${wasm32}
             }
           }
           EOF

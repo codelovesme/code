@@ -95,7 +95,15 @@ artifact), and it is where the community lives anyway. Per release:
 - everything built from source in CI (cross-compilation matrix), never
   uploaded by hand
 
-Matrix today: linux-x86_64 only. Deferred, each one job block away once
+Matrix today: linux-x86_64, plus **wasm32** for the modules a browser can
+use (`console`, `dom`). That one is not a platform in the usual sense —
+nothing detects it, because an application built for a page does not run on
+the machine that built it — so `code install --platform wasm32` asks for it
+by name, and `euglena install` passes it for an app whose manifest says
+`"runtime": "web"`. The asset is a `.a` rather than a `.so`: a page has no
+dlopen, so a module is linked *into* the program.
+
+The rest of the matrix is deferred, each one job block away once
 demand shows up: linux-arm64 (cross gcc), macos-{x86_64,arm64}
 (`-dynamiclib` + ad-hoc codesign — unsigned dylibs get killed/quarantined),
 and **Windows**, which additionally needs a `LoadLibrary`/`GetProcAddress`

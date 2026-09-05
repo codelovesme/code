@@ -165,6 +165,7 @@ commands:
   run [path]                     interpret a file, or a project's main.code
   build [path] [options]         compile one, into a build/ beside it
   install <name-or-url>          fetch a module into ./.code/modules
+                                 (--platform wasm32 for a browser build)
   uninstall <name>               delete it, and its lock entry
   list                           what is installed, and what is available
   test [path]...                 run the fixtures in tests/, or the ones named
@@ -194,7 +195,7 @@ options:
   -o, --output <path>                   where to write it";
 
 const MODULE_HELP: &str = "\
-usage: code install <name-or-url> [--global]
+usage: code install <name-or-url> [--global] [--platform <platform>]
        code uninstall <name>
        code list
 
@@ -202,7 +203,12 @@ A first-party module installs by name, from this binary's own release — one
 tag carries the CLI and every module at one version. Anything else installs
 by the URL of its manifest. Bytes land in ./.code/modules and are pinned by
 sha256 in ./.code/lock.json — `--global` puts them in ~/.code/modules and
-records the same lock entry.";
+records the same lock entry.
+
+`--platform` names the target the module is for, defaulting to this machine.
+`--platform wasm32` fetches the archive a browser build links in, which is
+what an application built with `--target wasm` needs: it does not run where
+it was built, so there is no host to detect.";
 
 const INIT_HELP: &str = "\
 usage: code init [name]
@@ -727,17 +733,28 @@ fn cmd_install(mut args: Vec<String>) -> ExitCode {
     use code::module_install::{self, InstallScope};
 
     let mut global = false;
+    let mut platform: Option<String> = None;
     let mut positionals: Vec<String> = Vec::new();
+    // Popped, so the list is read back to front; `--platform`'s value is
+    // therefore the item *before* it, which is already on `positionals`.
     while let Some(arg) = args.pop() {
         match arg.as_str() {
             "--global" => global = true,
+            // `wasm32` for an application that runs in a browser: it has no
+            // host to detect, and the machine doing the building is not it.
+            "--platform" => match positionals.pop() {
+                Some(value) => platform = Some(value),
+                None => {
+                    eprintln!("error: --platform needs a value, e.g. --platform wasm32");
+                    return ExitCode::FAILURE;
+                }
+            },
             other => positionals.push(other.to_string()),
         }
     }
-    // Popping reverses order, so the single allowed positional ends up first.
     positionals.reverse();
     if positionals.len() != 1 {
-        eprintln!("usage: code install <name-or-url> [--global]");
+        eprintln!("usage: code install <name-or-url> [--global] [--platform <platform>]");
         return ExitCode::FAILURE;
     }
     let reference = positionals.pop().expect("checked above");
@@ -755,7 +772,13 @@ fn cmd_install(mut args: Vec<String>) -> ExitCode {
         InstallScope::Project
     };
 
-    match module_install::install(&cwd, &reference, scope, env!("CARGO_PKG_VERSION")) {
+    match module_install::install(
+        &cwd,
+        &reference,
+        scope,
+        env!("CARGO_PKG_VERSION"),
+        platform.as_deref(),
+    ) {
         Ok(installed) => {
             println!(
                 "installed {}@{} (sha256 {})",

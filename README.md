@@ -67,6 +67,7 @@ code test tests/parser.code                # ...or just the ones you name
 code format src/ program.code              # canonical layout, rewritten in place
 code format --check tests/                 # writes nothing; non-zero if any differ
 code install console                      # fetch a module into ./.code/modules
+code install dom --platform wasm32         # ...the archive a browser build links in
 code list                                  # what's installed
 code uninstall console
 code --help                                # or `code help build`, `code build -h`
