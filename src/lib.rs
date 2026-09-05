@@ -61,6 +61,14 @@ mod compile {
     const CODE_ABI_H: &str = include_str!("code_abi.h");
     /// Freestanding libc-shaped helpers used only by the wasm runtime build.
     const WASM_SHIM_H: &str = include_str!("wasm_shim.h");
+    /// The page's half of every browser module, written beside a wasm build.
+    ///
+    /// Embedded for the same reason as the three above, and belonging to a
+    /// build for a stronger one: a `.wasm` and this file are one artifact in
+    /// two pieces. The compiler knows which runtime it linked and which
+    /// modules went in, so the half that answers them cannot be a version
+    /// behind — it came out of the same binary in the same second.
+    const WEB_HOST_JS: &str = include_str!("../web/host.mjs");
 
     /// Distinguishes concurrent builds *within* one process; the pid
     /// distinguishes them across processes. See `scratch_dir`.
@@ -184,7 +192,8 @@ mod compile {
                     &abi_h_path,
                     &runtime_obj_path,
                 )?;
-                return link_wasm(&obj_path, &runtime_obj_path, &static_modules, out_path);
+                link_wasm(&obj_path, &runtime_obj_path, &static_modules, out_path)?;
+                return write_web_host(out_path);
             }
 
             match target {
@@ -295,6 +304,24 @@ mod compile {
     /// Links the one `.wasm`: the program, the runtime, and every `.a`
     /// module the program linked — all of it in a single module, with
     /// nothing left to load.
+    /// Writes `host.mjs` beside the module just built.
+    ///
+    /// A `.wasm` cannot reach a page on its own: every browser module leaves
+    /// a function undefined for the page to fill in, and so does the language
+    /// itself, which has no operating system to ask for a clock. This is
+    /// those functions. Emitting it here rather than making it something to
+    /// install is what keeps the two halves the same age — nothing fetches
+    /// it, nothing pins it, and it cannot drift from the runtime it answers.
+    ///
+    /// Overwritten every build, and named the same every time so a page's
+    /// `import` never has to change. It is output, not source: a project
+    /// ignores it the way it ignores the `.wasm` beside it.
+    fn write_web_host(out_path: &Path) -> Result<(), String> {
+        let beside = out_path.parent().unwrap_or(Path::new("."));
+        let host = beside.join("host.mjs");
+        fs::write(&host, WEB_HOST_JS).map_err(|e| format!("write {}: {e}", host.display()))
+    }
+
     fn link_wasm(
         obj_path: &Path,
         runtime_obj_path: &Path,

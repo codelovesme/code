@@ -161,6 +161,49 @@ fn wasm_spells_numbers_the_way_the_other_modes_do() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A wasm build writes the page's half beside the module.
+///
+/// The two are one artifact in two pieces: every browser module leaves a
+/// function undefined for the page to fill in, and so does the language,
+/// which has no operating system to ask for a clock. Emitting it here rather
+/// than making it something to install is what keeps them the same age —
+/// nothing fetches it and nothing pins it, so it cannot be a version behind
+/// the runtime it answers.
+#[test]
+fn a_wasm_build_writes_the_pages_half_beside_it() {
+    let dir = temp_dir("wasm-host");
+    let out = dir.join("nested/app.wasm");
+    fs::create_dir_all(out.parent().unwrap()).expect("create output directory");
+    code::compile_file(
+        &fixture("arithmetic_basic.code"),
+        code::BuildTarget::Wasm,
+        &out,
+        false,
+    )
+    .expect("build --target wasm");
+
+    // Beside the module, not beside the source: a page loads them from the
+    // same directory, and the `import` is a sibling path.
+    let host = out.parent().unwrap().join("host.mjs");
+    let text = fs::read_to_string(&host).expect("host.mjs written beside the module");
+    for needed in [
+        "code_host_now",
+        "code_web_render",
+        "code_web_storage_get",
+        "code_web_route_watch",
+        "code_web_timer_set",
+        "code_event_fire",
+    ] {
+        assert!(
+            text.contains(needed),
+            "the page's half is missing '{needed}' — a module that needs it would \
+             fail to instantiate with nothing said about why"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// A page fires back a whole particle, and the program's own handler answers
 /// it.
 ///

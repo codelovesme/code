@@ -60,6 +60,7 @@ code run                                   # ...or a project: ./main.code
 code build program.code                    # -> ./build/program
 code build                                 # -> ./build/<this directory>
 code build program.code --target wasm      # -t; exe | shared | static | wasm
+                                           # ...also writes host.mjs beside it
 code build program.code -o out/thing        # --output is the same flag
 code build program.code --release          # -r; -O2, the default is unoptimized
 code test                                  # run every fixture in ./tests

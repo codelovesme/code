@@ -1,5 +1,12 @@
 # `web/host.mjs` — the page's half of the browser modules
 
+**A wasm build writes this file beside the module it built.** It is output,
+not something to fetch or pin: the compiler knows which runtime it linked and
+which modules went in, so the half that answers them came out of the same
+binary in the same second and cannot be a version behind. An application
+ignores it the way it ignores the `.wasm` next to it. The copy here is the
+source it is emitted from.
+
 A module for the browser is two pieces of code. One is compiled into the
 `.wasm`: it takes a particle, works out what was asked, and calls a function
 it deliberately left undefined. The other is that function, written in the
