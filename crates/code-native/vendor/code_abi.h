@@ -372,6 +372,13 @@ void code_module_set_host(const CodeHostVtable *host, void *host_ctx);
 char *code_event_text(void);
 long long code_event_text_capacity(void);
 void code_event_fire(long long len);
+/* The same, for a host that needs the answer: the handler's own particle is
+ * written back over the buffer as JSON and its length returned, zero when
+ * nothing answered. An event is told; this is asked, and the caller cannot
+ * proceed without what comes back. It is what lets a page put a program in
+ * the middle of something — a shell hosting another application answering,
+ * in the language, whether the guest may do what it just asked to do. */
+long long code_event_ask(long long len);
 
 /* ---- JSON, for a module with a world on the other side of a wire ---------
  *

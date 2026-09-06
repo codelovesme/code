@@ -305,6 +305,84 @@ fn a_page_fires_events_back_into_the_program() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A host asks the program a question and gets the answer back.
+///
+/// `code_event_fire` tells: the handler runs and whatever it returned is let
+/// go of, because a click has happened whether or not the program has an
+/// opinion. `code_event_ask` is the other kind — the caller is waiting inside
+/// its own call and what it does next depends on what comes back.
+///
+/// That is what lets a page put a program in the middle of something: a shell
+/// hosting another application can be asked, in the language, whether the
+/// guest may do what it just asked to do.
+#[test]
+fn a_host_can_ask_the_program_and_be_answered() {
+    let dir = temp_dir("wasm-ask");
+    let out = dir.join("ask.wasm");
+    code::compile_file(
+        &fixture("wasm_ask.code"),
+        code::BuildTarget::Wasm,
+        &out,
+        false,
+    )
+    .expect("build wasm_ask.code --target wasm");
+
+    let probe = dir.join("ask.mjs");
+    fs::write(
+        &probe,
+        format!(
+            "import {{ readFileSync }} from 'node:fs';\n\
+             {WASM_HOST_JS}\
+             const {{ instance }} = await WebAssembly.instantiate(readFileSync({out:?}), {{ env }});\n\
+             memory = instance.exports.memory;\n\
+             if (instance.exports.main() !== 0) throw new Error('main returned an error');\n\
+             const e = instance.exports;\n\
+             const at = e.code_event_text(), cap = Number(e.code_event_text_capacity());\n\
+             const ask = (particle) => {{\n\
+               const b = enc.encode(JSON.stringify(particle));\n\
+               if (b.length > cap) throw new Error('question does not fit');\n\
+               new Uint8Array(memory.buffer).set(b, at);\n\
+               const back = Number(e.code_event_ask(BigInt(b.length)));\n\
+               return back === 0 ? null : JSON.parse(dec.decode(new Uint8Array(memory.buffer, at, back)));\n\
+             }};\n\
+             const check = (what, got, want) => {{\n\
+               if (JSON.stringify(got) !== JSON.stringify(want)) {{\n\
+                 throw new Error(what + ': got ' + JSON.stringify(got));\n\
+               }}\n\
+             }};\n\
+             check('an allowed guest was not told so',\n\
+               ask({{ _class: 'MayDraw', app: 'trusted', into: '#app' }}),\n\
+               {{ _class: 'Allowed', into: '#guest-trusted' }});\n\
+             check('a refusal did not come back',\n\
+               ask({{ _class: 'MayDraw', app: 'other', into: '#app' }}),\n\
+               {{ _class: 'Refused', reason: 'other may not draw at #app' }});\n\
+             check('a number did not survive the answer',\n\
+               ask({{ _class: 'Count', of: ['a', 'b', 'c'] }}),\n\
+               {{ _class: 'Counted', value: 3 }});\n\
+             // Nobody handles it, so nothing answers — and a host has to be\n\
+             // able to tell that from an answer.\n\
+             check('a class nobody handles was not silence', ask({{ _class: 'Nobody' }}), null);\n\
+             // The same question twice must answer the same way: the answer is\n\
+             // written over the buffer the question came in on.\n\
+             check('asking twice did not answer twice',\n\
+               ask({{ _class: 'MayDraw', app: 'trusted', into: '#app' }}),\n\
+               {{ _class: 'Allowed', into: '#guest-trusted' }});\n"
+        ),
+    )
+    .expect("write ask probe");
+
+    let output = Command::new("node")
+        .arg(&probe)
+        .output()
+        .expect("run wasm under node");
+    assert!(
+        output.status.success(),
+        "asking the program failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// Instantiate `module` under Node with the host above and run its `main`,
 /// failing the test with whatever Node reported if it does not come back 0.
 fn run_wasm_under_node(dir: &Path, module: &Path) {

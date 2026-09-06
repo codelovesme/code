@@ -111,3 +111,17 @@ application never offered it, and anything that would is already able to write
 to the program's memory directly. The place where an application really is
 separate from what talks to it is the network, and that is where its answer to
 "who is allowed to ask for this" belongs.
+
+## Telling, and asking
+
+`host.fire(particle)` tells the program something happened. Nothing comes
+back, because a click has happened whether or not the program has an opinion.
+
+`host.ask(particle)` is the other kind: the handler's own answer comes back,
+and null when nothing answered. The caller is waiting inside its own call, and
+what it does next depends on what it gets.
+
+That is what lets a page put a program in the middle of something. A shell
+running another application can be *asked*, in the language, whether the guest
+may draw there or store that — rather than deciding it here, in JavaScript,
+where it cannot be tested and is not the application's own reasoning.

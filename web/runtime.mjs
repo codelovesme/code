@@ -58,6 +58,7 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
   const enc = new TextEncoder();
   let memory;
   let fire = () => {};
+  let ask = () => null;
 
   const str = (ptr, len) => dec.decode(new Uint8Array(memory.buffer, ptr, len));
 
@@ -126,6 +127,13 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
   return {
     env,
 
+    /// Tells the program something happened. Nothing comes back.
+    fire: (particle) => fire(particle),
+
+    /// Asks the program something and returns the particle it answered, or
+    /// null when nothing did. Only meaningful after `start`.
+    ask: (particle) => ask(particle),
+
     /// Wires the instance up and runs it.
     ///
     /// The event path is wired *before* `main`, because the first thing an
@@ -143,6 +151,16 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
       fire = (particle) => {
         const n = writeInto(JSON.stringify(particle), at, cap);
         e.code_event_fire(BigInt(n));
+      };
+
+      // The other kind. `fire` tells — a click has happened whether or not
+      // the program has an opinion. This asks, and cannot go on without the
+      // answer: it is what lets a page put the program in the middle of
+      // something. Null when nothing answered.
+      ask = (particle) => {
+        const n = writeInto(JSON.stringify(particle), at, cap);
+        const back = Number(e.code_event_ask(BigInt(n)));
+        return back === 0 ? null : JSON.parse(str(at, back));
       };
 
       return e.main();

@@ -1,0 +1,23 @@
+| Answering a host, rather than only being told by one.
+|
+| `code_event_fire` runs a handler and lets go of what it returned: an event
+| is told, not asked. This is the other one — the answer is written back, and
+| the host cannot go on without it.
+|
+| Nothing here fires or answers by itself; `tests/build_targets.rs` builds it
+| for wasm and asks the questions. Run either ordinary way, the fixture proves
+| that it compiles and leaks nothing.
+
+| A guest wanting to draw somewhere, and a program deciding.
+MayDraw { app, into } => {
+    if app = "trusted" {
+        return Allowed { into = "#guest-" + app }
+    }
+    return Refused { reason = "$app may not draw at $into" }
+}
+
+| An answer that is not an object at all — a host has to cope with that too.
+Count { of } => {
+    emit Length { value = of } to core get many
+    return Counted { value = many.value }
+}

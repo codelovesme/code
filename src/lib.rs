@@ -429,6 +429,7 @@ mod compile {
                 // never fires anything, so exporting these costs a few table
                 // entries and nothing else.
                 .arg("--export=code_event_fire")
+                .arg("--export=code_event_ask")
                 .arg("--export=code_event_text")
                 .arg("--export=code_event_text_capacity")
                 .arg("--export-memory")

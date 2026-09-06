@@ -2055,23 +2055,19 @@ static int json_value(JsonReader *r, CodeValue *out) {
     return 0;
 }
 
-/* "This happened." The buffer holds the particle as JSON; `len` says how much
- * of it the host wrote.
+/* Reads the buffer into a particle, or answers zero.
  *
  * Refused rather than guessed at, on every path where the answer is not
  * clear: text that is not JSON, JSON that is not an object, an object with no
  * `_class` string. A refused event is one the program never hears about,
  * which is what the program would want — a handler is written for a particle,
- * and half of one is not it.
- *
- * The answer a handler returns is released rather than given back: an event
- * is told, not asked. */
-void code_event_fire(long long len) {
+ * and half of one is not it. */
+static int code_event_read(long long len, CodeValue *out) {
     if (!code_program_dispatch) {
-        return;
+        return 0;
     }
     if (len <= 0) {
-        return;
+        return 0;
     }
     if (len > CODE_EVENT_CAP) {
         len = CODE_EVENT_CAP;
@@ -2082,31 +2078,70 @@ void code_event_fire(long long len) {
     CodeValue particle = {0};
     if (!json_value(&reader, &particle) || reader.failed) {
         code_release(&particle);
-        return;
+        return 0;
     }
-    /* An object with a `_class` string, or nothing: dispatch is by class, so
-     * a value without one could not be delivered anywhere. */
     if (particle.tag != CODE_OBJECT) {
         code_release(&particle);
-        return;
+        return 0;
     }
-    int named = 0;
     for (long long i = 0; i < particle.len; i++) {
         if (strcmp(particle.keys[i], "_class") == 0 &&
             slot_at(particle.items, i)->tag == CODE_STR) {
-            named = 1;
-            break;
+            *out = particle;
+            return 1;
         }
     }
-    if (!named) {
-        code_release(&particle);
+    code_release(&particle);
+    return 0;
+}
+
+/* "This happened." The buffer holds the particle as JSON; `len` says how much
+ * of it the host wrote.
+ *
+ * The answer a handler returns is released rather than given back: an event
+ * is told, not asked. `code_event_ask` is the other one. */
+void code_event_fire(long long len) {
+    CodeValue particle = {0};
+    if (!code_event_read(len, &particle)) {
         return;
     }
-
     CodeValue answer = {0};
     code_program_dispatch(&answer, &particle);
     code_release(&answer);
     code_release(&particle);
+}
+
+/* "What should I do about this?" The same particle in, and the handler's own
+ * answer back — written over the buffer as JSON, with its length returned.
+ * Zero when nothing answered, or when the answer did not fit.
+ *
+ * The difference from `code_event_fire` is the whole of it, and it is a
+ * difference in kind rather than in degree. An event is told: a click has
+ * happened whether or not the program has an opinion, and a handler that
+ * returns something has simply finished. A question cannot proceed without
+ * the answer — the caller is waiting inside its own call, and what it does
+ * next depends on what comes back.
+ *
+ * That is what lets a page put a program in the middle of something. A shell
+ * hosting another application can be *asked* whether the guest may draw
+ * there, or store that, and answer in the language rather than in the page.
+ *
+ * One at a time, like `code_event_fire`, and for a sharper reason: the answer
+ * is written into the same buffer the question came in on. A handler that
+ * caused another question before returning would be overwriting the one it
+ * was still being asked — which cannot happen, because dispatch is one
+ * thread and a handler cannot re-enter one that is already running. */
+long long code_event_ask(long long len) {
+    CodeValue particle = {0};
+    if (!code_event_read(len, &particle)) {
+        return 0;
+    }
+    CodeValue answer = {0};
+    code_program_dispatch(&answer, &particle);
+    long long written = code_json_write(&answer, code_event_buf, CODE_EVENT_CAP);
+    code_release(&answer);
+    code_release(&particle);
+    return written > 0 ? written : 0;
 }
 
 /* ---- JSON, for a module with a world on the other side of a wire ---------
