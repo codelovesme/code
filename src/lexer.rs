@@ -1,11 +1,17 @@
 use crate::span::Located;
 
 /// One piece of an interpolated string, in source order: either literal text
-/// (already unescaped) or the name of a variable to splice in.
+/// (already unescaped) or a variable to splice in.
+///
+/// `Var` carries a name and the fields read from it, so `"$user.name"` is the
+/// name and not the object followed by the text ".name". It used to be the
+/// second thing, silently: `$many.value` rendered the whole of `many` and
+/// then four literal characters, with nothing said. A reader writing
+/// `$user.name` means the field, every time.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StringPart {
     Lit(String),
-    Var(String),
+    Var { name: String, fields: Vec<String> },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -338,10 +344,29 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                         while matches!(chars.get(i), Some(c) if c.is_alphanumeric() || *c == '_') {
                             i += 1;
                         }
+                        let name: String = chars[name_start..i].iter().collect();
+
+                        // `.field`, as many as are written. A dot followed by
+                        // anything else is literal text — `"$total."` ends a
+                        // sentence, and a reader who meant a field would have
+                        // written one.
+                        let mut fields = Vec::new();
+                        while matches!(chars.get(i), Some('.'))
+                            && matches!(chars.get(i + 1), Some(c) if c.is_alphabetic() || *c == '_')
+                        {
+                            i += 1;
+                            let field_start = i;
+                            while matches!(chars.get(i), Some(c) if c.is_alphanumeric() || *c == '_')
+                            {
+                                i += 1;
+                            }
+                            fields.push(chars[field_start..i].iter().collect());
+                        }
+
                         if !s.is_empty() {
                             parts.push(StringPart::Lit(std::mem::take(&mut s)));
                         }
-                        parts.push(StringPart::Var(chars[name_start..i].iter().collect()));
+                        parts.push(StringPart::Var { name, fields });
                     }
                     Some(ch) => {
                         s.push(*ch);

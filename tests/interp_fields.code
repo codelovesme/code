@@ -1,0 +1,28 @@
+| A string interpolation reads fields, not just names.
+|
+| It used to read only a name: `"$user.name"` spliced the whole of `user` and
+| then four literal characters, silently. Nobody writes that on purpose, and
+| the wrong answer looked enough like a right one to survive a reading — it
+| cost three separate mistakes before it was fixed.
+
+let user = { name = "ada", home = { city = "london" }, wins = 3 }
+
+assert "$user.name" = "ada"
+assert "$user.home.city" = "london"
+assert "hi $user.name, $user.wins wins" = "hi ada, 3 wins"
+
+| As deep as it is written, and no deeper: a field that is not there is null,
+| exactly as `.` is outside a string.
+assert "$user.missing" = "null"
+assert "$user.home.missing" = "null"
+
+| A dot that does not begin a name is text. A sentence can end.
+let total = 3
+assert "$total." = "3."
+assert "$total.5" = "3.5"
+
+| The name alone still works, and so does everything around it.
+assert "$total items" = "3 items"
+| An escaped dollar interpolates nothing, fields included: what follows is
+| text, all of it.
+assert "\$user.name" = "\$" + "user.name"

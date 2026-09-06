@@ -238,10 +238,16 @@ assert "costs \$5" = "costs \$5"
 ```
 
 A `$` that is not followed by an identifier is a lex error, not literal
-text — so a stray dollar is reported rather than silently printed. The name
-runs to the first character that cannot continue an identifier, and it is a
-bare *variable*, never an expression: `"$box.lid"` interpolates `box` and
-leaves `.lid` as literal text.
+text — so a stray dollar is reported rather than silently printed.
+
+**Fields are read, as deep as they are written**: `"$box.lid.colour"` is the
+colour. A field that is not there is null, exactly as `.` is outside a string.
+Until 1.8.7 only the name was read and `.lid` was left as literal text, which
+nobody ever meant and which said nothing about it.
+
+A dot that does not begin a name is still text, so a sentence can end:
+`"$total."` is `"3."`. What is read is a *path*, never a whole expression —
+there is no `"$a + b"` and no `"$items[0]"`.
 
 A **String** splices in bare; every other kind renders as compact JSON, which
 means a string *nested* inside an interpolated array or object keeps its

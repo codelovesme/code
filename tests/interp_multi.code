@@ -13,8 +13,8 @@ assert "hello $user." = "hello ada."
 assert "$n items left" = "3 items left"
 assert "trailing $a" = "trailing one"
 
-| `.` and `[` do not chain inside a string: the name stops at `$user`,
-| and the rest is literal text. Interpolation takes a bare variable, not
-| an expression.
+| A field is read; an index is not. Interpolation takes a *path*, never a
+| whole expression — see `interp_fields.code` for how deep that goes.
 let box = { lid = "shut" }
-assert "$box.lid" = "{\"lid\":\"shut\"}.lid"
+assert "$box.lid" = "shut"
+assert "$box[0]" = "{\"lid\":\"shut\"}[0]"

@@ -840,7 +840,11 @@ impl<'a> Parser<'a> {
                         .into_iter()
                         .map(|part| match part {
                             StringPart::Lit(s) => Expr::Str(s),
-                            StringPart::Var(name) => Expr::Ident(name),
+                            StringPart::Var { name, fields } => {
+                                fields.into_iter().fold(Expr::Ident(name), |base, field| {
+                                    Expr::Field(Box::new(base), field)
+                                })
+                            }
                         })
                         .collect(),
                 )),
@@ -938,7 +942,11 @@ impl<'a> Parser<'a> {
                         .into_iter()
                         .map(|part| match part {
                             StringPart::Lit(s) => Expr::Str(s),
-                            StringPart::Var(name) => Expr::Ident(name),
+                            StringPart::Var { name, fields } => {
+                                fields.into_iter().fold(Expr::Ident(name), |base, field| {
+                                    Expr::Field(Box::new(base), field)
+                                })
+                            }
                         })
                         .collect(),
                 )),
