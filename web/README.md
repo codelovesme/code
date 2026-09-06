@@ -136,8 +136,8 @@ that runs another application inside this one: a second world on the same
 page, with its own `doc`, `store` and `address`, and a `guard` that turns
 every module the guest reaches for into a question for the host program —
 `Offer` once per module, `Module` per particle. The halves cannot tell the
-difference. They are handed a container and a prefix instead of a page and a
-key, and they draw and store exactly as they would.
+difference. They are handed a container and a slice of the address instead of
+a whole page, and they draw exactly as they would.
 
 That is the whole of the browser's side of hosting, and it is why these four
 are arguments rather than things this file reaches for. `host.stop()` is the

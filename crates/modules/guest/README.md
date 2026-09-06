@@ -10,19 +10,31 @@ Open { app } => {
     emit Load { app = app, url = "/apps/$app.wasm", into = "#panel" } to guest get r
     return r
 }
+```
 
-| Asked once, the first time that application reaches for a module.
+That is a whole shell. It signs in once, keeps the token where it keeps
+everything else, and every application it opens reads it there — the same
+store, the same key, the same as if that application had been opened on its
+own page.
+
+Standing between a guest and a module is the other half of it, and it is
+opt-in:
+
+```code
+| The demo may run, but it remembers nothing between visits.
 Offer { app, name } => {
-    if name = "storage" {
-        return Offered { }
+    if app = "demo" {
+        if name = "storage" {
+            return Offered { }
+        }
     }
 }
 
-| Everything it sends to a module this shell took. One session, and every
-| application signed in with it.
 Module { app, name, particle } => {
-    emit particle to store get answer
-    return answer
+    if particle._class = "Get" {
+        return GetResult { value = null }
+    }
+    return SetResult { ok = true }
 }
 ```
 
@@ -35,9 +47,8 @@ Tell   { app, particle }   → TellResult   { ok }
 ```
 
 `into` is a CSS selector, `"body"` by default. `app` is a name of letters,
-digits, `-` and `_` — it is the mark on the container, the prefix on the
-guest's stored keys and the head of its path, so it is kept to what is
-literal in all three.
+digits, `-` and `_` — it is the mark on the container and the head of the
+guest's path, so it is kept to what is literal in both.
 
 **One instance per name.** A second `Load` of a name already running is
 refused with a reason rather than started beside it: the two would share
@@ -84,10 +95,16 @@ world of its own:
 - its **`dom`** gets a document that stops at its container — `body` means
   the container, a selector cannot match outside it, and its stylesheet is
   moved under it, so two guests cannot restyle each other or the shell;
-- its **`storage`** keys are prefixed with its name, so two applications that
-  each keep a `token` keep two of them;
 - its **`router`** reads the path after its name, so the page keeps one
   address bar and every application on it still starts at its own root.
+
+Its **storage is not** narrowed. One origin is one store: applications served
+from the same place already share it when they run alone, so a guest that
+could not see what it wrote on its own page would be a different application
+for being hosted — and the session a shell signed in would be invisible to
+everything it runs, which is most of what a hub is for. A shell that wants a
+guest kept apart offers `storage` and namespaces it in its own handlers,
+where that is a decision rather than a rule.
 
 None of that is a boundary. A guest shares this page's memory like everything
 else on it, and the page could read all of it. It is containment of an honest

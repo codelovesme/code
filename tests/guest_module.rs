@@ -23,6 +23,8 @@
 //!   - **stopping means stopped**: a delay a guest set before it was let go
 //!     fires into nothing, and the container, the stylesheet and the mark on
 //!     it are all gone;
+//!   - a guest's **storage is the page's**, under the key it asked for, so a
+//!     shell that signed in once has signed in for everything it runs;
 //!   - a **told** particle whose handler fails is not silence: the answer
 //!     nobody is holding reaches the host as an `Exception` particle;
 //!   - a guest **let go and started again** gets a clean world, which is the
@@ -200,6 +202,15 @@ const doc = {
   querySelectorAll: (sel) => body.querySelectorAll(sel),
 };
 
+// One store for the whole origin, which is what a browser gives a page — and
+// what the shell and everything it runs share.
+const kept = new Map();
+const store = {
+  getItem: (k) => (kept.has(k) ? kept.get(k) : null),
+  setItem: (k, v) => kept.set(k, String(v)),
+  removeItem: (k) => kept.delete(k),
+};
+
 // A page with one file to serve.
 globalThis.fetch = async (url) =>
   url === "mail.wasm"
@@ -207,7 +218,7 @@ globalThis.fetch = async (url) =>
     : { ok: false, status: 404 };
 
 const lines = [];
-const host = createHost({ doc, log: (s) => lines.push(s) });
+const host = createHost({ doc, store, log: (s) => lines.push(s) });
 const { instance } = await WebAssembly.instantiate(readFileSync("./shell/shell.wasm"), { env: host.env });
 if (host.start(instance) !== 0) throw new Error("the shell did not start");
 
@@ -256,6 +267,10 @@ check("a guest the host said nothing about did not get its own", lines, [
   "loaded notes",
 ]);
 check("two guests did not draw in two containers", [drawn(panel), drawn(side)], ["hello", "hello"]);
+// Under the key it asked for, in the store the shell reads: a guest is not
+// kept apart from what a shell signed in with, any more than it would be
+// running alone on the same origin.
+check("a guest did not write into the page's own store", [...kept], [["token", "abc"]]);
 check("a second guest's sheet did not come with it", head.children.length, 2);
 
 lines.length = 0;

@@ -64,8 +64,16 @@
 //! rewritten so every rule is scoped to it. Two guests can be open at once
 //! without either seeing the other, and neither can restyle the host.
 //!
-//! Its `storage` keys are prefixed with its name. Its `router` sees the path
-//! after its name, so the host keeps the address bar.
+//! Its `router` sees the path after its name, so the host keeps the address
+//! bar.
+//!
+//! Its **storage is not narrowed**. One origin is one store: applications
+//! served from the same place already share it when they run alone, so a
+//! guest that could not see what it wrote on its own page would be a
+//! different application for being hosted — and the session a shell signed in
+//! would be invisible to everything the shell runs. A shell that wants a
+//! guest kept apart offers `storage` and namespaces it in its own handlers,
+//! where that is a decision rather than a rule.
 //!
 //! None of that is a boundary — a guest shares this page's memory like
 //! everything else here, and the page could read all of it. It is containment

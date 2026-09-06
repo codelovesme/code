@@ -26,8 +26,8 @@
 // own* modules — its own file, its own settings — and the host never sees
 // them. A page has no dlopen: every half a guest can reach is this page's,
 // out of the host's own build. So "its own" here is the same half given a
-// world of its own — a document that stops at its container, stored keys
-// under its name, its own slice of the address.
+// world of its own — a document that stops at its container, and its own
+// slice of the address.
 //
 // The decision belongs in the language, where it can be read and tested,
 // rather than here.
@@ -58,9 +58,9 @@
   // `Load` has answered, and `Unload` has to be able to let go of all of it.
   const running = new Map();
 
-  // A name is a key in three places at once — the container's attribute, the
-  // prefix on the guest's stored keys, the head of its path — so it is held
-  // to what is literal in all three. Nothing here is quoted or escaped.
+  // A name is a key in two places at once — the container's attribute and
+  // the head of its path — so it is held to what is literal in both. Nothing
+  // here is quoted or escaped.
   const nameOf = (app) =>
     typeof app === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(app) ? app : null;
 
@@ -160,37 +160,6 @@
     head: container,
     body: container,
   });
-
-  /// The same store the page has, under a prefix of the guest's own.
-  ///
-  /// Not a boundary: every key is still there for anything on the page to
-  /// read. What it buys is that two applications that each keep a `token`
-  /// keep two of them, and that unloading one leaves the other's alone.
-  const storeFor = (app) => {
-    const held = () => {
-      // Reached through a function rather than kept: a browser can refuse
-      // storage outright, and it throws on the first touch.
-      try {
-        return globalThis.localStorage ?? null;
-      } catch {
-        return null;
-      }
-    };
-    // Thrown rather than answered false, because the half that asked is the
-    // one that knows what a refusal means for the particle it was sent — and
-    // it catches this already.
-    const store = () => {
-      const real = held();
-      if (!real) throw new Error("this page has no storage");
-      return real;
-    };
-    const key = (k) => `guest:${app}:${k}`;
-    return {
-      getItem: (k) => store().getItem(key(k)),
-      setItem: (k, v) => store().setItem(key(k), v),
-      removeItem: (k) => store().removeItem(key(k)),
-    };
-  };
 
   /// The address, minus the guest's own name.
   ///
@@ -313,7 +282,15 @@
             // Whose line it is, in a console that now has more than one
             // application printing to it.
             log: (line) => ctx.log(`${app}: ${line}`),
-            store: storeFor(app),
+            // The page's own store, whatever the host's is. **Not narrowed,
+            // deliberately**: one origin is one store, applications served
+            // from the same place already share it when they run alone, and
+            // one that could not see what it wrote on its own page would be a
+            // different application for being hosted. It is also how a shell
+            // signs in once for everything it runs. A shell that wants a
+            // guest kept apart offers `storage` and namespaces it in its own
+            // handlers, where that is a decision rather than a rule.
+            store: ctx.store,
             address: addressFor(app, (off) => leaving.push(off)),
             guard: guardFor(app),
           });
