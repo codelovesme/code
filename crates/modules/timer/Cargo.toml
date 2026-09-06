@@ -6,7 +6,7 @@
 
 [package]
 name = "timer"
-version = "1.8.6"
+version = "1.8.7"
 edition = "2021"
 description = "The `timer` native module for the Code programming language — a particle, later. Written in Rust on code-native."
 license = "GPL-3.0"

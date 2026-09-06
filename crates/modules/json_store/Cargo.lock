@@ -14,7 +14,7 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "1.8.6"
+version = "1.8.7"
 dependencies = [
  "cc",
 ]
@@ -55,7 +55,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "json_store"
-version = "1.8.6"
+version = "1.8.7"
 dependencies = [
  "code-native",
  "serde_json",

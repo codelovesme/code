@@ -6,7 +6,7 @@
 
 [package]
 name = "json_store"
-version = "1.8.6"
+version = "1.8.7"
 edition = "2021"
 description = "The `json_store` native module for the Code programming language — a file-backed key-value store, one readable JSON file per key."
 license = "GPL-3.0"
