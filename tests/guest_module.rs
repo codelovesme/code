@@ -441,3 +441,95 @@ fn a_shell_runs_another_application_inside_itself() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// `Where` — what `router` answers about the *page*, not the route.
+///
+/// Not a hosting test: this is `router`'s own new handler, tested here
+/// because this file already has what's needed to build and run a browser
+/// module under Node. `Route`/`Navigate`/`Watch` are the part of the address
+/// an application controls; `Where` is everything before it — the scheme,
+/// the host, the port an application needs to reach a service of its own,
+/// which no module otherwise knows how to name for it.
+#[test]
+fn where_answers_the_pages_own_address() {
+    if !tool_exists("node") {
+        eprintln!("skipped: needs node to run a page");
+        return;
+    }
+    if !wasm_target_installed() {
+        eprintln!("skipped: needs the wasm32-unknown-unknown target");
+        return;
+    }
+
+    let dir = temp_dir("where");
+    archive(&dir, "router");
+
+    let src = dir.join("where.code");
+    fs::write(
+        &src,
+        r#"link "router.a" as router
+
+Whereabouts { } => {
+    emit Where { } to router get w
+    return w
+}
+"#,
+    )
+    .expect("write the fixture");
+    code::compile_file(
+        &src,
+        code::BuildTarget::Wasm,
+        &dir.join("where.wasm"),
+        false,
+    )
+    .expect("build where.code for wasm");
+
+    let probe = dir.join("probe.mjs");
+    fs::write(
+        &probe,
+        r#"import { readFileSync } from "node:fs";
+import { createHost } from "./host.mjs";
+
+const check = (what, got, want) => {
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    throw new Error(`${what}: got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+  }
+};
+
+const host = createHost({ log: () => {} });
+const { instance } = await WebAssembly.instantiate(readFileSync("./where.wasm"), { env: host.env });
+if (host.start(instance) !== 0) throw new Error("did not start");
+
+// No page at all — the same fact a program opened straight off disk faces.
+check("a page with no address answered something other than the honest gap",
+  host.ask({ _class: "Whereabouts" }),
+  { _class: "WhereResult", origin: null, protocol: null, hostname: null, port: null });
+
+// The address this module reads is not held anywhere of its own; asking
+// again after the page changed answers the page as it is now.
+globalThis.location = {
+  origin: "http://192.0.2.1:8923",
+  protocol: "http:",
+  hostname: "192.0.2.1",
+  port: "8923",
+};
+check("the page's own address did not come back whole",
+  host.ask({ _class: "Whereabouts" }),
+  { _class: "WhereResult", origin: "http://192.0.2.1:8923", protocol: "http", hostname: "192.0.2.1", port: "8923" });
+"#,
+    )
+    .expect("write the probe");
+
+    let output = Command::new("node")
+        .arg("probe.mjs")
+        .current_dir(&dir)
+        .output()
+        .expect("run the probe under node");
+    assert!(
+        output.status.success(),
+        "Where did not answer the page's own address: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}

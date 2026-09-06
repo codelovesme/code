@@ -9,6 +9,24 @@
 //!   change of the path — a link, Back, Forward, an address typed by hand —
 //!   arrives as a particle of class `then`, carrying the new path as
 //!   `path`.
+//! - `Where {}` — answers `WhereResult { origin, protocol, hostname, port }`:
+//!   what this page was served from. `origin` is null where there is none
+//!   (a file opened straight off disk, `file://`).
+//!
+//! # Where answers what `Route` cannot
+//!
+//! `Route` and `Navigate` are the hash — the part of the address this
+//! module's own application controls, hosted or alone. `Where` is
+//! everything before it: the scheme, the host, the port. An application
+//! that talks to a service of its own needs this and nothing else, because
+//! there is no module that knows a deployment's address for it — the page
+//! it is loaded from already is that address.
+//!
+//! A guest's own `router` never narrows it — `Route` is scoped there, but
+//! `Where` reads the page directly rather than through that per-guest
+//! slice. A shell that takes the whole module over for a guest can answer
+//! `Where` however it likes, same as for anything else it took; that is an
+//! ordinary hosting decision, not something this module arranges.
 //!
 //! # Watching is the whole of it
 //!
@@ -95,7 +113,7 @@ mod machine {
                 // A class this module does not handle answers null and does
                 // not end the program: it may have been meant for something
                 // else entirely.
-                Some("Route") | Some("Navigate") | Some("Watch") => {
+                Some("Route") | Some("Navigate") | Some("Watch") | Some("Where") => {
                     exception(out, "router", NO_BROWSER)
                 }
                 _ => null(out),

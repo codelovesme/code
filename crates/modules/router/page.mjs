@@ -54,6 +54,34 @@
           return { _class: "WatchResult", ok: true };
         }
 
+        // Reached straight from `globalThis.location`, not through `where` —
+        // deliberately. `where` is the per-application slice a guest's own
+        // address is scoped to; the scheme, the host and the port belong to
+        // the one real page underneath every application on it, and answer
+        // the same thing asked by any of them.
+        case "Where": {
+          const loc = globalThis.location;
+          if (!loc || !loc.origin || loc.origin === "null") {
+            // A page with no address at all — opened straight off disk. Not
+            // an exception: this module answers what the page is, and a
+            // page with no address is a fact, not a failure.
+            return {
+              _class: "WhereResult",
+              origin: null,
+              protocol: null,
+              hostname: null,
+              port: null,
+            };
+          }
+          return {
+            _class: "WhereResult",
+            origin: loc.origin,
+            protocol: loc.protocol.replace(/:$/, ""),
+            hostname: loc.hostname,
+            port: loc.port || null,
+          };
+        }
+
         default:
           return null;
       }

@@ -353,7 +353,7 @@ jobs:
               # artifact says so rather than pretending. The half that can do
               # the work is a wasm archive, which this job does not build.
               case "$m" in
-                router)  printf 'emit Route { } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+                router)  printf 'emit Route { } to mod get r\nassert r ∈ Exception\nemit Where { } to mod get w\nassert w ∈ Exception\n' >> dogfood/demo.code ;;
                 storage) printf 'emit Get { key = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
                 timer)   printf 'emit Delay { ms = 1, then = "X" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
               esac
@@ -456,7 +456,7 @@ jobs:
             membrane) handlers='["Config", "Listen", "Stop"]' ;;
               dom) handlers='["Render"]' ;;
               guest) handlers='["Load", "Unload", "Tell"]' ;;
-              router) handlers='["Route", "Navigate", "Watch"]' ;;
+              router) handlers='["Route", "Navigate", "Watch", "Where"]' ;;
               storage) handlers='["Get", "Set", "Remove"]' ;;
               timer) handlers='["Delay", "Cancel"]' ;;
               net_client) handlers='["Send"]' ;;
