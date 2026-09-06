@@ -94,6 +94,7 @@ mod compile {
             include_str!("../crates/modules/console/page.mjs"),
         ),
         ("dom", include_str!("../crates/modules/dom/page.mjs")),
+        ("guest", include_str!("../crates/modules/guest/page.mjs")),
         (
             "net_client",
             include_str!("../crates/modules/net_client/page.mjs"),

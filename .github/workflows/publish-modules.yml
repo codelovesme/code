@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, router, storage, timer, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, router, storage, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
       # Each module is its own workspace with its own Cargo.lock (see those
@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, dom, net_client, router, storage, timer]
+        module: [console, dom, guest, net_client, router, storage, timer]
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, router, storage, timer, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, router, storage, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
 
@@ -340,6 +340,14 @@ jobs:
               # wasm archive, which this job does not build.
               printf 'emit Render { tree = { tag = "p" } } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code
               ;;
+            guest)
+              # `guest` runs one application inside another *in a page*, by
+              # fetching a `.wasm` and giving it a container. A build machine
+              # has neither, and the artifact says so rather than pretending
+              # — on a machine a program hosts another by linking it, which
+              # is `code_abi.h`'s hosting section and a different thing.
+              printf 'emit Load { app = "x", url = "x.wasm" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code
+              ;;
             router|storage|timer)
               # Same as `dom`: no browser on a build machine, and the
               # artifact says so rather than pretending. The half that can do
@@ -419,7 +427,7 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom router storage timer oauth_mock; do
+          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest router storage timer oauth_mock; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
@@ -447,6 +455,7 @@ jobs:
               net_server) handlers='["Config", "Listen", "Stop"]' ;;
             membrane) handlers='["Config", "Listen", "Stop"]' ;;
               dom) handlers='["Render"]' ;;
+              guest) handlers='["Load", "Unload", "Tell"]' ;;
               router) handlers='["Route", "Navigate", "Watch"]' ;;
               storage) handlers='["Get", "Set", "Remove"]' ;;
               timer) handlers='["Delay", "Cancel"]' ;;

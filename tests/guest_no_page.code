@@ -1,0 +1,27 @@
+| `guest` runs one application inside another in a browser, and this is not
+| one. `Load` answers an Exception rather than pretending to have started
+| something — on a machine a program hosts another by *linking* it, which is
+| a different thing done a different way (`code_abi.h`'s hosting section).
+|
+| The module is linkable here anyway, so one application can be built both
+| ways and ask `Linked` which it is. The half that can actually run a guest
+| is a `.a` linked into a `--target wasm` build; nothing in this suite is one.
+
+link "native_modules/guest.so" as guest
+
+emit Load { app = "mail", url = "mail.wasm", into = "#panel" } to guest get r
+assert r ∈ Exception
+assert r.source = "guest"
+
+emit Unload { app = "mail" } to guest get u
+assert u ∈ Exception
+assert u.source = "guest"
+
+emit Tell { app = "mail", particle = Ping {} } to guest get t
+assert t ∈ Exception
+assert t.source = "guest"
+
+| A class it does not handle is null, not an error: the particle may have
+| been meant for something else entirely.
+emit Whatever {} to guest get other
+assert other = null

@@ -96,7 +96,7 @@ artifact), and it is where the community lives anyway. Per release:
   uploaded by hand
 
 Matrix today: linux-x86_64, plus **wasm32** for the modules a browser can
-use (`console`, `dom`). That one is not a platform in the usual sense —
+use (`console`, `dom`, `guest`, `net_client`, `router`, `storage`, `timer`). That one is not a platform in the usual sense —
 nothing detects it, because an application built for a page does not run on
 the machine that built it — so `code install --platform wasm32` asks for it
 by name, and `euglena install` passes it for an app whose manifest says

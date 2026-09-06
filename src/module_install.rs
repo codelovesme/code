@@ -118,6 +118,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "strings",
     "console",
     "dom",
+    "guest",
     "router",
     "storage",
     "timer",

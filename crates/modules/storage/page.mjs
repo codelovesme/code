@@ -16,7 +16,10 @@
         return null;
       }
     };
-    const held = store();
+    // A store of one's own, when something gave this program one: an
+    // application running inside another keeps its keys under a prefix, and
+    // nothing here has to know that it does.
+    const held = ctx.store ?? store();
     const key = typeof particle.key === "string" ? particle.key : null;
 
     switch (particle._class) {

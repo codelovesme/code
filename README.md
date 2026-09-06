@@ -1050,6 +1050,14 @@ module that refuses: the guest links it and gets an `Exception` on first
 use, the way it would from a network that is not there. A host is never ended
 by its own policy.
 
+**A page answers the same two questions.** There is no dlopen in a browser
+and no process to be one of, so what a shell holds there is a `.wasm` it
+fetched and a container it drew it into — but `Offer` and `Module` are the
+same words, `app` is the same name, and an application is built once and
+runs either way. The module that does it is
+[`guest`](crates/modules/guest/README.md); what differs, and why, is written
+down there.
+
 #### Linked
 
 The one thing an application can ask about its own situation, and it is not
@@ -1277,7 +1285,10 @@ First-party modules today: `console` (print one line to wherever this
 program's output goes — stdout on a machine, the page's console in a
 browser), `dom` (a page drawn from a value: a tree of tags, attributes and
 text, with its stylesheet in the same particle and nothing else in either —
-see [its README](crates/modules/dom/README.md)),
+see [its README](crates/modules/dom/README.md)), `guest` (one application
+running inside another in a browser — the same two questions a machine host
+answers, where there is no dlopen and a container stands in for a process;
+see [its README](crates/modules/guest/README.md)),
 `math`, `strings`,
 `env` (the environment, so a port or a secret comes from the deployment
 rather than the source — see [its README](crates/modules/env/README.md)),
@@ -1457,7 +1468,7 @@ crates/
   code-native/  the crate for writing native modules in Rust (crates.io)
   code-lsp/     diagnostics, semantic tokens and formatting, over the real
                 lexer/parser and the same `code format` the CLI runs
-  modules/      first-party modules: console, dom, math, strings, env, json,
+  modules/      first-party modules: console, dom, guest, math, strings, env, json,
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
                 oauth, mongodb, blob_storage, cloud_drive, localai,
                 http_client, http_server, net_client, net_server — plus

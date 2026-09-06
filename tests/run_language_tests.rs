@@ -87,7 +87,7 @@ enum Expect {
 
 /// Compiles each dynamic native module into the `.so` the
 /// `native_link_*`/`fail_native_link_*`, `console_*`, `strings_*`,
-/// `dom_*`, `math_*`, `json_*`, `json_store*`, `crypto_*`, `jwt_*`, `markdown_*`, `fs_*`, `process_*`, `git_*`, `mailer_*`, `oauth_*`, `mongodb_*`, `blob_storage_*`, `cloud_drive_*`, `localai_*`, `*_mock_*`, `net_*`, and `http_client_*` fixtures `link` — checked into git as source, not
+/// `dom_*`, `guest_*`, `math_*`, `json_*`, `json_store*`, `crypto_*`, `jwt_*`, `markdown_*`, `fs_*`, `process_*`, `git_*`, `mailer_*`, `oauth_*`, `mongodb_*`, `blob_storage_*`, `cloud_drive_*`, `localai_*`, `*_mock_*`, `net_*`, and `http_client_*` fixtures `link` — checked into git as source, not
 /// as a binary
 /// (see `.gitignore`), so it has to be built fresh here before any fixture
 /// that needs it can run either mode. Sources live next to their consumers:
@@ -130,6 +130,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         "net_server",
         "net_client",
         "dom",
+        "guest",
         "mailer_mock",
         "oauth_mock",
         "mongodb_mock",

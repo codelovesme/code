@@ -53,7 +53,27 @@ const PARTS = [
 /// `doc` is the document to draw into — passed in rather than reached for, so
 /// a test can hand over a small stand-in and check what the module did
 /// without a browser. `log` is where `console`'s lines go.
-export function createHost({ doc = globalThis.document, log = (s) => console.log(s) } = {}) {
+///
+/// `store` and `address` are the same idea for what is remembered and for
+/// where the reader is. Null means the browser's own, which the half that
+/// needs one knows how to reach — this file does not.
+///
+/// `guard` stands between a module's half and the particle it was sent. Null
+/// for a program that *is* the page: nothing comes between it and its own
+/// modules. A program running inside another is given one, which is how its
+/// host decides what it may reach.
+///
+/// All four together are what makes a second world on one page possible: the
+/// `guest` module calls this again, with a document that stops at a
+/// container, keys under a prefix, a slice of the address, and a guard that
+/// asks the host program. The halves it builds cannot tell the difference.
+export function createHost({
+  doc = globalThis.document,
+  log = (s) => console.log(s),
+  store = null,
+  address = null,
+  guard = null,
+} = {}) {
   const dec = new TextDecoder();
   const enc = new TextEncoder();
   let memory;
@@ -89,15 +109,30 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
     code_host_number_parse: (ptr, len) => Number(str(ptr, len)),
   };
 
-  // What every module's half is given. `fire` is passed as a wrapper because
-  // it cannot be wired until the instance exists, and the parts are built
-  // before it does.
-  const ctx = { doc, log, fire: (particle) => fire(particle) };
+  // The world every module's half is given. `fire` and `ask` are passed as
+  // wrappers because they cannot be wired until the instance exists, and the
+  // parts are built before it does.
+  const ctx = {
+    doc,
+    log,
+    store,
+    address,
+    fire: (particle) => fire(particle),
+    ask: (particle) => ask(particle),
+  };
   const answering = new Map();
   for (const part of PARTS) {
     const [name, answer] = part(ctx);
     answering.set(name, answer);
   }
+
+  const answer_here = (name, particle) => {
+    const answer = answering.get(name);
+    return answer ? answer(particle) : undefined;
+  };
+  // A guarded program's modules answer to its host first, which can carry the
+  // particle out, refuse it, or answer in the module's place.
+  const answer_for = guard ? (name, particle) => guard(name, particle, answer_here) : answer_here;
 
   // The one door from any browser module to its half here: a particle in as
   // JSON, a particle out as JSON, under the module's name.
@@ -109,17 +144,15 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
   // failure as anyway, and what the same module's machine half returns.
   env.code_web_ask = (namePtr, nameLen, jsonPtr, jsonLen, outPtr, cap) => {
     const name = str(namePtr, Number(nameLen));
-    const answer = answering.get(name);
-    // No half for this module: not a failure, an absence. The module reads a
-    // negative length as "nobody answered" and hands the program null.
-    if (!answer) return -1n;
-
     let result;
     try {
-      result = answer(JSON.parse(str(jsonPtr, Number(jsonLen))));
+      result = answer_for(name, JSON.parse(str(jsonPtr, Number(jsonLen))));
     } catch (e) {
       result = { _class: "Exception", source: name, message: String(e?.message ?? e) };
     }
+    // Nothing answered: no half for this module, or a half that had nothing
+    // to say to this class. The module reads a negative length as that, and
+    // hands the program null.
     if (result === null || result === undefined) return -1n;
     return BigInt(writeInto(JSON.stringify(result), outPtr, Number(cap) - 1));
   };
@@ -164,6 +197,20 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
       };
 
       return e.main();
+    },
+
+    /// Lets the instance go. Nothing told or asked of it afterwards reaches
+    /// it, and this host stops holding its memory — which is what lets the
+    /// memory of a stopped program actually come back.
+    ///
+    /// There is nothing to stop for a program that is the page: it ends when
+    /// the page does. It matters for one running inside another, where a
+    /// timer set before it was unloaded would otherwise fire into an
+    /// application that is no longer there.
+    stop() {
+      fire = () => {};
+      ask = () => null;
+      memory = undefined;
     },
   };
 }

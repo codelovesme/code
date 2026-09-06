@@ -31,7 +31,10 @@ program actually linked pasted in. So:
 
 `createHost({ doc, log })` is the longer form, for a page that wants to keep
 the instance — or for a test that hands over a document of its own and checks
-what the application drew, with no browser involved.
+what the application drew, with no browser involved. `store` and `address`
+are the same idea for what is remembered and where the reader is; `guard` is
+what puts a program between another one and its modules. All four are what
+make a second application on one page possible — see below.
 
 ## A half answers particles
 
@@ -60,8 +63,8 @@ browser refusing storage. Everything is caught at the door and becomes an
 `Exception` particle — which is what the language reads a failure as anyway,
 and what the same module's machine half returns.
 
-The five with a half here are `console`, `dom`, `storage`, `router` and
-`timer`, plus `net_client`.
+The ones with a half here are `console`, `dom`, `storage`, `router`, `timer`,
+`net_client` and `guest`.
 
 **A module from outside this repository cannot bring its own half yet**, and
 that is the honest limit of this design. The halves are embedded in the
@@ -125,3 +128,18 @@ That is what lets a page put a program in the middle of something. A shell
 running another application can be *asked*, in the language, whether the guest
 may draw there or store that — rather than deciding it here, in JavaScript,
 where it cannot be tested and is not the application's own reasoning.
+
+## One page, two applications
+
+`createHost` is called again by [`guest`](../crates/modules/guest), the module
+that runs another application inside this one: a second world on the same
+page, with its own `doc`, `store` and `address`, and a `guard` that turns
+every module the guest reaches for into a question for the host program —
+`Offer` once per module, `Module` per particle. The halves cannot tell the
+difference. They are handed a container and a prefix instead of a page and a
+key, and they draw and store exactly as they would.
+
+That is the whole of the browser's side of hosting, and it is why these four
+are arguments rather than things this file reaches for. `host.stop()` is the
+other end of it: a program let go of is one nothing fired at it afterwards
+can reach, so a delay it set before it went finds nobody home.
