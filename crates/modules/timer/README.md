@@ -3,9 +3,9 @@
 ```code
 link "timer.a" as clock
 
-emit Delay { ms = 5000, then = "Refresh", value = "prices" } to clock get d
+emit Delay { ms = 5000, then = { _class = "Refresh", what = "prices" } } to clock get d
 
-Refresh { value } => {
+Refresh { what } => {
     | ...and re-arm here, if it should keep going
 }
 ```
@@ -13,13 +13,13 @@ Refresh { value } => {
 ## The handlers
 
 ```
-Delay { ms, then, value? }  → DelayResult { value }   | the number it is known by
-Cancel { id }               → CancelResult { ok }
+Delay { ms, then }  → DelayResult { value }   | the number it is known by
+Cancel { id }       → CancelResult { ok }
 ```
 
-`then` names the class the application wants back; `value` is an optional
-piece of text that comes with it, so one handler can tell its delays apart.
-A delay carrying nothing makes a particle with no `value` field at all.
+`then` is the particle the application wants back — a whole one, fields and
+all, so a handler is handed what it needs rather than one field's worth. Just
+a class name is the short way of writing `{ _class = "…" }`.
 
 Cancelling one that has already fired, or was never started, is `ok = false`
 rather than a failure: it means the same thing either way.

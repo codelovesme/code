@@ -33,15 +33,35 @@ program actually linked pasted in. So:
 the instance — or for a test that hands over a document of its own and checks
 what the application drew, with no browser involved.
 
-## Which modules have one
+## A half answers particles
 
-| Module | What the page supplies |
-|---|---|
-| `console` | `code_web_log` |
-| `dom` | `code_web_render` |
-| `storage` | `code_web_storage_get` / `_set` / `_remove` |
-| `router` | `code_web_route_get` / `_set` / `_watch` |
-| `timer` | `code_web_timer_set` / `_clear` |
+**A module speaks particles in both directions** — toward the language and
+toward the page. So a half here is a function from the particle its module was
+sent to the particle it answers:
+
+```js
+(ctx) => ["storage", (particle) => {
+  if (particle._class === "Get") return { _class: "GetResult", value: … };
+  …
+  return null;   // a class this module does not handle
+}]
+```
+
+Nothing crosses as a pointer, a length, or a shape invented for one module.
+There is one import for all of them — `code_web_ask`, a particle in as JSON
+and a particle out — so a module's wasm half has nothing to do but hand the
+particle over, which is why it is
+[written once](../crates/modules/browser_half.rs) and included rather than
+typed per module.
+
+**Nothing thrown escapes.** A half that threw would take the program's whole
+dispatch down with it, from inside a handler, over something as ordinary as a
+browser refusing storage. Everything is caught at the door and becomes an
+`Exception` particle — which is what the language reads a failure as anyway,
+and what the same module's machine half returns.
+
+The five with a half here are `console`, `dom`, `storage`, `router` and
+`timer`, plus `net_client`.
 
 **A module from outside this repository cannot bring its own half yet**, and
 that is the honest limit of this design. The halves are embedded in the

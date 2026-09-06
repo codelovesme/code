@@ -373,6 +373,25 @@ char *code_event_text(void);
 long long code_event_text_capacity(void);
 void code_event_fire(long long len);
 
+/* ---- JSON, for a module with a world on the other side of a wire ---------
+ *
+ * A module speaks particles, in both directions — that is its whole contract
+ * with the language. A module whose world is a page or a socket has to put a
+ * particle into bytes and read one back out, and every module doing that for
+ * itself is the same code many times over, each with its own ideas about what
+ * a fraction looks like.
+ *
+ * `code_json_write` answers how many bytes it wrote, or a negative number
+ * when it would not fit (`cap` includes the terminating zero it writes).
+ * `code_json_read` answers non-zero when the text was JSON; when it was not,
+ * `out` is untouched, because half a value is worse than none. Both spell
+ * numbers the way the language does, so one written by a page and one written
+ * here agree.
+ *
+ * A module that never leaves the machine has no use for either. */
+long long code_json_write(const CodeValue *v, char *out, long long cap);
+int code_json_read(const char *text, long long len, CodeValue *out);
+
 void code_number(CodeValue *out, double n);
 /* Borrows `s` — the value keeps the pointer rather than the bytes, so `s`
  * must outlive it. Correct for a string literal, wrong for anything built at

@@ -1,7 +1,5 @@
 // The page's half of `router`: where in the application the reader is.
 (ctx) => {
-  const { str, writeInto, fire } = ctx;
-
   // The hash, because a page served as a file has nothing else it can change
   // without asking a server for a URL that does not exist.
   const currentRoute = () => {
@@ -12,32 +10,44 @@
   let watching = null;
   let armed = false;
 
-  return {
-    code_web_route_get: (outPtr, cap) => writeInto(currentRoute(), outPtr, cap),
+  return [
+    "router",
+    (particle) => {
+      switch (particle._class) {
+        case "Route":
+          return { _class: "RouteResult", value: currentRoute() };
 
-    code_web_route_set(pathPtr, pathLen) {
-      if (!globalThis.location) return 0;
-      const path = str(pathPtr, pathLen);
-      // Assigning the hash is what puts an entry in the reader's history, so
-      // Back means what they expect. An unchanged path fires nothing, which
-      // is also what they expect.
-      globalThis.location.hash = path.startsWith("#") ? path.slice(1) : path;
-      return 1;
-    },
+        case "Navigate": {
+          if (!globalThis.location || typeof particle.path !== "string") {
+            return { _class: "NavigateResult", ok: false };
+          }
+          // Assigning the hash is what puts an entry in the reader's history,
+          // so Back means what they expect. An unchanged path fires nothing,
+          // which is also what they expect.
+          const path = particle.path;
+          globalThis.location.hash = path.startsWith("#") ? path.slice(1) : path;
+          return { _class: "NavigateResult", ok: true };
+        }
 
-    code_web_route_watch(classPtr, classLen) {
-      const className = str(classPtr, classLen);
-      if (!className) return 0;
-      watching = className;
-      // Listened for once, however many times the application asks: watching
-      // twice would deliver every change twice.
-      if (!armed) {
-        globalThis.addEventListener?.("hashchange", () => {
-          if (watching) fire({ _class: watching, path: currentRoute() });
-        });
-        armed = true;
+        case "Watch": {
+          if (typeof particle.then !== "string" || !particle.then) {
+            return { _class: "WatchResult", ok: false };
+          }
+          watching = particle.then;
+          // Listened for once, however many times the application asks:
+          // watching twice would deliver every change twice.
+          if (!armed) {
+            globalThis.addEventListener?.("hashchange", () => {
+              if (watching) ctx.fire({ _class: watching, path: currentRoute() });
+            });
+            armed = true;
+          }
+          return { _class: "WatchResult", ok: true };
+        }
+
+        default:
+          return null;
       }
-      return 1;
     },
-  };
+  ];
 }

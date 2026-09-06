@@ -2109,6 +2109,70 @@ void code_event_fire(long long len) {
     code_release(&particle);
 }
 
+/* ---- JSON, for a module with a world on the other side of a wire ---------
+ *
+ * A module speaks particles — that is the whole of its contract with the
+ * language, in both directions. But a module whose world is a page, or a
+ * socket, has to put a particle into bytes and read one back out, and every
+ * module doing that for itself is the same code five times, each with its own
+ * ideas about what a fraction looks like.
+ *
+ * So the runtime does it. `code_json_write` is what `to text` already does to
+ * a value; `code_json_read` is the reader the event path already needed. Both
+ * were here, neither was reachable.
+ *
+ * A module that never leaves the machine has no use for either — `mongodb`
+ * and `jwt` speak to libraries, not to bytes. */
+
+/* Defined further down, with the rest of value-to-text: `to text` and this
+ * write the same bytes, which is the point of borrowing it. */
+void code_to_text(CodeValue *out, const CodeValue *v);
+
+/* Writes `v` as JSON into `out`, and answers how many bytes that took, or a
+ * negative number when it would not fit. `cap` includes room for the
+ * terminating zero this writes. */
+long long code_json_write(const CodeValue *v, char *out, long long cap) {
+    if (!out || cap <= 0) {
+        return -1;
+    }
+    CodeValue text = {0};
+    code_to_text(&text, v);
+    if (text.tag != CODE_STR || !text.str) {
+        code_release(&text);
+        return -1;
+    }
+    long long len = (long long)strlen(text.str);
+    if (len >= cap) {
+        code_release(&text);
+        return -1;
+    }
+    memcpy(out, text.str, (size_t)len + 1);
+    code_release(&text);
+    return len;
+}
+
+/* Reads `len` bytes of JSON into `out`. Non-zero when it was JSON, zero when
+ * it was not — and then `out` is untouched, because half a value is worse
+ * than none.
+ *
+ * What `JSON.stringify` writes and nothing more: no comments, no trailing
+ * commas. Numbers go through the same reader the language uses, so one
+ * spelled by a page and one spelled here agree. */
+int code_json_read(const char *text, long long len, CodeValue *out) {
+    if (!text || len <= 0 || !out) {
+        return 0;
+    }
+    JsonReader reader = {text, text + len, 0};
+    CodeValue value = {0};
+    if (!json_value(&reader, &value) || reader.failed) {
+        code_release(&value);
+        return 0;
+    }
+    code_release(out);
+    *out = value;
+    return 1;
+}
+
 /* The module's *name*, from whatever path the guest was compiled with.
  *
  * A host's handler wants to say `if name = "net_server"`. What arrives is a

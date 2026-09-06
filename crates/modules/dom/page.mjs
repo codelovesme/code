@@ -1,11 +1,5 @@
-// The page's half of `dom`: a tree of nodes, and events fired back.
-//
-// The whole vocabulary is a tag, flat attributes, children and `on`. There is
-// no `innerHTML`, no property set by name, no handler built from text — so a
-// tree built out of someone's name is data all the way here and cannot become
-// code on the way. The module's own half is held to the same rule.
 (ctx) => {
-  const { doc, str, fire } = ctx;
+  const { doc, fire } = ctx;
 
   /// `"Add"` or `{ _class: "Add", ... }` — both are how an application says
   /// what an event means, and anything else is not one.
@@ -72,12 +66,18 @@
       .join("\n");
   }
 
-  return {
-    code_web_render(jsonPtr, jsonLen, intoPtr, intoLen) {
-      const target = doc.querySelector(str(intoPtr, intoLen));
-      if (!target) return 0;
-      const payload = JSON.parse(str(jsonPtr, jsonLen));
-      if (payload.styles) {
+  return [
+    "dom",
+    (particle) => {
+      if (particle._class !== "Render") return null;
+
+      const into = typeof particle.into === "string" ? particle.into : "body";
+      const target = doc.querySelector(into);
+      // Not an exception: a selector that matches nothing is an application
+      // drawing before its page has the node, which it can act on.
+      if (!target) return { _class: "RenderResult", ok: false };
+
+      if (particle.styles) {
         // One sheet per page, replaced rather than stacked: an application
         // restyling itself should not leave its old rules behind.
         let sheet = doc.getElementById("code-style");
@@ -86,10 +86,14 @@
           sheet.id = "code-style";
           (doc.head || doc.body).appendChild(sheet);
         }
-        sheet.textContent = sheetText(payload.styles);
+        sheet.textContent = sheetText(particle.styles);
       }
-      target.replaceChildren(node(payload.tree));
-      return 1;
+
+      // A tree already written as JSON is taken as one — for an application
+      // that built the text itself rather than handing over a value.
+      const tree = typeof particle.tree === "string" ? JSON.parse(particle.tree) : particle.tree;
+      target.replaceChildren(node(tree));
+      return { _class: "RenderResult", ok: true };
     },
-  };
+  ];
 }

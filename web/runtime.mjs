@@ -35,8 +35,14 @@
 //   const { instance } = await WebAssembly.instantiate(bytes, { env: host.env });
 //   host.start(instance);
 
-/// Every linked module's half, pasted in at build time. Each is a function of
-/// one context and returns the imports it supplies.
+/// Every linked module's half, pasted in at build time.
+///
+/// Each is a function of one context returning `[name, answer]`: the module's
+/// own name, and what it does with a particle. **A module speaks particles in
+/// both directions** — toward the language and toward the page — so a half
+/// here takes the particle its module was sent and returns the one it
+/// answers. Nothing crosses as a pointer, a length, or a shape invented for
+/// one module.
 const PARTS = [
   //__CODE_WEB_PARTS__
 ];
@@ -85,10 +91,37 @@ export function createHost({ doc = globalThis.document, log = (s) => console.log
   // What every module's half is given. `fire` is passed as a wrapper because
   // it cannot be wired until the instance exists, and the parts are built
   // before it does.
-  const ctx = { doc, log, str, writeInto, fire: (particle) => fire(particle) };
+  const ctx = { doc, log, fire: (particle) => fire(particle) };
+  const answering = new Map();
   for (const part of PARTS) {
-    Object.assign(env, part(ctx));
+    const [name, answer] = part(ctx);
+    answering.set(name, answer);
   }
+
+  // The one door from any browser module to its half here: a particle in as
+  // JSON, a particle out as JSON, under the module's name.
+  //
+  // **Nothing thrown escapes.** A half that throws would take the whole
+  // program's dispatch down with it, from inside a handler, over something
+  // as ordinary as a browser refusing storage. So every answer is caught here
+  // and becomes an `Exception` particle — which is what the language reads a
+  // failure as anyway, and what the same module's machine half returns.
+  env.code_web_ask = (namePtr, nameLen, jsonPtr, jsonLen, outPtr, cap) => {
+    const name = str(namePtr, Number(nameLen));
+    const answer = answering.get(name);
+    // No half for this module: not a failure, an absence. The module reads a
+    // negative length as "nobody answered" and hands the program null.
+    if (!answer) return -1n;
+
+    let result;
+    try {
+      result = answer(JSON.parse(str(jsonPtr, Number(jsonLen))));
+    } catch (e) {
+      result = { _class: "Exception", source: name, message: String(e?.message ?? e) };
+    }
+    if (result === null || result === undefined) return -1n;
+    return BigInt(writeInto(JSON.stringify(result), outPtr, Number(cap) - 1));
+  };
 
   return {
     env,

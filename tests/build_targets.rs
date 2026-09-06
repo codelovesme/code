@@ -194,13 +194,15 @@ fn a_wasm_build_writes_the_pages_half_beside_it() {
     let text = fs::read_to_string(&host).expect("host.mjs written beside the module");
 
     // The language's own half is always there — a freestanding build cannot
-    // tell the time or spell a fraction and asks for both.
+    // tell the time or spell a fraction and asks for both — and so is the one
+    // door a browser module reaches its half through.
     for needed in [
         "code_host_now",
         "code_host_error",
         "code_host_number_exact",
         "code_host_number_parse",
         "code_event_fire",
+        "code_web_ask",
     ] {
         assert!(
             text.contains(needed),
@@ -208,9 +210,9 @@ fn a_wasm_build_writes_the_pages_half_beside_it() {
              fail to instantiate with nothing said about why"
         );
     }
-    // This program linked no modules, so it carries no module's half.
+    // This program linked no modules, so no module's half came with it.
     assert!(
-        !text.contains("code_web_"),
+        !text.contains("localStorage") && !text.contains("replaceChildren"),
         "a program that linked no browser module still carries one's half"
     );
 
@@ -674,28 +676,40 @@ fn tool_exists(name: &str) -> bool {
 /// without compiling anything.
 #[test]
 fn the_pages_half_holds_the_linked_modules_and_no_others() {
+    // A half is recognised by something only it does, rather than by a name
+    // it exports: every module reaches its half through the one door, so
+    // there are no per-module imports left to look for.
     let none = code::web_host_source(&[]);
     assert!(
-        none.contains("code_host_now") && !none.contains("code_web_"),
-        "a program that linked nothing still carries a module's half"
+        none.contains("code_host_now") && none.contains("code_web_ask"),
+        "the language's own half is not there"
     );
+    for absent in [
+        "ctx.log",
+        "replaceChildren",
+        "localStorage",
+        "hashchange",
+        "setTimeout",
+    ] {
+        assert!(
+            !none.contains(absent),
+            "a program that linked nothing still carries a module's half ('{absent}')"
+        );
+    }
 
     let console = code::web_host_source(&["console"]);
+    assert!(console.contains("ctx.log"), "console's half is missing");
     assert!(
-        console.contains("code_web_log"),
-        "console's half is missing"
-    );
-    assert!(
-        !console.contains("code_web_render"),
+        !console.contains("replaceChildren"),
         "an application that linked only `console` carries `dom`'s half too"
     );
 
     let two = code::web_host_source(&["dom", "storage"]);
-    for needed in ["code_web_render", "code_web_storage_get"] {
+    for needed in ["replaceChildren", "localStorage"] {
         assert!(two.contains(needed), "'{needed}' is missing");
     }
     assert!(
-        !two.contains("code_web_timer_set"),
+        !two.contains("hashchange"),
         "a module nobody linked came along anyway"
     );
 
