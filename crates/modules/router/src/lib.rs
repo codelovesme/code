@@ -12,6 +12,12 @@
 //! - `Where {}` — answers `WhereResult { origin, protocol, hostname, port }`:
 //!   what this page was served from. `origin` is null where there is none
 //!   (a file opened straight off disk, `file://`).
+//! - `Segment { path, at }` — answers `SegmentResult { value }`, the `at`-th
+//!   `/`-separated piece of `path` counting from zero after its leading
+//!   slash (`"/auth-web/account"` → 0 is `"auth-web"`, 1 is `"account"`),
+//!   or an empty string past the end. The one piece of string-splitting a
+//!   path itself needs; not a general text module, which this deliberately
+//!   is not.
 //!
 //! # Where answers what `Route` cannot
 //!
@@ -113,9 +119,8 @@ mod machine {
                 // A class this module does not handle answers null and does
                 // not end the program: it may have been meant for something
                 // else entirely.
-                Some("Route") | Some("Navigate") | Some("Watch") | Some("Where") => {
-                    exception(out, "router", NO_BROWSER)
-                }
+                Some("Route") | Some("Navigate") | Some("Watch") | Some("Where")
+                | Some("Segment") => exception(out, "router", NO_BROWSER),
                 _ => null(out),
             }
         })

@@ -82,6 +82,22 @@
           };
         }
 
+        // Splitting a path is not a text problem this module reaches
+        // outside itself for — a path is what `router` is about, and the
+        // one thing an application built to be hosted needs is its own
+        // name back out of a path it did not build alone (`guest` scopes a
+        // guest's own `Route`/`Navigate`, but a shell deciding *which*
+        // guest a reload's address names has to read the whole thing).
+        case "Segment": {
+          const path = typeof particle.path === "string" ? particle.path : "";
+          const at = typeof particle.at === "number" ? particle.at : 0;
+          // A leading slash means the first real segment is index 1 of the
+          // split, not 0 — dropped here so `at` counts the way a reader
+          // would say it: "auth-web" is segment 0 of "/auth-web/account".
+          const parts = path.replace(/^\//, "").split("/");
+          return { _class: "SegmentResult", value: parts[at] ?? "" };
+        }
+
         default:
           return null;
       }
