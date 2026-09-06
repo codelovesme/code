@@ -941,3 +941,149 @@ assert second.door = "membrane"
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A guest with a real door of its own, and a host that has none, keeps the
+/// host's own process alive — under the interpreter, not only compiled.
+///
+/// `keep_alive`'s whole job is to hold a program open for exactly as long as
+/// something linked still expects to speak (`interpreter.rs::any_module_serving`).
+/// A module linked at the top level is always asked; a module linked *while
+/// the program runs* — the only way to hold a guest at all — was asked only
+/// if it also had an inbound queue toward its host, which most guests do not
+/// need: this one owns its door and answers callers directly, the way
+/// `host`'s own README says an application may. So a host whose one reason
+/// to stay open is a held guest like that ended the moment its own top level
+/// finished, its guest's listening thread torn down with it — while the
+/// exact same source, compiled, stayed open, because `runtime.c`'s
+/// `code_runtime_any_serving` asks every runtime-linked module unconditionally.
+///
+/// Proven from outside the process: the guest prints the port it actually
+/// bound (`0` asks the OS for one), and once that line is read this connects
+/// a real socket to it — which only succeeds if the process is still there,
+/// still accepting, well after the host's last statement ran.
+#[test]
+fn a_held_guests_own_door_keeps_a_doorless_host_alive() {
+    let dir = temp_dir("doorless-host");
+    module("net_server", &dir.join("native_modules/net_server.so"));
+    module("console", &dir.join("native_modules/console.so"));
+
+    build(
+        &dir,
+        "guest",
+        r#"link "native_modules/net_server.so" as door
+link "native_modules/console.so" as con
+
+Impulse { particle } => {
+    return Pong { }
+}
+
+emit Config { host = "127.0.0.1", port = 0 } to door get c
+assert c.ok
+emit Listen { } to door get l
+assert l.ok
+emit Print { value = "PORT " + l.port } to con
+"#,
+        code::BuildTarget::Shared,
+        "guest.so",
+    );
+
+    // Nothing here opens a door of its own — the only thing that could keep
+    // this process open past its last statement is the guest it holds. The
+    // link happens inside a handler and the path is a variable, not a
+    // top-level literal: that is what makes this the *runtime*-link form
+    // (`ast::Stmt::LinkRuntime`) rather than an ordinary static module link,
+    // and hosting a `.code` guest — running its top level, giving it this
+    // program's own modules to ask for — only happens on that path.
+    fs::write(
+        dir.join("main.code"),
+        r#"Attach { path } => {
+    link path as opened
+    | A `.code` library's top level is lazy — it runs on the first dispatch
+    | or the first read of an exported value, not on `link` itself (see
+    | `NativeModule::host`'s doc comment). So this pokes it once, the same
+    | way `holding.gene.code` sends `Starting` to make a just-attached
+    | application actually run its top level.
+    emit Poke { } to opened get _
+    return Attached { }
+}
+
+let p = "./guest.so"
+emit Attach { path = p } to this get r
+assert r._class = "Attached"
+"#,
+    )
+    .expect("write host");
+
+    let spawns: Vec<(&str, Box<dyn Fn() -> std::process::Child>)> = vec![
+        (
+            "interpreted",
+            Box::new({
+                let dir = dir.clone();
+                move || {
+                    Command::new(env!("CARGO_BIN_EXE_code"))
+                        .arg("run")
+                        .arg("main.code")
+                        .current_dir(&dir)
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped())
+                        .spawn()
+                        .expect("spawn code run")
+                }
+            }),
+        ),
+        (
+            "compiled",
+            Box::new({
+                let dir = dir.clone();
+                move || {
+                    let exe = dir.join("main");
+                    code::compile_file(&dir.join("main.code"), code::BuildTarget::Exe, &exe, false)
+                        .expect("compile the host");
+                    Command::new(&exe)
+                        .current_dir(&dir)
+                        .stdout(std::process::Stdio::piped())
+                        .stderr(std::process::Stdio::piped())
+                        .spawn()
+                        .expect("run the compiled host")
+                }
+            }),
+        ),
+    ];
+    for (label, spawn) in &spawns {
+        let mut child = spawn();
+        let mut out = std::io::BufReader::new(child.stdout.take().expect("piped stdout"));
+        let port: u16 = {
+            use std::io::BufRead;
+            let mut line = String::new();
+            let mut found = None;
+            for _ in 0..50 {
+                line.clear();
+                if out.read_line(&mut line).unwrap_or(0) == 0 {
+                    break;
+                }
+                if let Some(rest) = line.trim().strip_prefix("PORT ") {
+                    found = rest.parse().ok();
+                    break;
+                }
+            }
+            found.unwrap_or_else(|| panic!("{label}: guest never printed its port"))
+        };
+
+        // Not the instant the line arrived — a moment after, so a process
+        // that only *happened* not to have exited yet cannot pass by luck.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        let reached = std::net::TcpStream::connect(("127.0.0.1", port)).is_ok();
+
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert!(
+            reached,
+            "{label}: a doorless host did not stay open for its held guest's own door — \
+             the guest's listener was gone by the time this connected to port {port}"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}

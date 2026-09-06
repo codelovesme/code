@@ -510,8 +510,29 @@ fn drain_inbound(env: &mut Environment) -> Result<usize, String> {
 
 /// Whether *any* linked module still expects to speak — the condition that
 /// keeps the program up after its last statement. See [`keep_alive`].
+///
+/// Two tables, because a module can hold this program open two different
+/// ways. `inbound` is modules that speak *first* — a queue this program
+/// drains — and every one of those is asked here regardless of anything
+/// else. `runtime_modules` is what `link` inside a handler opened, which is
+/// most of what a held guest is: `Attach { path } => { link path as opened }`
+/// gives the guest no reason to speak first at all when it owns a door of
+/// its own and answers callers directly rather than through this program —
+/// see `host`'s own README. Asking only `inbound` (as this did until now)
+/// meant a runtime-linked guest with a working door but no message for its
+/// host was never checked at all, and a program whose sole reason to stay
+/// open was exactly that guest ended under it — while the compiled backend,
+/// whose `code_runtime_any_serving` asks every runtime-linked module
+/// unconditionally, did not. `close_module`'s own refusal-to-unlink check
+/// already reads `runtime_modules` this same way; this is that made to
+/// agree.
 fn any_module_serving(env: &Environment) -> bool {
     env.inbound.iter().any(|source| (source.serving)())
+        || env
+            .runtime_modules
+            .iter()
+            .flatten()
+            .any(|module| (module.serving)())
 }
 
 /// Raised by every push, waited on by [`keep_alive`].
