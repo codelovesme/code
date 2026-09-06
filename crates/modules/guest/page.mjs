@@ -70,8 +70,9 @@
   const refused = (reason) => ({ _class: "LoadResult", ok: false, reason });
 
   // `body`, `html` and `:root` all mean the whole page. A guest's whole page
-  // is its container.
-  const WHOLE_PAGE = new Set(["body", "html", ":root"]);
+  // is its container; `#app` is the starter template mount point every euglena
+  // web application targets in standalone mode.
+  const WHOLE_PAGE = new Set(["body", "html", ":root", "#app"]);
 
   // What the guest's container is known by in a rule. The name is already
   // letters, digits, `-` and `_`, so there is nothing in here to quote.
