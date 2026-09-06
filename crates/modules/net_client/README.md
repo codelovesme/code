@@ -75,6 +75,45 @@ in the ABI can stop a module that blocks with no deadline.
 No connection reuse — a particle is one exchange, and a pool would be state
 this module would then have to invalidate.
 
+## In a browser it does not answer
+
+`Send` returns the far side's particle on a machine. In a page it cannot:
+waiting for a reply means blocking, and blocking there freezes the reader —
+no rendering, no clicks, nothing. So the browser half answers as soon as the
+request is on its way, and the reply arrives later, as a particle, at the
+program's own handlers:
+
+```code
+emit Send { url = "http://…/ping-api", particle = Ping { value = 41 } } to net get sent
+assert sent.ok
+
+Pong { value, _request_id } => { … }
+Denied { reason, _request_id } => { … }
+```
+
+`sent.value` is the number the exchange is known by, and every reply carries
+it back as `_request_id` — so two requests that both answer `Pong` can be told
+apart without the far side having to help.
+
+**Replies arrive in whatever order they come back**, not the order they were
+sent.
+
+A refused connection, a timeout, an answer that is not a particle: all of them
+arrive the same way, as an `Exception` with the same `_request_id`. One place
+to handle a failure, and it is where the answer would have been.
+
+The two shapes are not an accident of the port. On a machine every module
+answers — `jwt`, `mongodb`, `fs`, all of them — and in a browser everything
+that waits comes back as a particle: `timer`, `router`, a click on a `dom`
+node. This module looks like its neighbours on each side, which is the
+consistency that matters to somebody writing an application.
+
+**On a machine, mind where you call it.** `Send` blocks, and a handler that
+blocks stops the whole program — no other particle is dispatched while it
+waits. At the top level that costs nothing, since nothing else is running. In
+a handler of a program that serves requests, it is a stall that only shows
+under load.
+
 ## The wire
 
 One POST, the body is the particle, the path is the app. See

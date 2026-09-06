@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, dom, router, storage, timer]
+        module: [console, dom, net_client, router, storage, timer]
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2

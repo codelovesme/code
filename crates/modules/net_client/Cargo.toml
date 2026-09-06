@@ -15,11 +15,24 @@ repository = "https://github.com/codelovesme/code"
 
 [lib]
 name = "net_client"
+# The `.so` every program on a machine opens while it runs. The wasm build —
+# where this module reaches a page's own `fetch` instead of a socket — wants
+# the other container, a `.a`, and asks for it on the command line:
+#
+#   cargo rustc --target wasm32-unknown-unknown --release --crate-type staticlib
 crate-type = ["cdylib"]
 
 [dependencies]
+
+# On a machine: a socket, and serde to put a particle on it.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 code-native = { path = "../../code-native" }
 # `preserve_order` for the same reason `net_server` needs it: a particle's
 # fields must survive the round trip in the order they were written, because
 # `code` object equality is field-order sensitive.
 serde_json = { version = "1", features = ["preserve_order"] }
+
+# In a browser: no socket, no runtime of its own, and no standard library —
+# see `dom` for why a module meant for the web brings nothing.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+code-native = { path = "../../code-native", default-features = false, features = ["static-module"] }
