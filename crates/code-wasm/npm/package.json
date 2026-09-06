@@ -1,6 +1,6 @@
 {
   "name": "code-wasm",
-  "version": "1.8.5",
+  "version": "1.8.6",
   "description": "Run Code — a language with no user-defined functions, particle emission for behavior, and browser-embeddable third-party modules — in any browser or JS host. A small WASM bridge around the language's real parser and interpreter.",
   "type": "module",
   "main": "dist/code_wasm.js",

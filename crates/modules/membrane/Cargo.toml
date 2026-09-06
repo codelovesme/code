@@ -6,7 +6,7 @@
 
 [package]
 name = "membrane"
-version = "1.8.5"
+version = "1.8.6"
 edition = "2021"
 description = "The `membrane` native module for the Code programming language — an application's boundary when it is held by a host: the same vocabulary as net_server, and no socket of its own."
 license = "GPL-3.0"

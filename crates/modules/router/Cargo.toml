@@ -6,7 +6,7 @@
 
 [package]
 name = "router"
-version = "1.8.5"
+version = "1.8.6"
 edition = "2021"
 description = "The `router` native module for the Code programming language — where in the application the reader is. Written in Rust on code-native."
 license = "GPL-3.0"

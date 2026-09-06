@@ -7,7 +7,7 @@
 
 [package]
 name = "net_server"
-version = "1.8.5"
+version = "1.8.6"
 edition = "2021"
 description = "The `net_server` native module for the Code programming language — accepts particles over a framed transport and hands them to the program's own handlers, with no protocol of its own. Written in Rust on code-native."
 license = "GPL-3.0"
