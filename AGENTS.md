@@ -255,60 +255,43 @@ instant its top level finished. Now it also checks `env.runtime_modules`.
 
 ---
 
-## Known-suspicious wasm codegen (unresolved, not reported upstream)
+## Wasm handler stack (root-caused 2026-09-07)
 
-Found while building `my-euglena-apps/auth-web`. **Never on the machine/exe
-target — only `--target wasm`.** All are `memset` "memory access out of bounds"
-inside a generated `_code_handler_<Name>`.
+Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`
+and `tests/guest_module.rs`.
 
-1. A single handler grown to ~15 branches crashed on a branch that had not
-   changed. Extracting large branches into their own top-level handlers fixed it.
-2. A loop calling a per-row handler and concatenating its answer crashed once it
-   ran with real items. Hoisting a large inline `styles` object into a top-level
-   `let` (evaluated once at link time) fixed it with no other change.
-3. Narrower: a boot that synchronously calls a handler which itself redraws,
-   all inside boot's own dispatch frame, crashed — while the same page reached
-   by a later, separate dispatch was fine. **This killed the "program size"
-   theory**: same binary, different call shape.
-4. Narrower still, and the most trustworthy: reading `clock`'s `Delay` answer
-   from inside a handler reached via *another module's fired event* silently
-   ended the handler. Not first-use-of-module (pre-warming did not help), not
-   delay length (`ms = 100` also failed), not the field name (even an unrelated
-   `Print` placed after the read died). Reading a field off `store`'s answer in
-   the same handler worked fine.
+The auth-web crashes in `memset` were exhaustion of the **linear-memory
+stack**, not binary size or a private dispatch stack in the shim. The linker
+was left at its 64 KiB default. Generated handler temporaries live in stack
+frames; nested `emit ... to this` keeps every caller's frame live. Large
+handlers and deep chains therefore consume the same limited resource.
 
-**Confirmed 2026-09-07: it is dispatch depth, not size.** Measured on
-`my-euglena-apps/auth-web`, both runs checked with a real-browser suite:
+An isolated chain with a 32-number array in each handler passed at depths
+1, 8, 10 and 11, then trapped in `memset` at depth 12. Disassembly showed a
+5,696-byte frame for a non-leaf handler. Reserving **1 MiB** explicitly makes
+the same probe pass through 128 handlers. `--stack-first` also makes the
+layout explicit: the downward-growing stack sits below static data.
 
-| change | binary | result |
-|---|---|---|
-| 8 dead handlers, never called | 451,315 B | **0 failures** |
-| a chain of handlers calling each other from the render path | 453,505 B | **11 of 14 failed** |
+The permanent regression retains arrays across 32 nested calls, checks their
+contents and the returned particle, and repeats the calls after `main` has
+returned, in both debug and optimized wasm builds. Restoring 64 KiB was
+confirmed to make it fail with `memory access out of bounds`.
 
-Two kilobytes apart, opposite outcomes. Size is not the axis; nesting
-`emit ... to this` inside an already-nested dispatch is. Fixes 1 and 2 above
-shortened the chain by coincidence, and their "total footprint" explanation was
-wrong.
+The real-browser suite was also run with a temporary auth-web variant adding
+one extra `emit` around `AccountPage`: **10/14 passed with 64 KiB, 14/14
+with 1 MiB**. The failing cases included reload crashes. The application
+source was not changed by this experiment.
 
-**The margin is one emit.** A single extra `emit ... to this` inside an already
-deeply-reached handler crashes the tab — and only on the path that boots through
-the longest chain (a `clock`-deferred callback, a fetch, then a redraw nested in
-the answer). Shallower paths to the same screen keep working, which is exactly
-why this looks intermittent and screen-specific when it is neither.
+The separately reported shape — a network callback reading `timer.Delay`'s
+answer and continuing — has its own test using both real module archives
+and browser halves. It passes; this small shape alone has not been shown to
+be an independent defect. Missing host module halves remain a separate bug
+class (see the hosting section above).
 
-So: **a handler called again while an earlier call from the same top-level entry
-is still on the wasm call stack corrupts something tied to that depth** —
-almost certainly a fixed-size dispatch or argument stack in the wasm shim.
-That is now evidence rather than theory, and it is a small, well-defined place
-to go looking.
-
-**Worth doing properly when there is room:** an isolated repro — a program whose
-boot handler nests N `emit ... to this` calls deep before returning, tested
-across increasing N under wasm — and a real bug report.
-
-Note that symptom 5 in the app repo turned out **not** to be a compiler bug at
-all (it was the silent module-bundling gap above), so treat this list as
-genuinely open questions rather than settled facts.
+**This is still a finite stack.** 1 MiB gives ordinary application handlers
+room; it does not promise arbitrary nesting or arbitrarily large handlers.
+Rebuild wasm artifacts with the updated compiler to get the new reservation.
+The app's existing backend-formatting workarounds have not been removed.
 
 ---
 

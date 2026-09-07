@@ -425,6 +425,12 @@ mod compile {
         run_command(
             linker
                 .arg("--no-entry")
+                // Handler temporaries live on the linear-memory stack. LLD
+                // defaults to 64 KiB, which ordinary nested render handlers
+                // exhaust. Keep the stack below data so overflow traps instead
+                // of overwriting globals and the runtime heap.
+                .args(["-z", "stack-size=1048576"])
+                .arg("--stack-first")
                 .arg("--export=main")
                 // How a page calls back in. A program that draws nothing
                 // never fires anything, so exporting these costs a few table

@@ -533,3 +533,75 @@ check("the page's own address did not come back whole",
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A network reply fires a handler which reads a timer's synchronous answer,
+/// then continues doing work. This isolates auth-web's reported symptom 4
+/// using both real module archives and their generated JavaScript halves.
+#[test]
+fn a_network_callback_can_read_a_timer_answer_and_continue() {
+    if !tool_exists("node") || !wasm_target_installed() {
+        eprintln!("skipped: needs node and wasm32-unknown-unknown");
+        return;
+    }
+    let dir = temp_dir("callback-answer");
+    for module in ["net_client", "timer"] {
+        archive(&dir, module);
+    }
+    let src = dir.join("callback.code");
+    fs::write(
+        &src,
+        r#"
+link "net_client.a" as net
+link "timer.a" as clock
+let read_answer = false
+let continued = false
+Reply {} => {
+    emit Delay { ms = 1, then = Later {} } to clock get d
+    read_answer = d.value > 0
+    emit Continue {} to this
+}
+Continue {} => {
+    continued = true
+}
+Later {} => {
+    continued = continued and read_answer
+}
+Status {} => {
+    return StatusResult { read_answer = read_answer, continued = continued }
+}
+emit Send { url = "http://example.test/", particle = Ping {} } to net get sent
+assert sent.ok
+"#,
+    )
+    .expect("write callback fixture");
+    code::compile_file(
+        &src,
+        code::BuildTarget::Wasm,
+        &dir.join("callback.wasm"),
+        false,
+    )
+    .expect("build callback fixture");
+    fs::write(dir.join("probe.mjs"), r#"
+import { readFileSync } from 'node:fs';
+import { createHost } from './host.mjs';
+globalThis.fetch = async () => ({ status: 200, text: async () => '{"_class":"Reply"}' });
+const host = createHost();
+const { instance } = await WebAssembly.instantiate(readFileSync('./callback.wasm'), { env: host.env });
+host.start(instance);
+await new Promise(resolve => setTimeout(resolve, 30));
+const answer = host.ask({ _class: 'Status' });
+if (!answer?.read_answer || !answer?.continued)
+    throw new Error('callback stopped: ' + JSON.stringify(answer));
+"#).expect("write callback probe");
+    let output = Command::new("node")
+        .arg("probe.mjs")
+        .current_dir(&dir)
+        .output()
+        .expect("run node");
+    assert!(
+        output.status.success(),
+        "callback failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

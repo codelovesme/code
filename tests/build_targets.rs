@@ -134,6 +134,58 @@ fn wasm_target_produces_a_runnable_module() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Each frame retains a modest array across a nested dispatch. The old
+/// implicit 64 KiB stack trapped in memset around the twelfth frame.
+/// Exercise the same chain both during boot and after main has returned.
+#[test]
+fn wasm_nested_handlers_have_room_for_live_temporaries() {
+    let dir = temp_dir("wasm-depth");
+    let source = dir.join("depth.code");
+    let mut program = String::new();
+    for i in 0..32 {
+        program.push_str(&format!("Hop{i} {{}} => {{\n    let values = ["));
+        program.push_str(
+            &(0..32)
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+        program.push_str("]\n");
+        if i < 31 {
+            program.push_str(&format!("    emit Hop{} {{}} to this get r\n", i + 1));
+            program.push_str("    assert r.value = 42\n");
+        }
+        program.push_str("    assert values[31] = 31\n    return Answer { value = 42 }\n}\n");
+    }
+    program.push_str("emit Hop0 {} to this get r\nassert r.value = 42\n");
+    fs::write(&source, program).expect("write nested handlers");
+    for release in [false, true] {
+        let out = dir.join("depth.wasm");
+        code::compile_file(&source, code::BuildTarget::Wasm, &out, release)
+            .expect("build nested handlers");
+        let probe = dir.join("depth.mjs");
+        fs::write(&probe, r#"
+import { readFileSync } from 'node:fs';
+import { createHost } from './host.mjs';
+const host = createHost();
+const { instance } = await WebAssembly.instantiate(readFileSync(new URL('./depth.wasm', import.meta.url)), { env: host.env });
+if (host.start(instance) !== 0) throw new Error('boot failed');
+for (let i = 0; i < 3; i++) {
+    const answer = host.ask({ _class: 'Hop0' });
+    if (answer?._class !== 'Answer' || answer.value !== 42)
+        throw new Error('nested dispatch failed: ' + JSON.stringify(answer));
+}
+"#).expect("write nested dispatch probe");
+        let result = Command::new("node").arg(&probe).output().expect("run node");
+        assert!(
+            result.status.success(),
+            "nested wasm handlers (release={release}): {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// Rendering a number as text has to spell it the same way whichever mode
 /// produced the program — the interpreter, a native binary, or a wasm module.
 /// The interpreter and the native binary are held to that by the fixture
