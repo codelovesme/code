@@ -17,6 +17,10 @@ link "native_modules/console.so" as term
 emit Print { value = "$name won $rounds rounds" } to term
 ```
 
+> **Working on this repo (human or AI)?** Read [`AGENTS.md`](AGENTS.md) first —
+> build/test invariants, the native-module ABI, both hosting models, and the
+> hard-won gotchas that are not derivable from the source.
+
 > **`old/` is an archive.** The directory `old/` holds a *different*,
 > earlier language that happened to share the name — constraints, `∈`,
 > particles with declared schemas. It is kept for reference only.
