@@ -277,12 +277,30 @@ inside a generated `_code_handler_<Name>`.
    `Print` placed after the read died). Reading a field off `store`'s answer in
    the same handler worked fine.
 
-**Working theory: re-entrant dispatch depth**, not slot-table size — a handler
-called again while an earlier call from the same top-level entry is still on the
-wasm call stack, nested through several `emit ... to this` hops, corrupts
-something tied to that depth. Probably a fixed-size dispatch/argument stack in
-the wasm shim. Fixes 1 and 2 likely just shortened the chain enough to dodge it
-by coincidence.
+**Confirmed 2026-09-07: it is dispatch depth, not size.** Measured on
+`my-euglena-apps/auth-web`, both runs checked with a real-browser suite:
+
+| change | binary | result |
+|---|---|---|
+| 8 dead handlers, never called | 451,315 B | **0 failures** |
+| a chain of handlers calling each other from the render path | 453,505 B | **11 of 14 failed** |
+
+Two kilobytes apart, opposite outcomes. Size is not the axis; nesting
+`emit ... to this` inside an already-nested dispatch is. Fixes 1 and 2 above
+shortened the chain by coincidence, and their "total footprint" explanation was
+wrong.
+
+**The margin is one emit.** A single extra `emit ... to this` inside an already
+deeply-reached handler crashes the tab — and only on the path that boots through
+the longest chain (a `clock`-deferred callback, a fetch, then a redraw nested in
+the answer). Shallower paths to the same screen keep working, which is exactly
+why this looks intermittent and screen-specific when it is neither.
+
+So: **a handler called again while an earlier call from the same top-level entry
+is still on the wasm call stack corrupts something tied to that depth** —
+almost certainly a fixed-size dispatch or argument stack in the wasm shim.
+That is now evidence rather than theory, and it is a small, well-defined place
+to go looking.
 
 **Worth doing properly when there is room:** an isolated repro — a program whose
 boot handler nests N `emit ... to this` calls deep before returning, tested
