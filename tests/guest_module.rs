@@ -569,7 +569,9 @@ Later {} => {
 Status {} => {
     return StatusResult { read_answer = read_answer, continued = continued }
 }
-emit Send { url = "http://example.test/", particle = Ping {} } to net get sent
+emit Config { url = "http://example.test:80/" } to net get configured
+assert configured.ok
+emit Send { particle = Ping {} } to net get sent
 assert sent.ok
 "#,
     )
@@ -601,6 +603,83 @@ if (!answer?.read_answer || !answer?.continued)
     assert!(
         output.status.success(),
         "callback failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Two aliases of one archive must keep their destinations independently,
+/// including callbacks and reconfiguration. No duplicated archive is needed.
+#[test]
+fn browser_clients_keep_configuration_per_linked_alias() {
+    if !tool_exists("node") || !wasm_target_installed() {
+        eprintln!("skipped: needs node and wasm32-unknown-unknown");
+        return;
+    }
+    let dir = temp_dir("client-instances");
+    archive(&dir, "net_client");
+    let src = dir.join("clients.code");
+    fs::write(
+        &src,
+        r#"
+link "net_client.a" as auth
+link "net_client.a" as ping
+let replies = 0
+Reply {} => { replies = replies + 1 }
+Status {} => { return StatusResult { replies = replies } }
+emit Send { particle = Ping {} } to auth get unconfigured
+assert unconfigured ∈ Exception
+emit Config { url = "http://example.test:80/auth" } to auth get a
+assert a.ok
+emit Config { url = "http://example.test:81/ping" } to ping get p
+assert p.ok
+emit Send { particle = Ping {} } to auth get first
+assert first.ok
+emit Send { particle = Ping {} } to ping get second
+assert second.ok
+emit Config { url = "http://example.test:82/new" } to auth get changed
+assert changed.ok
+emit Send { particle = Ping {} } to ping get unchanged
+assert unchanged.ok
+emit Send { particle = Ping {} } to auth get third
+assert third.ok
+emit Send { url = "http://example.test:83/override", particle = Ping {} } to auth get override
+assert override ∈ Exception
+"#,
+    )
+    .expect("write clients");
+    code::compile_file(
+        &src,
+        code::BuildTarget::Wasm,
+        &dir.join("clients.wasm"),
+        false,
+    )
+    .expect("build two client aliases");
+    fs::write(dir.join("probe.mjs"), r#"
+import { readFileSync } from 'node:fs';
+import { createHost } from './host.mjs';
+const urls = [];
+globalThis.fetch = async url => {
+    urls.push(url);
+    return { status: 200, text: async () => '{"_class":"Reply"}' };
+};
+const host = createHost();
+const { instance } = await WebAssembly.instantiate(readFileSync('./clients.wasm'), { env: host.env });
+host.start(instance);
+await new Promise(resolve => setTimeout(resolve, 0));
+const expected = ['http://example.test:80/auth', 'http://example.test:81/ping',
+    'http://example.test:81/ping', 'http://example.test:82/new'];
+if (JSON.stringify(urls) !== JSON.stringify(expected)) throw new Error('destinations crossed: ' + urls);
+if (host.ask({ _class: 'Status' })?.replies !== 4) throw new Error('lost replies');
+"#).expect("write instance probe");
+    let output = Command::new("node")
+        .arg("probe.mjs")
+        .current_dir(&dir)
+        .output()
+        .expect("run node");
+    assert!(
+        output.status.success(),
+        "client instances: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let _ = fs::remove_dir_all(&dir);

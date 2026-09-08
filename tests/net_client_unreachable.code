@@ -4,6 +4,8 @@
 
 link "native_modules/net_client.so" as net
 
-emit Send { url = "http://127.0.0.1:1/demo", particle = Ping {} } to net get r
+emit Config { url = "http://127.0.0.1:1/demo" } to net get c
+assert c.ok
+emit Send { particle = Ping {} } to net get r
 assert r ∈ Exception
 assert r.source = "net_client"

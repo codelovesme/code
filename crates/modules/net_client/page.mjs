@@ -7,6 +7,8 @@
 // `Pong` can be told apart.
 (ctx) => {
   let next = 1;
+  let destination = null;
+  const exception = (message) => ({ _class: "Exception", source: "net_client", message });
 
   // What a sender is told when the exchange never produced a particle. The
   // same `Exception` shape the machine half returns and `net_server` sends,
@@ -21,15 +23,26 @@
   return [
     "net_client",
     (particle) => {
-      if (particle._class !== "Send") return null;
-
-      const url = particle.url;
-      const payload = particle.particle;
-      if (typeof url !== "string" || !/^http:\/\//.test(url)) {
-        // Refused rather than sent: `https://` would be TLS the machine half
-        // does not speak either, and anything else is not an address.
-        return { _class: "SendResult", ok: false, value: null };
+      if (particle._class === "Config") {
+        const url = particle.url;
+        if (typeof url !== "string") return exception("Config needs a `url` string");
+        if (!/^http:\/\/[^/?#\s]+:[0-9]+(?:\/[^/?#\s]*)?$/.test(url)) {
+          return exception("Config url must be http://host:port/app with at most one app segment");
+        }
+        try {
+          new URL(url);
+        } catch {
+          return exception("Config url is not a valid HTTP destination");
+        }
+        destination = url;
+        return { _class: "ConfigResult", ok: true };
       }
+      if (particle._class !== "Send") return null;
+      if (Object.hasOwn(particle, "url")) return exception("url belongs in Config, not Send");
+      if (destination === null) return exception("net_client needs Config before Send");
+
+      const url = destination;
+      const payload = particle.particle;
       if (
         payload === null ||
         typeof payload !== "object" ||

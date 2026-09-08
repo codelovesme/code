@@ -1328,9 +1328,10 @@ methods, and `Exception`/`Log` pushed back — see
 [its README](crates/modules/http_client/README.md)), `http_server`
 (requests pushed in, answered by what a `Request` handler returns — see
 [its README](crates/modules/http_server/README.md)), and the `net_server` /
-`net_client` pair (a particle to a url and the answer back, with no protocol
-of their own and no policy — authentication and authorization are a chain of
-handlers, because that is where a user and their permissions can be read; see
+`net_client` pair (a configured destination, then particles sent to it and
+their answers back, with no protocol of their own and no policy — authentication
+and authorization are a chain of handlers, because that is where a user and
+their permissions can be read; see
 [`net_server`](crates/modules/net_server/README.md) and
 [`net_client`](crates/modules/net_client/README.md)).
 Seven of these ship a `<name>_mock` twin — `mailer_mock`, `oauth_mock`,

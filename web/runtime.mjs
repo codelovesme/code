@@ -120,19 +120,27 @@ export function createHost({
     fire: (particle) => fire(particle),
     ask: (particle) => ask(particle),
   };
+  let currentInstance = () => 0;
   const answering = new Map();
   for (const part of PARTS) {
     const [name, answer] = part(ctx);
-    answering.set(name, answer);
+    answering.set(name, { part, instances: new Map([[0, answer]]) });
   }
 
-  const answer_here = (name, particle) => {
-    const answer = answering.get(name);
-    return answer ? answer(particle) : undefined;
+  const answer_here = (name, particle, instance) => {
+    const entry = answering.get(name);
+    if (!entry) return undefined;
+    if (!entry.instances.has(instance)) {
+      entry.instances.set(instance, entry.part(ctx)[1]);
+    }
+    return entry.instances.get(instance)(particle);
   };
   // A guarded program's modules answer to its host first, which can carry the
   // particle out, refuse it, or answer in the module's place.
-  const answer_for = guard ? (name, particle) => guard(name, particle, answer_here) : answer_here;
+  const answer_for = (name, particle, instance) => {
+    const local = (name, particle) => answer_here(name, particle, instance);
+    return guard ? guard(name, particle, local) : local(name, particle);
+  };
 
   // The one door from any browser module to its half here: a particle in as
   // JSON, a particle out as JSON, under the module's name.
@@ -146,7 +154,7 @@ export function createHost({
     const name = str(namePtr, Number(nameLen));
     let result;
     try {
-      result = answer_for(name, JSON.parse(str(jsonPtr, Number(jsonLen))));
+      result = answer_for(name, JSON.parse(str(jsonPtr, Number(jsonLen))), currentInstance());
     } catch (e) {
       result = { _class: "Exception", source: name, message: String(e?.message ?? e) };
     }
@@ -175,6 +183,7 @@ export function createHost({
     start(instance) {
       const e = instance.exports;
       memory = e.memory;
+      currentInstance = e.code_web_instance ?? (() => 0);
 
       // The particle goes into a buffer the runtime owns, as JSON, and it
       // says how much room there is.
@@ -211,6 +220,8 @@ export function createHost({
       fire = () => {};
       ask = () => null;
       memory = undefined;
+      currentInstance = () => 0;
+      answering.clear();
     },
   };
 }

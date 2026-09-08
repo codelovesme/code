@@ -370,7 +370,7 @@ jobs:
               # proves the artifact loads and routes, and that an unreachable
               # far side comes back as an Exception value rather than killing
               # the program.
-              printf 'emit Send { url = "euglena://127.0.0.1:1/demo", particle = Ping { } } to mod get r\nassert r ∈ Exception\nassert r.source = "net_client"\n' >> dogfood/demo.code
+              printf 'emit Config { url = "http://127.0.0.1:1/demo" } to mod get c\nassert c.ok\nemit Send { particle = Ping { } } to mod get r\nassert r ∈ Exception\nassert r.source = "net_client"\n' >> dogfood/demo.code
               ;;
             oauth_mock)
               printf 'emit Config { client_id = "c", client_secret = "s", redirect_uri = "https://a/cb", auth_url = "https://a/auth", token_url = "https://a/tok" } to mod get c\nassert c.ok\nemit ExchangeCode { code = "abc" } to mod get i\nassert i ∈ Identity\nassert i.email = "abc@mock.test"\n' >> dogfood/demo.code
@@ -453,13 +453,13 @@ jobs:
               localai) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions"]' ;;
               mailer_mock) handlers='["Config", "Send", "Outbox"]' ;;
               net_server) handlers='["Config", "Listen", "Stop"]' ;;
-            membrane) handlers='["Config", "Listen", "Stop"]' ;;
+              membrane) handlers='["Config", "Listen", "Stop"]' ;;
               dom) handlers='["Render"]' ;;
               guest) handlers='["Load", "Unload", "Tell"]' ;;
               router) handlers='["Route", "Navigate", "Watch", "Where"]' ;;
               storage) handlers='["Get", "Set", "Remove"]' ;;
               timer) handlers='["Delay", "Cancel"]' ;;
-              net_client) handlers='["Send"]' ;;
+              net_client) handlers='["Config","Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb_mock) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;
               blob_storage_mock) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
@@ -475,8 +475,8 @@ jobs:
             # block should emit. Stateless modules have none.
             case "$m" in
               http_server) setup='"setup": "Config",' ;;
-              net_server) setup='"setup": "Config",' ;;
-            membrane) setup='"setup": "Config",' ;;
+              net_client|net_server) setup='"setup": "Config",' ;;
+              membrane) setup='"setup": "Config",' ;;
               jwt|fs|json_store|git|mailer|oauth|mongodb|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
               *) setup='' ;;
             esac

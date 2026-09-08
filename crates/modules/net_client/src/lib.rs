@@ -1,20 +1,10 @@
 //! The `net_client` native module — send a particle, get a particle back.
 //!
-//! The other half of [`net_server`](../net_server). One handler, two things
-//! to give it: where to send, and what to send.
+//! Configure one destination per linked instance, then send particles to it.
 //!
-//! ```
-//! Send { url, particle, timeout_ms? } → whatever the far side's handlers returned
-//! ```
-//!
-//! ```code
-//! link "net_client.so" as net
-//!
-//! emit Send {
-//!     url = "http://127.0.0.1:9000/ping-api",
-//!     particle = Impulse { token = "…", particle = Ping { value = 1 } }
-//! } to net get answer
-//! assert answer ∈ Pong
+//! ```text
+//! Config { url } → ConfigResult { ok }
+//! Send { particle, timeout_ms? } → the far side's answer
 //! ```
 //!
 //! **It does not build the envelope.** Whatever particle the program hands
@@ -60,7 +50,10 @@
 mod machine {
     use std::io::{Read, Write};
     use std::net::{TcpStream, ToSocketAddrs};
+    use std::sync::Mutex;
     use std::time::Duration;
+
+    static DESTINATION: Mutex<Option<(String, String)>> = Mutex::new(None);
 
     use code_native::*;
     use serde_json::Value as Json;
@@ -94,17 +87,40 @@ mod machine {
         let particle = &*particle;
         guarded(&mut *out, "net_client", |out| {
             match read_field_str(particle, "_class") {
+                Some("Config") => handle_config(out, particle),
                 Some("Send") => handle_send(out, particle),
                 _ => null(out),
             }
         })
     }
 
-    /// `Send { url, particle, timeout_ms? }` → the particle the far side's
-    /// handlers returned.
-    fn handle_send(out: &mut CodeValue, incoming: &CodeValue) {
+    fn handle_config(out: &mut CodeValue, incoming: &CodeValue) {
         let Some(url) = read_field_str(incoming, "url") else {
-            exception(out, "net_client", "Send needs a `url` string");
+            exception(out, "net_client", "Config needs a `url` string");
+            return;
+        };
+        match split_url(url) {
+            Ok(destination) => {
+                *DESTINATION.lock().unwrap() = Some(destination);
+                let mut slots = SlotBuffer::new(2);
+                borrowed_str(slots.slot_mut(0), c"ConfigResult");
+                boolean(slots.slot_mut(1), true);
+                object(out, &[c"_class", c"ok"], &mut slots);
+                slots.release_all();
+            }
+            Err(message) => exception(out, "net_client", &message),
+        }
+    }
+
+    /// Send to this instance's configured destination. A per-send override
+    /// would put deployment addresses back into application handlers.
+    fn handle_send(out: &mut CodeValue, incoming: &CodeValue) {
+        if find_field(incoming, "url").is_some() {
+            exception(out, "net_client", "url belongs in Config, not Send");
+            return;
+        }
+        let Some((host_port, app)) = DESTINATION.lock().unwrap().clone() else {
+            exception(out, "net_client", "net_client needs Config before Send");
             return;
         };
         let Some(payload) = find_field(incoming, "particle") else {
@@ -119,14 +135,6 @@ mod machine {
             );
             return;
         }
-
-        let (host_port, app) = match split_url(url) {
-            Ok(parts) => parts,
-            Err(message) => {
-                exception(out, "net_client", &message);
-                return;
-            }
-        };
 
         let timeout_ms = match find_field(incoming, "timeout_ms").and_then(read_number) {
             Some(ms) if ms > 0.0 && ms.is_finite() => ms,
@@ -171,6 +179,17 @@ mod machine {
         if !host_port.contains(':') {
             return Err(format!(
                 "url needs a port, as `{SCHEME}host:port/app` — got '{url}'"
+            ));
+        }
+        let (host, port) = host_port.rsplit_once(':').unwrap();
+        if host.is_empty()
+            || port.parse::<u16>().is_err()
+            || url
+                .chars()
+                .any(|c| c.is_whitespace() || c == '?' || c == '#')
+        {
+            return Err(format!(
+                "url needs a host and numeric port, with no query or fragment — got '{url}'"
             ));
         }
         if app.contains('/') {

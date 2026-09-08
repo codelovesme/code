@@ -1,13 +1,14 @@
 # `net_client` — send a particle, get a particle back
 
-The other half of [`net_server`](../net_server). One handler, and two things
-to give it: where to send, and what to send.
+The other half of [`net_server`](../net_server). Configure a destination once
+per linked instance, then send particles to that instance.
 
 ```code
 link "net_client.so" as net
+emit Config { url = "http://127.0.0.1:9000/ping-api" } to net get configured
+assert configured.ok
 
 emit Send {
-    url = "http://127.0.0.1:9000/ping-api",
     particle = Impulse { token = "…", particle = Ping { value = 1 } }
 } to net get answer
 
@@ -17,14 +18,32 @@ assert answer ∈ Pong
 ## Handlers
 
 ```
-Send { url, particle, timeout_ms? } → whatever the far side's handlers returned
+Config { url } → ConfigResult { ok }
+Send { particle, timeout_ms? } → whatever the far side's handlers returned
 ```
 
 | Field | Kind | Default | Meaning |
 |---|---|---|---|
-| `url` | String | — | `http://host:port/app`. Required |
+| `url` (Config) | String | — | `http://host:port/app`. Required |
 | `particle` | Particle | — | sent as written, `_class` and all. Required |
 | `timeout_ms` | Number | `10000` | connect, send and read deadline. A positive number |
+
+`Send` before a successful `Config` is an `Exception`. A `url` on `Send` is
+also refused: deployment addresses belong in configuration. A later successful
+`Config` replaces this instance's destination; invalid configuration leaves its
+previous destination intact. An in-flight browser request keeps the URL it was
+sent to.
+
+Link a separate instance for each destination. Configuring one does not change
+the other, in the interpreter, a native executable, or a browser build:
+
+```code
+link "net_client.so" as auth
+link "net_client.so" as catalog
+emit Config { url = "http://127.0.0.1:8890/auth" } to auth get a
+emit Config { url = "http://127.0.0.1:8891/catalog" } to catalog get c
+emit Send { particle = Health {} } to catalog get answer
+```
 
 The answer is the particle the far side's handler returned. `null` comes back
 when nothing there handled the class — a real answer, not a timeout.
@@ -63,7 +82,8 @@ the program can read. Never a dead program: a module may not end the
 application, and this one has more ways to fail than most.
 
 ```code
-emit Send { url = "http://127.0.0.1:1/x", particle = Ping { } } to net get r
+emit Config { url = "http://127.0.0.1:1/x" } to net get c
+emit Send { particle = Ping { } } to net get r
 assert r ∈ Exception
 assert r.source = "net_client"
 ```
@@ -84,7 +104,7 @@ request is on its way, and the reply arrives later, as a particle, at the
 program's own handlers:
 
 ```code
-emit Send { url = "http://…/ping-api", particle = Ping { value = 41 } } to net get sent
+emit Send { particle = Ping { value = 41 } } to net get sent
 assert sent.ok
 
 Pong { value, _request_id } => { … }
@@ -92,8 +112,8 @@ Denied { reason, _request_id } => { … }
 ```
 
 `sent.value` is the number the exchange is known by, and every reply carries
-it back as `_request_id` — so two requests that both answer `Pong` can be told
-apart without the far side having to help.
+it back as `_request_id` (unique within that client instance) — so two requests
+that both answer `Pong` can be told apart without the far side having to help.
 
 **Replies arrive in whatever order they come back**, not the order they were
 sent.

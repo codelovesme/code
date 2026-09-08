@@ -223,6 +223,22 @@ an app, then runs a node probe with a hand-written stand-in document. Skips
 without node or the wasm32 target. **See the testing warning below about what
 that stub does and does not prove.**
 
+### Browser module instances and configured network clients (2026-09-08)
+
+Each browser alias has its own JavaScript module state. Codegen exposes the
+currently dispatched alias through `code_web_instance`; the page keys module
+instances by that identity and restores the outer identity across nested calls.
+Two aliases can link the same `.a`: their LLVM function declarations are shared,
+but their browser configuration is not. Rebuild wasm and its `host.mjs` together.
+This does not isolate native static-library globals; Linux `.so` links already
+get their own images as described in `runtime.c::module_image`.
+
+`net_client` now requires `Config { url }` before `Send { particle, timeout_ms? }`.
+Do not put URLs back on `Send`: use one configured alias per destination.
+The module's release metadata declares `setup: Config` so a manifest can supply
+it. Tests cover two native clients and two browser aliases retaining different
+destinations even when one is reconfigured.
+
 ---
 
 ## Keep-alive: settled, do not re-litigate

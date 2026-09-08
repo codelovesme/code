@@ -146,6 +146,9 @@ fn a_particle_crosses_the_wire_and_a_handler_chain_answers_it() {
 Ping {{ value }} => {{
     return Pong {{ value = value + 1 }}
 }}
+Destination {{ app }} => {{
+    return Arrived {{ app = app }}
+}}
 
 Authenticated {{ user, particle }} => {{
     emit particle to this get inner
@@ -181,8 +184,9 @@ assert l.ok
             format!(
                 r#"link "net_client.so" as net
 
+emit Config {{ url = "http://127.0.0.1:{port}/demo" }} to net get configured
+assert configured.ok
 emit Send {{
-    url = "http://127.0.0.1:{port}/demo",
     particle = Impulse {{ token = "t1", particle = Ping {{ value = 41 }} }}
 }} to net get answer
 
@@ -190,6 +194,18 @@ assert answer ∈ Answered
 assert answer.user = "u-t1"
 assert answer.inner ∈ Pong
 assert answer.inner.value = 42
+
+link "net_client.so" as other
+emit Config {{ url = "http://127.0.0.1:{port}/other" }} to other get other_config
+assert other_config.ok
+emit Send {{ particle = Destination {{}} }} to net get original
+assert original.app = "demo"
+emit Send {{ particle = Destination {{}} }} to other get separate
+assert separate.app = "other"
+emit Config {{ url = "http://127.0.0.1:{port}/changed" }} to other get changed
+assert changed.ok
+emit Send {{ particle = Destination {{}} }} to net get still_original
+assert still_original.app = "demo"
 "#
             ),
         )
@@ -207,8 +223,9 @@ assert answer.inner.value = 42
             format!(
                 r#"link "net_client.so" as net
 
+emit Config {{ url = "http://127.0.0.1:{port}/demo" }} to net get configured
+assert configured.ok
 emit Send {{
-    url = "http://127.0.0.1:{port}/demo",
     particle = Impulse {{ token = "", particle = Ping {{ value = 1 }} }}
 }} to net get answer
 
@@ -231,8 +248,9 @@ assert answer.reason = "no token"
             format!(
                 r#"link "net_client.so" as net
 
+emit Config {{ url = "http://127.0.0.1:{port}/demo" }} to net get configured
+assert configured.ok
 emit Send {{
-    url = "http://127.0.0.1:{port}/demo",
     particle = Whatever {{ }}
 }} to net get answer
 
@@ -316,7 +334,9 @@ assert l.ok
             &ping,
             format!(
                 r#"link "net_client.so" as net
-emit Send {{ url = "http://127.0.0.1:{port}", particle = Ping {{ }} }} to net get r
+emit Config {{ url = "http://127.0.0.1:{port}" }} to net get configured
+assert configured.ok
+emit Send {{ particle = Ping {{ }} }} to net get r
 assert r ∈ Pong
 "#
             ),
@@ -333,7 +353,9 @@ assert r ∈ Pong
             &quit,
             format!(
                 r#"link "net_client.so" as net
-emit Send {{ url = "http://127.0.0.1:{port}", particle = Quit {{ }} }} to net get r
+emit Config {{ url = "http://127.0.0.1:{port}" }} to net get configured
+assert configured.ok
+emit Send {{ particle = Quit {{ }} }} to net get r
 assert r ∈ Bye
 "#
             ),
@@ -411,7 +433,9 @@ assert l.ok
                 &source,
                 format!(
                     r#"link "net_client.so" as net
-emit Send {{ url = "http://127.0.0.1:{port}/a", particle = Echo {{ n = {n} }} }} to net get r
+emit Config {{ url = "http://127.0.0.1:{port}/a" }} to net get configured
+assert configured.ok
+emit Send {{ particle = Echo {{ n = {n} }} }} to net get r
 assert r ∈ Echoed
 assert r.n = {n}
 "#

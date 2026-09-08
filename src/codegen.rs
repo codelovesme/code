@@ -186,6 +186,7 @@ fn links_at_runtime(stmts: &[Stmt]) -> bool {
 /// A `.a` static module's three (`vars` optional) entry points, declared up
 /// front in `compile_to_object` — see the comment there for why this has to
 /// happen before `Gen` exists rather than inside one of its methods.
+#[derive(Clone, Copy)]
 struct StaticModuleFns<'a> {
     abi_version: FunctionValue<'a>,
     dispatch: FunctionValue<'a>,
@@ -613,6 +614,7 @@ pub fn compile_to_object(
     // everything else here — flows through a `Gen` field or method
     // signature). See `docs/todo/native-module-linking.md`.
     let mut static_native_fns: HashMap<String, StaticModuleFns> = HashMap::new();
+    let mut static_prefix_fns: HashMap<String, StaticModuleFns> = HashMap::new();
     for stmt in &program.statements {
         if let Stmt::ImportNative {
             alias,
@@ -626,6 +628,10 @@ pub fn compile_to_object(
             ..
         } = stmt
         {
+            if let Some(fns) = static_prefix_fns.get(prefix) {
+                static_native_fns.insert(alias.clone(), *fns);
+                continue;
+            }
             let abi_version = module.add_function(
                 &format!("{prefix}_code_module_abi_version"),
                 i32_ty.fn_type(&[], false),
@@ -661,16 +667,15 @@ pub fn compile_to_object(
                     None,
                 )
             });
-            static_native_fns.insert(
-                alias.clone(),
-                StaticModuleFns {
-                    abi_version,
-                    dispatch,
-                    vars,
-                    set_inbound,
-                    inbound_reply,
-                },
-            );
+            let fns = StaticModuleFns {
+                abi_version,
+                dispatch,
+                vars,
+                set_inbound,
+                inbound_reply,
+            };
+            static_prefix_fns.insert(prefix.clone(), fns);
+            static_native_fns.insert(alias.clone(), fns);
         }
     }
 
@@ -710,6 +715,26 @@ pub fn compile_to_object(
 
     alloca_builder.position_at_end(entry);
     builder.position_at_end(start);
+
+    // The page owns browser-module state. Give each linked alias a stable
+    // identity without changing the module ABI or copying its wasm archive.
+    let web_instance = if target == BuildTarget::Wasm {
+        let slot = module.add_global(i8_ptr_ty, None, "_code_web_current_instance");
+        slot.set_initializer(&i8_ptr_ty.const_null());
+        let getter = module.add_function("code_web_instance", i8_ptr_ty.fn_type(&[], false), None);
+        let block = context.append_basic_block(getter, "entry");
+        let getter_builder = context.create_builder();
+        getter_builder.position_at_end(block);
+        let value = getter_builder
+            .build_load(i8_ptr_ty, slot.as_pointer_value(), "instance")
+            .map_err(|e| e.to_string())?;
+        getter_builder
+            .build_return(Some(&value))
+            .map_err(|e| e.to_string())?;
+        Some(slot.as_pointer_value())
+    } else {
+        None
+    };
 
     let mut gen = Gen {
         context: &context,
@@ -770,6 +795,7 @@ pub fn compile_to_object(
         slots: Vec::new(),
         temps: Vec::new(),
         native_links: HashMap::new(),
+        web_instance,
         static_native_fns,
         fn_check_particle,
         fn_check_emittable,
@@ -943,6 +969,7 @@ struct Gen<'a, 'm> {
     /// so a separate `'m` sidesteps that entirely.
     module: &'m Module<'a>,
     builder: &'a Builder<'a>,
+    web_instance: Option<PointerValue<'a>>,
     /// Parked permanently at the end of `main`'s `entry` block, which holds
     /// nothing but allocas and their zero-init. Every stack allocation goes
     /// through this builder rather than the main one, so none of them ever
@@ -1178,6 +1205,7 @@ enum NativeLink<'a> {
     /// needs no handle to *call*; the queue is the one thing it does need a
     /// handle for, and `code_static_open` allocates one for exactly that.
     Static {
+        instance: PointerValue<'a>,
         dispatch: FunctionValue<'a>,
         inbound: Option<PointerValue<'a>>,
         /// `<prefix>_code_module_inbound_reply`, when the archive exports
@@ -2863,6 +2891,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 self.native_links.insert(
                     alias.to_string(),
                     NativeLink::Static {
+                        instance: permanent,
                         dispatch: fns.dispatch,
                         inbound,
                         reply: fns.inbound_reply,
@@ -2994,13 +3023,31 @@ impl<'a, 'm> Gen<'a, 'm> {
                             )
                             .map_err(|e| e.to_string())?;
                     }
-                    NativeLink::Static { dispatch, .. } => {
-                        // Linked straight into this binary — a direct call,
-                        // no handle, exactly like `EmitTarget::Core` above.
-                        let dispatch = *dispatch;
+                    NativeLink::Static {
+                        dispatch, instance, ..
+                    } => {
+                        // Restore the caller's identity after nested dispatch:
+                        // a browser half can ask this program another question.
+                        let previous = if let Some(slot) = self.web_instance {
+                            let previous = self
+                                .builder
+                                .build_load(self.i8_ptr_ty, slot, "previous_instance")
+                                .map_err(|e| e.to_string())?;
+                            self.builder
+                                .build_store(slot, *instance)
+                                .map_err(|e| e.to_string())?;
+                            Some((slot, previous))
+                        } else {
+                            None
+                        };
                         self.builder
-                            .build_call(dispatch, &[temp.into(), particle_ptr.into()], "")
+                            .build_call(*dispatch, &[temp.into(), particle_ptr.into()], "")
                             .map_err(|e| e.to_string())?;
+                        if let Some((slot, previous)) = previous {
+                            self.builder
+                                .build_store(slot, previous)
+                                .map_err(|e| e.to_string())?;
+                        }
                     }
                 }
             }
