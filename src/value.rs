@@ -68,10 +68,24 @@ fn take_children(value: &mut Value, stack: &mut Vec<Value>) {
     }
 }
 
-/// Deep structural equality — including that objects compare *positionally*
-/// (same keys in the same order), not as sets of pairs. Well-defined for any
-/// two values: mismatched kinds are simply unequal, never an error.
-/// `runtime.c`'s `code_values_equal` must match this exactly.
+/// Deep structural equality. Well-defined for any two values: mismatched
+/// kinds are simply unequal, never an error. `runtime.c`'s
+/// `code_values_equal` must match this exactly.
+///
+/// **Objects compare by field name, not by position.** JSON gives an
+/// object's members no order, so neither does equality here:
+/// `{ a = 1, b = 2 }` and `{ b = 2, a = 1 }` are the same value. The
+/// language still *keeps* the order a field was written in — that is what
+/// iteration and printing show, and what a merge's "right value, left
+/// position" rule is about — but keeping an order and comparing by it are
+/// two different decisions, and only the first one was ever wanted.
+///
+/// This compared positionally until 2026-09-09, which was not a decision so
+/// much as the shape of the representation showing through: an object is a
+/// list of pairs, and comparing the lists compared their order too. It cost
+/// real time — a module rebuilding a result from JSON hands the fields back
+/// in whatever order its parser chose, and an otherwise correct
+/// `assert v = { a, b }` failed on nothing.
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         let mut pairs = vec![(self, other)];
@@ -92,10 +106,22 @@ impl PartialEq for Value {
                     if a.len() != b.len() {
                         return false;
                     }
-                    for ((a_key, a_value), (b_key, b_value)) in a.iter().zip(b.iter()) {
-                        if a_key != b_key {
+                    // A name can appear twice — a computed key (`{ "$k" = v }`)
+                    // may collide with a literal one, and nothing rejects
+                    // that — so repeats of a name are paired in the order
+                    // they appear rather than searched for by value. That
+                    // keeps the pairing injective, which with equal lengths
+                    // makes it a bijection, and keeps this a work-stack walk:
+                    // searching by value would mean comparing values inside
+                    // the matching loop, which is the recursion the stack
+                    // exists to avoid.
+                    for (i, (a_key, a_value)) in a.iter().enumerate() {
+                        let seen = a[..i].iter().filter(|(k, _)| k == a_key).count();
+                        let Some((_, b_value)) =
+                            b.iter().filter(|(k, _)| k == a_key).nth(seen)
+                        else {
                             return false;
-                        }
+                        };
                         pairs.push((a_value, b_value));
                     }
                     true

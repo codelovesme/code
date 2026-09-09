@@ -35,7 +35,8 @@ emit Print { value = "$name won $rounds rounds" } to term
 - [The language](#the-language)
   - [Comments](#comments) · [Values](#values) · [Bindings and scope](#bindings-and-scope)
   - [Strings and interpolation](#strings-and-interpolation) · [Operators](#operators)
-  - [Reading members](#reading-members) · [Truth](#truth) · [assert](#assert)
+  - [Equality](#equality) · [Reading members](#reading-members) · [Truth](#truth)
+  - [assert](#assert)
   - [if and blocks](#if-and-blocks) · [loop](#loop)
   - [Particles](#particles) · [emit](#emit) · [∈](#-1)
 - [Handlers](#handlers)
@@ -294,7 +295,8 @@ rather than quietly grouping as `(1 < 2) < 3`.
 
 **Operand rules.** Ordering (`< > ≤ ≥`) is Number-only — strings included,
 comparing them is an error. Equality (`= ≠`) is the opposite: defined for any
-two values, so mismatched kinds are simply unequal. `- * /` require Numbers;
+two values, so mismatched kinds are simply unequal — see
+[Equality](#equality) for how it reads a container. `- * /` require Numbers;
 a type mismatch is an error, in both modes. `+` is the exception — see below.
 Division by zero is an error too — the value model is JSON, which has no way
 to spell infinity. `and`/`or`/`not` take any value at all and read it for its
@@ -327,9 +329,9 @@ two are joined.
 
 The two containers each combine with themselves, and neither borrows the
 other's rule. A field both objects name takes the **right** value in the
-**left** position — order is part of an object's identity, since equality
-compares fields pairwise in order — and merging is one level deep, never
-recursive. There is no one-object-operand form to match the array one:
+**left** position, and merging is one level deep, never recursive. The
+position rule is about what `loop` and printing show, not about identity:
+[equality goes by field name](#equality). There is no one-object-operand form to match the array one:
 an array can absorb any value as an element, but an object has no key to
 file a bare value under, so `{a = 1} + 3` is an error. With one array and
 one object, the array rule wins and the object is simply an element.
@@ -344,6 +346,31 @@ let edited = received + {text = "ok"}
 `name += expr` is exactly `name = name + expr`, so it means whatever `+`
 means for those values. It is a statement form only, and like a bare
 assignment it needs an existing binding.
+
+### Equality
+
+`=` and `≠` are defined for any two values and never fail; mismatched kinds
+are simply unequal. Containers compare all the way down, and the two of them
+do not follow the same rule:
+
+- An **array** compares by position. Its order *is* its identity.
+- An **object** compares **by field name**. Its order is not.
+
+```code
+assert { a = 1, b = 2 } = { b = 2, a = 1 }
+assert [1, 2] ≠ [2, 1]
+```
+
+That split is JSON's: an array is a sequence, an object is a set of members
+with no order of their own. The language still *keeps* the order a field was
+written in — `loop` walks the fields in that order, and printing shows it —
+but keeping an order and comparing by it are two different things, and only
+the first was ever wanted here.
+
+It compared by position until 2026-09-09, which was less a decision than the
+representation showing through. It cost real time: a module that rebuilds a
+result out of JSON hands the fields back in whatever order its parser chose,
+and an otherwise correct `assert v = { a, b }` failed on nothing at all.
 
 ### Reading members
 
@@ -551,7 +578,7 @@ assert log = { _class = "Log", message = "hi" }
 ```
 
 Because it is only sugar, a particle is structurally equal to a hand-written
-object with the same fields in the same order. There is no hidden tag.
+object with the same fields. There is no hidden tag.
 
 ### emit
 

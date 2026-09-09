@@ -1,0 +1,25 @@
+| An object's fields are compared by name, not by position — JSON gives an
+| object's members no order, and neither does equality here. The language
+| still keeps the order a field was written in; that is what iteration shows.
+assert { a = 1, b = 2 } = { b = 2, a = 1 }
+assert { a = 1, b = 2 } ≠ { a = 2, b = 1 }
+assert { a = 1 } ≠ { a = 1, b = 2 }
+assert { a = 1, b = 2 } ≠ { a = 1, c = 2 }
+
+| All the way down, and through arrays, which stay positional: an array's
+| order *is* its identity, an object's is not.
+assert { n = { x = 1, y = 2 } } = { n = { y = 2, x = 1 } }
+assert { xs = [1, 2] } ≠ { xs = [2, 1] }
+assert [{ a = 1, b = 2 }] = [{ b = 2, a = 1 }]
+
+| A particle is an object, so `_class` is matched by name like any other
+| field and need not come first.
+assert Log { x = 1 } = { x = 1, _class = "Log" }
+
+| Order still survives where it is meant to: iteration walks the fields in
+| the order they were written.
+let seen = []
+loop k, v over { b = 2, a = 1 } {
+    seen += k
+}
+assert seen = ["b", "a"]

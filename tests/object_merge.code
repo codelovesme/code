@@ -8,9 +8,15 @@ assert {} + { a = 1 } = { a = 1 }
 assert { a = 1 } + {} = { a = 1 }
 assert {} + {} = {}
 
-| Order is part of an object's identity — equality depends on it — so
-| overriding in place is a different value from dropping and re-appending.
-assert { a = 1, b = 2 } + { a = 9 } ≠ { b = 2, a = 9 }
+| Position is real but is not part of an object's identity: equality goes by
+| field name, so overriding in place and dropping-and-re-appending are the
+| same value. Iteration is what sees the difference.
+assert { a = 1, b = 2 } + { a = 9 } = { b = 2, a = 9 }
+let order = []
+loop k, v over { a = 1, b = 2 } + { a = 9 } {
+    order += k
+}
+assert order = ["a", "b"]
 
 | Fields are replaced whole; nothing merges recursively.
 assert { n = { x = 1 } } + { n = { y = 2 } } = { n = { y = 2 } }

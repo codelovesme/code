@@ -3526,8 +3526,8 @@ int code_truth(const CodeValue *v) {
 }
 
 /* Deep structural equality, matching Rust's derived `PartialEq` on `Value`
- * exactly — including that it's positional for CODE_OBJECT (same keys in
- * the same order), not a same-set-of-pairs comparison. Used for `==`/`!=`,
+ * exactly — objects included, which compare by field name rather than by
+ * position (see value.rs's `PartialEq`). Used for `==`/`!=`,
  * which (unlike every other operator here) are well-defined for *any* two
  * values, including mismatched kinds — never calls code_runtime_error. */
 typedef struct {
@@ -3571,19 +3571,47 @@ int code_values_equal(const CodeValue *a, const CodeValue *b) {
         case CODE_NULL:
             break;
         case CODE_ARRAY:
+            if (x->len != y->len) {
+                return 0;
+            }
+            pending = grow(pending, &pending_cap, len + (size_t)x->len, sizeof(Pair));
+            for (long long i = 0; i < x->len; i++) {
+                pending[len].a = slot_at(x->items, i);
+                pending[len].b = slot_at(y->items, i);
+                len++;
+            }
+            break;
         case CODE_OBJECT:
             if (x->len != y->len) {
                 return 0;
             }
             pending = grow(pending, &pending_cap, len + (size_t)x->len, sizeof(Pair));
             for (long long i = 0; i < x->len; i++) {
-                /* Objects compare positionally — same keys in the same
-                 * order — matching value.rs's `PartialEq` exactly. */
-                if (x->tag == CODE_OBJECT && strcmp(x->keys[i], y->keys[i]) != 0) {
+                /* By name, not by position — matching value.rs's `PartialEq`
+                 * exactly (see its comment for why). A name may appear more
+                 * than once, so the nth occurrence on the left is matched
+                 * with the nth on the right. */
+                long long seen = 0;
+                for (long long p = 0; p < i; p++) {
+                    if (strcmp(x->keys[p], x->keys[i]) == 0) {
+                        seen++;
+                    }
+                }
+                long long found = -1;
+                for (long long q = 0; q < y->len; q++) {
+                    if (strcmp(y->keys[q], x->keys[i]) == 0) {
+                        if (seen == 0) {
+                            found = q;
+                            break;
+                        }
+                        seen--;
+                    }
+                }
+                if (found < 0) {
                     return 0;
                 }
                 pending[len].a = slot_at(x->items, i);
-                pending[len].b = slot_at(y->items, i);
+                pending[len].b = slot_at(y->items, found);
                 len++;
             }
             break;

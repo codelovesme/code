@@ -113,9 +113,10 @@ needs one · `tests/<name>_module.rs` integration test.
 - `to` is a keyword — use `recipient` as a field name.
 - `$FOO` interpolates inside `.code` string literals; escape as `\$FOO`.
 - `∈` is the membership operator (`is` was removed 2026-08-29).
-- **Object equality is field-order-sensitive.** A module building results from a
-  `serde_json::Map` must enable `preserve_order`, or `assert v = { a, b }` fails
-  when keys come back sorted differently.
+- **Object equality is by field name, not position** (changed 2026-09-09).
+  Arrays stay positional. `preserve_order` on a module's `serde_json::Map` is
+  still worth having — `loop` and printing show the order — but it is no longer
+  the difference between `assert v = { a, b }` passing and failing.
 - **The comment marker is `|`, from 2.0.0.** Hard change, no transitional `--`;
   `--` now lexes as two `Minus` tokens. Three places recover comments from
   inter-token gaps and must stay in step: `src/lexer.rs`, `src/format.rs`'s
