@@ -514,9 +514,39 @@ Blank lines and comment-only lines never open or close a block either, so a
 comment can sit wherever it reads best. Indent with spaces: a tab is not a
 width, it is a request that every reader's editor agree about one.
 
-Statements are separated by newlines and nothing else — except that a comma
-separates two written on one line, which is the same comma the guard form
-above uses. There is no `;`, and typing one says so.
+**A newline separates; a comma is how you stay on one line.** That is the
+whole rule, and it is the same in all four places a list of things appears:
+
+```code
+a = 1, b = 2                     | two statements
+if x, return Y {}                | a header and its body
+{ a = 1, b = 2 }                 | an object's fields
+[1, 2, 3]                        | an array's elements
+```
+
+Write them across lines and the commas are not needed:
+
+```code
+let apps = [
+    {
+        name = "cart-web"
+        title = "Cart"
+    }
+    {
+        name = "ping-web"
+        title = "Ping"
+    }
+]
+```
+
+A **trailing** comma is still refused: the comma joins two things, so one
+with nothing after it is a line someone did not finish.
+
+A block written on one line takes exactly **one** statement, so
+`if x, a = 1, b = 2` runs `b = 2` either way — which is what the same code
+written across lines would show.
+
+There is no `;`, and typing one says so.
 
 An **empty body** has no spelling, because a block is a run of statements and
 an empty run is nothing at all. Write the nearest thing — a body that does

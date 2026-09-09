@@ -96,17 +96,58 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Skips both spellings of a statement separator: a newline, and the
+    /// comma that stands in for one when two statements share a line.
+    fn skip_statement_separators(&mut self) {
+        while matches!(self.peek(), Token::Newline | Token::Comma) {
+            self.advance();
+        }
+    }
+
+    /// The separator between two items of a bracketed list — an array's
+    /// elements, an object's fields, a field list's names.
+    ///
+    /// A newline is one, exactly as it is between statements; the comma is
+    /// only what you write to keep two on one line. `Ok(true)` means the
+    /// closer was consumed and the list is done.
+    ///
+    /// A trailing comma stays an error: the comma joins two items, so one
+    /// with nothing after it is a line someone did not finish.
+    fn list_separator(&mut self, closer: &Token, what: &str) -> Result<bool, String> {
+        let mut newline = false;
+        while matches!(self.peek(), Token::Newline) {
+            self.advance();
+            newline = true;
+        }
+        if self.peek() == closer {
+            self.advance();
+            return Ok(true);
+        }
+        if matches!(self.peek(), Token::Comma) {
+            self.advance();
+            self.skip_newlines();
+            return Ok(false);
+        }
+        if newline {
+            return Ok(false);
+        }
+        Err(format!(
+            "expected a newline, ',' or '{what}', found {:?}",
+            self.peek()
+        ))
+    }
+
     fn program(&mut self) -> Result<Program, String> {
         let mut statements = Vec::new();
         // Recorded before `statement()` runs, so it is the offset of the
         // statement's *first* token rather than wherever parsing it ended
         // up. Only the top level is tracked — see `Program::starts`.
         let mut starts = Vec::new();
-        self.skip_newlines();
+        self.skip_statement_separators();
         while !matches!(self.peek(), Token::Eof) {
             starts.push(self.starts[self.pos]);
             statements.push(self.statement()?);
-            self.skip_newlines();
+            self.skip_statement_separators();
         }
         Ok(Program {
             statements,
@@ -587,20 +628,7 @@ impl<'a> Parser<'a> {
                 return Err(format!("'{name}' is bound twice in one field list"));
             }
             fields.push(Field { field, name });
-            self.skip_newlines();
-            match self.advance() {
-                Token::Comma => {}
-                Token::RBrace => break,
-                other => {
-                    return Err(format!(
-                        "expected ',' or '}}' in a field list, found {other:?}"
-                    ))
-                }
-            }
-            self.skip_newlines();
-            // A trailing comma before the brace.
-            if matches!(self.peek(), Token::RBrace) {
-                self.advance();
+            if self.list_separator(&Token::RBrace, "}")? {
                 break;
             }
         }
@@ -658,7 +686,7 @@ impl<'a> Parser<'a> {
                     return Err(e);
                 }
             }
-            self.skip_newlines();
+            self.skip_statement_separators();
         }
         self.block_depth -= 1;
         self.advance(); // Dedent (or Eof, which the lexer always dedents before)
@@ -676,6 +704,12 @@ impl<'a> Parser<'a> {
     fn expect_end_of_statement(&mut self) -> Result<(), String> {
         match self.peek() {
             Token::Newline | Token::Eof => Ok(()),
+            // Two statements on one line, joined by the same comma that
+            // joins two of an object's fields. A block written this way
+            // still takes exactly one statement: `if x, a = 1, b = 2` runs
+            // `b = 2` whether or not `x` was true, which is what a reader of
+            // the newline form would see too.
+            Token::Comma => Ok(()),
             Token::Dedent if self.block_depth > 0 => Ok(()),
             // `else` lands here rather than at the start of a statement,
             // because the dedent it follows has already closed the `if` body.
@@ -950,11 +984,8 @@ impl<'a> Parser<'a> {
         }
         loop {
             items.push(self.expr()?);
-            self.skip_newlines();
-            match self.advance() {
-                Token::Comma => self.skip_newlines(),
-                Token::RBracket => break,
-                other => return Err(format!("expected ',' or ']' in array, found {other:?}")),
+            if self.list_separator(&Token::RBracket, "]")? {
+                break;
             }
         }
         Ok(Expr::Array(items))
@@ -1025,11 +1056,8 @@ impl<'a> Parser<'a> {
             self.skip_newlines();
             let value = self.expr()?;
             fields.push((key, value));
-            self.skip_newlines();
-            match self.advance() {
-                Token::Comma => self.skip_newlines(),
-                Token::RBrace => break,
-                other => return Err(format!("expected ',' or '}}' in object, found {other:?}")),
+            if self.list_separator(&Token::RBrace, "}")? {
+                break;
             }
         }
         Ok(fields)

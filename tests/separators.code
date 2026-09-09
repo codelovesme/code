@@ -1,0 +1,48 @@
+| A newline separates; a comma is only how you keep two things on one line.
+| The same rule in all four places a list of things appears.
+
+| Statements.
+let a = 1, let b = 2
+assert a = 1, assert b = 2
+
+| An object's fields, written both ways, are the same value.
+let inline = { x = 1, y = 2 }
+let spread = {
+    x = 1
+    y = 2
+}
+assert inline = spread
+
+| An array's elements.
+let apps = [
+    {
+        name = "cart-web"
+        title = "Cart"
+    }
+    {
+        name = "ping-web"
+        title = "Ping"
+    }
+]
+assert apps[0].name = "cart-web"
+assert apps[1].title = "Ping"
+assert [1, 2] = [
+    1
+    2
+]
+
+| A field list, on both sides of an emit.
+Describe {
+    name
+    title as heading
+} =>
+    return Line { text = name + ": " + heading }
+
+emit Describe { name = "cart", title = "Cart" } to this get { text }
+assert text = "cart: Cart"
+
+| A block written on one line takes exactly one statement, so the second is
+| the `if`'s sibling and runs either way — what the newline form would show.
+let seen = 0
+if false, seen = 1, seen = seen + 10
+assert seen = 10

@@ -126,6 +126,11 @@ needs one · `tests/<name>_module.rs` integration test.
   block and no empty body. Four places count a block's depth and must stay in
   step: `src/lexer.rs`, `src/parser.rs`'s `block`, `src/format.rs`'s
   `push_token`, and `crates/code-lsp/src/tokens.rs`.
+- **A newline separates, a comma keeps two things on one line** (2026-09-09).
+  Statements, object fields, array elements and field-list names all follow
+  it, so a multi-line literal needs no commas at all. Trailing commas are
+  still refused. `code format` leaves the commas an author wrote — whether it
+  should strip the redundant ones is open.
 - **The comment marker is `|`, from 2.0.0.** Hard change, no transitional `--`;
   `--` now lexes as two `Minus` tokens. Three places recover comments from
   inter-token gaps and must stay in step: `src/lexer.rs`, `src/format.rs`'s
