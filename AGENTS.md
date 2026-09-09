@@ -130,7 +130,10 @@ needs one · `tests/<name>_module.rs` integration test.
   comma (`if x, return Y`); after `=>` it needs no comma. There is no bare
   block and no empty body. Four places count a block's depth and must stay in
   step: `src/lexer.rs`, `src/parser.rs`'s `block`, `src/format.rs`'s
-  `push_token`, and `crates/code-lsp/src/tokens.rs`.
+  `push_token`, and `crates/code-lsp/src/tokens.rs`. The VS Code extension's
+  `language-configuration.json` indents after a block header too, so its
+  `increaseIndentPattern` is a fifth place — it has to know that `if x, …` on
+  one line opens nothing.
 - **An uppercase-first name is a particle everywhere** (2026-09-09), brace or
   no brace — `return Checked` is `return Checked {}`. The other half of the
   rule is what makes it work: an uppercase name may not be **bound** (a
@@ -162,6 +165,12 @@ needs one · `tests/<name>_module.rs` integration test.
   inter-token gaps and must stay in step: `src/lexer.rs`, `src/format.rs`'s
   `gap()`, `crates/code-lsp/src/tokens.rs` — plus the VS Code extension's
   `syntaxes/code.tmLanguage.json` and `language-configuration.json`.
+  The VS Code extension's `syntaxes/code.tmLanguage.json` is **fallback**
+  highlighting — the LSP's semantic tokens override it wherever the server is
+  running, which is why it went years out of step without anyone noticing (it
+  was still matching the archived language: `yield`, `with`, `fold`, `by`,
+  `private`, `is`, `Z|R|N`). Rewritten 2026-09-10 against `lexer.rs`, which is
+  the only authority for the keyword list.
   **Never `sed` a comment-marker migration**: `--` also appears inside string
   literals (`assert "-" + -4 = "--4"`) and inside comment prose. Drive it from
   `code::lexer::tokenize` instead, one replacement per line, and hand-edit the

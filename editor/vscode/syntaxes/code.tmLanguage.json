@@ -2,21 +2,18 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Code",
   "scopeName": "source.code",
+  "comment": "Fallback highlighting only. The language server's semantic tokens (crates/code-lsp/src/tokens.rs) are the real thing and override this wherever it is running; this is what a reader gets without it. Keep the keyword list in step with lexer.rs — that is the only authority.",
   "patterns": [
     { "include": "#comment" },
-    { "include": "#link-statement" },
-    { "include": "#unlink-statement" },
-    { "include": "#type-declaration" },
     { "include": "#string" },
+    { "include": "#link-statement" },
     { "include": "#number" },
     { "include": "#constant" },
     { "include": "#keyword-control" },
-    { "include": "#keyword-modifier" },
-    { "include": "#keyword-type-check" },
-    { "include": "#domain-keyword" },
-    { "include": "#language-variable" },
+    { "include": "#keyword-module" },
+    { "include": "#keyword-logical" },
+    { "include": "#emit-target" },
     { "include": "#handler-definition" },
-    { "include": "#handler-arrow" },
     { "include": "#type-name" },
     { "include": "#operator" },
     { "include": "#punctuation" },
@@ -24,152 +21,89 @@
   ],
   "repository": {
     "comment": {
+      "comment": "`|` to end of line, the marker since 2.0.0. First in the list so a `|` is never read as anything else.",
       "name": "comment.line.pipe.code",
       "match": "\\|.*$"
-    },
-    "link-statement": {
-      "match": "\\b(link)\\s+([-a-zA-Z0-9_./]+)(?:\\s+(as)\\s+([a-z_][a-zA-Z0-9_]*))?",
-      "captures": {
-        "1": { "name": "keyword.control.import.code" },
-        "2": { "name": "string.unquoted.module-path.code" },
-        "3": { "name": "keyword.control.import.code" },
-        "4": { "name": "entity.name.namespace.code" }
-      }
-    },
-    "unlink-statement": {
-      "comment": "unlink <expr> — closes an organelle linked while running. The argument is an ordinary expression, so only the keyword is matched here.",
-      "name": "keyword.control.import.code",
-      "match": "\\b(unlink)\\b"
-    },
-    "type-declaration": {
-      "patterns": [
-        {
-          "comment": "Type alias: type Name = TypeExpr",
-          "match": "\\b(type)\\s+([A-Z][a-zA-Z0-9_]*)\\s*(?==\\s)",
-          "captures": {
-            "1": { "name": "storage.type.code" },
-            "2": { "name": "entity.name.type.declaration.code" }
-          }
-        },
-        {
-          "comment": "Type declaration: type Name { ... }",
-          "match": "\\b(type)\\s+([A-Z][a-zA-Z0-9_]*)\\s*(?=\\{)",
-          "captures": {
-            "1": { "name": "storage.type.code" },
-            "2": { "name": "entity.name.type.declaration.code" }
-          }
-        }
-      ]
     },
     "string": {
       "name": "string.quoted.double.code",
       "begin": "\"",
       "end": "\"",
-      "beginCaptures": {
-        "0": { "name": "punctuation.definition.string.begin.code" }
-      },
-      "endCaptures": {
-        "0": { "name": "punctuation.definition.string.end.code" }
-      },
+      "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.code" } },
+      "endCaptures": { "0": { "name": "punctuation.definition.string.end.code" } },
       "patterns": [
+        { "name": "constant.character.escape.code", "match": "\\\\." },
         {
-          "name": "constant.character.escape.code",
-          "match": "\\\\."
-        },
-        {
+          "comment": "`$name` and `$name.field` splice a value in.",
           "name": "variable.other.interpolation.code",
-          "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*"
+          "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)*"
         }
       ]
+    },
+    "link-statement": {
+      "comment": "The path is a quoted string, so `#string` colours it; only the keywords and the alias are taken here.",
+      "match": "\\b(link)\\b(?:.*\\b(as)\\s+([a-z_][a-zA-Z0-9_]*))?",
+      "captures": {
+        "1": { "name": "keyword.control.import.code" },
+        "2": { "name": "keyword.control.import.code" },
+        "3": { "name": "entity.name.namespace.code" }
+      }
     },
     "number": {
       "name": "constant.numeric.code",
       "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
     },
     "constant": {
-      "patterns": [
-        {
-          "name": "constant.language.boolean.code",
-          "match": "\\b(true|false)\\b"
-        },
-        {
-          "name": "constant.language.null.code",
-          "match": "\\bNull\\b"
-        }
-      ]
+      "name": "constant.language.code",
+      "match": "\\b(true|false|null)\\b"
     },
     "keyword-control": {
       "name": "keyword.control.code",
-      "match": "\\b(if|loop|over|break|return|assert|in|emit|to|get|yield|with|fold|by)\\b"
+      "match": "\\b(if|loop|over|break|continue|return|emit|to|get|assert)\\b"
     },
-    "keyword-modifier": {
-      "name": "keyword.other.modifier.code",
-      "match": "\\b(private)\\b"
+    "keyword-module": {
+      "name": "keyword.control.import.code",
+      "match": "\\b(link|unlink|as)\\b"
     },
-    "keyword-type-check": {
-      "name": "keyword.operator.type.code",
-      "match": "\\b(is|not|and|or)\\b"
+    "keyword-logical": {
+      "comment": "`is` is deliberately absent: it is still a reserved word, but only so that typing it is answered with `the membership operator is '∈'`. Colouring it would suggest it works.",
+      "name": "keyword.operator.logical.code",
+      "match": "\\b(and|or|not)\\b"
     },
-    "domain-keyword": {
-      "name": "support.type.domain.code",
-      "match": "\\b(Z|R|N)\\b"
-    },
-    "language-variable": {
+    "emit-target": {
+      "comment": "The three targets that are words rather than aliases.",
       "name": "variable.language.code",
-      "match": "\\b(this|base)\\b"
+      "match": "\\b(this|base|core)\\b"
     },
     "handler-definition": {
-      "comment": "Handler class name: ClassName before => or ClassName{...} =>",
-      "match": "^\\s*([A-Z][a-zA-Z0-9_]*)\\s*(?=\\{[^=]*\\}\\s*=>|=>\\s*\\{)",
-      "captures": {
-        "1": { "name": "entity.name.type.handler.code" }
-      }
-    },
-    "handler-arrow": {
-      "comment": "Arrow used only in handler definitions: ClassName => { body }",
-      "name": "keyword.operator.arrow.code",
-      "match": "=>(?=\\s*\\{)"
+      "comment": "`Name { fields } =>` or `Name =>` at the start of a line. A body is the indented run below it, so there is no brace to look for.",
+      "match": "^\\s*([A-Z][a-zA-Z0-9_]*)\\s*(?=(\\{[^}]*\\})?\\s*=>)",
+      "captures": { "1": { "name": "entity.name.type.handler.code" } }
     },
     "type-name": {
+      "comment": "An uppercase-first name is a particle class wherever it is read — brace or no brace — and can never be a variable.",
       "name": "entity.name.type.code",
       "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
     },
     "operator": {
       "patterns": [
-        {
-          "name": "keyword.operator.comparison.code",
-          "match": "=(?!>)|[≠≤≥]"
-        },
-        {
-          "name": "keyword.operator.membership.code",
-          "match": "[∈∉]"
-        },
-        {
-          "name": "keyword.operator.comparison.code",
-          "match": "[<>]"
-        },
-        {
-          "name": "keyword.operator.arithmetic.code",
-          "match": "[+\\-*/]"
-        },
-        {
-          "name": "keyword.operator.union.code",
-          "match": "\\|"
-        }
+        { "name": "keyword.operator.arrow.code", "match": "=>" },
+        { "name": "keyword.operator.assignment.code", "match": "\\+=" },
+        { "name": "keyword.operator.membership.code", "match": "[∈∉]" },
+        { "name": "keyword.operator.comparison.code", "match": "[=≠<>≤≥]" },
+        { "name": "keyword.operator.arithmetic.code", "match": "[+\\-*/]" }
       ]
     },
     "punctuation": {
       "patterns": [
-        { "match": "\\{", "name": "punctuation.section.block.begin.code" },
-        { "match": "\\}", "name": "punctuation.section.block.end.code" },
+        { "match": "\\{", "name": "punctuation.section.object.begin.code" },
+        { "match": "\\}", "name": "punctuation.section.object.end.code" },
         { "match": "\\[", "name": "punctuation.section.array.begin.code" },
         { "match": "\\]", "name": "punctuation.section.array.end.code" },
         { "match": "\\(", "name": "punctuation.section.parens.begin.code" },
         { "match": "\\)", "name": "punctuation.section.parens.end.code" },
         { "match": ",", "name": "punctuation.separator.comma.code" },
-        { "match": ":", "name": "punctuation.separator.colon.code" },
-        { "match": "\\.", "name": "punctuation.accessor.dot.code" },
-        { "match": "\\?", "name": "punctuation.definition.optional.code" }
+        { "match": "\\.", "name": "punctuation.accessor.dot.code" }
       ]
     },
     "identifier": {
