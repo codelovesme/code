@@ -105,6 +105,19 @@ pub enum Token {
     Base,
     /// `return` — a handler body's early exit with a result.
     Return,
+    /// A block's body begins: the line after a block header is indented
+    /// further than the header was. Zero-width and synthetic, like `Newline`
+    /// — it stands at the first real character of the indented line.
+    ///
+    /// **Only outside brackets.** Inside `{`, `[` or `(` the lexer is
+    /// counting a bracket, not a block, so indentation there is the author's
+    /// own layout and produces nothing. That is what keeps a multi-line
+    /// object literal free to indent however it reads best.
+    Indent,
+    /// A block's body ends: a line indented less than the one before it. One
+    /// per level closed, and one per open level at end of input, so every
+    /// `Indent` is matched.
+    Dedent,
     /// Statement separator — a newline. Blank lines never produce one (see
     /// `tokenize`: consecutive separators are collapsed).
     ///
@@ -156,6 +169,13 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
     let mut starts = Vec::new();
     let mut ends = Vec::new();
     let mut last_was_separator = true; // suppress a leading Newline
+    // How deep inside `{`/`[`/`(` we are. Indentation is only structure at
+    // depth 0; inside a bracket the closer is what ends the construct, so a
+    // multi-line literal lays itself out however its author likes.
+    let mut bracket_depth: usize = 0;
+    // Columns of the block levels currently open, outermost first. The 0 is
+    // the file's own top level and is never popped.
+    let mut indents: Vec<usize> = vec![0];
 
     while i < chars.len() {
         let c = chars[i];
@@ -212,6 +232,52 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                 i += 1;
             }
             continue;
+        }
+
+        // The first real character of a line, outside any bracket: this is
+        // where a block opens or closes. Comment-only and blank lines never
+        // reach here — both `continue` above — so neither disturbs the
+        // structure, which is what lets a comment sit at any indentation.
+        if bracket_depth == 0 && line_so_far_is_blank(&chars, i) {
+            let line_start = chars[..i]
+                .iter()
+                .rposition(|&c| c == '\n')
+                .map(|n| n + 1)
+                .unwrap_or(0);
+            // A tab is not a width, it is a request that every reader's
+            // editor agree about one — and they do not. Refused at the
+            // marker rather than silently counted as one column.
+            if let Some(offset) = chars[line_start..i].iter().position(|&c| c == '\t') {
+                return Err(Located::at(
+                    line_start + offset,
+                    "a tab in a line's indentation — indent with spaces, since \
+                     a block's depth is now what a line means",
+                ));
+            }
+            let indent = i - line_start;
+            let current = *indents.last().expect("the top level is never popped");
+            if indent > current {
+                indents.push(indent);
+                tokens.push(Token::Indent);
+                starts.push(i as u32);
+                ends.push(i as u32);
+            } else {
+                while indent < *indents.last().expect("the top level is never popped") {
+                    indents.pop();
+                    tokens.push(Token::Dedent);
+                    starts.push(i as u32);
+                    ends.push(i as u32);
+                }
+                // Closing levels landed somewhere between two of them: the
+                // line belongs to no block that is open, which is a layout
+                // the reader cannot resolve either.
+                if indent != *indents.last().expect("the top level is never popped") {
+                    return Err(Located::at(
+                        i,
+                        "this line's indentation matches no block that is open",
+                    ));
+                }
+            }
         }
 
         // `!` used to begin `!=`. Now that inequality is `≠` it has no
@@ -287,6 +353,16 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
             '≥' => Some(Token::Ge),
             _ => None,
         } {
+            match tok {
+                Token::LBrace | Token::LBracket | Token::LParen => bracket_depth += 1,
+                // Saturating because an unmatched closer is the parser's
+                // error to report, with the context to say what was expected
+                // — the lexer only has to not go negative on the way there.
+                Token::RBrace | Token::RBracket | Token::RParen => {
+                    bracket_depth = bracket_depth.saturating_sub(1)
+                }
+                _ => {}
+            }
             tokens.push(tok);
             starts.push(start as u32);
             ends.push(start as u32 + 1);
@@ -455,6 +531,14 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
         starts.push(chars.len() as u32);
         ends.push(chars.len() as u32);
     }
+    // End of input closes every block still open, so the parser never has to
+    // treat the last one differently from the rest.
+    while indents.len() > 1 {
+        indents.pop();
+        tokens.push(Token::Dedent);
+        starts.push(chars.len() as u32);
+        ends.push(chars.len() as u32);
+    }
     tokens.push(Token::Eof);
     starts.push(chars.len() as u32);
     ends.push(chars.len() as u32);
@@ -468,6 +552,56 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Indentation is structure outside brackets and layout inside them —
+    /// the one rule the whole design rests on.
+    #[test]
+    fn indentation_is_structure_outside_brackets_and_layout_inside() {
+        let kinds = |src: &str| {
+            tokenize(src)
+                .unwrap()
+                .tokens
+                .into_iter()
+                .filter(|t| matches!(t, Token::Indent | Token::Dedent))
+                .collect::<Vec<_>>()
+        };
+
+        // One block, opened by the indent and closed at end of input.
+        assert_eq!(
+            kinds("if a\n    assert b\n"),
+            vec![Token::Indent, Token::Dedent]
+        );
+
+        // Two levels, both closed by the single outdent back to column 0.
+        assert_eq!(
+            kinds("if a\n    if b\n        assert c\nassert d\n"),
+            vec![Token::Indent, Token::Indent, Token::Dedent, Token::Dedent]
+        );
+
+        // Inside a literal the same shape produces nothing at all.
+        assert_eq!(kinds("let o = {\n    a = 1,\n    b = 2\n}\n"), vec![]);
+
+        // Blank and comment-only lines do not disturb the structure, which
+        // is what lets a comment sit wherever it reads best.
+        assert_eq!(
+            kinds("if a\n\n  | note\n    assert b\n"),
+            vec![Token::Indent, Token::Dedent]
+        );
+    }
+
+    /// A line that closes past one open level but lands on none of them is
+    /// refused rather than guessed at.
+    #[test]
+    fn an_indentation_matching_no_open_block_is_refused() {
+        let Err(err) = tokenize("if a\n        assert b\n    assert c\n") else {
+            panic!("that layout matches no open block, so it must not lex");
+        };
+        assert!(
+            err.msg.contains("matches no block that is open"),
+            "{}",
+            err.msg
+        );
+    }
 
     /// `starts[i]..ends[i]` must slice back exactly the substring that
     /// produced `tokens[i]` — the property every `Lexed::ends` consumer

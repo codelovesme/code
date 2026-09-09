@@ -50,7 +50,10 @@ pub struct SemToken {
 }
 
 /// `None` for a token kind that carries no useful color — brackets, `,`,
-/// `:`, `.` itself, and the statement-separator `Newline`/`Eof` markers.
+/// `:`, `.` itself, and the `Newline`/`Indent`/`Dedent`/`Eof` markers. The
+/// last three are zero-width and synthetic: there is no source text under
+/// them to paint, and a range of width zero is one the editor would draw
+/// nothing for anyway.
 /// `prev_dot` is whether the immediately preceding real token was `.`,
 /// which is what turns an identifier into a `Property` instead of a
 /// `Variable`/`Class`.
@@ -76,7 +79,7 @@ fn classify(tok: &Token, prev_dot: bool) -> Option<Kind> {
         Ident(name) if name.chars().next().is_some_and(char::is_uppercase) => Kind::Class,
         Ident(_) => Kind::Variable,
         LBracket | RBracket | LBrace | RBrace | LParen | RParen | Colon | Comma | Dot | Newline
-        | Eof => return None,
+        | Indent | Dedent | Eof => return None,
     })
 }
 
