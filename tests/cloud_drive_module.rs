@@ -145,10 +145,10 @@ fn the_oauth_exchange_and_file_operations_round_trip() {
         r#"link "cloud_drive.so" as drive
 
 emit Config {{
-    client_id = "cid", client_secret = "secret",
-    redirect_uri = "https://app.example/cb",
-    auth_url = "http://127.0.0.1:{port}/auth",
-    token_url = "http://127.0.0.1:{port}/token",
+    client_id = "cid", client_secret = "secret"
+    redirect_uri = "https://app.example/cb"
+    auth_url = "http://127.0.0.1:{port}/auth"
+    token_url = "http://127.0.0.1:{port}/token"
     api_base = "http://127.0.0.1:{port}"
 }} to drive get c
 assert c.ok
@@ -167,7 +167,7 @@ assert q.available = 600
 assert q.account_email = "user@example.com"
 
 emit UploadFile {{
-    access_token = t.access_token, file_name = "hello.txt",
+    access_token = t.access_token, file_name = "hello.txt"
     data = "hello world", content_type = "text/plain"
 }} to drive get up
 assert up ∈ RemoteFile

@@ -90,6 +90,23 @@ impl<'a> Parser<'a> {
         t
     }
 
+    /// Refuses a `,` that a newline already separates.
+    ///
+    /// The comma exists for exactly one job — keeping two things on one line
+    /// — so one with a line break behind it is a second spelling of the
+    /// separator that is already there. Called wherever a comma is accepted,
+    /// which is the four places a list of things appears (see
+    /// `list_separator` and `expect_end_of_statement`).
+    fn reject_redundant_comma(&mut self) -> Result<(), String> {
+        if matches!(self.tokens.get(self.pos + 1), Some(Token::Newline)) {
+            self.err_here();
+            return Err("this ',' is not needed — the newline after it already separates. \
+                        A comma is only for keeping two things on one line"
+                .to_string());
+        }
+        Ok(())
+    }
+
     fn skip_newlines(&mut self) {
         while matches!(self.peek(), Token::Newline) {
             self.advance();
@@ -124,6 +141,7 @@ impl<'a> Parser<'a> {
             return Ok(true);
         }
         if matches!(self.peek(), Token::Comma) {
+            self.reject_redundant_comma()?;
             self.advance();
             self.skip_newlines();
             return Ok(false);
@@ -192,22 +210,6 @@ impl<'a> Parser<'a> {
                     ))
                 }
             }
-            // `emit Name to ...` — a bare uppercase name is the empty
-            // particle of that class, exactly what `Name {}` desugars to
-            // in `primary`. Rewritten here, after `to` is confirmed, so
-            // `primary` keeps treating an uppercase name as an ordinary
-            // identifier everywhere else. Lowercase names fall through
-            // untouched: they stay variable reads.
-            let particle = match particle {
-                Expr::Ident(name) if starts_uppercase(&name) => {
-                    reject_kind_as_class(&name)?;
-                    Expr::Object(vec![(
-                        FieldKey::Literal("_class".to_string()),
-                        Expr::Str(name),
-                    )])
-                }
-                other => other,
-            };
             let target = match self.advance() {
                 Token::Core => EmitTarget::Core,
                 Token::This => EmitTarget::This,
@@ -235,7 +237,10 @@ impl<'a> Parser<'a> {
                     Some(EmitResult::Fields(self.field_list()?))
                 } else {
                     match self.advance() {
-                        Token::Ident(name) => Some(EmitResult::Whole(name)),
+                        Token::Ident(name) => {
+                            reject_uppercase_binding(&name, "`get`")?;
+                            Some(EmitResult::Whole(name))
+                        }
                         other => {
                             return Err(format!(
                                 "expected a name or '{{' after 'get', found {other:?}"
@@ -400,6 +405,7 @@ impl<'a> Parser<'a> {
         // point at the word someone typed rather than at whatever followed
         // it — `advance` will have moved `err_pos` on by then.
         let name_pos = self.err_pos;
+        reject_uppercase_binding(&name, "a variable")?;
         // `+=` is the one compound form. It is pure sugar, rewritten here
         // into `name = name + expr` so that neither backend — nor anything
         // else downstream — learns it exists. Whatever `+` means for the two
@@ -475,12 +481,15 @@ impl<'a> Parser<'a> {
             } else {
                 (None, first)
             };
+            for bound in [key.as_deref(), Some(value.as_str())].into_iter().flatten() {
+                reject_uppercase_binding(bound, "a loop's variable")?;
+            }
             match self.advance() {
                 Token::Over => {}
                 other => {
                     return Err(format!(
                         "expected 'over' after 'loop {value}', found {other:?} \
-                         (a bare infinite loop is written `loop {{ }}`, with no variable)"
+                         (a bare infinite loop is written `loop`, with no variable)"
                     ))
                 }
             }
@@ -571,6 +580,7 @@ impl<'a> Parser<'a> {
             if fields.iter().any(|f| f.name == name) {
                 return Err(format!("'{name}' is bound twice in one field list"));
             }
+            reject_uppercase_binding(&name, "a field list")?;
             fields.push(Field { field, name });
             if self.list_separator(&Token::RBrace, "}")? {
                 break;
@@ -653,7 +663,7 @@ impl<'a> Parser<'a> {
             // still takes exactly one statement: `if x, a = 1, b = 2` runs
             // `b = 2` whether or not `x` was true, which is what a reader of
             // the newline form would see too.
-            Token::Comma => Ok(()),
+            Token::Comma => self.reject_redundant_comma(),
             Token::Dedent if self.block_depth > 0 => Ok(()),
             // `else` lands here rather than at the start of a statement,
             // because the dedent it follows has already closed the `if` body.
@@ -891,21 +901,26 @@ impl<'a> Parser<'a> {
                 Token::True => Ok(Expr::Bool(true)),
                 Token::False => Ok(Expr::Bool(false)),
                 Token::Null => Ok(Expr::Null),
-                // `ClassName { fields }` — particle construction. Pure sugar,
-                // resolved entirely here: it desugars into the exact same
-                // `Expr::Object` a plain `{ ... }` literal would produce,
-                // with a `"_class"` field holding the name prepended. No new
-                // AST node, no new Value kind — see memory
-                // `new-code-particle`. The only rule is lexical: an
-                // uppercase-first name immediately followed by `{` is a
-                // particle; anything else (no `{` next, or a lowercase
-                // name) is an ordinary identifier, exactly as before this
-                // was added.
-                Token::Ident(name)
-                    if starts_uppercase(&name) && matches!(self.peek(), Token::LBrace) =>
-                {
+                // `ClassName` or `ClassName { fields }` — particle
+                // construction. Pure sugar, resolved entirely here: it
+                // desugars into the exact same `Expr::Object` a plain
+                // `{ ... }` literal would produce, with a `"_class"` field
+                // holding the name prepended. No new AST node, no new Value
+                // kind — see memory `new-code-particle`.
+                //
+                // **The rule is lexical and total: an uppercase-first name
+                // is a particle, everywhere.** With no brace it is the empty
+                // one of that class, so `return Checked` and
+                // `return Checked {}` are the same value. That is only
+                // unambiguous because an uppercase name can no longer be a
+                // *binding* either — see `reject_uppercase_binding`.
+                Token::Ident(name) if starts_uppercase(&name) => {
                     reject_kind_as_class(&name)?;
-                    let mut fields = self.object_fields()?;
+                    let mut fields = if matches!(self.peek(), Token::LBrace) {
+                        self.object_fields()?
+                    } else {
+                        Vec::new()
+                    };
                     fields.insert(
                         0,
                         (FieldKey::Literal("_class".to_string()), Expr::Str(name)),
@@ -1083,6 +1098,19 @@ fn absent_construct(name: &str) -> Option<&'static str> {
         ),
         _ => None,
     }
+}
+
+/// An uppercase-first name is a particle wherever it is read, so binding one
+/// would create a name nothing could ever name back. Refused at each binder
+/// rather than left as a silent dead end.
+fn reject_uppercase_binding(name: &str, what: &str) -> Result<(), String> {
+    if starts_uppercase(name) {
+        return Err(format!(
+            "'{name}' starts with a capital, so it names a particle class, not a \
+             variable — {what} needs a lowercase name"
+        ));
+    }
+    Ok(())
 }
 
 fn reject_kind_as_class(name: &str) -> Result<(), String> {

@@ -1,0 +1,7 @@
+| A comma has exactly one job: keeping two things on one line. One with a
+| newline behind it is a second spelling of the separator already there, so
+| it is refused rather than tolerated — the same rule `;` was removed under.
+a = {
+    x = 1,
+    y = 2
+}

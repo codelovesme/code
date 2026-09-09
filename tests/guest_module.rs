@@ -125,8 +125,8 @@ emit Route { } to router get where
 emit Print { value = "route: $where.value" } to out
 
 emit Render {
-    into = "body",
-    styles = { "p" = { color = "red" } },
+    into = "body"
+    styles = { "p" = { color = "red" } }
     tree = { tag = "p", attrs = { class = "hi" }, children = ["hello"] }
 } to dom get r
 emit Print { value = "drew: $r.ok" } to out

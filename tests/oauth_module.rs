@@ -105,11 +105,11 @@ fn exchange_code_returns_the_identity_and_tokens() {
     let program = r#"link "oauth.so" as oauth
 
 emit Config {
-    client_id = "cid",
-    client_secret = "sec",
-    redirect_uri = "https://app/cb",
-    auth_url = "http://127.0.0.1:PORT/auth",
-    token_url = "http://127.0.0.1:PORT/token",
+    client_id = "cid"
+    client_secret = "sec"
+    redirect_uri = "https://app/cb"
+    auth_url = "http://127.0.0.1:PORT/auth"
+    token_url = "http://127.0.0.1:PORT/token"
     userinfo_url = "http://127.0.0.1:PORT/userinfo"
 } to oauth get c
 assert c.ok

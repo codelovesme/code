@@ -46,7 +46,7 @@ fn round_trip_against_a_real_object_store() {
         r#"link "blob_storage.so" as blobs
 
 emit Config {{
-    bucket = "{bucket}", access_key = "{key}", secret_key = "{secret}",
+    bucket = "{bucket}", access_key = "{key}", secret_key = "{secret}"
     endpoint = "{endpoint}", create = true
 }} to blobs get c
 assert c.ok

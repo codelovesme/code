@@ -132,9 +132,9 @@ emit Config { host = "127.0.0.1", port = PORT, from = "sender@example.com", tls 
 assert c.ok
 
 emit Send {
-    recipient = "rcpt@example.com",
-    subject = "Hello",
-    text = "the body",
+    recipient = "rcpt@example.com"
+    subject = "Hello"
+    text = "the body"
     cc = ["carbon@example.com"]
 } to mail get s
 assert s ∈ SendResult

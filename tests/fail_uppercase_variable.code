@@ -1,0 +1,4 @@
+| An uppercase name is a particle, so binding one would make a name nothing
+| could ever name back. Refused at the binder rather than left as a silent
+| dead end — this is what makes the bare-name particle unambiguous.
+X = 5

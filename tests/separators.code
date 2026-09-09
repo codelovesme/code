@@ -1,5 +1,7 @@
 | A newline separates; a comma is only how you keep two things on one line.
-| The same rule in all four places a list of things appears.
+| The same rule in all four places a list of things appears — and a comma a
+| newline already separated is refused, so there is one spelling rather than
+| two (`fail_redundant_comma.code` holds that half).
 
 | Statements.
 a = 1, b = 2

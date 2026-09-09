@@ -505,8 +505,27 @@ apps = [
 ]
 ```
 
-A **trailing** comma is still refused: the comma joins two things, so one
-with nothing after it is a line someone did not finish.
+**A comma a newline already separated is refused.** The comma has exactly
+one job, so one with a line break behind it is a second spelling of the
+separator that is already there — the same ground `;` was removed on. There
+is one way to write each of the two shapes, not two:
+
+```code
+{ a = 1, b = 2 }        | one line: the comma separates
+
+{                       | across lines: the newline does
+    a = 1
+    b = 2
+}
+
+{
+    a = 1,              | refused
+    b = 2
+}
+```
+
+A **trailing** comma is refused for a different reason: the comma joins two
+things, so one with nothing after it is a line someone did not finish.
 
 A block written on one line takes exactly **one** statement, so
 `if x, a = 1, b = 2` runs `b = 2` either way — which is what the same code
@@ -582,15 +601,34 @@ error.
 
 ### Particles
 
-`ClassName { fields }` — any uppercase-first name immediately followed by
-`{` — is **pure parser sugar** for an object literal with a `"_class"` field
-prepended. No new value kind, no schema, no validation.
+`ClassName { fields }` — any uppercase-first name — is **pure parser sugar**
+for an object literal with a `"_class"` field prepended. No new value kind,
+no schema, no validation.
 
-```
+```code
 log = Log { message = "hi" }
 assert log._class = "Log"
 assert log = { _class = "Log", message = "hi" }
 ```
+
+**The brace is optional, and the rule is total: an uppercase-first name is a
+particle wherever it is read.** With no fields it is the empty one of that
+class, so a handler answering with one says it in a word:
+
+```code
+Check {} =>
+    return Checked
+
+assert Checked = Checked {}
+ready = Ready
+assert ready ∈ Ready
+```
+
+That works because an uppercase name can no longer be a **binding**. A
+variable, a `get`, a field list's name and a loop's variable all need a
+lowercase one — binding an uppercase name would make a name nothing could
+ever read back, so it is refused at the binder rather than left as a silent
+dead end.
 
 Because it is only sugar, a particle is structurally equal to a hand-written
 object with the same fields. There is no hidden tag.
@@ -642,8 +680,9 @@ Dispatch is by the particle's runtime `_class`, not by the name written at
 the call site — so a particle built elsewhere and passed in a variable
 dispatches to the same handler.
 
-A bare uppercase name means the empty particle of that class: `emit Timestamp
-to core` is exactly `emit Timestamp {} to core`.
+A bare uppercase name is the empty particle of that class, here as anywhere
+else: `emit Timestamp to core` is exactly `emit Timestamp {} to core`. See
+[Particles](#particles).
 
 Note `get` is not `as`: `get` names the *result of an emit*, while `as` names
 a *linked module* — or, inside a field list, renames one field.

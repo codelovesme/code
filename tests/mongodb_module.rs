@@ -64,8 +64,8 @@ assert d2.existed = false
 
 | documents
 emit InsertMany {{ collection = "users", docs = [
-    {{ name = "ada", age = 36, role = "admin" }},
-    {{ name = "bob", age = 29, role = "user" }},
+    {{ name = "ada", age = 36, role = "admin" }}
+    {{ name = "bob", age = 29, role = "user" }}
     {{ name = "cy",  age = 41, role = "user" }}
 ] }} to db get im
 assert im.count = 3

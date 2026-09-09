@@ -131,6 +131,10 @@ needs one · `tests/<name>_module.rs` integration test.
   block and no empty body. Four places count a block's depth and must stay in
   step: `src/lexer.rs`, `src/parser.rs`'s `block`, `src/format.rs`'s
   `push_token`, and `crates/code-lsp/src/tokens.rs`.
+- **An uppercase-first name is a particle everywhere** (2026-09-09), brace or
+  no brace — `return Checked` is `return Checked {}`. The other half of the
+  rule is what makes it work: an uppercase name may not be **bound** (a
+  variable, a `get`, a field list name, a loop variable all need lowercase).
 - **A loop has no accumulator** (2026-09-09). `loop … get out = init` meant
   exactly a declaration on the line above, so it went; `get` is an emit's
   answer and nothing else. What survives a loop is an ordinary binding

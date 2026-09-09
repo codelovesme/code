@@ -1,0 +1,16 @@
+| An uppercase-first name is a particle wherever it is read — with a brace or
+| without. `Checked` and `Checked {}` are the same value, so a handler that
+| answers with an empty particle says so in one word.
+Check {} =>
+    return Checked
+
+emit Check to this get r
+assert r ∈ Checked
+assert r = { _class = "Checked" }
+assert r = Checked {}
+
+| Anywhere an expression goes, not just after `emit` or `return`.
+ready = Ready
+assert ready ∈ Ready
+assert [Ready, Done] = [{ _class = "Ready" }, { _class = "Done" }]
+assert { state = Ready }.state ∈ Ready

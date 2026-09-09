@@ -122,9 +122,9 @@ emit ChatJson {{ user = "how many?" }} to ai get structured
 assert structured.content = "{{\"answer\":42,\"unit\":\"pt\"}}"
 
 emit Chat {{ messages = [
-    {{ role = "system", content = "be terse" }},
-    {{ role = "user", content = "hi" }},
-    {{ role = "assistant", content = "hello" }},
+    {{ role = "system", content = "be terse" }}
+    {{ role = "user", content = "hi" }}
+    {{ role = "assistant", content = "hello" }}
     {{ role = "user", content = "still there?" }}
 ] }} to ai get multi
 assert multi.content = "multi-turn ok"
