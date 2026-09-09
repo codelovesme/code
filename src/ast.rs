@@ -66,11 +66,6 @@ pub enum Stmt {
     /// an untaken branch simply leaves it unchanged), and is an error if
     /// no such outer binding exists.
     If { condition: Expr, body: Vec<Stmt> },
-    /// A bare `{ body }` — unconditionally runs `body` in a new scope
-    /// (same scoping rule as `If`'s `body`, minus the condition: always
-    /// executes). Lets a user open a scope on demand, e.g. to shadow a
-    /// throwaway local without it ever being reachable outside.
-    Block(Vec<Stmt>),
     /// `loop [var[, index] over iterable] [get name [= init]] { body }` —
     /// the language's only iteration construct.
     ///

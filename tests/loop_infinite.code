@@ -1,4 +1,4 @@
-| `loop { }` has no iterable and no bound — only `break` leaves it.
+| A bare `loop` has no iterable and no bound — only `break` leaves it.
 let i = 0
 loop
     i = i + 1

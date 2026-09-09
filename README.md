@@ -186,9 +186,8 @@ field list:
 let port ∈ Number = 8080
 let request = { url ∈ String = "https://example.com", retries ∈ Number = 3 }
 
-Greet { who ∈ String } => {
+Greet { who ∈ String } =>
     return Greeting { text ∈ String = "hello, $who" }
-}
 ```
 
 **Nothing checks it.** `let port ∈ Number = "8080"` runs, and `port` is a
@@ -214,16 +213,14 @@ existing one.
 
 ```
 let x = 1
-{
+if true
     let x = 2    | a new, inner binding
     assert x = 2
-}
 assert x = 1     | untouched
 
 let y = 1
-{
+if true
     y = 2        | reaches out and mutates
-}
 assert y = 2
 ```
 
@@ -420,9 +417,8 @@ condition can read it directly instead of naming the class every time:
 
 ```code
 emit Fetch { key = "user_" + email } to store get found
-if not found {
+if not found
     return Unavailable { reason = "the store did not answer" }
-}
 ```
 
 `found ∈ Exception` still says exactly the same thing, and is the better
@@ -476,32 +472,55 @@ The caret finds the top-level statement, so a failure inside an `if` or
 
 ### if and blocks
 
-```
-if x < 10 {
+```code
+if x < 10
     ...
-}
 ```
+
+**A block is the indented run of lines under its header.** There are no
+braces on it: `{ }` means an object, everywhere, and nothing else. The body
+ends where the indentation goes back.
 
 There is **no `else`**, and there never will be. The condition is read for
-its [truth](#truth) — any value will do. A bare `{ … }` block is also a
-statement, and both introduce a scope that follows the [`let` vs. bare
-assignment](#bindings-and-scope) rule above.
+its [truth](#truth) — any value will do. The body is a scope, following the
+[`let` vs. bare assignment](#bindings-and-scope) rule above.
 
-A block may hold its statement on the same line — the `}` ends that
-statement, the way a newline does:
+A block may hold its one statement on the header's own line, after a comma:
 
-```
-if score ≥ 90 { return G { letter = "A" } }
-if score ≥ 80 { return G { letter = "B" } }
+```code
+if score ≥ 90, return G { letter = "A" }
+if score ≥ 80, return G { letter = "B" }
 return G { letter = "F" }
 ```
 
 which is what makes a run of guards writable. With no `else`, that run *is*
 the multi-way conditional here.
 
-Statements are separated by newlines and nothing else. There is no `;` — it
-was a second spelling of the same separator, never needed once a `}` could
-end a statement, and typing one now says so.
+**Indentation is structure only outside brackets.** Once inside `{`, `[` or
+`(`, the closer is what ends the construct, so a multi-line literal lays
+itself out however it reads best and nothing it does opens or closes a
+block:
+
+```code
+emit Store {
+    key = "user_" + email,
+    value = found
+} to store get written
+if not written
+    return Unavailable {}
+```
+
+Blank lines and comment-only lines never open or close a block either, so a
+comment can sit wherever it reads best. Indent with spaces: a tab is not a
+width, it is a request that every reader's editor agree about one.
+
+Statements are separated by newlines and nothing else — except that a comma
+separates two written on one line, which is the same comma the guard form
+above uses. There is no `;`, and typing one says so.
+
+An **empty body** has no spelling, because a block is a run of statements and
+an empty run is nothing at all. Write the nearest thing — a body that does
+nothing — after the comma.
 
 ### loop
 
@@ -509,10 +528,9 @@ One iteration construct, in three shapes.
 
 **Over a container** — an Array or an Object:
 
-```
-loop item over [10, 20, 30] {
+```code
+loop item over [10, 20, 30]
     ...
-}
 ```
 
 With two names, the first is the **key** and the second the value. The law is
@@ -520,28 +538,23 @@ With two names, the first is the **key** and the second the value. The law is
 and an object yields its field name:
 
 ```
-loop i, color over ["red", "green"] {   | i = 0, 1
+loop i, color over ["red", "green"]    | i = 0, 1
     ...
-}
-loop name, score over {alice = 10} {   | name = "alice"
+loop name, score over { alice = 10 }   | name = "alice"
     ...
-}
 ```
 
 Names right-align against `(key, value)`, so **one** name always binds the
 value, whichever container you are iterating.
 
-**Unbounded** — `loop { }` has no iterable and no bound; only `break` leaves
-it. This is how you write what other languages spell `while`:
+**Unbounded** — a bare `loop` has no iterable and no bound; only `break`
+leaves it. This is how you write what other languages spell `while`:
 
-```
+```code
 let i = 0
-loop {
+loop
     i = i + 1
-    if i = 5 {
-        break
-    }
-}
+    if i = 5, break
 ```
 
 **Accumulating** — `get name [= init]` declares a binding that starts at
@@ -549,19 +562,17 @@ loop {
 There is no separate collect form and no `yield`:
 
 ```
-loop x over [1, 2, 3] get sum = 0 {
+loop x over [1, 2, 3] get sum = 0
     sum = sum + x
-}
 assert sum = 6
 
-loop x over [1, 2, 3] get doubled = [] {
+loop x over [1, 2, 3] get doubled = []
     doubled += x * 2
-}
 assert doubled = [2, 4, 6]
 ```
 
 `break` exits the innermost loop, `continue` starts its next iteration. Both
-reach out through any number of enclosing `if`/block bodies — they act on the
+reach out through any number of enclosing `if` bodies — they act on the
 enclosing *loop*, not the enclosing block. Outside a loop, either is a parse
 error.
 
@@ -674,9 +685,8 @@ A handler is the only thing in the language that resembles a function, and
 provides its own; and a program can define its own with `=>`:
 
 ```
-Greet { who } => {
+Greet { who } =>
     return Greeting { text = "hi $who" }
-}
 
 emit Greet { who = "ada" } to this get r
 assert r ∈ Greeting
@@ -697,9 +707,8 @@ it has to match what the particle carries. The name the body reads it under
 is the reader's, and a body is entitled to a word that fits it:
 
 ```code
-DoChangePassword { email, current as current_password, password as new_password } => {
+DoChangePassword { email, current as current_password, password as new_password } =>
     ...
-}
 ```
 
 The sender still sends `current` and `password`. Renaming rather than
@@ -733,17 +742,14 @@ A handler may emit to another handler, but **no handler may re-enter one that
 is already running**: not itself, and not around a longer loop.
 
 ```
-Third { n } => {
+Third { n } =>
     return Done { value = n + 1 }
-}
-Second { n } => {
+Second { n } =>
     emit Third { n = n } to this get t
     return Done { value = t.value }
-}
-First { n } => {
+First { n } =>
     emit Second { n = n } to this get s
     return Done { value = s.value }
-}
 ```
 
 That chain is fine, and so is calling the same handler twice in a row or from
@@ -751,10 +757,9 @@ inside a loop — the first call has returned before the next begins. What is
 rejected is a cycle:
 
 ```
-Down { n } => {
+Down { n } =>
     emit Down { n = n - 1 } to this get inner   | error, before it runs:
     return Done { value = 0 }                   | handler cycle: Down -> Down
-}
 ```
 
 This is what keeps handler calls bounded. With no cycle, the deepest a chain
@@ -777,9 +782,8 @@ it happened in — which returns an `Exception` instead of whatever it meant to
 return.
 
 ```code
-Divide { a, b } => {
+Divide { a, b } =>
     return Quotient { value = a / b }
-}
 
 emit Divide { a = 10, b = 0 } to this get r
 assert r ∈ Exception
@@ -807,11 +811,10 @@ something you emitted to returns an `Exception` and you do not look, you carry
 on from where you were.
 
 ```code
-Outer { } => {
+Outer { } =>
     emit Divide { a = 1, b = 0 } to this get r   | r is an Exception
     emit Print { value = "still here" } to term   | and this still runs
     return Report { inner = r }                   | pass it on, or don't
-}
 ```
 
 Only the frame where the failure happened unwinds — which makes this a
@@ -888,10 +891,9 @@ That world is the module's, and it is where its handlers live:
 | counter.code
 let count = 0                     | private, and it survives the link
 
-Bump { by } => {
+Bump { by } =>
     count = count + by            | the file it was written in
     return Bumped { total = count }
-}
 ```
 
 ```
@@ -1061,12 +1063,11 @@ the name it binds is an ordinary variable holding an **address** rather than
 a compile-time alias — so it can be kept, passed around, and stored:
 
 ```
-Start { path } => {
+Start { path } =>
     link path as app              | the path is a value
     emit Ping { who = "ada" } to app get r
     unlink app                    | and it can be closed again
     return r
-}
 ```
 
 This is how one program holds another. Build an application with `--target
@@ -1145,16 +1146,14 @@ The host answers in its own handlers. A guest's `link` arrives as
 `Module { app, name, particle }`:
 
 ```
-Offer { app, name } => {
-    if name = "net_server" { return Offered { } }
+Offer { app, name } =>
+    if name = "net_server",  return Offered { }
     return Denied { }
-}
 
-Module { app, name, particle } => {
-    if particle._class = "Listen" { return ListenResult { ok = true, port = 0 } }
+Module { app, name, particle } =>
+    if particle._class = "Listen",  return ListenResult { ok = true, port = 0 }
     emit particle to net get answer
     return answer
-}
 ```
 
 `app` says which guest is asking, so one may be offered what another is
@@ -1180,11 +1179,10 @@ program?**
 ```
 emit Linked to core get me
 
-if me.value {
+if me.value
     link "membrane.so" as door        | a module: my linker stands behind it
-} else {
+if not me.value
     link "net_server.so" as door      | the program: open the port
-}
 ```
 
 One source, one binary each way, both lives — `link` inside an `if` is what
@@ -1232,9 +1230,8 @@ program's own handlers, not back into the module:
 ```
 link "native_modules/events.so" as ev
 
-Tick { value } => {
+Tick { value } =>
     ...
-}
 
 emit Start { value = 3 } to ev get started   | module queues three Ticks
 | by here they have all been handled
@@ -1248,9 +1245,8 @@ so a module can ask a question rather than only announce something:
 ```
 link "http_server.so" as srv
 
-Request { method, path } => {
+Request { method, path } =>
     return Response { status = 200, body = "hi from $path" }
-}
 
 emit Config { port = 8080 } to srv get _
 emit Listen { } to srv get l
@@ -1281,9 +1277,8 @@ something else is putting them there:
 ```
 link "modules/timer.so" as timer
 
-Tick { value } => {
+Tick { value } =>
     ...
-}
 
 emit Start { value = 3 } to timer get started
 ```
@@ -1319,9 +1314,9 @@ field, as `http_client` has: nothing in the ABI can stop a module that blocks
 forever inside a dispatch. **Expect a backlog** — while one module is parked,
 another's pushes queue up behind it, and past 256 the oldest are dropped.
 
-`loop { }` still works and still means what it always did, for a program that
-wants to drive its own iterations. It also still spins a core, exactly as
-`loop {}` does in Rust.
+A bare `loop` still works and still means what it always did, for a program
+that wants to drive its own iterations. It also still spins a core, exactly
+as `loop {}` does in Rust.
 
 The drain stops at a handler's edge. A loop inside a handler does not drain,
 because handing a particle over while a handler is running is re-entry, and
@@ -1349,9 +1344,8 @@ something the host adds. It exists so one handler can serve every module
 without naming any of them:
 
 ```code
-Log { source, level, message } => {
+Log { source, level, message } =>
     emit Print { value = "[$source] $message" } to term
-}
 ```
 
 That handler works for `http_client` today and for a module written next year, with
@@ -1466,7 +1460,10 @@ Each of these is a decision, not an omission waiting to be filled:
   one; there are no parameters lists, no return-type declarations, and no
   way to hold one as a value.
 - **No `else`.** Write a second `if`.
-- **No `while`.** `loop { }` with `break` is the unbounded loop.
+- **No `while`.** A bare `loop` with `break` is the unbounded loop.
+- **No bare block.** A scope comes with a header — `if`, `loop`, or a
+  handler. `{ }` is an object and never a scope, which is what makes every
+  brace in a file mean one thing.
 - **No mutation of a constructed value.** `.field`/`[index]` read only;
   rebuild the value instead.
 - **No type checking.** There are no type keywords, and a declaration that

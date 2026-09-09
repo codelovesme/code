@@ -1,4 +1,5 @@
-| A handler defined in the language itself: `ClassName { fields } => { body }`
+| A handler defined in the language itself: `ClassName { fields } =>` and
+| an indented body,
 | at the top level, invoked by emitting a particle of that class `to this`.
 | Until now a handler could only live in C (core) or a native module.
 |

@@ -143,7 +143,7 @@ fn wasm_nested_handlers_have_room_for_live_temporaries() {
     let source = dir.join("depth.code");
     let mut program = String::new();
     for i in 0..32 {
-        program.push_str(&format!("Hop{i} {{}} => {{\n    let values = ["));
+        program.push_str(&format!("Hop{i} {{}} =>\n    let values = ["));
         program.push_str(
             &(0..32)
                 .map(|n| n.to_string())
@@ -155,7 +155,7 @@ fn wasm_nested_handlers_have_room_for_live_temporaries() {
             program.push_str(&format!("    emit Hop{} {{}} to this get r\n", i + 1));
             program.push_str("    assert r.value = 42\n");
         }
-        program.push_str("    assert values[31] = 31\n    return Answer { value = 42 }\n}\n");
+        program.push_str("    assert values[31] = 31\n    return Answer { value = 42 }\n");
     }
     program.push_str("emit Hop0 {} to this get r\nassert r.value = 42\n");
     fs::write(&source, program).expect("write nested handlers");

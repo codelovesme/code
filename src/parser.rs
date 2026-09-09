@@ -10,32 +10,11 @@ fn starts_uppercase(name: &str) -> bool {
 }
 
 pub fn parse(lexed: &Lexed) -> Result<Program, Located> {
-    parse_recording_block_braces(lexed).map(|(program, _)| program)
-}
-
-/// `parse`, plus the char offsets of every `{`/`}` pair that opened and
-/// closed a **block** in the brace form the language is migrating off.
-///
-/// Temporary, and only the migration reads it. Telling a block's braces from
-/// an object's is not something a token walk can do — the two are the same
-/// character in the same shape — but the parser has already decided it by the
-/// time it consumes them, so it says so rather than making the migration
-/// guess. AGENTS.md's rule about never `sed`-ing a syntax migration is the
-/// same rule; this is what it looks like for braces.
-pub fn parse_recording_block_braces(
-    lexed: &Lexed,
-) -> Result<(Program, Vec<BlockBraces>), Located> {
     let mut p = Parser::new(lexed);
     // Every error site below stays a plain `String`; the position is attached
     // once, here, from wherever the parser had got to. That's what keeps
     // locations from having to be threaded through two dozen error sites.
-    match p.program() {
-        Ok(program) => {
-            let braces = std::mem::take(&mut p.block_braces);
-            Ok((program, braces))
-        }
-        Err(msg) => Err(p.locate(msg)),
-    }
+    p.program().map_err(|msg| p.locate(msg))
 }
 
 struct Parser<'a> {
@@ -66,23 +45,6 @@ struct Parser<'a> {
     /// without either needing its own pass. A flag rather than a count:
     /// handler definitions are top-level only, so they never nest.
     in_handler: bool,
-    /// Char offsets of the `{`/`}` pairs that opened and closed a block in
-    /// the old brace form — see `parse_recording_block_braces`. Empty for a
-    /// file already written with indentation, which is every file once the
-    /// migration has run.
-    block_braces: Vec<BlockBraces>,
-}
-
-/// One block written in the brace form: where its `{` and `}` sit, and
-/// whether a `=>` introduced it. The migration needs the last part because a
-/// one-line body loses its braces differently on either side of the arrow —
-/// `=>` already separates a handler from its body, while `if` and `loop` end
-/// in an expression and take the comma instead.
-#[derive(Debug, Clone, Copy)]
-pub struct BlockBraces {
-    pub open: u32,
-    pub close: u32,
-    pub after_arrow: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -95,7 +57,6 @@ impl<'a> Parser<'a> {
             loop_depth: 0,
             block_depth: 0,
             in_handler: false,
-            block_braces: Vec::new(),
         }
     }
 
@@ -278,14 +239,6 @@ impl<'a> Parser<'a> {
             let value = self.expr()?;
             self.expect_end_of_statement()?;
             return Ok(Stmt::Return(value));
-        }
-
-        // A bare block, in the brace form only — it has no indentation
-        // spelling and is going away with the braces. Temporary.
-        if matches!(self.peek(), Token::LBrace) {
-            let body = self.block(false)?;
-            self.expect_end_of_statement()?;
-            return Ok(Stmt::Block(body));
         }
 
         if matches!(self.peek(), Token::Unlink) {
@@ -665,36 +618,6 @@ impl<'a> Parser<'a> {
     /// writable, and with no `else` in the language a run of guards *is* the
     /// multi-way conditional (see the README).
     fn block(&mut self, after_arrow: bool) -> Result<Vec<Stmt>, String> {
-        // The brace form, still accepted while the corpus migrates off it.
-        // Recorded rather than merely tolerated: these offsets are how the
-        // migration knows which braces were a block's and not an object's.
-        if matches!(self.peek(), Token::LBrace) {
-            let open = self.starts[self.pos];
-            self.advance();
-            self.skip_newlines();
-            let mut statements = Vec::new();
-            self.block_depth += 1;
-            while !matches!(self.peek(), Token::RBrace | Token::Eof) {
-                match self.statement() {
-                    Ok(stmt) => statements.push(stmt),
-                    Err(e) => {
-                        self.block_depth -= 1;
-                        return Err(e);
-                    }
-                }
-                self.skip_newlines();
-            }
-            self.block_depth -= 1;
-            let close = self.starts[self.pos];
-            self.advance(); // '}'
-            self.block_braces.push(BlockBraces {
-                open,
-                close,
-                after_arrow,
-            });
-            return Ok(statements);
-        }
-
         let same_line = if matches!(self.peek(), Token::Comma) {
             self.advance();
             true
@@ -754,9 +677,6 @@ impl<'a> Parser<'a> {
         match self.peek() {
             Token::Newline | Token::Eof => Ok(()),
             Token::Dedent if self.block_depth > 0 => Ok(()),
-            // Temporary, for as long as the brace form is still accepted:
-            // a one-line `if x { return Y }` ends its statement at the `}`.
-            Token::RBrace if self.block_depth > 0 => Ok(()),
             // `else` lands here rather than at the start of a statement,
             // because the dedent it follows has already closed the `if` body.
             // Worth naming for the same reason the others are: the README

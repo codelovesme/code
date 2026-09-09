@@ -143,25 +143,20 @@ fn a_particle_crosses_the_wire_and_a_handler_chain_answers_it() {
             format!(
                 r#"link "net_server.so" as net
 
-Ping {{ value }} => {{
+Ping {{ value }} =>
     return Pong {{ value = value + 1 }}
-}}
-Destination {{ app }} => {{
+Destination {{ app }} =>
     return Arrived {{ app = app }}
-}}
 
-Authenticated {{ user, particle }} => {{
+Authenticated {{ user, particle }} =>
     emit particle to this get inner
     return Answered {{ user = user, inner = inner }}
-}}
 
-Impulse {{ token, app, particle }} => {{
-    if token = "" {{
+Impulse {{ token, app, particle }} =>
+    if token = ""
         return Denied {{ reason = "no token" }}
-    }}
     emit Authenticated {{ user = "u-" + token, particle = particle }} to this get r
     return r
-}}
 
 emit Config {{ port = {port} }} to net get c
 assert c.ok
@@ -291,15 +286,13 @@ fn the_server_idles_at_nothing_and_stop_ends_it_over_the_wire() {
             format!(
                 r#"link "net_server.so" as net
 
-Ping {{ }} => {{
+Ping {{ }} =>
     return Pong {{ }}
-}}
 
-Quit {{ }} => {{
+Quit {{ }} =>
     emit Stop {{ }} to net get s
     assert s.ok
     return Bye {{ }}
-}}
 
 emit Config {{ port = {port} }} to net get c
 assert c.ok
@@ -406,9 +399,8 @@ fn several_senders_at_once_are_each_answered() {
         format!(
             r#"link "net_server.so" as net
 
-Echo {{ n }} => {{
+Echo {{ n }} =>
     return Echoed {{ n = n }}
-}}
 
 emit Config {{ port = {port} }} to net get c
 assert c.ok
@@ -499,11 +491,10 @@ fn a_stalled_connection_cannot_hold_the_program_open() {
         format!(
             r#"link "net_server.so" as net
 
-Quit {{ }} => {{
+Quit {{ }} =>
     emit Stop {{ }} to net get s
     assert s.ok
     return Bye {{ }}
-}}
 
 emit Config {{ port = {port}, response_timeout_seconds = 2 }} to net get c
 assert c.ok

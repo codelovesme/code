@@ -1,3 +1,2 @@
-Change { email, current as email } => {
+Change { email, current as email } =>
     return R { value = email }
-}

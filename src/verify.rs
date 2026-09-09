@@ -158,12 +158,6 @@ fn verify_stmts(
                 scopes.pop();
                 result?
             }
-            Stmt::Block(body) => {
-                scopes.push(HashSet::new());
-                let result = verify_stmts(body, scopes, natives, depth);
-                scopes.pop();
-                result?;
-            }
             Stmt::Loop { over, result, body } => {
                 // Both the iterable and the accumulator's initial value are
                 // evaluated in the *enclosing* scope, before the loop

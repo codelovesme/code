@@ -84,9 +84,9 @@ fn an_undefined_name_is_refused_before_the_program_starts() {
 /// someone decided to pay for it, not by accident.
 #[test]
 fn a_nested_failure_reports_the_enclosing_top_level_statement() {
-    let err = error_from("let xs = [1, 2, 3]\nloop x over xs {\n  assert x < 3\n}\n");
+    let err = error_from("let xs = [1, 2, 3]\nloop x over xs\n    assert x < 3\n");
     assert!(
-        err.contains(":2:1") && err.contains("2 | loop x over xs {"),
+        err.contains(":2:1") && err.contains("2 | loop x over xs"),
         "expected the enclosing `loop` on line 2, not the inner assert on line 3:\n{err}"
     );
 }

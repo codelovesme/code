@@ -1112,7 +1112,6 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                 Ok(Flow::Normal)
             }
         }
-        Stmt::Block(body) => exec_scoped_body(body, env),
         Stmt::Loop { over, result, body } => {
             // The accumulator is an ordinary binding in the scope *around*
             // the loop, created before the first iteration — which is what

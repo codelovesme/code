@@ -176,7 +176,6 @@ fn links_at_runtime(stmts: &[Stmt]) -> bool {
         Stmt::LinkRuntime { .. } => true,
         Stmt::HandlerDef { body, .. }
         | Stmt::If { body, .. }
-        | Stmt::Block(body)
         | Stmt::Loop { body, .. }
         | Stmt::Import { body, .. } => links_at_runtime(body),
         _ => false,
@@ -221,7 +220,7 @@ fn reject_wasm_native_links(stmts: &[Stmt]) -> Result<(), String> {
                      links into the same module, or supply it from the host"
                 ));
             }
-            Stmt::Import { body, .. } | Stmt::Block(body) | Stmt::If { body, .. } => {
+            Stmt::Import { body, .. } | Stmt::If { body, .. } => {
                 reject_wasm_native_links(body)?;
             }
             Stmt::Loop { body, .. } => reject_wasm_native_links(body)?,
@@ -2391,7 +2390,6 @@ impl<'a, 'm> Gen<'a, 'm> {
                 Ok(())
             }
             Stmt::If { condition, body } => self.gen_if(condition, body),
-            Stmt::Block(body) => self.gen_block(body),
             Stmt::Loop { over, result, body } => {
                 self.gen_loop(over.as_ref(), result.as_ref(), body)
             }
@@ -2657,17 +2655,6 @@ impl<'a, 'm> Gen<'a, 'm> {
             var_slot,
             key_slot,
         })
-    }
-
-    /// Unconditional version of `gen_if`'s scope handling, minus the
-    /// condition/branch — always runs, so needs no basic blocks at all.
-    fn gen_block(&mut self, body: &[Stmt]) -> Result<(), String> {
-        self.env.push(HashMap::new());
-        for stmt in body {
-            self.gen_stmt(stmt)?;
-        }
-        self.env.pop();
-        Ok(())
     }
 
     /// A resolved `link`. The module's body runs in a world of its own, and

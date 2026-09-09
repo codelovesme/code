@@ -117,6 +117,15 @@ needs one · `tests/<name>_module.rs` integration test.
   Arrays stay positional. `preserve_order` on a module's `serde_json::Map` is
   still worth having — `loop` and printing show the order — but it is no longer
   the difference between `assert v = { a, b }` passing and failing.
+- **A block is an indented run of lines, from 2026-09-09.** There are no
+  braces on it; `{ }` is an object and nothing else. The lexer emits
+  `Indent`/`Dedent` **outside brackets only** — inside `{`, `[`, `(` the
+  closer ends the construct, which is what keeps a multi-line literal free to
+  lay itself out. A one-statement body goes on the header's line after a
+  comma (`if x, return Y`); after `=>` it needs no comma. There is no bare
+  block and no empty body. Four places count a block's depth and must stay in
+  step: `src/lexer.rs`, `src/parser.rs`'s `block`, `src/format.rs`'s
+  `push_token`, and `crates/code-lsp/src/tokens.rs`.
 - **The comment marker is `|`, from 2.0.0.** Hard change, no transitional `--`;
   `--` now lexes as two `Minus` tokens. Three places recover comments from
   inter-token gaps and must stay in step: `src/lexer.rs`, `src/format.rs`'s

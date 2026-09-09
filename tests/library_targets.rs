@@ -37,9 +37,8 @@ export let n = 42
 
 let greeting = "hello "
 
-Greet { who } => {
+Greet { who } =>
     return Reply { text = greeting + who }
-}
 "#;
 
 /// What a consumer asserts about the module above, whichever way it linked
@@ -226,7 +225,7 @@ fn a_module_with_no_exports_omits_the_vars_entry_point() {
     let archive = build(
         &dir,
         "lib",
-        "Ping { } => {\n    return Pong { ok = true }\n}\n",
+        "Ping { } =>\n    return Pong { ok = true }\n",
         code::BuildTarget::Static,
         "lib.a",
     );
@@ -324,14 +323,14 @@ fn two_shared_libraries_do_not_answer_for_each_other() {
     build(
         &dir,
         "one",
-        "export let who = \"one\"\n\nName { } => {\n    return Named { who = who }\n}\n",
+        "export let who = \"one\"\n\nName { } =>\n    return Named { who = who }\n",
         code::BuildTarget::Shared,
         "one.so",
     );
     build(
         &dir,
         "two",
-        "export let who = \"two\"\n\nName { } => {\n    return Named { who = who }\n}\n",
+        "export let who = \"two\"\n\nName { } =>\n    return Named { who = who }\n",
         code::BuildTarget::Shared,
         "two.so",
     );

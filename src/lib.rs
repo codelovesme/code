@@ -7,7 +7,6 @@ pub mod interpreter;
 pub mod lexer;
 pub mod loader;
 #[cfg(feature = "install")]
-pub mod migrate;
 pub mod module_install;
 #[cfg(feature = "native-modules")]
 pub mod native;

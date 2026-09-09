@@ -154,15 +154,12 @@ fn a_handlers_return_value_is_the_http_response() {
     // answer to a request never reaches the program at all.
     let program = r#"link "http_server.so" as srv
 
-Request { method, path, query, body } => {
-    if path = "/echo" {
+Request { method, path, query, body } =>
+    if path = "/echo"
         return Response { status = 201, body = body }
-    }
-    if path = "/query" {
+    if path = "/query"
         return Response { status = 200, body = query }
-    }
     return Response { status = 200, body = "$method $path" }
-}
 
 emit Config { port = PORT } to srv get c
 assert c.ok
@@ -170,8 +167,7 @@ emit Listen { } to srv get l
 assert l.ok
 assert l.port = PORT
 
-loop {
-}
+loop, assert true
 "#;
     serving("answers", program, |port, _pid| {
         let r = request(port, "GET", "/hello", "");
@@ -200,34 +196,26 @@ fn request_headers_reach_the_handler_by_lowercased_name() {
     // differently for it. Header names are lowercased; a repeat is joined.
     let program = r#"link "http_server.so" as srv
 
-Request { method, path, headers } => {
-    if path = "/whoami" {
-        if headers.authorization = "Bearer let-me-in" {
+Request { method, path, headers } =>
+    if path = "/whoami"
+        if headers.authorization = "Bearer let-me-in"
             return Response { status = 200, body = "welcome" }
-        }
         return Response { status = 401, body = "no" }
-    }
-    if path = "/type" {
-        if headers["content-type"] = "application/json" {
+    if path = "/type"
+        if headers["content-type"] = "application/json"
             return Response { status = 200, body = "json" }
-        }
         return Response { status = 200, body = "other" }
-    }
-    if path = "/accept" {
-        if headers.accept = "text/html, application/json" {
+    if path = "/accept"
+        if headers.accept = "text/html, application/json"
             return Response { status = 200, body = "joined" }
-        }
         return Response { status = 200, body = "not joined" }
-    }
     return Response { status = 200, body = "ok" }
-}
 
 emit Config { port = PORT } to srv get c
 emit Listen { } to srv get l
 assert l.ok
 
-loop {
-}
+loop, assert true
 "#;
     serving("headers", program, |port, _pid| {
         let r = request_with(
@@ -285,8 +273,7 @@ emit Config { port = PORT } to srv get c
 emit Listen { } to srv get l
 assert l.ok
 
-loop {
-}
+loop, assert true
 "#;
     serving("unhandled", program, |port, _pid| {
         let r = request(port, "GET", "/anything", "");
@@ -302,9 +289,8 @@ fn config_is_frozen_once_listening() {
     // request is made.
     let program = r#"link "http_server.so" as srv
 
-Request { method, path } => {
+Request { method, path } =>
     return Response { status = 200, body = "up" }
-}
 
 emit Config { port = PORT } to srv get c
 assert c.ok
@@ -314,8 +300,7 @@ assert l.ok
 emit Config { port = 1 } to srv get late
 assert late ∈ Exception
 
-loop {
-}
+loop, assert true
 "#;
     serving("config-frozen", program, |port, _pid| {
         assert_eq!(status_of(&request(port, "GET", "/", "")), 200);
@@ -354,9 +339,8 @@ fn cpu_seconds(pid: u32) -> f64 {
 fn a_program_with_no_loop_keeps_serving_while_the_module_does() {
     let program = r#"link "http_server.so" as srv
 
-Request { method, path, query, body } => {
+Request { method, path, query, body } =>
     return Response { status = 200, body = "pong" }
-}
 
 emit Config { port = PORT } to srv get c
 assert c.ok
@@ -391,14 +375,12 @@ assert l.ok
 fn stop_ends_the_program_by_itself() {
     let program = r#"link "http_server.so" as srv
 
-Request { method, path, query, body } => {
-    if path = "/quit" {
+Request { method, path, query, body } =>
+    if path = "/quit"
         emit Stop { } to srv get s
         assert s.ok
         return Response { status = 200, body = "bye" }
-    }
     return Response { status = 200, body = "pong" }
-}
 
 emit Config { port = PORT } to srv get c
 assert c.ok

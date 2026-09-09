@@ -146,13 +146,11 @@ fn every_method_against_a_real_server() {
 let logs = 0
 let exceptions = 0
 
-Log {{ source, level, message }} => {{
+Log {{ source, level, message }} =>
     logs = logs + 1
-}}
 
-Exception {{ source, message }} => {{
+Exception {{ source, message }} =>
     exceptions = exceptions + 1
-}}
 
 emit Get {{ url = "http://127.0.0.1:{port}/hello" }} to http get r
 assert r.ok

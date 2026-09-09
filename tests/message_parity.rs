@@ -51,7 +51,7 @@ const CASES: &[(&str, &str)] = &[
         "assert_exception",
         "emit Length { value = 5 } to core get bad\nassert bad\n",
     ),
-    ("loop_operand", "loop x over 5 {\n    assert true\n}\n"),
+    ("loop_operand", "loop x over 5\n    assert true\n"),
     ("field_on_non_object", "let a = 1\nlet b = a.name\n"),
     // Nested failures, where the location is the *enclosing* top-level
     // statement rather than the line that failed — the accepted imprecision
@@ -59,11 +59,11 @@ const CASES: &[(&str, &str)] = &[
     // have to be imprecise in the same place.
     (
         "nested_in_loop",
-        "let xs = [1, 2]\nloop x over xs {\n    assert x = 1\n}\n",
+        "let xs = [1, 2]\nloop x over xs\n    assert x = 1\n",
     ),
     (
         "nested_in_if",
-        "let a = 1\nif a = 1 {\n    assert a = 2\n}\n",
+        "let a = 1\nif a = 1\n    assert a = 2\n",
     ),
     ("index_non_container", "let a = 1\nlet b = a[0]\n"),
     ("emit_non_particle", "emit 5 to core get r\n"),

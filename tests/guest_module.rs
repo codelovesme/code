@@ -56,49 +56,38 @@ link "timer.a" as clock
 
 | Asked once, the first time a guest reaches for a module. `notes` is not
 | mentioned at all, so it keeps its own of everything.
-Offer { app, name } => {
-    if app = "mail" {
-        if name = "storage" {
+Offer { app, name } =>
+    if app = "mail"
+        if name = "storage"
             return Denied { }
-        }
-        if name = "router" {
+        if name = "router"
             return Offered { }
-        }
-    }
-}
 
 | Everything sent to a module this host took.
-Module { app, name, particle } => {
+Module { app, name, particle } =>
     return RouteResult { value = "/from-the-host" }
-}
 
-Loaded { app } => {
+Loaded { app } =>
     emit Print { value = "loaded $app" } to out
-}
 
-Exception { source, message } => {
+Exception { source, message } =>
     emit Print { value = "heard from $source: $message" } to out
-}
 
-Open { app, url, into } => {
+Open { app, url, into } =>
     emit Load { app = app, url = url, into = into } to guest get r
     return r
-}
 
-Close { app } => {
+Close { app } =>
     emit Unload { app = app } to guest get r
     return r
-}
 
-Say { app, text } => {
+Say { app, text } =>
     emit Tell { app = app, particle = Show { text = text } } to guest get r
     return r
-}
 
-Trip { app } => {
+Trip { app } =>
     emit Tell { app = app, particle = Break { } } to guest get r
     return r
-}
 "##;
 
 /// The application. Nothing in it knows whether it is the page or is running
@@ -114,27 +103,23 @@ link "timer.a" as clock
 
 | Drawn later, so that letting the guest go in between proves that a stopped
 | guest is really stopped.
-Later { text } => {
+Later { text } =>
     emit Render { into = "body", tree = { tag = "p", children = [text] } } to dom get r
     return Drawn { ok = r.ok }
-}
 
-Show { text } => {
+Show { text } =>
     emit Delay { ms = 30, then = Later { text = text } } to clock get d
     return Shown { }
-}
 
 | A handler that trips over nothing in particular. Told, not asked — so the
 | answer nobody is holding has to reach the host some other way.
-Break { } => {
+Break { } =>
     emit Whatever { } to out get nobody
     return Nothing { value = nobody.value }
-}
 
 emit Set { key = "token", value = "abc" } to store get s
-if s ∈ Exception {
+if s ∈ Exception
     emit Print { value = "storage: $s.message" } to out
-}
 
 emit Route { } to router get where
 emit Print { value = "route: $where.value" } to out
@@ -469,10 +454,9 @@ fn where_answers_the_pages_own_address() {
         &src,
         r#"link "router.a" as router
 
-Whereabouts { } => {
+Whereabouts { } =>
     emit Where { } to router get w
     return w
-}
 "#,
     )
     .expect("write the fixture");
@@ -555,20 +539,16 @@ link "net_client.a" as net
 link "timer.a" as clock
 let read_answer = false
 let continued = false
-Reply {} => {
+Reply {} =>
     emit Delay { ms = 1, then = Later {} } to clock get d
     read_answer = d.value > 0
     emit Continue {} to this
-}
-Continue {} => {
+Continue {} =>
     continued = true
-}
-Later {} => {
+Later {} =>
     continued = continued and read_answer
-}
-Status {} => {
+Status {} =>
     return StatusResult { read_answer = read_answer, continued = continued }
-}
 emit Config { url = "http://example.test:80/" } to net get configured
 assert configured.ok
 emit Send { particle = Ping {} } to net get sent
@@ -625,8 +605,8 @@ fn browser_clients_keep_configuration_per_linked_alias() {
 link "net_client.a" as auth
 link "net_client.a" as ping
 let replies = 0
-Reply {} => { replies = replies + 1 }
-Status {} => { return StatusResult { replies = replies } }
+Reply {} =>  replies = replies + 1
+Status {} =>  return StatusResult { replies = replies }
 emit Send { particle = Ping {} } to auth get unconfigured
 assert unconfigured ∈ Exception
 emit Config { url = "http://example.test:80/auth" } to auth get a

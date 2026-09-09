@@ -27,9 +27,8 @@ const GUEST_SOURCE: &str = r#"let greeting = "hello " + ""
 let history = [1, 2, 3]
 export let name = "gu" + "est"
 
-Ping { who } => {
+Ping { who } =>
     return Pong { text = greeting + who, seen = history }
-}
 "#;
 
 fn temp_dir(tag: &str) -> PathBuf {
@@ -157,12 +156,11 @@ fn a_guest_answers_the_same_hosted_or_alone() {
     // `.so` while it was running.
     fs::write(
         dir.join("main.code"),
-        r#"Ask { path } => {
+        r#"Ask { path } =>
     link path as app
     emit Ping { who = "world" } to app get r
     unlink app
     return r
-}
 
 emit Ask { path = "guest.so" } to this get r
 assert r.text = "hello world"
@@ -200,17 +198,15 @@ fn stopping_a_guest_reclaims_its_memory() {
         dir.join("main.code"),
         r#"| Started and stopped repeatedly: if stopping leaked, doing it many
 | times is where it would show.
-Cycle { path } => {
+Cycle { path } =>
     link path as app
     emit Ping { who = "x" } to app get r
     unlink app
     return r
-}
 
-loop i over [1, 2, 3, 4, 5] {
+loop i over [1, 2, 3, 4, 5]
     emit Cycle { path = "guest.so" } to this get r
     assert r.text = "hello x"
-}
 "#,
     )
     .expect("write host");
@@ -248,28 +244,24 @@ fn two_guests_are_held_and_stopped_independently() {
         r#"let a = null
 let b = null
 
-Start { } => {
+Start { } =>
     link "a.so" as one
     a = one
     link "b.so" as two
     b = two
     return Started { }
-}
 
-AskA { who } => {
+AskA { who } =>
     emit Ping { who = who } to a get r
     return r
-}
 
-AskB { who } => {
+AskB { who } =>
     emit Ping { who = who } to b get r
     return r
-}
 
-StopA { } => {
+StopA { } =>
     unlink a
     return Stopped { }
-}
 
 emit Start { } to this get s
 assert s._class = "Started"
@@ -320,11 +312,10 @@ fn a_guest_still_linked_at_exit_is_released_anyway() {
         dir.join("main.code"),
         r#"let app = null
 
-Start { } => {
+Start { } =>
     link "guest.so" as a
     app = a
     return Started { }
-}
 
 emit Start { } to this get s
 assert s._class = "Started"
@@ -352,10 +343,9 @@ fn a_guest_reaches_the_hosts_modules_not_its_own() {
 
     const GUEST: &str = r#"link "native_modules/test_math.so" as m
 
-Work { value } => {
+Work { value } =>
     emit Double { value = value } to m get d
     return Done { value = d.value }
-}
 "#;
     build(&dir, "guest", GUEST, code::BuildTarget::Shared, "guest.so");
 
@@ -382,22 +372,19 @@ Work { value } => {
     // difference.
     fs::write(
         dir.join("main.code"),
-        r#"Offer { app, name } => {
-    if name = "test_math" { return Offered { } }
+        r#"Offer { app, name } =>
+    if name = "test_math",  return Offered { }
     return Denied { }
-}
 
-Module { app, name, particle } => {
-    if particle._class = "Double" { return DoubleResult { value = particle.value * 10 } }
+Module { app, name, particle } =>
+    if particle._class = "Double",  return DoubleResult { value = particle.value * 10 }
     return Denied { }
-}
 
-Run { } => {
+Run { } =>
     link "./guest.so" as app
     emit Work { value = 3 } to app get r
     unlink app
     return r
-}
 
 emit Run { } to this get r
 assert r.value = 30
@@ -432,10 +419,9 @@ fn a_refused_module_refuses_rather_than_ending_the_host() {
         "guest",
         r#"link "native_modules/test_math.so" as m
 
-Work { value } => {
+Work { value } =>
     emit Double { value = value } to m get d
     return Done { answer = d._class, message = d.message }
-}
 "#,
         code::BuildTarget::Shared,
         "guest.so",
@@ -443,16 +429,14 @@ Work { value } => {
     fs::write(
         dir.join("main.code"),
         r#"| Offers nothing at all.
-Offer { app, name } => {
+Offer { app, name } =>
     return Denied { }
-}
 
-Run { } => {
+Run { } =>
     link "./guest.so" as app
     emit Work { value = 3 } to app get r
     unlink app
     return r
-}
 
 | The host is still here to ask, which is the point.
 emit Run { } to this get r
@@ -483,10 +467,9 @@ fn a_host_may_offer_one_guest_what_it_denies_another() {
 
     const ASKS: &str = r#"link "native_modules/test_math.so" as m
 
-Work { value } => {
+Work { value } =>
     emit Double { value = value } to m get d
     return Done { answer = d._class }
-}
 "#;
     build(
         &dir,
@@ -499,21 +482,18 @@ Work { value } => {
 
     fs::write(
         dir.join("main.code"),
-        r#"Offer { app, name } => {
-    if app = "./trusted.so" { return Offered { } }
+        r#"Offer { app, name } =>
+    if app = "./trusted.so",  return Offered { }
     return Denied { }
-}
 
-Module { app, name, particle } => {
+Module { app, name, particle } =>
     return DoubleResult { value = 1 }
-}
 
-Ask { path } => {
+Ask { path } =>
     link path as a
     emit Work { value = 3 } to a get r
     unlink a
     return r
-}
 
 emit Ask { path = "./trusted.so" } to this get yes
 assert yes.answer = "DoubleResult"
@@ -551,10 +531,9 @@ fn a_host_sees_an_module_by_name_whatever_path_the_guest_carries() {
         "guest",
         r#"link ".code/modules/test_math/9.9.9/test_math-linux-x86_64.so" as m
 
-Work { value } => {
+Work { value } =>
     emit Double { value = value } to m get d
     return Done { value = d.value }
-}
 "#,
         code::BuildTarget::Shared,
         "guest.so",
@@ -562,22 +541,19 @@ Work { value } => {
     fs::write(
         dir.join("main.code"),
         r#"| Matches the plain name, and never sees the version or the platform.
-Offer { app, name } => {
-    if name = "test_math" { return Offered { } }
+Offer { app, name } =>
+    if name = "test_math",  return Offered { }
     return Denied { }
-}
 
-Module { app, name, particle } => {
-    if name = "test_math" { return DoubleResult { value = particle.value * 10 } }
+Module { app, name, particle } =>
+    if name = "test_math",  return DoubleResult { value = particle.value * 10 }
     return Denied { }
-}
 
-Run { } => {
+Run { } =>
     link "./guest.so" as app
     emit Work { value = 3 } to app get r
     unlink app
     return r
-}
 
 emit Run { } to this get r
 assert r.value = 30
@@ -618,18 +594,15 @@ fn a_guest_owns_its_modules_and_hears_them() {
 
 export let heard = false
 
-Work { } => {
+Work { } =>
     emit Get { url = "http://127.0.0.1:1/" } to web get r
     return Done { ok = r.ok }
-}
 
-Heard { } => {
+Heard { } =>
     return Answer { heard = heard }
-}
 
-Exception { source, message } => {
+Exception { source, message } =>
     heard = true
-}
 "#,
         code::BuildTarget::Shared,
         "guest.so",
@@ -640,21 +613,18 @@ Exception { source, message } => {
 | below opens its own module rather than being furnished one.
 let app = null
 
-Start { } => {
+Start { } =>
     link "./guest.so" as a
     app = a
     return Started { }
-}
 
-Work { } => {
+Work { } =>
     emit Work { } to app get done
     return done
-}
 
-Ask { } => {
+Ask { } =>
     emit Heard { } to app get a
     return a
-}
 
 emit Start { } to this get s
 assert s._class = "Started"
@@ -702,16 +672,14 @@ fn an_application_that_is_still_working_is_not_unloaded() {
         r#"| An application that owns a real door, and knows how to shut it.
 link "native_modules/net_server.so" as door
 
-Impulse { particle } => {
+Impulse { particle } =>
     return Pong { }
-}
 
 | What a host says when it is stopping this application. Only this
 | application knows what it opened, so only it can close it.
-Closing { } => {
+Closing { } =>
     emit Stop { } to door get s
     return Closed { ok = s.ok }
-}
 
 emit Config { port = 0 } to door get c
 emit Listen { } to door get l
@@ -724,22 +692,19 @@ assert l.ok
         dir.join("main.code"),
         r#"let app = null
 
-Start { } => {
+Start { } =>
     link "./guest.so" as a
     app = a
     emit Wake { } to a get _
     return Started { }
-}
 
-TryStop { } => {
+TryStop { } =>
     unlink app
     return Stopped { }
-}
 
-Close { } => {
+Close { } =>
     emit Closing { } to app get c
     return c
-}
 
 emit Start { } to this get s
 assert s._class = "Started"
@@ -790,10 +755,9 @@ fn a_stopped_application_starts_again_and_comes_back_new() {
 let seen = 0
 let greeting = "hello " + ""
 
-Work { } => {
+Work { } =>
     seen = seen + 1
     return Done { seen = seen, greeting = greeting }
-}
 "#,
         code::BuildTarget::Shared,
         "guest.so",
@@ -802,21 +766,18 @@ Work { } => {
         dir.join("main.code"),
         r#"let app = null
 
-Start { } => {
+Start { } =>
     link "./guest.so" as a
     app = a
     return Started { }
-}
 
-Ask { } => {
+Ask { } =>
     emit Work { } to app get r
     return r
-}
 
-Stop { } => {
+Stop { } =>
     unlink app
     return Stopped { }
-}
 
 emit Start { } to this get _
 emit Ask { } to this get _
@@ -868,11 +829,10 @@ fn an_application_can_ask_which_kind_of_build_it_is() {
     // door.
     const ASKS: &str = r#"emit Linked to core get where
 export let door = "net_server"
-if where.value { door = "membrane" }
+if where.value,  door = "membrane"
 
-Where { } => {
+Where { } =>
     return Answer { held = where.value, door = door }
-}
 "#;
 
     build(&dir, "guest", ASKS, code::BuildTarget::Shared, "guest.so");
@@ -903,12 +863,11 @@ Where { } => {
     // still get it right.
     fs::write(
         dir.join("main.code"),
-        r#"Ask { } => {
+        r#"Ask { } =>
     link "guest.so" as app
     emit Where { } to app get a
     unlink app
     return a
-}
 
 emit Ask { } to this get first
 assert first.held
@@ -956,9 +915,8 @@ fn a_held_guests_own_door_keeps_a_doorless_host_alive() {
         r#"link "native_modules/net_server.so" as door
 link "native_modules/console.so" as con
 
-Impulse { particle } => {
+Impulse { particle } =>
     return Pong { }
-}
 
 emit Config { host = "127.0.0.1", port = 0 } to door get c
 assert c.ok
@@ -979,7 +937,7 @@ emit Print { value = "PORT " + l.port } to con
     // program's own modules to ask for — only happens on that path.
     fs::write(
         dir.join("main.code"),
-        r#"Attach { path } => {
+        r#"Attach { path } =>
     link path as opened
     | A `.code` library's top level is lazy — it runs on the first dispatch
     | or the first read of an exported value, not on `link` itself (see
@@ -988,7 +946,6 @@ emit Print { value = "PORT " + l.port } to con
     | application actually run its top level.
     emit Poke { } to opened get _
     return Attached { }
-}
 
 let p = "./guest.so"
 emit Attach { path = p } to this get r
