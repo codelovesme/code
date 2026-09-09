@@ -17,9 +17,9 @@ assert r.content = "[mock tiny] what is 2+2?"
 
 | messages works too — the last user turn wins.
 emit Chat { messages = [
-        { role = "system", content = "s" },
-        { role = "user", content = "first" },
-        { role = "assistant", content = "ok" },
+        { role = "system", content = "s" }
+        { role = "user", content = "first" }
+        { role = "assistant", content = "ok" }
         { role = "user", content = "second" }
     ] } to ai get multi
 assert multi.content = "[mock tiny] second"

@@ -7,11 +7,11 @@ assert early ∈ Exception
 assert early.source = "oauth_mock"
 
 emit Config {
-    client_id = "cid",
-    client_secret = "shh",
-    redirect_uri = "https://app.example/callback",
-    auth_url = "https://mock-provider.local/choose",
-    token_url = "https://mock-provider.local/token",
+    client_id = "cid"
+    client_secret = "shh"
+    redirect_uri = "https://app.example/callback"
+    auth_url = "https://mock-provider.local/choose"
+    token_url = "https://mock-provider.local/token"
     scope = "openid email"
 } to oauth get c
 assert c ∈ ConfigResult

@@ -8,7 +8,7 @@ emit SplitByHeading {
 } to md get s
 assert s ∈ Chapters
 assert s.chapters = [
-    { _class = "Chapter", slug = "first", title = "First", body = "\nbody one\n\n" },
+    { _class = "Chapter", slug = "first", title = "First", body = "\nbody one\n\n" }
     { _class = "Chapter", slug = "second-part", title = "Second Part", body = "\nbody two\n" }
 ]
 

@@ -9,8 +9,8 @@
 link "native_modules/dom.so" as dom
 
 emit Render {
-    into = "#app",
-    styles = { ".total" = { "font-weight" = "600" } },
+    into = "#app"
+    styles = { ".total" = { "font-weight" = "600" } }
     tree = { tag = "p", attrs = { class = "total" }, children = ["hi"] }
 } to dom get r
 assert r ∈ Exception

@@ -13,9 +13,9 @@ assert c.ok
 
 | Send files into the outbox and reports ok, same shape as `mailer`.
 emit Send {
-    recipient = ["you@x.test", "cc-real@x.test"],
-    cc = "boss@x.test",
-    subject = "Report",
+    recipient = ["you@x.test", "cc-real@x.test"]
+    cc = "boss@x.test"
+    subject = "Report"
     html = "<b>done</b>"
 } to mailer get s
 assert s ∈ SendResult

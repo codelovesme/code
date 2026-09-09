@@ -16,9 +16,9 @@ assert short ∈ Exception
 
 | A well-formed Config against an endpoint nothing answers on.
 emit Config {
-    bucket = "b",
-    access_key = "k",
-    secret_key = "s",
+    bucket = "b"
+    access_key = "k"
+    secret_key = "s"
     endpoint = "http://127.0.0.1:1"
 } to blobs get c
 assert c ∈ ConfigResult

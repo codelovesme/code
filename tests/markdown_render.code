@@ -12,8 +12,8 @@ assert r.title = "Hello World"
 assert r.slug = "hello-world"
 
 assert r.toc = [
-    { _class = "HeadingEntry", level = 1, text = "Hello World", slug = "hello-world" },
-    { _class = "HeadingEntry", level = 2, text = "Notes", slug = "notes" },
+    { _class = "HeadingEntry", level = 1, text = "Hello World", slug = "hello-world" }
+    { _class = "HeadingEntry", level = 2, text = "Notes", slug = "notes" }
     { _class = "HeadingEntry", level = 2, text = "Notes", slug = "notes-1" }
 ]
 

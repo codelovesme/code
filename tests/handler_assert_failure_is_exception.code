@@ -18,9 +18,9 @@ assert bad ∈ Exception
 | `code_take_failure`) and the harness only compares pass/fail — a shape
 | that drifted between them would otherwise go unnoticed.
 assert bad = {
-    _class = "Exception",
-    source = "core",
-    message = "assertion failed",
+    _class = "Exception"
+    source = "core"
+    message = "assertion failed"
     innerException = null
 }
 

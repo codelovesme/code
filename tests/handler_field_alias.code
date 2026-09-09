@@ -2,8 +2,8 @@
 | `current` and `password`; the body reads words that say which is which.
 Change { email, current as current_password, password as new_password } =>
     return Changed {
-        who = email,
-        was = current_password,
+        who = email
+        was = current_password
         now = new_password
     }
 

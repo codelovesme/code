@@ -22,7 +22,7 @@ assert f0.value = null
 
 | A structured value round-trips unchanged, field order included.
 emit Store {
-    key = "prefs",
+    key = "prefs"
     value = { theme = "dark", size = 14, tags = ["a", "b"], nested = { on = true } }
 } to store get w
 assert w ∈ StoreResult

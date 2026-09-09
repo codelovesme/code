@@ -44,7 +44,7 @@ assert r3.content = "replaced"
 emit ListDir { path = "work" } to fs get l
 assert l ∈ DirListing
 assert l.entries = [
-    { _class = "DirEntry", name = "a.txt", is_dir = false },
+    { _class = "DirEntry", name = "a.txt", is_dir = false }
     { _class = "DirEntry", name = "sub", is_dir = true }
 ]
 
