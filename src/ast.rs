@@ -106,8 +106,6 @@ pub enum Stmt {
         /// than three fields that would have to agree: there is no such
         /// thing as an iterable without a variable, or vice versa.
         over: Option<LoopOver>,
-        /// `get name [= init]` — see `LoopAccumulator`.
-        result: Option<LoopAccumulator>,
         body: Vec<Stmt>,
     },
     /// `continue` — skips the rest of this iteration and starts the next
@@ -343,35 +341,6 @@ pub struct LoopOver {
     /// or an `Object` — any other kind is a runtime type error, the same
     /// rule `Field`/`Index` follow.
     pub iterable: Expr,
-}
-
-/// The `get name [= init]` half of a `Stmt::Loop`.
-///
-/// Deliberately not its own runtime concept: `name` is declared as an
-/// ordinary binding in the scope *enclosing* the loop, initialized to
-/// `init` before the first iteration. The body then updates it with the
-/// same `Stmt::Assign` any other reassignment uses — which already resolves
-/// outward through the scope chain — and it is simply still bound once the
-/// loop ends. No accumulator stack, no new scoping rule, and nothing for
-/// either backend to special-case beyond creating the binding.
-///
-/// ```text
-/// loop x over xs get sum = 0 { sum = sum + x }      -- fold
-/// loop x over xs get out = [] { out = out + [x] }   -- collect
-/// ```
-///
-/// A `yield` statement was built and then removed the same day
-/// (2026-08-23): `get out { yield e }` collecting into an array is exactly
-/// `get out = [] { out = out + [e] }`, so it bought one more keyword, a
-/// desugaring step, and a mutual-exclusion rule ("a body either yields or
-/// assigns, never both") in exchange for one line of source. Not worth it.
-/// Note there is no `+=` either — no compound assignment operator exists.
-#[derive(Debug, Clone, PartialEq)]
-pub struct LoopAccumulator {
-    pub name: String,
-    /// What `name` holds before the first iteration: the `= init`
-    /// expression, or `null` when `= init` was omitted.
-    pub init: Expr,
 }
 
 /// Which format a resolved `Stmt::ImportNative` came from — produced by

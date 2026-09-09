@@ -1077,18 +1077,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             Value::Bool(false) => Ok(Flow::Normal),
             v => Err(format!("if requires a boolean, found {}", a_type_name(&v))),
         },
-        Stmt::Loop { over, result, body } => {
-            // The accumulator is an ordinary binding in the scope *around*
-            // the loop, created before the first iteration — which is what
-            // makes it survive each iteration's scope and still be bound
-            // afterwards, with no accumulator machinery at all. The body
-            // updates it through the same `Stmt::Assign` as any other
-            // reassignment (see `ast::LoopAccumulator`).
-            if let Some(acc) = result {
-                let init = eval(&acc.init, env)?;
-                env.declare(acc.name.clone(), init);
-            }
-
+        Stmt::Loop { over, body } => {
             match over {
                 Some(over) => {
                     // Evaluated once, up front. Holding the `Rc` here is what

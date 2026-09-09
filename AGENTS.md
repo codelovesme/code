@@ -131,6 +131,10 @@ needs one · `tests/<name>_module.rs` integration test.
   block and no empty body. Four places count a block's depth and must stay in
   step: `src/lexer.rs`, `src/parser.rs`'s `block`, `src/format.rs`'s
   `push_token`, and `crates/code-lsp/src/tokens.rs`.
+- **A loop has no accumulator** (2026-09-09). `loop … get out = init` meant
+  exactly a declaration on the line above, so it went; `get` is an emit's
+  answer and nothing else. What survives a loop is an ordinary binding
+  declared before it.
 - **`let` is gone, and nothing may shadow** (2026-09-09). `name = value`
   assigns the visible binding or introduces one here; the two readings are
   never both available, so no keyword chooses. A **binder** — a handler's

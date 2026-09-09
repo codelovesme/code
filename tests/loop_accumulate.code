@@ -1,27 +1,31 @@
-| `loop ... get out = init { out = ... }` is the other `get` form: `out`
-| starts at `init` and the body assigns to it directly. Whatever it was last
-| assigned is what survives the loop.
-loop x over [1, 2, 3] get sum = 0
+| A loop has no accumulator form of its own: what survives it is an ordinary
+| binding declared before it, which the body assigns like any other name that
+| reaches outward. `loop ... get out = init` used to say this in the header
+| and meant exactly the two lines below, so it went on 2026-09-09.
+sum = 0
+loop x over [1, 2, 3]
     sum = sum + x
 assert sum = 6
 
-| The accumulator is an ordinary binding, so any value kind works.
-loop s over ["a", "b", "c"] get joined = ""
+| Any value kind works — it is an ordinary binding.
+joined = ""
+loop s over ["a", "b", "c"]
     joined = joined + s
 assert joined = "abc"
 
 | It can be read as well as written, including across iterations.
-loop x over [1, 2, 3] get running = []
+running = []
+loop x over [1, 2, 3]
     running = running + [x]
 assert running = [1, 2, 3]
 
-| With no `= init` at all, the accumulator starts as null.
-| A body that assigns nothing at all still needs to be a body, so this one
-| is written on the header's own line after the comma.
-loop x over [1] get untouched, assert true
+| A body that never assigns it leaves it at what it started as, which is the
+| same thing an empty container does.
+untouched = null
+loop x over [1], assert true
 assert untouched = null
 
-| An empty array leaves the accumulator at its initial value.
-loop x over [] get never = 7
+never = 7
+loop x over []
     never = 0
 assert never = 7

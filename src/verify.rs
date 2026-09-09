@@ -151,7 +151,7 @@ fn verify_stmts(
                 scopes.pop();
                 result?
             }
-            Stmt::Loop { over, result, body } => {
+            Stmt::Loop { over, body } => {
                 // Both the iterable and the accumulator's initial value are
                 // evaluated in the *enclosing* scope, before the loop
                 // variables exist — so `loop x over x` correctly resolves
@@ -159,14 +159,6 @@ fn verify_stmts(
                 // isn't one.
                 if let Some(over) = over {
                     verify_expr(&over.iterable, scopes)?;
-                }
-                if let Some(acc) = result {
-                    verify_expr(&acc.init, scopes)?;
-                    bind_fresh(scopes, &acc.name, "a loop's `get`")?;
-                    // Declared in the enclosing scope, matching where the
-                    // binding actually lands (see `ast::LoopAccumulator`) —
-                    // which is also what makes it defined *after* the loop.
-                    scopes.last_mut().unwrap().insert(acc.name.clone());
                 }
                 let mut scope = HashSet::new();
                 if let Some(over) = over {

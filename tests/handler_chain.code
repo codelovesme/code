@@ -23,7 +23,8 @@ emit Twice { n = 1 } to this get t
 assert t.value = 3
 
 | Nor is calling the same handler from inside a loop.
-loop x over [1, 2, 3] get total = 0
+total = 0
+loop x over [1, 2, 3]
     emit Third { n = x } to this get one
     total = total + one.value
 assert total = 9

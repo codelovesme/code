@@ -379,10 +379,12 @@ scores = [88, 94, 71]
 emit Length { value = scores } to core get n
 assert n.value = 3
 
-| The only loop form there is. `get` declares a result that survives it.
-| A block is the indented run under its header — `{ }` means an object, and
+| The only loop form there is. What survives it is an ordinary binding
+| declared before it — a loop has no accumulator clause of its own.
+| A block is the indented run under its header, `{ }` means an object, and
 | `name = value` both assigns and declares; there is no `let`.
-loop score over scores get best = 0
+best = 0
+loop score over scores
     if score > best
         best = score
 assert best = 94

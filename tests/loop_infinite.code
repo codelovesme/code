@@ -8,7 +8,8 @@ assert i = 5
 
 | It takes a `get` accumulator like any other loop.
 n = 0
-loop get total = 0
+total = 0
+loop
     n = n + 1
     total = total + n
     if n = 4

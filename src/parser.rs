@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopAccumulator, LoopOver,
+    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopOver,
     Program, Stmt, UnOp, ValueKind,
 };
 use crate::lexer::{Lexed, StringPart, Token};
@@ -499,40 +499,26 @@ impl<'a> Parser<'a> {
             None
         };
 
-        // `get <name> [= <init>]`. The init expression stops before `{` for
-        // the same reason `iterable` does.
-        let result_name = if matches!(self.peek(), Token::Get) {
-            self.advance();
-            let name = match self.advance() {
-                Token::Ident(name) => name,
-                other => return Err(format!("expected a name after 'get', found {other:?}")),
-            };
-            let init = if matches!(self.peek(), Token::Equals) {
-                self.advance();
-                Some(self.expr()?)
-            } else {
-                None
-            };
-            Some((name, init))
-        } else {
-            None
-        };
+        // `loop … get out = init` until 2026-09-09. It meant exactly a
+        // declaration on the line above — same scope, same body assignment,
+        // same nesting — so it was one spelling too many. Named here rather
+        // than left to the generic "expected a body", since every program
+        // written before that date hits this line.
+        if matches!(self.peek(), Token::Get) {
+            self.err_here();
+            return Err(
+                "a loop has no `get`: declare what survives it on the line before, and \
+                 assign it in the body"
+                    .to_string(),
+            );
+        }
 
         self.loop_depth += 1;
         let body = self.block(false);
         self.loop_depth -= 1;
         let body = body?;
 
-        let result = result_name.map(|(name, init)| LoopAccumulator {
-            name,
-            // No `= init` means the accumulator has nothing to start from.
-            // Null rather than `[]`: the body decides what it is building by
-            // what it assigns, and guessing "array" would be wrong as often
-            // as right.
-            init: init.unwrap_or(Expr::Null),
-        });
-
-        Ok(Stmt::Loop { over, result, body })
+        Ok(Stmt::Loop { over, body })
     }
 
     /// `{ stmt* }` — shared by `if`, `loop`, and the bare-block statement:

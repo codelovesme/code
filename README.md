@@ -553,19 +553,27 @@ loop
     if i = 5, break
 ```
 
-**Accumulating** — `get name [= init]` declares a binding that starts at
-`init` (or null), is assigned freely in the body, and survives the loop.
-There is no separate collect form and no `yield`:
+**Accumulating** — there is no form for it, and that is the point. A loop's
+body assigns names that reach outward like any other body's, so what survives
+a loop is an ordinary binding declared before it. No collect form, no
+`yield`, and no accumulator clause:
 
-```
-loop x over [1, 2, 3] get sum = 0
+```code
+sum = 0
+loop x over [1, 2, 3]
     sum = sum + x
 assert sum = 6
 
-loop x over [1, 2, 3] get doubled = []
+doubled = []
+loop x over [1, 2, 3]
     doubled += x * 2
 assert doubled = [2, 4, 6]
 ```
+
+`loop … get out = init` said this in the header until 2026-09-09 and meant
+exactly the line above — same scope, same body assignment, same behaviour
+nested. `get` now means one thing in the language: an [emit](#emit)'s
+answer.
 
 `break` exits the innermost loop, `continue` starts its next iteration. Both
 reach out through any number of enclosing `if` bodies — they act on the

@@ -29,6 +29,7 @@ assert "a" + "b" = "ab"
 assert "x" + [1, 2] = ["x", 1, 2]
 
 | Accumulating a string across a loop, which is what this is for.
-loop item over [1, 2, 3] get out = ""
+out = ""
+loop item over [1, 2, 3]
     out += item
 assert out = "123"

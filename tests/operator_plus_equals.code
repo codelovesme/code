@@ -30,10 +30,12 @@ if true
 assert outer = [1, 2]
 
 | Including a loop's `get` accumulator, which is an ordinary binding.
-loop x over [1, 2, 3] get out = []
+out = []
+loop x over [1, 2, 3]
     out += x
 assert out = [1, 2, 3]
 
-loop x over [1, 2, 3] get sum = 0
+sum = 0
+loop x over [1, 2, 3]
     sum += x
 assert sum = 6

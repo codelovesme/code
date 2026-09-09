@@ -16,7 +16,7 @@ use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
 use crate::ast::{
-    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopAccumulator, LoopOver,
+    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopOver,
     NativeFormat, Program, Stmt, UnOp,
 };
 
@@ -2368,9 +2368,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 Ok(())
             }
             Stmt::If { condition, body } => self.gen_if(condition, body),
-            Stmt::Loop { over, result, body } => {
-                self.gen_loop(over.as_ref(), result.as_ref(), body)
-            }
+            Stmt::Loop { over, body } => self.gen_loop(over.as_ref(), body),
             Stmt::Emit {
                 particle,
                 target,
@@ -2420,26 +2418,8 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn gen_loop(
         &mut self,
         over: Option<&LoopOver>,
-        result: Option<&LoopAccumulator>,
         body: &[Stmt],
     ) -> Result<(), String> {
-        // The accumulator is an ordinary binding in the scope *around* the
-        // loop, initialized before the first iteration — the body then
-        // updates it through the same reassignment path as any other name
-        // (see `ast::LoopAccumulator`). Registering it in the current scope
-        // rather than the loop's is what leaves it bound afterwards.
-        if let Some(acc) = result {
-            let init = self.gen_expr(&acc.init)?;
-            let slot = self.alloc_slot("loopacc")?;
-            self.builder
-                .build_call(self.fn_copy, &[slot.into(), init.into()], "")
-                .map_err(|e| e.to_string())?;
-            // `bind`, not a raw `env` insert: it shadows any outer binding
-            // of the same name for the loop's duration, exactly like
-            // `interpreter::Environment::declare` would.
-            self.bind(&acc.name, slot);
-        }
-
         // `loop { }` has no iterable, no counter and no bound — `head_bb`
         // just falls into the body every time, and only a `break` leaves.
         let iteration = match over {
