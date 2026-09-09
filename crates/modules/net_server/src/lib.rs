@@ -399,9 +399,24 @@ fn handle_stop(out: &mut CodeValue) {
         let _ = TcpStream::connect(addr);
     }
 
+    // `StopResult` is also the point at which a runtime host may unload a
+    // dynamically linked application. Answering while the accept thread is
+    // still between waking and clearing `SERVING` creates a race: the caller
+    // immediately sees the module as still working and correctly refuses to
+    // unmap it, even though the socket closes a moment later. Wait for the
+    // state this particle promises. The self-connect above makes this a short
+    // handoff; the bound keeps a damaged listener from pinning dispatch.
+    for _ in 0..1000 {
+        if !SERVING.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let stopped = !SERVING.load(Ordering::SeqCst);
+
     let mut buf = SlotBuffer::new(2);
     borrowed_str(buf.slot_mut(0), c"StopResult");
-    boolean(buf.slot_mut(1), true);
+    boolean(buf.slot_mut(1), stopped);
     object(out, &[c"_class", c"ok"], &mut buf);
     buf.release_all();
 }

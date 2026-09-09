@@ -67,7 +67,8 @@ runs past `assert l.ok`, reaches the end of its statements, and goes on
 serving. Idle it costs nothing: the runtime parks on its own queue and wakes
 on a real particle, not on a poll interval.
 
-`Stop { }` ends it — from a handler, which means a sender can ask the program
+`Stop { }` ends it and answers only after the accept thread has stopped — from
+a handler, which means a sender can ask the program
 to shut itself down:
 
 ```code

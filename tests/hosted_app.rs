@@ -688,10 +688,9 @@ assert answer.heard
 ///
 /// Then the other half. Only the application knows what it opened, so it is
 /// told to close and does it itself — the host never touches a module it
-/// did not lend. And stopping a door is not instantaneous: `Stop` asks, and
-/// the accepting thread turns its own answer to no as its *last act*, after
-/// its loop has exited. So this asserts that the application becomes
-/// unloadable, not that it is unloadable the same instant.
+/// did not lend. `Stop` answers only after the accepting thread has turned
+/// its own answer to no, so the host can unload immediately after `Closing`
+/// returns instead of racing the thread it was told had stopped.
 #[test]
 fn an_application_that_is_still_working_is_not_unloaded() {
     let dir = temp_dir("working");
@@ -753,24 +752,8 @@ assert refused._class = "Exception"
 emit Close { } to this get closed
 assert closed.ok
 
-| And then it becomes unloadable. Not at once: the accepting thread turns
-| its own answer to no as its last act, so this waits for that to happen
-| rather than assuming it already has.
-let done = null
-loop attempt over [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] {
-    let spins = 0
-    loop {
-        spins = spins + 1
-        if spins > 300000 {
-            break
-        }
-    }
-    emit TryStop { } to this get answer
-    done = answer
-    if answer._class = "Stopped" {
-        break
-    }
-}
+| Its answer means stopped, so it is unloadable on the next statement.
+emit TryStop { } to this get done
 assert done._class = "Stopped"
 "#,
     )
