@@ -19,7 +19,7 @@ assert [1] + { k = 2 } = [1, { k = 2 }]
 | Building up an array one element at a time, which is the point of it.
 acc = []
 loop x over [1, 2, 3]
-    acc = acc + x * 10
+    acc += x * 10
 assert acc = [10, 20, 30]
 
 | A string operand still absorbs into an array as one element rather than

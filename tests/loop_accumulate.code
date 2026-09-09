@@ -4,19 +4,19 @@
 | and meant exactly the two lines below, so it went on 2026-09-09.
 sum = 0
 loop x over [1, 2, 3]
-    sum = sum + x
+    sum += x
 assert sum = 6
 
 | Any value kind works — it is an ordinary binding.
 joined = ""
 loop s over ["a", "b", "c"]
-    joined = joined + s
+    joined += s
 assert joined = "abc"
 
 | It can be read as well as written, including across iterations.
 running = []
 loop x over [1, 2, 3]
-    running = running + [x]
+    running += [x]
 assert running = [1, 2, 3]
 
 | A body that never assigns it leaves it at what it started as, which is the

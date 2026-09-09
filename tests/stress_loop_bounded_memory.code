@@ -6,20 +6,20 @@
 | alloca-heavy so this stays fast to run while still demanding ~16MB
 | of stack the old way.
 a = [1]
-a = a + a
-a = a + a
-a = a + a
-a = a + a
-a = a + a
-a = a + a
-a = a + a
-a = a + a
-a = a + a
-a = a + a
-a = a + a
-a = a + a
-a = a + a
-a = a + a
+a += a
+a += a
+a += a
+a += a
+a += a
+a += a
+a += a
+a += a
+a += a
+a += a
+a += a
+a += a
+a += a
+a += a
 n = 0
 loop x over a
     t = [x, x, x, x, x, x, x, x]

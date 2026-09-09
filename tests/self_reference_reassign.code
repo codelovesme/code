@@ -5,11 +5,11 @@ x = [1, 2]
 x = x
 assert x = [1, 2]
 
-x = x + x
+x += x
 assert x = [1, 2, 1, 2]
 
 s = "ab"
-s = s + s
+s += s
 assert s = "abab"
 
 | Reading the old value out of the binding being overwritten.

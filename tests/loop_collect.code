@@ -2,29 +2,29 @@
 | initial value — there is no separate collect form or `yield` keyword.
 doubled = []
 loop x over [1, 2, 3]
-    doubled = doubled + [x * 2]
+    doubled += [x * 2]
 assert doubled = [2, 4, 6]
 
 | Appending conditionally is an ordinary `if`, nothing loop-specific.
 evens = []
 loop x over [1, 2, 3, 4]
     if x = 2
-        evens = evens + [x]
+        evens += [x]
     if x = 4
-        evens = evens + [x]
+        evens += [x]
 assert evens = [2, 4]
 
 | A body that never appends leaves the initial value untouched.
 none = []
 loop x over [1, 2]
     if x = 99
-        none = none + [x]
+        none += [x]
 assert none = []
 
 | The key variable is available alongside `get`.
 pairs = []
 loop i, x over ["a", "b"]
-    pairs = pairs + [[i, x]]
+    pairs += [[i, x]]
 assert pairs = [[0, "a"], [1, "b"]]
 
 | Nested loops each accumulate into their own binding.
@@ -32,6 +32,6 @@ rows = []
 loop row over [[1, 2], [3]]
     cells = []
     loop cell over row
-        cells = cells + [cell]
-    rows = rows + [cells]
+        cells += [cell]
+    rows += [cells]
 assert rows = [[1, 2], [3]]

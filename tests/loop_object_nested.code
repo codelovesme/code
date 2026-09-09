@@ -10,5 +10,5 @@ assert allValues = [1, 2, 3]
 people = [{ name = "a" }, { name = "b" }]
 names = []
 loop i, person over people
-    names = names + [person.name]
+    names += [person.name]
 assert names = ["a", "b"]

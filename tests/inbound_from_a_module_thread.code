@@ -25,7 +25,7 @@ assert started.value = 3
 | hands them over.
 spins = 0
 loop
-    spins = spins + 1
+    spins += 1
     emit Length { value = seen } to core get n
     if n.value = 3
         break

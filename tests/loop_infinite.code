@@ -1,7 +1,7 @@
 | A bare `loop` has no iterable and no bound — only `break` leaves it.
 i = 0
 loop
-    i = i + 1
+    i += 1
     if i = 5
         break
 assert i = 5
@@ -10,8 +10,8 @@ assert i = 5
 n = 0
 total = 0
 loop
-    n = n + 1
-    total = total + n
+    n += 1
+    total += n
     if n = 4
         break
 assert total = 10
@@ -20,9 +20,9 @@ assert total = 10
 outer = 0
 inner_runs = 0
 loop
-    outer = outer + 1
+    outer += 1
     loop
-        inner_runs = inner_runs + 1
+        inner_runs += 1
         break
     if outer = 3
         break

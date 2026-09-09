@@ -27,7 +27,7 @@ assert numbered["field2"] = "second"
 names = ["a", "b"]
 collected = {}
 loop k over names
-    collected = collected + { "$k" = k + "!" }
+    collected += { "$k" = k + "!" }
 assert collected = { a = "a!", b = "b!" }
 
 | And it still holds after the heap has been handed out again. `+` builds a

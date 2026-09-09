@@ -5,7 +5,7 @@
 total = 0
 
 Bump { by } =>
-    total = total + by
+    total += by
     return Bumped { total = total }
 
 emit Bump { by = 1 } to this get a

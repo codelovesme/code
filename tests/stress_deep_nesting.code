@@ -10,21 +10,21 @@
 | end-of-program sweep when compiled.
 
 big = [1]
-big = big + big
-big = big + big
-big = big + big
-big = big + big
-big = big + big
-big = big + big
-big = big + big
-big = big + big
-big = big + big
-big = big + big
-big = big + big
-big = big + big
-big = big + big
-big = big + big
-big = big + big
+big += big
+big += big
+big += big
+big += big
+big += big
+big += big
+big += big
+big += big
+big += big
+big += big
+big += big
+big += big
+big += big
+big += big
+big += big
 
 deep = [0]
 loop x over big

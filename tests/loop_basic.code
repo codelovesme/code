@@ -4,12 +4,12 @@
 items = [10, 20, 30]
 doubled = []
 loop item over items
-    doubled = doubled + [item * 2]
+    doubled += [item * 2]
 assert doubled = [20, 40, 60]
 
 | The body sees the element itself, whatever kind it is.
 names = ["ada", "grace"]
 joined = ""
 loop name over names
-    joined = joined + name
+    joined += name
 assert joined = "adagrace"

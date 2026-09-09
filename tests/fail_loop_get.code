@@ -2,4 +2,4 @@
 | error says what to write instead, since every program written before
 | 2026-09-09 hits exactly this line.
 loop x over [1, 2, 3] get sum = 0
-    sum = sum + x
+    sum += x

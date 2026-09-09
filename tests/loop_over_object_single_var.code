@@ -4,5 +4,5 @@
 scores = { alice = 10, bob = 20 }
 total = 0
 loop score over scores
-    total = total + score
+    total += score
 assert total = 30

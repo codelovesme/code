@@ -2,7 +2,7 @@
 | inside an `if` (see if_bare_assign_still_mutates_outer.code).
 count = 0
 loop x over [1, 1, 1]
-    count = count + x
+    count += x
 assert count = 3
 
 | A name first written inside the body belongs to the body, and is re-made
@@ -21,6 +21,6 @@ assert last = 6
 xs = [7, 8]
 sum = 0
 loop each over xs
-    sum = sum + each
+    sum += each
 assert sum = 15
 assert xs = [7, 8]

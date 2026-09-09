@@ -8,7 +8,7 @@ loop x over [1, 2, 3]
     pair = [x, x * 10]
     if x = 1
         saved = pair
-    seen = seen + [pair]
+    seen += [pair]
 assert saved = [1, 10]
 assert seen = [[1, 10], [2, 20], [3, 30]]
 
@@ -17,6 +17,6 @@ assert seen = [[1, 10], [2, 20], [3, 30]]
 boxes = []
 loop x over ["a", "b"]
     inner = { k = x }
-    boxes = boxes + [{ wrapped = inner }]
+    boxes += [{ wrapped = inner }]
 assert boxes[0].wrapped.k = "a"
 assert boxes[1].wrapped.k = "b"

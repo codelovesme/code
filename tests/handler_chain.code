@@ -26,5 +26,5 @@ assert t.value = 3
 total = 0
 loop x over [1, 2, 3]
     emit Third { n = x } to this get one
-    total = total + one.value
+    total += one.value
 assert total = 9

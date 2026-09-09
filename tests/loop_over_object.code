@@ -5,8 +5,8 @@ scores = { alice = 10, bob = 20 }
 names = []
 totals = []
 loop name, score over scores
-    names = names + [name]
-    totals = totals + [score]
+    names += [name]
+    totals += [score]
     | Insertion order, not sorted — objects preserve the order they were
     | written in (see value.rs's `Object` doc comment).
 assert names = ["alice", "bob"]

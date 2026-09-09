@@ -52,7 +52,7 @@ assert acc = { seen = "b" }
 
 | Self-merge is a value operation, not an aliasing one.
 same = { a = 1 }
-same = same + same
+same += same
 assert same = { a = 1 }
 
 | An array operand still wins: with one array involved, the object is a

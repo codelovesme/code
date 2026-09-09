@@ -4,7 +4,7 @@
 seen = 0
 
 Note { text } =>
-    seen = seen + 1
+    seen += 1
 
 emit Note { text = "first" } to this get nothing
 assert nothing = null

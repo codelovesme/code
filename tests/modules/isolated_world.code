@@ -7,7 +7,7 @@ count = 0
 started = "yes"
 
 Bump { by } =>
-    count = count + by
+    count += by
     return Bumped { total = count }
 
 Total {} =>

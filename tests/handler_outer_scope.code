@@ -8,7 +8,7 @@ calls = 0
 last = null
 
 Shout { text } =>
-    calls = calls + 1
+    calls += 1
     local = text + suffix
     last = local
     return Shouted { value = local }

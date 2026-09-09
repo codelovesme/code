@@ -1,12 +1,12 @@
 | The iterable is any expression, not just a bare name or a literal.
 total = []
 loop x over [1, 2] + [3]
-    total = total + [x]
+    total += [x]
 assert total = [1, 2, 3]
 
 | Including a field access that yields an array.
 data = { xs = [7, 8] }
 got = []
 loop x over data.xs
-    got = got + [x]
+    got += [x]
 assert got = [7, 8]
