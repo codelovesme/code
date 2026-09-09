@@ -32,14 +32,14 @@ use std::process::Command;
 /// reaches stderr in both modes. The same text is what a handler-level
 /// failure puts in `Exception.message` — it comes from the same `fail` call.
 const CASES: &[(&str, &str)] = &[
-    ("add", "let x = 1 + true\n"),
-    ("sub", "let x = 1 - \"a\"\n"),
-    ("mul", "let x = true * 2\n"),
-    ("div", "let x = 1 / \"a\"\n"),
-    ("div_zero", "let n = 0\nlet x = 1 / n\n"),
-    ("compare_lt", "let x = 1 < \"a\"\n"),
-    ("compare_ge", "let x = \"a\" ≥ 1\n"),
-    ("negate", "let x = 0 - 1\nlet y = -\"a\"\n"),
+    ("add", "x = 1 + true\n"),
+    ("sub", "x = 1 - \"a\"\n"),
+    ("mul", "x = true * 2\n"),
+    ("div", "x = 1 / \"a\"\n"),
+    ("div_zero", "n = 0\nx = 1 / n\n"),
+    ("compare_lt", "x = 1 < \"a\"\n"),
+    ("compare_ge", "x = \"a\" ≥ 1\n"),
+    ("negate", "x = 0 - 1\ny = -\"a\"\n"),
     // `not`, `and`, `or` and `if` are absent because they can no longer
     // fail: a condition is read for its truth, and every value has one (see
     // `interpreter::truth_of` / `runtime.c`'s `code_truth`).
@@ -52,20 +52,20 @@ const CASES: &[(&str, &str)] = &[
         "emit Length { value = 5 } to core get bad\nassert bad\n",
     ),
     ("loop_operand", "loop x over 5\n    assert true\n"),
-    ("field_on_non_object", "let a = 1\nlet b = a.name\n"),
+    ("field_on_non_object", "a = 1\nb = a.name\n"),
     // Nested failures, where the location is the *enclosing* top-level
     // statement rather than the line that failed — the accepted imprecision
     // of the top-level-only design, and worth pinning because both backends
     // have to be imprecise in the same place.
     (
         "nested_in_loop",
-        "let xs = [1, 2]\nloop x over xs\n    assert x = 1\n",
+        "xs = [1, 2]\nloop x over xs\n    assert x = 1\n",
     ),
     (
         "nested_in_if",
-        "let a = 1\nif a = 1\n    assert a = 2\n",
+        "a = 1\nif a = 1\n    assert a = 2\n",
     ),
-    ("index_non_container", "let a = 1\nlet b = a[0]\n"),
+    ("index_non_container", "a = 1\nb = a[0]\n"),
     ("emit_non_particle", "emit 5 to core get r\n"),
     ("emit_missing_class", "emit { value = 1 } to core get r\n"),
     // `Length`'s operand message is not here for the same reason

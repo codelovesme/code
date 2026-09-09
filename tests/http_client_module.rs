@@ -143,8 +143,8 @@ fn every_method_against_a_real_server() {
 | pushes an `Exception` instead. Both are dispatched to these handlers
 | between top-level statements. Counted rather than inspected, so the
 | assertion does not depend on the exact wording of a message.
-let logs = 0
-let exceptions = 0
+logs = 0
+exceptions = 0
 
 Log {{ source, level, message }} =>
     logs = logs + 1

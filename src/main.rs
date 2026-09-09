@@ -371,8 +371,8 @@ const MAIN_TEMPLATE: &str = r#"| A new Code program. `code run main.code` runs t
 | There is no print statement: writing output is a module's job, not
 | the language's. `code install console` gets you one.
 
-let name = "world"
-let scores = [88, 94, 71]
+name = "world"
+scores = [88, 94, 71]
 
 | `emit` sends a particle to a recipient. `core` is compiled in, so this
 | works with nothing installed.
@@ -380,7 +380,8 @@ emit Length { value = scores } to core get n
 assert n.value = 3
 
 | The only loop form there is. `get` declares a result that survives it.
-| A block is the indented run under its header — `{ }` means an object.
+| A block is the indented run under its header — `{ }` means an object, and
+| `name = value` both assigns and declares; there is no `let`.
 loop score over scores get best = 0
     if score > best
         best = score

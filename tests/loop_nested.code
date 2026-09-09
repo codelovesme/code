@@ -1,5 +1,5 @@
 | Nested loops: the inner loop runs in full for each outer element.
-let pairs = []
+pairs = []
 loop a over [1, 2]
     loop b over [10, 20]
         pairs = pairs + [a + b]

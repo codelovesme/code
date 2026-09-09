@@ -2,7 +2,7 @@
 | level, from inside a loop, and from another handler, a body still sees
 | exactly the top level — and its writes there are the same writes every
 | caller observes.
-let total = 0
+total = 0
 
 Bump { by } =>
     total = total + by

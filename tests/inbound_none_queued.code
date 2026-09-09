@@ -2,7 +2,7 @@
 | empty queue is not an error and costs the program nothing.
 link "native_modules/test_events.so" as ev
 
-let seen = []
+seen = []
 Tick { value } =>
     seen += value
     return Ack {}

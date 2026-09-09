@@ -29,7 +29,7 @@ emit Put { key = "k", data = "d" } to blobs get refused
 assert refused ∈ Exception
 
 | `base64 = true` on data that isn't base64 is caught before the network.
-emit Config { bucket = "b", access_key = "k", secret_key = "s", endpoint = "http://127.0.0.1:1" } to blobs get _
+emit Config { bucket = "b", access_key = "k", secret_key = "s", endpoint = "http://127.0.0.1:1" } to blobs
 emit Put { key = "k", data = "!!! not base64 !!!", base64 = true } to blobs get badb64
 assert badb64 ∈ Exception
 

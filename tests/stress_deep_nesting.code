@@ -9,7 +9,7 @@
 | Teardown happens either way — at scope exit in the interpreter, in the
 | end-of-program sweep when compiled.
 
-let big = [1]
+big = [1]
 big = big + big
 big = big + big
 big = big + big
@@ -26,9 +26,9 @@ big = big + big
 big = big + big
 big = big + big
 
-let deep = [0]
+deep = [0]
 loop x over big
     deep = [[[[[[[[deep]]]]]]]]
 assert deep = deep
-let survived = true
+survived = true
 assert survived

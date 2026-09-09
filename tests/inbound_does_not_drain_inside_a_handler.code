@@ -9,8 +9,8 @@
 | nothing is running.
 link "native_modules/test_events.so" as ev
 
-let ticks = 0
-let asked = 0
+ticks = 0
+asked = 0
 
 Tick { value } =>
     ticks += 1

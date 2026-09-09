@@ -8,7 +8,7 @@ Double { value } =>
 emit Double { value = 21 } to this get direct
 assert direct.value = 42
 
-let held = Double { value = 5 }
+held = Double { value = 5 }
 emit held to this get indirect
 assert indirect.value = 10
 

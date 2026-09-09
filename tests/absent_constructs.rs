@@ -44,7 +44,7 @@ fn reaching_for_a_function_is_answered_with_handlers() {
 
 #[test]
 fn reaching_for_a_loop_keyword_names_the_loop_that_exists() {
-    let err = error_from("let i = 0\nwhile i < 3 {\n    i = i + 1\n}\n");
+    let err = error_from("i = 0\nwhile i < 3 {\n    i = i + 1\n}\n");
     assert!(err.contains("there is no `while`"), "{err}");
     assert!(
         err.contains("bare `loop`"),
@@ -67,7 +67,7 @@ fn reaching_for_a_loop_keyword_names_the_loop_that_exists() {
 /// starts a line like any other word, and is answered with the rest of them.
 #[test]
 fn else_is_answered_where_it_actually_lands() {
-    let err = error_from("if true\n    let a = 1\nelse\n    let a = 2\n");
+    let err = error_from("if true\n    a = 1\nelse\n    a = 2\n");
     assert!(err.contains("there is no `else`"), "{err}");
     assert!(
         err.contains("second `if`"),
@@ -111,11 +111,11 @@ fn the_caret_points_at_the_keyword() {
 /// a program that genuinely uses one as a variable is untouched.
 #[test]
 fn the_words_are_still_ordinary_identifiers() {
-    code::run_source("let print = 1\nassert print = 1\n").expect("`print` as a name");
-    code::run_source("let print = 1\nprint = 2\nassert print = 2\n").expect("reassignment");
-    code::run_source("let print = 1\nprint += 1\nassert print = 2\n").expect("compound");
-    code::run_source("let for = 1\nfor = 5\nassert for = 5\n").expect("`for` as a name");
-    code::run_source("let type = \"x\"\nassert type = \"x\"\n").expect("`type` as a name");
+    code::run_source("print = 1\nassert print = 1\n").expect("`print` as a name");
+    code::run_source("print = 1\nprint = 2\nassert print = 2\n").expect("reassignment");
+    code::run_source("print = 1\nprint += 1\nassert print = 2\n").expect("compound");
+    code::run_source("for = 1\nfor = 5\nassert for = 5\n").expect("`for` as a name");
+    code::run_source("type = \"x\"\nassert type = \"x\"\n").expect("`type` as a name");
 }
 
 /// The marker that changed. Anyone with a file written before 1.4.0 meets
@@ -144,7 +144,24 @@ fn an_old_comment_marker_names_the_new_one() {
 /// `--` outright, the way `!` and `;` are refused, would take that with it.
 #[test]
 fn double_minus_is_still_arithmetic_anywhere_but_a_line_start() {
-    code::run_source("let n = 5--1\nassert n = 6\n").expect("5--1 is 5 - -1");
-    code::run_source("let a = 3\nlet b = 1\nlet m = a - -b\nassert m = 4\n").expect("a - -b");
-    code::run_source("let xs = [1, --2]\nassert xs = [1, 2]\n").expect("--2 inside a literal");
+    code::run_source("n = 5--1\nassert n = 6\n").expect("5--1 is 5 - -1");
+    code::run_source("a = 3\nb = 1\nm = a - -b\nassert m = 4\n").expect("a - -b");
+    code::run_source("xs = [1, --2]\nassert xs = [1, 2]\n").expect("--2 inside a literal");
+}
+
+/// `let` is the newest of these, and the only one removed because the rule
+/// it existed for went away rather than because it was never there.
+#[test]
+fn reaching_for_a_declaration_keyword_says_there_is_one_form() {
+    for src in ["let x = 1\n", "var x = 1\n", "const x = 1\n"] {
+        let err = error_from(src);
+        assert!(
+            err.contains("there is no `let`"),
+            "expected the declaration message for {src:?}, got:\n{err}"
+        );
+        assert!(
+            err.contains("shadow"),
+            "should say why one form is enough; got:\n{err}"
+        );
+    }
 }

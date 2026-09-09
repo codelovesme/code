@@ -1,7 +1,7 @@
 | A body that never returns yields null. Handlers that exist for their
 | effect rather than their answer are ordinary — `Print` is one — so
 | returning nothing is not an error.
-let seen = 0
+seen = 0
 
 Note { text } =>
     seen = seen + 1

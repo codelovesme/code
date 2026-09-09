@@ -3,13 +3,13 @@
 | statement. `let` inside a body declares a *local*, the ordinary rule —
 | the old language let `let` reassign outward inside a handler, which is
 | exactly the shadow-vs-mutate ambiguity mandatory `let` exists to remove.
-let suffix = "!"
-let calls = 0
-let last = null
+suffix = "!"
+calls = 0
+last = null
 
 Shout { text } =>
     calls = calls + 1
-    let local = text + suffix
+    local = text + suffix
     last = local
     return Shouted { value = local }
 

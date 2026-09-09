@@ -21,7 +21,7 @@ emit Send {
 assert s ∈ SendResult
 assert s.ok
 
-emit Send { recipient = "second@x.test", text = "plain" } to mailer get _
+emit Send { recipient = "second@x.test", text = "plain" } to mailer
 
 | The outbox is readable — this is the point of a mock.
 emit Outbox {} to mailer get box

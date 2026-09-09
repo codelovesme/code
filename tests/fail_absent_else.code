@@ -2,6 +2,6 @@
 | by name — see docs/todo/errors-for-absent-constructs.md.
 
 if true
-    let a = 1
+    a = 1
 else
-    let a = 2
+    a = 2

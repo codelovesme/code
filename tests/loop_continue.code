@@ -13,8 +13,8 @@ loop x over [1, 2] get seen = 0
 assert seen = 2
 
 | In a bare `loop`, `continue` re-enters the body immediately.
-let i = 0
-let reached = 0
+i = 0
+reached = 0
 loop
     i = i + 1
     if i = 2

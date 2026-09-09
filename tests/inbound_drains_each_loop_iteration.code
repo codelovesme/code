@@ -8,7 +8,7 @@
 | work. Fixed 2026-08-29.
 link "native_modules/test_events.so" as ev
 
-let order = []
+order = []
 
 Tick { value } =>
     order += 0 - 1

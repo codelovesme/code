@@ -143,7 +143,7 @@ fn wasm_nested_handlers_have_room_for_live_temporaries() {
     let source = dir.join("depth.code");
     let mut program = String::new();
     for i in 0..32 {
-        program.push_str(&format!("Hop{i} {{}} =>\n    let values = ["));
+        program.push_str(&format!("Hop{i} {{}} =>\n    values = ["));
         program.push_str(
             &(0..32)
                 .map(|n| n.to_string())

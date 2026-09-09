@@ -2,19 +2,19 @@
 | The same rule in all four places a list of things appears.
 
 | Statements.
-let a = 1, let b = 2
+a = 1, b = 2
 assert a = 1, assert b = 2
 
 | An object's fields, written both ways, are the same value.
-let inline = { x = 1, y = 2 }
-let spread = {
+inline = { x = 1, y = 2 }
+spread = {
     x = 1
     y = 2
 }
 assert inline = spread
 
 | An array's elements.
-let apps = [
+apps = [
     {
         name = "cart-web"
         title = "Cart"
@@ -43,6 +43,6 @@ assert text = "cart: Cart"
 
 | A block written on one line takes exactly one statement, so the second is
 | the `if`'s sibling and runs either way — what the newline form would show.
-let seen = 0
+seen = 0
 if false, seen = 1, seen = seen + 10
 assert seen = 10

@@ -5,7 +5,7 @@ link "native_modules/git.so" as git
 link "native_modules/fs.so" as fs
 link "native_modules/process.so" as proc
 
-emit Run { command = "rm", args = ["-rf", "/tmp/code-git-fixture"] } to proc get _
+emit Run { command = "rm", args = ["-rf", "/tmp/code-git-fixture"] } to proc
 
 | Nothing works before Config.
 emit Status {} to git get early
@@ -14,7 +14,7 @@ assert early ∈ Exception
 emit Config { repo_path = "/tmp/code-git-fixture" } to git get c
 assert c ∈ ConfigResult
 assert c.ok
-emit Config { base_path = "/tmp/code-git-fixture" } to fs get _
+emit Config { base_path = "/tmp/code-git-fixture" } to fs
 
 emit Init {} to git get i
 assert i ∈ InitResult
@@ -27,7 +27,7 @@ assert s0.clean
 assert s0.output = ""
 
 | Write a file, and now status is not clean.
-emit WriteFile { path = "note.txt", content = "first line\n" } to fs get _
+emit WriteFile { path = "note.txt", content = "first line\n" } to fs
 emit Status {} to git get s1
 assert s1.clean = false
 assert s1.output = "?? note.txt"
@@ -64,4 +64,4 @@ assert nourl ∈ Exception
 emit Rebase {} to git get u
 assert u = null
 
-emit Run { command = "rm", args = ["-rf", "/tmp/code-git-fixture"] } to proc get _
+emit Run { command = "rm", args = ["-rf", "/tmp/code-git-fixture"] } to proc

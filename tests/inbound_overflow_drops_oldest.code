@@ -7,7 +7,7 @@
 | kind of thing that only shows up as a mystery much later.
 link "native_modules/test_events.so" as ev
 
-let seen = []
+seen = []
 Tick { value } =>
     seen += value
     return Ack {}

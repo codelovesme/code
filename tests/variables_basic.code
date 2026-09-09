@@ -1,5 +1,5 @@
-let x = 42
-let y = x
+x = 42
+y = x
 
 assert x = 42
 assert y = 42

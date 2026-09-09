@@ -1,6 +1,6 @@
 | A body is a body: there is no empty one to write, since a block is an
 | indented run of statements and an empty run is nothing at all. The
 | nearest thing is a body that does nothing, on the header's own line.
-let x = 5
+x = 5
 if x < 12, assert true
 assert x = 5

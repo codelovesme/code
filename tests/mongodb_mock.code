@@ -19,7 +19,7 @@ emit Fetch { key = "settings" } to db get f
 assert f.found
 assert f.value = { theme = "dark", count = 3 }
 
-emit Store { key = "settings", value = { theme = "light", count = 4 } } to db get _
+emit Store { key = "settings", value = { theme = "light", count = 4 } } to db
 emit Fetch { key = "settings" } to db get f2
 assert f2.value = { theme = "light", count = 4 }
 
@@ -35,8 +35,8 @@ assert d2.existed = false
 | Documents.
 emit Insert { collection = "events", doc = { kind = "signup", user = "u1" } } to db get i1
 assert i1 ∈ InsertResult
-emit Insert { collection = "events", doc = { kind = "signup", user = "u2" } } to db get _
-emit Insert { collection = "events", doc = { kind = "login", user = "u1" } } to db get _
+emit Insert { collection = "events", doc = { kind = "signup", user = "u2" } } to db
+emit Insert { collection = "events", doc = { kind = "login", user = "u1" } } to db
 
 emit Count { collection = "events" } to db get all
 assert all.count = 3

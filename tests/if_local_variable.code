@@ -2,5 +2,5 @@
 | local to the block: usable within it, gone afterward (see
 | fail_if_local_leak.code for the "gone afterward" half)
 if true
-    let y = 5
+    y = 5
     assert y = 5

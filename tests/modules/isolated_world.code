@@ -3,8 +3,8 @@
 | Nothing here can name anything in whoever linked this file, so `count` and
 | `Bump` have to be together to work at all — which is the point. Its one way
 | back up is `emit ... to base`, and that reaches handlers, never names.
-let count = 0
-let started = "yes"
+count = 0
+started = "yes"
 
 Bump { by } =>
     count = count + by

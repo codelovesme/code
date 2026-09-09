@@ -66,7 +66,7 @@ fn classify(tok: &Token, prev_dot: bool) -> Option<Kind> {
         // as variables would mean reshaping it — not worth it for the tint.
         InterpStr(_) => Kind::String,
         Number(_) => Kind::Number,
-        True | False | Null | And | Or | Not | Assert | If | Let | Loop | Over | Break
+        True | False | Null | And | Or | Not | Assert | If | Loop | Over | Break
         | Continue | Link | Unlink | As | Emit | To | Core | Get | Is | This | Base
         | Return => Kind::Keyword,
         Equals | Plus | PlusEq | Minus | Star | Slash | NotEq | Lt | Gt | Le | Ge | Arrow | In => {
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn classifies_property_after_dot() {
-        let got = kinds("let p = point.x");
+        let got = kinds("p = point.x");
         assert!(got.contains(&("variable", "point".into())));
         assert!(got.contains(&("property", "x".into())));
     }
@@ -219,13 +219,13 @@ mod tests {
     fn classifies_comment_and_string() {
         let got = kinds("| a comment");
         assert_eq!(got[0].0, "comment");
-        let got = kinds("let a = \"hello\"");
+        let got = kinds("a = \"hello\"");
         assert!(got.iter().any(|(k, t)| *k == "string" && t == "\"hello\""));
     }
 
     #[test]
     fn classifies_number_and_literal_keywords() {
-        let got = kinds("let a = 42 and true");
+        let got = kinds("a = 42 and true");
         assert!(got.iter().any(|(k, t)| *k == "number" && t == "42"));
         assert!(got.iter().any(|(k, t)| *k == "keyword" && t == "and"));
         assert!(got.iter().any(|(k, t)| *k == "keyword" && t == "true"));
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn skips_unlexable_source_entirely() {
-        assert!(semantic_tokens("let a = \"unterminated").is_empty());
+        assert!(semantic_tokens("a = \"unterminated").is_empty());
     }
 
     #[test]

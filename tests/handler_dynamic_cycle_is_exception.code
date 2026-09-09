@@ -9,7 +9,7 @@
 | already running is untouched — it carries on and decides for itself.
 | Was `fail_handler_dynamic_cycle.code`.
 Loopy { n } =>
-    let again = Loopy { n = n - 1 }
+    again = Loopy { n = n - 1 }
     emit again to this get r
     return Ack { inner = r }
 

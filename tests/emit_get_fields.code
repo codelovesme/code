@@ -4,20 +4,21 @@
 emit Length { value = [1, 2, 3] } to core get { value }
 assert value = 3
 
-| `as` renames, for when the answer's word is not the reader's word.
+| `as` renames, for when the answer's word is not the reader's word — and
+| here it has to, since `value` is already in scope and nothing may shadow.
 emit Length { value = "abcd" } to core get { value as size }
 assert size = 4
 
 | A field the answer does not carry is null — exactly what `.field` answers,
 | because it is the same read.
-emit Length { value = [1] } to core get { value, nothing }
-assert value = 1
+emit Length { value = [1] } to core get { value as one, nothing }
+assert one = 1
 assert nothing = null
 
 | `_class` is an ordinary field, and so is readable like one.
-emit Length { value = [] } to core get { _class as kind, value }
+emit Length { value = [] } to core get { _class as kind, value as none }
 assert kind = "LengthResult"
-assert value = 0
+assert none = 0
 
 | Nothing holds the answer itself, so a failed emit destructures into nulls
 | rather than announcing itself. Ask for it whole when that matters.

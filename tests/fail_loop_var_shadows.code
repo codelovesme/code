@@ -1,0 +1,5 @@
+| A loop's variable is a binder like any other: it may not take a name that
+| is already in scope.
+item = "outer"
+loop item over [1, 2]
+    assert true

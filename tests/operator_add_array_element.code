@@ -17,7 +17,7 @@ assert [1] + true = [1, true]
 assert [1] + { k = 2 } = [1, { k = 2 }]
 
 | Building up an array one element at a time, which is the point of it.
-let acc = []
+acc = []
 loop x over [1, 2, 3]
     acc = acc + x * 10
 assert acc = [10, 20, 30]

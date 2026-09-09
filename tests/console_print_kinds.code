@@ -21,7 +21,7 @@ assert r3.value = 4
 emit Print { value = [1, 2, 3] } to con get r4
 assert r4.value = 9
 
-let long_line = "a" + "b" + "c" + "d" + "e" + "f" + "g" + "h" + "i" + "j"
+long_line = "a" + "b" + "c" + "d" + "e" + "f" + "g" + "h" + "i" + "j"
 long_line = long_line + long_line + long_line + long_line
 emit Print { value = long_line } to con get r5
 assert r5.value = 40

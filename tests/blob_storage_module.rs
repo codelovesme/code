@@ -51,8 +51,8 @@ emit Config {{
 }} to blobs get c
 assert c.ok
 
-emit Delete {{ key = "{p}a.txt" }} to blobs get _
-emit Delete {{ key = "{p}b.bin"  }} to blobs get _
+emit Delete {{ key = "{p}a.txt" }} to blobs
+emit Delete {{ key = "{p}b.bin"  }} to blobs
 
 emit Get {{ key = "{p}a.txt" }} to blobs get g0
 assert g0.found = false
@@ -65,7 +65,7 @@ assert g.found
 assert g.data = "hello object"
 assert g.content_type = "text/plain"
 
-emit Put {{ key = "{p}b.bin", data = "aGVsbG8=", base64 = true }} to blobs get _
+emit Put {{ key = "{p}b.bin", data = "aGVsbG8=", base64 = true }} to blobs
 emit Get {{ key = "{p}b.bin" }} to blobs get gb
 assert gb.data = "hello"
 emit Get {{ key = "{p}b.bin", base64 = true }} to blobs get gb64
@@ -79,7 +79,7 @@ emit Delete {{ key = "{p}a.txt" }} to blobs get d
 assert d.existed
 emit Delete {{ key = "{p}a.txt" }} to blobs get d2
 assert d2.existed = false
-emit Delete {{ key = "{p}b.bin" }} to blobs get _
+emit Delete {{ key = "{p}b.bin" }} to blobs
 "#
     );
 

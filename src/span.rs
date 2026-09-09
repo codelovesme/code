@@ -129,12 +129,12 @@ mod tests {
 
     #[test]
     fn points_at_the_offending_column() {
-        let src = "let a = 1\nlet b = *\n";
-        // The `*` is at char offset 18.
-        let out = render(src, "demo.code", Some(18), "expected an expression");
+        let src = "a = 1\nb = *\n";
+        // The `*` is at char offset 10.
+        let out = render(src, "demo.code", Some(10), "expected an expression");
         assert_eq!(
             out,
-            "expected an expression\n --> demo.code:2:9\n  |\n2 | let b = *\n  |         ^"
+            "expected an expression\n --> demo.code:2:5\n  |\n2 | b = *\n  |     ^"
         );
     }
 

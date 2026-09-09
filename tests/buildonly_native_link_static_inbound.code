@@ -9,7 +9,7 @@
 | `.a` fixture.
 link "native_modules/test_events_static.a" as ev
 
-let seen = []
+seen = []
 
 Tick { value } =>
     seen += value

@@ -14,11 +14,11 @@ assert false + " is off" = "false is off"
 assert "x" + null = "xnull"
 
 | both sides can be non-literal, and += inherits the rule
-let label = "count"
-let n = 7
+label = "count"
+n = 7
 assert label + ": " + n = "count: 7"
 
-let line = "items"
+line = "items"
 line += " = "
 line += 3
 assert line = "items = 3"

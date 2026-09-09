@@ -10,7 +10,7 @@
 | binary carries no source tree to resolve against. So it is taken as an
 | ordinary path, relative to the working directory — and these fixtures run
 | from the crate root.
-let held = null
+held = null
 
 Open { path } =>
     link path as m
@@ -82,7 +82,7 @@ Speaking {} =>
 
 emit Speaking {} to this get spoke
 assert spoke._class = "Opened"
-let door = spoke.door
+door = spoke.door
 
 | The three ticks have been handled by here, and each answer went back —
 | through a queue that did not exist when this program started.

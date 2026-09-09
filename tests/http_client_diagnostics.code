@@ -11,7 +11,7 @@
 | this fixture needs no network.
 link "native_modules/http_client.so" as http
 
-let reported = ""
+reported = ""
 
 Exception { source, message } =>
     reported = source

@@ -29,11 +29,11 @@ use std::process::Command;
 /// is now the other half: they own heap blocks, and a handler naming
 /// `greeting` is what proves a library keeps its whole top-level scope alive
 /// behind its one door.
-const MODULE_SOURCE: &str = r#"let items = [1, 2, 3]
-let joined = "x" + "y"
-let n = 42
+const MODULE_SOURCE: &str = r#"items = [1, 2, 3]
+joined = "x" + "y"
+n = 42
 
-let greeting = "hello "
+greeting = "hello "
 
 Greet { who } =>
     return Reply { text = greeting + who }
@@ -325,14 +325,14 @@ fn two_shared_libraries_do_not_answer_for_each_other() {
     build(
         &dir,
         "one",
-        "let who = \"one\"\n\nName { } =>\n    return Named { who = who }\n",
+        "who = \"one\"\n\nName { } =>\n    return Named { who = who }\n",
         code::BuildTarget::Shared,
         "one.so",
     );
     build(
         &dir,
         "two",
-        "let who = \"two\"\n\nName { } =>\n    return Named { who = who }\n",
+        "who = \"two\"\n\nName { } =>\n    return Named { who = who }\n",
         code::BuildTarget::Shared,
         "two.so",
     );

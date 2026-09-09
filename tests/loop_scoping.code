@@ -1,31 +1,26 @@
-| Bare assignment inside a loop body mutates the outer binding, exactly
-| like inside an `if` (see if_bare_assign_still_mutates_outer.code).
-let count = 0
+| Bare assignment inside a loop body reaches the outer binding, exactly like
+| inside an `if` (see if_bare_assign_still_mutates_outer.code).
+count = 0
 loop x over [1, 1, 1]
     count = count + x
 assert count = 3
 
-| The loop variable shadows a same-named outer binding for the body only;
-| the outer binding is untouched afterwards.
-let item = "outer"
-loop item over [1, 2]
-    assert item = 1 or item = 2
-assert item = "outer"
-
-| The iterable is evaluated in the *enclosing* scope, before the loop
-| variable exists — so a loop can iterate a name it also shadows.
-let x = [7, 8]
-let sum = 0
-loop x over x
-    sum = sum + x
-assert sum = 15
-assert x = [7, 8]
-
-| A `let` inside the body is local to that body and re-created each
-| iteration, so only the final iteration's value escapes — via the outer
-| binding it was copied into.
-let last = 0
-loop x over [5, 6]
-    let seen = x
+| A name first written inside the body belongs to the body, and is re-made
+| each iteration — so only the last iteration's value escapes, through the
+| outer binding it was copied into.
+last = 0
+loop n over [5, 6]
+    seen = n
     last = seen
 assert last = 6
+
+| The iterable is evaluated in the enclosing scope, before the loop variable
+| exists. Nothing may shadow, so the two names differ — which is exactly the
+| ambiguity the rule removes (`fail_loop_var_shadows.code` holds the other
+| half).
+xs = [7, 8]
+sum = 0
+loop each over xs
+    sum = sum + each
+assert sum = 15
+assert xs = [7, 8]

@@ -2,10 +2,10 @@
 | between them), leading, and trailing. The name runs to the first
 | character that can't continue an identifier, which is what lets
 | `$user.` and `$n items` end where a reader expects.
-let a = "one"
-let b = "two"
-let user = "ada"
-let n = 3
+a = "one"
+b = "two"
+user = "ada"
+n = 3
 
 assert "$a$b" = "onetwo"
 assert "$a and $b" = "one and two"
@@ -15,6 +15,6 @@ assert "trailing $a" = "trailing one"
 
 | A field is read; an index is not. Interpolation takes a *path*, never a
 | whole expression — see `interp_fields.code` for how deep that goes.
-let box = { lid = "shut" }
+box = { lid = "shut" }
 assert "$box.lid" = "shut"
 assert "$box[0]" = "{\"lid\":\"shut\"}[0]"

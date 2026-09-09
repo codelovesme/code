@@ -4,7 +4,7 @@
 | particle would have had nowhere in the language to land.
 link "native_modules/test_events.so" as ev
 
-let seen = []
+seen = []
 
 Tick { value } =>
     seen += value

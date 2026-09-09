@@ -19,9 +19,9 @@ use std::thread;
 /// trivial ones the window between writing the header and deleting it is too
 /// short for the race to land, and this test passes even against the bug.
 fn program(seed: usize) -> String {
-    let mut src = format!("let a = {seed}\n");
+    let mut src = format!("a = {seed}\n");
     for k in 0..120 {
-        src.push_str(&format!("let v{k} = [{k}, \"s{k}\", {{ f = {k} }}]\n"));
+        src.push_str(&format!("v{k} = [{k}, \"s{k}\", {{ f = {k} }}]\n"));
     }
     src.push_str(&format!("assert a = {seed}\n"));
     src
@@ -77,7 +77,7 @@ fn a_build_leaves_no_intermediates_beside_its_output() {
     let dir = std::env::temp_dir().join(format!("code-artifacts-{}", std::process::id()));
     fs::create_dir_all(&dir).expect("create test directory");
     let source = dir.join("prog.code");
-    fs::write(&source, "let a = 1\nassert a = 1\n").expect("write fixture");
+    fs::write(&source, "a = 1\nassert a = 1\n").expect("write fixture");
 
     let exe = dir.join("prog");
     code::compile_file(&source, code::BuildTarget::Exe, &exe, false).expect("build");

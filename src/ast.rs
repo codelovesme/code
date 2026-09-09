@@ -28,18 +28,21 @@ pub struct Program {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
-    /// `let name = expr` — the *only* way to introduce a name (decided
-    /// 2026-08-21, reversing the original "no declaration keyword"
-    /// design — see memory `new-code-let-keyword`). Always creates a
-    /// *new* binding in the current (innermost) scope, shadowing any
-    /// same-named outer binding for the rest of that scope — even
-    /// re-`let`-ing the same name in the same scope is fine, it just
-    /// rebinds. This is what makes `Assign` below unambiguous.
-    Let { name: String, value: Expr },
-    /// `name = expr` (no `let`) — reassignment only. Searches the scope
-    /// chain outward for an existing binding of `name` and updates it in
-    /// place; an error if `name` isn't bound anywhere (interpreter and
-    /// compiler both — see memory `new-code-let-keyword`).
+    /// `name = expr` — the only assignment form, and the only way a name
+    /// comes into being.
+    ///
+    /// It searches outward for a visible binding and updates it; finding
+    /// none, it introduces one in the current scope. There is no keyword to
+    /// choose between the two because there is nothing to choose: **a
+    /// declaration may never use a name that is already visible** (no
+    /// shadowing, anywhere), so at most one of the two readings is ever
+    /// available.
+    ///
+    /// That rule is what retired `let` on 2026-09-09, and it is checked
+    /// before either backend runs (`verify.rs`) so both refuse the same
+    /// programs. `let` had existed since 2026-08-21 to remove the
+    /// shadow-vs-mutate ambiguity; forbidding the shadow removes it
+    /// outright, and takes the keyword with it.
     Assign { name: String, value: Expr },
     /// `assert expr` — `expr` must evaluate to a `Bool`; `false` or any
     /// other kind aborts the program (interpreter: `Err`; compiled binary:

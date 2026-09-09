@@ -18,7 +18,7 @@ assert not ([] ∈ Object)
 assert not ({} ∈ Array)
 
 | A particle is an Object, so both questions are true of the same value.
-let reply = Reply { status = 200 }
+reply = Reply { status = 200 }
 assert reply ∈ Object
 assert reply ∈ Reply
 assert not (reply ∈ Request)

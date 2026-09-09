@@ -1,7 +1,7 @@
 | `break` exits the innermost loop immediately — the rest of the body is
 | skipped for that iteration too.
-let nums = [1, 2, 3, 4, 5]
-let taken = []
+nums = [1, 2, 3, 4, 5]
+taken = []
 loop n over nums
     if n > 3
         break
@@ -10,7 +10,7 @@ assert taken = [1, 2, 3]
 
 | `break` reaches out through any number of `if` bodies — it exits the
 | enclosing *loop*, not the enclosing block.
-let hit = []
+hit = []
 loop n over nums
 
     if n = 2
@@ -20,7 +20,7 @@ assert hit = [1]
 
 | Breaking before the accumulator is touched leaves it empty: the
 | statements after `break` never run at all.
-let none = []
+none = []
 loop n over nums
     break
     none = none + [n]

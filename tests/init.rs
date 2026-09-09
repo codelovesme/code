@@ -65,13 +65,13 @@ fn the_scaffolded_program_runs_with_nothing_installed() {
 #[test]
 fn an_existing_file_is_a_refusal_not_a_merge() {
     let dir = temp_dir("refuses");
-    fs::write(dir.join("main.code"), "let mine = 1\n").expect("write main.code");
+    fs::write(dir.join("main.code"), "mine = 1\n").expect("write main.code");
 
     let out = code(&dir, &["init"]);
     assert!(!out.status.success(), "init overwrote an existing project");
     assert_eq!(
         fs::read_to_string(dir.join("main.code")).expect("read main.code"),
-        "let mine = 1\n",
+        "mine = 1\n",
         "init touched a file it should have refused"
     );
     // Refused before writing anything, so nothing half-made is left behind.

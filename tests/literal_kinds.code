@@ -1,7 +1,7 @@
-let n = 2.5
-let s = "hi"
-let b = true
-let z = null
+n = 2.5
+s = "hi"
+b = true
+z = null
 
 assert n = 2.5
 assert s = "hi"

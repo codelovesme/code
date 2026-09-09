@@ -2,4 +2,4 @@
 | is an obvious lexicographic answer, but `<` `>` `≤` `≥` still reject them —
 | ordering means numeric ordering here, nothing else. Equality is unaffected:
 | `"abc" = "abd"` is perfectly fine, and false.
-let x = "abc" < "abd"
+x = "abc" < "abd"

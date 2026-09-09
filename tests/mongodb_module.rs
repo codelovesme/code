@@ -45,8 +45,8 @@ emit Config {{ url = "{uri}", database = "{db}" }} to db get c
 assert c ∈ ConfigResult
 assert c.ok
 
-emit Drop {{ collection = "users" }} to db get _
-emit Drop {{ collection = "state" }} to db get _
+emit Drop {{ collection = "users" }} to db
+emit Drop {{ collection = "state" }} to db
 
 | key/value, types preserved
 emit Store {{ key = "prefs", value = {{ theme = "dark", n = 3, tags = ["a", "b"] }} }} to db get s

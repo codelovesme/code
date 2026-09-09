@@ -396,18 +396,23 @@ impl Environment {
         self.scopes.last_mut().unwrap().insert(name, value);
     }
 
-    /// Bare `name = value` — reassigns an existing binding, found by
-    /// searching outward; errors if `name` isn't bound anywhere.
-    fn assign(&mut self, name: &str, value: Value) -> Result<(), String> {
+    /// `name = value` — the whole of assignment and declaration both.
+    ///
+    /// Searches outward for a visible binding and updates it; finding none,
+    /// introduces one here. It cannot be ambiguous: nothing may shadow a
+    /// visible name (`verify.rs` refuses that before the program runs), so
+    /// a name that is not visible is a name nothing else owns.
+    ///
+    /// Must match `codegen.rs`'s `gen_assign`, which reaches the same two
+    /// cases through its slot table.
+    fn set(&mut self, name: &str, value: Value) {
         for scope in self.scopes.iter_mut().rev() {
             if let Some(slot) = scope.get_mut(name) {
                 *slot = value;
-                return Ok(());
+                return;
             }
         }
-        Err(format!(
-            "undefined variable '{name}' (use 'let {name} = ...' to declare it)"
-        ))
+        self.declare(name.to_string(), value);
     }
 
     fn push_scope(&mut self) {
@@ -853,11 +858,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
     match stmt {
         // `exported` is a module-boundary marker consumed by `loader.rs`; a
         // declaration behaves identically either way.
-        Stmt::Let { name, value, .. } => {
-            let v = eval(value, env)?;
-            env.declare(name.clone(), v);
-            Ok(Flow::Normal)
-        }
+
         Stmt::Link { path, .. } => Err(format!(
             "internal error: link \"{path}\" reached the interpreter unresolved"
         )),
@@ -1061,7 +1062,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
         }
         Stmt::Assign { name, value } => {
             let v = eval(value, env)?;
-            env.assign(name, v)?;
+            env.set(name, v);
             Ok(Flow::Normal)
         }
         // A condition is not required to be a Bool — it is asked for its

@@ -1,0 +1,5 @@
+| `get` only ever declares. A name already in scope is not a name it may
+| take — the whole point of forbidding the shadow is that `n = ...` below
+| could only ever mean one thing. Pick another name, or `get { value as n }`.
+n = "outer"
+emit Length { value = [1, 2, 3] } to core get n

@@ -175,8 +175,8 @@ fn test_runs_fixtures_on_the_fail_prefix_convention() {
     let dir = temp_dir("test-cmd");
     let tests = dir.join("tests");
     fs::create_dir_all(&tests).expect("create tests/");
-    fs::write(tests.join("passes.code"), "let x = 1\nassert x = 1\n").unwrap();
-    fs::write(tests.join("fail_asserts.code"), "let x = 1\nassert x = 2\n").unwrap();
+    fs::write(tests.join("passes.code"), "x = 1\nassert x = 1\n").unwrap();
+    fs::write(tests.join("fail_asserts.code"), "x = 1\nassert x = 2\n").unwrap();
 
     let out = code(&dir, &["test"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -187,7 +187,7 @@ fn test_runs_fixtures_on_the_fail_prefix_convention() {
     assert!(stdout.contains("2 passed, 0 failed"), "got:\n{stdout}");
 
     // A fixture that stops without saying it would is the failure.
-    fs::write(tests.join("breaks.code"), "let x = 1\nassert x = 2\n").unwrap();
+    fs::write(tests.join("breaks.code"), "x = 1\nassert x = 2\n").unwrap();
     let out = code(&dir, &["test"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
@@ -204,7 +204,7 @@ fn test_runs_fixtures_on_the_fail_prefix_convention() {
     // interpreted in a child process precisely so that it can fail as hard
     // as it likes — a `link`ed native module that dies takes its host down
     // with it, and in-process that would take the whole report along.
-    fs::write(tests.join("breaks.code"), "let = = =\n").unwrap();
+    fs::write(tests.join("breaks.code"), "= = =\n").unwrap();
     let out = code(&dir, &["test"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(!out.status.success(), "got:\n{stdout}");

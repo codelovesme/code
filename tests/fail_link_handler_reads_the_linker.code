@@ -3,7 +3,7 @@
 | than its own file's, so it could read a name out here while being blind to
 | the one written directly above it. Both halves of that are fixed; this
 | holds the half that must stay refused.
-let secret = 5
+secret = 5
 
 link "modules/handler_peeks_upward.code"
 

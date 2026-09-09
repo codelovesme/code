@@ -11,7 +11,7 @@ Inner { n } =>
 
 Outer { d } =>
     emit Inner { n = d } to this get result
-    let reached = true
+    reached = true
     return Report { reached = reached, inner = result }
 
 emit Outer { d = 0 } to this get bad

@@ -1,7 +1,7 @@
 | `≠` is the exact negation of `=`, and like it is well-defined for any
 | two values rather than requiring matching kinds.
-let a = 1 ≠ 2
-let b = 1 ≠ 1
+a = 1 ≠ 2
+b = 1 ≠ 1
 assert a
 assert not b
 

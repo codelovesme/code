@@ -70,7 +70,6 @@ pub enum Token {
     Not,
     Assert,
     If,
-    Let,
     Loop,
     Over,
     Break,
@@ -493,7 +492,6 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                 "not" => Token::Not,
                 "assert" => Token::Assert,
                 "if" => Token::If,
-                "let" => Token::Let,
                 "loop" => Token::Loop,
                 "over" => Token::Over,
                 "break" => Token::Break,
@@ -577,7 +575,7 @@ mod tests {
         );
 
         // Inside a literal the same shape produces nothing at all.
-        assert_eq!(kinds("let o = {\n    a = 1,\n    b = 2\n}\n"), vec![]);
+        assert_eq!(kinds("o = {\n    a = 1,\n    b = 2\n}\n"), vec![]);
 
         // Blank and comment-only lines do not disturb the structure, which
         // is what lets a comment sit wherever it reads best.
@@ -606,7 +604,7 @@ mod tests {
     /// relies on (see its doc comment).
     #[test]
     fn ends_slice_back_the_source_text() {
-        let src = "let n += 1.50 | a comment\nemit Foo {} to core get t\n\"a\\nb\"";
+        let src = "n += 1.50 | a comment\nemit Foo {} to core get t\n\"a\\nb\"";
         let lexed = tokenize(src).unwrap();
         let chars: Vec<char> = src.chars().collect();
         let mut texts = Vec::new();
@@ -617,7 +615,6 @@ mod tests {
         assert_eq!(
             texts,
             vec![
-                "let",
                 "n",
                 "+=",
                 "1.50",

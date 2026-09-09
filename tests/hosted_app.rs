@@ -23,9 +23,9 @@ use std::process::Command;
 /// and that is the point rather than decoration. A guest whose whole world
 /// is literals owns nothing, so releasing it would prove nothing: the leak
 /// check below can only see blocks that were really allocated.
-const GUEST_SOURCE: &str = r#"let greeting = "hello " + ""
-let history = [1, 2, 3]
-let name = "gu" + "est"
+const GUEST_SOURCE: &str = r#"greeting = "hello " + ""
+history = [1, 2, 3]
+name = "gu" + "est"
 
 Ping { who } =>
     return Pong { text = greeting + who, seen = history }
@@ -241,8 +241,8 @@ fn two_guests_are_held_and_stopped_independently() {
     );
     fs::write(
         dir.join("main.code"),
-        r#"let a = null
-let b = null
+        r#"a = null
+b = null
 
 Start { } =>
     link "a.so" as one
@@ -310,7 +310,7 @@ fn a_guest_still_linked_at_exit_is_released_anyway() {
     );
     fs::write(
         dir.join("main.code"),
-        r#"let app = null
+        r#"app = null
 
 Start { } =>
     link "guest.so" as a
@@ -592,7 +592,7 @@ fn a_guest_owns_its_modules_and_hears_them() {
         "guest",
         r#"link "native_modules/http_client.so" as web
 
-let heard = false
+heard = false
 
 Work { } =>
     emit Get { url = "http://127.0.0.1:1/" } to web get r
@@ -611,7 +611,7 @@ Exception { source, message } =>
         dir.join("main.code"),
         r#"| A host that offers nothing: no `Offer` handler at all, so the guest
 | below opens its own module rather than being furnished one.
-let app = null
+app = null
 
 Start { } =>
     link "./guest.so" as a
@@ -690,12 +690,12 @@ assert l.ok
     );
     fs::write(
         dir.join("main.code"),
-        r#"let app = null
+        r#"app = null
 
 Start { } =>
     link "./guest.so" as a
     app = a
-    emit Wake { } to a get _
+    emit Wake { } to a
     return Started { }
 
 TryStop { } =>
@@ -752,8 +752,8 @@ fn a_stopped_application_starts_again_and_comes_back_new() {
         &dir,
         "guest",
         r#"| State of its own, so a restart can be told from a survival.
-let seen = 0
-let greeting = "hello " + ""
+seen = 0
+greeting = "hello " + ""
 
 Work { } =>
     seen = seen + 1
@@ -764,7 +764,7 @@ Work { } =>
     );
     fs::write(
         dir.join("main.code"),
-        r#"let app = null
+        r#"app = null
 
 Start { } =>
     link "./guest.so" as a
@@ -779,8 +779,8 @@ Stop { } =>
     unlink app
     return Stopped { }
 
-emit Start { } to this get _
-emit Ask { } to this get _
+emit Start { } to this
+emit Ask { } to this
 emit Ask { } to this get twice
 assert twice.seen = 2
 
@@ -788,7 +788,7 @@ emit Stop { } to this get s
 assert s._class = "Stopped"
 
 | Same file, started again — and it must come back from the beginning.
-emit Start { } to this get _
+emit Start { } to this
 emit Ask { } to this get again
 assert again.seen = 1
 assert again.greeting = "hello "
@@ -828,7 +828,7 @@ fn an_application_can_ask_which_kind_of_build_it_is() {
     // is where an application would really ask it, on its way to choosing a
     // door.
     const ASKS: &str = r#"emit Linked to core get where
-let door = "net_server"
+door = "net_server"
 if where.value,  door = "membrane"
 
 Where { } =>
@@ -944,10 +944,10 @@ emit Print { value = "PORT " + l.port } to con
     | `NativeModule::host`'s doc comment). So this pokes it once, the same
     | way `holding.gene.code` sends `Starting` to make a just-attached
     | application actually run its top level.
-    emit Poke { } to opened get _
+    emit Poke { } to opened
     return Attached { }
 
-let p = "./guest.so"
+p = "./guest.so"
 emit Attach { path = p } to this get r
 assert r._class = "Attached"
 "#,

@@ -2329,7 +2329,6 @@ impl<'a, 'm> Gen<'a, 'm> {
                 body,
             } => self.gen_handler(class_name, fields, body),
             Stmt::Return(value) => self.gen_return(value),
-            Stmt::Let { name, value } => self.gen_let(name, value),
             Stmt::Link { path, .. } => Err(format!(
                 "internal error: link \"{path}\" reached codegen unresolved"
             )),
@@ -2359,7 +2358,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .map_err(|e| e.to_string())?;
                 self.check_failed()
             }
-            Stmt::Assign { name, value } => self.gen_reassign(name, value),
+            Stmt::Assign { name, value } => self.gen_assign(name, value),
             Stmt::Assert(expr) => {
                 let ptr = self.gen_expr(expr)?;
                 self.builder
@@ -3028,22 +3027,6 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.env.last_mut().unwrap().insert(name.to_string(), slot);
     }
 
-    /// `let name = value` — always allocates a brand new permanent slot in
-    /// the *current* scope, even if `name` already exists here or further
-    /// out (shadowing; re-`let`-ing the same name in the same scope just
-    /// overwrites that scope's map entry, still correct). See `env`'s doc
-    /// comment for why every assignment copies rather than ever adopting
-    /// `gen_expr`'s pointer directly.
-    fn gen_let(&mut self, name: &str, value: &Expr) -> Result<(), String> {
-        let value_ptr = self.gen_expr(value)?;
-        let permanent = self.alloc_slot("var")?;
-        self.builder
-            .build_call(self.fn_copy, &[permanent.into(), value_ptr.into()], "")
-            .map_err(|e| e.to_string())?;
-        self.bind(name, permanent);
-        Ok(())
-    }
-
     /// Hands the runtime this program's dispatch chain, so a guest linked
     /// while the program runs can have its own `link`s answered by this
     /// program's handlers (`code_abi.h` item 10).
@@ -3093,13 +3076,22 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// Bare `name = value` (no `let`) — reassigns an existing binding.
     /// `verify_defined` already guarantees `name` is bound somewhere before
     /// codegen ever runs, so `lookup` here can't miss.
-    fn gen_reassign(&mut self, name: &str, value: &Expr) -> Result<(), String> {
+    /// `name = value`: into the visible slot if there is one, otherwise a
+    /// fresh slot bound here. Must match `interpreter::Environment::set` —
+    /// nothing may shadow a visible name (`verify.rs` refuses that), so the
+    /// two cases can never both apply.
+    fn gen_assign(&mut self, name: &str, value: &Expr) -> Result<(), String> {
         let value_ptr = self.gen_expr(value)?;
-        let existing = self
-            .lookup(name)
-            .expect("verify_defined guarantees this name is bound");
+        let slot = match self.lookup(name) {
+            Some(existing) => existing,
+            None => {
+                let fresh = self.alloc_slot("var")?;
+                self.bind(name, fresh);
+                fresh
+            }
+        };
         self.builder
-            .build_call(self.fn_copy, &[existing.into(), value_ptr.into()], "")
+            .build_call(self.fn_copy, &[slot.into(), value_ptr.into()], "")
             .map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -4021,7 +4013,7 @@ mod tests {
     use crate::parser::parse;
 
     fn trivial_program() -> Program {
-        let lexed = tokenize("let a = 1\nassert a = 1\n").expect("tokenize");
+        let lexed = tokenize("a = 1\nassert a = 1\n").expect("tokenize");
         parse(&lexed).expect("parse")
     }
 

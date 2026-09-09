@@ -12,7 +12,7 @@ assert s.value = "{\"a\":1,\"b\":[2,3],\"c\":\"x\"}"
 | interpolation. `z` before `a` proves it isn't just alphabetical luck.
 emit Stringify { value = { z = 1, a = 2 } } to j get order
 assert order.value = "{\"z\":1,\"a\":2}"
-let direct = { z = 1, a = 2 }
+direct = { z = 1, a = 2 }
 assert order.value = "$direct"
 
 | The `_class` the language injects into every particle is dropped, top

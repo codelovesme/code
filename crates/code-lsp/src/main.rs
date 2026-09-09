@@ -247,8 +247,8 @@ mod tests {
     #[test]
     fn whole_document_ends_past_the_last_character() {
         assert_eq!(
-            whole_document("let a = 1"),
-            Range::new(Position::new(0, 0), Position::new(0, 9))
+            whole_document("a = 1"),
+            Range::new(Position::new(0, 0), Position::new(0, 5))
         );
     }
 
@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn whole_document_ends_on_the_empty_line_after_a_trailing_newline() {
         assert_eq!(
-            whole_document("let a = 1\nlet b = 2\n"),
+            whole_document("a = 1\nb = 2\n"),
             Range::new(Position::new(0, 0), Position::new(2, 0))
         );
     }

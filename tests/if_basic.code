@@ -1,4 +1,4 @@
-let x = 5
+x = 5
 if x < 10
     assert true
 assert x = 5

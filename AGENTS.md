@@ -126,6 +126,14 @@ needs one · `tests/<name>_module.rs` integration test.
   block and no empty body. Four places count a block's depth and must stay in
   step: `src/lexer.rs`, `src/parser.rs`'s `block`, `src/format.rs`'s
   `push_token`, and `crates/code-lsp/src/tokens.rs`.
+- **`let` is gone, and nothing may shadow** (2026-09-09). `name = value`
+  assigns the visible binding or introduces one here; the two readings are
+  never both available, so no keyword chooses. A **binder** — a handler's
+  field list, a loop's variables, a `get` — is refused outright if the name is
+  already in scope, and `as` is the way out (`Change { email as e }`). `get _`
+  twice is therefore an error; `get` was always optional, so drop it.
+  `verify.rs` is where the rule lives, so both backends refuse the same
+  programs.
 - **`export` is gone** (2026-09-09). A `.code` module's names are its own; a
   link reaches its *handlers*. `as` still names a link and binds an **empty
   object**. A `.code` library therefore emits no `code_module_vars` — a Rust

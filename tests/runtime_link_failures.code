@@ -35,14 +35,14 @@ assert d._class = "Exception"
 | An address is something the runtime minted. Anything else emitted to is a
 | mistake worth naming, not a lookup that quietly finds nothing.
 Forged {} =>
-    let fake = { "_module" = 99 }
+    fake = { "_module" = 99 }
     emit Double { value = 1 } to fake get r
     return r
 emit Forged {} to this get e
 assert e._class = "Exception"
 
 NotAnAddress {} =>
-    let nope = 5
+    nope = 5
     emit Double { value = 1 } to nope get r
     return r
 emit NotAnAddress {} to this get f
@@ -50,7 +50,7 @@ assert f._class = "Exception"
 
 | Unlinking something that was never linked, and unlinking twice.
 UnlinkForged {} =>
-    let fake = { "_module" = 99 }
+    fake = { "_module" = 99 }
     unlink fake
     return Unlinked {}
 emit UnlinkForged {} to this get g

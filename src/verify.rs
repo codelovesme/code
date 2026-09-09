@@ -51,7 +51,11 @@ fn verify_stmts(
             Stmt::HandlerDef { fields, body, .. } => {
                 // The bound name, not the wire field: `{ current as pw }`
                 // puts `pw` in scope and nothing else (see `ast::Field`).
-                let scope: HashSet<String> = fields.iter().map(|f| f.name.clone()).collect();
+                let mut scope: HashSet<String> = HashSet::new();
+                for field in fields {
+                    bind_fresh(scopes, &field.name, "a handler's field list")?;
+                    scope.insert(field.name.clone());
+                }
                 // Only the top level is visible, matching what the body will
                 // actually close over — not whatever scopes happen to be open
                 // where the definition sits (it is top-level only anyway).
@@ -65,12 +69,7 @@ fn verify_stmts(
                 verified?;
             }
             Stmt::Return(value) => verify_expr(value, scopes)?,
-            Stmt::Let { name, value, .. } => {
-                verify_expr(value, scopes)?;
-                // Always binds in the current scope, even if `name` is
-                // already defined here or further out — shadowing.
-                scopes.last_mut().unwrap().insert(name.clone());
-            }
+
             Stmt::Link { path, .. } => {
                 return Err(format!(
                     "internal error: link \"{path}\" reached codegen unresolved"
@@ -137,10 +136,11 @@ fn verify_stmts(
             }
             Stmt::Assign { name, value } => {
                 verify_expr(value, scopes)?;
+                // Assigns the visible binding, or introduces one here. No
+                // check to make: the two readings are never both available,
+                // because nothing may shadow a visible name (`bind_fresh`).
                 if !is_defined(scopes, name) {
-                    return Err(format!(
-                        "undefined variable '{name}' (use 'let {name} = ...' to declare it)"
-                    ));
+                    scopes.last_mut().unwrap().insert(name.clone());
                 }
             }
             Stmt::Assert(expr) => verify_expr(expr, scopes)?,
@@ -162,6 +162,7 @@ fn verify_stmts(
                 }
                 if let Some(acc) = result {
                     verify_expr(&acc.init, scopes)?;
+                    bind_fresh(scopes, &acc.name, "a loop's `get`")?;
                     // Declared in the enclosing scope, matching where the
                     // binding actually lands (see `ast::LoopAccumulator`) —
                     // which is also what makes it defined *after* the loop.
@@ -169,8 +170,10 @@ fn verify_stmts(
                 }
                 let mut scope = HashSet::new();
                 if let Some(over) = over {
+                    bind_fresh(scopes, &over.value, "a loop")?;
                     scope.insert(over.value.clone());
                     if let Some(key) = &over.key {
+                        bind_fresh(scopes, key, "a loop")?;
                         scope.insert(key.clone());
                     }
                 }
@@ -211,10 +214,12 @@ fn verify_stmts(
                 }
                 match result {
                     Some(EmitResult::Whole(name)) => {
+                        bind_fresh(scopes, name, "`get`")?;
                         scopes.last_mut().unwrap().insert(name.clone());
                     }
                     Some(EmitResult::Fields(fields)) => {
                         for entry in fields {
+                            bind_fresh(scopes, &entry.name, "`get`")?;
                             scopes.last_mut().unwrap().insert(entry.name.clone());
                         }
                     }
@@ -241,6 +246,27 @@ fn verify_stmts(
 
 fn is_defined(scopes: &[HashSet<String>], name: &str) -> bool {
     scopes.iter().rev().any(|s| s.contains(name))
+}
+
+/// Refuses a binder that would shadow a name already visible where it
+/// stands — a handler's field list, a loop's variables, a `get`.
+///
+/// This is the rule `let` was retired for. With nothing able to shadow,
+/// `name = value` has only ever one reading available: the name is visible,
+/// so it is assigned, or it is not, so it is introduced. No keyword has to
+/// choose, and neither does a reader.
+///
+/// A binder is the one place the rule can bite through no fault of the
+/// line's author — a handler's field names are the *particle's*, not
+/// theirs — which is what `as` is for: `Change { email as e }`.
+fn bind_fresh(scopes: &[HashSet<String>], name: &str, what: &str) -> Result<(), String> {
+    if is_defined(scopes, name) {
+        return Err(format!(
+            "'{name}' in {what} is already the name of something in scope — nothing may \
+             shadow a visible name. Rename it, or bind it under another name with 'as'"
+        ));
+    }
+    Ok(())
 }
 
 fn verify_expr(expr: &Expr, scopes: &[HashSet<String>]) -> Result<(), String> {

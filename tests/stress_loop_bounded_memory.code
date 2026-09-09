@@ -5,7 +5,7 @@
 | stack out at roughly 8k iterations. The body is deliberately
 | alloca-heavy so this stays fast to run while still demanding ~16MB
 | of stack the old way.
-let a = [1]
+a = [1]
 a = a + a
 a = a + a
 a = a + a
@@ -20,8 +20,8 @@ a = a + a
 a = a + a
 a = a + a
 a = a + a
-let n = 0
+n = 0
 loop x over a
-    let t = [x, x, x, x, x, x, x, x]
+    t = [x, x, x, x, x, x, x, x]
     n = n + x + x + x + x + x + x + x + x + t[0]
 assert n = 147456

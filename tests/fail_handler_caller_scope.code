@@ -11,5 +11,5 @@
 Peek =>
     return Ack { value = local }
 
-    let local = 1
+    local = 1
     emit Peek to this

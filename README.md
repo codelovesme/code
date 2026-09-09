@@ -5,13 +5,13 @@ and two output modes that are required to behave identically: `code run`
 interprets, `code build` compiles through LLVM to a native binary.
 
 ```
-let user = { name = "ada", wins = [1, 2, 3] }
+user = { name = "ada", wins = [1, 2, 3] }
 
 emit Length { value = user.wins } to core get n
 assert n.value = 3
 
-let name = user.name
-let rounds = n.value
+name = user.name
+rounds = n.value
 
 link "native_modules/console.so" as term
 emit Print { value = "$name won $rounds rounds" } to term
@@ -111,7 +111,7 @@ from — `|` is not an operator in this language.
 
 ```
 | this is a comment
-let x = 1 - 2
+x = 1 - 2
 ```
 
 ### Values
@@ -133,12 +133,12 @@ rejected (`docs/todo/README.md`), because `+`, serialization and the native
 layout all still have to ask which one they are holding.
 
 ```
-let n = 2.5
-let s = "hi"
-let b = true
-let z = null
-let xs = [1, "two", [3]]
-let obj = { x = 1, nested = { y = 2 } }
+n = 2.5
+s = "hi"
+b = true
+z = null
+xs = [1, "two", [3]]
+obj = { x = 1, nested = { y = 2 } }
 ```
 
 An object field is written `name = value`. The name is bare when it looks
@@ -146,8 +146,8 @@ like an identifier, quoted when it does not, and **built while the program
 runs** when the quotes contain an interpolation:
 
 ```
-let header = "Content-Type"
-let request = {
+header = "Content-Type"
+request = {
   url = "https://example.com",
   "X-Count" = 3,
   "$header" = "application/json"
@@ -168,7 +168,7 @@ Objects keep **insertion order** — iteration and equality both depend on it.
 Literals may span lines:
 
 ```
-let nums = [
+nums = [
   1,
   2
 ]
@@ -176,21 +176,26 @@ let nums = [
 
 ### Bindings and scope
 
-`let` is **mandatory** for a name's first binding. A bare `name = expr` is
-reassignment only, and is an error if the name was never declared.
+`name = expr` is the whole of it: it assigns the visible binding of that
+name, and introduces one in the current scope if there is none.
+
+**Nothing may shadow a name already in scope.** That is what makes one form
+enough — the two readings are never both available, so no keyword has to
+choose between them and no reader has to work out which happened. There was a
+`let` until 2026-09-09, and forbidding the shadow is what retired it.
 
 A declaration may carry a kind, and so may an object field or a handler's
 field list:
 
 ```
-let port ∈ Number = 8080
-let request = { url ∈ String = "https://example.com", retries ∈ Number = 3 }
+port ∈ Number = 8080
+request = { url ∈ String = "https://example.com", retries ∈ Number = 3 }
 
 Greet { who ∈ String } =>
     return Greeting { text ∈ String = "hello, $who" }
 ```
 
-**Nothing checks it.** `let port ∈ Number = "8080"` runs, and `port` is a
+**Nothing checks it.** `port ∈ Number = "8080"` runs, and `port` is a
 String — the annotation is read, required to be a name, and dropped, and the
 value's own kind is the only one that decides anything (owner's call,
 2026-08-29). It is there for whoever reads the line, which means it can be
@@ -201,31 +206,32 @@ as an *expression* when you want an answer:
 assert port ∈ Number
 ```
 
-```
-let x = 5
-x = 6            | reassigns
-y = 1            | error: undefined variable 'y'
-```
-
-That split is what makes shadowing unambiguous. `let` always creates a new
-binding in the *current* scope; bare assignment always reaches outward to an
-existing one.
-
-```
-let x = 1
+```code
+x = 1
 if true
-    let x = 2    | a new, inner binding
-    assert x = 2
-assert x = 1     | untouched
+    x = 2        | reaches out: `x` is visible here
+assert x = 2
 
-let y = 1
 if true
-    y = 2        | reaches out and mutates
-assert y = 2
+    inner = 9    | not visible outside, so this introduces one
+    assert inner = 9
+| `inner` is gone here, and naming it is an error
 ```
 
-An undefined variable is caught before the program runs under `code build`,
-and at the point of use under `code run`.
+The one place the rule can bite through no fault of the line's author is a
+**binder** — a handler's field list, a loop's variables, a `get`. Those names
+come from the particle or the container, not from whoever wrote the line, so
+`as` is there to rename them:
+
+```code
+email = "the file's own"
+
+Change { email as e } =>
+    return R { who = e }
+```
+
+Without the `as`, that handler is refused before the program runs — by both
+output modes, so neither accepts what the other rejects.
 
 ### Strings and interpolation
 
@@ -233,8 +239,8 @@ and at the point of use under `code run`.
 `\n`, `\t`, `\"`, `\\`, and `\$` for a literal dollar sign.
 
 ```
-let who = "ada"
-let n = 3
+who = "ada"
+n = 3
 assert "hi $who, $n rounds" = "hi ada, 3 rounds"
 assert "costs \$5" = "costs \$5"
 ```
@@ -256,9 +262,9 @@ means a string *nested* inside an interpolated array or object keeps its
 quotes. Interpolation is total — no value is uninterpolable.
 
 ```
-let s = "hi"
-let arr = [1, "a"]
-let whole = 3
+s = "hi"
+arr = [1, "a"]
+whole = 3
 assert "$s" = "hi"
 assert "$arr" = "[1,\"a\"]"
 assert "$whole" = "3"          | numbers: shortest form that round-trips
@@ -337,7 +343,7 @@ Merging is how you copy a particle and change a field, which is the shape
 most handler chains want:
 
 ```
-let edited = received + {text = "ok"}
+edited = received + {text = "ok"}
 ```
 
 `name += expr` is exactly `name = name + expr`, so it means whatever `+`
@@ -375,8 +381,8 @@ and an otherwise correct `assert v = { a, b }` failed on nothing at all.
 exist.
 
 ```
-let point = { x = 1 }
-let nums = [10, 20]
+point = { x = 1 }
+nums = [10, 20]
 assert point.x = 1
 assert nums[0] = 10
 assert nums[1 - 1] = 10          | the index is an expression
@@ -484,7 +490,7 @@ ends where the indentation goes back.
 
 There is **no `else`**, and there never will be. The condition is read for
 its [truth](#truth) — any value will do. The body is a scope, following the
-[`let` vs. bare assignment](#bindings-and-scope) rule above.
+[bindings and scope](#bindings-and-scope) rule above.
 
 A block may hold its one statement on the header's own line, after a comma:
 
@@ -528,7 +534,7 @@ if x, return Y {}                | a header and its body
 Write them across lines and the commas are not needed:
 
 ```code
-let apps = [
+apps = [
     {
         name = "cart-web"
         title = "Cart"
@@ -582,7 +588,7 @@ value, whichever container you are iterating.
 leaves it. This is how you write what other languages spell `while`:
 
 ```code
-let i = 0
+i = 0
 loop
     i = i + 1
     if i = 5, break
@@ -614,7 +620,7 @@ error.
 prepended. No new value kind, no schema, no validation.
 
 ```
-let log = Log { message = "hi" }
+log = Log { message = "hi" }
 assert log._class = "Log"
 assert log = { _class = "Log", message = "hi" }
 ```
@@ -764,7 +770,7 @@ The rest of the rules:
 - **The body's enclosing scope is the top level**, never the caller's. It
   reads and reassigns top-level bindings and linked module aliases (it must:
   `link` is top-level too, so otherwise a handler could never print), but a
-  caller's locals are invisible to it. Ordinary `let` rules apply inside.
+  caller's locals are invisible to it. Ordinary scope rules apply inside.
 - **The handler call graph must be acyclic** — see below.
 
 ### No recursion
@@ -896,7 +902,7 @@ them. What a link reaches is the module's *handlers*, and nothing else:
 
 ```code
 | greeter.code
-let greeting = "hello"
+greeting = "hello"
 
 Greet { who } =>
     return Reply { text = greeting + " " + who }
@@ -933,7 +939,7 @@ That world is the module's, and it is where its handlers live:
 
 ```
 | counter.code
-let count = 0                     | private, and it survives the link
+count = 0                     | private, and it survives the link
 
 Bump { by } =>
     count = count + by            | the file it was written in

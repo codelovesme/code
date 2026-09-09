@@ -2,4 +2,4 @@
 | one is an undefined name, not a null.
 link "modules/shared_values"
 
-let x = greeting
+x = greeting

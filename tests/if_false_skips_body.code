@@ -1,4 +1,4 @@
-let ran = false
+ran = false
 if false
     ran = true
 assert ran = false

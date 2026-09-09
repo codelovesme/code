@@ -14,10 +14,10 @@ fn error_from(src: &str) -> String {
 
 #[test]
 fn a_parse_error_carries_line_column_and_a_caret() {
-    let err = error_from("let a = 1\nlet b = a +\n");
+    let err = error_from("a = 1\nb = a +\n");
     assert!(err.contains(":2:"), "expected a line-2 location in:\n{err}");
     assert!(
-        err.contains("2 | let b = a +"),
+        err.contains("2 | b = a +"),
         "expected the source line in:\n{err}"
     );
     assert!(err.contains('^'), "expected a caret in:\n{err}");
@@ -25,10 +25,10 @@ fn a_parse_error_carries_line_column_and_a_caret() {
 
 #[test]
 fn a_lex_error_carries_a_location_too() {
-    let err = error_from("let a = 1\nlet b = @\n");
+    let err = error_from("a = 1\nb = @\n");
     assert!(err.contains("unexpected character '@'"), "{err}");
     assert!(
-        err.contains(":2:9"),
+        err.contains(":2:5"),
         "expected the column of `@` in:\n{err}"
     );
 }
@@ -38,7 +38,7 @@ fn a_lex_error_carries_a_location_too() {
 /// mostly asserts.
 #[test]
 fn a_failing_assert_points_at_its_own_line() {
-    let err = error_from("let a = 1\nassert a = 2\n");
+    let err = error_from("a = 1\nassert a = 2\n");
     assert_eq!(
         err,
         "assertion failed\n --> <source>:2:1\n  |\n2 | assert a = 2\n  | ^"
@@ -57,7 +57,7 @@ fn a_failing_assert_points_at_its_own_line() {
 fn other_runtime_errors_are_located_too() {
     // `-` is Number-only — unlike `+`, which concatenates when either side
     // is a string.
-    let err = error_from("let a = 1\nlet b = a - \"x\"\n");
+    let err = error_from("a = 1\nb = a - \"x\"\n");
     assert!(err.contains("cannot apply"), "{err}");
     assert!(
         err.contains(":2:1"),
@@ -72,7 +72,7 @@ fn other_runtime_errors_are_located_too() {
 /// about which programs fail once a handler body's errors become values.
 #[test]
 fn an_undefined_name_is_refused_before_the_program_starts() {
-    let err = error_from("emit Noisy {} to this\nlet a = q\n");
+    let err = error_from("emit Noisy {} to this\na = q\n");
     assert!(err.contains("undefined variable 'q'"), "{err}");
 }
 
@@ -84,7 +84,7 @@ fn an_undefined_name_is_refused_before_the_program_starts() {
 /// someone decided to pay for it, not by accident.
 #[test]
 fn a_nested_failure_reports_the_enclosing_top_level_statement() {
-    let err = error_from("let xs = [1, 2, 3]\nloop x over xs\n    assert x < 3\n");
+    let err = error_from("xs = [1, 2, 3]\nloop x over xs\n    assert x < 3\n");
     assert!(
         err.contains(":2:1") && err.contains("2 | loop x over xs"),
         "expected the enclosing `loop` on line 2, not the inner assert on line 3:\n{err}"
@@ -119,9 +119,9 @@ fn a_failure_inside_a_linked_module_reports_the_link_line() {
     let dir = std::env::temp_dir().join(format!("code-error-loc-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("create test directory");
-    fs::write(dir.join("m.code"), "let k = 1\nassert k = 2\n").expect("write module");
+    fs::write(dir.join("m.code"), "k = 1\nassert k = 2\n").expect("write module");
     let entry = dir.join("entry.code");
-    fs::write(&entry, "let before = 1\nlink \"m.code\" as m\n").expect("write entry");
+    fs::write(&entry, "before = 1\nlink \"m.code\" as m\n").expect("write entry");
 
     let err = code::run_file(&entry).expect_err("expected this program to fail");
     assert!(

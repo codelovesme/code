@@ -537,8 +537,8 @@ fn a_network_callback_can_read_a_timer_answer_and_continue() {
         r#"
 link "net_client.a" as net
 link "timer.a" as clock
-let read_answer = false
-let continued = false
+read_answer = false
+continued = false
 Reply {} =>
     emit Delay { ms = 1, then = Later {} } to clock get d
     read_answer = d.value > 0
@@ -604,7 +604,7 @@ fn browser_clients_keep_configuration_per_linked_alias() {
         r#"
 link "net_client.a" as auth
 link "net_client.a" as ping
-let replies = 0
+replies = 0
 Reply {} =>  replies = replies + 1
 Status {} =>  return StatusResult { replies = replies }
 emit Send { particle = Ping {} } to auth get unconfigured

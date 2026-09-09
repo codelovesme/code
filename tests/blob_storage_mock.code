@@ -14,7 +14,7 @@ emit Put { key = "notes/a.txt", data = "first", content_type = "text/plain" } to
 assert p ∈ PutResult
 assert p.key = "notes/a.txt"
 
-emit Put { key = "notes/b.bin", data = "aGVsbG8=", base64 = true } to blobs get _
+emit Put { key = "notes/b.bin", data = "aGVsbG8=", base64 = true } to blobs
 
 emit Get { key = "notes/a.txt" } to blobs get g
 assert g.found

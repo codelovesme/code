@@ -10,7 +10,7 @@
 | section and `native.rs`'s `InboundQueue`).
 link "native_modules/test_timer.so" as timer
 
-let seen = []
+seen = []
 
 Tick { value } =>
     seen += value

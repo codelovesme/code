@@ -48,7 +48,7 @@ assert sr.url = "https://***@example.com/r.git"
 | Stash tracks whether there was anything to stash.
 emit Stash {} to git get st
 assert st.changed = false
-emit Add { pattern = "." } to git get _
+emit Add { pattern = "." } to git
 emit Stash {} to git get st2
 assert st2.changed
 emit StashPop {} to git get sp

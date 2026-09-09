@@ -1,3 +1,3 @@
 | A comma joins two fields, so one with nothing after it is a line someone
 | did not finish — the newline is what ends the last field.
-let o = { a = 1, }
+o = { a = 1, }

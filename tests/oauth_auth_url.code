@@ -45,7 +45,7 @@ emit Config {
     redirect_uri = "https://a/cb",
     auth_url = "https://a/auth",
     token_url = "http://127.0.0.1:1/token"
-} to oauth get _
+} to oauth
 emit ExchangeCode { code = "the-code" } to oauth get refused
 assert refused ∈ Exception
 

@@ -385,40 +385,15 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if matches!(self.peek(), Token::Let) {
-            self.advance();
-            let name = match self.advance() {
-                Token::Ident(name) => name,
-                other => {
-                    return Err(format!(
-                        "expected a variable name after 'let', found {other:?}"
-                    ))
-                }
-            };
-            // `let a ∈ String = "12"` — an optional annotation, and
-            // deliberately nothing more: it is read, checked to be a name,
-            // and dropped. The runtime kind is the one that counts, so a
-            // wrong annotation is wrong the way a wrong comment is wrong.
-            // Owner's call 2026-08-29; the README says so in as many words.
-            self.skip_annotation()?;
-            match self.advance() {
-                Token::Equals => {}
-                other => return Err(format!("expected '=' after 'let {name}', found {other:?}")),
-            }
-            let value = self.expr()?;
-            self.expect_end_of_statement()?;
-            return Ok(Stmt::Let { name, value });
-        }
-
-        // Otherwise the only statement form is `name = expr` (reassignment
-        // — see `ast::Stmt::Assign`'s doc comment; `let` is the only way to
-        // introduce a name).
+        // The only remaining statement form is `name = expr`, which both
+        // assigns and declares — see `ast::Stmt::Assign`.
         let name = match self.advance() {
             Token::Ident(name) => name,
             other => {
                 return Err(format!(
-                "expected a variable name, 'let', 'assert', 'if', 'loop', or '{{', found {other:?}"
-            ))
+                    "expected a variable name, 'assert', 'if', 'loop', 'emit' or \
+                     'return', found {other:?}"
+                ))
             }
         };
         // Where the name itself sits, so an `absent_construct` message can
@@ -430,6 +405,11 @@ impl<'a> Parser<'a> {
         // else downstream — learns it exists. Whatever `+` means for the two
         // operands is therefore exactly what `+=` means, including appending
         // to an array (see `ast::BinOp`).
+        // `port ∈ Number = 8080` — an optional annotation, and deliberately
+        // nothing more: it is read, checked to be a name, and dropped. The
+        // runtime kind is the one that counts, so a wrong annotation is
+        // wrong the way a wrong comment is wrong. Owner's call 2026-08-29.
+        self.skip_annotation()?;
         let compound = match self.advance() {
             Token::Equals => false,
             Token::PlusEq => true,
@@ -1076,8 +1056,13 @@ fn absent_construct(name: &str) -> Option<&'static str> {
             "there is no `else` — write a second `if`, or fall through to what follows \
              the first",
         ),
-        // Removed 2026-09-09 after a survey of both repositories found no
-        // program that read a `.code` module's exported names.
+        // Both removed 2026-09-09. `let` went with the shadowing rule that
+        // made it necessary; `export` went after a survey of both
+        // repositories found no program that read another's exported name.
+        "let" | "var" | "const" => Some(
+            "there is no `let` — `name = value` both assigns and declares, and cannot \
+             be ambiguous because nothing may shadow a name already in scope",
+        ),
         "export" => Some(
             "there is no `export` — a module answers particles, and its names are its \
              own. Reach it with `emit ... to this`, or through the handlers it defines",
