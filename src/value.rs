@@ -117,8 +117,7 @@ impl PartialEq for Value {
                     // exists to avoid.
                     for (i, (a_key, a_value)) in a.iter().enumerate() {
                         let seen = a[..i].iter().filter(|(k, _)| k == a_key).count();
-                        let Some((_, b_value)) =
-                            b.iter().filter(|(k, _)| k == a_key).nth(seen)
+                        let Some((_, b_value)) = b.iter().filter(|(k, _)| k == a_key).nth(seen)
                         else {
                             return false;
                         };
