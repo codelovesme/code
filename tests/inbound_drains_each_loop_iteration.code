@@ -10,16 +10,14 @@ link "native_modules/test_events.so" as ev
 
 let order = []
 
-Tick { value } => {
+Tick { value } =>
     order += 0 - 1
     return Ack {}
-}
 
-loop x over [1, 2] {
+loop x over [1, 2]
     emit Start { value = 1 } to ev get s
     order += x
-}
 
-| Each `Tick` lands at the end of the iteration that caused it. Before the
-| fix this read `[1, 2, -1, -1]` — both ticks arriving after the whole loop.
+    | Each `Tick` lands at the end of the iteration that caused it. Before the
+    | fix this read `[1, 2, -1, -1]` — both ticks arriving after the whole loop.
 assert order = [1, 0 - 1, 2, 0 - 1]

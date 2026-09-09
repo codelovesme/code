@@ -19,7 +19,6 @@ assert Log { x = 1 } = { x = 1, _class = "Log" }
 | Order still survives where it is meant to: iteration walks the fields in
 | the order they were written.
 let seen = []
-loop k, v over { b = 2, a = 1 } {
+loop k, v over { b = 2, a = 1 }
     seen += k
-}
 assert seen = ["b", "a"]

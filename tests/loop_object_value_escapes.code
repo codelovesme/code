@@ -4,7 +4,6 @@
 | the compiled backend's `code_iter_key`, which must hand back an owned
 | string rather than a pointer into the (by-then-released) loop cursor.
 let obj = { first = 1, second = 2 }
-loop k, v over obj get last = "" {
+loop k, v over obj get last = ""
     last = k
-}
 assert last = "second"

@@ -1,7 +1,6 @@
 | A handler body's locals are its own; the particle's fields are too.
-Greet { who } => {
+Greet { who } =>
     let inside = 1
     return Ack {}
-}
 emit Greet { who = "ada" } to this
 assert inside = 1

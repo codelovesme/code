@@ -11,9 +11,8 @@ link "native_modules/math.so" as math
 link "native_modules/console.so" as con
 
 | A user-defined handler: `who` is simply null, and the body decides.
-Greet { who } => {
+Greet { who } =>
     return Greeting { missing = who = null }
-}
 emit Greet {} to this get g
 assert g.missing = true
 

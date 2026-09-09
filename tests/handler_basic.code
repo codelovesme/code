@@ -6,10 +6,9 @@
 | There are no types here to declare a particle's shape, so an implicit
 | binding would be the one name in the language that appears from nowhere;
 | listing them mirrors the literal that constructs the particle.
-Greet { who } => {
+Greet { who } =>
     assert who = "ada"
     return Greeting { text = "hi $who" }
-}
 
 emit Greet { who = "ada" } to this get r
 assert r ∈ Greeting

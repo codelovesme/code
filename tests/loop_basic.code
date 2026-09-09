@@ -3,15 +3,13 @@
 | array `+` that already exists — see loop_collect.code.
 let items = [10, 20, 30]
 let doubled = []
-loop item over items {
+loop item over items
     doubled = doubled + [item * 2]
-}
 assert doubled = [20, 40, 60]
 
 | The body sees the element itself, whatever kind it is.
 let names = ["ada", "grace"]
 let joined = ""
-loop name over names {
+loop name over names
     joined = joined + name
-}
 assert joined = "adagrace"

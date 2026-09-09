@@ -25,18 +25,15 @@ assert m = 16
 | It reassigns an existing binding, so it reaches outward from a block
 | exactly like a bare `name = ...` does.
 let outer = [1]
-if true {
+if true
     outer += 2
-}
 assert outer = [1, 2]
 
 | Including a loop's `get` accumulator, which is an ordinary binding.
-loop x over [1, 2, 3] get out = [] {
+loop x over [1, 2, 3] get out = []
     out += x
-}
 assert out = [1, 2, 3]
 
-loop x over [1, 2, 3] get sum = 0 {
+loop x over [1, 2, 3] get sum = 0
     sum += x
-}
 assert sum = 6

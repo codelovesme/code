@@ -10,63 +10,56 @@
 | binary carries no source tree to resolve against. So it is taken as an
 | ordinary path, relative to the working directory — and these fixtures run
 | from the crate root.
-Missing {} => {
+Missing {} =>
     link "tests/native_modules/nosuch.so" as m
     return Loaded {}
-}
 emit Missing {} to this get a
 assert a._class = "Exception"
 
 | A `.a` is linked into this binary at build time and has nothing to open; a
 | `.code` source would mean adding handlers while the program runs. Only a
 | `.so` is a module in the sense this statement means.
-NotAnModule {} => {
+NotAnModule {} =>
     link "tests/native_modules/test_math_static.a" as m
     return Loaded {}
-}
 emit NotAnModule {} to this get b
 assert b._class = "Exception"
 
 | The path is a value, so it can be the wrong kind of value.
-NotAPath {} => {
+NotAPath {} =>
     link 5 as m
     return Loaded {}
-}
 emit NotAPath {} to this get d
 assert d._class = "Exception"
 
 | An address is something the runtime minted. Anything else emitted to is a
 | mistake worth naming, not a lookup that quietly finds nothing.
-Forged {} => {
+Forged {} =>
     let fake = { "_module" = 99 }
     emit Double { value = 1 } to fake get r
     return r
-}
 emit Forged {} to this get e
 assert e._class = "Exception"
 
-NotAnAddress {} => {
+NotAnAddress {} =>
     let nope = 5
     emit Double { value = 1 } to nope get r
     return r
-}
 emit NotAnAddress {} to this get f
 assert f._class = "Exception"
 
 | Unlinking something that was never linked, and unlinking twice.
-UnlinkForged {} => {
+UnlinkForged {} =>
     let fake = { "_module" = 99 }
     unlink fake
     return Unlinked {}
-}
 emit UnlinkForged {} to this get g
 assert g._class = "Exception"
 
-UnlinkTwice {} => {
+UnlinkTwice {} =>
     link "tests/native_modules/test_math.so" as m
     unlink m
     unlink m
     return Unlinked {}
-}
 emit UnlinkTwice {} to this get h
 assert h._class = "Exception"

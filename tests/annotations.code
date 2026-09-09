@@ -21,9 +21,8 @@ let headers = { "$field" ∈ String = "text/plain" }
 assert headers["Accept"] = "text/plain"
 
 | And a handler's field list.
-Greet { who ∈ String } => {
+Greet { who ∈ String } =>
     return Greeting { text ∈ String = "hello, $who" }
-}
 
 emit Greet { who = "ada" } to this get r
 assert r.text = "hello, ada"

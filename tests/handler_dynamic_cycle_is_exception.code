@@ -8,11 +8,10 @@
 | so the frame that tried to re-enter gets it back, and the invocation
 | already running is untouched — it carries on and decides for itself.
 | Was `fail_handler_dynamic_cycle.code`.
-Loopy { n } => {
+Loopy { n } =>
     let again = Loopy { n = n - 1 }
     emit again to this get r
     return Ack { inner = r }
-}
 
 emit Loopy { n = 2 } to this get top
 

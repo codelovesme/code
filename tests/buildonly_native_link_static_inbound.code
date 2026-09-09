@@ -11,10 +11,9 @@ link "native_modules/test_events_static.a" as ev
 
 let seen = []
 
-Tick { value } => {
+Tick { value } =>
     seen += value
     return Ack {}
-}
 
 emit Start { value = 3 } to ev get started
 assert started = { _class = "StartedResult", value = 3 }

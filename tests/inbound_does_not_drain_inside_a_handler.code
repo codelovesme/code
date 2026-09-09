@@ -12,17 +12,14 @@ link "native_modules/test_events.so" as ev
 let ticks = 0
 let asked = 0
 
-Tick { value } => {
+Tick { value } =>
     ticks += 1
     | Only the first tick asks for more, or this would never end.
-    if ticks = 1 {
-        loop y over [1] {
+    if ticks = 1
+        loop y over [1]
             emit Start { value = 2 } to ev get s
             asked += 1
-        }
-    }
     return Ack {}
-}
 
 emit Start { value = 1 } to ev get started
 assert started.value = 1

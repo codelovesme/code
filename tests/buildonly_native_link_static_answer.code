@@ -3,9 +3,8 @@
 | dlsym'd — the same split the dispatch itself already has.
 link "native_modules/test_events_static.a" as ev
 
-Tick { value } => {
+Tick { value } =>
     return Ack { value = value + 100 }
-}
 
 emit Start { value = 2 } to ev get started
 assert started.value = 2

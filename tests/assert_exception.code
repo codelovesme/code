@@ -2,17 +2,15 @@
 | answer carries the original underneath — which is what
 | `Exception.innerException` is a field for. The message quotes the one
 | beneath it, because at the top level the message is all that gets printed.
-Read {} => {
+Read {} =>
     emit Length { value = 5 } to core get bad
     assert bad
     return Never {}
-}
 
-| Anything else false has nothing underneath it.
-Plain {} => {
+    | Anything else false has nothing underneath it.
+Plain {} =>
     assert 0
     return Never {}
-}
 
 emit Read {} to this get answer
 assert answer ∈ Exception

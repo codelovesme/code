@@ -3,9 +3,8 @@
 | returning nothing is not an error.
 let seen = 0
 
-Note { text } => {
+Note { text } =>
     seen = seen + 1
-}
 
 emit Note { text = "first" } to this get nothing
 assert nothing = null

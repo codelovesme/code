@@ -15,9 +15,8 @@ emit Foo to core get b
 assert b = null
 
 | `to this`: the program defines one handler, and this is not it.
-Known {} => {
+Known {} =>
     return Ack {}
-}
 emit Unknown { x = 1 } to this get c
 assert c = null
 

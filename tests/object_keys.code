@@ -26,9 +26,8 @@ assert numbered["field2"] = "second"
 | Keys collected in a loop, which is the shape that wanted this.
 let names = ["a", "b"]
 let collected = {}
-loop k over names {
+loop k over names
     collected = collected + { "$k" = k + "!" }
-}
 assert collected = { a = "a!", b = "b!" }
 
 | And it still holds after the heap has been handed out again. `+` builds a
@@ -40,9 +39,8 @@ assert collected = { a = "a!", b = "b!" }
 | read out of freed memory that nothing had claimed yet. The loop below
 | claims it, allocating objects of exactly the shape just released.
 let churn = {}
-loop i over [1, 2, 3, 4, 5, 6, 7, 8] {
+loop i over [1, 2, 3, 4, 5, 6, 7, 8]
     churn = { "$i" = "x" }
-}
 assert churn = { "8" = "x" }
 assert collected = { a = "a!", b = "b!" }
 

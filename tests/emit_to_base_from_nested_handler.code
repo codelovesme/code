@@ -5,16 +5,14 @@
 | whatever depth the caller happened to sit at. Resolving against the
 | caller's depth instead would look one level too high (or off the
 | stack entirely) and this assert would fail.
-Ping { value } => {
+Ping { value } =>
     return Ping { value = value + 10 }
-}
 
 link "modules/base_handler_child" as h
 
-Wrap => {
+Wrap =>
     emit Ask {} to this get inner
     return Wrap { got = inner.got }
-}
 
 emit Wrap {} to this get w
 assert w.got = 11

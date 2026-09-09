@@ -4,9 +4,8 @@
 | Resolving against the caller's depth instead would send the
 | particle to the wrong level (or nowhere) and this assert would
 | fail.
-Ping { value } => {
+Ping { value } =>
     return Ping { value = value + 10 }
-}
 
 link "modules/base_handler_child" as h
 

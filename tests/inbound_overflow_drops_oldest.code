@@ -8,10 +8,9 @@
 link "native_modules/test_events.so" as ev
 
 let seen = []
-Tick { value } => {
+Tick { value } =>
     seen += value
     return Ack {}
-}
 
 emit Start { value = 300 } to ev get started
 assert started.value = 300

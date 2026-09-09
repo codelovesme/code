@@ -8,10 +8,8 @@
 | phase 4 — a runtime error inside a handler body is an `Exception` value
 | now, so as a runtime error this would have left `code run` completing
 | happily while `code build` refused to compile it.
-Peek => {
+Peek =>
     return Ack { value = local }
-}
-{
+
     let local = 1
     emit Peek to this
-}

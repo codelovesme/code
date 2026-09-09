@@ -1,4 +1,3 @@
 | Reaches for a name belonging to whoever linked this file. There isn't one.
-Peek {} => {
+Peek {} =>
     return Seen { n = secret }
-}

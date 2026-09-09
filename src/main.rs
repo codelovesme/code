@@ -112,6 +112,36 @@ fn main() -> ExitCode {
         "list" => cmd_list(),
         "test" => cmd_test(args.collect()),
         "format" => cmd_format(args.collect()),
+        // Temporary, deleted with `src/migrate.rs` once both repositories
+        // have run through it. Rewrites brace blocks as indented ones, in
+        // place, for each path given.
+        "migrate-blocks" => {
+            for path in args {
+                let src = match std::fs::read_to_string(&path) {
+                    Ok(src) => src,
+                    Err(e) => {
+                        eprintln!("error: {path}: {e}");
+                        std::process::exit(1);
+                    }
+                };
+                match code::migrate::to_indentation(&src) {
+                    Ok(out) => {
+                        if out != src {
+                            if let Err(e) = std::fs::write(&path, out) {
+                                eprintln!("error: {path}: {e}");
+                                std::process::exit(1);
+                            }
+                            println!("migrated {path}");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("error: {path}: {}", e.msg);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            ExitCode::SUCCESS
+        }
         // Global flags rather than subcommands, so they take no feature gate
         // and work even in the wasm-only interpreter build.
         "--version" | "-v" | "version" => {

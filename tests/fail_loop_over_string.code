@@ -2,6 +2,5 @@
 | and looks iterable, is neither. Character-by-character iteration is
 | deliberately not supported yet (needs a grapheme decision that belongs
 | with the strings module, not this fixture).
-loop c over "abc" {
+loop c over "abc"
     assert true
-}

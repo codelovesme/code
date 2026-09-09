@@ -1,14 +1,11 @@
 | A longer loop. Any cycle at all is rejected, not only the direct kind.
-A {} => {
+A {} =>
     emit B to this get r
     return Ack {}
-}
-B {} => {
+B {} =>
     emit C to this get r
     return Ack {}
-}
-C {} => {
+C {} =>
     emit A to this get r
     return Ack {}
-}
 emit A to this

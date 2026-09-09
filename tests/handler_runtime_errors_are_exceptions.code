@@ -7,22 +7,17 @@
 |
 | One per failing helper family, since each is a separate check site:
 | `code_field`, `code_core_dispatch`, `code_compare`, `code_div`, `code_add`.
-Field { k } => {
+Field { k } =>
     return R { v = k.name }
-}
-Core { k } => {
+Core { k } =>
     emit k to core get z
     return R { v = z }
-}
-Order { k } => {
+Order { k } =>
     return R { v = 1 < k }
-}
-Divide { k } => {
+Divide { k } =>
     return R { v = 1 / k }
-}
-Add { k } => {
+Add { k } =>
     return R { v = 1 + k }
-}
 
 emit Field { k = 5 } to this get a
 assert a ∈ Exception

@@ -9,15 +9,12 @@
 | that it compiles and leaks nothing.
 
 | A guest wanting to draw somewhere, and a program deciding.
-MayDraw { app, into } => {
-    if app = "trusted" {
+MayDraw { app, into } =>
+    if app = "trusted"
         return Allowed { into = "#guest-" + app }
-    }
     return Refused { reason = "$app may not draw at $into" }
-}
 
-| An answer that is not an object at all — a host has to cope with that too.
-Count { of } => {
+    | An answer that is not an object at all — a host has to cope with that too.
+Count { of } =>
     emit Length { value = of } to core get many
     return Counted { value = many.value }
-}

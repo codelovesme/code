@@ -1,7 +1,6 @@
 | bare (no 'let') assignment inside if/block still mutates an existing
 | outer binding, unaffected by 'let' shadowing -- regression check
 let x = 1
-if true {
+if true
     x = 2
-}
 assert x = 2

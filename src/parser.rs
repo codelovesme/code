@@ -10,11 +10,32 @@ fn starts_uppercase(name: &str) -> bool {
 }
 
 pub fn parse(lexed: &Lexed) -> Result<Program, Located> {
+    parse_recording_block_braces(lexed).map(|(program, _)| program)
+}
+
+/// `parse`, plus the char offsets of every `{`/`}` pair that opened and
+/// closed a **block** in the brace form the language is migrating off.
+///
+/// Temporary, and only the migration reads it. Telling a block's braces from
+/// an object's is not something a token walk can do — the two are the same
+/// character in the same shape — but the parser has already decided it by the
+/// time it consumes them, so it says so rather than making the migration
+/// guess. AGENTS.md's rule about never `sed`-ing a syntax migration is the
+/// same rule; this is what it looks like for braces.
+pub fn parse_recording_block_braces(
+    lexed: &Lexed,
+) -> Result<(Program, Vec<BlockBraces>), Located> {
     let mut p = Parser::new(lexed);
     // Every error site below stays a plain `String`; the position is attached
     // once, here, from wherever the parser had got to. That's what keeps
     // locations from having to be threaded through two dozen error sites.
-    p.program().map_err(|msg| p.locate(msg))
+    match p.program() {
+        Ok(program) => {
+            let braces = std::mem::take(&mut p.block_braces);
+            Ok((program, braces))
+        }
+        Err(msg) => Err(p.locate(msg)),
+    }
 }
 
 struct Parser<'a> {
@@ -45,6 +66,23 @@ struct Parser<'a> {
     /// without either needing its own pass. A flag rather than a count:
     /// handler definitions are top-level only, so they never nest.
     in_handler: bool,
+    /// Char offsets of the `{`/`}` pairs that opened and closed a block in
+    /// the old brace form — see `parse_recording_block_braces`. Empty for a
+    /// file already written with indentation, which is every file once the
+    /// migration has run.
+    block_braces: Vec<BlockBraces>,
+}
+
+/// One block written in the brace form: where its `{` and `}` sit, and
+/// whether a `=>` introduced it. The migration needs the last part because a
+/// one-line body loses its braces differently on either side of the arrow —
+/// `=>` already separates a handler from its body, while `if` and `loop` end
+/// in an expression and take the comma instead.
+#[derive(Debug, Clone, Copy)]
+pub struct BlockBraces {
+    pub open: u32,
+    pub close: u32,
+    pub after_arrow: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -57,6 +95,7 @@ impl<'a> Parser<'a> {
             loop_depth: 0,
             block_depth: 0,
             in_handler: false,
+            block_braces: Vec::new(),
         }
     }
 
@@ -128,8 +167,10 @@ impl<'a> Parser<'a> {
         if matches!(self.peek(), Token::If) {
             self.advance();
             let condition = self.expr()?;
-            let body = self.block()?;
-            self.expect_end_of_statement()?;
+            // No `expect_end_of_statement`: a block ends itself. The
+            // indented form consumed its `Dedent`, and the same-line form's
+            // one statement already ended on the newline that follows it.
+            let body = self.block(false)?;
             return Ok(Stmt::If { condition, body });
         }
 
@@ -239,11 +280,10 @@ impl<'a> Parser<'a> {
             return Ok(Stmt::Return(value));
         }
 
-        // A bare block: unambiguous at statement-start, since object
-        // literals only ever appear in expression position (the right-hand
-        // side of `=`, an array element, ...), never here.
+        // A bare block, in the brace form only — it has no indentation
+        // spelling and is going away with the braces. Temporary.
         if matches!(self.peek(), Token::LBrace) {
-            let body = self.block()?;
+            let body = self.block(false)?;
             self.expect_end_of_statement()?;
             return Ok(Stmt::Block(body));
         }
@@ -340,10 +380,9 @@ impl<'a> Parser<'a> {
                     return Err("handlers cannot be defined inside a handler body".to_string());
                 }
                 self.in_handler = true;
-                let body = self.block();
+                let body = self.block(true);
                 self.in_handler = false;
                 let body = body?;
-                self.expect_end_of_statement()?;
                 return Ok(Stmt::HandlerDef {
                     class_name,
                     fields,
@@ -528,10 +567,9 @@ impl<'a> Parser<'a> {
         };
 
         self.loop_depth += 1;
-        let body = self.block();
+        let body = self.block(false);
         self.loop_depth -= 1;
         let body = body?;
-        self.expect_end_of_statement()?;
 
         let result = result_name.map(|(name, init)| LoopAccumulator {
             name,
@@ -616,15 +654,80 @@ impl<'a> Parser<'a> {
         Ok(fields)
     }
 
-    fn block(&mut self) -> Result<Vec<Stmt>, String> {
-        match self.advance() {
-            Token::LBrace => {}
-            other => return Err(format!("expected '{{', found {other:?}")),
+    /// A block's body: the indented run of lines under its header, or one
+    /// statement on the header's own line.
+    ///
+    /// `after_arrow` is what tells the two same-line forms apart. A handler's
+    /// `=>` already separates the header from the body, so the statement
+    /// follows it directly; `if` and `loop` end in an expression with nothing
+    /// after it, so they take a comma — the same comma that separates two
+    /// statements written on one line. That is what keeps the guard run
+    /// writable, and with no `else` in the language a run of guards *is* the
+    /// multi-way conditional (see the README).
+    fn block(&mut self, after_arrow: bool) -> Result<Vec<Stmt>, String> {
+        // The brace form, still accepted while the corpus migrates off it.
+        // Recorded rather than merely tolerated: these offsets are how the
+        // migration knows which braces were a block's and not an object's.
+        if matches!(self.peek(), Token::LBrace) {
+            let open = self.starts[self.pos];
+            self.advance();
+            self.skip_newlines();
+            let mut statements = Vec::new();
+            self.block_depth += 1;
+            while !matches!(self.peek(), Token::RBrace | Token::Eof) {
+                match self.statement() {
+                    Ok(stmt) => statements.push(stmt),
+                    Err(e) => {
+                        self.block_depth -= 1;
+                        return Err(e);
+                    }
+                }
+                self.skip_newlines();
+            }
+            self.block_depth -= 1;
+            let close = self.starts[self.pos];
+            self.advance(); // '}'
+            self.block_braces.push(BlockBraces {
+                open,
+                close,
+                after_arrow,
+            });
+            return Ok(statements);
         }
-        self.skip_newlines();
+
+        let same_line = if matches!(self.peek(), Token::Comma) {
+            self.advance();
+            true
+        } else {
+            after_arrow && !matches!(self.peek(), Token::Newline)
+        };
+        if same_line {
+            self.block_depth += 1;
+            let stmt = self.statement();
+            self.block_depth -= 1;
+            return Ok(vec![stmt?]);
+        }
+
+        match self.advance() {
+            Token::Newline => {}
+            other => {
+                return Err(format!(
+                    "expected a body — an indented line below, or ',' and one statement on \
+                     this one — found {other:?}"
+                ))
+            }
+        }
+        match self.advance() {
+            Token::Indent => {}
+            other => {
+                return Err(format!(
+                    "expected the body to be indented further than its header, found {other:?}"
+                ))
+            }
+        }
         let mut statements = Vec::new();
         self.block_depth += 1;
-        while !matches!(self.peek(), Token::RBrace) {
+        while !matches!(self.peek(), Token::Dedent | Token::Eof) {
             match self.statement() {
                 Ok(stmt) => statements.push(stmt),
                 Err(e) => {
@@ -635,29 +738,27 @@ impl<'a> Parser<'a> {
             self.skip_newlines();
         }
         self.block_depth -= 1;
-        self.advance(); // '}'
+        self.advance(); // Dedent (or Eof, which the lexer always dedents before)
         Ok(statements)
     }
 
-    /// A statement ends at a separator, at end of input, or at the `}` that
-    /// closes the block it sits in — the last of which is what lets a block
-    /// hold a statement on one line: `if score ≥ 90 { return G { letter =
-    /// "A" } }`. That shape is the guard clause, and with no `else` in the
-    /// language a run of them is how a multi-way conditional is written, so
-    /// refusing it cost the idiom the rest of the design points at.
+    /// A statement ends at a separator, at end of input, or at the `Dedent`
+    /// that closes the block it sits in.
     ///
-    /// The `}` is not consumed — `block` is what closes a block, and it
+    /// The `Dedent` is not consumed — `block` is what closes a block, and it
     /// decides it is finished by peeking the same token.
     ///
     /// Only *inside* a block, hence `block_depth`. At the top level there is
-    /// nothing for a `}` to close, so a stray one stays the error it always
-    /// was rather than being quietly accepted and reported one token later.
+    /// nothing to close, so a stray `Dedent` cannot arrive there at all.
     fn expect_end_of_statement(&mut self) -> Result<(), String> {
         match self.peek() {
             Token::Newline | Token::Eof => Ok(()),
+            Token::Dedent if self.block_depth > 0 => Ok(()),
+            // Temporary, for as long as the brace form is still accepted:
+            // a one-line `if x { return Y }` ends its statement at the `}`.
             Token::RBrace if self.block_depth > 0 => Ok(()),
             // `else` lands here rather than at the start of a statement,
-            // because the `}` it follows has already closed the `if` body.
+            // because the dedent it follows has already closed the `if` body.
             // Worth naming for the same reason the others are: the README
             // says to write a second `if`, and nothing at the point of the
             // mistake said so.
@@ -1039,12 +1140,19 @@ fn absent_construct(name: &str) -> Option<&'static str> {
     match name {
         "fn" | "func" | "fun" | "def" | "function" | "lambda" => Some(
             "there are no functions — a handler answers a particle, and is the only \
-             call-like thing here:\n  Name { field } => { return Result { ... } }\n\
+             call-like thing here:\n  Name { field } =>\n      return Result { ... }\n\
              reached with `emit Name { field = x } to this get r`",
         ),
-        "while" => Some("there is no `while` — `loop { }` with `break` is the unbounded loop"),
+        // `else` reads as a statement now that a block is an indented run
+        // rather than something a `}` closes, so it arrives here with the
+        // rest of them instead of at the end of the `if` it followed.
+        "else" => Some(
+            "there is no `else` — write a second `if`, or fall through to what follows \
+             the first",
+        ),
+        "while" => Some("there is no `while` — a bare `loop` with `break` is the unbounded loop"),
         "for" | "foreach" => Some(
-            "there is no `for` — `loop item over container { }` iterates an Array or an Object",
+            "there is no `for` — `loop item over container` iterates an Array or an Object",
         ),
         "class" | "struct" | "type" | "interface" | "enum" => Some(
             "there are no type declarations — a particle is an Object with a `_class` \

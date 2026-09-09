@@ -13,9 +13,8 @@ link "native_modules/http_client.so" as http
 
 let reported = ""
 
-Exception { source, message } => {
+Exception { source, message } =>
     reported = source
-}
 
 emit Get { url = "http://127.0.0.1:1/" } to http get r
 assert not r.ok

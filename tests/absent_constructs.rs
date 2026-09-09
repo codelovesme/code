@@ -47,7 +47,7 @@ fn reaching_for_a_loop_keyword_names_the_loop_that_exists() {
     let err = error_from("let i = 0\nwhile i < 3 {\n    i = i + 1\n}\n");
     assert!(err.contains("there is no `while`"), "{err}");
     assert!(
-        err.contains("loop { }"),
+        err.contains("bare `loop`"),
         "should name the shape; got:\n{err}"
     );
 
@@ -61,12 +61,13 @@ fn reaching_for_a_loop_keyword_names_the_loop_that_exists() {
     }
 }
 
-/// `else` is the one that does not start a statement — the `}` it follows
-/// has already closed the `if` body, so it is answered from
-/// `expect_end_of_statement` rather than from the bare-identifier arm.
+/// `else` used to be the one that did not start a statement: the `}` it
+/// followed had already closed the `if` body, so it was answered from
+/// `expect_end_of_statement`. With a block ending at a dedent instead, it
+/// starts a line like any other word, and is answered with the rest of them.
 #[test]
 fn else_is_answered_where_it_actually_lands() {
-    let err = error_from("if true {\n    let a = 1\n} else {\n    let a = 2\n}\n");
+    let err = error_from("if true\n    let a = 1\nelse\n    let a = 2\n");
     assert!(err.contains("there is no `else`"), "{err}");
     assert!(
         err.contains("second `if`"),

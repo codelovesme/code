@@ -13,9 +13,8 @@ assert {} + {} = {}
 | same value. Iteration is what sees the difference.
 assert { a = 1, b = 2 } + { a = 9 } = { b = 2, a = 9 }
 let order = []
-loop k, v over { a = 1, b = 2 } + { a = 9 } {
+loop k, v over { a = 1, b = 2 } + { a = 9 }
     order += k
-}
 assert order = ["a", "b"]
 
 | Fields are replaced whole; nothing merges recursively.
@@ -47,9 +46,8 @@ assert retagged.text = "hi"
 
 | `+=` is `x = x + x`'s sugar, so it inherits all of the above.
 let acc = {}
-loop k, v over { a = 1, b = 2 } {
+loop k, v over { a = 1, b = 2 }
     acc += { seen = k }
-}
 assert acc = { seen = "b" }
 
 | Self-merge is a value operation, not an aliasing one.

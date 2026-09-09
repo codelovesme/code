@@ -61,6 +61,14 @@ pub fn format(src: &str) -> Result<String, Located> {
             // iteration.
             Token::Eof => break,
             Token::Newline => f.finish_line(),
+            // A block's body is one level deeper, exactly as a bracket's
+            // contents are — the same counter, because the two never
+            // overlap: the lexer only counts indentation outside brackets.
+            // Both are zero-width, so neither contributes any text, and each
+            // lands between the newline that ended the last line and the
+            // first token of the next, which is where the depth has to move.
+            Token::Indent => f.depth += 1,
+            Token::Dedent => f.depth = f.depth.saturating_sub(1),
             _ => f.push_token(token, lexed.starts[i] as usize, lexed.ends[i] as usize),
         }
         let gap_start = lexed.ends[i] as usize;

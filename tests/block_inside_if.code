@@ -1,8 +1,0 @@
-| bare blocks and if-bodies compose: nesting one inside the other
-let x = 0
-if true {
-    {
-        x = 5
-    }
-}
-assert x = 5

@@ -1,7 +1,5 @@
 let x = 0
-if true {
-    if true {
+if true
+    if true
         x = 99
-    }
-}
 assert x = 99

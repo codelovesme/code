@@ -18,5 +18,5 @@ assert not again.value
 
 | It is a value like any other, so it can steer a decision.
 let door = "net_server"
-if where.value { door = "membrane" }
+if where.value, door = "membrane"
 assert door = "net_server"

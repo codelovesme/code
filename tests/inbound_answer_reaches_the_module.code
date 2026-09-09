@@ -9,9 +9,8 @@
 | one.
 link "native_modules/test_events.so" as ev
 
-Tick { value } => {
+Tick { value } =>
     return Ack { value = value + 100 }
-}
 
 emit Start { value = 3 } to ev get started
 assert started.value = 3

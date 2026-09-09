@@ -11,22 +11,18 @@
 | case.
 link "native_modules/math.so" as math
 
-Bad {} => {
+Bad {} =>
     return 42
-}
 
-Viacore {} => {
+Viacore {} =>
     emit Length {} to core get r
     return Reached { r = r }
-}
-Viamodule {} => {
+Viamodule {} =>
     emit Double {} to math get r
     return Reached { r = r }
-}
-Viahandler {} => {
+Viahandler {} =>
     emit Bad {} to this get r
     return Reached { r = r }
-}
 
 emit Viacore {} to this get a
 emit Viamodule {} to this get b

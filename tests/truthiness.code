@@ -23,14 +23,12 @@ assert n ∈ Exception
 assert not n
 
 let taken = 0
-if n {
+if n
     taken = 1
-}
 assert taken = 0
 
-if not n {
+if not n
     taken = 2
-}
 assert taken = 2
 
 | A particle that did work is an ordinary object, so it is simply true.

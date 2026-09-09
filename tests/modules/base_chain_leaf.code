@@ -10,9 +10,8 @@
 | the root, never falling through to a grandparent.
 link "base_chain_mid" as mid
 
-Pong { value } => {
+Pong { value } =>
     return Pong { value = value + 10 }
-}
 
 emit Ping { value = 1 } to base get got
 export let got = got.value

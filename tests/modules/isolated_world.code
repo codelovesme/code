@@ -6,11 +6,9 @@
 let count = 0
 export let started = "yes"
 
-Bump { by } => {
+Bump { by } =>
     count = count + by
     return Bumped { total = count }
-}
 
-Total {} => {
+Total {} =>
     return Counted { total = count }
-}
