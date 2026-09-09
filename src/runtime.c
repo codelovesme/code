@@ -571,6 +571,74 @@ void code_field(CodeValue *out, const CodeValue *obj, const char *field) {
  * also just null, not an error, matching the array branch's non-`CODE_NUMBER`
  * case below. See interpreter.rs's `Expr::Index` — this must match it
  * exactly. */
+/* How many elements a value has — the `length` an index may name. Must match
+ * interpreter.rs's `Expr::LengthOf` arm, kinds and message alike. */
+void code_length_of(CodeValue *out, const CodeValue *value) {
+    if (value->tag == CODE_ARRAY || value->tag == CODE_OBJECT) {
+        code_number(out, (double)value->len);
+        return;
+    }
+    if (value->tag == CODE_STR) {
+        /* Characters, not bytes — the same continuation-byte count `Length`
+         * uses, and for the same reason. */
+        long long chars = 0;
+        for (const char *p = value->str; *p; p++) {
+            if (((unsigned char)*p & 0xC0) != 0x80) {
+                chars++;
+            }
+        }
+        code_number(out, (double)chars);
+        return;
+    }
+    char msg[160];
+    snprintf(msg, sizeof msg,
+             "cannot take the length of %s %s — 'length' needs an array, an object or a string",
+             article_for(value), type_name(value));
+    fail(msg);
+}
+
+/* `value[from, to]` — half-open, both bounds clamped. A single index past the
+ * end already answers null, so a range past the end answers the part that is
+ * there; `from` at or after `to` is the empty array. Must match
+ * interpreter.rs's `Expr::Slice` arm. */
+void code_slice(CodeValue *out, const CodeValue *value, const CodeValue *from,
+                const CodeValue *to) {
+    if (from->tag != CODE_NUMBER) {
+        char msg[128];
+        snprintf(msg, sizeof msg, "a range's start must be a number, found %s %s",
+                 article_for(from), type_name(from));
+        fail(msg);
+        return;
+    }
+    if (to->tag != CODE_NUMBER) {
+        char msg[128];
+        snprintf(msg, sizeof msg, "a range's end must be a number, found %s %s",
+                 article_for(to), type_name(to));
+        fail(msg);
+        return;
+    }
+    if (value->tag != CODE_ARRAY) {
+        char msg[160];
+        snprintf(msg, sizeof msg,
+                 "cannot take a range of %s %s — '[from, to]' requires an array",
+                 article_for(value), type_name(value));
+        fail(msg);
+        return;
+    }
+    double len = (double)value->len;
+    double lo = from->number < 0 ? 0 : (from->number > len ? len : from->number);
+    double hi = to->number < 0 ? 0 : (to->number > len ? len : to->number);
+    long long start = (long long)lo;
+    long long stop = (long long)hi;
+    if (start >= stop) {
+        code_array(out, NULL, 0);
+        return;
+    }
+    /* `code_array` copies out of a strided buffer, and the array's own
+     * `items` is one, so the run starts at `start` with nothing to build. */
+    code_array(out, (char *)value->items + (size_t)start * CODE_VALUE_SLOT_SIZE, stop - start);
+}
+
 void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
     if (arr->tag == CODE_ARRAY) {
         if (index->tag == CODE_NUMBER) {

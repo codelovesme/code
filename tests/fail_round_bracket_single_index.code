@@ -1,0 +1,4 @@
+| Round brackets say which end of a *range* is left out, so one bound in them
+| means nothing — a single element is `xs[i]`.
+xs = [1, 2, 3]
+one = xs(1)

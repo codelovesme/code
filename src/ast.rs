@@ -496,6 +496,27 @@ pub enum Expr {
     /// see `Stmt::Loop`'s doc comment for the law tying this to `loop k, v
     /// over X`.
     Index(Box<Expr>, Box<Expr>),
+    /// `value[from, to]` — the elements from `from` up to but not including
+    /// `to`, as a new array. Half-open so that `xs[0, length]` is the whole
+    /// of it and `xs[0, length - 1]` is everything but the last.
+    ///
+    /// Both bounds are clamped rather than refused: an index past the end
+    /// already answers null (see `Index`), so a slice past the end answers
+    /// the part that is there. `from` at or after `to` is the empty array.
+    Slice {
+        value: Box<Expr>,
+        from: Box<Expr>,
+        to: Box<Expr>,
+    },
+    /// How many elements the value has — the `length` an index may name.
+    ///
+    /// Not spellable on its own. The parser builds it only where `length`
+    /// appears **inside** an index, substituting the container being indexed
+    /// as the operand: `pending[length - 1]` becomes
+    /// `pending[LengthOf(pending) - 1]`. That works because expressions here
+    /// are pure — there are no calls and `emit` is a statement — so naming
+    /// the container twice cannot mean anything different the second time.
+    LengthOf(Box<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),
     /// `expr is ClassName` — the type test. True exactly when `expr` is an

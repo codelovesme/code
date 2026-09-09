@@ -403,6 +403,42 @@ null.
 An array is keyed by **Number**, an object by **String** — the same split
 `loop` uses.
 
+**`length`, inside an index, is the length of what is being indexed:**
+
+```code
+xs = [1, 2, 3]
+assert xs[length - 1] = 3
+```
+
+It is not a reserved word — `RandomCode { length = 12 }` is a field name in
+several module contracts — so it means this only here, and a *variable* of
+that name is refused instead. It answers for a string (characters, not bytes)
+and an object (its field count) as well as an array.
+
+**With a second bound it is a range**, and the brackets say which ends are
+included — the interval notation, so `[a, b]` takes both and `[a, b)` leaves
+`b` out. The comma is the same one that separates two of anything else on one
+line:
+
+```code
+assert xs[0, length) = [1, 2, 3]      | up to but not including
+assert xs[0, length - 1] = [1, 2, 3]  | the same, said closed
+assert xs[0, length - 1) = [1, 2]     | everything but the last
+assert xs(0, length) = [2, 3]         | everything but the first
+```
+
+A `(` can only mean this: there are no calls in the language, so nothing else
+can follow an operand with one. One bound in round brackets is refused — a
+single element is `xs[i]`.
+
+Both bounds **clamp** rather than fail: a single index past the end already
+answers null, so a range past the end answers the part that is there, and
+`from` at or after `to` is the empty array. Arrays only for now; a string
+answers `length` but cannot be ranged.
+
+Between them these are pop, shift, take and drop, which is why none of those
+is a core handler.
+
 ### assert
 
 `assert <expr>` continues if the expression is `true` and fails otherwise. A

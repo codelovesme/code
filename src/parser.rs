@@ -239,6 +239,7 @@ impl<'a> Parser<'a> {
                     match self.advance() {
                         Token::Ident(name) => {
                             reject_uppercase_binding(&name, "`get`")?;
+                            reject_length_binding(&name, "`get`")?;
                             Some(EmitResult::Whole(name))
                         }
                         other => {
@@ -406,6 +407,7 @@ impl<'a> Parser<'a> {
         // it — `advance` will have moved `err_pos` on by then.
         let name_pos = self.err_pos;
         reject_uppercase_binding(&name, "a variable")?;
+        reject_length_binding(&name, "a variable")?;
         // `+=` is the one compound form. It is pure sugar, rewritten here
         // into `name = name + expr` so that neither backend — nor anything
         // else downstream — learns it exists. Whatever `+` means for the two
@@ -483,6 +485,7 @@ impl<'a> Parser<'a> {
             };
             for bound in [key.as_deref(), Some(value.as_str())].into_iter().flatten() {
                 reject_uppercase_binding(bound, "a loop's variable")?;
+                reject_length_binding(bound, "a loop's variable")?;
             }
             match self.advance() {
                 Token::Over => {}
@@ -581,6 +584,7 @@ impl<'a> Parser<'a> {
                 return Err(format!("'{name}' is bound twice in one field list"));
             }
             reject_uppercase_binding(&name, "a field list")?;
+            reject_length_binding(&name, "a field list")?;
             fields.push(Field { field, name });
             if self.list_separator(&Token::RBrace, "}")? {
                 break;
@@ -844,16 +848,52 @@ impl<'a> Parser<'a> {
                     };
                     e = Expr::Field(Box::new(e), field);
                 }
-                Token::LBracket => {
+                // `xs[i]` reads one element. With a second bound it is a
+                // range, and the brackets say which ends are included — the
+                // interval notation, so `[a, b]` takes both and `[a, b)`
+                // leaves `b` out. A `(` opener can only mean this: there are
+                // no calls in this language, so nothing else can follow an
+                // operand with one.
+                Token::LBracket | Token::LParen => {
+                    let from_open = matches!(self.peek(), Token::LParen);
                     self.advance();
                     self.skip_newlines();
-                    let index = self.expr()?;
+                    let first = bind_length(self.expr()?, &e);
                     self.skip_newlines();
-                    match self.advance() {
-                        Token::RBracket => {}
-                        other => return Err(format!("expected ']', found {other:?}")),
-                    }
-                    e = Expr::Index(Box::new(e), Box::new(index));
+                    let second = if matches!(self.peek(), Token::Comma) {
+                        self.advance();
+                        self.skip_newlines();
+                        let to = bind_length(self.expr()?, &e);
+                        self.skip_newlines();
+                        Some(to)
+                    } else {
+                        None
+                    };
+                    let to_open = match self.advance() {
+                        Token::RBracket => false,
+                        Token::RParen => true,
+                        other => {
+                            return Err(format!("expected ']' or ')', found {other:?}"))
+                        }
+                    };
+                    e = match second {
+                        // Normalised here to one half-open pair, so the AST
+                        // and both backends carry a single rule rather than
+                        // four. `(a` starts one later; `b]` ends one later.
+                        Some(to) => Expr::Slice {
+                            value: Box::new(e),
+                            from: Box::new(shift_bound(first, from_open)),
+                            to: Box::new(shift_bound(to, !to_open)),
+                        },
+                        None if from_open || to_open => {
+                            return Err(
+                                "a single index is written `xs[i]` — the round brackets are \
+                                 for a range, where they say which end is left out"
+                                    .to_string(),
+                            )
+                        }
+                        None => Expr::Index(Box::new(e), Box::new(first)),
+                    };
                 }
                 _ => break,
             }
@@ -1103,6 +1143,54 @@ fn absent_construct(name: &str) -> Option<&'static str> {
 /// An uppercase-first name is a particle wherever it is read, so binding one
 /// would create a name nothing could ever name back. Refused at each binder
 /// rather than left as a silent dead end.
+/// Replaces every bare `length` inside an index with the length of the
+/// container being indexed.
+///
+/// `length` is not a reserved word — it is an ordinary field name in a dozen
+/// module contracts (`RandomCode { length = 12 }`), and taking the token would
+/// have broken all of them. It is only *meaningful* here, so it is only
+/// substituted here; `reject_length_binding` stops a variable of that name
+/// making the two readings collide.
+///
+/// Naming the container twice is safe: expressions are pure — there are no
+/// calls, and `emit` is a statement — so the second read cannot differ from
+/// the first.
+fn bind_length(index: Expr, container: &Expr) -> Expr {
+    match index {
+        Expr::Ident(name) if name == "length" => Expr::LengthOf(Box::new(container.clone())),
+        Expr::Unary(op, e) => Expr::Unary(op, Box::new(bind_length(*e, container))),
+        Expr::Binary(l, op, r) => Expr::Binary(
+            Box::new(bind_length(*l, container)),
+            op,
+            Box::new(bind_length(*r, container)),
+        ),
+        other => other,
+    }
+}
+
+/// Moves a range bound one along, for the ends the interval notation leaves
+/// out. Folded here so the AST carries one half-open rule instead of four
+/// combinations — the same reason `∉` is built as `not (x ∈ …)`.
+fn shift_bound(bound: Expr, shift: bool) -> Expr {
+    if !shift {
+        return bound;
+    }
+    Expr::Binary(Box::new(bound), BinOp::Add, Box::new(Expr::Number(1.0)))
+}
+
+/// `length` means the container's length inside an index, so a variable of
+/// that name would make one spelling mean two things depending on where it
+/// stood. Refused at the binder, the same way an uppercase name is.
+fn reject_length_binding(name: &str, what: &str) -> Result<(), String> {
+    if name == "length" {
+        return Err(format!(
+            "'length' means the length of what is being indexed, so it cannot also be a \
+             variable — {what} needs another name"
+        ));
+    }
+    Ok(())
+}
+
 fn reject_uppercase_binding(name: &str, what: &str) -> Result<(), String> {
     if starts_uppercase(name) {
         return Err(format!(

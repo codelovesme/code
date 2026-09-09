@@ -134,6 +134,21 @@ needs one · `tests/<name>_module.rs` integration test.
   `language-configuration.json` indents after a block header too, so its
   `increaseIndentPattern` is a fifth place — it has to know that `if x, …` on
   one line opens nothing.
+- **`length` inside an index, and `xs[from, to]`** (2026-09-10). `length` is
+  not a reserved word — it is a field name in a dozen module contracts
+  (`RandomCode { length = 12 }`), and taking the token would have broken all
+  of them — so it is only *substituted* where it stands inside an index, with
+  the container being indexed as its operand (`parser::bind_length`). Binding
+  a variable called `length` is refused, the way an uppercase name is.
+  A range's brackets carry the **interval notation** — `[a, b]` closed,
+  `[a, b)` and `(a, b)` leaving an end out — and the parser folds all four
+  into one half-open pair, so the AST and both backends keep a single rule
+  (the same trick as `∉` being built as `not (x ∈ …)`). A postfix `(` can only
+  be a range: there are no calls, so nothing else follows an operand with one.
+  Bounds clamp, since a single index past the end already answers null. Arrays
+  only: strings and objects answer `length` but cannot be ranged yet. A `Pop`
+  core handler was written the same day and removed before committing — this
+  covers it.
 - **An uppercase-first name is a particle everywhere** (2026-09-09), brace or
   no brace — `return Checked` is `return Checked {}`. The other half of the
   rule is what makes it work: an uppercase name may not be **bound** (a

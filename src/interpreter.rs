@@ -1560,6 +1560,46 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                 )),
             }
         }
+        // How many elements a value has. Only ever built for a `length`
+        // inside an index (see `parser::bind_length`), so the kinds it can
+        // meet are the ones `[]` accepts, plus Str for symmetry with
+        // `Length`'s own operand rule.
+        Expr::LengthOf(value) => match &eval(value, env)? {
+            Value::Array(items) => Ok(Value::Number(items.len() as f64)),
+            Value::Object(fields) => Ok(Value::Number(fields.len() as f64)),
+            Value::Str(s) => Ok(Value::Number(s.chars().count() as f64)),
+            v => Err(format!(
+                "cannot take the length of {} — 'length' needs an array, an object or a \
+                 string",
+                a_type_name(v)
+            )),
+        },
+        // `value[from, to]` — half-open, and both bounds clamped rather than
+        // refused: a single index past the end already answers null, so a
+        // range past the end answers the part that is there. Must match
+        // `runtime.c`'s slice arm.
+        Expr::Slice { value, from, to } => {
+            let value = eval(value, env)?;
+            let start = range_bound(eval(from, env)?, "start")?;
+            let end = range_bound(eval(to, env)?, "end")?;
+            match &value {
+                Value::Array(items) => {
+                    let len = items.len() as f64;
+                    let lo = start.max(0.0).min(len) as usize;
+                    let hi = end.max(0.0).min(len) as usize;
+                    let taken = if lo >= hi {
+                        Vec::new()
+                    } else {
+                        items[lo..hi].to_vec()
+                    };
+                    Ok(Value::Array(Rc::new(taken)))
+                }
+                v => Err(format!(
+                    "cannot take a range of {} — '[from, to]' requires an array",
+                    a_type_name(v)
+                )),
+            }
+        }
         Expr::Index(arr, index) => {
             let v = eval(arr, env)?;
             let i = eval(index, env)?;
@@ -1732,6 +1772,16 @@ fn core_result(class_name: &str, value: f64) -> Value {
         ("_class".to_string(), Value::Str(Rc::from(class_name))),
         ("value".to_string(), Value::Number(value)),
     ]))
+}
+
+fn range_bound(v: Value, which: &str) -> Result<f64, String> {
+    match v {
+        Value::Number(n) => Ok(n),
+        other => Err(format!(
+            "a range's {which} must be a number, found {}",
+            a_type_name(&other)
+        )),
+    }
 }
 
 fn require_bool(v: Value, op: &str) -> Result<Value, String> {

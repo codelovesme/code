@@ -283,6 +283,12 @@ fn verify_expr(expr: &Expr, scopes: &[HashSet<String>]) -> Result<(), String> {
             verify_expr(value, scopes)
         }),
         Expr::Field(obj, _) => verify_expr(obj, scopes),
+        Expr::LengthOf(value) => verify_expr(value, scopes),
+        Expr::Slice { value, from, to } => {
+            verify_expr(value, scopes)?;
+            verify_expr(from, scopes)?;
+            verify_expr(to, scopes)
+        }
         Expr::Index(arr, index) => {
             verify_expr(arr, scopes)?;
             verify_expr(index, scopes)

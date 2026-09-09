@@ -334,6 +334,24 @@ pub fn compile_to_object(
         ),
         None,
     );
+    let fn_length_of = module.add_function(
+        "code_length_of",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_slice = module.add_function(
+        "code_slice",
+        void_ty.fn_type(
+            &[
+                i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
+            ],
+            false,
+        ),
+        None,
+    );
     let fn_index = module.add_function(
         "code_index",
         void_ty.fn_type(
@@ -754,6 +772,8 @@ pub fn compile_to_object(
         fn_copy,
         fn_field,
         fn_index,
+        fn_length_of,
+        fn_slice,
         fn_add,
         fn_sub,
         fn_mul,
@@ -983,6 +1003,8 @@ struct Gen<'a, 'm> {
     fn_copy: FunctionValue<'a>,
     fn_field: FunctionValue<'a>,
     fn_index: FunctionValue<'a>,
+    fn_length_of: FunctionValue<'a>,
+    fn_slice: FunctionValue<'a>,
     fn_add: FunctionValue<'a>,
     fn_sub: FunctionValue<'a>,
     fn_mul: FunctionValue<'a>,
@@ -3301,6 +3323,35 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .build_call(
                         self.fn_field,
                         &[out.into(), obj_ptr.into(), field_ptr.into()],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+                self.check_failed()?;
+                Ok(out)
+            }
+            Expr::LengthOf(value) => {
+                let value_ptr = self.gen_expr(value)?;
+                let out = self.alloc_temp("lengthof")?;
+                self.builder
+                    .build_call(self.fn_length_of, &[out.into(), value_ptr.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.check_failed()?;
+                Ok(out)
+            }
+            Expr::Slice { value, from, to } => {
+                let value_ptr = self.gen_expr(value)?;
+                let from_ptr = self.gen_expr(from)?;
+                let to_ptr = self.gen_expr(to)?;
+                let out = self.alloc_temp("slice")?;
+                self.builder
+                    .build_call(
+                        self.fn_slice,
+                        &[
+                            out.into(),
+                            value_ptr.into(),
+                            from_ptr.into(),
+                            to_ptr.into(),
+                        ],
                         "",
                     )
                     .map_err(|e| e.to_string())?;
