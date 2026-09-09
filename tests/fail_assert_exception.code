@@ -1,0 +1,4 @@
+| At the top level there is no frame to return into, so a false `assert` ends
+| the program — an `Exception` operand included.
+emit Length { value = 5 } to core get bad
+assert bad

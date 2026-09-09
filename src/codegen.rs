@@ -583,9 +583,9 @@ pub fn compile_to_object(
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
-    let fn_bool_value = module.add_function(
-        "code_bool_value",
-        i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+    let fn_truth = module.add_function(
+        "code_truth",
+        i32_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
     let fn_values_equal = module.add_function(
@@ -764,7 +764,7 @@ pub fn compile_to_object(
         fn_to_text,
         fn_not,
         fn_is_particle,
-        fn_bool_value,
+        fn_truth,
         fn_values_equal,
         fn_assert,
         fn_iter_len,
@@ -999,7 +999,7 @@ struct Gen<'a, 'm> {
     fn_to_text: FunctionValue<'a>,
     fn_not: FunctionValue<'a>,
     fn_is_particle: FunctionValue<'a>,
-    fn_bool_value: FunctionValue<'a>,
+    fn_truth: FunctionValue<'a>,
     fn_values_equal: FunctionValue<'a>,
     fn_assert: FunctionValue<'a>,
     fn_iter_len: FunctionValue<'a>,
@@ -3172,9 +3172,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// merge/phi logic needed (see `env`'s doc comment).
     fn gen_if(&mut self, condition: &Expr, body: &[Stmt]) -> Result<(), String> {
         let cond_ptr = self.gen_expr(condition)?;
-        // Not "'if' requires booleans": `if` is not an operator, and
-        // interpreter.rs words this one differently for that reason.
-        let cond_bool = self.call_bool_value(cond_ptr, "if requires a boolean")?;
+        let cond_bool = self.call_truth(cond_ptr)?;
         let cond = self
             .builder
             .build_int_compare(
@@ -3492,22 +3490,13 @@ impl<'a, 'm> Gen<'a, 'm> {
         rhs: &Expr,
         is_and: bool,
     ) -> Result<PointerValue<'a>, String> {
-        // The whole clause, not the operator name: `code_bool_value` prints
-        // it verbatim and appends ", found <a type>", so this is what makes
-        // the compiled message identical to the one `interpreter.rs`'s
-        // `'{op}' requires booleans, found {}` arm formats.
-        let op_name = if is_and {
-            "'and' requires booleans"
-        } else {
-            "'or' requires booleans"
-        };
         let result_slot = self
             .entry_builder()
             .build_alloca(self.i32_ty, "logic_result")
             .map_err(|e| e.to_string())?;
 
         let lhs_ptr = self.gen_expr(lhs)?;
-        let lhs_bool = self.call_bool_value(lhs_ptr, op_name)?;
+        let lhs_bool = self.call_truth(lhs_ptr)?;
         let short_circuits = self
             .builder
             .build_int_compare(
@@ -3541,7 +3530,7 @@ impl<'a, 'm> Gen<'a, 'm> {
 
         self.builder.position_at_end(rhs_bb);
         let rhs_ptr = self.gen_expr(rhs)?;
-        let rhs_bool = self.call_bool_value(rhs_ptr, op_name)?;
+        let rhs_bool = self.call_truth(rhs_ptr)?;
         self.builder
             .build_store(result_slot, rhs_bool)
             .map_err(|e| e.to_string())?;
@@ -3562,24 +3551,19 @@ impl<'a, 'm> Gen<'a, 'm> {
         Ok(out)
     }
 
-    fn call_bool_value(
-        &self,
-        ptr: PointerValue<'a>,
-        op_name: &str,
-    ) -> Result<IntValue<'a>, String> {
-        let op_name_ptr = self.global_str(op_name, "opname")?;
-        let value = self
+    /// A value's truth, for `if` and for `and`/`or` — 1 or 0, and never a
+    /// failure: `code_truth` answers for every value (see its comment in
+    /// `runtime.c`, and `interpreter::truth_of`), so unlike almost every
+    /// other runtime call this one needs no `check_failed` landing block.
+    fn call_truth(&self, ptr: PointerValue<'a>) -> Result<IntValue<'a>, String> {
+        Ok(self
             .builder
-            .build_call(self.fn_bool_value, &[ptr.into(), op_name_ptr.into()], "")
+            .build_call(self.fn_truth, &[ptr.into()], "")
             .map_err(|e| e.to_string())?
             .try_as_basic_value()
             .left()
-            .expect("code_bool_value returns i32, not void")
-            .into_int_value();
-        // Before branching on it: a failed `code_bool_value` answers 0, which
-        // is a perfectly good `false` and would quietly pick a branch.
-        self.check_failed()?;
-        Ok(value)
+            .expect("code_truth returns i32, not void")
+            .into_int_value())
     }
 
     /// `negate`: `false` for `==`, `true` for `!=` — both go through

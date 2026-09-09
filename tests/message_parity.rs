@@ -40,12 +40,17 @@ const CASES: &[(&str, &str)] = &[
     ("compare_lt", "let x = 1 < \"a\"\n"),
     ("compare_ge", "let x = \"a\" ≥ 1\n"),
     ("negate", "let x = 0 - 1\nlet y = -\"a\"\n"),
-    ("not", "let x = not 1\n"),
-    ("and", "let x = true and 1\n"),
-    ("or", "let x = false or 1\n"),
-    ("if_condition", "if 1 {\n    let a = 1\n}\n"),
-    ("assert_type", "assert 1\n"),
+    // `not`, `and`, `or` and `if` are absent because they can no longer
+    // fail: a condition is read for its truth, and every value has one (see
+    // `interpreter::truth_of` / `runtime.c`'s `code_truth`).
     ("assert_failed", "assert 1 = 2\n"),
+    ("assert_zero", "assert 0\n"),
+    // The one message built out of another value, so the one most able to
+    // drift: `assert` on an Exception quotes the message underneath.
+    (
+        "assert_exception",
+        "emit Length { value = 5 } to core get bad\nassert bad\n",
+    ),
     ("loop_operand", "loop x over 5 {\n    assert true\n}\n"),
     ("field_on_non_object", "let a = 1\nlet b = a.name\n"),
     // Nested failures, where the location is the *enclosing* top-level

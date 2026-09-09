@@ -35,7 +35,7 @@ emit Print { value = "$name won $rounds rounds" } to term
 - [The language](#the-language)
   - [Comments](#comments) · [Values](#values) · [Bindings and scope](#bindings-and-scope)
   - [Strings and interpolation](#strings-and-interpolation) · [Operators](#operators)
-  - [Reading members](#reading-members) · [assert](#assert)
+  - [Reading members](#reading-members) · [Truth](#truth) · [assert](#assert)
   - [if and blocks](#if-and-blocks) · [loop](#loop)
   - [Particles](#particles) · [emit](#emit) · [∈](#-1)
 - [Handlers](#handlers)
@@ -295,9 +295,10 @@ rather than quietly grouping as `(1 < 2) < 3`.
 **Operand rules.** Ordering (`< > ≤ ≥`) is Number-only — strings included,
 comparing them is an error. Equality (`= ≠`) is the opposite: defined for any
 two values, so mismatched kinds are simply unequal. `- * /` require Numbers;
-`and`/`or`/`not` require Bools; a type mismatch is an error, in both modes.
-`+` is the exception — see below. Division by zero is an error too — the
-value model is JSON, which has no way to spell infinity.
+a type mismatch is an error, in both modes. `+` is the exception — see below.
+Division by zero is an error too — the value model is JSON, which has no way
+to spell infinity. `and`/`or`/`not` take any value at all and read it for its
+[truth](#truth) — they always answer a Bool, and never hand an operand back.
 
 "An error" here means what it means everywhere in this language: the frame
 ends and answers with an `Exception`, rather than the program stopping. See
@@ -373,10 +374,37 @@ goes through its alias object as a missing field, and answers null.
 An array is keyed by **Number**, an object by **String** — the same split
 `loop` uses.
 
+### Truth
+
+`if`, `assert`, `not`, `and` and `or` do not require a Bool. They ask a value
+for its **truth**, and every value has one:
+
+| false | true |
+|---|---|
+| `false`, `null`, `0`, any `Exception` | everything else |
+
+An empty string, an empty array and an empty object are **true** — emptiness
+is not failure, and this is the one thing the rule is about.
+
+That is why `Exception` is on the false side. The answer to an `emit` is
+either the particle you wanted or an `Exception` saying why not (see
+[Errors](#errors)), so the value already carries "did it work?" — and a
+condition can read it directly instead of naming the class every time:
+
+```code
+emit Fetch { key = "user_" + email } to store get found
+if not found {
+    return Unavailable { reason = "the store did not answer" }
+}
+```
+
+`found ∈ Exception` still says exactly the same thing, and is the better
+line when the point is *which* class rather than whether it worked.
+
 ### assert
 
-`assert <expr>` continues if the expression is `true` and fails otherwise. A
-non-Bool is an error, not a falsy value.
+`assert <expr>` continues if the expression is [true](#truth) and fails
+otherwise.
 
 Failing does not necessarily end the program: inside a handler it ends that
 handler, which returns an `Exception` (see [Errors](#errors)). At the top
@@ -387,6 +415,20 @@ assert 1 < 2
 assert [1, 2] = [1, 2]
 assert not false
 ```
+
+Since an `Exception` is false, `assert` is also the short way to say "and it
+worked". The frame ends and answers with an `Exception` whose message quotes
+the one underneath and whose `innerException` **is** the one underneath:
+
+```code
+emit Fetch { key = "user_" + email } to store get found
+assert found
+| nothing below this line runs unless the store answered
+```
+
+That is a real trade, not a free win: the caller gets the store's failure
+rather than a `Unavailable` particle of your own choosing, so the handler
+stops hiding what it is built on. Cheaper to write, and it says less.
 
 Programs are otherwise silent — there is no print statement in the language
 (see [emit](#emit)) — so `assert` is how a fixture states what it means. Every
@@ -413,9 +455,10 @@ if x < 10 {
 }
 ```
 
-There is **no `else`**, and there never will be. The condition must be a
-Bool. A bare `{ … }` block is also a statement, and both introduce a scope
-that follows the [`let` vs. bare assignment](#bindings-and-scope) rule above.
+There is **no `else`**, and there never will be. The condition is read for
+its [truth](#truth) — any value will do. A bare `{ … }` block is also a
+statement, and both introduce a scope that follows the [`let` vs. bare
+assignment](#bindings-and-scope) rule above.
 
 A block may hold its statement on the same line — the `}` ends that
 statement, the way a newline does:
@@ -692,6 +735,10 @@ Exception { source, message, innerException }
 failures, the module's own name for a module's. It is the one field worth
 branching on; `message` is prose for a person to read. `innerException`
 carries the failure underneath this one, or null.
+
+An `Exception` is also the one particle that is [false](#truth), so
+`if not r` and `assert r` are shorter spellings of the same question — see
+[assert](#assert) for what the shorter one gives up.
 
 **Receiving one is not itself an error.** There is no automatic propagation: if
 something you emitted to returns an `Exception` and you do not look, you carry
