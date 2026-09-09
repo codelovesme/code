@@ -27,7 +27,7 @@ import init, { run } from "code-wasm";
 
 await init();
 
-console.log(run("let a = 5\nassert a = 5\n"));
+console.log(run("a = 5\nassert a = 5\n"));
 // "a = 5\n"
 ```
 
@@ -68,7 +68,7 @@ module — there is no bindings dump to return. There is no structured
 result type; parse the string yourself if you need one.
 
 ```js
-run('let a = 5\nassert a = 5\n');
+run('a = 5\nassert a = 5\n');
 // ''
 ```
 

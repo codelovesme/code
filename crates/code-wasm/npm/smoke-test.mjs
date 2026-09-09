@@ -40,7 +40,7 @@ function check(label, actual, expected) {
 // Baseline: plain run(), no modules.
 check(
   "run(), no modules",
-  mod.run("let a = 5\nassert a = 5\n"),
+  mod.run("a = 5\nassert a = 5\n"),
   "",
 );
 
