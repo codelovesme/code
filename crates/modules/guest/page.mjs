@@ -161,17 +161,20 @@
     body: container,
   });
 
-  /// The address, minus the guest's own name.
+  /// The address, minus the guest's public route.
   ///
-  /// The address bar stays the host's: a guest called `mail`, at `#/mail/inbox`,
-  /// reads `/inbox`; navigating to `/sent` puts the page at `#/mail/sent`. A
+  /// The address bar stays the host's: a guest on `/mail/inbox` reads
+  /// `/inbox`; navigating to `/sent` puts the page at `/mail/sent`. Hash mode
+  /// remains the default for a shell served as a plain file. A
   /// host that goes somewhere else entirely is not a change of route for the
   /// guest, and it is not told about one.
-  const addressFor = (app, whileRunning) => {
-    const head = `/${app}`;
-    const hash = () => String(globalThis.location?.hash || "").replace(/^#/, "");
+  const addressFor = (app, route, mode, whileRunning) => {
+    const head = route || `/${app}`;
+    const pathFromPage = () => mode === "path"
+      ? String(globalThis.location?.pathname || "/")
+      : String(globalThis.location?.hash || "").replace(/^#/, "");
     const mine = () => {
-      const path = hash();
+      const path = pathFromPage();
       if (path === head) return "/";
       return path.startsWith(`${head}/`) ? path.slice(head.length) : "/";
     };
@@ -180,7 +183,13 @@
       write: (path) => {
         if (!globalThis.location) return false;
         const bare = path.startsWith("#") ? path.slice(1) : path;
-        globalThis.location.hash = head + (bare.startsWith("/") ? bare : `/${bare}`);
+        const target = head + (bare === "/" ? "" : bare.startsWith("/") ? bare : `/${bare}`);
+        if (mode === "path") {
+          globalThis.history.pushState(null, "", target);
+          globalThis.dispatchEvent?.(new Event("popstate"));
+        } else {
+          globalThis.location.hash = target;
+        }
         return true;
       },
       watch: (then) => {
@@ -191,8 +200,9 @@
           last = now;
           then();
         };
-        globalThis.addEventListener?.("hashchange", listener);
-        whileRunning(() => globalThis.removeEventListener?.("hashchange", listener));
+        const event = mode === "path" ? "popstate" : "hashchange";
+        globalThis.addEventListener?.(event, listener);
+        whileRunning(() => globalThis.removeEventListener?.(event, listener));
       },
     };
   };
@@ -291,7 +301,12 @@
             // guest kept apart offers `storage` and namespaces it in its own
             // handlers, where that is a decision rather than a rule.
             store: ctx.store,
-            address: addressFor(app, (off) => leaving.push(off)),
+            address: addressFor(
+              app,
+              typeof particle.route === "string" ? particle.route : null,
+              particle.route_mode === "path" ? "path" : "hash",
+              (off) => leaving.push(off)
+            ),
             guard: guardFor(app),
           });
           const held = { host, container, sheet, leaving, started: false };

@@ -15,6 +15,24 @@
     watch: (then) => globalThis.addEventListener?.("hashchange", () => then()),
   };
 
+  // Explicit pathname mode for shells whose server falls back to index.html.
+  const pathWatchers = new Set();
+  const theHistory = {
+    read: () => String(globalThis.location?.pathname || "/") || "/",
+    write: (path) => {
+      if (!globalThis.history || !globalThis.location) return false;
+      const target = path.startsWith("/") ? path : `/${path}`;
+      if (target === globalThis.location.pathname) return true;
+      globalThis.history.pushState(null, "", target);
+      queueMicrotask(() => pathWatchers.forEach((then) => then()));
+      return true;
+    },
+    watch: (then) => {
+      pathWatchers.add(then);
+      globalThis.addEventListener?.("popstate", then);
+    },
+  };
+
   // An address of one's own, when something gave this program one: an
   // application running inside another reads the path after its own name, so
   // one page keeps one address bar and every application on it still starts
@@ -29,13 +47,17 @@
     (particle) => {
       switch (particle._class) {
         case "Route":
-          return { _class: "RouteResult", value: where.read() };
+          return {
+            _class: "RouteResult",
+            value: particle.mode === "path" ? theHistory.read() : where.read(),
+          };
 
         case "Navigate": {
           if (typeof particle.path !== "string") {
             return { _class: "NavigateResult", ok: false };
           }
-          return { _class: "NavigateResult", ok: where.write(particle.path) === true };
+          const route = particle.mode === "path" ? theHistory : where;
+          return { _class: "NavigateResult", ok: route.write(particle.path) === true };
         }
 
         case "Watch": {
@@ -43,11 +65,12 @@
             return { _class: "WatchResult", ok: false };
           }
           watching = particle.then;
+          const route = particle.mode === "path" ? theHistory : where;
           // Listened for once, however many times the application asks:
           // watching twice would deliver every change twice.
           if (!armed) {
-            where.watch(() => {
-              if (watching) ctx.fire({ _class: watching, path: where.read() });
+            route.watch(() => {
+              if (watching) ctx.fire({ _class: watching, path: route.read() });
             });
             armed = true;
           }

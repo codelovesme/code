@@ -41,7 +41,7 @@ Module { app, name, particle } => {
 ## The handlers
 
 ```
-Load   { app, url, into? } → LoadResult   { ok, reason }
+Load   { app, url, into?, route?, route_mode? } → LoadResult { ok, reason }
 Unload { app }             → UnloadResult { ok }
 Tell   { app, particle }   → TellResult   { ok }
 ```
@@ -49,6 +49,10 @@ Tell   { app, particle }   → TellResult   { ok }
 `into` is a CSS selector, `"body"` by default. `app` is a name of letters,
 digits, `-` and `_` — it is the mark on the container and the head of the
 guest's path, so it is kept to what is literal in both.
+
+`route` lets a shell give an internal app a public prefix such as `/id`.
+`route_mode = "path"` uses the History API; the default remains a hash route
+headed by `app`.
 
 **One instance per name.** A second `Load` of a name already running is
 refused with a reason rather than started beside it: the two would share

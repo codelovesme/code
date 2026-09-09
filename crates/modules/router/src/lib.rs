@@ -2,10 +2,10 @@
 //!
 //! Handlers:
 //!
-//! - `Route {}` — answers `RouteResult { value }`, the path shown now.
-//! - `Navigate { path }` — goes there, and answers `NavigateResult { ok }`.
+//! - `Route { mode? }` — answers `RouteResult { value }`, the path shown now.
+//! - `Navigate { path, mode? }` — goes there, and answers `NavigateResult { ok }`.
 //!   The page's history gains an entry, so Back means what a reader expects.
-//! - `Watch { then }` — answers `WatchResult { ok }`, and from then on every
+//! - `Watch { then, mode? }` — answers `WatchResult { ok }`, and from then on every
 //!   change of the path — a link, Back, Forward, an address typed by hand —
 //!   arrives as a particle of class `then`, carrying the new path as
 //!   `path`.

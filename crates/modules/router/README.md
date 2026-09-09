@@ -29,6 +29,20 @@ of the path arrives as a particle of that class, carrying the new path as
 — does not then have to draw again at every call site, and the two ways a
 path can change stop being two paths through the code.
 
+## Pathname mode for an SPA shell
+
+A shell whose server falls back to `index.html` may own the real pathname.
+Pass `mode = "path"` consistently to `Route`, `Navigate` and `Watch`:
+
+```code
+emit Route { mode = "path" } to router get here
+emit Watch { mode = "path", then = "Went" } to router get _
+emit Navigate { mode = "path", path = "/id" } to router get _
+```
+
+This uses the History API without reloading the document. Hash routing remains
+the default for applications served as plain files.
+
 ## `Where` answers what `Route` cannot
 
 `Route` and `Navigate` are the hash — the part of the address an application
