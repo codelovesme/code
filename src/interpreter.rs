@@ -857,7 +857,6 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
     match stmt {
         // `exported` is a module-boundary marker consumed by `loader.rs`; a
         // declaration behaves identically either way.
-
         Stmt::Link { path, .. } => Err(format!(
             "internal error: link \"{path}\" reached the interpreter unresolved"
         )),
@@ -1734,7 +1733,6 @@ fn core_result(class_name: &str, value: f64) -> Value {
         ("value".to_string(), Value::Number(value)),
     ]))
 }
-
 
 fn require_bool(v: Value, op: &str) -> Result<Value, String> {
     match v {

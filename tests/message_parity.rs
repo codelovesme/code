@@ -56,10 +56,7 @@ const CASES: &[(&str, &str)] = &[
         "nested_in_loop",
         "xs = [1, 2]\nloop x over xs\n    assert x = 1\n",
     ),
-    (
-        "nested_in_if",
-        "a = 1\nif a = 1\n    assert a = 2\n",
-    ),
+    ("nested_in_if", "a = 1\nif a = 1\n    assert a = 2\n"),
     ("index_non_container", "a = 1\nb = a[0]\n"),
     ("emit_non_particle", "emit 5 to core get r\n"),
     ("emit_missing_class", "emit { value = 1 } to core get r\n"),

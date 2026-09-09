@@ -16,8 +16,8 @@ use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
 use crate::ast::{
-    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopOver,
-    NativeFormat, Program, Stmt, UnOp,
+    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopOver, NativeFormat, Program,
+    Stmt, UnOp,
 };
 
 /// Byte size of one runtime `CodeValue` slot (`src/runtime.c`; 64 bytes on
@@ -2415,11 +2415,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// iteration count, because nothing it emits allocates: all the allocas
     /// live in `entry` (see `alloc_slot`) and every heap block a body
     /// produces is released when its slot is rewritten next time round.
-    fn gen_loop(
-        &mut self,
-        over: Option<&LoopOver>,
-        body: &[Stmt],
-    ) -> Result<(), String> {
+    fn gen_loop(&mut self, over: Option<&LoopOver>, body: &[Stmt]) -> Result<(), String> {
         // `loop { }` has no iterable, no counter and no bound — `head_bb`
         // just falls into the body every time, and only a `break` leaves.
         let iteration = match over {
@@ -3997,7 +3993,6 @@ impl<'a, 'm> Gen<'a, 'm> {
         }
         Ok(f)
     }
-
 }
 
 #[cfg(test)]

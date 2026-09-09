@@ -954,7 +954,8 @@ assert r._class = "Attached"
     )
     .expect("write host");
 
-    let spawns: Vec<(&str, Box<dyn Fn() -> std::process::Child>)> = vec![
+    type Spawn = (&'static str, Box<dyn Fn() -> std::process::Child>);
+    let spawns: Vec<Spawn> = vec![
         (
             "interpreted",
             Box::new({

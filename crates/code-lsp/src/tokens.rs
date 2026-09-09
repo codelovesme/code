@@ -66,13 +66,10 @@ fn classify(tok: &Token, prev_dot: bool) -> Option<Kind> {
         // as variables would mean reshaping it — not worth it for the tint.
         InterpStr(_) => Kind::String,
         Number(_) => Kind::Number,
-        True | False | Null | And | Or | Not | Assert | If | Loop | Over | Break
-        | Continue | Link | Unlink | As | Emit | To | Core | Get | Is | This | Base
-        | Return => Kind::Keyword,
+        True | False | Null | And | Or | Not | Assert | If | Loop | Over | Break | Continue
+        | Link | Unlink | As | Emit | To | Core | Get | Is | This | Base | Return => Kind::Keyword,
         Equals | Plus | PlusEq | Minus | Star | Slash | NotEq | Lt | Gt | Le | Ge | Arrow | In
-        | NotIn => {
-            Kind::Operator
-        }
+        | NotIn => Kind::Operator,
         Ident(name) if prev_dot => {
             let _ = name;
             Kind::Property

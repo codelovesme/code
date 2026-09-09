@@ -176,9 +176,9 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
     let mut starts = Vec::new();
     let mut ends = Vec::new();
     let mut last_was_separator = true; // suppress a leading Newline
-    // How deep inside `{`/`[`/`(` we are. Indentation is only structure at
-    // depth 0; inside a bracket the closer is what ends the construct, so a
-    // multi-line literal lays itself out however its author likes.
+                                       // How deep inside `{`/`[`/`(` we are. Indentation is only structure at
+                                       // depth 0; inside a bracket the closer is what ends the construct, so a
+                                       // multi-line literal lays itself out however its author likes.
     let mut bracket_depth: usize = 0;
     // Columns of the block levels currently open, outermost first. The 0 is
     // the file's own top level and is never popped.

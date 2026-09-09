@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopOver,
-    Program, Stmt, UnOp, ValueKind,
+    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopOver, Program, Stmt, UnOp,
+    ValueKind,
 };
 use crate::lexer::{Lexed, StringPart, Token};
 use crate::span::Located;
@@ -1065,9 +1065,9 @@ fn absent_construct(name: &str) -> Option<&'static str> {
              own. Reach it with `emit ... to this`, or through the handlers it defines",
         ),
         "while" => Some("there is no `while` — a bare `loop` with `break` is the unbounded loop"),
-        "for" | "foreach" => Some(
-            "there is no `for` — `loop item over container` iterates an Array or an Object",
-        ),
+        "for" | "foreach" => {
+            Some("there is no `for` — `loop item over container` iterates an Array or an Object")
+        }
         "class" | "struct" | "type" | "interface" | "enum" => Some(
             "there are no type declarations — a particle is an Object with a `_class` \
              field, written `Name { field = value }`, and the six value kinds are all \

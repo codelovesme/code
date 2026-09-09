@@ -83,9 +83,7 @@ fn emits_in(stmts: &[Stmt], out: &mut Vec<String>) {
                     out.push(name);
                 }
             }
-            Stmt::If { body, .. } | Stmt::Loop { body, .. } => {
-                emits_in(body, out)
-            }
+            Stmt::If { body, .. } | Stmt::Loop { body, .. } => emits_in(body, out),
             _ => {}
         }
     }
