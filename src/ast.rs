@@ -245,7 +245,7 @@ pub enum Stmt {
     Emit {
         particle: Expr,
         target: EmitTarget,
-        result: Option<String>,
+        result: Option<EmitResult>,
     },
     /// `break` — exits the innermost enclosing `Loop` immediately, skipping
     /// the rest of that iteration's body. `break` outside any loop is a
@@ -282,7 +282,7 @@ pub enum Stmt {
     /// shadow-vs-mutate ambiguity mandatory `let` exists to remove.
     HandlerDef {
         class_name: String,
-        fields: Vec<String>,
+        fields: Vec<Field>,
         body: Vec<Stmt>,
     },
     /// `return <particle>` — ends a handler body early with that result.
@@ -296,6 +296,50 @@ pub enum Stmt {
     /// Outside a handler it is a *parse* error, exactly like `Break` outside
     /// a loop, so both backends reject it without either needing a rule.
     Return(Expr),
+}
+
+/// One entry in a field list — a handler's `Class { a, b as c }` and an
+/// `emit`'s `get { a, b as c }` share this shape, because they are the same
+/// question asked of the same kind of value: which of a particle's fields
+/// does this scope want, and under what names.
+///
+/// `as` exists because the two names answer to different people. `field` is
+/// the sender's — it has to match what the particle carries. `name` is the
+/// reader's, and a body is entitled to a word that fits it: a handler taking
+/// `current` and `password` reads far better as `current_password` and
+/// `new_password` inside, and before `as` the only ways to get that were to
+/// rename the wire field or to open the body with a row of `let`s.
+///
+/// Without `as` the two are the same string, which is every field list
+/// written before this existed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Field {
+    /// The particle's own field name — what is looked up.
+    pub field: String,
+    /// What this scope calls it.
+    pub name: String,
+}
+
+/// What an `emit`'s `get` clause binds.
+///
+/// `get` itself stays optional (`Stmt::Emit`'s `result` is an `Option`): an
+/// emit whose answer nobody wants names nothing at all, and the handler still
+/// runs.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EmitResult {
+    /// `get name` — the whole answer, under one name.
+    Whole(String),
+    /// `get { field [as name], ... }` — fields of the answer, each under its
+    /// own name, and nothing holding the answer itself.
+    ///
+    /// Reading one is exactly `.field`, deliberately: an absent field is
+    /// null, and an answer that is not an object is an error. That means
+    /// `get { value }` is `get r` followed by `let value = r.value` in every
+    /// respect including how it fails — and, since an `Exception` *is* an
+    /// object, that a failed emit destructures into nulls rather than
+    /// announcing itself. Ask for the answer whole when you mean to look at
+    /// it (`assert`, or `∈ Exception`).
+    Fields(Vec<Field>),
 }
 
 /// The `[key,] value over iterable` half of a `Stmt::Loop`. Field order

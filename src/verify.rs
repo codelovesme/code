@@ -20,7 +20,7 @@
 
 use std::collections::HashSet;
 
-use crate::ast::{EmitTarget, Expr, FieldKey, Program, Stmt};
+use crate::ast::{EmitResult, EmitTarget, Expr, FieldKey, Program, Stmt};
 
 /// Checks every `Expr::Ident` is reachable from an earlier assignment,
 /// mirroring the interpreter's runtime "undefined variable" error as a
@@ -49,7 +49,9 @@ fn verify_stmts(
     for stmt in stmts {
         match stmt {
             Stmt::HandlerDef { fields, body, .. } => {
-                let scope: HashSet<String> = fields.iter().cloned().collect();
+                // The bound name, not the wire field: `{ current as pw }`
+                // puts `pw` in scope and nothing else (see `ast::Field`).
+                let scope: HashSet<String> = fields.iter().map(|f| f.name.clone()).collect();
                 // Only the top level is visible, matching what the body will
                 // actually close over — not whatever scopes happen to be open
                 // where the definition sits (it is top-level only anyway).
@@ -220,8 +222,16 @@ fn verify_stmts(
                          parent to send it to"
                         .to_string());
                 }
-                if let Some(name) = result {
-                    scopes.last_mut().unwrap().insert(name.clone());
+                match result {
+                    Some(EmitResult::Whole(name)) => {
+                        scopes.last_mut().unwrap().insert(name.clone());
+                    }
+                    Some(EmitResult::Fields(fields)) => {
+                        for entry in fields {
+                            scopes.last_mut().unwrap().insert(entry.name.clone());
+                        }
+                    }
+                    None => {}
                 }
             }
             Stmt::LinkRuntime { alias, path } => {

@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinOp, EmitTarget, Expr, FieldKey, IsTest, LoopAccumulator, LoopOver, Program, Stmt, UnOp,
-    ValueKind,
+    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopAccumulator, LoopOver,
+    Program, Stmt, UnOp, ValueKind,
 };
 use crate::lexer::{Lexed, StringPart, Token};
 use crate::span::Located;
@@ -182,11 +182,23 @@ impl<'a> Parser<'a> {
                     ))
                 }
             };
+            // `get name` takes the answer whole; `get { … }` takes it apart,
+            // through the very same field list a handler declares (see
+            // `ast::Field`) — the two sides of an emit ask the same question
+            // of the same particle, so they ask it in the same words.
             let result = if matches!(self.peek(), Token::Get) {
                 self.advance();
-                match self.advance() {
-                    Token::Ident(name) => Some(name),
-                    other => return Err(format!("expected a name after 'get', found {other:?}")),
+                if matches!(self.peek(), Token::LBrace) {
+                    Some(EmitResult::Fields(self.field_list()?))
+                } else {
+                    match self.advance() {
+                        Token::Ident(name) => Some(EmitResult::Whole(name)),
+                        other => {
+                            return Err(format!(
+                                "expected a name or '{{' after 'get', found {other:?}"
+                            ))
+                        }
+                    }
                 }
             } else {
                 None
@@ -312,7 +324,7 @@ impl<'a> Parser<'a> {
                     ));
                 }
                 let fields = if matches!(self.peek(), Token::LBrace) {
-                    self.handler_fields()?
+                    self.field_list()?
                 } else {
                     Vec::new()
                 };
@@ -540,7 +552,7 @@ impl<'a> Parser<'a> {
     /// these are the names being declared, not the strings being looked up,
     /// and every other binding form in the language (`let`, `loop`'s
     /// variables, `get`) declares with a bare name too.
-    fn handler_fields(&mut self) -> Result<Vec<String>, String> {
+    fn field_list(&mut self) -> Result<Vec<Field>, String> {
         match self.advance() {
             Token::LBrace => {}
             other => {
@@ -549,7 +561,7 @@ impl<'a> Parser<'a> {
                 ))
             }
         }
-        let mut fields: Vec<String> = Vec::new();
+        let mut fields: Vec<Field> = Vec::new();
         self.skip_newlines();
         if matches!(self.peek(), Token::RBrace) {
             self.advance();
@@ -557,15 +569,33 @@ impl<'a> Parser<'a> {
         }
         loop {
             self.skip_newlines();
-            let name = match self.advance() {
-                Token::Ident(name) => name,
+            let field = match self.advance() {
+                Token::Ident(field) => field,
                 other => return Err(format!("expected a field name, found {other:?}")),
             };
+            // The annotation belongs to the field, so it comes before the
+            // rename: `current ∈ String as current_password` reads left to
+            // right as what arrives, then what it is called here.
             self.skip_annotation()?;
-            if fields.contains(&name) {
-                return Err(format!("field '{name}' is listed twice"));
+            let name = if matches!(self.peek(), Token::As) {
+                self.advance();
+                match self.advance() {
+                    Token::Ident(name) => name,
+                    other => return Err(format!("expected a name after 'as', found {other:?}")),
+                }
+            } else {
+                field.clone()
+            };
+            // Both halves have to stay unique, and for different reasons: two
+            // entries reading the same field is a typo, and two entries
+            // binding the same name is one silently winning.
+            if fields.iter().any(|f| f.field == field) {
+                return Err(format!("field '{field}' is listed twice"));
             }
-            fields.push(name);
+            if fields.iter().any(|f| f.name == name) {
+                return Err(format!("'{name}' is bound twice in one field list"));
+            }
+            fields.push(Field { field, name });
             self.skip_newlines();
             match self.advance() {
                 Token::Comma => {}

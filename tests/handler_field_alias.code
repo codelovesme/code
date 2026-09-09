@@ -1,0 +1,19 @@
+| A handler's field list can rename what it reads. The sender still sends
+| `current` and `password`; the body reads words that say which is which.
+Change { email, current as current_password, password as new_password } => {
+    return Changed {
+        who = email,
+        was = current_password,
+        now = new_password
+    }
+}
+
+emit Change { email = "a@b.c", current = "old", password = "new" } to this get answer
+assert answer.who = "a@b.c"
+assert answer.was = "old"
+assert answer.now = "new"
+
+| A listed field the particle does not carry is still null, alias or not.
+emit Change { email = "x" } to this get { was, now as latest }
+assert was = null
+assert latest = null

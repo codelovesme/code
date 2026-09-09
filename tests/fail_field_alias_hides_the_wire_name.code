@@ -1,0 +1,7 @@
+| `as` renames rather than adding: only the new name is in scope, so the
+| field's own name is undefined in the body.
+Change { current as password } => {
+    return R { value = current }
+}
+
+emit Change { current = "x" } to this

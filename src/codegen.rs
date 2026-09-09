@@ -16,8 +16,8 @@ use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
 use crate::ast::{
-    BinOp, EmitTarget, Expr, FieldKey, IsTest, LoopAccumulator, LoopOver, NativeFormat, Program,
-    Stmt, UnOp,
+    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopAccumulator, LoopOver,
+    NativeFormat, Program, Stmt, UnOp,
 };
 
 /// Byte size of one runtime `CodeValue` slot (`src/runtime.c`; 64 bytes on
@@ -1371,7 +1371,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn gen_handler(
         &mut self,
         class_name: &str,
-        fields: &[String],
+        fields: &[Field],
         body: &[Stmt],
     ) -> Result<(), String> {
         let function = self.handler_fns[class_name];
@@ -1489,9 +1489,9 @@ impl<'a, 'm> Gen<'a, 'm> {
 
             // `code_field` already answers null for an absent field, which
             // is the same answer `.field` gives — nothing more to do.
-            for name in fields {
-                let slot = self.alloc_slot(&format!("field_{name}"))?;
-                let key = self.global_str(name, "fieldname")?;
+            for entry in fields {
+                let slot = self.alloc_slot(&format!("field_{}", entry.name))?;
+                let key = self.global_str(&entry.field, "fieldname")?;
                 self.builder
                     .build_call(
                         self.fn_field,
@@ -1500,7 +1500,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                     )
                     .map_err(|e| e.to_string())?;
                 self.check_failed()?;
-                self.bind(name, slot);
+                self.bind(&entry.name, slot);
             }
 
             for stmt in body {
@@ -2399,7 +2399,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 particle,
                 target,
                 result,
-            } => self.gen_emit(particle, target, result.as_deref()),
+            } => self.gen_emit(particle, target, result.as_ref()),
             Stmt::Break => self.gen_jump(JumpTarget::Break),
             Stmt::Continue => self.gen_jump(JumpTarget::Continue),
         }
@@ -2920,7 +2920,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         &mut self,
         particle: &Expr,
         target: &EmitTarget,
-        result: Option<&str>,
+        result: Option<&EmitResult>,
     ) -> Result<(), String> {
         let particle_ptr = self.gen_expr(particle)?;
         // Asked once, before the target is even looked at: whether something
@@ -2999,13 +2999,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         )
                         .map_err(|e| e.to_string())?;
                     self.check_failed()?;
-                    if let Some(name) = result {
-                        let permanent = self.alloc_slot("var")?;
-                        self.builder
-                            .build_call(self.fn_copy, &[permanent.into(), temp.into()], "")
-                            .map_err(|e| e.to_string())?;
-                        self.bind(name, permanent);
-                    }
+                    self.bind_emit_result(temp, result)?;
                     return Ok(());
                 };
                 match link {
@@ -3052,12 +3046,47 @@ impl<'a, 'm> Gen<'a, 'm> {
                 }
             }
         }
-        if let Some(name) = result {
-            let permanent = self.alloc_slot("var")?;
-            self.builder
-                .build_call(self.fn_copy, &[permanent.into(), temp.into()], "")
-                .map_err(|e| e.to_string())?;
-            self.bind(name, permanent);
+        self.bind_emit_result(temp, result)
+    }
+
+    /// The `get` clause: the answer whole under one name, or its fields under
+    /// theirs, or nothing at all.
+    ///
+    /// A destructured field goes through the same `code_field` a `.`
+    /// compiles to, so `get { value }` fails exactly where
+    /// `get r` + `let value = r.value` fails — an answer that is not an
+    /// object — and answers null exactly where that would, for a field the
+    /// particle does not carry. `interpreter.rs`'s `Stmt::Emit` arm states
+    /// the same two rules in its own words.
+    fn bind_emit_result(
+        &mut self,
+        temp: PointerValue<'a>,
+        result: Option<&EmitResult>,
+    ) -> Result<(), String> {
+        match result {
+            Some(EmitResult::Whole(name)) => {
+                let permanent = self.alloc_slot("var")?;
+                self.builder
+                    .build_call(self.fn_copy, &[permanent.into(), temp.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.bind(name, permanent);
+            }
+            Some(EmitResult::Fields(fields)) => {
+                for entry in fields {
+                    let permanent = self.alloc_slot("var")?;
+                    let key = self.global_str(&entry.field, "fieldname")?;
+                    self.builder
+                        .build_call(
+                            self.fn_field,
+                            &[permanent.into(), temp.into(), key.into()],
+                            "",
+                        )
+                        .map_err(|e| e.to_string())?;
+                    self.check_failed()?;
+                    self.bind(&entry.name, permanent);
+                }
+            }
+            None => {}
         }
         Ok(())
     }

@@ -6,7 +6,8 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use crate::ast::{
-    BinOp, EmitTarget, Expr, FieldKey, IsTest, NativeFormat, Program, Stmt, UnOp, ValueKind,
+    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, NativeFormat, Program, Stmt,
+    UnOp, ValueKind,
 };
 #[cfg(feature = "native-modules")]
 use crate::native::NativeModule;
@@ -182,7 +183,7 @@ pub struct Environment {
 /// the body means *this* handler's parent, whoever invoked it.
 #[derive(Debug)]
 struct HandlerBody {
-    fields: Vec<String>,
+    fields: Vec<Field>,
     body: Vec<Stmt>,
     defining_depth: usize,
     /// The file this handler was written in — `Environment::file_scopes`'
@@ -1247,8 +1248,32 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     }
                 }
             };
-            if let Some(name) = result {
-                env.declare(name.clone(), output);
+            match result {
+                Some(EmitResult::Whole(name)) => env.declare(name.clone(), output),
+                // Each field read exactly as `.field` reads it — an absent
+                // one is null, and an answer that is not an object is this
+                // frame's error. `codegen.rs` reaches the same two rules by
+                // calling the same `code_field` a `.` compiles to.
+                Some(EmitResult::Fields(fields)) => {
+                    for entry in fields {
+                        let bound = match &output {
+                            Value::Object(answer) => answer
+                                .iter()
+                                .find(|(k, _)| *k == entry.field)
+                                .map(|(_, v)| v.clone())
+                                .unwrap_or(Value::Null),
+                            other => {
+                                return Err(format!(
+                                    "cannot read field '{}' of {} — '.' requires an object",
+                                    entry.field,
+                                    a_type_name(other)
+                                ))
+                            }
+                        };
+                        env.declare(entry.name.clone(), bound);
+                    }
+                }
+                None => {}
             }
             Ok(Flow::Normal)
         }
@@ -1467,15 +1492,15 @@ fn run_handler(
     // A listed field the particle doesn't carry is null — the same answer
     // `.field` gives for an absent member.
     let mut seeded = HashMap::new();
-    for name in &handler.fields {
+    for entry in &handler.fields {
         let supplied = match particle {
             Value::Object(fields) => fields
                 .iter()
-                .find(|(k, _)| k == name)
+                .find(|(k, _)| *k == entry.field)
                 .map(|(_, v)| v.clone()),
             _ => None,
         };
-        seeded.insert(name.clone(), supplied.unwrap_or(Value::Null));
+        seeded.insert(entry.name.clone(), supplied.unwrap_or(Value::Null));
     }
 
     env.scopes.push(seeded);

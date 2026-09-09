@@ -1,0 +1,3 @@
+| Nothing handles `Nobody`, so the answer is null — and taking a field of a
+| null is the error `.field` already gives, because it is the same read.
+emit Nobody {} to this get { value }

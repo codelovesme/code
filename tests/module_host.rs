@@ -9,7 +9,7 @@
 
 use std::rc::Rc;
 
-use code::ast::{EmitTarget, Expr, FieldKey, NativeFormat, Program, Stmt};
+use code::ast::{EmitResult, EmitTarget, Expr, FieldKey, NativeFormat, Program, Stmt};
 use code::interpreter::{self, Environment};
 use code::value::Value;
 
@@ -66,7 +66,7 @@ fn dispatches_through_a_provided_closure() {
             Stmt::Emit {
                 particle: double_particle(21.0),
                 target: EmitTarget::Module("m".to_string()),
-                result: Some("n".to_string()),
+                result: Some(EmitResult::Whole("n".to_string())),
             },
             Stmt::Assert(Expr::Binary(
                 Box::new(Expr::Ident("n".to_string())),
@@ -106,7 +106,7 @@ fn link_as_can_rename_a_provided_module() {
             Stmt::Emit {
                 particle: double_particle(10.0),
                 target: EmitTarget::Module("renamed".to_string()),
-                result: Some("n".to_string()),
+                result: Some(EmitResult::Whole("n".to_string())),
             },
         ],
         // Hand-built: no source text, so no runtime error locations.

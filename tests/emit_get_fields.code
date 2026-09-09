@@ -1,0 +1,27 @@
+| `get { ... }` takes the answer apart instead of binding it whole, using the
+| same field list a handler declares — the two sides of an emit ask the same
+| question of the same particle, so they ask it in the same words.
+emit Length { value = [1, 2, 3] } to core get { value }
+assert value = 3
+
+| `as` renames, for when the answer's word is not the reader's word.
+emit Length { value = "abcd" } to core get { value as size }
+assert size = 4
+
+| A field the answer does not carry is null — exactly what `.field` answers,
+| because it is the same read.
+emit Length { value = [1] } to core get { value, nothing }
+assert value = 1
+assert nothing = null
+
+| `_class` is an ordinary field, and so is readable like one.
+emit Length { value = [] } to core get { _class as kind, value }
+assert kind = "LengthResult"
+assert value = 0
+
+| Nothing holds the answer itself, so a failed emit destructures into nulls
+| rather than announcing itself. Ask for it whole when that matters.
+emit Length { value = 5 } to core get { value as absent }
+assert absent = null
+emit Length { value = 5 } to core get whole
+assert whole ∈ Exception

@@ -574,7 +574,27 @@ assert n.value = 3
 - **`to this`** dispatches to a handler the program
   [defines itself](#handlers).
 - **`to <alias>`** dispatches to a [linked module](#modules).
-- **`get <name>`** binds the result. Without it the result is discarded.
+- **`get <name>`** binds the result. Without it the result is discarded —
+  `get` is optional, and an emit sent for its effect names nothing.
+
+`get` also takes a **field list**, the same one a
+[handler](#handlers) declares — the two sides of an emit ask the same
+question of the same particle, so they ask it in the same words:
+
+```code
+emit Length { value = [1, 2, 3] } to core get { value }
+assert value = 3
+
+emit Length { value = "abcd" } to core get { value as size }
+assert size = 4
+```
+
+Taking a field apart this way is exactly `.field`: a field the answer does
+not carry is null, and an answer that is not an object is an error. It
+follows that a failed emit destructures into nulls rather than announcing
+itself — an `Exception` is an object with none of the fields you asked for.
+Take the answer whole when whether it worked is the point (`assert n`, or
+`n ∈ Exception` — see [Errors](#errors)).
 
 Dispatch is by the particle's runtime `_class`, not by the name written at
 the call site — so a particle built elsewhere and passed in a variable
@@ -584,7 +604,7 @@ A bare uppercase name means the empty particle of that class: `emit Timestamp
 to core` is exactly `emit Timestamp {} to core`.
 
 Note `get` is not `as`: `get` names the *result of an emit*, while `as` names
-a *linked module*.
+a *linked module* — or, inside a field list, renames one field.
 
 ### ∈
 
@@ -644,6 +664,21 @@ site. Anything not listed is simply unreachable from the body.
 
 A listed field the particle doesn't carry is null — the same answer `.field`
 gives for an absent member.
+
+**`as` renames a field for the body.** The field's own name is the sender's:
+it has to match what the particle carries. The name the body reads it under
+is the reader's, and a body is entitled to a word that fits it:
+
+```code
+DoChangePassword { email, current as current_password, password as new_password } => {
+    ...
+}
+```
+
+The sender still sends `current` and `password`. Renaming rather than
+adding: only the new name is in scope, so `current` is undefined in that
+body. The same field list, and the same `as`, is what `get { … }` uses on
+the other side of an [emit](#emit).
 
 The rest of the rules:
 
