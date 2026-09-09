@@ -122,38 +122,6 @@ static void fail(const char *message) {
     }
 }
 
-/* The value a failing `assert` was looking at, when that value was itself an
- * `Exception`. It is the only thing that ever goes underneath a
- * `source = "core"` failure, and it is what fills the frame's
- * `Exception.innerException` — the chain that particle has a field for.
- *
- * A slot beside `failure_message` rather than a payload threaded through
- * every `fail` call site: exactly one caller has anything to put here, and
- * the other fifty would have carried a NULL. interpreter.rs holds it the
- * same way, and for the same reason.
- *
- * Zero-initialised, so `heap` is clear and the first `code_copy` into it
- * releases nothing; `drop_failure_inner` goes back to that state through
- * `code_null`, which releases and clears `heap` in one step. */
-static CodeValue failure_inner;
-static int failure_has_inner = 0;
-
-static void fail_with_inner(const char *message, const CodeValue *inner) {
-    if (code_failed) {
-        return;
-    }
-    fail(message);
-    code_copy(&failure_inner, inner);
-    failure_has_inner = 1;
-}
-
-static void drop_failure_inner(void) {
-    if (failure_has_inner) {
-        code_null(&failure_inner);
-        failure_has_inner = 0;
-    }
-}
-
 /* What a landing block ends in at the *top level*, where there is no frame to
  * return into: a failure there ends the program with a non-zero status, which
  * is the same thing `return Exception` from the outermost call means. Routed
@@ -162,10 +130,6 @@ static void drop_failure_inner(void) {
  * working without this file knowing there are two ways to report. */
 _Noreturn void code_abort_failure(void) {
     const char *message = code_failed ? failure_message : "unknown runtime error";
-    /* The message is already copied, and there is no frame left to hand the
-     * value to — release it so the leak check sees the same heap it would
-     * have seen had the program never failed. */
-    drop_failure_inner();
     if (code_location) {
         /* Joined in exactly the order `span::render` joins them, so the two
          * output modes produce byte-identical stderr. Heap rather than a
@@ -195,9 +159,7 @@ _Noreturn void code_abort_failure(void) {
  * program's own statements; a module's exceptions name the module instead. */
 void code_take_failure(CodeValue *out) {
     code_make_exception(out, "core",
-                        code_failed ? failure_message : "unknown runtime error",
-                        failure_has_inner ? &failure_inner : NULL);
-    drop_failure_inner();
+                        code_failed ? failure_message : "unknown runtime error", NULL);
     code_failed = 0;
 }
 
@@ -3439,11 +3401,9 @@ void code_div(CodeValue *out, const CodeValue *a, const CodeValue *b) {
  *
  * The 0 on the failing path is not an answer, it is a value to return with:
  * the caller checks `code_failed` before it looks at this at all. Same for
- * `code_iter_len` below — the helpers whose result is a plain integer rather
- * than a `CodeValue*` out-parameter, which is exactly why the channel is a
- * flag and not a status return. (`code_truth` returns an integer too but is
- * not one of them: it answers for every value, so it has nothing to report.)
- */
+ * `code_bool_value` and `code_iter_len` below — the three helpers whose
+ * result is a plain integer rather than a `CodeValue*` out-parameter, which
+ * is exactly why the channel is a flag and not a status return. */
 long long code_compare(const CodeValue *a, const CodeValue *b, const char *op) {
     if (a->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
         if (a->number < b->number) {
@@ -3470,11 +3430,13 @@ void code_neg(CodeValue *out, const CodeValue *a) {
     fail(msg);
 }
 
-int code_truth(const CodeValue *v); /* defined below, past `code_is_particle` */
-
-/* Total, like the truth test it inverts: `not` answers about any value
- * rather than refusing five of the six kinds. */
-void code_not(CodeValue *out, const CodeValue *a) { code_bool(out, !code_truth(a)); }
+void code_not(CodeValue *out, const CodeValue *a) {
+    if (a->tag == CODE_BOOL) {
+        code_bool(out, !a->boolean);
+        return;
+    }
+    fail_operand("'not' requires a boolean", a);
+}
 
 /* `expr is ClassName` — the type test (see ast.rs's `Expr::Is`): 1 when
  * `a` is an object whose `"_class"` field holds the string `name`, 0 for
@@ -3502,27 +3464,17 @@ int code_is_particle(const CodeValue *a, const char *name) {
     return strcmp(class_val->str, name) == 0 ? 1 : 0;
 }
 
-/* A value's truth, as `if`, `assert`, `not`, `and` and `or` read it: `false`,
- * `null`, `0` and any `Exception` are false, everything else is true — an
- * empty string, an empty array and an empty object included, since emptiness
- * is not failure.
- *
- * Total by design. Nothing here can fail, which is why it takes no
- * `requirement` string and why codegen has no landing block to build around
- * it — a condition can no longer be the wrong kind of thing. That is what
- * lets a program write `assert answered` and `if not answered` rather than
- * naming `Exception` at every emit.
- *
- * Must match interpreter.rs's `truth_of` exactly: which branch a program
- * takes is what it computes, not how it reports. */
-int code_truth(const CodeValue *v) {
-    switch (v->tag) {
-    case CODE_BOOL:   return v->boolean;
-    case CODE_NULL:   return 0;
-    case CODE_NUMBER: return v->number != 0;
-    case CODE_OBJECT: return !code_is_particle(v, "Exception");
-    default:          return 1;
+/* Used by `and`/`or`/`if` codegen to check an operand is actually a bool
+ * before branching on it. `requirement` is the whole clause, not just the
+ * operator name — `if` is not an operator and wants "if requires a boolean",
+ * not "'if' requires booleans". codegen.rs passes exactly what
+ * interpreter.rs's matching arm formats. */
+int code_bool_value(const CodeValue *v, const char *requirement) {
+    if (v->tag != CODE_BOOL) {
+        fail_operand(requirement, v);
+        return 0;
     }
+    return v->boolean;
 }
 
 /* Deep structural equality, matching Rust's derived `PartialEq` on `Value`
@@ -3621,34 +3573,15 @@ int code_values_equal(const CodeValue *a, const CodeValue *b) {
 }
 
 /* Silent on success (no output, no return value). Must match
- * interpreter.rs's `Stmt::Assert` eval rule exactly: `v` is read for its
- * truth, and anything false goes down the failure channel, same as every
- * other operator error here.
- *
- * An `Exception` is the false value worth naming. "assertion failed" alone
- * would throw away the only part of it a person could act on, and at the top
- * level the message is all that gets printed — so the message quotes the one
- * underneath, and the value itself goes into the failure channel to become
- * the frame's `innerException`. That is what makes `assert answered` a whole
- * way to say "and it worked": the frame ends, and the caller gets the
- * original failure with this frame's own name on top of it.
- *
- * This is the one phase 4 turns into `return Exception`; nothing about that
- * change lands in this function, only in the block codegen branches to. */
+ * interpreter.rs's `Stmt::Assert` eval rule exactly: `v` must be
+ * CODE_BOOL, and its value must be true — anything else goes down the
+ * failure channel, same as every other operator error here. */
 void code_assert(const CodeValue *v) {
-    if (code_truth(v)) {
+    if (v->tag != CODE_BOOL) {
+        fail_operand("assert requires a boolean", v);
         return;
     }
-    if (code_is_particle(v, "Exception")) {
-        const CodeValue *inner_message = find_field(v, "message");
-        if (inner_message && inner_message->tag == CODE_STR && inner_message->str) {
-            char msg[1024];
-            snprintf(msg, sizeof msg, "assertion failed: %s", inner_message->str);
-            fail_with_inner(msg, v);
-        } else {
-            fail_with_inner("assertion failed", v);
-        }
-        return;
+    if (!v->boolean) {
+        fail("assertion failed");
     }
-    fail("assertion failed");
 }

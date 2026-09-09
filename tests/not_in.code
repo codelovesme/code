@@ -1,0 +1,21 @@
+| `∉` asks the opposite of `∈`, and is exactly `not (x ∈ Name)` — one
+| character, the way `≠` is one character to `=`'s one. Spelled out it read
+| badly: `not` binds looser than `∈`, so `not r ∈ Exception` makes the eye
+| work out that the membership is what is negated, not `r`.
+emit Length { value = 5 } to core get bad
+assert bad ∈ Exception
+assert not bad ∉ Exception
+
+emit Length { value = [1, 2] } to core get good
+assert good ∉ Exception
+assert good.value = 2
+
+| Kinds too, since `∈` answers about both.
+assert 3 ∉ String
+assert "a" ∉ Number
+assert null ∉ Number
+assert null ∈ Null
+
+| The everyday shape: carry on only when the emit worked.
+if good ∉ Exception
+    assert good._class = "LengthResult"

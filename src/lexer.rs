@@ -57,6 +57,15 @@ pub enum Token {
     Slash,
     /// `∈`
     In,
+    /// `∉` — `x ∉ Name` is `not (x ∈ Name)`, and nothing more: the parser
+    /// builds exactly that tree, so both backends inherit the answer from
+    /// `∈` rather than having a second rule to keep in step.
+    ///
+    /// One character, like `≠` is one character to `=`'s one. Spelling it
+    /// `not x ∈ Name` worked but read badly — `not` binds looser than `∈`,
+    /// so the eye has to work out that the whole membership is what is being
+    /// negated rather than `x`.
+    NotIn,
     /// `≠`
     NotEq,
     Lt,
@@ -347,6 +356,7 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
             // `let a ∈ String = …` says. One character, like every other
             // operator in the language.
             '∈' => Some(Token::In),
+            '∉' => Some(Token::NotIn),
             '≤' => Some(Token::Le),
             '≥' => Some(Token::Ge),
             _ => None,

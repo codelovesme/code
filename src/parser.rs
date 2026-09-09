@@ -765,10 +765,13 @@ impl<'a> Parser<'a> {
                     .to_string(),
             );
         }
-        if !matches!(self.peek(), Token::In) {
-            return Ok(e);
-        }
+        let negated = match self.peek() {
+            Token::In => false,
+            Token::NotIn => true,
+            _ => return Ok(e),
+        };
         self.advance();
+        let spelling = if negated { '∉' } else { '∈' };
         let test = match self.advance() {
             Token::Ident(name) => match ValueKind::parse(&name) {
                 Some(kind) => IsTest::Kind(kind),
@@ -777,11 +780,19 @@ impl<'a> Parser<'a> {
             Token::Null => IsTest::Kind(ValueKind::Null),
             other => {
                 return Err(format!(
-                    "expected a kind or a class name after '∈', found {other:?}"
+                    "expected a kind or a class name after '{spelling}', found {other:?}"
                 ))
             }
         };
-        Ok(Expr::Is(Box::new(e), test))
+        // `∉` is `not (… ∈ …)` and nothing more, built here so both backends
+        // inherit `∈`'s answer instead of carrying a second rule that could
+        // drift from it.
+        let test = Expr::Is(Box::new(e), test);
+        Ok(if negated {
+            Expr::Unary(UnOp::Not, Box::new(test))
+        } else {
+            test
+        })
     }
 
     fn additive(&mut self) -> Result<Expr, String> {

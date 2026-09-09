@@ -113,6 +113,11 @@ needs one · `tests/<name>_module.rs` integration test.
 - `to` is a keyword — use `recipient` as a field name.
 - `$FOO` interpolates inside `.code` string literals; escape as `\$FOO`.
 - `∈` is the membership operator (`is` was removed 2026-08-29).
+- **`∉` is its negation** (2026-09-09), parsed as `not (x ∈ Name)`.
+- **Conditions are strict Bools.** A truthiness rule (`null`/`0`/`Exception`
+  false) shipped and was reverted the same day, owner's call — it was a
+  mistake. `if`, `assert`, `not`, `and`, `or` all require a Bool; check an
+  answer with `r ∈ Exception` or `r ∉ Exception`.
 - **Object equality is by field name, not position** (changed 2026-09-09).
   Arrays stay positional. `preserve_order` on a module's `serde_json::Map` is
   still worth having — `loop` and printing show the order — but it is no longer

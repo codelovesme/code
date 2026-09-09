@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
@@ -1065,25 +1064,19 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             env.set(name, v);
             Ok(Flow::Normal)
         }
-        // A condition is not required to be a Bool — it is asked for its
-        // truth (see `truth_of`), and an `Exception` is false. `assert
-        // answered` is therefore the whole of "and it worked", where the
-        // check spelled out is `if answered ∈ Exception { return ... }`.
-        Stmt::Assert(expr) => {
-            let value = eval(expr, env)?;
-            if truth_of(&value) {
-                Ok(Flow::Normal)
-            } else {
-                Err(assertion_failure(value))
-            }
-        }
-        Stmt::If { condition, body } => {
-            if truth_of(&eval(condition, env)?) {
-                exec_scoped_body(body, env)
-            } else {
-                Ok(Flow::Normal)
-            }
-        }
+        Stmt::Assert(expr) => match eval(expr, env)? {
+            Value::Bool(true) => Ok(Flow::Normal),
+            Value::Bool(false) => Err("assertion failed".to_string()),
+            v => Err(format!(
+                "assert requires a boolean, found {}",
+                a_type_name(&v)
+            )),
+        },
+        Stmt::If { condition, body } => match eval(condition, env)? {
+            Value::Bool(true) => exec_scoped_body(body, env),
+            Value::Bool(false) => Ok(Flow::Normal),
+            v => Err(format!("if requires a boolean, found {}", a_type_name(&v))),
+        },
         Stmt::Loop { over, result, body } => {
             // The accumulator is an ordinary binding in the scope *around*
             // the loop, created before the first iteration — which is what
@@ -1318,23 +1311,6 @@ fn exception(message: String) -> Value {
     ]))
 }
 
-/// The same Exception, built where a frame's `Err` becomes its answer — the
-/// one place a failing `assert`'s operand is still waiting to be picked up
-/// (see `PENDING_INNER`). Everywhere else nothing is underneath, so
-/// `exception` above stays the plain constructor. Must match `runtime.c`'s
-/// `code_take_failure`.
-fn frame_exception(message: String) -> Value {
-    let inner = PENDING_INNER
-        .with(|slot| slot.borrow_mut().take())
-        .unwrap_or(Value::Null);
-    Value::Object(Rc::new(vec![
-        ("_class".to_string(), Value::Str("Exception".into())),
-        ("source".to_string(), Value::Str("core".into())),
-        ("message".to_string(), Value::Str(message.into())),
-        ("innerException".to_string(), inner),
-    ]))
-}
-
 /// `emit <particle> to this` — runs the handler registered for the
 /// particle's own `_class` in the program-wide table.
 /// Asks this program's own handlers a question, from outside the program —
@@ -1350,7 +1326,7 @@ fn frame_exception(message: String) -> Value {
 pub fn ask_program(particle: &Value, env: &mut Environment) -> Value {
     match dispatch_handler(particle, env) {
         Ok(answer) => answer,
-        Err(message) => frame_exception(message),
+        Err(message) => exception(message),
     }
 }
 
@@ -1475,9 +1451,6 @@ fn run_handler(
     }
 
     env.scopes.push(seeded);
-    // Nothing from an earlier failure may be picked up as this frame's
-    // cause; only an `assert` inside this body can fill the slot now.
-    clear_pending_inner();
     let flow = exec_body(&handler.body, env);
     env.pop_scope();
     let result = match flow {
@@ -1505,7 +1478,7 @@ fn run_handler(
         // non-particle `emit` operand and a re-entered handler — happen
         // before the body runs and belong to the caller, so they still
         // propagate.
-        Err(e) => Ok(frame_exception(e)),
+        Err(e) => Ok(exception(e)),
     };
 
     // The handler's file keeps whatever the body changed, and the caller
@@ -1635,11 +1608,12 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
             let v = eval(e, env)?;
             match (op, v) {
                 (UnOp::Neg, Value::Number(n)) => Ok(Value::Number(-n)),
+                (UnOp::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
                 (UnOp::Neg, v) => Err(format!("cannot negate {}", a_type_name(&v))),
-                // Total, like every other reader of a value's truth: `not`
-                // answers about any value rather than refusing five of the
-                // six kinds (see `truth_of`).
-                (UnOp::Not, v) => Ok(Value::Bool(!truth_of(&v))),
+                (UnOp::Not, v) => Err(format!(
+                    "'not' requires a boolean, found {}",
+                    a_type_name(&v)
+                )),
             }
         }
         // `expr is X` — a test, not a lookup, and never an error: false is
@@ -1659,24 +1633,22 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
             };
             Ok(Value::Bool(answer))
         }
-        // `and`/`or` short-circuit: the right side is only evaluated when
-        // the left side didn't already determine the result. Both sides are
-        // read for their truth rather than required to be Bools, and the
-        // answer is always a Bool — neither operator hands back an operand.
-        Expr::Binary(lhs, BinOp::And, rhs) => {
-            if truth_of(&eval(lhs, env)?) {
-                Ok(Value::Bool(truth_of(&eval(rhs, env)?)))
-            } else {
-                Ok(Value::Bool(false))
-            }
-        }
-        Expr::Binary(lhs, BinOp::Or, rhs) => {
-            if truth_of(&eval(lhs, env)?) {
-                Ok(Value::Bool(true))
-            } else {
-                Ok(Value::Bool(truth_of(&eval(rhs, env)?)))
-            }
-        }
+        // `and`/`or` short-circuit: the right side is only evaluated (and
+        // only needs to be a bool) when the left side didn't already
+        // determine the result.
+        Expr::Binary(lhs, BinOp::And, rhs) => match eval(lhs, env)? {
+            Value::Bool(false) => Ok(Value::Bool(false)),
+            Value::Bool(true) => require_bool(eval(rhs, env)?, "and"),
+            v => Err(format!(
+                "'and' requires booleans, found {}",
+                a_type_name(&v)
+            )),
+        },
+        Expr::Binary(lhs, BinOp::Or, rhs) => match eval(lhs, env)? {
+            Value::Bool(true) => Ok(Value::Bool(true)),
+            Value::Bool(false) => require_bool(eval(rhs, env)?, "or"),
+            v => Err(format!("'or' requires booleans, found {}", a_type_name(&v))),
+        },
         // Equality is well-defined for any two values, including mismatched
         // kinds (simply `false`, never an error) — `Value`'s derived
         // `PartialEq` already does exactly that.
@@ -1774,80 +1746,14 @@ fn core_result(class_name: &str, value: f64) -> Value {
     ]))
 }
 
-/// Whether `v` is an `Exception` particle — an object whose `_class` says
-/// so. The same test `x ∈ Exception` performs, and the reason `truth_of`
-/// can answer "did it work?" without the program spelling the check out.
-fn is_exception(v: &Value) -> bool {
-    matches!(v, Value::Object(fields)
-        if fields.iter().any(|(k, val)| k == "_class"
-            && matches!(val, Value::Str(s) if &**s == "Exception")))
-}
 
-/// A value's truth, as `if`, `assert`, `not`, `and` and `or` read it.
-///
-/// `false`, `null`, `0` and any `Exception` are false; everything else is
-/// true — an empty string, an empty array and an empty object included,
-/// since emptiness is not failure. Total by design: no value is the wrong
-/// kind for a condition any more, which is what lets a program write
-/// `assert answered` and `if not answered` instead of naming `Exception`
-/// every time it wants to know whether the last emit worked.
-///
-/// Must match `runtime.c`'s `code_truth` exactly — which branch a compiled
-/// program takes is not a message, it is what the program computes.
-fn truth_of(v: &Value) -> bool {
+fn require_bool(v: Value, op: &str) -> Result<Value, String> {
     match v {
-        Value::Bool(b) => *b,
-        Value::Null => false,
-        Value::Number(n) => *n != 0.0,
-        Value::Object(_) => !is_exception(v),
-        _ => true,
-    }
-}
-
-// The Exception an `assert` leaves underneath the one its frame returns.
-//
-// A side channel rather than a richer `Err`, because every failure in this
-// file travels as an `Err(String)` and threading a second payload through all
-// of them would touch every arm to serve one. `runtime.c` carries it the same
-// way for the same reason — the flag beside `failure_message`.
-//
-// Taken by `frame_exception` at the frame boundary the `Err` unwinds to,
-// which is the next thing that runs after the `assert` fails; `run_handler`
-// clears it on the way in so a value nobody consumed cannot reach a later,
-// unrelated failure.
-thread_local! {
-    static PENDING_INNER: RefCell<Option<Value>> = const { RefCell::new(None) };
-}
-
-fn clear_pending_inner() {
-    PENDING_INNER.with(|slot| slot.borrow_mut().take());
-}
-
-/// What a failing `assert` reports, and what it leaves behind.
-///
-/// On an `Exception` the message quotes the one underneath — "assertion
-/// failed" alone would throw away the only part worth reading, and the top
-/// level has nothing but the message to print. The value itself goes into
-/// the side channel so the frame's own Exception can carry it as
-/// `innerException`, which is the chain `Exception` was given a field for.
-fn assertion_failure(value: Value) -> String {
-    if !is_exception(&value) {
-        return "assertion failed".to_string();
-    }
-    let inner_message = match &value {
-        Value::Object(fields) => fields
-            .iter()
-            .find(|(k, _)| k == "message")
-            .and_then(|(_, m)| match m {
-                Value::Str(s) => Some(s.to_string()),
-                _ => None,
-            }),
-        _ => None,
-    };
-    PENDING_INNER.with(|slot| *slot.borrow_mut() = Some(value));
-    match inner_message {
-        Some(message) => format!("assertion failed: {message}"),
-        None => "assertion failed".to_string(),
+        Value::Bool(_) => Ok(v),
+        v => Err(format!(
+            "'{op}' requires booleans, found {}",
+            a_type_name(&v)
+        )),
     }
 }
 

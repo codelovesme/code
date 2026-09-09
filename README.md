@@ -35,8 +35,7 @@ emit Print { value = "$name won $rounds rounds" } to term
 - [The language](#the-language)
   - [Comments](#comments) · [Values](#values) · [Bindings and scope](#bindings-and-scope)
   - [Strings and interpolation](#strings-and-interpolation) · [Operators](#operators)
-  - [Equality](#equality) · [Reading members](#reading-members) · [Truth](#truth)
-  - [assert](#assert)
+  - [Equality](#equality) · [Reading members](#reading-members) · [assert](#assert)
   - [if and blocks](#if-and-blocks) · [loop](#loop)
   - [Particles](#particles) · [emit](#emit) · [∈](#-1)
 - [Handlers](#handlers)
@@ -278,7 +277,7 @@ assert "$whole" = "3"          | numbers: shortest form that round-trips
 | `and` | `and` | short-circuits, binds tighter than `or` |
 | `not` | `not` | prefix |
 | comparison | `=` `≠` `<` `>` `≤` `≥` | **non-associative** |
-| `∈` | `∈` | see [∈](#-1) |
+| `∈` | `∈` `∉` | see [∈](#-1) |
 | additive | `+` `-` | |
 | multiplicative | `*` `/` | |
 | unary | `-` | negation |
@@ -288,7 +287,7 @@ Every comparison operator is exactly **one character**: `≠`, `≤` and `≥` a
 the real spellings, and `==`, `!=`, `<=`, `>=` are rejected with a message
 saying so. The only two-character operator in the language is `+=`.
 
-`=` is both the equality operator and the separator in `let x = …` / `x = …`.
+`=` is both the equality operator and the separator in `x = …`.
 They cannot collide: a statement's `[let] NAME =` prefix is consumed before
 expression parsing starts, so every `=` the expression grammar sees is an
 equality.
@@ -300,10 +299,9 @@ rather than quietly grouping as `(1 < 2) < 3`.
 comparing them is an error. Equality (`= ≠`) is the opposite: defined for any
 two values, so mismatched kinds are simply unequal — see
 [Equality](#equality) for how it reads a container. `- * /` require Numbers;
-a type mismatch is an error, in both modes. `+` is the exception — see below.
-Division by zero is an error too — the value model is JSON, which has no way
-to spell infinity. `and`/`or`/`not` take any value at all and read it for its
-[truth](#truth) — they always answer a Bool, and never hand an operand back.
+`and`/`or`/`not` require Bools; a type mismatch is an error, in both modes.
+`+` is the exception — see below. Division by zero is an error too — the
+value model is JSON, which has no way to spell infinity.
 
 "An error" here means what it means everywhere in this language: the frame
 ends and answers with an `Exception`, rather than the program stopping. See
@@ -405,36 +403,11 @@ null.
 An array is keyed by **Number**, an object by **String** — the same split
 `loop` uses.
 
-### Truth
-
-`if`, `assert`, `not`, `and` and `or` do not require a Bool. They ask a value
-for its **truth**, and every value has one:
-
-| false | true |
-|---|---|
-| `false`, `null`, `0`, any `Exception` | everything else |
-
-An empty string, an empty array and an empty object are **true** — emptiness
-is not failure, and this is the one thing the rule is about.
-
-That is why `Exception` is on the false side. The answer to an `emit` is
-either the particle you wanted or an `Exception` saying why not (see
-[Errors](#errors)), so the value already carries "did it work?" — and a
-condition can read it directly instead of naming the class every time:
-
-```code
-emit Fetch { key = "user_" + email } to store get found
-if not found
-    return Unavailable { reason = "the store did not answer" }
-```
-
-`found ∈ Exception` still says exactly the same thing, and is the better
-line when the point is *which* class rather than whether it worked.
-
 ### assert
 
-`assert <expr>` continues if the expression is [true](#truth) and fails
-otherwise.
+`assert <expr>` continues if the expression is `true` and fails otherwise. A
+non-Bool is an error, not a falsy value — a condition is a Bool here, and
+nothing converts.
 
 Failing does not necessarily end the program: inside a handler it ends that
 handler, which returns an `Exception` (see [Errors](#errors)). At the top
@@ -445,20 +418,6 @@ assert 1 < 2
 assert [1, 2] = [1, 2]
 assert not false
 ```
-
-Since an `Exception` is false, `assert` is also the short way to say "and it
-worked". The frame ends and answers with an `Exception` whose message quotes
-the one underneath and whose `innerException` **is** the one underneath:
-
-```code
-emit Fetch { key = "user_" + email } to store get found
-assert found
-| nothing below this line runs unless the store answered
-```
-
-That is a real trade, not a free win: the caller gets the store's failure
-rather than a `Unavailable` particle of your own choosing, so the handler
-stops hiding what it is built on. Cheaper to write, and it says less.
 
 Programs are otherwise silent — there is no print statement in the language
 (see [emit](#emit)) — so `assert` is how a fixture states what it means. Every
@@ -489,7 +448,7 @@ braces on it: `{ }` means an object, everywhere, and nothing else. The body
 ends where the indentation goes back.
 
 There is **no `else`**, and there never will be. The condition is read for
-its [truth](#truth) — any value will do. The body is a scope, following the
+its condition, which must be a Bool. The body is a scope, following the
 [bindings and scope](#bindings-and-scope) rule above.
 
 A block may hold its one statement on the header's own line, after a comma:
@@ -683,7 +642,12 @@ a *linked module* — or, inside a field list, renames one field.
 
 ### ∈
 
-`expr ∈ Name` asks one of two questions, told apart by the name.
+`expr ∈ Name` asks one of two questions, told apart by the name. **`∉` asks
+the opposite**, and is exactly `not (expr ∈ Name)` — the parser builds that
+tree, so there is no second rule to keep in step. It is one character for the
+same reason `≠` is one to `=`'s one, and it exists because the spelled-out
+form read badly: `not` binds looser than `∈`, so `not r ∈ Exception` makes
+the eye work out that the membership is what is negated rather than `r`.
 
 **Which kind** — the six of them, and the only place the language names a
 type at all:
@@ -838,10 +802,6 @@ Exception { source, message, innerException }
 failures, the module's own name for a module's. It is the one field worth
 branching on; `message` is prose for a person to read. `innerException`
 carries the failure underneath this one, or null.
-
-An `Exception` is also the one particle that is [false](#truth), so
-`if not r` and `assert r` are shorter spellings of the same question — see
-[assert](#assert) for what the shorter one gives up.
 
 **Receiving one is not itself an error.** There is no automatic propagation: if
 something you emitted to returns an `Exception` and you do not look, you carry
