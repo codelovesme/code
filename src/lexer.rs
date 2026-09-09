@@ -82,7 +82,6 @@ pub enum Token {
     /// parse error instead of quietly shadowing it.
     Unlink,
     As,
-    Export,
     Emit,
     To,
     /// The only valid `emit` target today. A reserved word (not just a
@@ -502,7 +501,6 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
                 "link" => Token::Link,
                 "unlink" => Token::Unlink,
                 "as" => Token::As,
-                "export" => Token::Export,
                 "emit" => Token::Emit,
                 "to" => Token::To,
                 "core" => Token::Core,

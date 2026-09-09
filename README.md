@@ -126,7 +126,7 @@ names a particle may not be given.
 That correspondence is a commitment, not a coincidence: **the set is closed,
 and it stays JSON's.** New capability is expressed *with* these six rather
 than beside them — a particle is an Object carrying a `_class` field, a
-linked module's alias is an Object of its exports, a core handler's answer is
+linked native module's alias is an Object of its constants, a core handler's answer is
 an Object. There is no seventh kind coming, and the two containers stay two:
 folding Array and Object into a single ordered map was considered and
 rejected (`docs/todo/README.md`), because `+`, serialization and the native
@@ -392,8 +392,9 @@ Two different rules, deliberately:
   non-Number index into an array, a non-Str key into an object — all null.
   The operand kind was right; the lookup just found nothing.
 
-That second half is load-bearing: reading a name a module chose not to export
-goes through its alias object as a missing field, and answers null.
+That second half is load-bearing: a linked module's alias is an object with
+nothing in it, so reading any name through it is a missing field, and answers
+null.
 
 An array is keyed by **Number**, an object by **String** — the same split
 `loop` uses.
@@ -890,30 +891,43 @@ after a program has already had effects.
 
 ## Modules
 
-**Code modules** are `.code` files. Everything in one is private unless it
-says `export`:
+**Code modules** are `.code` files. **A module's names are its own** — all of
+them. What a link reaches is the module's *handlers*, and nothing else:
 
-```
-| shared_values.code
-export let greeting = "hello"
-export let n = 42
-let hidden = 1              | not visible to anyone linking this
-```
+```code
+| greeter.code
+let greeting = "hello"
 
-```
-link "shared_values"              | flattens exports into this scope
-assert greeting = "hello"
-
-link "shared_values" as shared    | or gather them into an object
-assert shared.greeting = "hello"
-assert shared.hidden = null       | private: an ordinary missing field
+Greet { who } =>
+    return Reply { text = greeting + " " + who }
 ```
 
-**A link has a direction.** What a module exports travels *up* to whoever
-linked it; nothing travels down. A module cannot name anything in the file
-that linked it — exported or not — and does not know it was linked at all.
-Its one way back up is `emit ... to base`, which reaches handlers, never
-names.
+```code
+link "greeter"
+
+emit Greet { who = "ada" } to this get r
+assert r.text = "hello ada"
+```
+
+`as` still names the link, and the alias is an **empty object** — a field off
+it answers null the way any missing field does:
+
+```code
+link "greeter" as m
+assert m = {}
+assert m.greeting = null
+```
+
+There was an `export` keyword until 2026-09-09. A survey of every program
+written in this language found no file that read another's exported name:
+each one either read it inside its own file, where `export` meant nothing, or
+did not read it at all. So the keyword went, and with it the question of
+which half of a module is public.
+
+**A link has a direction, and now it is a wall in both directions.** A module
+cannot name anything in the file that linked it, and does not know it was
+linked at all; nothing of its own travels up either. Its one way back up is
+`emit ... to base`, which reaches handlers, never names.
 
 That world is the module's, and it is where its handlers live:
 
@@ -1068,22 +1082,21 @@ and not this one, so `llvm-nm` is tried after it.
 
 A native module does not have to be written in another language. `code build
 --target shared` (or `static`) builds a `.code` file *as* one: its handlers
-become `code_module_dispatch`, its `export let`s become `code_module_vars`,
+become `code_module_dispatch`,
 and another program links the result exactly as it links a C or Rust module.
 
 ```
 code build greet.code --target shared     # -> build/libgreet.so
 ```
 
-```
+```code
 link "libgreet.so" as g
-assert g.answer = 42
 emit Greet { who = "ada" } to g get r
 ```
 
 Asking for the container is asking for the library — there is no separate
-flag. What the module keeps private stays private: only `export let` crosses,
-the same rule a source `link` follows.
+flag. Its names stay its own, the same rule a source `link` follows, so the
+library reports no values at all and the alias is the same empty object.
 
 ### Linking while the program runs
 

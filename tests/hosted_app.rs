@@ -25,7 +25,7 @@ use std::process::Command;
 /// check below can only see blocks that were really allocated.
 const GUEST_SOURCE: &str = r#"let greeting = "hello " + ""
 let history = [1, 2, 3]
-export let name = "gu" + "est"
+let name = "gu" + "est"
 
 Ping { who } =>
     return Pong { text = greeting + who, seen = history }
@@ -592,7 +592,7 @@ fn a_guest_owns_its_modules_and_hears_them() {
         "guest",
         r#"link "native_modules/http_client.so" as web
 
-export let heard = false
+let heard = false
 
 Work { } =>
     emit Get { url = "http://127.0.0.1:1/" } to web get r
@@ -828,7 +828,7 @@ fn an_application_can_ask_which_kind_of_build_it_is() {
     // is where an application would really ask it, on its way to choosing a
     // door.
     const ASKS: &str = r#"emit Linked to core get where
-export let door = "net_server"
+let door = "net_server"
 if where.value,  door = "membrane"
 
 Where { } =>

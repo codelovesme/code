@@ -21,19 +21,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// A module worth linking: values of every kind that matters here, a private
-/// `let` a handler reads, and a handler that answers.
+/// A module worth linking: top-level names of every kind, and a handler that
+/// reads one and answers.
 ///
-/// `items` and `joined` are the point of the fixture rather than decoration.
-/// Both own a heap block, and until they did, nothing ever asked whether a
-/// module's exported values are still alive when the host reads them — every
-/// existing native module exports numbers and string *literals*, which own
-/// nothing. `greeting` is deliberately not exported: a handler naming it is
-/// what proves a library keeps its whole top-level scope, not just the part
-/// it advertises.
-const MODULE_SOURCE: &str = r#"export let items = [1, 2, 3]
-export let joined = "x" + "y"
-export let n = 42
+/// None of the names leave the module — a `.code` library has exported no
+/// values since `export` was removed — so the point of `items` and `joined`
+/// is now the other half: they own heap blocks, and a handler naming
+/// `greeting` is what proves a library keeps its whole top-level scope alive
+/// behind its one door.
+const MODULE_SOURCE: &str = r#"let items = [1, 2, 3]
+let joined = "x" + "y"
+let n = 42
 
 let greeting = "hello "
 
@@ -43,12 +41,14 @@ Greet { who } =>
 
 /// What a consumer asserts about the module above, whichever way it linked
 /// it. `{ext}` is the artifact's extension.
+///
+/// The alias holds nothing: a module's names are its own. Its handler is the
+/// whole of what a link reaches, which is the shape the language settled on.
 fn consumer_source(ext: &str) -> String {
     format!(
         r#"link "lib.{ext}" as m
-assert m.items = [1, 2, 3]
-assert m.joined = "xy"
-assert m.n = 42
+assert m.items = null
+assert m.n = null
 assert m.greeting = null
 emit Greet {{ who = "ada" }} to m get r
 assert r.text = "hello ada"
@@ -206,7 +206,6 @@ fn an_archive_exports_only_its_abi_entry_points() {
         vec![
             "lib_code_module_abi_version".to_string(),
             "lib_code_module_dispatch".to_string(),
-            "lib_code_module_vars".to_string(),
         ],
         "an archive's global symbols are not just its ABI entry points — \
          anything else here collides with the host it is linked into"
@@ -215,12 +214,14 @@ fn an_archive_exports_only_its_abi_entry_points() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// A module with nothing to export omits `code_module_vars` entirely, which
-/// the ABI allows ("a module that does not export it simply has no exported
-/// variables") — and the alias then reads as an empty object rather than
-/// failing to link.
+/// A `.code` library omits `code_module_vars` entirely, which the ABI allows
+/// ("a module that does not export it simply has no exported variables") —
+/// and the alias then reads as an empty object rather than failing to link.
+/// Every `.code` library is this shape now that a module exports no names;
+/// a Rust native module still reports its own values through the same entry
+/// point, which is untouched.
 #[test]
-fn a_module_with_no_exports_omits_the_vars_entry_point() {
+fn a_code_library_has_no_vars_entry_point() {
     let dir = temp_dir("no-vars");
     let archive = build(
         &dir,
@@ -238,7 +239,8 @@ fn a_module_with_no_exports_omits_the_vars_entry_point() {
     let text = String::from_utf8_lossy(&listing.stdout);
     assert!(
         !text.contains("code_module_vars"),
-        "a module with no `export let` should not export code_module_vars:\n{text}"
+        "a `.code` library has no values to report, so it should not export \
+         code_module_vars at all:\n{text}"
     );
 
     fs::write(
@@ -323,14 +325,14 @@ fn two_shared_libraries_do_not_answer_for_each_other() {
     build(
         &dir,
         "one",
-        "export let who = \"one\"\n\nName { } =>\n    return Named { who = who }\n",
+        "let who = \"one\"\n\nName { } =>\n    return Named { who = who }\n",
         code::BuildTarget::Shared,
         "one.so",
     );
     build(
         &dir,
         "two",
-        "export let who = \"two\"\n\nName { } =>\n    return Named { who = who }\n",
+        "let who = \"two\"\n\nName { } =>\n    return Named { who = who }\n",
         code::BuildTarget::Shared,
         "two.so",
     );
@@ -339,8 +341,6 @@ fn two_shared_libraries_do_not_answer_for_each_other() {
         r#"link "one.so" as a
 link "two.so" as b
 
-assert a.who = "one"
-assert b.who = "two"
 
 emit Name { } to a get first
 emit Name { } to b get second

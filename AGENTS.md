@@ -126,6 +126,11 @@ needs one · `tests/<name>_module.rs` integration test.
   block and no empty body. Four places count a block's depth and must stay in
   step: `src/lexer.rs`, `src/parser.rs`'s `block`, `src/format.rs`'s
   `push_token`, and `crates/code-lsp/src/tokens.rs`.
+- **`export` is gone** (2026-09-09). A `.code` module's names are its own; a
+  link reaches its *handlers*. `as` still names a link and binds an **empty
+  object**. A `.code` library therefore emits no `code_module_vars` — a Rust
+  native module still reports its own constants through that entry point,
+  which is untouched.
 - **A newline separates, a comma keeps two things on one line** (2026-09-09).
   Statements, object fields, array elements and field-list names all follow
   it, so a multi-line literal needs no commas at all. Trailing commas are

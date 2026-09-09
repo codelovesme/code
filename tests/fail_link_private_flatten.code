@@ -1,5 +1,5 @@
-| A name the module didn't export is not defined here at all — unlike the
-| alias case, where reading it is a missing field and yields null.
+| A module's names are its own: linking it brings none of them here. Reading
+| one is an undefined name, not a null.
 link "modules/shared_values"
 
-let x = hidden
+let x = greeting

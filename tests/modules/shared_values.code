@@ -1,7 +1,8 @@
-| A module. Nothing here is visible to a linking file unless it says
-| `export` — private is the default, the opposite of the old language.
-export let greeting = "hello"
-export let n = 42
-
-let hidden = 1
-let derived = hidden + n
+| A module with nothing but names. They are its own — a module answers
+| particles, not names — so the only thing linking this file proves is that
+| its top level ran, which it says here itself.
+let greeting = "hello"
+let n = 42
+let derived = n + 1
+assert greeting = "hello"
+assert derived = 43

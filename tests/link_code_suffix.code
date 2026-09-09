@@ -1,4 +1,4 @@
-| The `.code` extension is optional and means the same thing.
+| The `.code` extension is optional and means the same thing. The module
+| asserts its own values, so linking it at all is what is being proven.
 link "modules/shared_values.code" as m
-
-assert m.n = 42
+assert m = {}

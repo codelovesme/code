@@ -385,24 +385,6 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let exported = if matches!(self.peek(), Token::Export) {
-            self.advance();
-            if self.block_depth > 0 {
-                return Err("'export' is only allowed at the top level of a file".to_string());
-            }
-            if !matches!(self.peek(), Token::Let) {
-                self.err_here();
-                return Err(format!(
-                    "'export' must be followed by 'let' — it marks a declaration, and \
-                     'let' is the only way to declare a name (found {:?})",
-                    self.peek()
-                ));
-            }
-            true
-        } else {
-            false
-        };
-
         if matches!(self.peek(), Token::Let) {
             self.advance();
             let name = match self.advance() {
@@ -425,11 +407,7 @@ impl<'a> Parser<'a> {
             }
             let value = self.expr()?;
             self.expect_end_of_statement()?;
-            return Ok(Stmt::Let {
-                name,
-                value,
-                exported,
-            });
+            return Ok(Stmt::Let { name, value });
         }
 
         // Otherwise the only statement form is `name = expr` (reassignment
@@ -1097,6 +1075,12 @@ fn absent_construct(name: &str) -> Option<&'static str> {
         "else" => Some(
             "there is no `else` — write a second `if`, or fall through to what follows \
              the first",
+        ),
+        // Removed 2026-09-09 after a survey of both repositories found no
+        // program that read a `.code` module's exported names.
+        "export" => Some(
+            "there is no `export` — a module answers particles, and its names are its \
+             own. Reach it with `emit ... to this`, or through the handlers it defines",
         ),
         "while" => Some("there is no `while` — a bare `loop` with `break` is the unbounded loop"),
         "for" | "foreach" => Some(

@@ -9,7 +9,7 @@ use inkwell::module::{Linkage, Module};
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
-use inkwell::types::{BasicType, IntType, PointerType};
+use inkwell::types::{IntType, PointerType};
 use inkwell::values::{FunctionValue, IntValue, PointerValue};
 use inkwell::AddressSpace;
 use inkwell::IntPredicate;
@@ -819,8 +819,6 @@ pub fn compile_to_object(
         handler_frame: None,
         global_count: 0,
         stream_fn,
-        lib_mode: lib_mode.clone(),
-        exported_lets: Vec::new(),
     };
 
     // Handler functions are declared before any body is generated, so a
@@ -857,14 +855,10 @@ pub fn compile_to_object(
         gen.gen_keep_alive()?;
     }
     // A library sweeps nothing, and this is the ABI contract rather than an
-    // optimization: `code_abi.h` says a module owns its exported values "for
-    // the module's whole lifetime", and the host — which reads them at `link`
-    // time and again never — is promised they stay valid. The sweep belongs
-    // to a *process* ending, and `_code_init` returning is not that. It would
-    // also be a use-after-free on the spot: `_code_init` runs before
-    // `code_module_vars` copies anything out, so a swept `export let` is read
-    // after its block is freed. Private top-level `let`s stay for the same
-    // reason a handler may name one. `Exe` is unchanged.
+    // optimization: the sweep belongs to a *process* ending, and
+    // `_code_init` returning is not that. A module's top-level names stay
+    // for the same reason a handler may name one — its world outlives the
+    // statements that built it. `Exe` is unchanged.
     //
     // Wasm is excluded for a different reason, and it is the one that took
     // longest to see: **in a browser, `main` returning is not the program
@@ -1164,16 +1158,6 @@ struct Gen<'a, 'm> {
     /// for `Exe`/`Wasm`, the private `_code_init` for a library build (see
     /// where it is created in `compile_to_object`).
     stream_fn: FunctionValue<'a>,
-    /// Present when this build is a module-ABI library, which is the whole
-    /// of what `Gen` needs to know: an `export let` is worth recording only
-    /// then. Which *kind* of library it is decides the ABI names and the
-    /// hidden-symbol rule, and both of those are read from
-    /// `compile_to_object`'s own copy rather than from here.
-    lib_mode: Option<LibraryMode>,
-    /// Each top-level `export let`'s slot global, in declaration order —
-    /// what `code_module_vars` reports. Collected while the stream is
-    /// generated, consumed once by `define_library_exports`.
-    exported_lets: Vec<(String, PointerValue<'a>)>,
 }
 
 /// What a handler body needs that `main` doesn't: somewhere to put a
@@ -2345,25 +2329,20 @@ impl<'a, 'm> Gen<'a, 'm> {
                 body,
             } => self.gen_handler(class_name, fields, body),
             Stmt::Return(value) => self.gen_return(value),
-            Stmt::Let {
-                name,
-                value,
-                exported,
-            } => self.gen_let(name, value, *exported),
+            Stmt::Let { name, value } => self.gen_let(name, value),
             Stmt::Link { path, .. } => Err(format!(
                 "internal error: link \"{path}\" reached codegen unresolved"
             )),
             Stmt::Import {
                 alias,
                 body,
-                exports,
                 file: _,
             } => {
                 // Depth bookkeeping for `emit ... to base`: the body's
                 // statements sit one level further out in the module graph.
                 // Decrement on every path — the body may fail.
                 self.dispatch_depth += 1;
-                let result = self.gen_import(alias.as_deref(), body, exports);
+                let result = self.gen_import(alias.as_deref(), body);
                 self.dispatch_depth -= 1;
                 result
             }
@@ -2667,64 +2646,28 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// slots under the enclosing scope. Slots live in `main`'s entry block
     /// (see `alloc_slot`), so they stay valid long after the scope that
     /// introduced them is gone.
-    fn gen_import(
-        &mut self,
-        alias: Option<&str>,
-        body: &[Stmt],
-        exports: &[String],
-    ) -> Result<(), String> {
+    fn gen_import(&mut self, alias: Option<&str>, body: &[Stmt]) -> Result<(), String> {
         // The linked file is a world of its own: a fresh stack, not one
-        // stacked on this file's. That is the direction of a link — what a
-        // module exports travels up to whoever linked it, and nothing
+        // stacked on this file's. That is the direction of a link — nothing
         // travels down, so its statements and its handlers cannot name
-        // anything out here. `gen_handler` keeps the bottom frame of
-        // whatever stack it finds, which is now exactly the file the
-        // handler is written in.
+        // anything out here, and since `export` was removed nothing travels
+        // up either. `gen_handler` keeps the bottom frame of whatever stack
+        // it finds, which is now exactly the file the handler is written in.
         let enclosing = std::mem::replace(&mut self.env, vec![HashMap::new()]);
         for stmt in body {
             self.gen_stmt(stmt)?;
         }
-
-        // Both of these have to happen while the module's scope is still on
-        // the stack — that is the only place its names resolve.
-        let object = match alias {
-            Some(_) => {
-                let fields = exports
-                    .iter()
-                    .map(|name| (FieldKey::Literal(name.clone()), Expr::Ident(name.clone())))
-                    .collect();
-                Some(self.gen_expr(&Expr::Object(fields))?)
-            }
-            None => None,
-        };
-        let mut pairs = Vec::with_capacity(exports.len());
-        for name in exports {
-            let slot = self
-                .lookup(name)
-                .ok_or_else(|| format!("module exports '{name}' but never defines it"))?;
-            pairs.push((name.clone(), slot));
-        }
         self.env = enclosing;
 
-        match (alias, object) {
-            (Some(alias), Some(object)) => {
-                let permanent = self.alloc_slot("module")?;
-                self.builder
-                    .build_call(self.fn_copy, &[permanent.into(), object.into()], "")
-                    .map_err(|e| e.to_string())?;
-                self.bind(alias, permanent);
-            }
-            _ => {
-                for (name, slot) in pairs {
-                    if self.lookup(&name).is_some() {
-                        return Err(format!(
-                            "linking would redefine '{name}' — rename it, or use \
-                             'link ... as <name>' to keep the module's names apart"
-                        ));
-                    }
-                    self.bind(&name, slot);
-                }
-            }
+        // An alias binds an empty object — see the interpreter's `Import`
+        // arm, which this has to match.
+        if let Some(alias) = alias {
+            let object = self.gen_expr(&Expr::Object(Vec::new()))?;
+            let permanent = self.alloc_slot("module")?;
+            self.builder
+                .build_call(self.fn_copy, &[permanent.into(), object.into()], "")
+                .map_err(|e| e.to_string())?;
+            self.bind(alias, permanent);
         }
         Ok(())
     }
@@ -3091,20 +3034,12 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// overwrites that scope's map entry, still correct). See `env`'s doc
     /// comment for why every assignment copies rather than ever adopting
     /// `gen_expr`'s pointer directly.
-    fn gen_let(&mut self, name: &str, value: &Expr, exported: bool) -> Result<(), String> {
+    fn gen_let(&mut self, name: &str, value: &Expr) -> Result<(), String> {
         let value_ptr = self.gen_expr(value)?;
         let permanent = self.alloc_slot("var")?;
         self.builder
             .build_call(self.fn_copy, &[permanent.into(), value_ptr.into()], "")
             .map_err(|e| e.to_string())?;
-        // Top level only — the parser rejects `export` anywhere else — and
-        // only in a library build does the marker mean anything: these are
-        // the values `code_module_vars` reports. The slot is a global either
-        // way (it is `main`'s scope), so the list can address it from any
-        // other function.
-        if exported && self.handler_frame.is_none() && self.lib_mode.is_some() {
-            self.exported_lets.push((name.to_string(), permanent));
-        }
         self.bind(name, permanent);
         Ok(())
     }
@@ -3753,10 +3688,11 @@ impl<'a, 'm> Gen<'a, 'm> {
     }
 
     /// Defines the module-ABI surface a `Shared`/`Static` build owes its
-    /// consumers (`code_abi.h`): `code_module_abi_version`,
-    /// `code_module_dispatch`, and — when the source said `export let` —
-    /// `code_module_vars`. `Static` prefixes every one of them with the
-    /// source file's stem (see `LibraryMode`); `Shared` does not.
+    /// consumers (`code_abi.h`): `code_module_abi_version` and
+    /// `code_module_dispatch`. Never `code_module_vars` — a `.code` module
+    /// has no names to report since `export` was removed, and the ABI allows
+    /// leaving it out. `Static` prefixes every one of them with the source
+    /// file's stem (see `LibraryMode`); `Shared` does not.
     ///
     /// Deliberately *not* exported: `code_module_set_inbound` and
     /// `code_module_inbound_reply`. Both belong to a module that speaks
@@ -3848,84 +3784,6 @@ impl<'a, 'm> Gen<'a, 'm> {
             }
         }
         self.builder.build_return(None).map_err(|e| e.to_string())?;
-
-        // Optional: the `export let` values, when there are any.
-        //
-        // `CodeVarList.values` is a *contiguous* run of `count` slots at
-        // `CODE_VALUE_SLOT_SIZE` stride, not a table of pointers, so the
-        // exported slots — separate globals, wherever `alloc_slot` put them —
-        // have to be gathered into one buffer. Both that buffer and the
-        // descriptor pointing at it are globals, which is what the ABI's "the
-        // module owns this memory for its whole lifetime" asks for: building
-        // the descriptor on the stack would hand the host a pointer into a
-        // frame that has already returned.
-        if !self.exported_lets.is_empty() {
-            let entries = self.exported_lets.clone();
-            let count = entries.len();
-
-            let vars = self.module.add_function(
-                &format!("{prefix}code_module_vars"),
-                self.i8_ptr_ty.fn_type(&[], false),
-                None,
-            );
-            let entry = self.context.append_basic_block(vars, "entry");
-            self.builder.position_at_end(entry);
-
-            // The names: a constant array of string pointers, read-only for
-            // the module's whole life and never written again.
-            let mut name_ptrs: Vec<PointerValue<'a>> = Vec::with_capacity(count);
-            for (name, _) in &entries {
-                name_ptrs.push(self.global_str(name, "var_name")?);
-            }
-            let names_ty = self.i8_ptr_ty.array_type(count as u32);
-            let names_table = self.module.add_global(names_ty, None, "_code_var_names");
-            names_table.set_initializer(&self.i8_ptr_ty.const_array(&name_ptrs));
-            names_table.set_constant(true);
-
-            // The value buffer. Zeroed, which is a `CodeValue` with a null
-            // `heap` — so the `code_copy` below finds something `code_release`
-            // is willing to no-op on, exactly as every other slot in the
-            // program does on its first write.
-            let values_ty = self.i8_ty.array_type((VALUE_SIZE * count as u64) as u32);
-            let values_global = self.module.add_global(values_ty, None, "_code_var_values");
-            values_global.set_initializer(&values_ty.const_zero());
-            values_global.set_alignment(VALUE_ALIGN);
-            let values = values_global.as_pointer_value();
-
-            // The descriptor. Every field is a constant, so it is an
-            // initialized global rather than anything built at run time.
-            let list_ty = self.context.struct_type(
-                &[
-                    self.i64_ty.as_basic_type_enum(),
-                    self.i8_ptr_ptr_ty().as_basic_type_enum(),
-                    self.i8_ptr_ty.as_basic_type_enum(),
-                ],
-                false,
-            );
-            let list = self.module.add_global(list_ty, None, "_code_var_list");
-            list.set_initializer(&list_ty.const_named_struct(&[
-                self.i64_ty.const_int(count as u64, false).into(),
-                names_table.as_pointer_value().into(),
-                values.into(),
-            ]));
-
-            // `export let x = <expr>` is an arbitrary expression, so the
-            // values exist only once the stream has run — and a consumer
-            // reads `vars` at `link` time, before it has dispatched anything.
-            // This is the call that makes the two orders agree.
-            self.builder
-                .build_call(lazy_init, &[], "")
-                .map_err(|e| e.to_string())?;
-            for (i, (_, slot)) in entries.iter().enumerate() {
-                let dest = self.slot_at(values, i as u64, "var_slot")?;
-                self.builder
-                    .build_call(self.fn_copy, &[dest.into(), (*slot).into()], "")
-                    .map_err(|e| e.to_string())?;
-            }
-            self.builder
-                .build_return(Some(&list.as_pointer_value()))
-                .map_err(|e| e.to_string())?;
-        }
 
         // Optional: the release point, `code_abi.h` item 9.
         //
@@ -4152,11 +4010,6 @@ impl<'a, 'm> Gen<'a, 'm> {
         Ok(f)
     }
 
-    /// `i8**` — the type of `CodeVarList.names`. Small helper kept next to
-    /// its single use rather than threaded through `Gen`.
-    fn i8_ptr_ptr_ty(&self) -> PointerType<'a> {
-        self.i8_ptr_ty.ptr_type(AddressSpace::default())
-    }
 }
 
 #[cfg(test)]

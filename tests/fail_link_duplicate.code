@@ -1,5 +1,5 @@
-| Flattening the same module twice would bind `greeting` and `n` a second
-| time. Silent shadowing across module boundaries is a bug factory, so it is
-| an error instead.
-link "modules/shared_values"
-link "modules/shared_values"
+| Linking the same file twice runs its top level twice and registers its
+| handlers twice — and one handler per class is a program-wide rule, so the
+| second link is an error rather than a silent override.
+link "modules/isolated_world"
+link "modules/isolated_world"

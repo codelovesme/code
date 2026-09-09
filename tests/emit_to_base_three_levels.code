@@ -4,12 +4,9 @@
 |   modules/base_chain_leaf   handles Pong, asks base for Ping
 |   modules/base_chain_mid    asks base for Pong
 |
-| If a `to base` ever skipped a level or fell through to the root,
-| one of these asserts would see null instead of a number.
+| Each level checks its own answer, so a `to base` that skipped a level or
+| fell through to the root would be caught where it happened.
 Ping { value } =>
     return Ping { value = value + 10 }
 
-link "modules/base_chain_leaf" as leaf
-
-assert leaf.got = 11
-assert leaf.up = 11
+link "modules/base_chain_leaf"

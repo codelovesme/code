@@ -687,21 +687,6 @@ impl Loader<'_> {
         self.visiting.pop();
         let module = loaded?;
 
-        // Only this module's own `export let`s. A nested `Import` in the body
-        // contributes nothing: linking is not re-exporting.
-        let exports = module
-            .statements
-            .iter()
-            .filter_map(|stmt| match stmt {
-                Stmt::Let {
-                    name,
-                    exported: true,
-                    ..
-                } => Some(name.clone()),
-                _ => None,
-            })
-            .collect();
-
         // Taken *after* the body is loaded, so a file's own links are
         // numbered before it is. Any unique number would do — the world it
         // names is found by this number, not by where it sits.
@@ -710,7 +695,6 @@ impl Loader<'_> {
         Ok(Stmt::Import {
             alias,
             body: module.statements,
-            exports,
             file,
         })
     }

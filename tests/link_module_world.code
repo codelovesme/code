@@ -6,9 +6,8 @@
 | handlers were written in outlives the statements that built it.
 link "modules/isolated_world.code"
 
-| What it exported travelled up. What it kept did not: `count` is not a name
-| here, which `fail_link_private_flatten.code` holds from the other side.
-assert started = "yes"
+| None of its names came up here — `count` and `started` are its own, which
+| `fail_link_private_flatten.code` holds from the other side.
 
 emit Bump { by = 2 } to this get first
 assert first.total = 2

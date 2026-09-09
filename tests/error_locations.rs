@@ -119,7 +119,7 @@ fn a_failure_inside_a_linked_module_reports_the_link_line() {
     let dir = std::env::temp_dir().join(format!("code-error-loc-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("create test directory");
-    fs::write(dir.join("m.code"), "export let k = 1\nassert k = 2\n").expect("write module");
+    fs::write(dir.join("m.code"), "let k = 1\nassert k = 2\n").expect("write module");
     let entry = dir.join("entry.code");
     fs::write(&entry, "let before = 1\nlink \"m.code\" as m\n").expect("write entry");
 

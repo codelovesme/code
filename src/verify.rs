@@ -79,17 +79,16 @@ fn verify_stmts(
             Stmt::Import {
                 alias,
                 body,
-                exports,
                 file: _,
             } => {
                 // A linked file is a world of its own, and the link has a
-                // *direction*: what it exports travels up to whoever linked
-                // it, and nothing travels down. So the body is checked
+                // *direction*: nothing travels down, and since `export` was
+                // removed nothing travels up either. So the body is checked
                 // against a fresh stack rather than one stacked on this
                 // file's — a module cannot see the names of a program that
-                // links it, exported or not, and does not know it was
-                // linked at all. Its one way back is `emit ... to base`,
-                // which reaches handlers, not names.
+                // links it, and does not know it was linked at all. Its one
+                // way back is `emit ... to base`, which reaches handlers,
+                // not names.
                 let enclosing = std::mem::replace(scopes, vec![HashSet::new()]);
                 // One level further out in the module graph — where `to
                 // base` becomes legal, and where its parent lives.
@@ -97,17 +96,11 @@ fn verify_stmts(
                 let module_scope = std::mem::replace(scopes, enclosing);
                 result?;
                 let _ = module_scope;
-                // The module's own scope is gone; only what it exported is
-                // reachable from here.
-                match alias {
-                    Some(alias) => {
-                        scopes.last_mut().unwrap().insert(alias.clone());
-                    }
-                    None => {
-                        for name in exports {
-                            scopes.last_mut().unwrap().insert(name.clone());
-                        }
-                    }
+                // The module's own scope is gone. An alias still names
+                // something — an empty object — so it is defined here; a
+                // link without one introduces no names at all.
+                if let Some(alias) = alias {
+                    scopes.last_mut().unwrap().insert(alias.clone());
                 }
             }
             Stmt::ImportNative { alias, .. } => {

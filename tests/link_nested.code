@@ -1,5 +1,4 @@
 | A linked module may link others; those resolve relative to *it*, not to
-| this file.
+| this file. `uses_shared` asserts what it found.
 link "modules/uses_shared" as m
-
-assert m.doubled = 84
+assert m = {}

@@ -1021,23 +1021,12 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             env.close_module(&address)?;
             Ok(Flow::Normal)
         }
-        Stmt::Import {
-            alias,
-            body,
-            exports,
-            file,
-        } => {
-            // Produce the exported name/value pairs, then bind them. The two
-            // halves are kept separate because a native module would supply
-            // the pairs from a descriptor instead of from a body, and reuse
-            // the binding half unchanged (see `ast::Stmt::Import`).
-            //
+        Stmt::Import { alias, body, file } => {
             // The linking file's world goes home first and the linked one
-            // starts empty. That is the direction: what a module exports
-            // travels up, and nothing travels down — a module cannot see the
-            // names of whoever linked it, and does not know it was linked.
-            // `link` is top-level only, so there is exactly one frame to put
-            // away here.
+            // starts empty. That is the direction, and since `export` was
+            // removed nothing travels back up either: a `.code` module
+            // answers particles, and its names are its own. `link` is
+            // top-level only, so there is exactly one frame to put away.
             let caller_file = env.current_file;
             let caller_scope = env.scopes.pop().unwrap_or_default();
             env.file_scopes[caller_file] = caller_scope;
@@ -1054,37 +1043,19 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             // Kept rather than dropped: the file's handlers are still to
             // run, and this is the world they run in.
             let module_scope = env.scopes.pop().unwrap_or_default();
-            let pairs = result.and_then(|_| {
-                exports
-                    .iter()
-                    .map(|name| {
-                        module_scope
-                            .get(name)
-                            .cloned()
-                            .map(|value| (name.clone(), value))
-                            .ok_or_else(|| format!("module exports '{name}' but never defines it"))
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-            });
             env.file_scopes[*file] = module_scope;
             env.current_file = caller_file;
             env.scopes
                 .push(std::mem::take(&mut env.file_scopes[caller_file]));
-            let pairs = pairs?;
+            result?;
 
-            match alias {
-                Some(alias) => env.declare(alias.clone(), Value::Object(Rc::new(pairs))),
-                None => {
-                    for (name, value) in pairs {
-                        if env.get(&name).is_some() {
-                            return Err(format!(
-                                "linking would redefine '{name}' — rename it, or use \
-                                 'link ... as <name>' to keep the module's names apart"
-                            ));
-                        }
-                        env.declare(name, value);
-                    }
-                }
+            // An alias on a `.code` link binds an empty object. There is
+            // nothing for it to hold now that a module exports no names —
+            // but `as` still reads as one thing everywhere, and a field off
+            // it answers null, which is exactly what a name the module had
+            // not exported already answered.
+            if let Some(alias) = alias {
+                env.declare(alias.clone(), Value::Object(Rc::new(Vec::new())));
             }
             Ok(Flow::Normal)
         }

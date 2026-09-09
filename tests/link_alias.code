@@ -1,7 +1,10 @@
-| `as name` gathers the exports into an object instead, so they are reached
-| by ordinary field access — no new lookup rule, the alias is just a value.
+| `as name` binds an object. A module has no names to put in it — that went
+| with `export` — so it is empty, and a field off it answers null the way any
+| missing field does. `as` is kept because it still says which module a
+| native `emit` goes to, and one spelling everywhere is worth more than a
+| refusal here.
 link "modules/shared_values" as shared
 
-assert shared.greeting = "hello"
-assert shared.n = 42
-assert shared = { greeting = "hello", n = 42 }
+assert shared = {}
+assert shared ∈ Object
+assert shared.greeting = null
