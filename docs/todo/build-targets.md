@@ -1,5 +1,12 @@
 # `code build --target exe|shared|static|wasm`
 
+
+> **Superseded 2026-09-09/10.** The language moved under this document: a block
+> is an indented run of lines and `{ }` means an object, `export` and `let` are
+> gone, and an uppercase name is a particle with or without a brace. What is
+> written below was true when it was written; the root `README.md` is the
+> language as it stands.
+
 **Phase 1 shipped 2026-08-24:** the `BuildTarget` enum, the `--target` flag,
 and the `exe`/`shared`/`static` link steps exist (`codegen.rs`, `main.rs`,
 the `compile` module in `lib.rs`; covered by `tests/build_targets.rs`). Two

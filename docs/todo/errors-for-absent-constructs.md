@@ -1,5 +1,12 @@
 # The constructs this language does not have get its worst errors
 
+
+> **Superseded 2026-09-09/10.** The language moved under this document: a block
+> is an indented run of lines and `{ }` means an object, `export` and `let` are
+> gone, and an uppercase name is a particle with or without a brace. What is
+> written below was true when it was written; the root `README.md` is the
+> language as it stands.
+
 > **Shipped 2026-09-03.** Each is answered by name now. The write-up below
 > is the original; "What shipped" records what landed and what it cost.
 
