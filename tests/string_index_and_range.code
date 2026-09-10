@@ -1,0 +1,42 @@
+| A string indexes and ranges like an array, in **characters** — the same
+| rule `Length` counts by, since `strlen` reported 6 for "héllo".
+s = "héllo"
+assert s[0] = "h"
+assert s[1] = "é"
+assert s[length - 1] = "o"
+
+| One character comes back as a one-character string: there is no character
+| kind here, and there are only six.
+assert s[0] ∈ String
+
+| Out of range is null, exactly as an array's is.
+assert s[9] = null
+assert s[0 - 1] = null
+assert s[1.5] = null
+
+| Ranges, in the same interval notation.
+assert s[0, length) = "héllo"
+assert s[0, 2) = "hé"
+assert s[1, length) = "éllo"
+assert s[0, length - 1) = "héll"
+assert s (0, length) = "éllo"
+assert s[0, length - 1] = "héllo"
+
+| Bounds clamp, and an empty range is the empty string rather than null.
+assert s[0, 99) = "héllo"
+assert s[0 - 5, 2) = "hé"
+assert s[3, 1) = ""
+assert s[9, 9) = ""
+
+| Neither operand is disturbed — a range builds a new value, like `+`.
+assert s = "héllo"
+
+| What it is for: taking a path apart without asking a module to do it.
+| `router`'s `Segment` handler exists because this was not expressible.
+p = "/auth-web/account"
+rest = p[1, length)
+cut = 0
+loop i, c over [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    if cut = 0
+        if rest[i] = "/", cut = i
+assert rest[0, cut) = "auth-web"

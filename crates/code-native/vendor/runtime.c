@@ -571,6 +571,35 @@ void code_field(CodeValue *out, const CodeValue *obj, const char *field) {
  * also just null, not an error, matching the array branch's non-`CODE_NUMBER`
  * case below. See interpreter.rs's `Expr::Index` — this must match it
  * exactly. */
+/* The byte offset of character `n` in a UTF-8 string, or the offset of the
+ * terminator when the string is shorter. Characters, not bytes, everywhere a
+ * string is measured or cut — `strlen` reported 6 for "héllo", and `Length`
+ * has counted codepoints since it shipped. */
+static size_t char_offset(const char *s, long long n) {
+    size_t i = 0;
+    long long seen = 0;
+    while (s[i] && seen < n) {
+        i++;
+        while ((s[i] & 0xC0) == 0x80) {
+            i++;
+        }
+        seen++;
+    }
+    return i;
+}
+
+/* `n` bytes of `s` as a fresh owned string. `code_str_owned` cannot serve:
+ * it takes a NUL-terminated whole, and a slice's end is in the middle. */
+static void str_owned_n(CodeValue *out, const char *s, size_t n) {
+    char *buf = heap_alloc(n + 1);
+    memcpy(buf, s, n);
+    buf[n] = '\0';
+    code_release(out);
+    out->tag = CODE_STR;
+    out->heap = 1;
+    out->str = buf;
+}
+
 /* How many elements a value has — the `length` an index may name. Must match
  * interpreter.rs's `Expr::LengthOf` arm, kinds and message alike. */
 void code_length_of(CodeValue *out, const CodeValue *value) {
@@ -617,10 +646,29 @@ void code_slice(CodeValue *out, const CodeValue *value, const CodeValue *from,
         fail(msg);
         return;
     }
+    if (value->tag == CODE_STR) {
+        /* Characters, not bytes, and the same clamping an array gets. */
+        double chars = 0;
+        for (const char *p = value->str; *p; p++) {
+            if (((unsigned char)*p & 0xC0) != 0x80) {
+                chars++;
+            }
+        }
+        double slo = from->number < 0 ? 0 : (from->number > chars ? chars : from->number);
+        double shi = to->number < 0 ? 0 : (to->number > chars ? chars : to->number);
+        if (slo >= shi) {
+            code_str(out, "");
+            return;
+        }
+        size_t begin = char_offset(value->str, (long long)slo);
+        size_t end = char_offset(value->str, (long long)shi);
+        str_owned_n(out, value->str + begin, end - begin);
+        return;
+    }
     if (value->tag != CODE_ARRAY) {
         char msg[160];
         snprintf(msg, sizeof msg,
-                 "cannot take a range of %s %s — '[from, to]' requires an array",
+                 "cannot take a range of %s %s — '[from, to]' requires an array or a string",
                  article_for(value), type_name(value));
         fail(msg);
         return;
@@ -666,8 +714,28 @@ void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
         code_null(out);
         return;
     }
-    char msg[96];
-    snprintf(msg, sizeof msg, "cannot index %s %s — '[]' requires an array or object",
+    if (arr->tag == CODE_STR) {
+        /* One character, as a one-character string — there is no character
+         * kind here, and there are only six. Out of range is null, like an
+         * array's. */
+        if (index->tag == CODE_NUMBER) {
+            double n = index->number;
+            long long i = (long long)n;
+            if ((double)i == n && i >= 0) {
+                size_t begin = char_offset(arr->str, i);
+                if (arr->str[begin]) {
+                    size_t end = char_offset(arr->str, i + 1);
+                    str_owned_n(out, arr->str + begin, end - begin);
+                    return;
+                }
+            }
+        }
+        code_null(out);
+        return;
+    }
+    char msg[112];
+    snprintf(msg, sizeof msg,
+             "cannot index %s %s — '[]' requires an array, an object or a string",
              article_for(arr), type_name(arr));
     fail(msg);
 }

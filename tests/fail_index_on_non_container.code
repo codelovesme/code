@@ -1,4 +1,5 @@
-| `[]` requires an array or object. Indexing a string looks like it should
-| work — it is exactly the case the old permissive rule hid behind a null.
-s = "abc"
-bad = s[0]
+| `[]` requires an array, an object or a string. A number has no members of
+| any kind, and asking for one is a mistake worth hearing about rather than
+| a null.
+n = 42
+bad = n[0]

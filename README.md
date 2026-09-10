@@ -433,8 +433,20 @@ single element is `xs[i]`.
 
 Both bounds **clamp** rather than fail: a single index past the end already
 answers null, so a range past the end answers the part that is there, and
-`from` at or after `to` is the empty array. Arrays only for now; a string
-answers `length` but cannot be ranged.
+`from` at or after `to` is empty.
+
+**A string indexes and ranges too**, in characters rather than bytes — the
+same rule `Length` counts by:
+
+```code
+s = "héllo"
+assert s[1] = "é"
+assert s[0, 2) = "hé"
+assert s[1, length) = "éllo"
+```
+
+One character comes back as a one-character String; there is no character
+kind, and there are only six. Out of range is null, an empty range is `""`.
 
 Between them these are pop, shift, take and drop, which is why none of those
 is a core handler.

@@ -145,8 +145,11 @@ needs one · `tests/<name>_module.rs` integration test.
   into one half-open pair, so the AST and both backends keep a single rule
   (the same trick as `∉` being built as `not (x ∈ …)`). A postfix `(` can only
   be a range: there are no calls, so nothing else follows an operand with one.
-  Bounds clamp, since a single index past the end already answers null. Arrays
-  only: strings and objects answer `length` but cannot be ranged yet. A `Pop`
+  Bounds clamp, since a single index past the end already answers null.
+  **Strings index and range too** (2026-09-10), in characters — one character
+  comes back as a one-character String, since there is no character kind. The
+  UTF-8 offset walk is `runtime.c`'s `char_offset`; the interpreter uses
+  `chars()`. An object answers `length` but cannot be ranged. A `Pop`
   core handler was written the same day and removed before committing — this
   covers it.
 - **An uppercase-first name is a particle everywhere** (2026-09-09), brace or

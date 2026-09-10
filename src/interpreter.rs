@@ -1594,8 +1594,22 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                     };
                     Ok(Value::Array(Rc::new(taken)))
                 }
+                // Characters, not bytes — the same rule `Length` counts by,
+                // and `runtime.c`'s `char_offset` is the compiled half.
+                Value::Str(text) => {
+                    let chars: Vec<char> = text.chars().collect();
+                    let len = chars.len() as f64;
+                    let lo = start.max(0.0).min(len) as usize;
+                    let hi = end.max(0.0).min(len) as usize;
+                    let taken: String = if lo >= hi {
+                        String::new()
+                    } else {
+                        chars[lo..hi].iter().collect()
+                    };
+                    Ok(Value::Str(taken.into()))
+                }
                 v => Err(format!(
-                    "cannot take a range of {} — '[from, to]' requires an array",
+                    "cannot take a range of {} — '[from, to]' requires an array or a string",
                     a_type_name(v)
                 )),
             }
@@ -1626,8 +1640,18 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                         .unwrap_or(Value::Null),
                     _ => Value::Null,
                 }),
+                // One character, as a one-character string: there is no
+                // character kind here, and there are only six.
+                Value::Str(text) => Ok(match &i {
+                    Value::Number(n) if *n >= 0.0 && n.fract() == 0.0 => text
+                        .chars()
+                        .nth(*n as usize)
+                        .map(|c| Value::Str(c.to_string().into()))
+                        .unwrap_or(Value::Null),
+                    _ => Value::Null,
+                }),
                 v => Err(format!(
-                    "cannot index {} — '[]' requires an array or object",
+                    "cannot index {} — '[]' requires an array, an object or a string",
                     a_type_name(v)
                 )),
             }
