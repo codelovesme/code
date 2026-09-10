@@ -3346,12 +3346,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 self.builder
                     .build_call(
                         self.fn_slice,
-                        &[
-                            out.into(),
-                            value_ptr.into(),
-                            from_ptr.into(),
-                            to_ptr.into(),
-                        ],
+                        &[out.into(), value_ptr.into(), from_ptr.into(), to_ptr.into()],
                         "",
                     )
                     .map_err(|e| e.to_string())?;

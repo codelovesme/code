@@ -100,9 +100,11 @@ impl<'a> Parser<'a> {
     fn reject_redundant_comma(&mut self) -> Result<(), String> {
         if matches!(self.tokens.get(self.pos + 1), Some(Token::Newline)) {
             self.err_here();
-            return Err("this ',' is not needed — the newline after it already separates. \
+            return Err(
+                "this ',' is not needed — the newline after it already separates. \
                         A comma is only for keeping two things on one line"
-                .to_string());
+                    .to_string(),
+            );
         }
         Ok(())
     }
@@ -872,9 +874,7 @@ impl<'a> Parser<'a> {
                     let to_open = match self.advance() {
                         Token::RBracket => false,
                         Token::RParen => true,
-                        other => {
-                            return Err(format!("expected ']' or ')', found {other:?}"))
-                        }
+                        other => return Err(format!("expected ']' or ')', found {other:?}")),
                     };
                     e = match second {
                         // Normalised here to one half-open pair, so the AST
