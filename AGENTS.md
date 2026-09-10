@@ -50,6 +50,11 @@ ones in the crate you are editing.
 
 Also worth knowing:
 
+- **`tests/run_language_tests.rs` runs its fixtures in parallel** (2026-09-10),
+  one thread per core. It was sequential and cost 56s of a 2-minute suite;
+  it costs 10s now. Each fixture compiles to its own path, and
+  `tests/concurrent_builds.rs` is the proof that concurrent `compile_file` is
+  safe — that test exists because it once was not.
 - `code format --check tests/` is part of green. It had been red for days once
   without anyone looking.
 - `.code` fixtures must be `code format`-clean. The canonical empty particle is

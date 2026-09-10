@@ -45,9 +45,7 @@ fn code_fixtures_run_as_expected() {
     build_native_dynamic_test_modules(&dir);
     build_native_static_test_modules(&dir);
 
-    let mut failures = Vec::new();
-    let mut checked = 0;
-
+    let mut fixtures: Vec<(String, PathBuf, Expect)> = Vec::new();
     for entry in fs::read_dir(&dir).expect("read tests/ directory") {
         let path = entry.expect("read tests/ directory entry").path();
         if path.extension().and_then(|e| e.to_str()) != Some("code") {
@@ -61,18 +59,60 @@ fn code_fixtures_run_as_expected() {
         } else {
             Expect::Succeed
         };
-
-        // Both modes take the fixture's *path*, not its text: `link`
-        // resolves relative to the linking file, so `tests/modules/*.code`
-        // is only reachable from a caller that knows where the fixture is.
-        // Those module files live in a subdirectory and so are never picked
-        // up as fixtures in their own right by the glob above.
-        check_interpret(&name, &path, expect, &mut failures);
-        check_compile(&name, &path, expect, &tmp_dir, &mut failures);
-        checked += 1;
+        fixtures.push((name, path, expect));
     }
+    assert!(
+        !fixtures.is_empty(),
+        "no .code fixtures found in {}",
+        dir.display()
+    );
+    // Sorted so a failing run names its fixtures in the same order every
+    // time; the threads below finish in whatever order they finish.
+    fixtures.sort_by(|a, b| a.0.cmp(&b.0));
 
-    assert!(checked > 0, "no .code fixtures found in {}", dir.display());
+    // One LLVM compile and link per fixture is the whole cost here — ~0.2s
+    // each, and there are nearly 300 of them, which is a minute and a half
+    // on one core of twelve. Split it across the machine instead.
+    //
+    // Safe by construction, and already proven: each fixture compiles to its
+    // own path under `tmp_dir`, and `tests/concurrent_builds.rs` exists for
+    // exactly this case — `compile_file` used to write `code_abi.h` beside
+    // the output under a fixed name and delete it after linking, so parallel
+    // builds deleted the header out from under each other. `compile`'s
+    // `scratch_dir` is what fixed that.
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .min(fixtures.len());
+    let chunk = fixtures.len().div_ceil(threads);
+    let tmp_dir = &tmp_dir;
+    let mut failures: Vec<String> = std::thread::scope(|scope| {
+        let handles: Vec<_> = fixtures
+            .chunks(chunk)
+            .map(|batch| {
+                scope.spawn(move || {
+                    let mut mine = Vec::new();
+                    for (name, path, expect) in batch {
+                        // Both modes take the fixture's *path*, not its text:
+                        // `link` resolves relative to the linking file, so
+                        // `tests/modules/*.code` is only reachable from a
+                        // caller that knows where the fixture is. Those
+                        // module files live in a subdirectory and so are
+                        // never picked up as fixtures in their own right.
+                        check_interpret(name, path, *expect, &mut mine);
+                        check_compile(name, path, *expect, tmp_dir, &mut mine);
+                    }
+                    mine
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().expect("fixture thread panicked"))
+            .collect()
+    });
+    failures.sort();
+
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
