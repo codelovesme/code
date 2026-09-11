@@ -11,9 +11,8 @@
 //! (shipped 2026-08-27). `Origin` below carries the entry module's text and
 //! name on `Program`, beside a `starts` offset per *top-level* statement, and
 //! the interpreter's top-level loop is the one place that renders with them.
-//! No AST node carries a span, and codegen ignores both fields — see
-//! `docs/todo/runtime-error-locations.md` for why the exact-everywhere
-//! version was not taken.
+//! The static checker has a separate, minimal AST `Span` for its diagnostic
+//! boundaries; runtime codegen still ignores those fields.
 
 /// An error that may know where in its source it happened.
 ///

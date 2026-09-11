@@ -1142,6 +1142,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             particle,
             target,
             result,
+            ..
         } => {
             let value = eval(particle, env)?;
             // Asked once, here, before the target is even looked at: whether
@@ -1234,7 +1235,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
         // Already collected by `register_handlers` before execution began —
         // reaching the definition in statement order does nothing.
         Stmt::HandlerDef { .. } => Ok(Flow::Normal),
-        Stmt::Return(expr) => Ok(Flow::Return(eval(expr, env)?)),
+        Stmt::Return { value, .. } => Ok(Flow::Return(eval(value, env)?)),
     }
 }
 

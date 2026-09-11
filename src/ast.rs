@@ -1,3 +1,20 @@
+/// A half-open source range in character offsets.
+///
+/// The lexer indexes source as `Vec<char>`, so these offsets are independent of
+/// UTF-8 byte width. Line and column are derived only when a CLI report is
+/// rendered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Span {
+    pub start: u32,
+    pub end: u32,
+}
+
+impl Span {
+    pub const fn new(start: u32, end: u32) -> Self {
+        Self { start, end }
+    }
+}
+
 /// A parsed program: a flat sequence of statements — `Stmt::If`'s `body` is
 /// where nesting actually happens now (see its doc comment).
 ///
@@ -12,12 +29,9 @@ pub struct Program {
     /// `statements` — or empty, meaning "no idea", which is what a
     /// hand-built program gets.
     ///
-    /// This is the *whole* extent of the AST's knowledge of source
-    /// positions, and it stops at the top level deliberately: a failure
-    /// inside an `if` or `loop` body is reported against the top-level
-    /// statement containing it. Spans on every `Stmt` would be exact, and
-    /// would also put a position on twenty nodes that have no use for one —
-    /// see `docs/todo/runtime-error-locations.md` for the tradeoff.
+    /// This is the top-level runtime location table. The diagnostic checker
+    /// uses the more precise spans carried only by emit/return/assignment
+    /// boundaries and field-list entries below.
     pub starts: Vec<u32>,
     /// The text these offsets index into, and the name to call it by.
     /// Attached by `loader::load` for the entry module only, since only the
@@ -50,6 +64,8 @@ pub enum Stmt {
         /// consumer of this contract.
         annotation: Option<String>,
         value: Expr,
+        /// Source extent of the assignment boundary, when parsed from source.
+        span: Option<Span>,
     },
     /// `assert expr` — `expr` must evaluate to a `Bool`; `false` or any
     /// other kind aborts the program (interpreter: `Err`; compiled binary:
@@ -236,6 +252,9 @@ pub enum Stmt {
         particle: Expr,
         target: EmitTarget,
         result: Option<EmitResult>,
+        /// Source extent of the complete `emit` boundary, when parsed from
+        /// source.
+        span: Option<Span>,
     },
     /// `break` — exits the innermost enclosing `Loop` immediately, skipping
     /// the rest of that iteration's body. `break` outside any loop is a
@@ -285,7 +304,12 @@ pub enum Stmt {
     ///
     /// Outside a handler it is a *parse* error, exactly like `Break` outside
     /// a loop, so both backends reject it without either needing a rule.
-    Return(Expr),
+    Return {
+        value: Expr,
+        /// Source extent of the complete `return` boundary, when parsed from
+        /// source.
+        span: Option<Span>,
+    },
 }
 
 /// One entry in a field list — a handler's `Class { a, b as c }` and an
@@ -309,9 +333,12 @@ pub struct Field {
     /// What this scope calls it.
     pub name: String,
     /// Optional development-time type annotation from `field ∈ Type`.
-    /// Missing fields still evaluate to null at runtime; `code check` reports
-    /// a missing typed field at a statically known handler boundary.
+    /// `code check` reports a missing typed field at a statically known handler
+    /// boundary.
     pub annotation: Option<String>,
+    /// Source range of the field declaration or `get` field, when parsed from
+    /// source.
+    pub span: Option<Span>,
 }
 
 /// What an `emit`'s `get` clause binds.

@@ -2350,7 +2350,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 fields,
                 body,
             } => self.gen_handler(class_name, fields, body),
-            Stmt::Return(value) => self.gen_return(value),
+            Stmt::Return { value, .. } => self.gen_return(value),
             Stmt::Link { path, .. } => Err(format!(
                 "internal error: link \"{path}\" reached codegen unresolved"
             )),
@@ -2395,6 +2395,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 particle,
                 target,
                 result,
+                ..
             } => self.gen_emit(particle, target, result.as_ref()),
             Stmt::Break => self.gen_jump(JumpTarget::Break),
             Stmt::Continue => self.gen_jump(JumpTarget::Continue),

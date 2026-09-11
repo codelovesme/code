@@ -67,6 +67,7 @@ fn dispatches_through_a_provided_closure() {
                 particle: double_particle(21.0),
                 target: EmitTarget::Module("m".to_string()),
                 result: Some(EmitResult::Whole("n".to_string())),
+                span: None,
             },
             Stmt::Assert(Expr::Binary(
                 Box::new(Expr::Ident("n".to_string())),
@@ -107,6 +108,7 @@ fn link_as_can_rename_a_provided_module() {
                 particle: double_particle(10.0),
                 target: EmitTarget::Module("renamed".to_string()),
                 result: Some(EmitResult::Whole("n".to_string())),
+                span: None,
             },
         ],
         // Hand-built: no source text, so no runtime error locations.
@@ -147,6 +149,7 @@ fn emit_to_an_unlinked_alias_is_a_clear_error() {
             particle: double_particle(1.0),
             target: EmitTarget::Module("nope".to_string()),
             result: None,
+            span: None,
         }],
         ..Default::default()
     };

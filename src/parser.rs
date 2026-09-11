@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopOver, Program, Stmt, UnOp,
-    ValueKind,
+    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopOver, Program, Span, Stmt,
+    UnOp, ValueKind,
 };
 use crate::lexer::{Lexed, StringPart, Token};
 use crate::span::Located;
@@ -21,6 +21,9 @@ struct Parser<'a> {
     tokens: &'a [Token],
     /// Parallel to `tokens` — see `Lexed`. Only ever read by `locate`.
     starts: &'a [u32],
+    /// Parallel to `tokens`; used to end the small set of AST spans the
+    /// checker needs.
+    ends: &'a [u32],
     pos: usize,
     /// Which token an error should point at. Nearly every error site here
     /// reports on a token it has just `advance()`d past, so this tracks the
@@ -52,6 +55,7 @@ impl<'a> Parser<'a> {
         Parser {
             tokens: &lexed.tokens,
             starts: &lexed.starts,
+            ends: &lexed.ends,
             pos: 0,
             err_pos: 0,
             loop_depth: 0,
@@ -75,6 +79,16 @@ impl<'a> Parser<'a> {
     /// without consuming.
     fn err_here(&mut self) {
         self.err_pos = self.pos;
+    }
+
+    fn span(&self, start_pos: usize) -> Span {
+        Span::new(
+            self.starts[start_pos],
+            self.ends
+                .get(self.err_pos)
+                .copied()
+                .unwrap_or(self.starts[start_pos]),
+        )
     }
 
     fn peek(&self) -> &Token {
@@ -179,6 +193,7 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Result<Stmt, String> {
+        let statement_start = self.pos;
         if matches!(self.peek(), Token::Assert) {
             self.advance();
             let value = self.expr()?;
@@ -255,10 +270,12 @@ impl<'a> Parser<'a> {
                 None
             };
             self.expect_end_of_statement()?;
+            let span = self.span(statement_start);
             return Ok(Stmt::Emit {
                 particle,
                 target,
                 result,
+                span: Some(span),
             });
         }
 
@@ -287,7 +304,11 @@ impl<'a> Parser<'a> {
             }
             let value = self.expr()?;
             self.expect_end_of_statement()?;
-            return Ok(Stmt::Return(value));
+            let span = self.span(statement_start);
+            return Ok(Stmt::Return {
+                value,
+                span: Some(span),
+            });
         }
 
         if matches!(self.peek(), Token::Unlink) {
@@ -454,6 +475,7 @@ impl<'a> Parser<'a> {
             name,
             annotation,
             value,
+            span: Some(self.span(statement_start)),
         })
     }
 
@@ -561,6 +583,7 @@ impl<'a> Parser<'a> {
         }
         loop {
             self.skip_newlines();
+            let field_start = self.pos;
             let field = match self.advance() {
                 Token::Ident(field) => field,
                 other => return Err(format!("expected a field name, found {other:?}")),
@@ -589,10 +612,12 @@ impl<'a> Parser<'a> {
             }
             reject_uppercase_binding(&name, "a field list")?;
             reject_length_binding(&name, "a field list")?;
+            let span = self.span(field_start);
             fields.push(Field {
                 field,
                 name,
                 annotation,
+                span: Some(span),
             });
             if self.list_separator(&Token::RBrace, "}")? {
                 break;

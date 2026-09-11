@@ -273,6 +273,35 @@ fn check_reports_unknown_local_handler_as_json() {
 }
 
 #[test]
+fn check_reports_utf8_safe_source_locations_as_json() {
+    let dir = temp_dir("check-location");
+    fs::write(
+        dir.join("main.code"),
+        "Grade { é ∈ String, score ∈ Number } =>\n    return Ack {}\n\nemit Grade { é = \"ok\" } to this\n",
+    )
+    .expect("write source with a multibyte identifier");
+
+    let out = code(&dir, &["check"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !out.status.success(),
+        "a missing typed field should fail check"
+    );
+    assert!(
+        stdout.contains("\"code\": \"missing-field\""),
+        "got: {stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "\"location\": {\"file\": \"main.code\", \"line\": 1, \"column\": 21, \"end_line\": 1, \"end_column\": 35}"
+        ),
+        "location should use character columns and the entry origin: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn check_accepts_a_known_local_handler() {
     let dir = temp_dir("check-known-handler");
     fs::write(

@@ -68,7 +68,7 @@ fn verify_stmts(
                 *scopes = enclosing;
                 verified?;
             }
-            Stmt::Return(value) => verify_expr(value, scopes)?,
+            Stmt::Return { value, .. } => verify_expr(value, scopes)?,
 
             Stmt::Link { path, .. } => {
                 return Err(format!(
@@ -178,6 +178,7 @@ fn verify_stmts(
                 particle,
                 target,
                 result,
+                ..
             } => {
                 verify_expr(particle, scopes)?;
                 if let EmitTarget::Module(alias) = target {

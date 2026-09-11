@@ -585,8 +585,9 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
                 expected: None,
                 actual: None,
                 suggestion: None,
+                span: None,
             };
-            println!("{}", render_check_report(&[diagnostic]));
+            println!("{}", render_check_report(&[diagnostic], None));
             return ExitCode::FAILURE;
         }
     };
@@ -604,14 +605,18 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
                 expected: None,
                 actual: None,
                 suggestion: None,
+                span: None,
             };
-            println!("{}", render_check_report(&[diagnostic]));
+            println!("{}", render_check_report(&[diagnostic], None));
             return ExitCode::FAILURE;
         }
     };
     let diagnostics = code::diagnostics::check_handlers(&program);
     let failed = code::diagnostics::has_errors(&diagnostics);
-    println!("{}", render_check_report(&diagnostics));
+    println!(
+        "{}",
+        render_check_report(&diagnostics, program.origin.as_ref())
+    );
     if failed {
         ExitCode::FAILURE
     } else {
@@ -619,7 +624,10 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
     }
 }
 
-fn render_check_report(diagnostics: &[code::diagnostics::Diagnostic]) -> String {
+fn render_check_report(
+    diagnostics: &[code::diagnostics::Diagnostic],
+    origin: Option<&code::span::Origin>,
+) -> String {
     let mut output = String::from("{\n  \"schema_version\": 1,\n  \"diagnostics\": [");
     if diagnostics.is_empty() {
         output.push_str("]\n}");
@@ -635,6 +643,8 @@ fn render_check_report(diagnostics: &[code::diagnostics::Diagnostic]) -> String 
         output.push_str(&json_quote(diagnostic.severity.as_str()));
         output.push_str(",\n      \"message\": ");
         output.push_str(&json_quote(&diagnostic.message));
+        output.push_str(",\n      \"location\": ");
+        output.push_str(&json_location(diagnostic.span, origin));
         output.push_str(",\n      \"handler\": ");
         output.push_str(&json_optional_string(&diagnostic.handler));
         output.push_str(",\n      \"particle\": ");
@@ -663,6 +673,38 @@ fn json_optional_string(value: &Option<String>) -> String {
         .as_deref()
         .map(json_quote)
         .unwrap_or_else(|| "null".to_string())
+}
+
+fn json_location(span: Option<code::ast::Span>, origin: Option<&code::span::Origin>) -> String {
+    let (Some(span), Some(origin)) = (span, origin) else {
+        return "null".to_string();
+    };
+    let (line, column) = source_line_column(&origin.source, span.start);
+    let (end_line, end_column) = source_line_column(&origin.source, span.end);
+    format!(
+        "{{\"file\": {}, \"line\": {}, \"column\": {}, \"end_line\": {}, \"end_column\": {}}}",
+        json_quote(&origin.file),
+        line,
+        column,
+        end_line,
+        end_column,
+    )
+}
+
+fn source_line_column(source: &str, offset: u32) -> (usize, usize) {
+    let chars: Vec<char> = source.chars().collect();
+    let at = (offset as usize).min(chars.len());
+    let mut line = 1;
+    let mut column = 1;
+    for &character in &chars[..at] {
+        if character == '\n' {
+            line += 1;
+            column = 1;
+        } else {
+            column += 1;
+        }
+    }
+    (line, column)
 }
 
 /// `code handlers [path]` describes the source handlers an agent can call.

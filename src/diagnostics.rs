@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{BinOp, EmitTarget, Expr, Field, FieldKey, Program, Stmt, UnOp, ValueKind};
+use crate::ast::{BinOp, EmitTarget, Expr, Field, FieldKey, Program, Span, Stmt, UnOp, ValueKind};
 
 /// Severity used by the machine-readable checker report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,8 +22,8 @@ impl Severity {
 ///
 /// The optional context fields are deliberately structured rather than folded
 /// into the message. Agents can use the stable code and fields without
-/// parsing prose. Source spans will be added when the AST carries them; this
-/// slice identifies the handler, particle, field, and type exactly.
+/// parsing prose. `span` preserves the source range when this diagnostic came
+/// from a parsed program.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
     pub code: &'static str,
@@ -36,6 +36,9 @@ pub struct Diagnostic {
     pub expected: Option<String>,
     pub actual: Option<String>,
     pub suggestion: Option<String>,
+    /// The source range responsible for this diagnostic, when the checker was
+    /// given a parsed source program.
+    pub span: Option<Span>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,6 +162,7 @@ fn check_statements(
                 name,
                 annotation,
                 value,
+                span,
             } => {
                 if let Some(annotation) = annotation {
                     check_value_against_annotation(
@@ -168,6 +172,7 @@ fn check_statements(
                         current_handler,
                         diagnostics,
                         Some(name),
+                        *span,
                     );
                     types.insert(name.clone(), static_type_from_annotation(annotation));
                 } else if let Some(value_type) = static_type(value, types) {
@@ -177,7 +182,10 @@ fn check_statements(
                 }
             }
             Stmt::Emit {
-                particle, target, ..
+                particle,
+                target,
+                span,
+                ..
             } => check_emit(
                 particle,
                 target,
@@ -185,7 +193,11 @@ fn check_statements(
                 current_handler,
                 types,
                 diagnostics,
+                *span,
             ),
+            Stmt::Return { value, span } => {
+                check_return(value, current_handler, types, diagnostics, *span)
+            }
             _ => {}
         }
     }
@@ -198,8 +210,27 @@ fn check_emit(
     current_handler: Option<&str>,
     types: &HashMap<String, StaticType>,
     diagnostics: &mut Vec<Diagnostic>,
+    span: Option<Span>,
 ) {
     if !matches!(target, EmitTarget::This) {
+        return;
+    }
+    if let Some(actual_name) = static_non_particle_type(particle, types) {
+        diagnostics.push(Diagnostic {
+            code: "non-particle",
+            severity: Severity::Error,
+            message: format!(
+                "emit requires a particle, but the statically known value is {actual_name}"
+            ),
+            handler: current_handler.map(str::to_owned),
+            particle: None,
+            target: Some("this".to_string()),
+            field: None,
+            expected: Some("particle".to_string()),
+            actual: Some(actual_name),
+            suggestion: None,
+            span,
+        });
         return;
     }
     let Some(class_name) = static_particle_class(particle) else {
@@ -223,6 +254,7 @@ fn check_emit(
             expected: None,
             actual: None,
             suggestion,
+            span,
         });
         return;
     };
@@ -264,6 +296,7 @@ fn check_emit(
                 expected: Some(expected),
                 actual: Some(field_name.to_owned()),
                 suggestion,
+                span,
             });
             continue;
         };
@@ -275,6 +308,7 @@ fn check_emit(
                 current_handler,
                 diagnostics,
                 Some(field_name),
+                field.span,
             );
         }
     }
@@ -299,9 +333,37 @@ fn check_emit(
                 expected: Some(expected),
                 actual: Some("missing".to_string()),
                 suggestion: Some(format!("include field '{}'", field.field)),
+                span: field.span,
             });
         }
     }
+}
+
+fn check_return(
+    value: &Expr,
+    current_handler: Option<&str>,
+    types: &HashMap<String, StaticType>,
+    diagnostics: &mut Vec<Diagnostic>,
+    span: Option<Span>,
+) {
+    let Some(actual_name) = static_non_particle_type(value, types) else {
+        return;
+    };
+    diagnostics.push(Diagnostic {
+        code: "non-particle",
+        severity: Severity::Error,
+        message: format!(
+            "handler return requires a particle, but the statically known value is {actual_name}"
+        ),
+        handler: current_handler.map(str::to_owned),
+        particle: None,
+        target: None,
+        field: None,
+        expected: Some("particle".to_string()),
+        actual: Some(actual_name),
+        suggestion: None,
+        span,
+    });
 }
 
 fn check_value_against_annotation(
@@ -311,6 +373,7 @@ fn check_value_against_annotation(
     current_handler: Option<&str>,
     diagnostics: &mut Vec<Diagnostic>,
     field: Option<&str>,
+    span: Option<Span>,
 ) {
     let Some(actual) = static_type(value, types) else {
         return;
@@ -338,6 +401,7 @@ fn check_value_against_annotation(
         expected: Some(annotation.to_string()),
         actual: Some(actual_name),
         suggestion: None,
+        span,
     });
 }
 
@@ -345,6 +409,52 @@ fn static_type_from_annotation(annotation: &str) -> StaticType {
     match ValueKind::parse(annotation) {
         Some(kind) => StaticType::Kind(kind),
         None => StaticType::Class(annotation.to_string()),
+    }
+}
+
+fn static_non_particle_type(expr: &Expr, types: &HashMap<String, StaticType>) -> Option<String> {
+    if matches!(
+        expr,
+        Expr::Ident(_) | Expr::Field(_, _) | Expr::Index(_, _) | Expr::Slice { .. }
+    ) {
+        return None;
+    }
+    if expr_contains_dynamic_value(expr) {
+        return None;
+    }
+    let actual = static_type(expr, types)?;
+    match actual {
+        StaticType::Class(_) => None,
+        StaticType::Kind(ValueKind::Object) => {
+            let Expr::Object(fields) = expr else {
+                return None;
+            };
+            let definitely_not_a_particle = fields.iter().all(|(key, value)| match key {
+                FieldKey::Literal(name) if name == "_class" => matches!(
+                    value,
+                    Expr::Number(_) | Expr::Bool(_) | Expr::Null | Expr::Array(_) | Expr::Object(_)
+                ),
+                FieldKey::Literal(_) => true,
+                FieldKey::Computed(_) => false,
+            });
+            definitely_not_a_particle.then(|| "Object".to_string())
+        }
+        StaticType::Kind(kind) => Some(kind.name().to_string()),
+    }
+}
+
+fn expr_contains_dynamic_value(expr: &Expr) -> bool {
+    match expr {
+        Expr::Ident(_) | Expr::Field(_, _) | Expr::Index(_, _) | Expr::Slice { .. } => true,
+        Expr::Array(_) | Expr::Object(_) => false,
+        Expr::Number(_) | Expr::Str(_) | Expr::Interpolated(_) | Expr::Bool(_) | Expr::Null => {
+            false
+        }
+        Expr::LengthOf(value) | Expr::Unary(_, value) => expr_contains_dynamic_value(value),
+        Expr::Binary(left, _, right) => {
+            expr_contains_dynamic_value(left) || expr_contains_dynamic_value(right)
+        }
+        Expr::Is(value, _) => expr_contains_dynamic_value(value),
     }
 }
 
@@ -517,33 +627,133 @@ mod tests {
 
     #[test]
     fn checks_annotated_assignments() {
-        let program = parse("count ∈ Number = \"three\"\n");
+        let source = "count ∈ Number = \"three\"\n";
+        let program = parse(source);
         let diagnostics = check_handlers(&program);
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, "type-mismatch");
         assert_eq!(diagnostics[0].expected.as_deref(), Some("Number"));
         assert_eq!(diagnostics[0].actual.as_deref(), Some("String"));
+        assert_eq!(
+            diagnostics[0].span,
+            Some(crate::ast::Span {
+                start: 0,
+                end: source.trim_end().chars().count() as u32,
+            })
+        );
     }
 
     #[test]
     fn checks_handler_fields_and_suggests_typos() {
-        let program = parse(
-            "Grade { score ∈ Number } =>\n    return Ack {}\n\nemit Grade { score = \"bad\", scoer = 1 } to this\n",
-        );
+        let source =
+            "Grade { score ∈ Number } =>\n    return Ack {}\n\nemit Grade { score = \"bad\", scoer = 1 } to this\n";
+        let program = parse(source);
         let diagnostics = check_handlers(&program);
         assert_eq!(diagnostics.len(), 2);
         assert_eq!(diagnostics[0].code, "type-mismatch");
+        let field_start = source.find("score").unwrap() as u32;
+        assert_eq!(
+            diagnostics[0].span,
+            Some(crate::ast::Span {
+                start: field_start,
+                end: field_start + "score ∈ Number".chars().count() as u32,
+            })
+        );
         assert_eq!(diagnostics[1].code, "unknown-field");
         assert_eq!(diagnostics[1].suggestion.as_deref(), Some("score"));
+        let emit_start = source
+            .find("emit")
+            .map(|byte_offset| source[..byte_offset].chars().count())
+            .unwrap() as u32;
+        let emit_end = source.trim_end().chars().count() as u32;
+        assert_eq!(
+            diagnostics[1].span,
+            Some(crate::ast::Span {
+                start: emit_start,
+                end: emit_end,
+            })
+        );
     }
 
     #[test]
     fn reports_a_missing_typed_handler_field() {
-        let program =
-            parse("Grade { score ∈ Number } =>\n    return Ack {}\n\nemit Grade {} to this\n");
+        let source = "Grade { score ∈ Number } =>\n    return Ack {}\n\nemit Grade {} to this\n";
+        let program = parse(source);
         let diagnostics = check_handlers(&program);
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, "missing-field");
         assert_eq!(diagnostics[0].field.as_deref(), Some("score"));
+        let field_start = source.find("score").unwrap() as u32;
+        assert_eq!(
+            diagnostics[0].span,
+            Some(crate::ast::Span {
+                start: field_start,
+                end: field_start + "score ∈ Number".chars().count() as u32,
+            })
+        );
+    }
+
+    #[test]
+    fn attaches_the_emit_boundary_to_unknown_handler_diagnostics() {
+        let source = "emit Unknown {} to this\n";
+        let program = parse(source);
+        let diagnostics = check_handlers(&program);
+        assert_eq!(
+            diagnostics[0].span,
+            Some(crate::ast::Span {
+                start: 0,
+                end: source.trim_end().chars().count() as u32,
+            })
+        );
+    }
+
+    #[test]
+    fn reports_a_static_non_particle_emit_boundary() {
+        let source = "emit 5 to this\n";
+        let program = parse(source);
+        let diagnostics = check_handlers(&program);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "non-particle");
+        assert_eq!(
+            diagnostics[0].span,
+            Some(crate::ast::Span {
+                start: 0,
+                end: source.trim_end().chars().count() as u32,
+            })
+        );
+    }
+
+    #[test]
+    fn does_not_check_static_values_sent_to_non_this_targets() {
+        let program = parse("emit 5 to core\n");
+        assert!(check_handlers(&program).is_empty());
+    }
+
+    #[test]
+    fn leaves_dynamic_particle_values_unchecked() {
+        let program = parse("particle = 5\nemit particle to this\n");
+        assert!(check_handlers(&program).is_empty());
+    }
+
+    #[test]
+    fn leaves_dynamic_particle_classes_unchecked() {
+        let program = parse("emit { _class = class_name } to this\n");
+        assert!(check_handlers(&program).is_empty());
+    }
+
+    #[test]
+    fn reports_a_static_non_particle_handler_return() {
+        let program = parse("Known {} =>\n    return 5\n");
+        let diagnostics = check_handlers(&program);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "non-particle");
+        assert_eq!(diagnostics[0].handler.as_deref(), Some("Known"));
+        assert_eq!(
+            diagnostics[0].span,
+            Some(crate::ast::Span {
+                start: "Known {} =>\n    ".chars().count() as u32,
+                end: "Known {} =>\n    return 5".chars().count() as u32,
+            })
+        );
     }
 }
