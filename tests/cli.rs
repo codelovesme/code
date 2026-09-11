@@ -124,6 +124,10 @@ fn help_is_an_answer_rather_than_an_error() {
             text.contains("handlers [path]"),
             "help omits handler catalog: {text}"
         );
+        assert!(
+            text.contains("check [path]"),
+            "help omits handler checker: {text}"
+        );
     }
 
     // Per-command help, both spellings — and after the command, since a help
@@ -231,6 +235,84 @@ fn handlers_includes_linked_source_modules_in_source_order() {
         module_at < main_at,
         "catalog should preserve source order: {stdout}"
     );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn check_reports_unknown_local_handler_as_json() {
+    let dir = temp_dir("check-handler");
+    fs::write(
+        dir.join("main.code"),
+        "Grade { score } =>\n    return Ack {}\n\nemit Grdae { score = 88 } to this get result\n",
+    )
+    .expect("write check source");
+
+    let out = code(&dir, &["check"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !out.status.success(),
+        "an unknown handler should fail check"
+    );
+    assert!(
+        stdout.starts_with("{\n  \"schema_version\": 1,"),
+        "check should emit JSON on stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"code\": \"unknown-handler\""),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("\"severity\": \"error\""), "got: {stdout}");
+    assert!(stdout.contains("Grdae"), "got: {stdout}");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn check_accepts_a_known_local_handler() {
+    let dir = temp_dir("check-known-handler");
+    fs::write(
+        dir.join("main.code"),
+        "Known {} =>\n    return Ack {}\n\nemit Known {} to this get result\n",
+    )
+    .expect("write check source");
+
+    let out = code(&dir, &["check"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "known handler should pass check: {stdout}"
+    );
+    assert!(stdout.contains("\"diagnostics\": []"), "got: {stdout}");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn check_keeps_linked_source_handler_scopes_separate() {
+    let dir = temp_dir("check-handler-scopes");
+    fs::write(
+        dir.join("module.code"),
+        "FromModule {} =>\n    return Ack {}\n",
+    )
+    .expect("write linked module");
+    fs::write(
+        dir.join("main.code"),
+        "link \"module.code\"\n\nFromMain {} =>\n    emit FromModule {} to this get result\n    return Ack {}\n",
+    )
+    .expect("write entry source");
+
+    let out = code(&dir, &["check"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !out.status.success(),
+        "a module handler should not be visible to the entry file: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"code\": \"unknown-handler\""),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("FromModule"), "got: {stdout}");
 
     let _ = fs::remove_dir_all(&dir);
 }

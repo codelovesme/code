@@ -4,10 +4,16 @@ The `code` language is intended to be written and operated by AI agents. The
 handler/particle model is the one abstraction; this task does not add ordinary
 functions or a second call syntax.
 
-The first vertical slice is now implemented: `code handlers [path]` emits the
-versioned catalog described below. The remaining validation, diagnostics,
-tracing, and capability work stays separate so it can be assigned to agents
-without changing this command's contract.
+The first two vertical slices are now implemented:
+
+- `code handlers [path]` emits the versioned handler catalog.
+- `code check [path]` emits structured JSON diagnostics for statically known
+  `emit ... to this` calls and fails on an unknown local handler without
+  changing permissive runtime dispatch.
+
+The remaining validation, diagnostics, tracing, and capability work stays
+separate so it can be assigned to agents without changing these command
+contracts.
 
 The first problem is discoverability. An agent should be able to ask a project
 which handlers exist and what fields each handler binds without reading every

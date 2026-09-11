@@ -108,6 +108,7 @@ fn main() -> ExitCode {
         "uninstall" => cmd_uninstall(args.collect()),
         #[cfg(feature = "install")]
         "list" => cmd_list(),
+        "check" => cmd_check(args.collect()),
         "test" => cmd_test(args.collect()),
         "handlers" => cmd_handlers(args.collect()),
         "format" => cmd_format(args.collect()),
@@ -147,6 +148,7 @@ resolves relative to the file doing the linking.",
         // Reachable as `code help init` too: someone who knows the command
         // exists but not where it lives should still find it.
         "init" => INIT_HELP,
+        "check" => CHECK_HELP,
         "handlers" => HANDLERS_HELP,
         "format" => FORMAT_HELP,
         "test" => TEST_HELP,
@@ -168,6 +170,7 @@ commands:
                                  (--platform wasm32 for a browser build)
   uninstall <name>               delete it, and its lock entry
   list                           what is installed, and what is available
+  check [path]                   report static handler diagnostics as JSON
   test [path]...                 run the fixtures in tests/, or the ones named
   handlers [path]                describe source handlers as JSON
   format [--check] <path>...     the canonical layout, rewritten in place
@@ -243,6 +246,13 @@ usage: code handlers [path]
 Prints a deterministic JSON description of source handlers in a file or
 project. Defaults to `.`. Resolved `.code` modules are included; native module
 contracts are not guessed.";
+
+const CHECK_HELP: &str = "\
+usage: code check [path]
+
+Reports statically detectable local handler-call diagnostics as JSON. Defaults
+to `.`. Runtime dispatch remains permissive; a non-zero exit means the report
+contains an error.";
 
 /// The directory `path` names, when it names one. A project is a directory
 /// with a `main.code` in it; anything else is a file, or a mistake the caller
@@ -551,6 +561,94 @@ fn run_fixture(exe: &Path, file: &Path) -> Result<(), String> {
     })
 }
 
+/// `code check [path]` runs the agent-facing static checks and emits one JSON
+/// report. It does not execute the program and does not change permissive
+/// runtime dispatch; the exit status is the convenient shell signal for
+/// whether the report contains an error.
+fn cmd_check(args: Vec<String>) -> ExitCode {
+    if args.len() > 1 || args.first().is_some_and(|arg| arg.starts_with('-')) {
+        eprintln!("{CHECK_HELP}");
+        return ExitCode::FAILURE;
+    }
+    let path = args.into_iter().next().unwrap_or_else(|| ".".to_string());
+    let entry = match entry_point(&path) {
+        Ok(entry) => entry,
+        Err(message) => {
+            let diagnostic = code::diagnostics::Diagnostic {
+                code: "input-error",
+                severity: code::diagnostics::Severity::Error,
+                message,
+                handler: None,
+                particle: None,
+                target: None,
+            };
+            println!("{}", render_check_report(&[diagnostic]));
+            return ExitCode::FAILURE;
+        }
+    };
+    let program = match code::loader::load(&entry, &code::loader::FilesystemResolver) {
+        Ok(program) => program,
+        Err(message) => {
+            let diagnostic = code::diagnostics::Diagnostic {
+                code: "load-error",
+                severity: code::diagnostics::Severity::Error,
+                message,
+                handler: None,
+                particle: None,
+                target: None,
+            };
+            println!("{}", render_check_report(&[diagnostic]));
+            return ExitCode::FAILURE;
+        }
+    };
+    let diagnostics = code::diagnostics::check_handlers(&program);
+    let failed = code::diagnostics::has_errors(&diagnostics);
+    println!("{}", render_check_report(&diagnostics));
+    if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+fn render_check_report(diagnostics: &[code::diagnostics::Diagnostic]) -> String {
+    let mut output = String::from("{\n  \"schema_version\": 1,\n  \"diagnostics\": [");
+    if diagnostics.is_empty() {
+        output.push_str("]\n}");
+        return output;
+    }
+    for (index, diagnostic) in diagnostics.iter().enumerate() {
+        if index > 0 {
+            output.push(',');
+        }
+        output.push_str("\n    {\n      \"code\": ");
+        output.push_str(&json_quote(diagnostic.code));
+        output.push_str(",\n      \"severity\": ");
+        output.push_str(&json_quote(diagnostic.severity.as_str()));
+        output.push_str(",\n      \"message\": ");
+        output.push_str(&json_quote(&diagnostic.message));
+        output.push_str(",\n      \"handler\": ");
+        output.push_str(&json_optional_string(&diagnostic.handler));
+        output.push_str(",\n      \"particle\": ");
+        output.push_str(&json_optional_string(&diagnostic.particle));
+        output.push_str(",\n      \"target\": ");
+        output.push_str(&json_optional_string(&diagnostic.target));
+        output.push_str("\n    }");
+    }
+    if !diagnostics.is_empty() {
+        output.push('\n');
+    }
+    output.push_str("  ]\n}");
+    output
+}
+
+fn json_optional_string(value: &Option<String>) -> String {
+    value
+        .as_deref()
+        .map(json_quote)
+        .unwrap_or_else(|| "null".to_string())
+}
+
 /// `code handlers [path]` describes the source handlers an agent can call.
 ///
 /// The output is JSON by design: this command is a discovery surface for
@@ -587,6 +685,10 @@ fn cmd_handlers(args: Vec<String>) -> ExitCode {
 /// agents can diff the output and tests can treat it as a contract.
 fn render_handler_catalog(handlers: &[code::introspection::HandlerDescription]) -> String {
     let mut output = String::from("{\n  \"schema_version\": 1,\n  \"handlers\": [");
+    if handlers.is_empty() {
+        output.push_str("]\n}");
+        return output;
+    }
     for (handler_index, handler) in handlers.iter().enumerate() {
         if handler_index > 0 {
             output.push(',');
