@@ -302,6 +302,40 @@ fn check_reports_utf8_safe_source_locations_as_json() {
 }
 
 #[test]
+fn check_reports_linked_source_locations_as_json() {
+    let dir = temp_dir("check-linked-location");
+    let emit = "emit Known { extra = 1 } to this";
+    fs::write(
+        dir.join("module.code"),
+        format!("Known {{}} =>\n    return Ack {{}}\n\n{emit}\n"),
+    )
+    .expect("write linked module");
+    fs::write(dir.join("main.code"), "link \"module.code\"\n").expect("write entry source");
+
+    let out = code(&dir, &["check"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !out.status.success(),
+        "an unknown linked field should fail check"
+    );
+    assert!(
+        stdout.contains("\"code\": \"unknown-field\""),
+        "got: {stdout}"
+    );
+    let expected_location = format!(
+        "\"location\": {{\"file\": \"module.code\", \"line\": 4, \"column\": 1, \"end_line\": 4, \"end_column\": {}}}",
+        emit.chars().count() + 1
+    );
+    assert!(
+        stdout.contains(&expected_location),
+        "linked diagnostics should use the linked source origin: {stdout}"
+    );
+    assert!(!stdout.contains("\"file\": \"main.code\""), "got: {stdout}");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn check_accepts_a_known_local_handler() {
     let dir = temp_dir("check-known-handler");
     fs::write(

@@ -1020,7 +1020,9 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             env.close_module(&address)?;
             Ok(Flow::Normal)
         }
-        Stmt::Import { alias, body, file } => {
+        Stmt::Import {
+            alias, body, file, ..
+        } => {
             // The linking file's world goes home first and the linked one
             // starts empty. That is the direction, and since `export` was
             // removed nothing travels back up either: a `.code` module

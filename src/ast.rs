@@ -176,6 +176,8 @@ pub enum Stmt {
         /// what `ImportNative`'s doc comment says of a native module for the
         /// same reason.
         file: usize,
+        /// The source text and display name for spans in `body`.
+        origin: crate::span::Origin,
     },
     /// A resolved native-module `Link` (`link "x.so" as x`), produced only
     /// by `loader.rs`. Unlike `Import`, there is no `body` to run — a

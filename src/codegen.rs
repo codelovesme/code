@@ -2354,11 +2354,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             Stmt::Link { path, .. } => Err(format!(
                 "internal error: link \"{path}\" reached codegen unresolved"
             )),
-            Stmt::Import {
-                alias,
-                body,
-                file: _,
-            } => {
+            Stmt::Import { alias, body, .. } => {
                 // Depth bookkeeping for `emit ... to base`: the body's
                 // statements sit one level further out in the module graph.
                 // Decrement on every path — the body may fail.

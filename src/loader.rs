@@ -594,16 +594,7 @@ pub fn load(entry: &str, resolver: &dyn ModuleResolver) -> Result<Program, Strin
         // back is caught as a cycle rather than loaded a second time.
         visiting: vec![identity.clone()],
     };
-    let mut program = loader.load_source(&identity, &text)?;
-    // Attached here rather than in `load_source` because only the entry
-    // module's statements are still top-level when the program runs: a
-    // linked module's are folded into a `Stmt::Import` body below, which
-    // leaves its `starts` with nothing to be parallel to.
-    program.origin = Some(span::Origin {
-        file: display_path(&identity).to_string(),
-        source: text,
-    });
-    Ok(program)
+    loader.load_source(&identity, &text)
 }
 
 struct Loader<'a> {
@@ -644,7 +635,10 @@ impl Loader<'_> {
         Ok(Program {
             statements,
             starts: program.starts,
-            origin: program.origin,
+            origin: Some(span::Origin {
+                file: shown.to_string(),
+                source: text.to_owned(),
+            }),
         })
     }
 
@@ -686,6 +680,9 @@ impl Loader<'_> {
         let loaded = self.load_source(&identity, &text);
         self.visiting.pop();
         let module = loaded?;
+        let origin = module.origin.ok_or_else(|| {
+            format!("internal error: linked source module '{identity}' has no origin")
+        })?;
 
         // Taken *after* the body is loaded, so a file's own links are
         // numbered before it is. Any unique number would do — the world it
@@ -696,6 +693,7 @@ impl Loader<'_> {
             alias,
             body: module.statements,
             file,
+            origin,
         })
     }
 }

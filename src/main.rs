@@ -586,6 +586,7 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
                 actual: None,
                 suggestion: None,
                 span: None,
+                origin: None,
             };
             println!("{}", render_check_report(&[diagnostic], None));
             return ExitCode::FAILURE;
@@ -606,6 +607,7 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
                 actual: None,
                 suggestion: None,
                 span: None,
+                origin: None,
             };
             println!("{}", render_check_report(&[diagnostic], None));
             return ExitCode::FAILURE;
@@ -644,7 +646,10 @@ fn render_check_report(
         output.push_str(",\n      \"message\": ");
         output.push_str(&json_quote(&diagnostic.message));
         output.push_str(",\n      \"location\": ");
-        output.push_str(&json_location(diagnostic.span, origin));
+        output.push_str(&json_location(
+            diagnostic.span,
+            diagnostic.origin.as_ref().or(origin),
+        ));
         output.push_str(",\n      \"handler\": ");
         output.push_str(&json_optional_string(&diagnostic.handler));
         output.push_str(",\n      \"particle\": ");

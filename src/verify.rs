@@ -75,11 +75,7 @@ fn verify_stmts(
                     "internal error: link \"{path}\" reached codegen unresolved"
                 ))
             }
-            Stmt::Import {
-                alias,
-                body,
-                file: _,
-            } => {
+            Stmt::Import { alias, body, .. } => {
                 // A linked file is a world of its own, and the link has a
                 // *direction*: nothing travels down, and since `export` was
                 // removed nothing travels up either. So the body is checked

@@ -8,11 +8,11 @@
 //! and can be changed or removed without touching the language itself.
 //!
 //! Runtime errors reach the same `render` by a second, equally narrow route
-//! (shipped 2026-08-27). `Origin` below carries the entry module's text and
-//! name on `Program`, beside a `starts` offset per *top-level* statement, and
-//! the interpreter's top-level loop is the one place that renders with them.
-//! The static checker has a separate, minimal AST `Span` for its diagnostic
-//! boundaries; runtime codegen still ignores those fields.
+//! (shipped 2026-08-27). `Origin` carries the source text and name for the
+//! parsed module whose offsets are being rendered. The entry `Program` owns
+//! the entry origin, while linked source modules carry theirs on `Stmt::Import`.
+//! The interpreter's top-level loop is the one place that renders runtime
+//! errors with the entry origin.
 
 /// An error that may know where in its source it happened.
 ///
@@ -34,14 +34,14 @@ impl Located {
     }
 }
 
-/// The source a `Program`'s top-level `starts` offsets index into, carried
-/// so that a *runtime* error — which happens long after the tokens are gone
-/// — can still be rendered against the text it came from.
+/// The source a parsed module's offsets index into, carried so that a
+/// *runtime* or static-checker diagnostic — which may happen long after the
+/// tokens are gone — can still be rendered against the text it came from.
 ///
-/// Only ever the entry module: a linked module's statements are folded into
-/// a `Stmt::Import` body by the loader, so they are no longer top-level
-/// statements and have no entry in `starts` to point at.
-#[derive(Debug, Clone, PartialEq)]
+/// The entry module owns its origin on `Program`; a linked module's statements
+/// are folded into a `Stmt::Import` body by the loader, which carries the
+/// linked module's origin alongside them.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Origin {
     /// The name to print, already run through `loader::display_path`.
     pub file: String,

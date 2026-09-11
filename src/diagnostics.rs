@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::ast::{BinOp, EmitTarget, Expr, Field, FieldKey, Program, Span, Stmt, UnOp, ValueKind};
+use crate::span::Origin;
 
 /// Severity used by the machine-readable checker report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +40,8 @@ pub struct Diagnostic {
     /// The source range responsible for this diagnostic, when the checker was
     /// given a parsed source program.
     pub span: Option<Span>,
+    /// The source origin for `span`; linked imports carry their own origin.
+    pub origin: Option<Origin>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +57,11 @@ impl StaticType {
             Self::Class(class_name) => class_name.clone(),
         }
     }
+}
+
+struct CheckContext<'a> {
+    origin: Option<&'a Origin>,
+    diagnostics: &'a mut Vec<Diagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,7 +102,11 @@ impl ExpectedType {
 /// is not knowable here.
 pub fn check_handlers(program: &Program) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    check_file(&program.statements, &mut diagnostics);
+    check_file(
+        &program.statements,
+        program.origin.as_ref(),
+        &mut diagnostics,
+    );
     diagnostics
 }
 
@@ -104,7 +116,7 @@ pub fn has_errors(diagnostics: &[Diagnostic]) -> bool {
         .any(|diagnostic| diagnostic.severity == Severity::Error)
 }
 
-fn check_file(statements: &[Stmt], diagnostics: &mut Vec<Diagnostic>) {
+fn check_file(statements: &[Stmt], origin: Option<&Origin>, diagnostics: &mut Vec<Diagnostic>) {
     let handlers: HashMap<String, Vec<Field>> = statements
         .iter()
         .filter_map(|statement| match statement {
@@ -115,7 +127,7 @@ fn check_file(statements: &[Stmt], diagnostics: &mut Vec<Diagnostic>) {
         })
         .collect();
     let mut types = HashMap::new();
-    check_statements(statements, &handlers, None, &mut types, diagnostics);
+    check_statements(statements, &handlers, None, &mut types, origin, diagnostics);
 }
 
 fn check_statements(
@@ -123,6 +135,7 @@ fn check_statements(
     handlers: &HashMap<String, Vec<Field>>,
     current_handler: Option<&str>,
     types: &mut HashMap<String, StaticType>,
+    origin: Option<&Origin>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     for statement in statements {
@@ -144,10 +157,15 @@ fn check_statements(
                     handlers,
                     Some(class_name),
                     &mut handler_types,
+                    origin,
                     diagnostics,
                 );
             }
-            Stmt::Import { body, .. } => check_file(body, diagnostics),
+            Stmt::Import {
+                body,
+                origin: imported_origin,
+                ..
+            } => check_file(body, Some(imported_origin), diagnostics),
             Stmt::If { body, .. } | Stmt::Loop { body, .. } => {
                 let mut nested_types = types.clone();
                 check_statements(
@@ -155,6 +173,7 @@ fn check_statements(
                     handlers,
                     current_handler,
                     &mut nested_types,
+                    origin,
                     diagnostics,
                 );
             }
@@ -165,12 +184,16 @@ fn check_statements(
                 span,
             } => {
                 if let Some(annotation) = annotation {
+                    let mut context = CheckContext {
+                        origin,
+                        diagnostics,
+                    };
                     check_value_against_annotation(
                         annotation,
                         value,
                         types,
                         current_handler,
-                        diagnostics,
+                        &mut context,
                         Some(name),
                         *span,
                     );
@@ -186,17 +209,27 @@ fn check_statements(
                 target,
                 span,
                 ..
-            } => check_emit(
-                particle,
-                target,
-                handlers,
-                current_handler,
-                types,
-                diagnostics,
-                *span,
-            ),
+            } => {
+                let mut context = CheckContext {
+                    origin,
+                    diagnostics,
+                };
+                check_emit(
+                    particle,
+                    target,
+                    handlers,
+                    current_handler,
+                    types,
+                    &mut context,
+                    *span,
+                );
+            }
             Stmt::Return { value, span } => {
-                check_return(value, current_handler, types, diagnostics, *span)
+                let mut context = CheckContext {
+                    origin,
+                    diagnostics,
+                };
+                check_return(value, current_handler, types, &mut context, *span)
             }
             _ => {}
         }
@@ -209,14 +242,14 @@ fn check_emit(
     handlers: &HashMap<String, Vec<Field>>,
     current_handler: Option<&str>,
     types: &HashMap<String, StaticType>,
-    diagnostics: &mut Vec<Diagnostic>,
+    context: &mut CheckContext<'_>,
     span: Option<Span>,
 ) {
     if !matches!(target, EmitTarget::This) {
         return;
     }
     if let Some(actual_name) = static_non_particle_type(particle, types) {
-        diagnostics.push(Diagnostic {
+        context.diagnostics.push(Diagnostic {
             code: "non-particle",
             severity: Severity::Error,
             message: format!(
@@ -230,6 +263,7 @@ fn check_emit(
             actual: Some(actual_name),
             suggestion: None,
             span,
+            origin: context.origin.cloned(),
         });
         return;
     }
@@ -238,7 +272,7 @@ fn check_emit(
     };
     let Some(fields) = handlers.get(class_name) else {
         let suggestion = closest_name(class_name, handlers.keys().map(String::as_str));
-        diagnostics.push(Diagnostic {
+        context.diagnostics.push(Diagnostic {
             code: "unknown-handler",
             severity: Severity::Error,
             message: match &suggestion {
@@ -255,6 +289,7 @@ fn check_emit(
             actual: None,
             suggestion,
             span,
+            origin: context.origin.cloned(),
         });
         return;
     };
@@ -278,7 +313,7 @@ fn check_emit(
                 .map(|field| field.field.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            diagnostics.push(Diagnostic {
+            context.diagnostics.push(Diagnostic {
                 code: "unknown-field",
                 severity: Severity::Error,
                 message: match &suggestion {
@@ -297,6 +332,7 @@ fn check_emit(
                 actual: Some(field_name.to_owned()),
                 suggestion,
                 span,
+                origin: context.origin.cloned(),
             });
             continue;
         };
@@ -306,7 +342,7 @@ fn check_emit(
                 value,
                 types,
                 current_handler,
-                diagnostics,
+                context,
                 Some(field_name),
                 field.span,
             );
@@ -319,7 +355,7 @@ fn check_emit(
         };
         if !object_fields.iter().any(|(name, _)| *name == field.field) {
             let expected = annotation.clone();
-            diagnostics.push(Diagnostic {
+            context.diagnostics.push(Diagnostic {
                 code: "missing-field",
                 severity: Severity::Error,
                 message: format!(
@@ -334,6 +370,7 @@ fn check_emit(
                 actual: Some("missing".to_string()),
                 suggestion: Some(format!("include field '{}'", field.field)),
                 span: field.span,
+                origin: context.origin.cloned(),
             });
         }
     }
@@ -343,13 +380,13 @@ fn check_return(
     value: &Expr,
     current_handler: Option<&str>,
     types: &HashMap<String, StaticType>,
-    diagnostics: &mut Vec<Diagnostic>,
+    context: &mut CheckContext<'_>,
     span: Option<Span>,
 ) {
     let Some(actual_name) = static_non_particle_type(value, types) else {
         return;
     };
-    diagnostics.push(Diagnostic {
+    context.diagnostics.push(Diagnostic {
         code: "non-particle",
         severity: Severity::Error,
         message: format!(
@@ -363,6 +400,7 @@ fn check_return(
         actual: Some(actual_name),
         suggestion: None,
         span,
+        origin: context.origin.cloned(),
     });
 }
 
@@ -371,7 +409,7 @@ fn check_value_against_annotation(
     value: &Expr,
     types: &HashMap<String, StaticType>,
     current_handler: Option<&str>,
-    diagnostics: &mut Vec<Diagnostic>,
+    context: &mut CheckContext<'_>,
     field: Option<&str>,
     span: Option<Span>,
 ) {
@@ -383,7 +421,7 @@ fn check_value_against_annotation(
         return;
     }
     let actual_name = actual.name();
-    diagnostics.push(Diagnostic {
+    context.diagnostics.push(Diagnostic {
         code: "type-mismatch",
         severity: Severity::Error,
         message: match field {
@@ -402,6 +440,7 @@ fn check_value_against_annotation(
         actual: Some(actual_name),
         suggestion: None,
         span,
+        origin: context.origin.cloned(),
     });
 }
 
@@ -413,6 +452,12 @@ fn static_type_from_annotation(annotation: &str) -> StaticType {
 }
 
 fn static_non_particle_type(expr: &Expr, types: &HashMap<String, StaticType>) -> Option<String> {
+    if matches!(expr, Expr::Unary(_, _)) {
+        return match static_type(expr, types)? {
+            StaticType::Class(_) => None,
+            StaticType::Kind(kind) => Some(kind.name().to_string()),
+        };
+    }
     if matches!(
         expr,
         Expr::Ident(_) | Expr::Field(_, _) | Expr::Index(_, _) | Expr::Slice { .. }
@@ -476,11 +521,24 @@ fn static_type(expr: &Expr, types: &HashMap<String, StaticType>) -> Option<Stati
         Expr::Field(_, _) | Expr::Index(_, _) | Expr::Slice { .. } => None,
         Expr::LengthOf(_) => Some(StaticType::Kind(ValueKind::Number)),
         Expr::Binary(left, op, right) => static_binary_type(left, *op, right, types),
-        Expr::Unary(op, _value) => match op {
-            UnOp::Neg => Some(StaticType::Kind(ValueKind::Number)),
-            UnOp::Not => Some(StaticType::Kind(ValueKind::Boolean)),
-        },
+        Expr::Unary(op, value) => static_unary_type(*op, value, types),
         Expr::Is(_, _) => Some(StaticType::Kind(ValueKind::Boolean)),
+    }
+}
+
+fn static_unary_type(
+    op: UnOp,
+    value: &Expr,
+    types: &HashMap<String, StaticType>,
+) -> Option<StaticType> {
+    match (op, static_type(value, types)?) {
+        (UnOp::Neg, StaticType::Kind(ValueKind::Number)) => {
+            Some(StaticType::Kind(ValueKind::Number))
+        }
+        (UnOp::Not, StaticType::Kind(ValueKind::Boolean)) => {
+            Some(StaticType::Kind(ValueKind::Boolean))
+        }
+        _ => None,
     }
 }
 
@@ -721,6 +779,21 @@ mod tests {
                 end: source.trim_end().chars().count() as u32,
             })
         );
+    }
+
+    #[test]
+    fn reports_a_static_unary_non_particle_from_a_known_binding() {
+        let program = parse("x = 1\nemit -x to this\n");
+        let diagnostics = check_handlers(&program);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "non-particle");
+        assert_eq!(diagnostics[0].actual.as_deref(), Some("Number"));
+    }
+
+    #[test]
+    fn leaves_unchecked_unary_operands_dynamic() {
+        let program = parse("x = other\nemit -x to this\n");
+        assert!(check_handlers(&program).is_empty());
     }
 
     #[test]
