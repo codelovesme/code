@@ -84,8 +84,12 @@ compiled-path tracing and host-asked particles remain separate follow-up work.
 3. Add structured diagnostics for source locations and particle-boundary errors.
 4. **Completed.** Add handler/module execution tracing and replayable particle
    tests.
-5. Add machine-readable module capability metadata (effects, configuration,
-   timeouts, and handler contracts).
+5. **Completed.** Add machine-readable module capability metadata (effects,
+   configuration, timeouts, and handler contracts). `code handlers` now adds a
+   deterministic `modules` array. Source module contracts come from handler
+   declarations; native names and capability fields come only from explicit
+   `module.json` metadata or the corresponding lock entry. Missing native data
+   stays unknown, and capability metadata uses schema version 1.
 
 The first task should land before the others because the catalog becomes the
 shared discovery surface for validators, traces, and coding agents.

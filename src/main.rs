@@ -249,9 +249,10 @@ would change. A file that does not parse is reported and skipped.";
 const HANDLERS_HELP: &str = "\
 usage: code handlers [path]
 
-Prints a deterministic JSON description of source handlers in a file or
-project. Defaults to `.`. Resolved `.code` modules are included; native module
-contracts are not guessed.";
+Prints a deterministic JSON description of source handlers and linked modules
+in a file or project. Defaults to `.`. Source handler contracts come from the
+source declarations. Native handler names, effects, configuration, timeouts,
+and contracts are included only when explicit module metadata provides them.";
 
 const CHECK_HELP: &str = "\
 usage: code check [path]
@@ -878,48 +879,294 @@ fn cmd_handlers(args: Vec<String>) -> ExitCode {
         }
     };
     let handlers = code::introspection::describe_handlers(&program);
-    println!("{}", render_handler_catalog(&handlers));
+    let mut modules = code::introspection::describe_source_modules(&program);
+    for (alias, path) in code::introspection::native_links(&program) {
+        #[cfg(feature = "install")]
+        let module =
+            match code::module_install::native_metadata_for(Path::new(&entry), Path::new(&path)) {
+                Ok(metadata) => native_module_description(&alias, metadata),
+                Err(message) => {
+                    eprintln!("error: {message}");
+                    return ExitCode::FAILURE;
+                }
+            };
+        #[cfg(not(feature = "install"))]
+        let module = {
+            let _ = &path;
+            native_module_description(&alias)
+        };
+        modules.push(module);
+    }
+    println!("{}", render_handler_catalog(&handlers, &modules));
     ExitCode::SUCCESS
+}
+
+#[cfg(feature = "install")]
+fn native_module_description(
+    alias: &str,
+    metadata: Option<code::module_install::NativeModuleMetadata>,
+) -> code::introspection::ModuleDescription {
+    let (handlers, capabilities) = match metadata {
+        Some(metadata) => {
+            let explicit = metadata.capabilities;
+            let configuration = explicit
+                .as_ref()
+                .and_then(|capabilities| capabilities.configuration.clone())
+                .map(
+                    |configuration| code::introspection::ConfigurationDescription {
+                        handler: configuration.handler,
+                        fields: configuration.fields,
+                    },
+                )
+                .or_else(|| {
+                    metadata
+                        .setup
+                        .map(|handler| code::introspection::ConfigurationDescription {
+                            handler,
+                            fields: None,
+                        })
+                });
+            let capabilities = code::introspection::ModuleCapabilityDescription {
+                effects: explicit
+                    .as_ref()
+                    .and_then(|capabilities| capabilities.effects.clone()),
+                configuration,
+                timeouts: explicit.as_ref().and_then(|capabilities| {
+                    capabilities.timeouts.as_ref().map(|timeouts| {
+                        timeouts
+                            .iter()
+                            .map(|(handler, milliseconds)| {
+                                code::introspection::TimeoutDescription {
+                                    handler: handler.clone(),
+                                    milliseconds: *milliseconds,
+                                }
+                            })
+                            .collect()
+                    })
+                }),
+                handler_contracts: explicit.and_then(|capabilities| capabilities.handler_contracts),
+            };
+            (metadata.handlers, capabilities)
+        }
+        None => (
+            Vec::new(),
+            code::introspection::ModuleCapabilityDescription {
+                effects: None,
+                configuration: None,
+                timeouts: None,
+                handler_contracts: None,
+            },
+        ),
+    };
+    code::introspection::ModuleDescription {
+        name: alias.to_string(),
+        kind: code::introspection::ModuleKind::Native,
+        handlers,
+        capabilities,
+    }
+}
+
+#[cfg(not(feature = "install"))]
+fn native_module_description(alias: &str) -> code::introspection::ModuleDescription {
+    code::introspection::ModuleDescription {
+        name: alias.to_string(),
+        kind: code::introspection::ModuleKind::Native,
+        handlers: Vec::new(),
+        capabilities: code::introspection::ModuleCapabilityDescription {
+            effects: None,
+            configuration: None,
+            timeouts: None,
+            handler_contracts: None,
+        },
+    }
 }
 
 /// Renders the versioned handler-catalog schema without making `serde` a
 /// dependency of the interpreter-only wasm build. Keep field order stable so
 /// agents can diff the output and tests can treat it as a contract.
-fn render_handler_catalog(handlers: &[code::introspection::HandlerDescription]) -> String {
+fn render_handler_catalog(
+    handlers: &[code::introspection::HandlerDescription],
+    modules: &[code::introspection::ModuleDescription],
+) -> String {
     let mut output = String::from("{\n  \"schema_version\": 1,\n  \"handlers\": [");
-    if handlers.is_empty() {
-        output.push_str("]\n}");
-        return output;
-    }
-    for (handler_index, handler) in handlers.iter().enumerate() {
-        if handler_index > 0 {
-            output.push(',');
-        }
-        output.push_str("\n    {\n      \"name\": ");
-        output.push_str(&json_quote(&handler.name));
-        output.push_str(",\n      \"fields\": [");
-        for (field_index, field) in handler.fields.iter().enumerate() {
-            if field_index > 0 {
-                output.push(',');
-            }
-            output.push_str("\n        {\n          \"wire_name\": ");
-            output.push_str(&json_quote(&field.wire_name));
-            output.push_str(",\n          \"binding_name\": ");
-            output.push_str(&json_quote(&field.binding_name));
-            output.push_str(",\n          \"type\": ");
-            output.push_str(&json_optional_string(&field.type_name));
-            output.push_str("\n        }");
-        }
-        if !handler.fields.is_empty() {
+    for (index, handler) in handlers.iter().enumerate() {
+        if index == 0 {
             output.push('\n');
+        } else {
+            output.push_str(",\n");
         }
-        output.push_str("      ]\n    }");
+        output.push_str(&render_handler(handler, "    "));
     }
     if !handlers.is_empty() {
         output.push('\n');
     }
+    output.push_str("  ],\n  \"modules\": [");
+    for (index, module) in modules.iter().enumerate() {
+        if index == 0 {
+            output.push('\n');
+        } else {
+            output.push_str(",\n");
+        }
+        output.push_str(&render_module(module, "    "));
+    }
+    if !modules.is_empty() {
+        output.push('\n');
+    }
     output.push_str("  ]\n}");
     output
+}
+
+fn render_handler(handler: &code::introspection::HandlerDescription, base: &str) -> String {
+    let field_base = format!("{base}  ");
+    let field_indent = format!("{field_base}  ");
+    let mut output = format!(
+        "{base}{{\n{field_base}\"name\": {},\n{field_base}\"fields\": [",
+        json_quote(&handler.name)
+    );
+    for (index, field) in handler.fields.iter().enumerate() {
+        if index == 0 {
+            output.push('\n');
+        } else {
+            output.push_str(",\n");
+        }
+        output.push_str(&format!(
+            "{field_indent}{{\n{field_indent}  \"wire_name\": {},\n{field_indent}  \"binding_name\": {},\n{field_indent}  \"type\": {}\n{field_indent}}}",
+            json_quote(&field.wire_name),
+            json_optional_string(&field.binding_name),
+            json_optional_string(&field.type_name),
+        ));
+    }
+    if !handler.fields.is_empty() {
+        output.push('\n');
+    }
+    output.push_str(&format!(
+        "{field_base}],\n{field_base}\"result_class\": {}\n{base}}}",
+        json_optional_string(&handler.result_class)
+    ));
+    output
+}
+
+fn render_module(module: &code::introspection::ModuleDescription, base: &str) -> String {
+    let child = format!("{base}  ");
+    let mut output = format!(
+        "{base}{{\n{child}\"name\": {},\n{child}\"kind\": {},\n{child}\"handlers\": [",
+        json_quote(&module.name),
+        json_quote(module.kind.as_str()),
+    );
+    for (index, handler) in module.handlers.iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        output.push_str(&json_quote(handler));
+    }
+    output.push_str("],\n");
+    output.push_str(&format!("{child}\"capabilities\": {{\n"));
+    let capability_base = format!("{child}  ");
+    output.push_str(&format!(
+        "{capability_base}\"effects\": {},\n",
+        json_optional_strings(&module.capabilities.effects)
+    ));
+    output.push_str(&format!(
+        "{capability_base}\"configuration\": {},\n",
+        json_configuration(&module.capabilities.configuration)
+    ));
+    output.push_str(&format!(
+        "{capability_base}\"timeouts\": {},\n",
+        json_timeouts(&module.capabilities.timeouts)
+    ));
+    output.push_str(&format!(
+        "{capability_base}\"handler_contracts\": {}\n",
+        json_handler_contracts(&module.capabilities.handler_contracts, &capability_base)
+    ));
+    output.push_str(&format!("{child}}}\n{base}}}"));
+    output
+}
+
+fn json_optional_strings(value: &Option<Vec<String>>) -> String {
+    value
+        .as_ref()
+        .map(|values| {
+            format!(
+                "[{}]",
+                values
+                    .iter()
+                    .map(|value| json_quote(value))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+        .unwrap_or_else(|| "null".to_string())
+}
+
+fn json_configuration(value: &Option<code::introspection::ConfigurationDescription>) -> String {
+    let Some(configuration) = value else {
+        return "null".to_string();
+    };
+    format!(
+        "{{\"handler\": {}, \"fields\": {}}}",
+        json_quote(&configuration.handler),
+        json_optional_fields(&configuration.fields)
+    )
+}
+
+fn json_optional_fields(value: &Option<Vec<code::introspection::FieldDescription>>) -> String {
+    value
+        .as_ref()
+        .map(|fields| {
+            format!(
+                "[{}]",
+                fields
+                    .iter()
+                    .map(|field| {
+                        format!(
+                            "{{\"wire_name\": {}, \"binding_name\": {}, \"type\": {}}}",
+                            json_quote(&field.wire_name),
+                            json_optional_string(&field.binding_name),
+                            json_optional_string(&field.type_name),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+        .unwrap_or_else(|| "null".to_string())
+}
+
+fn json_timeouts(value: &Option<Vec<code::introspection::TimeoutDescription>>) -> String {
+    value
+        .as_ref()
+        .map(|timeouts| {
+            format!(
+                "{{{}}}",
+                timeouts
+                    .iter()
+                    .map(|timeout| {
+                        format!("{}: {}", json_quote(&timeout.handler), timeout.milliseconds)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+        .unwrap_or_else(|| "null".to_string())
+}
+
+fn json_handler_contracts(
+    value: &Option<Vec<code::introspection::HandlerDescription>>,
+    base: &str,
+) -> String {
+    let Some(contracts) = value else {
+        return "null".to_string();
+    };
+    if contracts.is_empty() {
+        return "[]".to_string();
+    }
+    let item_base = format!("{base}  ");
+    let rendered = contracts
+        .iter()
+        .map(|contract| render_handler(contract, &item_base))
+        .collect::<Vec<_>>()
+        .join(",\n");
+    format!("[\n{rendered}\n{base}]")
 }
 
 /// Quotes one string for the catalog's JSON output. Non-ASCII text can stay

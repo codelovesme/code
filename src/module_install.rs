@@ -24,6 +24,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::introspection::{FieldDescription, HandlerDescription};
+
 pub const LOCK_FILE_NAME: &str = "lock.json";
 
 /// The directory installed modules live in under a `.code` directory —
@@ -38,6 +40,78 @@ pub struct PlatformAsset {
     pub asset: String,
     /// Lowercase hex sha256 of that asset.
     pub sha256: String,
+}
+
+/// Versioned, opt-in capability metadata carried by a module manifest.
+///
+/// Every field is optional on purpose. A native module is not inspected or
+/// inferred here: absent metadata means unknown, not "no effect" or a guessed
+/// contract. `setup` remains the backwards-compatible shorthand for the
+/// configuration handler and is surfaced alongside this object.
+pub const CAPABILITIES_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleCapabilities {
+    pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effects: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configuration: Option<ConfigurationMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeouts: Option<BTreeMap<String, u64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handler_contracts: Option<Vec<HandlerDescription>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ConfigurationMetadata {
+    pub handler: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<Vec<FieldDescription>>,
+}
+
+impl ModuleCapabilities {
+    fn validate(&self) -> Result<(), String> {
+        if self.schema_version != CAPABILITIES_SCHEMA_VERSION {
+            return Err(format!(
+                "unsupported module capability metadata schema {} (supported: {})",
+                self.schema_version, CAPABILITIES_SCHEMA_VERSION
+            ));
+        }
+        if self
+            .effects
+            .as_ref()
+            .is_some_and(|effects| effects.iter().any(|effect| effect.is_empty()))
+        {
+            return Err("module capability metadata contains an empty effect".to_string());
+        }
+        if self
+            .configuration
+            .as_ref()
+            .is_some_and(|configuration| configuration.handler.is_empty())
+        {
+            return Err(
+                "module capability metadata has an empty configuration handler".to_string(),
+            );
+        }
+        if self
+            .timeouts
+            .as_ref()
+            .is_some_and(|timeouts| timeouts.keys().any(String::is_empty))
+        {
+            return Err("module capability metadata contains an empty timeout handler".to_string());
+        }
+        if self
+            .handler_contracts
+            .as_ref()
+            .is_some_and(|contracts| contracts.iter().any(|contract| contract.name.is_empty()))
+        {
+            return Err(
+                "module capability metadata contains an unnamed handler contract".to_string(),
+            );
+        }
+        Ok(())
+    }
 }
 
 /// A published module's `module.json` — what CI writes next to each release's
@@ -60,13 +134,34 @@ pub struct Manifest {
     /// config block; `code` itself does not act on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub setup: Option<String>,
+    /// Explicit module capability metadata. Older manifests omit this field;
+    /// consumers must treat every omitted capability as unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<ModuleCapabilities>,
     /// Keyed by platform triple, e.g. `linux-x86_64`.
     pub platforms: BTreeMap<String, PlatformAsset>,
 }
 
 impl Manifest {
     fn parse(text: &str) -> Result<Self, String> {
-        serde_json::from_str(text).map_err(|e| format!("malformed module manifest: {e}"))
+        let manifest: Self =
+            serde_json::from_str(text).map_err(|e| format!("malformed module manifest: {e}"))?;
+        if let Some(capabilities) = &manifest.capabilities {
+            capabilities
+                .validate()
+                .map_err(|e| format!("malformed module manifest: {e}"))?;
+        }
+        Ok(manifest)
+    }
+
+    /// The metadata a linked native module can expose to the handler catalog.
+    pub fn native_metadata(&self) -> NativeModuleMetadata {
+        NativeModuleMetadata {
+            name: self.name.clone(),
+            handlers: self.handlers.clone(),
+            setup: self.setup.clone(),
+            capabilities: self.capabilities.clone(),
+        }
     }
 
     /// The asset for `platform`, if the manifest covers it.
@@ -75,7 +170,78 @@ impl Manifest {
     }
 }
 
-/// The modules published from this repository, at this repository's version.
+/// Metadata found for one linked native module. A missing manifest is
+/// represented by the absence of this value; a manifest with missing optional
+/// fields still returns a value with those fields unknown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeModuleMetadata {
+    pub name: String,
+    pub handlers: Vec<String>,
+    pub setup: Option<String>,
+    pub capabilities: Option<ModuleCapabilities>,
+}
+
+/// Find explicit metadata for a resolved native module.
+///
+/// Vendored modules may put `<module>.json` beside the library. Installed
+/// modules are read from the project's lockfile, where installation copied the
+/// manifest metadata. No metadata is inferred from a library's symbols or
+/// handler implementation.
+pub fn native_metadata_for(
+    entry: &Path,
+    native_path: &Path,
+) -> Result<Option<NativeModuleMetadata>, String> {
+    let sidecar = native_path.with_extension("json");
+    if sidecar.is_file() {
+        let text = fs::read_to_string(&sidecar)
+            .map_err(|e| format!("cannot read module manifest '{}': {e}", sidecar.display()))?;
+        let manifest = Manifest::parse(&text)?;
+        return Ok(Some(manifest.native_metadata()));
+    }
+
+    let Some(base) = entry.parent() else {
+        return Ok(None);
+    };
+    let Some(code_dir) = crate::loader::find_project_code_dir(base) else {
+        return Ok(None);
+    };
+    let lock_path = code_dir.join(LOCK_FILE_NAME);
+    if !lock_path.is_file() {
+        return Ok(None);
+    }
+    let lock = read_lockfile(&lock_path)?;
+    let resolved = fs::canonicalize(native_path).map_err(|e| {
+        format!(
+            "cannot resolve native module '{}': {e}",
+            native_path.display()
+        )
+    })?;
+    let roots = [
+        code_dir.join(MODULES_DIR_NAME),
+        global_code_dir()
+            .map(|global| global.join(MODULES_DIR_NAME))
+            .unwrap_or_default(),
+    ];
+    for entry in lock.modules.values() {
+        for root in roots.iter().filter(|root| !root.as_os_str().is_empty()) {
+            let candidate = root
+                .join(&entry.name)
+                .join(&entry.version)
+                .join(&entry.asset);
+            if fs::canonicalize(&candidate).ok().as_ref() == Some(&resolved) {
+                return Ok(Some(NativeModuleMetadata {
+                    name: entry.name.clone(),
+                    handlers: entry.handlers.clone(),
+                    setup: entry.setup.clone(),
+                    capabilities: entry.capabilities.clone(),
+                }));
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Where the modules published from this repository live, at this repository's version.
 ///
 /// A compiled-in list rather than an index fetched over the network, since
 /// 2026-08-29: one `v*` tag releases the CLI and every module together, so a
@@ -148,12 +314,21 @@ pub struct LockEntry {
     pub asset: String,
     /// Lowercase hex sha256 of the installed bytes. Re-checked at load time.
     pub sha256: String,
+    /// Handler names copied from the manifest. Names are explicit discovery
+    /// data; a contract is still absent unless `capabilities.handler_contracts`
+    /// declares one.
+    #[serde(default)]
+    pub handlers: Vec<String>,
     /// The module's setup handler, copied from its `module.json` — the
     /// particle a stateful module needs before its others work. `None` for a
     /// stateless module. Recorded so a consumer (euglena) has it locally
     /// without re-fetching the manifest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub setup: Option<String>,
+    /// Capability metadata copied from the manifest so introspection works
+    /// offline and remains tied to the bytes pinned by this entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<ModuleCapabilities>,
     /// `true` when the module lives in `~/.code/modules/` rather than the
     /// project-local directory.
     #[serde(default)]
@@ -549,7 +724,9 @@ pub fn install(
             source: source.clone(),
             asset: asset.asset.clone(),
             sha256: asset.sha256.clone(),
+            handlers: manifest.handlers.clone(),
             setup: manifest.setup.clone(),
+            capabilities: manifest.capabilities.clone(),
             global: scope == InstallScope::Global,
         },
     );
@@ -683,6 +860,47 @@ mod tests {
     }
 
     #[test]
+    fn manifest_preserves_explicit_capability_metadata() {
+        let text = r#"{
+          "name": "http", "version": "1.0.0", "abi_version": 1,
+          "handlers": ["Config", "Get"], "vars": [], "setup": "Config",
+          "capabilities": {
+            "schema_version": 1,
+            "effects": ["network"],
+            "timeouts": {"Get": 1000},
+            "handler_contracts": [
+              {"name": "Get", "fields": [{"wire_name": "url", "type": "String"}], "result_class": "Response"}
+            ]
+          },
+          "platforms": {}
+        }"#;
+        let manifest = Manifest::parse(text).expect("capabilities parse");
+        let capabilities = manifest.capabilities.expect("capabilities present");
+        assert_eq!(capabilities.schema_version, 1);
+        assert_eq!(
+            capabilities.effects.as_deref(),
+            Some(["network".to_string()].as_slice())
+        );
+        assert_eq!(capabilities.timeouts.as_ref().unwrap()["Get"], 1000);
+        assert_eq!(
+            capabilities.handler_contracts.as_ref().unwrap()[0].fields[0]
+                .type_name
+                .as_deref(),
+            Some("String")
+        );
+    }
+
+    #[test]
+    fn manifest_rejects_an_unsupported_capability_schema() {
+        let text = r#"{
+          "name": "x", "version": "1.0.0", "abi_version": 1,
+          "capabilities": {"schema_version": 2}, "platforms": {}
+        }"#;
+        let error = Manifest::parse(text).expect_err("unsupported schema must fail");
+        assert!(error.contains("unsupported module capability metadata schema"));
+    }
+
+    #[test]
     fn lockfile_round_trips_a_setup_handler() {
         let mut lock = Lockfile::default();
         lock.modules.insert(
@@ -693,7 +911,15 @@ mod tests {
                 source: "https://example.org/r".to_string(),
                 asset: "fs-linux-x86_64.so".to_string(),
                 sha256: "cd".repeat(32),
+                handlers: vec!["Config".to_string()],
                 setup: Some("Config".to_string()),
+                capabilities: Some(ModuleCapabilities {
+                    schema_version: CAPABILITIES_SCHEMA_VERSION,
+                    effects: Some(vec!["filesystem".to_string()]),
+                    configuration: None,
+                    timeouts: Some(BTreeMap::from([("ReadFile".to_string(), 1000)])),
+                    handler_contracts: None,
+                }),
                 global: false,
             },
         );
@@ -703,6 +929,11 @@ mod tests {
             back.modules["fs"].setup.as_deref(),
             Some("Config"),
             "the setup handler must survive a lockfile write/read"
+        );
+        assert_eq!(back.modules["fs"].handlers, vec!["Config"]);
+        assert_eq!(
+            back.modules["fs"].capabilities.as_ref().unwrap().effects,
+            Some(vec!["filesystem".to_string()])
         );
     }
 
@@ -717,7 +948,9 @@ mod tests {
                 source: "https://example.org/release".to_string(),
                 asset: "console-linux-x86_64.so".to_string(),
                 sha256: "ab".repeat(32),
+                handlers: vec!["Print".to_string()],
                 setup: None,
+                capabilities: None,
                 global: false,
             },
         );

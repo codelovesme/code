@@ -69,7 +69,7 @@ code build program.code -o out/thing        # --output is the same flag
 code build program.code --release          # -r; -O2, the default is unoptimized
 code test                                  # run every fixture in ./tests
 code check                                 # static handler diagnostics as JSON
-code handlers                              # describe source handlers as JSON
+code handlers                              describe source and linked modules as JSON
 code test tests/parser.code                # ...or just the ones you name
 code format src/ program.code              # canonical layout, rewritten in place
 code format --check tests/                 # writes nothing; non-zero if any differ
@@ -1050,6 +1050,49 @@ link "native_modules/math.so" as m
 emit Sum { value = [1, 2, 3] } to m get n
 assert n.value = 6
 ```
+
+### Capability metadata
+
+`code handlers` also reports a `modules` array. Source modules expose the
+handler contracts already present in their declarations. Native modules expose
+only explicit manifest data; a missing field is `null` rather than an inferred
+permission or contract:
+
+```json
+{
+  "name": "net",
+  "kind": "native",
+  "handlers": ["Config", "Send"],
+  "capabilities": {
+    "effects": ["network"],
+    "configuration": {"handler": "Config", "fields": null},
+    "timeouts": {"Send": 5000},
+    "handler_contracts": []
+  }
+}
+```
+
+A module manifest may add versioned `capabilities` metadata:
+
+```json
+{
+  "capabilities": {
+    "schema_version": 1,
+    "effects": ["network"],
+    "configuration": {"handler": "Config", "fields": []},
+    "timeouts": {"Send": 5000},
+    "handler_contracts": [
+      {"name": "Send", "fields": [{"wire_name": "url", "type": "String"}], "result_class": "Response"}
+    ]
+  }
+}
+```
+
+Installation copies this object and the manifest's explicit handler names into
+`.code/lock.json`, so catalog output remains available offline. Unsupported
+capability schema versions and malformed metadata fail the catalog command;
+older manifests without the optional object remain valid. Effects, timeouts,
+and native contracts are never guessed from a library's symbols or prose.
 
 ### A name is a module
 

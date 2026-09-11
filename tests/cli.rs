@@ -244,6 +244,94 @@ fn handlers_includes_linked_source_modules_in_source_order() {
 }
 
 #[test]
+fn handlers_includes_explicit_native_capabilities_without_guessing() {
+    let dir = temp_dir("handlers-native-capabilities");
+    fs::write(dir.join("main.code"), "link \"native.so\" as native\n").expect("write entry source");
+    fs::write(dir.join("native.so"), b"not a real shared library").expect("write native marker");
+    fs::write(
+        dir.join("native.json"),
+        r#"{
+          "name": "native",
+          "version": "1.0.0",
+          "abi_version": 1,
+          "handlers": ["Config", "Fetch"],
+          "vars": [],
+          "setup": "Config",
+          "capabilities": {
+            "schema_version": 1,
+            "effects": ["network"],
+            "timeouts": {"Fetch": 2500},
+            "handler_contracts": [
+              {"name": "Fetch", "fields": [{"wire_name": "url", "type": "String"}], "result_class": "Response"}
+            ]
+          },
+          "platforms": {}
+        }"#,
+    )
+    .expect("write native manifest");
+
+    let first = code(&dir, &["handlers"]);
+    let second = code(&dir, &["handlers"]);
+    assert!(
+        first.status.success(),
+        "handlers command failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert_eq!(first.stdout, second.stdout, "catalog output must be stable");
+    let document: serde_json::Value =
+        serde_json::from_slice(&first.stdout).expect("catalog must be valid JSON");
+    assert_eq!(document["schema_version"], 1);
+    assert_eq!(document["modules"][1]["kind"], "native");
+    let stdout = String::from_utf8_lossy(&first.stdout);
+    assert!(stdout.contains("\"kind\": \"native\""), "got: {stdout}");
+    assert!(stdout.contains("\"effects\": ["), "got: {stdout}");
+    assert!(
+        stdout.contains("\"handler\": \"Config\""),
+        "setup metadata missing: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"Fetch\": 2500"),
+        "timeout metadata missing: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"result_class\": \"Response\""),
+        "contract missing: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn handlers_rejects_unsupported_native_capability_metadata() {
+    let dir = temp_dir("handlers-native-capabilities-version");
+    fs::write(dir.join("main.code"), "link \"native.so\" as native\n").expect("write entry source");
+    fs::write(dir.join("native.so"), b"not a real shared library").expect("write native marker");
+    fs::write(
+        dir.join("native.json"),
+        r#"{
+          "name": "native", "version": "1.0.0", "abi_version": 1,
+          "handlers": [], "vars": [],
+          "capabilities": {"schema_version": 99},
+          "platforms": {}
+        }"#,
+    )
+    .expect("write unsupported manifest");
+
+    let out = code(&dir, &["handlers"]);
+    assert!(
+        !out.status.success(),
+        "unsupported metadata must fail clearly"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("unsupported module capability metadata schema"),
+        "got: {stderr}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn check_reports_unknown_local_handler_as_json() {
     let dir = temp_dir("check-handler");
     fs::write(
