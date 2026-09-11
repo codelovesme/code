@@ -1,8 +1,6 @@
 // `Path` is needed by `run` too now that it resolves modules; only `build`'s
 // output path is LLVM-gated.
-use std::path::Path;
-#[cfg(feature = "llvm")]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[cfg(feature = "llvm")]
@@ -111,6 +109,7 @@ fn main() -> ExitCode {
         #[cfg(feature = "install")]
         "list" => cmd_list(),
         "test" => cmd_test(args.collect()),
+        "handlers" => cmd_handlers(args.collect()),
         "format" => cmd_format(args.collect()),
         // Global flags rather than subcommands, so they take no feature gate
         // and work even in the wasm-only interpreter build.
@@ -148,6 +147,7 @@ resolves relative to the file doing the linking.",
         // Reachable as `code help init` too: someone who knows the command
         // exists but not where it lives should still find it.
         "init" => INIT_HELP,
+        "handlers" => HANDLERS_HELP,
         "format" => FORMAT_HELP,
         "test" => TEST_HELP,
         _ => HELP,
@@ -169,6 +169,7 @@ commands:
   uninstall <name>               delete it, and its lock entry
   list                           what is installed, and what is available
   test [path]...                 run the fixtures in tests/, or the ones named
+  handlers [path]                describe source handlers as JSON
   format [--check] <path>...     the canonical layout, rewritten in place
 
   -h, --help [command]           this, or one command's own help
@@ -235,6 +236,13 @@ usage: code format [--check] <path>...
 Rewrites .code files in the one canonical layout. A path may be a directory,
 walked for *.code. --check writes nothing and exits non-zero if anything
 would change. A file that does not parse is reported and skipped.";
+
+const HANDLERS_HELP: &str = "\
+usage: code handlers [path]
+
+Prints a deterministic JSON description of source handlers in a file or
+project. Defaults to `.`. Resolved `.code` modules are included; native module
+contracts are not guessed.";
 
 /// The directory `path` names, when it names one. A project is a directory
 /// with a `main.code` in it; anything else is a file, or a mistake the caller
@@ -541,6 +549,95 @@ fn run_fixture(exe: &Path, file: &Path) -> Result<(), String> {
     } else {
         said.trim_end().to_string()
     })
+}
+
+/// `code handlers [path]` describes the source handlers an agent can call.
+///
+/// The output is JSON by design: this command is a discovery surface for
+/// tools, not a second language syntax. Loading goes through the same module
+/// resolver as `run` and `build`, so linked `.code` sources are included in
+/// the catalog and parse/resolution failures are reported consistently.
+fn cmd_handlers(args: Vec<String>) -> ExitCode {
+    if args.len() > 1 || args.first().is_some_and(|arg| arg.starts_with('-')) {
+        eprintln!("{HANDLERS_HELP}");
+        return ExitCode::FAILURE;
+    }
+    let path = args.into_iter().next().unwrap_or_else(|| ".".to_string());
+    let entry = match entry_point(&path) {
+        Ok(entry) => entry,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let program = match code::loader::load(&entry, &code::loader::FilesystemResolver) {
+        Ok(program) => program,
+        Err(message) => {
+            eprintln!("error: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let handlers = code::introspection::describe_handlers(&program);
+    println!("{}", render_handler_catalog(&handlers));
+    ExitCode::SUCCESS
+}
+
+/// Renders the versioned handler-catalog schema without making `serde` a
+/// dependency of the interpreter-only wasm build. Keep field order stable so
+/// agents can diff the output and tests can treat it as a contract.
+fn render_handler_catalog(handlers: &[code::introspection::HandlerDescription]) -> String {
+    let mut output = String::from("{\n  \"schema_version\": 1,\n  \"handlers\": [");
+    for (handler_index, handler) in handlers.iter().enumerate() {
+        if handler_index > 0 {
+            output.push(',');
+        }
+        output.push_str("\n    {\n      \"name\": ");
+        output.push_str(&json_quote(&handler.name));
+        output.push_str(",\n      \"fields\": [");
+        for (field_index, field) in handler.fields.iter().enumerate() {
+            if field_index > 0 {
+                output.push(',');
+            }
+            output.push_str("\n        {\n          \"wire_name\": ");
+            output.push_str(&json_quote(&field.wire_name));
+            output.push_str(",\n          \"binding_name\": ");
+            output.push_str(&json_quote(&field.binding_name));
+            output.push_str("\n        }");
+        }
+        if !handler.fields.is_empty() {
+            output.push('\n');
+        }
+        output.push_str("      ]\n    }");
+    }
+    if !handlers.is_empty() {
+        output.push('\n');
+    }
+    output.push_str("  ]\n}");
+    output
+}
+
+/// Quotes one string for the catalog's JSON output. Non-ASCII text can stay
+/// as UTF-8; JSON only requires escaping quotes, backslashes, controls, and
+/// the five short control escapes below.
+fn json_quote(value: &str) -> String {
+    let mut quoted = String::from("\"");
+    for character in value.chars() {
+        match character {
+            '"' => quoted.push_str("\\\""),
+            '\\' => quoted.push_str("\\\\"),
+            '\u{08}' => quoted.push_str("\\b"),
+            '\u{0c}' => quoted.push_str("\\f"),
+            '\n' => quoted.push_str("\\n"),
+            '\r' => quoted.push_str("\\r"),
+            '\t' => quoted.push_str("\\t"),
+            character if character <= '\u{1f}' => {
+                quoted.push_str(&format!("\\u{:04x}", character as u32));
+            }
+            character => quoted.push(character),
+        }
+    }
+    quoted.push('"');
+    quoted
 }
 
 /// `code format <path>...` rewrites in place; `--check` writes nothing and

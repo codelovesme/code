@@ -68,6 +68,7 @@ code build program.code --target wasm      # -t; exe | shared | static | wasm
 code build program.code -o out/thing        # --output is the same flag
 code build program.code --release          # -r; -O2, the default is unoptimized
 code test                                  # run every fixture in ./tests
+code handlers                              # describe source handlers as JSON
 code test tests/parser.code                # ...or just the ones you name
 code format src/ program.code              # canonical layout, rewritten in place
 code format --check tests/                 # writes nothing; non-zero if any differ

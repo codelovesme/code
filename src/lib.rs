@@ -4,6 +4,7 @@ pub mod codegen;
 pub mod format;
 pub mod handlers;
 pub mod interpreter;
+pub mod introspection;
 pub mod lexer;
 pub mod loader;
 #[cfg(feature = "install")]

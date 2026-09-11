@@ -120,6 +120,10 @@ fn help_is_an_answer_rather_than_an_error() {
             text.contains("install <name-or-url>"),
             "help omits module: {text}"
         );
+        assert!(
+            text.contains("handlers [path]"),
+            "help omits handler catalog: {text}"
+        );
     }
 
     // Per-command help, both spellings — and after the command, since a help
@@ -163,6 +167,71 @@ fn version_answers_to_all_three_spellings() {
             "expected a version line for {args:?}, got: {text}"
         );
     }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn handlers_describes_source_contracts_as_json() {
+    let dir = temp_dir("handlers");
+    fs::write(
+        dir.join("main.code"),
+        "Greet { who as person } =>\n    return Greeting { text = \"hi $person\" }\n",
+    )
+    .expect("write handler source");
+
+    let out = code(&dir, &["handlers"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "handlers command failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.starts_with("{\n  \"schema_version\": 1,"),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("\"name\": \"Greet\""), "got: {stdout}");
+    assert!(stdout.contains("\"wire_name\": \"who\""), "got: {stdout}");
+    assert!(
+        stdout.contains("\"binding_name\": \"person\""),
+        "got: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn handlers_includes_linked_source_modules_in_source_order() {
+    let dir = temp_dir("handlers-linked");
+    fs::write(
+        dir.join("module.code"),
+        "FromModule { value } =>\n    return ModuleResult {}\n",
+    )
+    .expect("write linked module");
+    fs::write(
+        dir.join("main.code"),
+        "link \"module.code\"\n\nFromMain {} =>\n    return MainResult {}\n",
+    )
+    .expect("write entry source");
+
+    let out = code(&dir, &["handlers"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "handlers command failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let module_at = stdout
+        .find("\"name\": \"FromModule\"")
+        .expect("linked handler in catalog");
+    let main_at = stdout
+        .find("\"name\": \"FromMain\"")
+        .expect("entry handler in catalog");
+    assert!(
+        module_at < main_at,
+        "catalog should preserve source order: {stdout}"
+    );
+
     let _ = fs::remove_dir_all(&dir);
 }
 
