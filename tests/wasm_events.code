@@ -21,7 +21,7 @@ Removed { id, confirmed } =>
             seen = "$half"
     return Fine {}
 
-    | Every kind a page can write down, arriving as itself rather than as text.
+| Every kind a page can write down, arriving as itself rather than as text.
 Kinds { count, ratio, on, off, nothing, list, nested } =>
     if count = 3
         if ratio = 1.5
@@ -34,7 +34,7 @@ Kinds { count, ratio, on, off, nothing, list, nested } =>
                                 seen = "$quarter"
     return Fine {}
 
-    | Text a page writes as JSON: escapes, and a character above ASCII.
+| Text a page writes as JSON: escapes, and a character above ASCII.
 Typed { value } =>
     if value = "a\"b\\c
 d — ç"

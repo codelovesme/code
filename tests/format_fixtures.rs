@@ -180,3 +180,29 @@ fn only_deliberate_parse_errors_are_refused() {
         );
     }
 }
+
+/// A comment on its own line is indented like the code line *after* it.
+///
+/// The lexer emits `Indent`/`Dedent` at the first token of the next code
+/// line, so a comment standing between a handler's body and the next
+/// handler used to inherit the body's depth — every `| next handler`
+/// comment in the apps drifted four spaces right on the first `format`.
+#[test]
+fn a_comment_takes_the_depth_of_the_line_after_it() {
+    let src = "\
+A =>
+    x = 1
+    | inside, stays inside
+    return B
+| between handlers, at the top
+C =>
+    | before the body's first line, at the body's depth
+    return D
+";
+    let out = code::format::format(src).expect("formats");
+    assert_eq!(out, src);
+
+    // The wrong layout — the one the bug produced — is corrected.
+    let drifted = src.replace("\n| between", "\n    | between");
+    assert_eq!(code::format::format(&drifted).expect("formats"), src);
+}

@@ -14,7 +14,7 @@ MayDraw { app, into } =>
         return Allowed { into = "#guest-" + app }
     return Refused { reason = "$app may not draw at $into" }
 
-    | An answer that is not an object at all — a host has to cope with that too.
+| An answer that is not an object at all — a host has to cope with that too.
 Count { of } =>
     emit Length { value = of } to core get many
     return Counted { value = many.value }

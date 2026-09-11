@@ -29,12 +29,12 @@ loop
     emit Length { value = seen } to core get n
     if n.value = 3
         break
-        | A bound, so a push that never arrives fails this fixture instead of
-        | hanging it. Nothing about the passing run depends on the number: three
-        | sleeps of a millisecond is over long before it.
+    | A bound, so a push that never arrives fails this fixture instead of
+    | hanging it. Nothing about the passing run depends on the number: three
+    | sleeps of a millisecond is over long before it.
     if spins > 2000000
         break
 
-        | In order, and all three: the ring hands particles over oldest-first
-        | whichever thread put them there.
+| In order, and all three: the ring hands particles over oldest-first
+| whichever thread put them there.
 assert seen = [0, 1, 2]

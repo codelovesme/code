@@ -47,6 +47,7 @@ pub fn format(src: &str) -> Result<String, Located> {
         line: String::new(),
         line_depth: 0,
         depth: 0,
+        comment_depth: 0,
         prev: None,
     };
 
@@ -73,6 +74,21 @@ pub fn format(src: &str) -> Result<String, Located> {
         }
         let gap_start = lexed.ends[i] as usize;
         let gap_end = lexed.starts.get(i + 1).copied().unwrap_or(0) as usize;
+        // A comment on its own line belongs to the code line after it, and
+        // the lexer's `Indent`/`Dedent` for that line arrive *after* the gap
+        // the comment sits in. Count them ahead, so a comment before a
+        // handler sits at the handler's depth rather than the previous
+        // body's.
+        let mut ahead = f.depth as isize;
+        for next in &lexed.tokens[i + 1..] {
+            match next {
+                Token::Indent => ahead += 1,
+                Token::Dedent => ahead -= 1,
+                Token::Newline => {}
+                _ => break,
+            }
+        }
+        f.comment_depth = ahead.max(0) as usize;
         f.gap(gap_start, gap_end);
     }
     f.finish_line();
@@ -110,6 +126,10 @@ struct Formatter<'a> {
     /// `depth`, which may already have moved past an opener on this line.
     line_depth: usize,
     depth: usize,
+    /// The depth of the next code line — what a comment standing on its own
+    /// line is indented to. Differs from `depth` exactly when the line after
+    /// the comment opens or closes a block.
+    comment_depth: usize,
     prev: Option<Token>,
 }
 
@@ -246,9 +266,9 @@ impl Formatter<'_> {
                 }
                 let comment = self.text(from, i).trim_end().to_string();
                 if self.line.is_empty() {
-                    // Its own line: indented like code, flushed by the `\n`
-                    // that follows it.
-                    self.line_depth = self.depth;
+                    // Its own line: indented like the code line after it,
+                    // flushed by the `\n` that follows it.
+                    self.line_depth = self.comment_depth;
                     self.line = comment;
                 } else {
                     // Trailing a statement, two spaces off the code.

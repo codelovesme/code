@@ -7,7 +7,7 @@ totals = []
 loop name, score over scores
     names += [name]
     totals += [score]
-    | Insertion order, not sorted — objects preserve the order they were
-    | written in (see value.rs's `Object` doc comment).
+| Insertion order, not sorted — objects preserve the order they were
+| written in (see value.rs's `Object` doc comment).
 assert names = ["alice", "bob"]
 assert totals = [10, 20]
