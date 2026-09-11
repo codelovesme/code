@@ -56,13 +56,34 @@ The output must be deterministic and preserve source order. Native modules are
 not guessed: they may be listed as linked modules later once their manifests
 expose machine-readable handler contracts.
 
+## Tracing and replay slice
+
+The fourth slice is implemented:
+
+```text
+code trace [path] [-o trace.json]
+code replay trace.json [path]
+```
+
+`code trace` runs the real interpreter and records `emit` boundaries in call
+order, including the target, particle, answer, and handler depth. The output
+contains no clock, address, or other run-specific data, so identical runs are
+byte-identical. `code replay` loads that JSON, runs the real program, re-asks
+replayable top-level `to this` particles, and reports matches, mismatches, and
+context-dependent boundaries it skipped.
+
+This slice is intentionally interpreter-only. Core and module boundaries are
+recorded, but nested or external boundaries are not independently re-driven;
+compiled-path tracing and host-asked particles remain separate follow-up work.
+
 ## Follow-up tasks
 
 1. **Completed.** Add the handler catalog API and `code handlers` command.
 2. **Completed.** Preserve `∈ Type` annotations and check statically known
    assignments and local handler boundaries.
 3. Add structured diagnostics for source locations and particle-boundary errors.
-4. Add handler/module execution tracing and replayable particle tests.
+4. **Completed.** Add handler/module execution tracing and replayable particle
+   tests.
 5. Add machine-readable module capability metadata (effects, configuration,
    timeouts, and handler contracts).
 

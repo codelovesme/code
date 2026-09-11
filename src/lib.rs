@@ -14,6 +14,7 @@ pub mod module_install;
 pub mod native;
 pub mod parser;
 pub mod span;
+pub mod trace;
 pub mod value;
 pub mod verify;
 
@@ -40,6 +41,71 @@ pub fn run_source(src: &str) -> Result<Environment, String> {
     };
     let program = loader::load("<source>", &resolver)?;
     interpreter::run(&program)
+}
+
+/// Run a program and record every particle boundary it crossed, in call
+/// order. The program runs exactly as `run_file` runs it — same loader, same
+/// handlers, same linked modules — so what a trace reports is real behavior
+/// rather than a model of it (see `trace`'s module docs for the boundaries
+/// this slice deliberately does not record yet).
+pub fn trace_file(path: &Path) -> Result<Vec<trace::TraceEvent>, String> {
+    let program = loader::load(&path.display().to_string(), &FilesystemResolver)?;
+    let recorder = std::rc::Rc::new(trace::Recorder::new());
+    let mut env = Environment::default();
+    env.record_trace(std::rc::Rc::clone(&recorder));
+    interpreter::run_with(&program, env)?;
+    Ok(recorder.events())
+}
+
+/// Re-ask every root `to this` boundary a trace recorded, against the program
+/// as it is now, and compare the answers by value.
+///
+/// The program is run first, in full: a handler is entitled to the top-level
+/// bindings and linked aliases its file declared, so replaying against a
+/// program that has not run would be replaying against a different program.
+/// Boundaries that are not roots are reported as skipped rather than driven
+/// out of context — see `trace::is_replayable`.
+pub fn replay_file(
+    path: &Path,
+    events: &[trace::TraceEvent],
+) -> Result<Vec<trace::ReplayCase>, String> {
+    let program = loader::load(&path.display().to_string(), &FilesystemResolver)?;
+    let mut env = interpreter::run(&program)?;
+    let mut cases = Vec::new();
+    for event in events {
+        if !trace::is_replayable(event) {
+            cases.push(trace::ReplayCase {
+                sequence: event.sequence,
+                target: event.target.clone(),
+                particle_class: event.particle_class.clone(),
+                outcome: trace::Outcome::Skipped,
+                expected: event.answer.clone(),
+                actual: value::Value::Null,
+                reason: Some(if event.depth > 0 {
+                    "a nested boundary is reached by replaying its root".to_string()
+                } else {
+                    format!("'{}' is not this program's own handler table", event.target)
+                }),
+            });
+            continue;
+        }
+        let actual = interpreter::ask_program(&event.particle, &mut env);
+        let outcome = if actual == event.answer {
+            trace::Outcome::Match
+        } else {
+            trace::Outcome::Mismatch
+        };
+        cases.push(trace::ReplayCase {
+            sequence: event.sequence,
+            target: event.target.clone(),
+            particle_class: event.particle_class.clone(),
+            outcome,
+            expected: event.answer.clone(),
+            actual,
+            reason: None,
+        });
+    }
+    Ok(cases)
 }
 
 #[cfg(feature = "llvm")]

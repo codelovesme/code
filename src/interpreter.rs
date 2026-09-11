@@ -174,6 +174,11 @@ pub struct Environment {
     /// runtime `_class`, so a particle held in a variable names a handler no
     /// static pass could have resolved. This catches those.
     active: HashSet<String>,
+    /// Where crossed particle boundaries are recorded, when somebody asked
+    /// for a trace (`code trace`). `None` is the ordinary path every program
+    /// already takes: tracing is opt-in, so no program's meaning changes by
+    /// this field existing. See `crate::trace`.
+    tracer: Option<Rc<crate::trace::Recorder>>,
 }
 
 /// A registered handler: the fields to seed its scope with, the body to
@@ -224,6 +229,7 @@ impl Default for Environment {
             inbound: Vec::new(),
             active: HashSet::new(),
             wakeup: Arc::new(Wakeup::default()),
+            tracer: None,
         }
     }
 }
@@ -234,6 +240,14 @@ impl Environment {
     /// signalled from the module's thread.
     pub fn wakeup(&self) -> Arc<Wakeup> {
         Arc::clone(&self.wakeup)
+    }
+
+    /// Records every particle boundary this environment crosses into
+    /// `recorder`. Attached before the program runs (`code trace`), and
+    /// nothing else about execution changes — a traced run and an untraced
+    /// one take exactly the same path through dispatch.
+    pub fn record_trace(&mut self, recorder: Rc<crate::trace::Recorder>) {
+        self.tracer = Some(recorder);
     }
 
     pub fn get(&self, name: &str) -> Option<&Value> {
@@ -1161,6 +1175,16 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             // returns an `Exception` — no target is dispatched to at all.
             // Must match codegen.rs's `gen_emit`.
             check_emittable(&value)?;
+            // Opened before the target is dispatched to, so a trace reads in
+            // call order: a boundary is numbered before the boundaries it
+            // causes. `depth` is how many handlers were already running, which
+            // is what tells a replay which boundaries are roots.
+            let traced = env.tracer.as_ref().map(|recorder| {
+                (
+                    Rc::clone(recorder),
+                    recorder.begin(env.active.len(), trace_target(target), &value),
+                )
+            });
             let output = match target {
                 EmitTarget::Core => dispatch_core(&value)?,
                 EmitTarget::This => dispatch_handler(&value, env)?,
@@ -1203,6 +1227,9 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     }
                 }
             };
+            if let Some((recorder, sequence)) = traced {
+                recorder.finish(sequence, &output);
+            }
             match result {
                 Some(EmitResult::Whole(name)) => env.declare(name.clone(), output),
                 // Each field read exactly as `.field` reads it — an absent
@@ -1300,6 +1327,19 @@ fn exception(message: String) -> Value {
         ("message".to_string(), Value::Str(message.into())),
         ("innerException".to_string(), Value::Null),
     ]))
+}
+
+/// How a trace names an emit's recipient. `module:<alias>` keeps the alias,
+/// because which module answered is the whole point of recording a module
+/// boundary — and keeps the three language-level targets unambiguous, since
+/// no alias can contain a colon.
+fn trace_target(target: &EmitTarget) -> String {
+    match target {
+        EmitTarget::Core => "core".to_string(),
+        EmitTarget::This => "this".to_string(),
+        EmitTarget::Base => "base".to_string(),
+        EmitTarget::Module(alias) => format!("module:{alias}"),
+    }
 }
 
 /// `emit <particle> to this` — runs the handler registered for the

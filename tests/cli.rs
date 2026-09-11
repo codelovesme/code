@@ -417,6 +417,120 @@ fn check_keeps_linked_source_handler_scopes_separate() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// `code trace` interprets a program and reports every particle boundary it
+/// crossed, in call order, with no clock or address in the output — a trace an
+/// agent can diff between two runs.
+#[test]
+fn trace_records_particle_boundaries_as_deterministic_json() {
+    let dir = temp_dir("trace");
+    fs::write(
+        dir.join("main.code"),
+        "Greet { who } =>\n    emit Length { value = who } to core get n\n    return Greeting { size = n.value }\n\nemit Greet { who = \"abc\" } to this get answer\nassert answer.size = 3\n",
+    )
+    .expect("write traced source");
+
+    let out = code(&dir, &["trace"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "trace command failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.starts_with("{\n  \"schema_version\": 1,"),
+        "got: {stdout}"
+    );
+    let greet_at = stdout
+        .find("\"particle_class\": \"Greet\"")
+        .expect("the handler boundary is traced");
+    let length_at = stdout
+        .find("\"particle_class\": \"Length\"")
+        .expect("the core boundary is traced");
+    assert!(
+        greet_at < length_at,
+        "events should be ordered by call order: {stdout}"
+    );
+    assert!(stdout.contains("\"target\": \"this\""), "got: {stdout}");
+    assert!(stdout.contains("\"target\": \"core\""), "got: {stdout}");
+    // The nested core emit happened inside the handler, and says so — that is
+    // what makes a replay able to skip it rather than run it twice.
+    assert!(stdout.contains("\"depth\": 1"), "got: {stdout}");
+    assert!(
+        stdout.contains("\"answer\": {\"_class\":\"Greeting\",\"size\":3}"),
+        "the answer travels with the boundary: {stdout}"
+    );
+
+    // Deterministic: the same program traced twice says exactly the same thing.
+    let again = code(&dir, &["trace"]);
+    assert_eq!(stdout, String::from_utf8_lossy(&again.stdout));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A trace is a test: `code replay` sends the recorded particles back at the
+/// program's real handlers and compares the real answers.
+#[test]
+fn replay_reruns_recorded_particles_and_catches_a_changed_answer() {
+    let dir = temp_dir("replay");
+    fs::write(
+        dir.join("main.code"),
+        "Greet { who } =>\n    emit Length { value = who } to core get n\n    return Greeting { size = n.value }\n\nemit Greet { who = \"abc\" } to this get answer\nassert answer.size = 3\n",
+    )
+    .expect("write traced source");
+
+    let out = code(&dir, &["trace", ".", "-o", "trace.json"]);
+    assert!(
+        out.status.success(),
+        "trace -o failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(dir.join("trace.json").is_file(), "trace file not written");
+
+    let out = code(&dir, &["replay", "trace.json"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "replaying an unchanged program should pass: {stdout}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.starts_with("{\n  \"schema_version\": 1,"),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("\"status\": \"match\""), "got: {stdout}");
+    assert!(
+        stdout.contains("\"replayed\": 1"),
+        "only the top-level boundary is a replay case: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"skipped\": 1"),
+        "a nested boundary is skipped rather than run twice: {stdout}"
+    );
+
+    // Change what the handler answers, and the recorded trace is the
+    // regression test that notices.
+    fs::write(
+        dir.join("main.code"),
+        "Greet { who } =>\n    return Greeting { size = 99 }\n\nemit Greet { who = \"abc\" } to this get answer\n",
+    )
+    .expect("rewrite handler");
+
+    let out = code(&dir, &["replay", "trace.json"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !out.status.success(),
+        "a changed answer should fail replay: {stdout}"
+    );
+    assert!(stdout.contains("\"status\": \"mismatch\""), "got: {stdout}");
+    assert!(stdout.contains("\"mismatched\": 1"), "got: {stdout}");
+    assert!(
+        stdout.contains("\"size\":99"),
+        "the actual answer is reported: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// `code test` runs a project's fixtures on the convention this repository's
 /// own suite already uses: a fixture passes by finishing, and a `fail_*.code`
 /// fixture passes by not finishing. Nothing declares anything — the language

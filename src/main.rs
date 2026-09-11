@@ -109,6 +109,8 @@ fn main() -> ExitCode {
         #[cfg(feature = "install")]
         "list" => cmd_list(),
         "check" => cmd_check(args.collect()),
+        "trace" => cmd_trace(args.collect()),
+        "replay" => cmd_replay(args.collect()),
         "test" => cmd_test(args.collect()),
         "handlers" => cmd_handlers(args.collect()),
         "format" => cmd_format(args.collect()),
@@ -149,6 +151,8 @@ resolves relative to the file doing the linking.",
         // exists but not where it lives should still find it.
         "init" => INIT_HELP,
         "check" => CHECK_HELP,
+        "trace" => TRACE_HELP,
+        "replay" => REPLAY_HELP,
         "handlers" => HANDLERS_HELP,
         "format" => FORMAT_HELP,
         "test" => TEST_HELP,
@@ -171,6 +175,8 @@ commands:
   uninstall <name>               delete it, and its lock entry
   list                           what is installed, and what is available
   check [path]                   report static handler diagnostics as JSON
+  trace [path] [options]         record particle boundaries as JSON
+  replay <trace> [path]          replay a trace against a program
   test [path]...                 run the fixtures in tests/, or the ones named
   handlers [path]                describe source handlers as JSON
   format [--check] <path>...     the canonical layout, rewritten in place
@@ -253,6 +259,22 @@ usage: code check [path]
 Reports statically detectable local handler-call diagnostics as JSON. Defaults
 to `.`. Runtime dispatch remains permissive; a non-zero exit means the report
 contains an error.";
+
+const TRACE_HELP: &str = "\
+usage: code trace [path] [-o <file>]
+
+Interprets a file, or a project's main.code, and records every particle
+boundary as deterministic JSON. Defaults to `.`. With -o/--output the trace is
+written to a file; otherwise it is printed to stdout. Tracing is opt-in and
+does not change ordinary runtime dispatch.";
+
+const REPLAY_HELP: &str = "\
+usage: code replay <trace> [path]
+
+Reads a trace produced by `code trace` and re-asks its replayable top-level
+particles against the real program. Defaults to `.` for the program path.
+Nested and external boundaries are reported as skipped. Exits non-zero when a
+replayed answer differs from the recorded answer.";
 
 /// The directory `path` names, when it names one. A project is a directory
 /// with a `main.code` in it; anything else is a file, or a mistake the caller
@@ -619,6 +641,123 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
         "{}",
         render_check_report(&diagnostics, program.origin.as_ref())
     );
+    if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// `code trace [path] [-o <file>]` executes a program once and writes the
+/// deterministic particle-boundary trace. The optional output file is kept
+/// separate from stdout so a caller can choose a fixture path without having
+/// to parse a status message out of the JSON stream.
+fn cmd_trace(args: Vec<String>) -> ExitCode {
+    let mut output: Option<PathBuf> = None;
+    let mut paths = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "-o" | "--output" => {
+                let Some(path) = args.get(index + 1) else {
+                    eprintln!("{TRACE_HELP}");
+                    return ExitCode::FAILURE;
+                };
+                output = Some(PathBuf::from(path));
+                index += 2;
+            }
+            arg if arg.starts_with('-') => {
+                eprintln!("code trace: unknown argument '{arg}'");
+                return ExitCode::FAILURE;
+            }
+            _ => {
+                paths.push(args[index].clone());
+                index += 1;
+            }
+        }
+    }
+    if paths.len() > 1 {
+        eprintln!("{TRACE_HELP}");
+        return ExitCode::FAILURE;
+    }
+    let path = paths.pop().unwrap_or_else(|| ".".to_string());
+    let entry = match entry_point(&path) {
+        Ok(entry) => entry,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let events = match code::trace_file(Path::new(&entry)) {
+        Ok(events) => events,
+        Err(message) => {
+            eprintln!("error: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let rendered = code::trace::render_trace(&entry, &events);
+    if let Some(output) = output {
+        if let Some(parent) = output
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            if let Err(error) = std::fs::create_dir_all(parent) {
+                eprintln!("cannot create '{}': {error}", parent.display());
+                return ExitCode::FAILURE;
+            }
+        }
+        if let Err(error) = std::fs::write(&output, rendered) {
+            eprintln!("cannot write '{}': {error}", output.display());
+            return ExitCode::FAILURE;
+        }
+    } else {
+        println!("{rendered}");
+    }
+    ExitCode::SUCCESS
+}
+
+/// `code replay <trace> [path]` reads a trace and compares its replayable
+/// boundaries with the answers from the current program. A mismatch is a
+/// failed test, while skipped events are still included in the JSON report.
+fn cmd_replay(args: Vec<String>) -> ExitCode {
+    if args.is_empty() || args.len() > 2 || args.iter().any(|arg| arg.starts_with('-')) {
+        eprintln!("{REPLAY_HELP}");
+        return ExitCode::FAILURE;
+    }
+    let trace_path = PathBuf::from(&args[0]);
+    let text = match std::fs::read_to_string(&trace_path) {
+        Ok(text) => text,
+        Err(error) => {
+            eprintln!("cannot read '{}': {error}", trace_path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let trace = match code::trace::parse_trace(&text) {
+        Ok(trace) => trace,
+        Err(message) => {
+            eprintln!("invalid trace '{}': {message}", trace_path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let path = args.get(1).map(String::as_str).unwrap_or(".");
+    let entry = match entry_point(path) {
+        Ok(entry) => entry,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let cases = match code::replay_file(Path::new(&entry), &trace.events) {
+        Ok(cases) => cases,
+        Err(message) => {
+            eprintln!("error: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let failed = cases
+        .iter()
+        .any(|case| case.outcome == code::trace::Outcome::Mismatch);
+    println!("{}", code::trace::render_replay(&entry, &cases));
     if failed {
         ExitCode::FAILURE
     } else {
