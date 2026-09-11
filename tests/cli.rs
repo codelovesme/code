@@ -56,6 +56,71 @@ fn run_finds_a_projects_entry_point() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn ordinary_run_keeps_unknown_particles_permissive() {
+    let dir = temp_dir("permissive-run");
+    fs::write(
+        dir.join("main.code"),
+        "Grade { score } =>\n    return Ack {}\n\nemit Grdae { score = 88 } to this get result\nassert result = null\n",
+    )
+    .expect("write program with a deliberate static typo");
+
+    let ordinary = code(&dir, &["run"]);
+    assert!(
+        ordinary.status.success(),
+        "ordinary runtime dispatch must remain permissive: {}",
+        String::from_utf8_lossy(&ordinary.stderr)
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn strict_run_refuses_static_particle_typos() {
+    let dir = temp_dir("strict-run");
+    fs::write(
+        dir.join("main.code"),
+        "Grade { score } =>\n    return Ack {}\n\nemit Grdae { score = 88 } to this\n",
+    )
+    .expect("write program with a static typo");
+
+    let strict = code(&dir, &["run", "--strict"]);
+    assert!(
+        !strict.status.success(),
+        "strict run should refuse the typo"
+    );
+    let stderr = String::from_utf8_lossy(&strict.stderr);
+    assert!(
+        stderr.contains("\"code\": \"unknown-handler\""),
+        "strict refusal should reuse structured diagnostics: {stderr}"
+    );
+    assert!(
+        stderr.contains("Grdae"),
+        "the typo should be named: {stderr}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn strict_run_leaves_dynamic_particles_to_runtime() {
+    let dir = temp_dir("strict-run-dynamic");
+    fs::write(
+        dir.join("main.code"),
+        "Known {} =>\n    return Ack {}\n\nparticle = Known {}\nemit particle to this get result\nassert result ∈ Ack\n",
+    )
+    .expect("write dynamically dispatched particle");
+
+    let dynamic = code(&dir, &["run", "--strict"]);
+    assert!(
+        dynamic.status.success(),
+        "strict mode must leave dynamic particles to runtime dispatch: {}",
+        String::from_utf8_lossy(&dynamic.stderr)
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[cfg(feature = "llvm")]
 #[test]
 fn building_a_directory_writes_into_build() {
@@ -105,6 +170,46 @@ fn building_a_directory_writes_into_build() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[cfg(feature = "llvm")]
+#[test]
+fn strict_build_refuses_static_field_typos_before_writing_an_artifact() {
+    let dir = temp_dir("strict-build");
+    fs::write(
+        dir.join("main.code"),
+        "Grade { score } =>\n    return Ack {}\n\nemit Grade { scoer = 88 } to this\n",
+    )
+    .expect("write program with a static field typo");
+
+    let ordinary = code(&dir, &["build", ".", "-o", "ordinary"]);
+    assert!(
+        ordinary.status.success(),
+        "ordinary build must remain permissive: {}",
+        String::from_utf8_lossy(&ordinary.stderr)
+    );
+    assert!(dir.join("ordinary").is_file());
+
+    let strict = code(&dir, &["build", ".", "--strict", "-o", "strict"]);
+    assert!(
+        !strict.status.success(),
+        "strict build should refuse the typo"
+    );
+    let stderr = String::from_utf8_lossy(&strict.stderr);
+    assert!(
+        stderr.contains("\"code\": \"unknown-field\""),
+        "strict refusal should reuse structured diagnostics: {stderr}"
+    );
+    assert!(
+        stderr.contains("scoer"),
+        "the typo should be named: {stderr}"
+    );
+    assert!(
+        !dir.join("strict").exists(),
+        "strict checking must happen before artifact creation"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn help_is_an_answer_rather_than_an_error() {
     let dir = temp_dir("help");
@@ -144,7 +249,15 @@ fn help_is_an_answer_rather_than_an_error() {
             text.contains("usage: code build [path]"),
             "expected build's help for {args:?}, got: {text}"
         );
+        assert!(text.contains("--strict"), "build help omits strict mode");
     }
+
+    let run_help = code(&dir, &["run", "--help"]);
+    assert!(run_help.status.success());
+    assert!(
+        String::from_utf8_lossy(&run_help.stdout).contains("--strict"),
+        "run help omits strict mode"
+    );
 
     // No command at all is still a usage error, and an unknown one says where
     // to look rather than dumping everything.

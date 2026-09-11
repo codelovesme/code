@@ -61,8 +61,10 @@ cargo test --workspace       # runs every tests/*.code fixture in both modes
 code init                                  # scaffold here; `code init demo` in ./demo
 code run program.code                      # interpret a file
 code run                                   # ...or a project: ./main.code
+code run --strict                          # refuse errors `code check` can prove first
 code build program.code                    # -> ./build/program
 code build                                 # -> ./build/<this directory>
+code build --strict                        # check before writing an artifact
 code build program.code --target wasm      # -t; exe | shared | static | wasm
                                            # ...also writes host.mjs beside it
 code build program.code -o out/thing        # --output is the same flag
@@ -792,6 +794,12 @@ also checks statically known local emits for unknown fields, missing typed
 fields, and field type mismatches. Dynamic expressions remain valid and are
 checked at runtime. The interpreter and compiler do not change behavior based
 on an annotation, so existing dynamic programs remain compatible.
+
+`code run --strict` and `code build --strict` run that same analysis before
+execution or artifact creation. A proven error is reported with the same JSON
+diagnostic and a non-zero status. Without `--strict`, both commands retain the
+permissive dispatch rule: an unhandled particle answers null and a missing field
+is supplied as null. Dynamic particles remain valid in either mode.
 
 ## Handlers
 

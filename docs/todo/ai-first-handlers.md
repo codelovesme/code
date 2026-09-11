@@ -81,7 +81,8 @@ compiled-path tracing and host-asked particles remain separate follow-up work.
 1. **Completed.** Add the handler catalog API and `code handlers` command.
 2. **Completed.** Preserve `∈ Type` annotations and check statically known
    assignments and local handler boundaries.
-3. Add structured diagnostics for source locations and particle-boundary errors.
+3. **Completed.** Add structured diagnostics for source locations and
+   particle-boundary errors.
 4. **Completed.** Add handler/module execution tracing and replayable particle
    tests.
 5. **Completed.** Add machine-readable module capability metadata (effects,

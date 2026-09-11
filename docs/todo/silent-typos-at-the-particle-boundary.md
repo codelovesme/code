@@ -1,5 +1,12 @@
 # A misspelled particle is silent, while a misspelled variable is not
 
+**Shipped 2026-09-11.** `code check` reports statically knowable unknown local
+handlers and fields as structured diagnostics. `code run --strict` and `code
+build --strict` now apply that same analysis before execution or artifact
+creation. Ordinary `run` and `build` remain permissive, and dynamic particles
+remain runtime-dispatched. This implements the opt-in strict form of option 1
+without changing the language's null-answer semantics.
+
 The language is strict about names it can check and silent about the names
 that carry the most weight. Both halves are deliberate; together they put the
 strictness on the wrong side of the risk.

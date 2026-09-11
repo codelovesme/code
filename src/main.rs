@@ -31,13 +31,33 @@ fn main() -> ExitCode {
         "run" => {
             // No path means the directory you are standing in, which is a
             // project — the same default `build` takes.
-            let path = args.next().unwrap_or_else(|| ".".to_string());
-            if let Some(unknown) = args.next() {
-                eprintln!("code run takes one path, not '{unknown}'");
-                return ExitCode::FAILURE;
+            let mut path = None;
+            let mut strict = false;
+            for arg in args {
+                match arg.as_str() {
+                    "--strict" => strict = true,
+                    unknown if unknown.starts_with('-') => {
+                        eprintln!("unknown argument '{unknown}'");
+                        return ExitCode::FAILURE;
+                    }
+                    _ if path.is_some() => {
+                        eprintln!("code run takes one path, not '{arg}'");
+                        return ExitCode::FAILURE;
+                    }
+                    _ => path = Some(arg),
+                }
             }
+            let path = path.unwrap_or_else(|| ".".to_string());
             match entry_point(&path) {
-                Ok(entry) => run_file(&entry),
+                Ok(entry) => {
+                    if strict {
+                        if let Err(report) = strict_check_entry(&entry) {
+                            eprintln!("{report}");
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                    run_file(&entry)
+                }
                 Err(message) => {
                     eprintln!("{message}");
                     ExitCode::FAILURE
@@ -56,12 +76,14 @@ fn main() -> ExitCode {
             let mut out: Option<PathBuf> = None;
             let mut target = BuildTarget::Exe;
             let mut release = false;
+            let mut strict = false;
             while let Some(arg) = args.next() {
                 match arg.as_str() {
                     // `--output` too: the long form is what a reader
                     // expects beside `--target` and `--release`.
                     "-o" | "--output" => out = args.next().map(PathBuf::from),
                     "-r" | "--release" => release = true,
+                    "--strict" => strict = true,
                     "-t" | "--target" => {
                         let Some(value) = args.next() else {
                             eprintln!("--target takes a value (exe|shared|static|wasm)");
@@ -90,6 +112,12 @@ fn main() -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             };
+            if strict {
+                if let Err(report) = strict_check_entry(&entry) {
+                    eprintln!("{report}");
+                    return ExitCode::FAILURE;
+                }
+            }
             let out = out.unwrap_or_else(|| default_output_path(&path, target));
             if let Some(parent) = out.parent() {
                 if !parent.as_os_str().is_empty() {
@@ -143,8 +171,9 @@ fn main() -> ExitCode {
 /// gains a flag and a command that gains a line of help are the same edit.
 fn help_for(command: &str) -> &'static str {
     match command {
-        "run" => "usage: code run [path]\n\nInterprets a file, or a project's main.code. Defaults to `.`. `link` \
-resolves relative to the file doing the linking.",
+        "run" => "usage: code run [path] [--strict]\n\nInterprets a file, or a project's main.code. Defaults to `.`. `link` \
+resolves relative to the file doing the linking. --strict refuses errors that
+`code check` can prove before the program runs.",
         "build" => BUILD_HELP,
         "install" | "uninstall" | "list" | "module" => MODULE_HELP,
         // Reachable as `code help init` too: someone who knows the command
@@ -168,7 +197,7 @@ usage:
 
 commands:
   init [name]                    scaffold a project here, or in <name>
-  run [path]                     interpret a file, or a project's main.code
+  run [path] [--strict]          interpret a file, or a project's main.code
   build [path] [options]         compile one, into a build/ beside it
   install <name-or-url>          fetch a module into ./.code/modules
                                  (--platform wasm32 for a browser build)
@@ -202,6 +231,7 @@ artifact goes in a build/ directory beside what you named, called after it:
 options:
   -t, --target exe|shared|static|wasm   default exe
   -r, --release                         -O2; the default is unoptimized
+      --strict                          refuse errors `code check` can prove
   -o, --output <path>                   where to write it";
 
 const MODULE_HELP: &str = "\
@@ -646,6 +676,21 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
+    }
+}
+
+/// Runs the same analysis as `code check`, but returns only when an error is
+/// present so `run --strict` and `build --strict` can stay silent on success.
+/// The report remains the same versioned JSON contract; it goes to stderr at
+/// those execution boundaries so a program's stdout is never polluted.
+fn strict_check_entry(entry: &str) -> Result<(), String> {
+    let program = code::loader::load(entry, &code::loader::FilesystemResolver)
+        .map_err(|message| format!("error: {message}"))?;
+    let diagnostics = code::diagnostics::check_handlers(&program);
+    if code::diagnostics::has_errors(&diagnostics) {
+        Err(render_check_report(&diagnostics, program.origin.as_ref()))
+    } else {
+        Ok(())
     }
 }
 
