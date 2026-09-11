@@ -30,7 +30,12 @@ fn build_module() -> PathBuf {
 const REPLY: &str =
     "<think>weighing it up</think>\\n```json\\n{\\\"answer\\\": 42,  \\\"unit\\\": \\\"pt\\\"}\\n```";
 
-fn read_request(stream: &mut TcpStream) -> (String, String) {
+/// What a LocalAI with `API_KEY` set wants on every request. The fake below
+/// refuses without it, so the test proves the key travels — for the JSON
+/// post and the multipart one alike.
+const API_KEY: &str = "test-key-7f";
+
+fn read_request(stream: &mut TcpStream) -> (String, String, bool) {
     let mut buf = Vec::new();
     let mut byte = [0u8; 1];
     while !buf.ends_with(b"\r\n\r\n") {
@@ -58,7 +63,12 @@ fn read_request(stream: &mut TcpStream) -> (String, String) {
     if len > 0 {
         let _ = stream.read_exact(&mut body);
     }
-    (path, String::from_utf8_lossy(&body).into_owned())
+    let authorized = head.lines().any(|l| {
+        l.split_once(':').is_some_and(|(k, v)| {
+            k.trim().eq_ignore_ascii_case("authorization") && v.trim() == format!("Bearer {API_KEY}")
+        })
+    });
+    (path, String::from_utf8_lossy(&body).into_owned(), authorized)
 }
 
 fn respond(stream: &mut TcpStream, body: &str) {
@@ -73,8 +83,18 @@ fn respond(stream: &mut TcpStream, body: &str) {
 fn fake_openai(listener: TcpListener) {
     for incoming in listener.incoming() {
         let Ok(mut stream) = incoming else { continue };
-        let (path, req_body) = read_request(&mut stream);
+        let (path, req_body, authorized) = read_request(&mut stream);
 
+        if !authorized {
+            let body = r#"{"error":{"message":"invalid api key"}}"#;
+            let _ = write!(
+                stream,
+                "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.flush();
+            continue;
+        }
         if path == "/v1/audio/transcriptions" {
             respond(&mut stream, r#"{"text":"  the transcript  "}"#);
             continue;
@@ -111,7 +131,13 @@ fn chat_chatjson_and_transcribe_round_trip() {
     let program = format!(
         r#"link "localai.so" as ai
 
-emit Config {{ endpoint = "http://127.0.0.1:{port}", model = "test-model" }} to ai get c
+| Without the key the server refuses, and the refusal is an Exception here.
+emit Config {{ endpoint = "http://127.0.0.1:{port}", model = "test-model" }} to ai get unkeyed
+assert unkeyed.ok
+emit Chat {{ user = "anyone there?" }} to ai get refused
+assert refused ∈ Exception
+
+emit Config {{ endpoint = "http://127.0.0.1:{port}", model = "test-model", api_key = "{API_KEY}" }} to ai get c
 assert c.ok
 
 emit Chat {{ system = "be terse", user = "how many?" }} to ai get plain

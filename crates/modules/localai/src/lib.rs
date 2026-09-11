@@ -8,7 +8,7 @@
 //!
 //! Handlers:
 //!
-//! - `Config { endpoint, model?, max_tokens?, temperature?, timeout_seconds? }`
+//! - `Config { endpoint, api_key?, model?, max_tokens?, temperature?, timeout_seconds? }`
 //!   → `ConfigResult { ok }` — the setup particle. `endpoint` is the server
 //!   root (`http://host:8080` or `.../v1`); the rest are defaults every
 //!   `Chat` can override.
@@ -43,6 +43,9 @@ static CONFIG: Mutex<Option<Config>> = Mutex::new(None);
 
 struct Config {
     base: String,
+    /// Sent as `Authorization: Bearer …` on every request when non-empty.
+    /// A LocalAI with `API_KEY` set refuses everything without it.
+    api_key: String,
     model: String,
     max_tokens: u32,
     temperature: f64,
@@ -102,6 +105,7 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 
     let cfg = Config {
         base: v1_base(endpoint),
+        api_key: opt_str(particle, "api_key").unwrap_or_default(),
         model: opt_str(particle, "model").unwrap_or_else(|| DEFAULT_MODEL.to_string()),
         max_tokens: opt_number(particle, "max_tokens")
             .map(|n| n as u32)
@@ -127,7 +131,7 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 }
 
 fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<(), String> {
-    let (url, body, timeout) = {
+    let (url, body, timeout, api_key) = {
         let guard = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
         let cfg = guard.as_ref().ok_or(NOT_CONFIGURED)?;
 
@@ -153,11 +157,11 @@ fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<()
                 "max_tokens": max_tokens,
             }),
             cfg.timeout,
+            cfg.api_key.clone(),
         )
     };
 
-    let mut resp = agent(timeout)
-        .post(&url)
+    let mut resp = authorized(agent(timeout).post(&url), &api_key)
         .header("Content-Type", "application/json")
         .send(body.to_string())
         .map_err(|e| format!("chat request to '{url}' failed: {e}"))?;
@@ -209,13 +213,14 @@ fn transcribe(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let language = opt_str(particle, "language").unwrap_or_default();
     let format = opt_str(particle, "audio_format").unwrap_or_else(|| "webm".to_string());
 
-    let (url, model, timeout) = {
+    let (url, model, timeout, api_key) = {
         let guard = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
         let cfg = guard.as_ref().ok_or(NOT_CONFIGURED)?;
         (
             format!("{}/audio/transcriptions", cfg.base),
             opt_str(particle, "model").unwrap_or_else(|| cfg.model.clone()),
             cfg.timeout,
+            cfg.api_key.clone(),
         )
     };
 
@@ -228,8 +233,7 @@ fn transcribe(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     }
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
 
-    let mut resp = agent(timeout)
-        .post(&url)
+    let mut resp = authorized(agent(timeout).post(&url), &api_key)
         .header(
             "Content-Type",
             &format!("multipart/form-data; boundary={boundary}"),
@@ -370,6 +374,19 @@ fn agent(timeout: Duration) -> ureq::Agent {
         .http_status_as_error(false)
         .build()
         .into()
+}
+
+/// The bearer header, when `Config` gave a key. Without one the request
+/// goes as it did before, so a server with no auth sees no change.
+fn authorized(
+    request: ureq::RequestBuilder<ureq::typestate::WithBody>,
+    api_key: &str,
+) -> ureq::RequestBuilder<ureq::typestate::WithBody> {
+    if api_key.is_empty() {
+        request
+    } else {
+        request.header("Authorization", &format!("Bearer {api_key}"))
+    }
 }
 
 /// The `/v1` API root for a configured endpoint: appended unless it is

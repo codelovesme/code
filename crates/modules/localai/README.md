@@ -7,7 +7,7 @@ OpenAI shim, vLLM, anything that speaks `/v1/chat/completions` and
 ```code
 link "localai.so" as ai
 
-emit Config { endpoint = "${LOCALAI_ENDPOINT}", model = "${LOCALAI_MODEL}" } to ai get c
+emit Config { endpoint = "${LOCALAI_ENDPOINT}", api_key = "${LOCALAI_API_KEY}", model = "${LOCALAI_MODEL}" } to ai get c
 assert c.ok
 
 emit Chat { system = "You are terse.", user = "Capital of France?" } to ai get r
@@ -17,7 +17,7 @@ assert r.content ≠ ""
 ## Handlers
 
 ```
-Config   { endpoint, model?, max_tokens?, temperature?, timeout_seconds? }  → ConfigResult { ok }
+Config   { endpoint, api_key?, model?, max_tokens?, temperature?, timeout_seconds? }  → ConfigResult { ok }
 Chat     { system?, user?, messages?, model?, temperature?, max_tokens? }   → ChatResult   { content }
 ChatJson { … same … }                                                      → ChatResult   { content }
 Transcribe { audio_base64, language?, model?, audio_format? }               → TranscribeResult { text, language }
@@ -30,6 +30,9 @@ particle — everything else is an `Exception` until it has run.
 
 - **`endpoint`** — the server root (`http://host:8080`). `/v1` is appended
   unless it's already there.
+- **`api_key`** — sent as `Authorization: Bearer …` on every request. A
+  LocalAI started with `API_KEY` set refuses everything without it; leave it
+  out for a server with no auth.
 - **`model` / `max_tokens` / `temperature`** — defaults (`gpt-4`, `4096`,
   `0.3`) that every `Chat` and `Transcribe` can override per call.
 - **`timeout_seconds`** — whole-request budget, default `300`. Local models
