@@ -102,7 +102,10 @@ Everything else is normalized:
 3. **Blank lines** — runs collapse to one; none at the start of a file, none
    immediately inside `{` or before `}`. File ends with exactly one newline.
 4. **Comments** — kept verbatim, never re-wrapped. A comment alone on its
-   line is emitted at the current indent; a trailing comment keeps its line,
+   line is indented like the code line *after* it (the lexer's
+   Indent/Dedent for that line arrive after the gap the comment sits in,
+   so they are counted ahead — before 2026-09-12 a comment between two
+   handlers drifted to the previous body's depth); a trailing comment keeps its line,
    two spaces after the code. (The tree has no trailing comments today; the
    rule exists so the first one is not a surprise.)
 5. **Separators** — ~~`;` becomes a newline~~. **Moot since 1.4.0**: `;` is
