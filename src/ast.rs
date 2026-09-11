@@ -43,7 +43,14 @@ pub enum Stmt {
     /// programs. `let` had existed since 2026-08-21 to remove the
     /// shadow-vs-mutate ambiguity; forbidding the shadow removes it
     /// outright, and takes the keyword with it.
-    Assign { name: String, value: Expr },
+    Assign {
+        name: String,
+        /// Optional development-time type annotation from `name ∈ Type`.
+        /// Runtime assignment remains dynamic; `code check` is the strict
+        /// consumer of this contract.
+        annotation: Option<String>,
+        value: Expr,
+    },
     /// `assert expr` — `expr` must evaluate to a `Bool`; `false` or any
     /// other kind aborts the program (interpreter: `Err`; compiled binary:
     /// `code_runtime_error` + exit 1). Silent on success — no output, no
@@ -244,12 +251,12 @@ pub enum Stmt {
     /// silent override — the same rule duplicate `link`s follow. Modules
     /// register into the same table, so the names are program-wide.
     ///
-    /// `fields` gives the body's names a declaration site. There are no
-    /// types here to declare a particle's shape — the old language had
-    /// `Ping = Particle ∩ { value ∈ Number }`, which is what made a body's
-    /// `value` traceable — so an implicit binding would be the one name in
-    /// the language that appears from nowhere. Listing them mirrors the
-    /// literal that constructs the particle.
+    /// `fields` gives the body's names a declaration site. An optional `∈ Type`
+    /// annotation records a gradual contract for the field; the runtime still
+    /// permits missing or dynamically typed values, while `code check` can
+    /// validate statically known calls. Listing the fields mirrors the literal
+    /// that constructs the particle, so an implicit binding would not be the
+    /// one name in the language that appears from nowhere.
     ///
     /// A listed field the particle doesn't carry is null, the same answer
     /// `.field` gives for an absent member. Everything *not* listed is
@@ -301,6 +308,10 @@ pub struct Field {
     pub field: String,
     /// What this scope calls it.
     pub name: String,
+    /// Optional development-time type annotation from `field ∈ Type`.
+    /// Missing fields still evaluate to null at runtime; `code check` reports
+    /// a missing typed field at a statically known handler boundary.
+    pub annotation: Option<String>,
 }
 
 /// What an `emit`'s `get` clause binds.

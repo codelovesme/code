@@ -179,7 +179,7 @@ fn handlers_describes_source_contracts_as_json() {
     let dir = temp_dir("handlers");
     fs::write(
         dir.join("main.code"),
-        "Greet { who as person } =>\n    return Greeting { text = \"hi $person\" }\n",
+        "Greet { who ∈ String as person } =>\n    return Greeting { text = \"hi $person\" }\n",
     )
     .expect("write handler source");
 
@@ -199,6 +199,10 @@ fn handlers_describes_source_contracts_as_json() {
     assert!(
         stdout.contains("\"binding_name\": \"person\""),
         "got: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"type\": \"String\""),
+        "typed contract missing from catalog: {stdout}"
     );
 
     let _ = fs::remove_dir_all(&dir);
@@ -284,6 +288,39 @@ fn check_accepts_a_known_local_handler() {
         "known handler should pass check: {stdout}"
     );
     assert!(stdout.contains("\"diagnostics\": []"), "got: {stdout}");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn check_reports_typed_handler_contract_violations_as_json() {
+    let dir = temp_dir("check-types");
+    fs::write(
+        dir.join("main.code"),
+        "Grade { score ∈ Number } =>\n    return Ack {}\n\nemit Grade { score = \"bad\", scoer = 1 } to this\n",
+    )
+    .expect("write typed check source");
+
+    let out = code(&dir, &["check"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !out.status.success(),
+        "invalid typed contract should fail check"
+    );
+    assert!(
+        stdout.contains("\"code\": \"type-mismatch\""),
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("\"expected\": \"Number\""), "got: {stdout}");
+    assert!(stdout.contains("\"actual\": \"String\""), "got: {stdout}");
+    assert!(
+        stdout.contains("\"code\": \"unknown-field\""),
+        "got: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"suggestion\": \"score\""),
+        "got: {stdout}"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }

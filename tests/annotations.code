@@ -1,12 +1,12 @@
-| A declaration may carry a kind. Nothing checks it: the annotation is read,
-| required to be a name, and dropped, and the value's own kind at run time is
-| the only one that decides anything. It is for whoever reads the line —
-| which means it can be wrong the way a comment can be wrong.
+| A declaration may carry a kind. Runtime values stay dynamic, but `code check`
+| validates the annotation whenever the assigned value is statically knowable.
+| The annotation is still optional, so it is only a contract where written.
 port ∈ Number = 8080
 assert port = 8080
 assert port ∈ Number
 
-| Wrong, and nothing says so. This is the decision, not an oversight.
+| Wrong at runtime, because annotations do not coerce values. `code check`
+| reports this mismatch.
 mislabelled ∈ Number = "8080"
 assert mislabelled ∈ String
 

@@ -2380,7 +2380,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .map_err(|e| e.to_string())?;
                 self.check_failed()
             }
-            Stmt::Assign { name, value } => self.gen_assign(name, value),
+            Stmt::Assign { name, value, .. } => self.gen_assign(name, value),
             Stmt::Assert(expr) => {
                 let ptr = self.gen_expr(expr)?;
                 self.builder

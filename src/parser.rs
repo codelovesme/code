@@ -415,11 +415,9 @@ impl<'a> Parser<'a> {
         // else downstream — learns it exists. Whatever `+` means for the two
         // operands is therefore exactly what `+=` means, including appending
         // to an array (see `ast::BinOp`).
-        // `port ∈ Number = 8080` — an optional annotation, and deliberately
-        // nothing more: it is read, checked to be a name, and dropped. The
-        // runtime kind is the one that counts, so a wrong annotation is
-        // wrong the way a wrong comment is wrong. Owner's call 2026-08-29.
-        self.skip_annotation()?;
+        // Preserve the existing annotation syntax in the AST. Runtime
+        // assignment stays dynamic; `code check` is its strict consumer.
+        let annotation = self.parse_annotation()?;
         let compound = match self.advance() {
             Token::Equals => false,
             Token::PlusEq => true,
@@ -452,7 +450,11 @@ impl<'a> Parser<'a> {
         } else {
             value
         };
-        Ok(Stmt::Assign { name, value })
+        Ok(Stmt::Assign {
+            name,
+            annotation,
+            value,
+        })
     }
 
     /// Everything after the `loop` keyword:
@@ -566,7 +568,7 @@ impl<'a> Parser<'a> {
             // The annotation belongs to the field, so it comes before the
             // rename: `current ∈ String as current_password` reads left to
             // right as what arrives, then what it is called here.
-            self.skip_annotation()?;
+            let annotation = self.parse_annotation()?;
             let name = if matches!(self.peek(), Token::As) {
                 self.advance();
                 match self.advance() {
@@ -587,7 +589,11 @@ impl<'a> Parser<'a> {
             }
             reject_uppercase_binding(&name, "a field list")?;
             reject_length_binding(&name, "a field list")?;
-            fields.push(Field { field, name });
+            fields.push(Field {
+                field,
+                name,
+                annotation,
+            });
             if self.list_separator(&Token::RBrace, "}")? {
                 break;
             }
@@ -1049,7 +1055,7 @@ impl<'a> Parser<'a> {
                     ))
                 }
             };
-            self.skip_annotation()?;
+            let _ = self.parse_annotation()?;
             match self.advance() {
                 Token::Equals => {}
                 // Every program written before 2026-08-29 hits exactly this,
@@ -1212,22 +1218,18 @@ fn reject_kind_as_class(name: &str) -> Result<(), String> {
 }
 
 impl Parser<'_> {
-    /// Reads an optional `∈ Name` annotation and throws it away.
+    /// Reads an optional `∈ Name` annotation and preserves its spelling.
     ///
-    /// `let a ∈ String = "12"` and `{ a ∈ Number = 12 }` mean exactly what
-    /// they mean without it — the annotation is for whoever reads the line,
-    /// and the value's kind at run time is the only one that decides
-    /// anything (owner's call, 2026-08-29). It is still *parsed* rather than
-    /// skipped as text, so a name has to be there and the formatter keeps it
-    /// where it was.
-    fn skip_annotation(&mut self) -> Result<(), String> {
+    /// Runtime values remain dynamic. `code check` consumes the annotation to
+    /// validate statically knowable assignments and handler boundaries.
+    fn parse_annotation(&mut self) -> Result<Option<String>, String> {
         if !matches!(self.peek(), Token::In) {
-            return Ok(());
+            return Ok(None);
         }
         self.advance();
         match self.advance() {
-            Token::Ident(_) => Ok(()),
-            Token::Null => Ok(()),
+            Token::Ident(name) => Ok(Some(name)),
+            Token::Null => Ok(Some("Null".to_string())),
             other => Err(format!(
                 "expected a kind or a class name after '∈', found {other:?}"
             )),

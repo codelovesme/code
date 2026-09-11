@@ -8,8 +8,8 @@ The first two vertical slices are now implemented:
 
 - `code handlers [path]` emits the versioned handler catalog.
 - `code check [path]` emits structured JSON diagnostics for statically known
-  `emit ... to this` calls and fails on an unknown local handler without
-  changing permissive runtime dispatch.
+  `emit ... to this` calls and gradual `∈ Type` annotations, without changing
+  permissive runtime dispatch.
 
 The remaining validation, diagnostics, tracing, and capability work stays
 separate so it can be assigned to agents without changing these command
@@ -45,7 +45,7 @@ initial schema describes every source handler, including handlers in linked
     {
       "name": "Greet",
       "fields": [
-        {"wire_name": "who", "binding_name": "who"}
+        {"wire_name": "who", "binding_name": "who", "type": "String"}
       ]
     }
   ]
@@ -59,9 +59,9 @@ expose machine-readable handler contracts.
 ## Follow-up tasks
 
 1. **Completed.** Add the handler catalog API and `code handlers` command.
-2. Add structured diagnostics for source locations and particle-boundary errors.
-3. Add development-time contract checking without changing permissive runtime
-   dispatch where open message vocabularies are intentional.
+2. **Completed.** Preserve `∈ Type` annotations and check statically known
+   assignments and local handler boundaries.
+3. Add structured diagnostics for source locations and particle-boundary errors.
 4. Add handler/module execution tracing and replayable particle tests.
 5. Add machine-readable module capability metadata (effects, configuration,
    timeouts, and handler contracts).

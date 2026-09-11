@@ -19,6 +19,7 @@ pub struct HandlerDescription {
 pub struct FieldDescription {
     pub wire_name: String,
     pub binding_name: String,
+    pub type_name: Option<String>,
 }
 
 /// Collects source handlers in deterministic source order.
@@ -46,6 +47,7 @@ fn collect_handlers(statements: &[Stmt], handlers: &mut Vec<HandlerDescription>)
                     .map(|field| FieldDescription {
                         wire_name: field.field.clone(),
                         binding_name: field.name.clone(),
+                        type_name: field.annotation.clone(),
                     })
                     .collect(),
             }),
@@ -62,7 +64,7 @@ mod tests {
 
     #[test]
     fn describes_wire_names_and_body_aliases() {
-        let source = "Greet { who as person } =>\n    return Greeting {}\n";
+        let source = "Greet { who ∈ String as person } =>\n    return Greeting {}\n";
         let lexed = lexer::tokenize(source).expect("tokenize source");
         let program = parser::parse(&lexed).expect("parse source");
 
@@ -73,6 +75,7 @@ mod tests {
                 fields: vec![FieldDescription {
                     wire_name: "who".to_string(),
                     binding_name: "person".to_string(),
+                    type_name: Some("String".to_string()),
                 }],
             }]
         );

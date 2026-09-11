@@ -134,7 +134,7 @@ fn verify_stmts(
                 // bound as an object — resolves as an ordinary field access.
                 scopes.last_mut().unwrap().insert(alias.clone());
             }
-            Stmt::Assign { name, value } => {
+            Stmt::Assign { name, value, .. } => {
                 verify_expr(value, scopes)?;
                 // Assigns the visible binding, or introduces one here. No
                 // check to make: the two readings are never both available,

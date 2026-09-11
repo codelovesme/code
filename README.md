@@ -746,8 +746,8 @@ same reason `≠` is one to `=`'s one, and it exists because the spelled-out
 form read badly: `not` binds looser than `∈`, so `not r ∈ Exception` makes
 the eye work out that the membership is what is negated rather than `r`.
 
-**Which kind** — the six of them, and the only place the language names a
-type at all:
+**Which kind** — the six runtime kinds, also available in optional declaration
+annotations checked by `code check`:
 
 ```
 assert 3 ∈ Number
@@ -776,6 +776,23 @@ wrong kind — all simply answer false, the same spirit as `=` being
 well-defined across mismatched kinds. The right side is a bare name, not an
 expression: which question is being asked is a lexical fact.
 
+### Optional type contracts
+
+`∈` can also annotate a binding or handler field. The annotation is a gradual,
+development-time contract rather than a runtime coercion:
+
+```code
+port ∈ Number = 8080
+Greet { who ∈ String } =>
+    return Greeting { text = "hi $who" }
+```
+
+`code check` validates annotations when the value is statically knowable. It
+also checks statically known local emits for unknown fields, missing typed
+fields, and field type mismatches. Dynamic expressions remain valid and are
+checked at runtime. The interpreter and compiler do not change behavior based
+on an annotation, so existing dynamic programs remain compatible.
+
 ## Handlers
 
 A handler is the only thing in the language that resembles a function, and
@@ -791,11 +808,12 @@ assert r ∈ Greeting
 assert r.text = "hi ada"
 ```
 
-**The field list is not optional decoration.** There are no types here to
-declare a particle's shape, so without it a body's `who` would be the one
-name in the language that appears from nowhere. Listing the fields mirrors
-the literal that constructs the particle and gives every name a declaration
-site. Anything not listed is simply unreachable from the body.
+**The field list is not optional decoration.** Without it a body's `who` would
+be the one name in the language that appears from nowhere. Listing the fields
+mirrors the literal that constructs the particle and gives every name a
+declaration site. An optional `∈ Type` annotation makes the field part of a
+static handler contract. Anything not listed is simply unreachable from the
+body.
 
 A listed field the particle doesn't carry is null — the same answer `.field`
 gives for an absent member.

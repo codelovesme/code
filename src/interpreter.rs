@@ -1058,7 +1058,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             }
             Ok(Flow::Normal)
         }
-        Stmt::Assign { name, value } => {
+        Stmt::Assign { name, value, .. } => {
             let v = eval(value, env)?;
             env.set(name, v);
             Ok(Flow::Normal)

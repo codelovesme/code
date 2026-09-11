@@ -10,7 +10,9 @@ use std::rc::Rc;
 /// `Str`/`Array`/`Object` wrap their heap data in `Rc` so that cloning a
 /// `Value` — which happens on every variable read (`Environment::get`) and
 /// every time one value is embedded in another (`arr = [x]`) — is O(1)
-/// regardless of size, instead of a deep copy. This is safe with zero extra
+/// regardless of size, instead of a deep copy. Bindings remain dynamically
+/// typed at runtime; optional `∈ Type` annotations are development-time
+/// contracts consumed by `code check`. This is safe with zero extra
 /// bookkeeping only because nothing in the language can mutate a value
 /// in place yet (see memory `new-code-language-design`); adding array/object
 /// mutation later will need its own copy-on-write decision.

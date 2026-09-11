@@ -581,6 +581,10 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
                 handler: None,
                 particle: None,
                 target: None,
+                field: None,
+                expected: None,
+                actual: None,
+                suggestion: None,
             };
             println!("{}", render_check_report(&[diagnostic]));
             return ExitCode::FAILURE;
@@ -596,6 +600,10 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
                 handler: None,
                 particle: None,
                 target: None,
+                field: None,
+                expected: None,
+                actual: None,
+                suggestion: None,
             };
             println!("{}", render_check_report(&[diagnostic]));
             return ExitCode::FAILURE;
@@ -633,6 +641,14 @@ fn render_check_report(diagnostics: &[code::diagnostics::Diagnostic]) -> String 
         output.push_str(&json_optional_string(&diagnostic.particle));
         output.push_str(",\n      \"target\": ");
         output.push_str(&json_optional_string(&diagnostic.target));
+        output.push_str(",\n      \"field\": ");
+        output.push_str(&json_optional_string(&diagnostic.field));
+        output.push_str(",\n      \"expected\": ");
+        output.push_str(&json_optional_string(&diagnostic.expected));
+        output.push_str(",\n      \"actual\": ");
+        output.push_str(&json_optional_string(&diagnostic.actual));
+        output.push_str(",\n      \"suggestion\": ");
+        output.push_str(&json_optional_string(&diagnostic.suggestion));
         output.push_str("\n    }");
     }
     if !diagnostics.is_empty() {
@@ -704,6 +720,8 @@ fn render_handler_catalog(handlers: &[code::introspection::HandlerDescription]) 
             output.push_str(&json_quote(&field.wire_name));
             output.push_str(",\n          \"binding_name\": ");
             output.push_str(&json_quote(&field.binding_name));
+            output.push_str(",\n          \"type\": ");
+            output.push_str(&json_optional_string(&field.type_name));
             output.push_str("\n        }");
         }
         if !handler.fields.is_empty() {
