@@ -44,6 +44,19 @@ libc = { version = "0.2", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 
+# Test-only, and for exactly one test: `tests/azure_mailer_module.rs`
+# recomputes Azure's HMAC-SHA256 request signature from the same key the
+# fixture configures, and compares it with the one the module sent. A wrong
+# signature is not a crash and not a wrong-looking request — it is a 401
+# from a real service, months later, with nothing local to reproduce it. The
+# module itself carries these in its own standalone workspace; this is the
+# test's independent second opinion, which is only worth having if it does
+# not share the module's code.
+[dev-dependencies]
+base64 = "0.22"
+hmac = "0.12"
+sha2 = "0.10"
+
 # wasm only, and only for the clock: `SystemTime::now()` panics on
 # wasm32-unknown-unknown, so `emit Timestamp to core` needs the browser's
 # `Date.now()` (see `interpreter::unix_seconds`). A native build never sees

@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, router, storage, timer, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, router, storage, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
       # Each module is its own workspace with its own Cargo.lock (see those
@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, router, storage, timer, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, router, storage, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
 
@@ -287,6 +287,13 @@ jobs:
               # failed send comes back as a value rather than killing the
               # program.
               printf 'emit Config { host = "127.0.0.1", port = 1, from = "s@example.com", tls = "none" } to mod get c\nassert c.ok\nemit Send { recipient = "r@example.com", text = "x" } to mod get s\nassert s ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            azure_mailer)
+              # A well-formed connection string pointing at a port nothing
+              # answers on: proof the artifact loads, routes both particles,
+              # parses and base64-decodes the key, and that a failed send is
+              # a value rather than the end of the program.
+              printf 'emit Config { connection_string = "endpoint=http://127.0.0.1:1/;accesskey=c2VjcmV0", from = "s@example.com" } to mod get c\nassert c.ok\nemit Send { recipient = "r@example.com", text = "x" } to mod get s\nassert s ∈ Exception\n' >> dogfood/demo.code
               ;;
             oauth)
               # Config a provider, build the auth URL (pure), then ExchangeCode
@@ -427,7 +434,7 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest router storage timer oauth_mock; do
+          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer azure_mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest router storage timer oauth_mock; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
@@ -446,6 +453,7 @@ jobs:
               process) handlers='["Run", "Spawn", "Status", "Wait", "WaitFor", "Kill", "List"]' ;;
               git) handlers='["Config", "Stash", "StashPop", "Init", "Clone", "Add", "Commit", "Push", "SetRemote", "Status"]' ;;
               mailer) handlers='["Config", "Send"]' ;;
+              azure_mailer) handlers='["Config", "Send"]' ;;
               oauth) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;
               blob_storage) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
@@ -477,7 +485,7 @@ jobs:
               http_server) setup='"setup": "Config",' ;;
               net_client|net_server) setup='"setup": "Config",' ;;
               membrane) setup='"setup": "Config",' ;;
-              jwt|fs|json_store|git|mailer|oauth|mongodb|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
+              jwt|fs|json_store|git|mailer|azure_mailer|oauth|mongodb|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
               *) setup='' ;;
             esac
             # The browser archive, for the few modules that have one. Absent

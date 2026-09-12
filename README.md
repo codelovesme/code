@@ -1591,7 +1591,10 @@ and capture its output, or spawn and track a child — see
 push and status over the system `git`, with a `Config` that checks the
 repository's state first — see [its README](crates/modules/git/README.md)),
 `mailer` (send email over SMTP, any provider — see
-[its README](crates/modules/mailer/README.md)), `oauth` (the OAuth 2.0
+[its README](crates/modules/mailer/README.md)), `azure_mailer` (the same
+`Send`, through Azure Communication Services, for when a connection string is
+the credential you have — see
+[its README](crates/modules/azure_mailer/README.md)), `oauth` (the OAuth 2.0
 authorization-code flow for one provider — see
 [its README](crates/modules/oauth/README.md)), `mongodb` (documents and a
 key/value layer over a MongoDB collection — see
@@ -1756,6 +1759,7 @@ crates/
                 lexer/parser and the same `code format` the CLI runs
   modules/      first-party modules: console, dom, guest, math, strings, env, json,
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
+                azure_mailer,
                 oauth, mongodb, blob_storage, cloud_drive, localai,
                 http_client, http_server, net_client, net_server — plus
                 <name>_mock twins for

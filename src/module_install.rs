@@ -269,6 +269,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "jwt",
     "localai",
     "localai_mock",
+    "azure_mailer",
     "mailer",
     "mailer_mock",
     "markdown",

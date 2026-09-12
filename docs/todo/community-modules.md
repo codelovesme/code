@@ -322,7 +322,7 @@ no `code` module handles it. Instead:
 - **A `Config { … }` setup particle where state is genuinely needed** — a
   directory, a secret, a bind address. It returns `ConfigResult { ok }`, and
   every other handler is an `Exception` until it has run (`jwt`, `fs`,
-  `json_store`, `git`, `mailer`, `oauth`, `mongodb`, `blob_storage`,
+  `json_store`, `git`, `mailer`, `azure_mailer`, `oauth`, `mongodb`, `blob_storage`,
   `cloud_drive`, `localai`). `Config` is **not** an
   action: `http_server` keeps `Config` for the port/host and adds `Listen {}`
   as the separate "start serving" action, since binding a socket has its own
@@ -403,6 +403,24 @@ the server rejects is an `Exception` carrying its reply; a bad address or a
 missing transport is an `Exception` too. Tested against a real SMTP server
 in `tests/mailer_module.rs` (a `.code` fixture only reaches the error
 paths).
+
+`azure_mailer` — shipped: `Config { connection_string, from }` then the same
+`Send { recipient, subject?, text?, html?, from?, cc?, bcc? }` `mailer`
+takes, so moving between them is one word in a manifest and not a line of
+any gene. Ported from `euglena-platform`'s `mailer` organelle, which spoke
+this API under the old ABI; `Sap` became `Config`, `from_address`/`body_html`
+became `from`/`html` (the provider's spelling had been leaking into every
+program), and Azure's own refusal is passed through instead of a generic
+failure. Requests carry Azure's HMAC-SHA256 signature over the verb, path,
+date, host and a hash of the body. `mailer_mock` is the mock twin for this
+one too. Tested against a stand-in Azure in `tests/azure_mailer_module.rs`,
+which recomputes the signature independently (a `.code` fixture only reaches
+the error paths).
+
+**Why both this and `mailer`:** SMTP reaches every provider and is the right
+default. This exists for the case where the credential you have is a
+connection string rather than a mailbox and a password — an Azure
+Communication Service can send without a human mailbox existing at all.
 
 `oauth` — shipped: `Config` (one provider's endpoints + client credentials),
 `AuthUrl { state, extra? }` (the redirect URL, pure), `ExchangeCode { code }`

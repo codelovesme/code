@@ -1,0 +1,67 @@
+| `azure_mailer` — the paths that need no Azure account. A real send is
+| covered by tests/azure_mailer_module.rs, which stands a fake one up.
+link "native_modules/azure_mailer.so" as mail
+
+| Send before Config is an Exception.
+emit Send { recipient = "a@b.com" } to mail get early
+assert early ∈ Exception
+assert early.source = "azure_mailer"
+
+| Config validates its fields up front.
+emit Config { from = "s@x.com" } to mail get nostring
+assert nostring ∈ Exception
+
+emit Config { connection_string = "endpoint=https://a.b/;accesskey=c2VjcmV0" } to mail get nofrom
+assert nofrom ∈ Exception
+
+| A connection string has to be the one Azure hands out.
+emit Config { connection_string = "just a string", from = "s@x.com" } to mail get shapeless
+assert shapeless ∈ Exception
+
+emit Config { connection_string = "accesskey=c2VjcmV0", from = "s@x.com" } to mail get noendpoint
+assert noendpoint ∈ Exception
+
+emit Config { connection_string = "endpoint=https://a.b/", from = "s@x.com" } to mail get nokey
+assert nokey ∈ Exception
+
+| The key is base64 in the string and bytes once decoded. Signing with the
+| text would produce a signature the service rejects with nothing to say
+| why, so text that is not base64 is refused here instead.
+emit Config { connection_string = "endpoint=https://a.b/;accesskey=not base64!!", from = "s@x.com" } to mail get badkey
+assert badkey ∈ Exception
+
+| An endpoint that names no host, and one that is not a URL at all.
+emit Config { connection_string = "endpoint=https://;accesskey=c2VjcmV0", from = "s@x.com" } to mail get nohost
+assert nohost ∈ Exception
+
+emit Config { connection_string = "endpoint=a.b;accesskey=c2VjcmV0", from = "s@x.com" } to mail get notaurl
+assert notaurl ∈ Exception
+
+| A valid Config against a port nothing is listening on. The key names are
+| matched whatever their case, and base64 padding survives the split.
+emit Config {
+    connection_string = "Endpoint=http://127.0.0.1:1/;AccessKey=c2VjcmV0Lg=="
+    from = "sender@example.com"
+} to mail get c
+assert c ∈ ConfigResult
+assert c.ok
+
+| A Send with no recipient never reaches the network.
+emit Send { subject = "hi" } to mail get norcpt
+assert norcpt ∈ Exception
+
+| Neither does one whose address list holds something that is not a string.
+emit Send { recipient = [1, 2] } to mail get badlist
+assert badlist ∈ Exception
+
+emit Send { recipient = { a = 1 } } to mail get badkind
+assert badkind ∈ Exception
+
+| A well-formed Send with nothing listening: an Exception, not a hang or a
+| crash — the whole point of a module.
+emit Send { recipient = "to@example.com", subject = "hi", text = "body" } to mail get refused
+assert refused ∈ Exception
+
+| A class this module does not handle is null.
+emit Deliver {} to mail get u
+assert u = null
