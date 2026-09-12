@@ -625,6 +625,15 @@ emit Send { particle = Ping {} } to auth get third
 assert third.ok
 emit Send { url = "http://example.test:83/override", particle = Ping {} } to auth get override
 assert override ∈ Exception
+| A page may name a path instead of a host: the browser resolves it against
+| the page, which is what lets one build be published behind any domain.
+emit Config { url = "/api/todo" } to ping get relative
+assert relative.ok
+emit Send { particle = Ping {} } to ping get fifth
+assert fifth.ok
+| Still a destination, not a request: a query string is refused.
+emit Config { url = "/api/todo?who=me" } to ping get query
+assert query ∈ Exception
 "#,
     )
     .expect("write clients");
@@ -648,9 +657,9 @@ const { instance } = await WebAssembly.instantiate(readFileSync('./clients.wasm'
 host.start(instance);
 await new Promise(resolve => setTimeout(resolve, 0));
 const expected = ['http://example.test:80/auth', 'http://example.test:81/ping',
-    'http://example.test:81/ping', 'http://example.test:82/new'];
+    'http://example.test:81/ping', 'http://example.test:82/new', '/api/todo'];
 if (JSON.stringify(urls) !== JSON.stringify(expected)) throw new Error('destinations crossed: ' + urls);
-if (host.ask({ _class: 'Status' })?.replies !== 4) throw new Error('lost replies');
+if (host.ask({ _class: 'Status' })?.replies !== 5) throw new Error('lost replies');
 "#).expect("write instance probe");
     let output = Command::new("node")
         .arg("probe.mjs")

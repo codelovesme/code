@@ -24,7 +24,7 @@ Send { particle, timeout_ms? } → whatever the far side's handlers returned
 
 | Field | Kind | Default | Meaning |
 |---|---|---|---|
-| `url` (Config) | String | — | `http://host:port/app`. Required |
+| `url` (Config) | String | — | `http://host:port/app`, or in a browser a same-origin path (`/api/todo`). Required |
 | `particle` | Particle | — | sent as written, `_class` and all. Required |
 | `timeout_ms` | Number | `10000` | connect, send and read deadline. A positive number |
 
@@ -47,6 +47,23 @@ emit Send { particle = Health {} } to catalog get answer
 
 The answer is the particle the far side's handler returned. `null` comes back
 when nothing there handled the class — a real answer, not a timeout.
+
+### In a browser, name a path rather than a host
+
+A page can also be configured with a **same-origin path**:
+
+```code
+emit Config { url = "/api/todo" } to api get c
+```
+
+The browser resolves it against the page, so the same build runs on a laptop
+and behind a public domain without being rebuilt — and an application served
+over `https` can reach it, where a hard-coded `http://host:port` is blocked
+as mixed content the moment anything is published. Which host answers a path
+is the deployment's business, which is exactly where that decision belongs.
+
+`https://host/app` is accepted too, for another origin. The machine half takes
+absolute URLs only: a program with no page has no origin to resolve against.
 
 ## The url names a host and an app, and nothing else
 

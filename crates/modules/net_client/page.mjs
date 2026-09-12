@@ -26,11 +26,29 @@
       if (particle._class === "Config") {
         const url = particle.url;
         if (typeof url !== "string") return exception("Config needs a `url` string");
-        if (!/^http:\/\/[^/?#\s]+:[0-9]+(?:\/[^/?#\s]*)?$/.test(url)) {
-          return exception("Config url must be http://host:port/app with at most one app segment");
+        // Three spellings, and the first is the one a published application
+        // wants. A **same-origin path** (`/api/todo`) names a destination
+        // without naming a host: the browser resolves it against the page, so
+        // one build runs on a laptop and behind a public domain alike — and a
+        // page served over https cannot reach an `http://` destination at all,
+        // which is what makes a hard-coded host a dead end once anything is
+        // published. An **absolute** `http(s)://host[:port]/app` is the other
+        // origins. Either way there is no query and no fragment: the body is
+        // the particle, so a destination is a destination, not a request.
+        const relative = url === "/" || /^\/[^/?#\s][^?#\s]*$/.test(url);
+        const absolute = /^https?:\/\/[^/?#\s]+(?:\/[^?#\s]*)?$/.test(url);
+        if (!relative && !absolute) {
+          return exception(
+            "Config url must be a same-origin path (/app) or http(s)://host[:port]/app, with no query or fragment"
+          );
         }
         try {
-          new URL(url);
+          // A relative path needs a base to resolve against; an absolute one
+          // ignores it. `location` is the page's in a browser and absent in a
+          // test harness, so a placeholder stands in to check the shape.
+          const base =
+            typeof location !== "undefined" && location.origin ? location.origin : "http://localhost";
+          new URL(url, base);
         } catch {
           return exception("Config url is not a valid HTTP destination");
         }
