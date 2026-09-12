@@ -1,18 +1,36 @@
-//! The `jwt` native module — HS256 JSON Web Tokens, for the Code programming
-//! language, written in Rust on [`code-native`].
+//! The `jwt` native module — HS256 and EdDSA JSON Web Tokens, for the Code
+//! programming language, written in Rust on [`code-native`].
 //!
-//! HS256 only: a token is `base64url(header) . base64url(claims) .
-//! base64url(HMAC-SHA256(secret, header.claims))`. That is small enough to
-//! do directly, so this module pulls `hmac`/`sha2`/`base64` rather than
-//! `jsonwebtoken` and a crypto backend.
+//! A token is `base64url(header) . base64url(claims) . base64url(signature)`.
+//! Both algorithms here are small enough to do directly, so this module
+//! pulls `hmac`/`sha2`/`ed25519-dalek` rather than `jsonwebtoken` and a
+//! crypto backend.
+//!
+//! **Two algorithms, because signing and verifying are not always the same
+//! power.** With HS256 one secret does both, so everyone who can check a
+//! token can also make one — fine for a program that signs its own tokens
+//! and reads them back, wrong for a service that only ever needs to *check*
+//! what somebody else issued. With EdDSA the signer holds a private key and
+//! every verifier holds only the public one, so a service can be certain a
+//! token is genuine and still be unable to forge one.
 //!
 //! Handlers:
 //!
-//! - `Config { secret, expires_in? }` → `ConfigResult { ok }` — the signing
-//!   secret and the default token lifetime in seconds (default 86400). A
-//!   missing or empty `secret` is an `Exception`: nothing this module does
-//!   works without one, so it is a stateful module and this is its setup
-//!   particle.
+//! - `Config { secret, expires_in? }` → `ConfigResult { ok }` — HS256: one
+//!   secret, signing and verifying both.
+//! - `Config { private_key, expires_in? }` → `ConfigResult { ok }` — EdDSA:
+//!   signs and verifies. The key is base64 (standard or url-safe) of the
+//!   32-byte seed.
+//! - `Config { public_key, expires_in? }` → `ConfigResult { ok }` — EdDSA:
+//!   verifies only. `Sign` is then an `Exception`, which is the point.
+//!
+//!   Exactly one of the three, and a missing key is an `Exception`: nothing
+//!   this module does works without one, so it is a stateful module and this
+//!   is its setup particle.
+//!
+//! - `GenerateKeypair` → `Keypair { private_key, public_key }` — a new
+//!   Ed25519 pair, base64, for an operator to put in a deployment's
+//!   configuration. Needs no `Config` and changes nothing.
 //! - `Sign { sub, role?, expires_in? }` → `SignResult { token }` — a signed
 //!   token carrying `{ sub, role, iat, exp }`. `Config` must have run first.
 //! - `Decode { token }` → `DecodeResult { valid, sub, role, exp }` — a
@@ -20,12 +38,21 @@
 //!   `valid = false` (an answer, not an error). `Config` must have run first;
 //!   a missing `token` is an `Exception`.
 //!
+//!   **The algorithm is not the token's to choose.** A token whose header
+//!   says `HS256` is refused by a module configured with a key pair, and the
+//!   other way round — the header is read to check it matches, never to
+//!   decide what to do. That is the algorithm-confusion hole this kind of
+//!   module is famous for: a verifier that believes the header will happily
+//!   check an `HS256` token using its own *public* key as the secret, and a
+//!   public key is public.
+//!
 //! `code_release` needs no code here — `code-native` links the vendored
 //! `runtime.c` into the cdylib and re-exports it.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
 use code_native::*;
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
 use sha2::Sha256;
@@ -39,8 +66,25 @@ type HmacSha256 = Hmac<Sha256>;
 /// accepts — precomputed so `Sign` never re-encodes it.
 const HEADER_B64: &str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
 
+/// `{"alg":"EdDSA","typ":"JWT"}`, likewise precomputed.
+const HEADER_EDDSA_B64: &str = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9";
+
+/// What this module was configured with — and so what it can do.
+///
+/// Three states rather than a key and a flag, because "can sign" is decided
+/// once, at `Config`, and a `Sign` that reaches a verify-only deployment
+/// should fail at the call rather than produce something nobody accepts.
+enum Key {
+    /// One secret, signing and verifying both.
+    Shared(Vec<u8>),
+    /// A private key: signs, and verifies its own.
+    Signing(Box<SigningKey>),
+    /// A public key and nothing else. `Sign` is an `Exception`.
+    Verifying(VerifyingKey),
+}
+
 struct Config {
-    secret: Vec<u8>,
+    key: Key,
     expires_in: u64,
 }
 
@@ -69,6 +113,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             "Config" => config(out, particle),
             "Sign" => sign(out, particle),
             "Decode" => decode(out, particle),
+            "GenerateKeypair" => generate_keypair(out),
             _ => {
                 null(out);
                 Ok(())
@@ -84,13 +129,50 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
 // Handlers
 // ---------------------------------------------------------------------------
 
-/// `Config { secret, expires_in? }` → `ConfigResult { ok }`. The setup
-/// particle: `Sign`/`Decode` are an `Exception` until it has run.
+/// `Config { secret | private_key | public_key, expires_in? }` →
+/// `ConfigResult { ok }`. The setup particle: `Sign`/`Decode` are an
+/// `Exception` until it has run.
 fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
-    let secret = find_field(particle, "secret")
-        .and_then(read_str)
-        .filter(|s| !s.is_empty())
-        .ok_or("Config requires a non-empty string 'secret'")?;
+    let named = |name: &str| {
+        find_field(particle, name)
+            .and_then(read_str)
+            .filter(|s| !s.is_empty())
+    };
+
+    // Exactly one. Two would be a deployment that means two different things
+    // and a module that silently picks; better to say so.
+    let given: Vec<&str> = ["secret", "private_key", "public_key"]
+        .into_iter()
+        .filter(|n| named(n).is_some())
+        .collect();
+    let key = match given.as_slice() {
+        ["secret"] => Key::Shared(named("secret").unwrap().as_bytes().to_vec()),
+        ["private_key"] => {
+            let bytes = key_bytes(named("private_key").unwrap(), "private_key")?;
+            Key::Signing(Box::new(SigningKey::from_bytes(&bytes)))
+        }
+        ["public_key"] => {
+            let bytes = key_bytes(named("public_key").unwrap(), "public_key")?;
+            Key::Verifying(
+                VerifyingKey::from_bytes(&bytes)
+                    .map_err(|_| "'public_key' is not a valid Ed25519 public key".to_string())?,
+            )
+        }
+        [] => {
+            return Err(
+                "Config requires one of 'secret' (HS256), 'private_key' or 'public_key' (EdDSA)"
+                    .to_string(),
+            )
+        }
+        several => {
+            return Err(format!(
+                "Config takes one key, not {}: {}",
+                several.len(),
+                several.join(" and ")
+            ))
+        }
+    };
+
     let expires_in = match find_field(particle, "expires_in") {
         None => 86_400,
         Some(v) => {
@@ -101,11 +183,42 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
             n as u64
         }
     };
-    *STATE.lock().unwrap_or_else(|e| e.into_inner()) = Some(Config {
-        secret: secret.as_bytes().to_vec(),
-        expires_in,
-    });
+    *STATE.lock().unwrap_or_else(|e| e.into_inner()) = Some(Config { key, expires_in });
     one_field(out, c"ConfigResult", c"ok", |slot| boolean(slot, true));
+    Ok(())
+}
+
+/// A base64 key, in either alphabet, as the 32 bytes Ed25519 wants.
+///
+/// Both alphabets because a key travels in deployment configuration written
+/// by hand, and refusing one of the two spellings of the same bytes is a
+/// half-hour somebody never gets back.
+fn key_bytes(text: &str, name: &str) -> Result<[u8; 32], String> {
+    let bytes = URL_SAFE_NO_PAD
+        .decode(text.trim_end_matches('='))
+        .or_else(|_| STANDARD.decode(text))
+        .map_err(|_| format!("'{name}' is not base64"))?;
+    bytes
+        .try_into()
+        .map_err(|_| format!("'{name}' must be 32 bytes of base64"))
+}
+
+/// `GenerateKeypair` → `Keypair { private_key, public_key }`.
+///
+/// Here rather than in a separate tool because the two halves have to be
+/// generated together and an operator should never be assembling a key pair
+/// out of two commands' output.
+fn generate_keypair(out: &mut CodeValue) -> Result<(), String> {
+    let signing = SigningKey::generate(&mut rand_core::OsRng);
+    let private = URL_SAFE_NO_PAD.encode(signing.to_bytes());
+    let public = URL_SAFE_NO_PAD.encode(signing.verifying_key().to_bytes());
+
+    let mut buf = SlotBuffer::new(3);
+    borrowed_str(buf.slot_mut(0), c"Keypair");
+    owned_str(buf.slot_mut(1), &private);
+    owned_str(buf.slot_mut(2), &public);
+    object(out, &[c"_class", c"private_key", c"public_key"], &mut buf);
+    buf.release_all();
     Ok(())
 }
 
@@ -115,7 +228,9 @@ fn sign(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         .and_then(read_str)
         .filter(|s| !s.is_empty())
         .ok_or("Sign requires a non-empty string 'sub'")?;
-    let role = find_field(particle, "role").and_then(read_str).unwrap_or("");
+    let role = find_field(particle, "role")
+        .and_then(read_str)
+        .unwrap_or("");
 
     let guard = STATE.lock().unwrap_or_else(|e| e.into_inner());
     let config = guard
@@ -136,8 +251,26 @@ fn sign(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let now = unix_now();
     let claims = json!({ "sub": sub, "role": role, "iat": now, "exp": now + ttl });
     let payload_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
-    let signing_input = format!("{HEADER_B64}.{payload_b64}");
-    let sig_b64 = URL_SAFE_NO_PAD.encode(hmac(&config.secret, signing_input.as_bytes()));
+
+    let (signing_input, sig_b64) = match &config.key {
+        Key::Shared(secret) => {
+            let input = format!("{HEADER_B64}.{payload_b64}");
+            let sig = URL_SAFE_NO_PAD.encode(hmac(secret, input.as_bytes()));
+            (input, sig)
+        }
+        Key::Signing(signing) => {
+            let input = format!("{HEADER_EDDSA_B64}.{payload_b64}");
+            let sig = URL_SAFE_NO_PAD.encode(signing.sign(input.as_bytes()).to_bytes());
+            (input, sig)
+        }
+        // The whole reason the verify-only state exists, failing where the
+        // mistake is rather than producing a token nobody accepts.
+        Key::Verifying(_) => {
+            return Err(
+                "this jwt has only a public key — it can check tokens, not make them".to_string(),
+            )
+        }
+    };
 
     let token = format!("{signing_input}.{sig_b64}");
     one_field(out, c"SignResult", c"token", |slot| owned_str(slot, &token));
@@ -157,7 +290,7 @@ fn decode(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         .as_ref()
         .ok_or("jwt has no secret — send Config { secret } first")?;
 
-    match verify(&config.secret, token) {
+    match verify(&config.key, token) {
         Some(claims) => decode_result(
             out,
             true,
@@ -180,27 +313,52 @@ fn hmac(secret: &[u8], message: &[u8]) -> Vec<u8> {
     mac.finalize().into_bytes().to_vec()
 }
 
-/// Verify a token's signature and expiry against `secret`. `Some(claims)`
-/// only if the header is this module's, the signature matches, and `exp`
-/// (when present) is still in the future.
-fn verify(secret: &[u8], token: &str) -> Option<Value> {
+/// Verify a token's signature and expiry against the configured key.
+/// `Some(claims)` only if the header is the one this configuration writes,
+/// the signature matches, and `exp` (when present) is still in the future.
+///
+/// The header is *compared*, never consulted: which algorithm to use is
+/// settled by `Config`, and a token arriving with the other one is refused
+/// rather than honoured. A verifier that let the token choose would check an
+/// `HS256` token with its own public key as the secret — and a public key is
+/// public.
+fn verify(key: &Key, token: &str) -> Option<Value> {
     let mut parts = token.split('.');
     let (header_b64, payload_b64, sig_b64) =
         match (parts.next(), parts.next(), parts.next(), parts.next()) {
             (Some(h), Some(p), Some(s), None) => (h, p, s),
             _ => return None,
         };
-    if header_b64 != HEADER_B64 {
+    let expected_header = match key {
+        Key::Shared(_) => HEADER_B64,
+        Key::Signing(_) | Key::Verifying(_) => HEADER_EDDSA_B64,
+    };
+    if header_b64 != expected_header {
         return None;
     }
     let signing_input = format!("{header_b64}.{payload_b64}");
-
-    // `verify_slice` is a constant-time compare against the freshly computed
-    // MAC — never decode the presented signature and `==` it.
     let presented = URL_SAFE_NO_PAD.decode(sig_b64).ok()?;
-    let mut mac = HmacSha256::new_from_slice(secret).ok()?;
-    mac.update(signing_input.as_bytes());
-    mac.verify_slice(&presented).ok()?;
+
+    match key {
+        // `verify_slice` is a constant-time compare against the freshly
+        // computed MAC — never decode the presented signature and `==` it.
+        Key::Shared(secret) => {
+            let mut mac = HmacSha256::new_from_slice(secret).ok()?;
+            mac.update(signing_input.as_bytes());
+            mac.verify_slice(&presented).ok()?;
+        }
+        Key::Signing(signing) => {
+            let signature = Signature::from_slice(&presented).ok()?;
+            signing
+                .verifying_key()
+                .verify(signing_input.as_bytes(), &signature)
+                .ok()?;
+        }
+        Key::Verifying(public) => {
+            let signature = Signature::from_slice(&presented).ok()?;
+            public.verify(signing_input.as_bytes(), &signature).ok()?;
+        }
+    }
 
     let claims: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload_b64).ok()?).ok()?;
     if let Some(exp) = claims.get("exp").and_then(Value::as_i64) {
@@ -229,7 +387,11 @@ fn decode_result(out: &mut CodeValue, valid: bool, sub: &str, role: &str, exp: i
     owned_str(buf.slot_mut(2), sub);
     owned_str(buf.slot_mut(3), role);
     number(buf.slot_mut(4), exp as f64);
-    object(out, &[c"_class", c"valid", c"sub", c"role", c"exp"], &mut buf);
+    object(
+        out,
+        &[c"_class", c"valid", c"sub", c"role", c"exp"],
+        &mut buf,
+    );
     buf.release_all();
 }
 
@@ -254,6 +416,10 @@ mod tests {
 
     /// Build a token by hand, the same way `sign` does, so a test can choose
     /// its own `exp`.
+    fn shared(secret: &[u8]) -> Key {
+        Key::Shared(secret.to_vec())
+    }
+
     fn token_with_exp(secret: &[u8], exp: i64) -> String {
         let claims = json!({ "sub": "u", "role": "", "iat": 0, "exp": exp });
         let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
@@ -266,20 +432,20 @@ mod tests {
     fn a_valid_unexpired_token_verifies() {
         let secret = b"k";
         let t = token_with_exp(secret, unix_now() as i64 + 60);
-        assert!(verify(secret, &t).is_some());
+        assert!(verify(&shared(secret), &t).is_some());
     }
 
     #[test]
     fn an_expired_token_does_not_verify() {
         let secret = b"k";
         let t = token_with_exp(secret, unix_now() as i64 - 1);
-        assert!(verify(secret, &t).is_none());
+        assert!(verify(&shared(secret), &t).is_none());
     }
 
     #[test]
     fn the_wrong_secret_does_not_verify() {
         let t = token_with_exp(b"right", unix_now() as i64 + 60);
-        assert!(verify(b"wrong", &t).is_none());
+        assert!(verify(&shared(b"wrong"), &t).is_none());
     }
 
     #[test]
@@ -287,7 +453,7 @@ mod tests {
         let secret = b"k";
         let mut t = token_with_exp(secret, unix_now() as i64 + 60);
         t.insert(HEADER_B64.len() + 2, 'A'); // corrupt the payload segment
-        assert!(verify(secret, &t).is_none());
+        assert!(verify(&shared(secret), &t).is_none());
     }
 
     #[test]
@@ -297,13 +463,102 @@ mod tests {
         let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
         let signing_input = format!("{HEADER_B64}.{payload}");
         let sig = URL_SAFE_NO_PAD.encode(hmac(secret, signing_input.as_bytes()));
-        assert!(verify(secret, &format!("{signing_input}.{sig}")).is_some());
+        assert!(verify(&shared(secret), &format!("{signing_input}.{sig}")).is_some());
     }
 
     #[test]
     fn a_foreign_header_is_rejected_before_the_mac_check() {
         // `{"alg":"none"}` base64url — a classic downgrade attempt.
         let forged = "eyJhbGciOiJub25lIn0.eyJzdWIiOiJ1In0.";
-        assert!(verify(b"k", forged).is_none());
+        assert!(verify(&shared(b"k"), forged).is_none());
+    }
+
+    // -----------------------------------------------------------------
+    // EdDSA
+    // -----------------------------------------------------------------
+
+    fn a_pair() -> SigningKey {
+        SigningKey::from_bytes(&[7u8; 32])
+    }
+
+    /// The same build as `sign`'s EdDSA arm, so a test can choose `exp`.
+    fn signed_with(signing: &SigningKey, exp: i64) -> String {
+        let claims = json!({ "sub": "u", "role": "", "iat": 0, "exp": exp });
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+        let input = format!("{HEADER_EDDSA_B64}.{payload}");
+        let sig = URL_SAFE_NO_PAD.encode(signing.sign(input.as_bytes()).to_bytes());
+        format!("{input}.{sig}")
+    }
+
+    #[test]
+    fn a_public_key_verifies_what_its_private_key_signed() {
+        let signing = a_pair();
+        let token = signed_with(&signing, unix_now() as i64 + 60);
+        let public = Key::Verifying(signing.verifying_key());
+        assert!(verify(&public, &token).is_some());
+    }
+
+    #[test]
+    fn another_public_key_does_not() {
+        let token = signed_with(&a_pair(), unix_now() as i64 + 60);
+        let stranger = Key::Verifying(SigningKey::from_bytes(&[9u8; 32]).verifying_key());
+        assert!(verify(&stranger, &token).is_none());
+    }
+
+    #[test]
+    fn an_expired_eddsa_token_does_not_verify() {
+        let signing = a_pair();
+        let token = signed_with(&signing, unix_now() as i64 - 1);
+        assert!(verify(&Key::Verifying(signing.verifying_key()), &token).is_none());
+    }
+
+    /// The algorithm-confusion hole, and the reason the header is compared
+    /// rather than consulted: a verifier that believed the header would
+    /// check this token with the public key as an HMAC secret — and the
+    /// public key is public, so anybody could have made it.
+    #[test]
+    fn an_hs256_token_signed_with_the_public_key_is_refused() {
+        let signing = a_pair();
+        let public_bytes = signing.verifying_key().to_bytes();
+
+        let claims =
+            json!({ "sub": "impostor", "role": "admin", "iat": 0, "exp": unix_now() as i64 + 60 });
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+        let input = format!("{HEADER_B64}.{payload}");
+        let sig = URL_SAFE_NO_PAD.encode(hmac(&public_bytes, input.as_bytes()));
+        let forged = format!("{input}.{sig}");
+
+        assert!(verify(&Key::Verifying(signing.verifying_key()), &forged).is_none());
+    }
+
+    /// And the other direction: a deployment on HS256 does not accept an
+    /// EdDSA token either, whoever signed it.
+    #[test]
+    fn an_eddsa_token_is_refused_by_an_hs256_deployment() {
+        let token = signed_with(&a_pair(), unix_now() as i64 + 60);
+        assert!(verify(&shared(b"k"), &token).is_none());
+    }
+
+    /// A private key verifies its own, so one program can sign and read back
+    /// without holding the public half separately.
+    #[test]
+    fn a_private_key_verifies_its_own() {
+        let signing = a_pair();
+        let token = signed_with(&signing, unix_now() as i64 + 60);
+        assert!(verify(&Key::Signing(Box::new(signing)), &token).is_some());
+    }
+
+    /// Both base64 alphabets, because a key is written by hand into
+    /// deployment configuration.
+    #[test]
+    fn a_key_is_read_in_either_alphabet() {
+        let bytes = [3u8; 32];
+        assert_eq!(
+            key_bytes(&URL_SAFE_NO_PAD.encode(bytes), "k").unwrap(),
+            bytes
+        );
+        assert_eq!(key_bytes(&STANDARD.encode(bytes), "k").unwrap(), bytes);
+        assert!(key_bytes("not base64!", "k").is_err());
+        assert!(key_bytes(&STANDARD.encode([1u8; 16]), "k").is_err());
     }
 }

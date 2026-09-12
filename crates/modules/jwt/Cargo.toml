@@ -6,9 +6,9 @@
 
 [package]
 name = "jwt"
-version = "2.3.1"
+version = "2.4.0"
 edition = "2021"
-description = "The `jwt` native module for the Code programming language — sign and verify HS256 JSON Web Tokens."
+description = "The `jwt` native module for the Code programming language — sign and verify HS256 and EdDSA JSON Web Tokens."
 license = "GPL-3.0"
 repository = "https://github.com/codelovesme"
 
@@ -23,3 +23,8 @@ hmac = "0.12"
 sha2 = "0.10"
 base64 = "0.22"
 serde_json = "1"
+# EdDSA (Ed25519), for the half of this module where signing and verifying
+# are different powers. Pure Rust, 32-byte keys, no RSA parameters to choose
+# wrongly — RS256 would be the same property at several times the weight.
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }

@@ -1,5 +1,5 @@
-| `jwt` — Sign then Decode, HS256. The secret comes from `Config`; there is no
-| per-call secret, because a signing key is deployment config.
+| `jwt` — Sign then Decode, both algorithms. The key comes from `Config`;
+| there is no per-call key, because a signing key is deployment config.
 link "native_modules/jwt.so" as jwt
 
 | No secret yet: Sign and Decode both refuse.
@@ -51,3 +51,71 @@ assert m2 ∈ Exception
 | A class this module does not handle is null.
 emit Refresh {} to jwt get u
 assert u = null
+
+| ---------------------------------------------------------------------------
+| EdDSA — where signing and verifying are different powers
+| ---------------------------------------------------------------------------
+
+| A pair is made here rather than written into the fixture, because the two
+| halves have to belong to each other and nobody should be assembling one out
+| of two commands' output.
+emit GenerateKeypair to jwt get pair
+assert pair ∈ Keypair
+assert pair.private_key ≠ ""
+assert pair.public_key ≠ ""
+assert pair.private_key ≠ pair.public_key
+
+emit Config { private_key = pair.private_key } to jwt get signer
+assert signer.ok
+
+emit Sign { sub = "user-42", role = "admin" } to jwt get ed
+assert ed ∈ SignResult
+
+| The private key reads back its own, so one program can sign and verify
+| without holding the public half separately.
+emit Decode { token = ed.token } to jwt get mine
+assert mine.valid
+assert mine.sub = "user-42"
+assert mine.role = "admin"
+
+| Now the other side of the deployment: a service with the public key only.
+emit Config { public_key = pair.public_key } to jwt get verifier
+assert verifier.ok
+
+emit Decode { token = ed.token } to jwt get checked
+assert checked.valid
+assert checked.sub = "user-42"
+
+| **And it cannot make one.** This is the whole point of the pair: a service
+| can be certain a token is genuine and still be unable to forge one.
+emit Sign { sub = "impostor", role = "admin" } to jwt get cannot
+assert cannot ∈ Exception
+
+| Somebody else's pair does not verify.
+emit GenerateKeypair to jwt get other
+emit Config { public_key = other.public_key } to jwt get stranger
+assert stranger.ok
+emit Decode { token = ed.token } to jwt get not_ours
+assert not_ours.valid = false
+
+| An HS256 token is refused by an EdDSA deployment, and the other way round.
+| The header says which algorithm a token was made with; it does not get to
+| say which one is used to check it.
+emit Config { secret = "a-signing-secret" } to jwt get back_to_hs
+assert back_to_hs.ok
+emit Decode { token = ed.token } to jwt get eddsa_at_hs
+assert eddsa_at_hs.valid = false
+
+emit Sign { sub = "user-42" } to jwt get hs
+emit Config { public_key = pair.public_key } to jwt get ed_again
+emit Decode { token = hs.token } to jwt get hs_at_eddsa
+assert hs_at_eddsa.valid = false
+
+| One key per Config, named. None, or two, is a deployment that means
+| something the module would have to guess at.
+emit Config {} to jwt get nothing
+assert nothing ∈ Exception
+emit Config { secret = "s", public_key = pair.public_key } to jwt get both
+assert both ∈ Exception
+emit Config { public_key = "not-base64!" } to jwt get garbled
+assert garbled ∈ Exception
