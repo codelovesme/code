@@ -15,15 +15,22 @@
 //!
 //! ## Deliberate limits (deferred, not forgotten)
 //!
-//! - **Interpreted runs only.** `code run`/`code build` are untouched and
-//!   tracing is opt-in through `code trace`, so no program changes meaning by
-//!   existing. Compiled-path tracing needs a `runtime.c` half and its own
-//!   parity fixtures; it is not part of this slice.
+//! - **Opt-in interpreter or native executable.** `code trace --compiled`
+//!   instruments LLVM emit sites and handler entry/exit, then runs the native
+//!   binary. Ordinary `run` and `build` emit no tracing calls. Wasm and
+//!   shared/static library tracing are not supported.
 //! - **`emit` boundaries only.** A particle a module *pushes* (an inbound
 //!   drain) and a question a host asks a guest (`ask_program`) do not pass
 //!   through the `emit` statement and are not recorded yet.
 //! - **A failed boundary records a null answer.** The error propagates as it
-//!   always did; the trace just has nothing to show for that emit.
+//!   always did; the trace just has nothing to show for that emit. A fatal
+//!   top-level error makes the CLI fail without publishing a trace in either
+//!   mode; errors caught by handlers remain ordinary Exception answers.
+//! - **Linked native code is opaque.** Its outgoing emit boundary and answer
+//!   are recorded, but its internal execution is not instrumented.
+//! - **Storage grows with the trace.** Values are snapshotted until execution
+//!   ends. External effects, clocks and other changing inputs still affect
+//!   answers; determinism means identical behavior produces identical JSON.
 //! - **Replay re-asks root `to this` boundaries.** A nested boundary is
 //!   reached by running its parent, and a `core`/module boundary is somebody
 //!   else's contract, so both are reported as skipped rather than re-driven
@@ -98,7 +105,7 @@ impl Recorder {
 
 /// A particle's `_class`, or `""` — the same reading `interpreter::class_of`
 /// makes, kept here so the recorder does not need a private import.
-fn class_of(particle: &Value) -> &str {
+pub(crate) fn class_of(particle: &Value) -> &str {
     match particle {
         Value::Object(fields) => match fields.iter().find(|(k, _)| k == "_class") {
             Some((_, Value::Str(class))) => class,

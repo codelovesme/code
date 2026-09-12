@@ -236,6 +236,19 @@ pub fn compile_to_object(
     obj_path: &Path,
     release: bool,
 ) -> Result<(), String> {
+    compile_to_object_traced(program, target, obj_path, release, false)
+}
+
+pub(crate) fn compile_to_object_traced(
+    program: &Program,
+    target: BuildTarget,
+    obj_path: &Path,
+    release: bool,
+    tracing: bool,
+) -> Result<(), String> {
+    if tracing && target != BuildTarget::Exe {
+        return Err("compiled tracing supports native executables only".into());
+    }
     crate::verify::verify_defined(program)?;
     crate::handlers::check_cycles(program)?;
     if target == BuildTarget::Wasm {
@@ -830,6 +843,7 @@ pub fn compile_to_object(
         failed_flag,
         location_slot,
         handler_fns: HashMap::new(),
+        tracing,
         handler_depths: HashMap::new(),
         dispatch_fn: None,
         links_at_runtime: links_at_runtime(&program.statements),
@@ -857,6 +871,9 @@ pub fn compile_to_object(
     // `link` a guest — and a guest's own top level runs the moment it is
     // reached. A program with no handlers hands over nothing and so offers
     // nothing, which is the right answer for it.
+    if tracing {
+        gen.trace_call("code_trace_init", &[], false)?;
+    }
     gen.gen_publish_dispatch()?;
     for (i, stmt) in program.statements.iter().enumerate() {
         gen.gen_locate(program, i)?;
@@ -1147,6 +1164,8 @@ struct Gen<'a, 'm> {
     /// would inherit whatever depth the definition site happened to sit
     /// at, and the two backends would disagree.
     handler_depths: HashMap<String, usize>,
+    /// Instrument only opt-in native executable builds.
+    tracing: bool,
     /// The generated `_code_dispatch_this`: one `if code_is_particle(p, "N")`
     /// chain over `handler_fns`, ending in a runtime error. Every
     /// `emit ... to this` calls it, so reaching another handler is an
@@ -1480,6 +1499,9 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.builder.build_return(None).map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(enter);
+        if self.tracing {
+            self.trace_call("code_trace_enter", &[], false)?;
+        }
         self.builder
             .build_store(active, self.i32_ty.const_int(1, false))
             .map_err(|e| e.to_string())?;
@@ -1525,6 +1547,9 @@ impl<'a, 'm> Gen<'a, 'm> {
         // has its own reference (every write to it goes through a
         // constructor or `code_copy`), so releasing the locals can't take it.
         self.builder.position_at_end(exit);
+        if self.tracing {
+            self.trace_call("code_trace_leave", &[], false)?;
+        }
         self.builder
             .build_store(active, self.i32_ty.const_zero())
             .map_err(|e| e.to_string())?;
@@ -2855,6 +2880,22 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_call(self.fn_check_emittable, &[particle_ptr.into()], "")
             .map_err(|e| e.to_string())?;
         self.check_failed()?;
+        let trace_id = if self.tracing {
+            let name = match target {
+                EmitTarget::This => "this".to_string(),
+                EmitTarget::Base => "base".to_string(),
+                EmitTarget::Core => "core".to_string(),
+                EmitTarget::Module(alias) => format!("module:{alias}"),
+            };
+            let name = self.global_str(&name, "trace_target")?;
+            self.trace_call(
+                "code_trace_begin",
+                &[name.into(), particle_ptr.into()],
+                true,
+            )?
+        } else {
+            None
+        };
         let temp = self.alloc_temp("emit_result")?;
         match target {
             EmitTarget::This => {
@@ -2923,6 +2964,9 @@ impl<'a, 'm> Gen<'a, 'm> {
                         )
                         .map_err(|e| e.to_string())?;
                     self.check_failed()?;
+                    if let Some(id) = trace_id {
+                        self.trace_call("code_trace_finish", &[id.into(), temp.into()], false)?;
+                    }
                     self.bind_emit_result(temp, result)?;
                     return Ok(());
                 };
@@ -2970,7 +3014,47 @@ impl<'a, 'm> Gen<'a, 'm> {
                 }
             }
         }
+        if let Some(id) = trace_id {
+            self.trace_call("code_trace_finish", &[id.into(), temp.into()], false)?;
+        }
         self.bind_emit_result(temp, result)
+    }
+
+    /// Only traced executable objects contain these calls. Handler depth is
+    /// independent of dispatch count (missing handlers do not enter a frame).
+    fn trace_call(
+        &self,
+        name: &str,
+        args: &[inkwell::values::BasicMetadataValueEnum<'a>],
+        returns_id: bool,
+    ) -> Result<Option<IntValue<'a>>, String> {
+        let types: Vec<inkwell::types::BasicMetadataTypeEnum<'a>> = args
+            .iter()
+            .map(|arg| match arg {
+                inkwell::values::BasicMetadataValueEnum::IntValue(_) => {
+                    self.context.i64_type().into()
+                }
+                _ => self.i8_ptr_ty.into(),
+            })
+            .collect();
+        let ty = if returns_id {
+            self.context.i64_type().fn_type(&types, false)
+        } else {
+            self.context.void_type().fn_type(&types, false)
+        };
+        let function = self
+            .module
+            .get_function(name)
+            .unwrap_or_else(|| self.module.add_function(name, ty, None));
+        let call = self
+            .builder
+            .build_call(function, args, "")
+            .map_err(|e| e.to_string())?;
+        Ok(if returns_id {
+            Some(call.try_as_basic_value().left().unwrap().into_int_value())
+        } else {
+            None
+        })
     }
 
     /// The `get` clause: the answer whole under one name, or its fields under

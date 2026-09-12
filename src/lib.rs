@@ -57,6 +57,51 @@ pub fn trace_file(path: &Path) -> Result<Vec<trace::TraceEvent>, String> {
     Ok(recorder.events())
 }
 
+/// Compile and execute an instrumented native executable, then read its
+/// boundary snapshots through the same schema as interpreted tracing.
+#[cfg(feature = "llvm")]
+pub fn trace_compiled_file(path: &Path) -> Result<Vec<trace::TraceEvent>, String> {
+    use std::{
+        fs,
+        process::Command,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "code-trace-{}-{}",
+        std::process::id(),
+        SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ));
+    // Refuse a stale directory instead of following files somebody left there.
+    fs::create_dir(&dir).map_err(|e| format!("create trace directory: {e}"))?;
+    let result = (|| {
+        let executable = dir.join("program");
+        let transport = dir.join("trace.json");
+        compile::compile_file_traced(path, BuildTarget::Exe, &executable, false, true)?;
+        let status = Command::new(&executable)
+            .env("CODE_TRACE_FILE", &transport)
+            .status()
+            .map_err(|e| format!("execute traced program: {e}"))?;
+        if !status.success() {
+            return Err(format!("compiled trace program failed ({status})"));
+        }
+        let text =
+            fs::read_to_string(&transport).map_err(|e| format!("read execution trace: {e}"))?;
+        let mut recorded = trace::parse_trace(&text)?;
+        for event in &mut recorded.events {
+            event.particle_class = trace::class_of(&event.particle).to_string();
+        }
+        Ok(recorded.events)
+    })();
+    let _ = fs::remove_dir_all(dir);
+    result
+}
+
+#[cfg(not(feature = "llvm"))]
+pub fn trace_compiled_file(_path: &Path) -> Result<Vec<trace::TraceEvent>, String> {
+    Err("compiled tracing requires LLVM support".into())
+}
+
 /// Re-ask every root `to this` boundary a trace recorded, against the program
 /// as it is now, and compare the answers by value.
 ///
@@ -224,6 +269,16 @@ mod compile {
         out_path: &Path,
         release: bool,
     ) -> Result<(), String> {
+        compile_file_traced(source_path, target, out_path, release, false)
+    }
+
+    pub(crate) fn compile_file_traced(
+        source_path: &Path,
+        target: BuildTarget,
+        out_path: &Path,
+        release: bool,
+        tracing: bool,
+    ) -> Result<(), String> {
         let program: Program =
             loader::load(&source_path.display().to_string(), &FilesystemResolver)?;
 
@@ -237,7 +292,7 @@ mod compile {
         // Every path below is inside `scratch`, so the whole directory can be
         // removed as one on the way out, on success and failure alike.
         let result = (|| {
-            codegen::compile_to_object(&program, target, &obj_path, release)?;
+            codegen::compile_to_object_traced(&program, target, &obj_path, release, tracing)?;
 
             // `Static` never links against the C runtime — there is no link
             // step beyond archiving the object — so skip writing the sources

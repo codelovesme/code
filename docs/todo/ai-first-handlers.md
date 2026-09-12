@@ -61,20 +61,43 @@ expose machine-readable handler contracts.
 The fourth slice is implemented:
 
 ```text
-code trace [path] [-o trace.json]
+code trace [path] [--compiled] [-o trace.json]
 code replay trace.json [path]
 ```
 
-`code trace` runs the real interpreter and records `emit` boundaries in call
+`code trace` runs the real interpreter (or, with `--compiled`, builds and runs
+an instrumented native executable) and records `emit` boundaries in call
 order, including the target, particle, answer, and handler depth. The output
 contains no clock, address, or other run-specific data, so identical runs are
 byte-identical. `code replay` loads that JSON, runs the real program, re-asks
 replayable top-level `to this` particles, and reports matches, mismatches, and
 context-dependent boundaries it skipped.
 
-This slice is intentionally interpreter-only. Core and module boundaries are
-recorded, but nested or external boundaries are not independently re-driven;
-compiled-path tracing and host-asked particles remain separate follow-up work.
+Compiled tracing uses LLVM emit and handler entry/exit instrumentation plus
+`runtime.c` snapshots, and passes those snapshots through the existing schema-1
+renderer. Replay accepts traces from either mode and still re-drives the real
+interpreter. Core and module boundaries are recorded; nested or external
+boundaries are not independently re-driven. Native modules are opaque: only
+the outgoing boundary and returned value are visible.
+
+Supported: native executable tracing through `code trace --compiled`, with the
+same source loader and native toolchain as `code build` (validated on x86_64
+Linux). Ordinary builds contain
+no tracing calls. Wasm and shared/static library tracing are unsupported;
+inbound and host-asked particles remain separate follow-up work. The trace
+holds snapshots in memory until execution ends, so storage grows with events
+and their values. Programs that keep serving must terminate normally to finish
+a trace; forced termination is not a supported partial-trace workflow.
+
+Use `-o` if the program writes stdout: program I/O and effects remain live.
+Fatal execution errors return failure without publishing a trace; errors caught
+by handlers remain Exception answers, with failed nested dispatches retaining
+null. Deterministic output presumes identical inputs and external behavior:
+clock/network answers are recorded as they occurred, not made reproducible.
+Existing backend differences remain visible: for example, an invalid module
+address `{}` returns a more detailed Exception message in the interpreter than
+in the compiled runtime. Tracing preserves those actual answers; it does not
+normalize them or change ordinary execution to conceal a mismatch.
 
 ## Follow-up tasks
 

@@ -3721,3 +3721,74 @@ void code_assert(const CodeValue *v) {
         fail("assertion failed");
     }
 }
+
+#ifndef CODE_WASM
+/* Opt-in executable tracing. Only instrumented objects call these functions.
+ * Snapshot JSON at the boundary: no retained runtime values survive the normal
+ * leak check. IDs are preorder positions; answers fill those positions later.
+ * The CLI canonicalizes this private transport through trace::render_trace. */
+typedef struct {
+    long long depth;
+    char *target, *particle, *answer;
+} CodeTraceEvent;
+static CodeTraceEvent *trace_events;
+static size_t trace_len, trace_cap;
+static long long trace_depth;
+static FILE *trace_file;
+
+static char *trace_json(const CodeValue *v) {
+    if (v->tag == CODE_STR) {
+        TextBuf t = {NULL, 0, 0};
+        text_push_json_string(&t, v->str);
+        t.buf[t.len] = '\0';
+        return t.buf;
+    }
+    CodeValue text = {0};
+    code_to_text(&text, v);
+    char *result = strdup(text.str);
+    code_release(&text);
+    if (!result) code_runtime_error("cannot allocate execution trace");
+    return result;
+}
+
+static void trace_write(void) {
+    fputs("{\"schema_version\":1,\"entry\":\"\",\"events\":[", trace_file);
+    for (size_t i = 0; i < trace_len; i++) {
+        CodeTraceEvent *event = &trace_events[i];
+        fprintf(trace_file, "%s{\"sequence\":%zu,\"depth\":%lld,\"target\":%s,"
+                "\"particle_class\":\"\",\"particle\":%s,\"answer\":%s}",
+                i ? "," : "", i, event->depth, event->target,
+                event->particle, event->answer ? event->answer : "null");
+        free(event->target);
+        free(event->particle);
+        free(event->answer);
+    }
+    fputs("]}", trace_file);
+    int failed = ferror(trace_file);
+    if (fclose(trace_file)) failed = 1;
+    free(trace_events);
+    if (failed) {
+        fputs("error: cannot write execution trace\n", stderr);
+        _Exit(1);
+    }
+}
+void code_trace_init(void) {
+    const char *path = getenv("CODE_TRACE_FILE");
+    if (!path || !(trace_file = fopen(path, "w")))
+        code_runtime_error("cannot open execution trace");
+    if (atexit(trace_write)) code_runtime_error("cannot register execution trace writer");
+}
+void code_trace_enter(void) { trace_depth++; }
+void code_trace_leave(void) { trace_depth--; }
+long long code_trace_begin(const char *target, const CodeValue *particle) {
+    trace_events = grow(trace_events, &trace_cap, trace_len + 1, sizeof(CodeTraceEvent));
+    CodeValue name = {0};
+    name.tag = CODE_STR;
+    name.str = (char *)target;
+    trace_events[trace_len] = (CodeTraceEvent){trace_depth, trace_json(&name), trace_json(particle), NULL};
+    return (long long)trace_len++;
+}
+void code_trace_finish(long long sequence, const CodeValue *answer) {
+    trace_events[sequence].answer = trace_json(answer);
+}
+#endif

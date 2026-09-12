@@ -292,12 +292,20 @@ to `.`. Runtime dispatch remains permissive; a non-zero exit means the report
 contains an error.";
 
 const TRACE_HELP: &str = "\
-usage: code trace [path] [-o <file>]
+usage: code trace [path] [--compiled] [-o <file>]
 
-Interprets a file, or a project's main.code, and records every particle
-boundary as deterministic JSON. Defaults to `.`. With -o/--output the trace is
-written to a file; otherwise it is printed to stdout. Tracing is opt-in and
-does not change ordinary runtime dispatch.";
+Runs a file, or a project's main.code, and records emit boundaries as
+deterministic JSON. Defaults to `.`. With -o/--output the trace is written to
+a file; otherwise it is printed to stdout.
+
+--compiled builds and runs an instrumented native executable instead of
+interpreting it, and needs LLVM and a native C toolchain. Both modes record
+the same boundaries in the same schema.
+
+Tracing is opt-in and does not change ordinary runtime dispatch. Program I/O
+still uses its usual streams, so prefer -o when the program writes to stdout.
+A fatal execution error publishes no trace. Wasm, shared and static targets,
+and inbound/host-asked boundaries, are not traced.";
 
 const REPLAY_HELP: &str = "\
 usage: code replay <trace> [path]
@@ -700,10 +708,15 @@ fn strict_check_entry(entry: &str) -> Result<(), String> {
 /// to parse a status message out of the JSON stream.
 fn cmd_trace(args: Vec<String>) -> ExitCode {
     let mut output: Option<PathBuf> = None;
+    let mut compiled = false;
     let mut paths = Vec::new();
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
+            "--compiled" => {
+                compiled = true;
+                index += 1;
+            }
             "-o" | "--output" => {
                 let Some(path) = args.get(index + 1) else {
                     eprintln!("{TRACE_HELP}");
@@ -734,7 +747,12 @@ fn cmd_trace(args: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let events = match code::trace_file(Path::new(&entry)) {
+    let traced = if compiled {
+        code::trace_compiled_file(Path::new(&entry))
+    } else {
+        code::trace_file(Path::new(&entry))
+    };
+    let events = match traced {
         Ok(events) => events,
         Err(message) => {
             eprintln!("error: {message}");
