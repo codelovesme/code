@@ -41,11 +41,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # From quay.io, which is MinIO's own registry. Docker Hub started
+      # denying `minio/minio` outright ("pull access denied ... may require
+      # docker login"), which stopped this job at its first step — so every
+      # run was red and nothing after this line, formatting and tests
+      # included, ever ran. That is the second time a registry has moved this
+      # image; `bitnami/minio` was removed before it.
       - name: Start MinIO (S3 for tests/blob_storage_module.rs)
         run: |
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=codetest -e MINIO_ROOT_PASSWORD=codetest-secret \
-            minio/minio:latest server /data
+            quay.io/minio/minio:latest server /data
           for i in $(seq 1 30); do
             curl -sf http://127.0.0.1:9000/minio/health/live && break
             sleep 1

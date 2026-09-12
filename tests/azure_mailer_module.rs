@@ -189,7 +189,9 @@ assert o.ok
 
         let auth = header(&head, "authorization");
         assert!(
-            auth.starts_with("HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature="),
+            auth.starts_with(
+                "HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature="
+            ),
             "unexpected Authorization in {mode}: {auth}"
         );
         assert!(

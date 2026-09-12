@@ -65,10 +65,15 @@ fn read_request(stream: &mut TcpStream) -> (String, String, bool) {
     }
     let authorized = head.lines().any(|l| {
         l.split_once(':').is_some_and(|(k, v)| {
-            k.trim().eq_ignore_ascii_case("authorization") && v.trim() == format!("Bearer {API_KEY}")
+            k.trim().eq_ignore_ascii_case("authorization")
+                && v.trim() == format!("Bearer {API_KEY}")
         })
     });
-    (path, String::from_utf8_lossy(&body).into_owned(), authorized)
+    (
+        path,
+        String::from_utf8_lossy(&body).into_owned(),
+        authorized,
+    )
 }
 
 fn respond(stream: &mut TcpStream, body: &str) {
