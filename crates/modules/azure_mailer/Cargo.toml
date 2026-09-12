@@ -6,7 +6,7 @@
 
 [package]
 name = "azure_mailer"
-version = "2.2.0"
+version = "2.3.0"
 edition = "2021"
 description = "The `azure_mailer` native module for the Code programming language — send email through Azure Communication Services, with `mailer`'s Send surface."
 license = "GPL-3.0"

@@ -14,14 +14,14 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "console"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "code-native",
 ]
