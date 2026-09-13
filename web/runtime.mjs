@@ -100,6 +100,10 @@ export function createHost({
       throw new Error("wasm error: " + str(ptr, len));
     },
     code_host_now: () => Date.now() / 1000,
+    // Minutes to add to UTC to get this page's clock. `getTimezoneOffset`
+    // counts the other way round — minutes to add to local to get UTC — so
+    // the sign is flipped here, once, rather than in every caller.
+    code_host_tz_offset: () => -new Date().getTimezoneOffset(),
     code_host_number_exact(value, ptr, cap) {
       const b = enc.encode(value.toExponential(40));
       if (b.length >= cap) return -1;

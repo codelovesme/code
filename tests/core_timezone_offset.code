@@ -1,0 +1,26 @@
+| `TimezoneOffset` — minutes to add to UTC to get the clock the reader is
+| looking at. +120 in Berlin in summer, -300 in New York, 0 in UTC.
+|
+| `Timestamp` cannot answer "what day is it here", and for anything a person
+| reads that is the only day that counts: a task due today sits in
+| yesterday's column for a third of the planet if the answer is UTC.
+|
+| The bounds are the real ones: no zone is further out than +14
+| (Kiritimati) or -12.
+
+emit TimezoneOffset to core get z
+assert z._class = "TimezoneOffsetResult"
+assert z.value ≥ 0 - 720
+assert z.value ≤ 840
+
+| It must agree with itself from one moment to the next — the offset is a
+| property of where this is running, not of when it was asked.
+emit TimezoneOffset to core get again
+assert again.value = z.value
+
+| And it composes with `Timestamp` the way a caller will use it: local
+| seconds are UTC seconds plus the offset, which stays a whole second.
+emit Timestamp to core get t
+local = t.value + z.value * 60
+assert local ≥ t.value - 43200
+assert local ≤ t.value + 50400

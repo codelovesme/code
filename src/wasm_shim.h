@@ -13,6 +13,9 @@ typedef long long time_t;
 
 extern void code_host_error(const char *ptr, unsigned int len);
 extern double code_host_now(void);
+/* Minutes to add to UTC to get the page's own clock. The host flips
+ * JavaScript's sign so every backend answers this the same way round. */
+extern double code_host_tz_offset(void);
 
 /* Turning a double back into text needs two things this environment cannot
  * compute for itself: the *exact* decimal expansion of a double, and reading

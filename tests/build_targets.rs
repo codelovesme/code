@@ -32,6 +32,7 @@ const WASM_HOST_JS: &str = "\
       throw new Error('wasm error: ' + dec.decode(new Uint8Array(memory.buffer, ptr, len)));\n\
     },\n\
     code_host_now() { return Date.now() / 1000; },\n\
+    code_host_tz_offset() { return -new Date().getTimezoneOffset(); },\n\
     code_host_number_exact(value, ptr, cap) {\n\
       const b = enc.encode(value.toExponential(40));\n\
       if (b.length >= cap) return -1;\n\
@@ -250,6 +251,7 @@ fn a_wasm_build_writes_the_pages_half_beside_it() {
     // door a browser module reaches its half through.
     for needed in [
         "code_host_now",
+        "code_host_tz_offset",
         "code_host_error",
         "code_host_number_exact",
         "code_host_number_parse",

@@ -1795,6 +1795,18 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
             // belongs in a module, not core (see docs/todo/community-modules.md).
             Ok(core_result("TimestampResult", unix_seconds()))
         }
+        "TimezoneOffset" => {
+            // Minutes to add to UTC to get the reader's own clock: +120 in
+            // Berlin in summer, -300 in New York, 0 in UTC.
+            //
+            // `Timestamp` alone cannot answer "what day is it here", and for
+            // anything a person reads that is the only day that matters —
+            // a task due today is in yesterday's column for a third of the
+            // planet if the answer is UTC. A number of minutes is not
+            // formatting, which is what keeps this in core while `Mar 3` and
+            // `today` stay out of it.
+            Ok(core_result("TimezoneOffsetResult", tz_offset_minutes()))
+        }
         // A field the particle does not carry is null — the same answer
         // `.field` gives — so an absent `value` is not a separate case to
         // report. Emitting a particle is not a form to be validated before
@@ -1891,6 +1903,40 @@ fn unix_seconds() -> f64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as f64
+}
+
+/// Minutes east of UTC, for the machine this is running on.
+///
+/// `localtime_r` rather than a calendar crate: the whole question is one
+/// field of one struct the C library already fills in, and the alternative
+/// is a dependency that brings a date type nothing here wants.
+#[cfg(all(not(target_arch = "wasm32"), unix))]
+fn tz_offset_minutes() -> f64 {
+    let now = unix_seconds() as libc::time_t;
+    let mut local: libc::tm = unsafe { std::mem::zeroed() };
+    // SAFETY: `now` is a valid time_t and `local` is a `tm` we own for the
+    // duration of the call, which is all `localtime_r` asks of a caller.
+    let filled = unsafe { libc::localtime_r(&now, &mut local) };
+    if filled.is_null() {
+        return 0.0;
+    }
+    (local.tm_gmtoff as f64) / 60.0
+}
+
+/// Nothing to ask, so UTC. A platform without `localtime_r` and without a
+/// browser is not one this has run on; answering 0 keeps the handler total
+/// rather than making it a thing callers must feature-detect.
+#[cfg(all(not(target_arch = "wasm32"), not(unix)))]
+fn tz_offset_minutes() -> f64 {
+    0.0
+}
+
+/// The browser's own offset. JavaScript counts it backwards — minutes to add
+/// to *local* to get UTC — so the sign is flipped to match every other
+/// backend here.
+#[cfg(target_arch = "wasm32")]
+fn tz_offset_minutes() -> f64 {
+    -js_sys::Date::new_0().get_timezone_offset()
 }
 
 #[cfg(target_arch = "wasm32")]

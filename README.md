@@ -699,7 +699,10 @@ assert n.value = 3
 
 - **`to core`** dispatches to a handler compiled into the runtime itself.
   Core stays deliberately minimal: `Length` (of an Array, or of a Str in
-  characters — not bytes), `Timestamp` (Unix seconds), and
+  characters — not bytes), `Timestamp` (Unix seconds), `TimezoneOffset`
+  (minutes to add to UTC for the clock where this is running — `Timestamp`
+  cannot say what *day* it is for the person reading, and that is the only
+  day a calendar column can be sorted by), and
   [`Linked`](#linked) (whether this run is a module somebody linked, rather
   than a program of its own). Every
   core result comes back as a *particle*, never a bare value.

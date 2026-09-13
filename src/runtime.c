@@ -896,6 +896,28 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
         return;
     }
 
+    if (strcmp(class_val->str, "TimezoneOffset") == 0) {
+        /* Minutes to add to UTC to get the reader's own clock — must match
+         * interpreter.rs's `dispatch_core` exactly, sign included. JavaScript
+         * counts it the other way round, which is where the negation in the
+         * wasm host lives rather than here. */
+        CodeValue off = {0};
+    #ifdef CODE_WASM
+        code_number(&off, code_host_tz_offset());
+    #else
+        time_t now = time(NULL);
+        struct tm local;
+        if (localtime_r(&now, &local) == NULL) {
+            code_number(&off, 0.0);
+        } else {
+            code_number(&off, (double)local.tm_gmtoff / 60.0);
+        }
+    #endif
+        code_make_result(out, "TimezoneOffsetResult", &off);
+        code_release(&off);
+        return;
+    }
+
     if (strcmp(class_val->str, "Length") == 0) {
         /* A field the particle does not carry is null — the same answer
          * `.field` gives — so there is no separate "you didn't supply it"
