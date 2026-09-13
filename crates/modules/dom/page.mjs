@@ -28,6 +28,15 @@
       return doc.createTextNode(String(spec));
     }
     const el = doc.createElement(spec.tag || "div");
+    // `media = "camera"` marks a node as somewhere a device may show itself.
+    // It becomes a plain attribute and nothing more: this module does not
+    // know what a camera is, and the tree stays data. Whatever owns the
+    // device finds the node by this attribute and fills it in — a live
+    // `MediaStream` is a property, and properties are what a tree cannot
+    // carry, which is the whole reason the mark exists.
+    if (typeof spec.media === "string" && spec.media) {
+      el.setAttribute("data-code-media", spec.media);
+    }
     for (const [k, v] of Object.entries(spec.attrs || {})) {
       if (/^on/i.test(k)) continue; // never an event handler
       el.setAttribute(k, String(v));

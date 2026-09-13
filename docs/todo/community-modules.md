@@ -470,6 +470,20 @@ is `tests/azure_blob_module.rs` — the same one `blob_storage` runs — against
 the CI job's Azurite service, skipped without
 `AZURE_BLOB_CONNECTION_STRING`.
 
+`media` — shipped: `Record`/`StopRecording`, `StartCamera`/`TakePhoto`/
+`StopCamera`. Browser only. The interesting answers cannot be return values —
+a recording does not exist when `Record` is asked — so they arrive as their
+own particles (`Recorded`, `Captured`), the shape `net_client` already uses
+for a reply that outlives its request. A refusal is `Denied`, not an
+`Exception`: asking for a device is asking a person, and no is an answer.
+
+The viewfinder is the design question it answers. `dom` draws a tree that is
+data, so nothing an application writes can hand an element a live
+`MediaStream`. So `dom` learned one mark — `{ tag = "video", media =
+"camera" }` becomes a plain attribute and nothing more — and this module
+watches the page for it and fills it in. `dom` still does not know what a
+camera is, and a redraw is picked up rather than losing the picture.
+
 `cloud_drive` — shipped: `Config { client_id, client_secret, redirect_uri?,
 scope?, auth_url?, token_url?, api_base? }` (the three URL fields default to
 Google's), then the OAuth pair (`AuthUrl`/`BuildAuthUrl`, `ExchangeCode`,

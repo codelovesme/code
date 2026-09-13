@@ -212,6 +212,7 @@ mod compile {
             "net_client",
             include_str!("../crates/modules/net_client/page.mjs"),
         ),
+        ("media", include_str!("../crates/modules/media/page.mjs")),
         ("router", include_str!("../crates/modules/router/page.mjs")),
         (
             "storage",
