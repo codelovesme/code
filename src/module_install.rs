@@ -253,6 +253,7 @@ pub fn native_metadata_for(
 /// forgotten in the others — which is exactly how the index it replaces came
 /// to be missing two.
 pub const FIRST_PARTY: &[&str] = &[
+    "azure_blob",
     "blob_storage",
     "blob_storage_mock",
     "cloud_drive",

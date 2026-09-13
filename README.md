@@ -1600,7 +1600,10 @@ authorization-code flow for one provider — see
 key/value layer over a MongoDB collection — see
 [its README](crates/modules/mongodb/README.md)), `blob_storage` (put, get,
 list and delete objects in S3-compatible storage — see
-[its README](crates/modules/blob_storage/README.md)), `cloud_drive` (Google
+[its README](crates/modules/blob_storage/README.md)), `azure_blob` (the same
+put, get, list and delete against Azure Blob Storage, for the one store that
+does not speak S3 — see
+[its README](crates/modules/azure_blob/README.md)), `cloud_drive` (Google
 Drive: the OAuth flow, quota, upload, download, list, delete — see
 [its README](crates/modules/cloud_drive/README.md)), `localai` (chat
 completions and audio transcription over an OpenAI-compatible endpoint — see
@@ -1760,7 +1763,7 @@ crates/
   modules/      first-party modules: console, dom, guest, math, strings, env, json,
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
                 azure_mailer,
-                oauth, mongodb, blob_storage, cloud_drive, localai,
+                oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,
                 http_client, http_server, net_client, net_server — plus
                 <name>_mock twins for
                 mailer, oauth, mongodb, blob_storage, cloud_drive, git, localai

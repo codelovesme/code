@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, router, storage, timer, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, router, storage, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
       # Each module is its own workspace with its own Cargo.lock (see those
@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, router, storage, timer, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, router, storage, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
 
@@ -307,6 +307,12 @@ jobs:
               # loads, routes, and that an unreachable database is a value.
               printf 'emit Config { url = "mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=500", database = "d" } to mod get c\nassert c ∈ Exception\n' >> dogfood/demo.code
               ;;
+            azure_blob)
+              # No Azure here — Config just parses the connection string and
+              # builds a signer, then any operation against a refused endpoint
+              # is an Exception. Proof the artifact loads and routes.
+              printf 'emit Config { bucket = "b", account = "a", key = "a2V5", endpoint = "http://127.0.0.1:1" } to mod get c\nassert c.ok\nemit Put { key = "k", data = "d" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code
+              ;;
             blob_storage)
               # No object store here — Config succeeds (it just builds a
               # client), then any operation against a refused endpoint is an
@@ -434,7 +440,7 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer azure_mailer oauth mongodb blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest router storage timer oauth_mock; do
+          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer azure_mailer oauth mongodb azure_blob blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest router storage timer oauth_mock; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
@@ -456,6 +462,7 @@ jobs:
               azure_mailer) handlers='["Config", "Send"]' ;;
               oauth) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;
+              azure_blob) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
               blob_storage) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
               cloud_drive) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode", "RefreshToken", "GetQuota", "ListFiles", "UploadFile", "DownloadFile", "DeleteFile"]' ;;
               localai) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions"]' ;;
@@ -485,7 +492,7 @@ jobs:
               http_server) setup='"setup": "Config",' ;;
               net_client|net_server) setup='"setup": "Config",' ;;
               membrane) setup='"setup": "Config",' ;;
-              jwt|fs|json_store|git|mailer|azure_mailer|oauth|mongodb|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
+              jwt|fs|json_store|git|mailer|azure_mailer|oauth|mongodb|azure_blob|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
               *) setup='' ;;
             esac
             # The browser archive, for the few modules that have one. Absent

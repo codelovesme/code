@@ -323,6 +323,7 @@ no `code` module handles it. Instead:
   directory, a secret, a bind address. It returns `ConfigResult { ok }`, and
   every other handler is an `Exception` until it has run (`jwt`, `fs`,
   `json_store`, `git`, `mailer`, `azure_mailer`, `oauth`, `mongodb`, `blob_storage`,
+  `azure_blob`,
   `cloud_drive`, `localai`). `Config` is **not** an
   action: `http_server` keeps `Config` for the port/host and adds `Listen {}`
   as the separate "start serving" action, since binding a socket has its own
@@ -455,6 +456,19 @@ missing key is `GetResult { found = false }`, not an `Exception`; `List`
 returns a real array. Error paths are a `.code` fixture; the CRUD round trip
 is `tests/blob_storage_module.rs`, run against the CI job's `bitnami/minio`
 service and skipped without `S3_ENDPOINT`.
+
+`azure_blob` — shipped: `Config { bucket, connection_string? | account +
+key, endpoint?, create? }`, then the same `Put`/`Get`/`Delete`/`List` surface
+`blob_storage` has, field for field. Azure is the one store with no S3
+gateway of its own, so it needs its own module — but a program should move
+between the two by changing the line it links and nothing else, which is why
+a container is still configured as `bucket` and a blob is still a `key`.
+SharedKey signing is the whole of the difficulty: the signature must cover
+exactly the `x-ms-*` headers sent, and against Azurite the canonical resource
+repeats the account name because Azurite puts it in the path. The round trip
+is `tests/azure_blob_module.rs` — the same one `blob_storage` runs — against
+the CI job's Azurite service, skipped without
+`AZURE_BLOB_CONNECTION_STRING`.
 
 `cloud_drive` — shipped: `Config { client_id, client_secret, redirect_uri?,
 scope?, auth_url?, token_url?, api_base? }` (the three URL fields default to

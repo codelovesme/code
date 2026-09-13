@@ -38,6 +38,10 @@ jobs:
       S3_ACCESS_KEY: codetest
       S3_SECRET_KEY: codetest-secret
       S3_BUCKET: codetest
+      # Azurite's well-known development account. Published by Microsoft
+      # and the same on every machine — it is a fixture, not a secret.
+      AZURE_BLOB_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+      AZURE_BLOB_CONTAINER: codetest
     steps:
       - uses: actions/checkout@v4
 
@@ -54,6 +58,22 @@ jobs:
             quay.io/minio/minio:latest server /data
           for i in $(seq 1 30); do
             curl -sf http://127.0.0.1:9000/minio/health/live && break
+            sleep 1
+          done
+
+      # Azure Blob for tests/azure_blob_module.rs. Microsoft's own emulator,
+      # from Microsoft's own registry — the one store in this file that has
+      # not had its image moved out from under the job.
+      - name: Start Azurite (Azure Blob for tests/azure_blob_module.rs)
+        run: |
+          docker run -d --name azurite -p 10000:10000 \
+            mcr.microsoft.com/azure-storage/azurite:latest \
+            azurite-blob --blobHost 0.0.0.0
+          for i in $(seq 1 30); do
+            # 400/403 is the endpoint answering — it is up, and refusing an
+            # unsigned request is exactly what it should do.
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:10000/devstoreaccount1?comp=list" || true)
+            [ "$code" != "000" ] && break
             sleep 1
           done
 
