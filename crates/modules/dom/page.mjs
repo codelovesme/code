@@ -127,7 +127,17 @@
       });
       el.addEventListener("pointermove", (e) => {
         if (!drag || e.pointerId !== drag.id || drag.moved) return;
-        if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) < DRAG_PX) return;
+        const dx = Math.abs(e.clientX - drag.x);
+        const dy = Math.abs(e.clientY - drag.y);
+        if (dx + dy < DRAG_PX) return;
+        // A list is reordered up and down. A press that sets off sideways is
+        // something else — a swipe on the child, most likely — and taking the
+        // pointer here would be the end of it, since a captured pointer's
+        // release never reaches the child. So it is left alone.
+        if (dx > dy) {
+          drag = null;
+          return;
+        }
         drag.moved = true;
         drag.child.setAttribute("data-code-dragging", "");
         // The pointer stays this container's until it is released, so a

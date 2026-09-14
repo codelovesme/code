@@ -152,6 +152,20 @@ list.send("pointercancel", {{}});
 list.send("pointerup", {{ clientX: 50, clientY: 110 }});
 check("a cancelled drag still landed", fired, []);
 check("a cancelled drag left the row marked", "data-code-dragging" in a.attrs, false);
+
+// A press that sets off sideways is a swipe on the row, not a carry: the
+// list must not take the pointer, or the row never sees the release. Sent
+// to both, the way a browser bubbles a pointer event.
+fired.length = 0;
+list.send("pointerdown", {{ target: a, clientX: 50, clientY: 20 }});
+a.send("pointerdown", {{ clientX: 50, clientY: 20, timeStamp: 12000 }});
+list.send("pointermove", {{ clientX: 30, clientY: 22 }});
+check("a sideways start was taken as a carry", "data-code-dragging" in a.attrs, false);
+check("a sideways start took the pointer", list.captured, 1);
+list.send("pointermove", {{ clientX: -20, clientY: 24 }});
+list.send("pointerup", {{ clientX: -20, clientY: 24, timeStamp: 12100 }});
+a.send("pointerup", {{ clientX: -20, clientY: 24, timeStamp: 12100 }});
+check("a swipe on a carried list's row did not reach the row", fired, [{{ _class: "Gone", id: 1, value: "a" }}]);
 "#
         ),
     )
