@@ -17,6 +17,8 @@
   const SINK = "data-code-media";
 
   let recorder = null;      // MediaRecorder, while recording
+  let opening = false;      // the microphone asked for and not yet given
+  let stopEarly = false;    // Stop came while it was still being asked for
   let chunks = [];          // what it has handed over so far
   let startedAt = 0;
   let micStream = null;
@@ -136,7 +138,7 @@
     (particle) => {
       switch (particle._class) {
         case "Record": {
-          if (recorder) return ok("RecordResult", false);
+          if (recorder || opening) return ok("RecordResult", false);
           const media = devices();
           if (!media) {
             fire({
@@ -146,15 +148,37 @@
             });
             return ok("RecordResult", false);
           }
+          opening = true;
+          stopEarly = false;
           media
             .getUserMedia({ audio: true })
             .then((stream) => {
+              opening = false;
+              // Stopped before the microphone was given — a press and a
+              // release quicker than a permission prompt. Nothing was
+              // recorded, and the answer says so rather than never coming;
+              // and the microphone is let go, not left on.
+              if (stopEarly) {
+                stopEarly = false;
+                letGo(stream);
+                fire({ _class: "Recorded", audio_base64: "", format: "none", ms: 0 });
+                return;
+              }
               micStream = stream;
               chunks = [];
               startedAt = Date.now();
               recorder = new globalThis.MediaRecorder(stream);
               recorder.ondataavailable = (e) => {
                 if (e.data && e.data.size) chunks.push(e.data);
+              };
+              // A recorder that fails mid-way says so through here and then
+              // stops; `onstop` still runs, with whatever was handed over.
+              recorder.onerror = (e) => {
+                fire({
+                  _class: "Unavailable",
+                  device: "microphone",
+                  reason: `the recording failed: ${e?.error?.message ?? e?.error ?? "unknown"}`,
+                });
               };
               recorder.onstop = async () => {
                 const type = recorder?.mimeType || "audio/webm";
@@ -183,15 +207,30 @@
               };
               recorder.start();
             })
-            .catch((e) => refused("microphone", e));
+            .catch((e) => {
+              opening = false;
+              stopEarly = false;
+              refused("microphone", e);
+            });
           return ok("RecordResult");
         }
 
         case "StopRecording": {
+          // Asked for and not yet given: the stop is kept and honoured the
+          // moment the microphone arrives. `ok` — a `Recorded` will follow.
+          if (opening) {
+            stopEarly = true;
+            return ok("StopResult");
+          }
           if (!recorder) return ok("StopResult", false);
           // `onstop` above is what fires `Recorded`; stopping is all this
-          // has to do, and doing it twice is not an error.
-          recorder.stop();
+          // has to do. A recorder already inactive throws on `stop`, and
+          // that is not an error worth ending a handler over.
+          try {
+            recorder.stop();
+          } catch {
+            // Already stopped; `onstop` has fired or is about to.
+          }
           return ok("StopResult");
         }
 
