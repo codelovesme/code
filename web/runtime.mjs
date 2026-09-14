@@ -77,6 +77,7 @@ export function createHost({
   const dec = new TextDecoder();
   const enc = new TextEncoder();
   let memory;
+  let exports = null;
   let fire = () => {};
   let ask = () => null;
 
@@ -90,6 +91,22 @@ export function createHost({
     const n = Math.min(b.length, cap);
     new Uint8Array(memory.buffer).set(b.subarray(0, n), ptr);
     return n;
+  };
+
+  /// Writes an event into the runtime's buffer, asking for the room first,
+  /// and says where it landed and how much: the buffer grows to fit and may
+  /// move when it does. A runtime built before it could grow is written the
+  /// old way, into what it has — a guest runs on its host's copy of this
+  /// file, and the two need not be the same age.
+  const writeEvent = (e, text) => {
+    const b = enc.encode(text);
+    const at = e.code_event_text_reserve
+      ? e.code_event_text_reserve(BigInt(b.length))
+      : e.code_event_text();
+    const cap = Number(e.code_event_text_capacity());
+    const n = Math.min(b.length, cap);
+    new Uint8Array(memory.buffer).set(b.subarray(0, n), at);
+    return { at, n };
   };
 
   const env = {
@@ -166,7 +183,17 @@ export function createHost({
     // to say to this class. The module reads a negative length as that, and
     // hands the program null.
     if (result === null || result === undefined) return -1n;
-    return BigInt(writeInto(JSON.stringify(result), outPtr, Number(cap) - 1));
+    const text = JSON.stringify(result);
+    // A module built with a buffer of its own says how big it is. One that
+    // left the buffer to the runtime passes none, and the room is reserved
+    // here for exactly what the answer needs — so an answer is never cut.
+    if (Number(cap) > 0) return BigInt(writeInto(text, outPtr, Number(cap) - 1));
+    const b = enc.encode(text);
+    const at = exports.code_web_answer_reserve(BigInt(b.length + 1));
+    const room = Number(exports.code_web_answer_capacity());
+    if (b.length + 1 > room) return -1n;
+    new Uint8Array(memory.buffer).set(b, at);
+    return BigInt(b.length);
   };
 
   return {
@@ -186,16 +213,14 @@ export function createHost({
     /// would reach nothing.
     start(instance) {
       const e = instance.exports;
+      exports = e;
       memory = e.memory;
       currentInstance = e.code_web_instance ?? (() => 0);
 
-      // The particle goes into a buffer the runtime owns, as JSON, and it
-      // says how much room there is.
-      const at = e.code_event_text();
-      const cap = Number(e.code_event_text_capacity());
-
+      // The particle goes into a buffer the runtime owns, as JSON — one
+      // that grows to fit, so a recording arrives whole.
       fire = (particle) => {
-        const n = writeInto(JSON.stringify(particle), at, cap);
+        const { n } = writeEvent(e, JSON.stringify(particle));
         e.code_event_fire(BigInt(n));
       };
 
@@ -204,7 +229,7 @@ export function createHost({
       // answer: it is what lets a page put the program in the middle of
       // something. Null when nothing answered.
       ask = (particle) => {
-        const n = writeInto(JSON.stringify(particle), at, cap);
+        const { at, n } = writeEvent(e, JSON.stringify(particle));
         const back = Number(e.code_event_ask(BigInt(n)));
         return back === 0 ? null : JSON.parse(str(at, back));
       };

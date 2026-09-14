@@ -1843,16 +1843,45 @@ void code_set_program_dispatch(void (*fn)(CodeValue *out, const CodeValue *parti
  * One buffer, refilled per event, because events are handled one at a time —
  * `code_event_fire` has returned before the next can be sent.
  *
+ * It grows to what an event needs and never shrinks. A fixed 64 KB was
+ * enough for a click and not for a recording: a page that wrote more than
+ * fit was cut off mid-JSON, the reader refused it, and the program heard
+ * nothing — a microphone's answer lost on the doorstep, with nothing to say
+ * so. So a host asks for the room first (`code_event_text_reserve`), and the
+ * buffer may move when it grows, which is why the host takes the pointer
+ * back from that call each time rather than holding one.
+ *
  * Not the inbound queue (`code_module_set_inbound`), on purpose. That is for
  * a module speaking on its own initiative into a program that is running a
  * loop. This is the host calling *in*, already inside a call. */
 
-#define CODE_EVENT_CAP 65536
-static char code_event_buf[CODE_EVENT_CAP + 1];
+#define CODE_EVENT_MIN 65536
+static char *code_event_buf = NULL;
+static long long code_event_cap = 0;
 
-char *code_event_text(void) { return code_event_buf; }
+/* Room for `n` bytes, and the buffer's address — which may have changed.
+ * A host that cannot get the room it asked for is told through the
+ * capacity, which is why it reads that after reserving. */
+char *code_event_text_reserve(long long n) {
+    if (n < CODE_EVENT_MIN) {
+        n = CODE_EVENT_MIN;
+    }
+    if (n > code_event_cap) {
+        char *grown = realloc(code_event_buf, (size_t)n + 1);
+        if (grown) {
+            code_event_buf = grown;
+            code_event_cap = n;
+        }
+    }
+    return code_event_buf;
+}
 
-long long code_event_text_capacity(void) { return CODE_EVENT_CAP; }
+char *code_event_text(void) { return code_event_text_reserve(0); }
+
+long long code_event_text_capacity(void) {
+    code_event_text_reserve(0);
+    return code_event_cap;
+}
 
 /* ---- A JSON reader, for that one job -------------------------------------
  *
@@ -2227,8 +2256,11 @@ static int code_event_read(long long len, CodeValue *out) {
     if (len <= 0) {
         return 0;
     }
-    if (len > CODE_EVENT_CAP) {
-        len = CODE_EVENT_CAP;
+    if (!code_event_buf) {
+        return 0;
+    }
+    if (len > code_event_cap) {
+        len = code_event_cap;
     }
     code_event_buf[len] = 0;
 
@@ -2296,7 +2328,7 @@ long long code_event_ask(long long len) {
     }
     CodeValue answer = {0};
     code_program_dispatch(&answer, &particle);
-    long long written = code_json_write(&answer, code_event_buf, CODE_EVENT_CAP);
+    long long written = code_json_write(&answer, code_event_buf, code_event_cap);
     code_release(&answer);
     code_release(&particle);
     return written > 0 ? written : 0;
@@ -2343,6 +2375,72 @@ long long code_json_write(const CodeValue *v, char *out, long long cap) {
     code_release(&text);
     return len;
 }
+
+/* ---- The two buffers a browser module asks its page through -------------
+ *
+ * A browser module is `no_std` and brings no allocator, so its half used to
+ * carry two fixed arrays of its own — and a `Send` with a recording inside
+ * was bigger than either, and answered null without a word. The runtime has
+ * an allocator, so it keeps the buffers now and grows them: the module asks
+ * for the question to be written (`code_web_asked_write`), the page asks
+ * for room to write the answer (`code_web_answer_reserve`), and neither
+ * ever shrinks. One question at a time, as before — a half answers before
+ * the next call can start. */
+
+static char *code_web_grow(char **buf, long long *cap, long long n) {
+    if (n < CODE_EVENT_MIN) {
+        n = CODE_EVENT_MIN;
+    }
+    if (n > *cap) {
+        char *grown = realloc(*buf, (size_t)n + 1);
+        if (grown) {
+            *buf = grown;
+            *cap = n;
+        }
+    }
+    return *buf;
+}
+
+static char *code_web_asked_buf = NULL;
+static long long code_web_asked_cap = 0;
+static char *code_web_answer_buf = NULL;
+static long long code_web_answer_cap = 0;
+
+/* Writes `v` as JSON into the question buffer and answers its length, or a
+ * negative number when it could not. */
+long long code_web_asked_write(const CodeValue *v) {
+    CodeValue text = {0};
+    code_to_text(&text, v);
+    if (text.tag != CODE_STR || !text.str) {
+        code_release(&text);
+        return -1;
+    }
+    long long len = (long long)strlen(text.str);
+    char *buf = code_web_grow(&code_web_asked_buf, &code_web_asked_cap, len);
+    if (!buf || len > code_web_asked_cap) {
+        code_release(&text);
+        return -1;
+    }
+    memcpy(buf, text.str, (size_t)len + 1);
+    code_release(&text);
+    return len;
+}
+
+char *code_web_asked_text(void) { return code_web_asked_buf; }
+
+/* Room for an answer of `n` bytes, and where to write it — which may have
+ * moved. The page reads `code_web_answer_capacity` after, in case the room
+ * could not be had. */
+char *code_web_answer_reserve(long long n) {
+    return code_web_grow(&code_web_answer_buf, &code_web_answer_cap, n);
+}
+
+long long code_web_answer_capacity(void) {
+    code_web_grow(&code_web_answer_buf, &code_web_answer_cap, 0);
+    return code_web_answer_cap;
+}
+
+char *code_web_answer_text(void) { return code_web_answer_buf; }
 
 /* Reads `len` bytes of JSON into `out`. Non-zero when it was JSON, zero when
  * it was not — and then `out` is untouched, because half a value is worse

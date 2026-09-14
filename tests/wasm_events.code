@@ -41,3 +41,13 @@ d — ç"
         eighth = 0.125
         seen = "$eighth"
     return Fine {}
+
+| A recording: far more than a click, and it has to arrive whole. The page
+| fires one with a `size` that says how long the text is, and the handler
+| checks it against what actually came.
+Recorded { audio, size } =>
+    emit Length { value = audio } to core get n
+    if n.value = size
+        half = 0.5
+        seen = "$half"
+    return Fine {}

@@ -317,10 +317,10 @@ fn a_page_fires_events_back_into_the_program() {
              memory = instance.exports.memory;\n\
              if (instance.exports.main() !== 0) throw new Error('main returned an error');\n\
              const e = instance.exports;\n\
-             const at = e.code_event_text(), cap = Number(e.code_event_text_capacity());\n\
              const send = (text) => {{\n\
                const b = enc.encode(text);\n\
-               if (b.length > cap) throw new Error('event does not fit');\n\
+               const at = e.code_event_text_reserve(BigInt(b.length));\n\
+               if (b.length > Number(e.code_event_text_capacity())) throw new Error('event does not fit');\n\
                new Uint8Array(memory.buffer).set(b, at);\n\
                const before = answered;\n\
                e.code_event_fire(BigInt(b.length));\n\
@@ -342,7 +342,17 @@ fn a_page_fires_events_back_into_the_program() {
              check('a class nobody handles was not silent', fire({{ _class: 'Nobody' }}), 0);\n\
              check('text that is not JSON was not refused', send('not json at all'), 0);\n\
              check('a value that is not an object was not refused', send('[1, 2]'), 0);\n\
-             check('an object with no _class was not refused', send('{{\"id\": 7}}'), 0);\n"
+             check('an object with no _class was not refused', send('{{\"id\": 7}}'), 0);\n\
+             // A recording. The buffer used to be a fixed 64 KB, and a page that\n\
+             // wrote more was cut off mid-JSON and refused — the program simply\n\
+             // never heard it. It grows now, and moves when it does.\n\
+             const big = 'a'.repeat(300 * 1024);\n\
+             check('a 300 KB event did not arrive whole',\n\
+               fire({{ _class: 'Recorded', audio: big, size: big.length }}), 1);\n\
+             check('a small event after a large one did not arrive',\n\
+               fire({{ _class: 'Removed', id: 7, confirmed: true }}), 1);\n\
+             check('a larger event still did not arrive whole',\n\
+               fire({{ _class: 'Recorded', audio: big + big + big, size: big.length * 3 }}), 1);\n"
         ),
     )
     .expect("write event probe");
@@ -391,10 +401,10 @@ fn a_host_can_ask_the_program_and_be_answered() {
              memory = instance.exports.memory;\n\
              if (instance.exports.main() !== 0) throw new Error('main returned an error');\n\
              const e = instance.exports;\n\
-             const at = e.code_event_text(), cap = Number(e.code_event_text_capacity());\n\
              const ask = (particle) => {{\n\
                const b = enc.encode(JSON.stringify(particle));\n\
-               if (b.length > cap) throw new Error('question does not fit');\n\
+               const at = e.code_event_text_reserve(BigInt(b.length));\n\
+               if (b.length > Number(e.code_event_text_capacity())) throw new Error('question does not fit');\n\
                new Uint8Array(memory.buffer).set(b, at);\n\
                const back = Number(e.code_event_ask(BigInt(b.length)));\n\
                return back === 0 ? null : JSON.parse(dec.decode(new Uint8Array(memory.buffer, at, back)));\n\

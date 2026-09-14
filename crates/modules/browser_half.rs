@@ -58,16 +58,15 @@ extern "C" {
     ) -> i64;
     /// The runtime's own, so a particle is spelled on the wire exactly as the
     /// language spells it — a number included.
-    fn code_json_write(v: *const CodeValue, out: *mut u8, cap: i64) -> i64;
     fn code_json_read(text: *const u8, len: i64, out: *mut CodeValue) -> i32;
+    /// The two buffers, kept by the runtime because `no_std` means no
+    /// allocator here, and a fixed array of one's own was what a `Send`
+    /// with a recording inside did not fit — and answered null for it. The
+    /// runtime grows them to what is asked and never shrinks them.
+    fn code_web_asked_write(v: *const CodeValue) -> i64;
+    fn code_web_asked_text() -> *const u8;
+    fn code_web_answer_text() -> *const u8;
 }
-
-/// One particle in each direction. Fixed and static because `no_std` means
-/// bringing an allocator of one's own, and a page is asked one thing at a
-/// time — `code_web_ask` has returned before the next call can start.
-const CAP: usize = 256 * 1024;
-static mut ASKED: [u8; CAP] = [0; CAP];
-static mut ANSWERED: [u8; CAP] = [0; CAP];
 
 /// Writes null into `out` — what a module answers for a class it does not
 /// handle, which is not an error: the particle may have been meant for
@@ -103,21 +102,23 @@ pub unsafe fn null(out: *mut CodeValue) {
 /// Both pointers must be valid and laid out per `code_abi.h` — the host
 /// guarantees this on every dispatch.
 pub unsafe fn ask_the_page(name: &str, out: *mut CodeValue, particle: *const CodeValue) {
-    let asked = &mut *core::ptr::addr_of_mut!(ASKED);
-    let written = code_json_write(particle, asked.as_mut_ptr(), CAP as i64);
+    let written = code_web_asked_write(particle);
     if written <= 0 {
         null(out);
         return;
     }
 
-    let answered = &mut *core::ptr::addr_of_mut!(ANSWERED);
+    // No answer buffer and no capacity: the page reserves the room itself,
+    // from the runtime, once it knows how long the answer is. A page older
+    // than that convention was given a buffer here; it is told there is
+    // none and answers nothing, which is the honest failure.
     let read = code_web_ask(
         name.as_ptr(),
         name.len() as i64,
-        asked.as_ptr(),
+        code_web_asked_text(),
         written,
-        answered.as_mut_ptr(),
-        CAP as i64,
+        core::ptr::null_mut(),
+        0,
     );
     if read <= 0 {
         null(out);
@@ -125,7 +126,7 @@ pub unsafe fn ask_the_page(name: &str, out: *mut CodeValue, particle: *const Cod
     }
 
     null(out);
-    if code_json_read(answered.as_ptr(), read, out) == 0 {
+    if code_json_read(code_web_answer_text(), read, out) == 0 {
         null(out);
     }
 }

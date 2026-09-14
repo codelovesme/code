@@ -565,6 +565,9 @@ mod compile {
                 .arg("--export=code_event_ask")
                 .arg("--export=code_event_text")
                 .arg("--export=code_event_text_capacity")
+                .arg("--export=code_event_text_reserve")
+                .arg("--export=code_web_answer_reserve")
+                .arg("--export=code_web_answer_capacity")
                 .arg("--export-memory")
                 .arg("--allow-undefined")
                 // A wasm module is something a browser downloads, and the
