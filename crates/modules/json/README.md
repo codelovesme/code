@@ -39,6 +39,13 @@ Stringify { value, pretty? }  → StringifyResult { value }
 string. Both wrap their payload the way every handler in this repo does —
 `emit … get r`, then `r.value`.
 
+## In a browser
+
+Built for wasm the module is the same two handlers with the page's `JSON`
+behind them, under the same rules below — so a page can keep a value as text
+with `storage` and read it back. Its half is `page.mjs`, which `code build
+--target wasm` writes into the page's `host.mjs`.
+
 ## `_class` is dropped, nothing else is
 
 Every particle and handler result carries a `_class` field the language

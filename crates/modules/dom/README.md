@@ -82,6 +82,35 @@ is data like every other field: this module serialises it and forgets it.
 There is no table of live listeners to grow, go stale or be swept, and a page
 redrawn a thousand times costs one render.
 
+## A gesture is a particle too
+
+Four names in `on` are read by the page rather than forwarded as events, so
+a program is not woken for every point a finger passes:
+
+```code
+{ tag = "li", on = { swipeleft = { _class = "Remove", id = 7 }, doubletap = "Cycle" } }
+{ tag = "ul", on = { reorder = "Move" }, children = [...] }
+```
+
+- **`swipeleft` / `swiperight`** — a press and a release at least 40px along
+  the one axis, within 800ms, and at most half as far along the other. Sent
+  like any event, with what the element holds as `value`.
+- **`doubletap`** — two releases within 350ms, neither having travelled more
+  than 10px. Sent with `value` the same way. A `click` on the same node still
+  fires on each tap; give a node one or the other.
+- **`reorder`** — on a *container*: a child pressed, carried 8px or more, and
+  let go among its siblings. Sent with **`from`** and **`to`**, the child's
+  position among the children before and after — and nothing is moved on the
+  page. The program holds the list, so the program reorders it and draws.
+  While it is carried the child wears `data-code-dragging`, for the program's
+  own styles to pick up.
+
+A gesture is read from pointer events, so it needs the browser not to take
+the pointer for a scroll first: a list swiped across says `"touch-action" =
+"pan-y"` in its styles, and one whose rows are carried says `"none"`. Nothing
+is held between renders here either — what a gesture remembers lives on the
+node and goes when the node does.
+
 ## Appearance travels with it, but not on the nodes
 
 A node says what it *is*:

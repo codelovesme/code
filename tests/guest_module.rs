@@ -518,6 +518,113 @@ check("the page's own address did not come back whole",
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// `json` in a browser: text that `storage` kept comes back as a value.
+///
+/// The module's machine half is `serde_json`; the page's is `JSON`. What is
+/// asserted here is the contract they share — `_class` dropped on the way
+/// out and nothing else, a whole number written whole, text that is not JSON
+/// answered as an `Exception` — and the round trip through `storage` that a
+/// page needed this half for: keep a value as text, read it back, use it.
+#[test]
+fn json_reads_back_what_storage_kept() {
+    if !tool_exists("node") || !wasm_target_installed() {
+        eprintln!("skipped: needs node and wasm32-unknown-unknown");
+        return;
+    }
+    let dir = temp_dir("json-page");
+    for module in ["json", "storage"] {
+        archive(&dir, module);
+    }
+    let src = dir.join("keep.code");
+    fs::write(
+        &src,
+        r#"link "json.a" as json
+link "storage.a" as store
+
+Keep { value } =>
+    emit Stringify { value = value } to json get text
+    emit Set { key = "kept", value = text.value } to store get saved
+    return Kept { ok = saved.ok, text = text.value }
+
+Recall {} =>
+    emit Get { key = "kept" } to store get kept
+    emit Parse { text = kept.value } to json get back
+    return back
+
+Pretty { value } =>
+    emit Stringify { value = value, pretty = true } to json get text
+    return text
+
+Read { text } =>
+    emit Parse { text = text } to json get back
+    return back
+"#,
+    )
+    .expect("write the fixture");
+    code::compile_file(&src, code::BuildTarget::Wasm, &dir.join("keep.wasm"), false)
+        .expect("build keep.code for wasm");
+
+    let probe = dir.join("probe.mjs");
+    fs::write(
+        &probe,
+        r#"import { readFileSync } from "node:fs";
+import { createHost } from "./host.mjs";
+
+const check = (what, got, want) => {
+  if (JSON.stringify(got) !== JSON.stringify(want)) {
+    throw new Error(`${what}: got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+  }
+};
+
+// A store of the page's own, since node has none.
+const memory = new Map();
+globalThis.localStorage = {
+  getItem: (k) => (memory.has(k) ? memory.get(k) : null),
+  setItem: (k, v) => memory.set(k, String(v)),
+  removeItem: (k) => memory.delete(k),
+};
+
+const host = createHost({ log: () => {} });
+const { instance } = await WebAssembly.instantiate(readFileSync("./keep.wasm"), { env: host.env });
+if (host.start(instance) !== 0) throw new Error("did not start");
+
+// Out: `_class` dropped at every depth, nothing else touched, 2.0 written as 2.
+const kept = host.ask({ _class: "Keep", value: { _class: "Delta", added: [{ _class: "Task", id: "t1", _id: "row", n: 2.0 }], removed: [] } });
+check("the text kept is not the machine half's", kept.text, '{"added":[{"id":"t1","_id":"row","n":2}],"removed":[]}');
+check("storage refused the text", kept.ok, true);
+
+// Back: the value the program had, less the plumbing.
+check("the value did not come back whole",
+  host.ask({ _class: "Recall" }),
+  { _class: "ParseResult", value: { added: [{ id: "t1", _id: "row", n: 2 }], removed: [] } });
+
+check("pretty is not two spaces",
+  host.ask({ _class: "Pretty", value: { a: [1] } }).value,
+  ['{', '  "a": [', '    1', '  ]', '}'].join("\n"));
+
+// Text that is not JSON is an Exception, named, not a value or a crash.
+const bad = host.ask({ _class: "Read", text: "{not json" });
+check("bad text was not an Exception", [bad._class, bad.source], ["Exception", "json"]);
+const missing = host.ask({ _class: "Read", text: null });
+check("a missing text was not an Exception", [missing._class, missing.source], ["Exception", "json"]);
+"#,
+    )
+    .expect("write the probe");
+
+    let output = Command::new("node")
+        .arg("probe.mjs")
+        .current_dir(&dir)
+        .output()
+        .expect("run the probe under node");
+    assert!(
+        output.status.success(),
+        "json's page half did not hold: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// A network reply fires a handler which reads a timer's synchronous answer,
 /// then continues doing work. This isolates auth-web's reported symptom 4
 /// using both real module archives and their generated JavaScript halves.

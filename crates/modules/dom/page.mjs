@@ -22,6 +22,135 @@
     return null;
   }
 
+  // The particle a gesture on `el` means, with what the element holds — the
+  // same rule an ordinary event follows.
+  const meant = (el, particle) => {
+    const value = eventValue(el);
+    return value === null || "value" in particle ? particle : { ...particle, value };
+  };
+
+  // Names in `on` the page reads as gestures rather than forwarding as
+  // events. Nothing is held between renders here either: what a gesture
+  // needs to remember lives on the node, and goes when the node does.
+  const GESTURES = new Set(["swipeleft", "swiperight", "doubletap", "reorder"]);
+
+  // How far a finger goes before it is a swipe and not a tap, how long it
+  // may take, how much slower the other axis must be, and how close two
+  // taps are before they are one double.
+  const SWIPE_PX = 40;
+  const SWIPE_MS = 800;
+  const TAP_PX = 10;
+  const DOUBLE_MS = 350;
+  const DRAG_PX = 8;
+
+  function gesture(el, name, particle) {
+    if (name === "swipeleft" || name === "swiperight") {
+      // A press, and a release far enough along the one axis, soon enough.
+      // `pointercancel` is the browser taking the pointer for a scroll — a
+      // list that wants a swipe across it says `touch-action: pan-y`.
+      let start = null;
+      el.addEventListener("pointerdown", (e) => {
+        start = { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId };
+      });
+      el.addEventListener("pointercancel", () => {
+        start = null;
+      });
+      el.addEventListener("pointerup", (e) => {
+        if (!start || e.pointerId !== start.id) return;
+        const dx = e.clientX - start.x;
+        const dy = e.clientY - start.y;
+        const dt = e.timeStamp - start.t;
+        start = null;
+        if (dt > SWIPE_MS || Math.abs(dx) < SWIPE_PX || Math.abs(dx) < Math.abs(dy) * 2) return;
+        if ((name === "swipeleft") === (dx < 0)) fire(meant(el, particle));
+      });
+      return;
+    }
+    if (name === "doubletap") {
+      // Two releases close together, neither having travelled: a swipe that
+      // ends where a tap was is not half of a double.
+      let last = null;
+      let down = null;
+      el.addEventListener("pointerdown", (e) => {
+        down = { x: e.clientX, y: e.clientY };
+      });
+      el.addEventListener("pointerup", (e) => {
+        const from = down;
+        down = null;
+        if (!from || Math.abs(e.clientX - from.x) > TAP_PX || Math.abs(e.clientY - from.y) > TAP_PX) {
+          last = null;
+          return;
+        }
+        if (last !== null && e.timeStamp - last < DOUBLE_MS) {
+          last = null;
+          fire(meant(el, particle));
+        } else {
+          last = e.timeStamp;
+        }
+      });
+      return;
+    }
+    if (name === "reorder") {
+      // On a container: a child pressed and carried among its siblings. What
+      // is sent is where it was and where it was let go — `from` and `to`,
+      // positions among the children — and nothing is moved here: the
+      // application holds the list, so the application reorders it and
+      // draws. While it is carried the child wears `data-code-dragging`, for
+      // the application's own styles to pick up.
+      let drag = null;
+      const childAt = (target) => {
+        let n = target;
+        while (n && n.parentNode !== el) n = n.parentNode;
+        return n && n.nodeType === 1 ? n : null;
+      };
+      const indexOf = (child) => Array.prototype.indexOf.call(el.children, child);
+      // Where the child would land: how many of the *others* have their
+      // middle above the pointer. That is its index once it is put back.
+      const slotAt = (child, y) => {
+        let slot = 0;
+        for (const other of el.children) {
+          if (other === child) continue;
+          const r = other.getBoundingClientRect();
+          if (y > r.top + r.height / 2) slot += 1;
+        }
+        return slot;
+      };
+      const letGo = () => {
+        if (drag && drag.child.removeAttribute) drag.child.removeAttribute("data-code-dragging");
+        drag = null;
+      };
+      el.addEventListener("pointerdown", (e) => {
+        const child = childAt(e.target);
+        if (!child) return;
+        drag = { child, from: indexOf(child), id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+      });
+      el.addEventListener("pointermove", (e) => {
+        if (!drag || e.pointerId !== drag.id || drag.moved) return;
+        if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) < DRAG_PX) return;
+        drag.moved = true;
+        drag.child.setAttribute("data-code-dragging", "");
+        // The pointer stays this container's until it is released, so a
+        // finger that leaves the list still ends the drag here.
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+          // A page without pointer capture still gets the drag when the
+          // pointer is let go over the list.
+        }
+      });
+      el.addEventListener("pointercancel", letGo);
+      el.addEventListener("pointerup", (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        const carried = drag;
+        letGo();
+        if (!carried.moved) return;
+        const to = slotAt(carried.child, e.clientY);
+        if (to === carried.from) return;
+        fire({ ...particle, from: carried.from, to });
+      });
+    }
+  }
+
   function node(spec) {
     if (typeof spec === "string") return doc.createTextNode(spec);
     if (spec === null || typeof spec !== "object" || Array.isArray(spec)) {
@@ -48,6 +177,12 @@
     for (const [event, wanted] of Object.entries(spec.on || {})) {
       const particle = asParticle(wanted);
       if (!particle) continue;
+      // A gesture is several events read as one; the page reads them, since
+      // a program should not be woken for every point a finger passes.
+      if (GESTURES.has(event)) {
+        gesture(el, event, particle);
+        continue;
+      }
       el.addEventListener(event, (e) => {
         const value = eventValue(e.target || el);
         // What the element holds, added only when the application did not

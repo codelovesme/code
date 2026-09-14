@@ -208,6 +208,7 @@ mod compile {
         ),
         ("dom", include_str!("../crates/modules/dom/page.mjs")),
         ("guest", include_str!("../crates/modules/guest/page.mjs")),
+        ("json", include_str!("../crates/modules/json/page.mjs")),
         (
             "net_client",
             include_str!("../crates/modules/net_client/page.mjs"),

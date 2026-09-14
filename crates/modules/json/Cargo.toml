@@ -16,6 +16,14 @@ repository = "https://github.com/codelovesme/code"
 crate-type = ["cdylib"]
 
 [dependencies]
+
+# On wasm the module is linked *into* the program, so it brings no runtime of
+# its own — the program already has exactly one — and no serde: the page has
+# `JSON`.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+code-native = { path = "../../code-native", default-features = false, features = ["static-module"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 code-native = { path = "../../code-native" }
 # `preserve_order` so an object's fields come out in the order the program
 # wrote them — the same thing string interpolation does. Without it serde_json

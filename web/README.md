@@ -64,7 +64,7 @@ browser refusing storage. Everything is caught at the door and becomes an
 and what the same module's machine half returns.
 
 The ones with a half here are `console`, `dom`, `storage`, `router`, `timer`,
-`net_client` and `guest`.
+`net_client`, `guest`, `media` and `json`.
 
 **A module from outside this repository cannot bring its own half yet**, and
 that is the honest limit of this design. The halves are embedded in the

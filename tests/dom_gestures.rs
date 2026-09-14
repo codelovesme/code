@@ -1,0 +1,170 @@
+//! `dom`'s page half reads gestures — a swipe, a double tap, a child carried
+//! among its siblings — and sends the particle the tree named for them, once.
+//!
+//! Driven under node against the half itself with a stand-in element, since
+//! what is under test is the reading of pointer events and nothing else: no
+//! browser, no wasm, no layout beyond the rectangles the test writes.
+
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+
+fn tool_exists(name: &str) -> bool {
+    Command::new(name)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[test]
+fn a_page_reads_gestures_and_sends_the_particle_once() {
+    if !tool_exists("node") {
+        eprintln!("skipped: needs node");
+        return;
+    }
+    let half = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/modules/dom/page.mjs");
+    let dir = std::env::temp_dir().join(format!("code-dom-gestures-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("create the probe dir");
+    let probe = dir.join("probe.mjs");
+    fs::write(
+        &probe,
+        format!(
+            r#"import {{ readFileSync }} from "node:fs";
+const half = new Function("return (" + readFileSync({half:?}, "utf8") + ")")();
+
+// An element that remembers its listeners and where the test says it is.
+class El {{
+  constructor(tag) {{
+    this.tagName = tag.toUpperCase(); this.nodeType = 1; this.children = []; this.parentNode = null;
+    this.attrs = {{}}; this.listeners = {{}}; this.rect = {{ top: 0, height: 0 }}; this.captured = null;
+  }}
+  addEventListener(name, fn) {{ (this.listeners[name] ||= []).push(fn); }}
+  setAttribute(k, v) {{ this.attrs[k] = String(v); }}
+  removeAttribute(k) {{ delete this.attrs[k]; }}
+  hasAttribute(k) {{ return k in this.attrs; }}
+  getAttribute(k) {{ return this.attrs[k]; }}
+  appendChild(c) {{ c.parentNode = this; this.children.push(c); return c; }}
+  replaceChildren(c) {{ this.children = []; this.appendChild(c); }}
+  getBoundingClientRect() {{ return this.rect; }}
+  setPointerCapture(id) {{ this.captured = id; }}
+  // Straight to this element's listeners: bubbling is the browser's, and
+  // the half listens on the node the tree named.
+  send(name, e) {{ for (const fn of this.listeners[name] || []) fn({{ target: this, pointerId: 1, timeStamp: 0, clientX: 0, clientY: 0, ...e }}); }}
+}}
+const body = new El("body");
+const doc = {{
+  createElement: (t) => new El(t),
+  createTextNode: (s) => ({{ nodeType: 3, text: String(s) }}),
+  querySelector: (sel) => (sel === "body" ? body : null),
+  getElementById: () => null,
+  head: body,
+}};
+const fired = [];
+const [, dom] = half({{ doc, fire: (p) => fired.push(p) }});
+const check = (what, got, want) => {{
+  if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${{what}}: got ${{JSON.stringify(got)}}, wanted ${{JSON.stringify(want)}}`);
+}};
+
+const r = dom({{ _class: "Render", into: "body", tree: {{
+  tag: "ul", on: {{ reorder: "Move" }}, children: [
+    {{ tag: "li", attrs: {{ value: "a" }}, on: {{ swipeleft: {{ _class: "Gone", id: 1 }}, doubletap: "Cycle" }} }},
+    {{ tag: "li", attrs: {{ value: "b" }} }},
+    {{ tag: "li", attrs: {{ value: "c" }}, on: {{ swiperight: "Back" }} }},
+  ] }} }});
+check("render refused", r, {{ _class: "RenderResult", ok: true }});
+const list = body.children[0];
+const [a, b, c] = list.children;
+[a, b, c].forEach((li, i) => {{ li.rect = {{ top: i * 40, height: 40 }}; }});
+
+// A swipe left: far enough, fast enough, along the one axis — with what the
+// element holds, as any event carries.
+a.send("pointerdown", {{ clientX: 200, clientY: 20, timeStamp: 1000 }});
+a.send("pointerup", {{ clientX: 100, clientY: 25, timeStamp: 1300 }});
+check("a swipe left did not send its particle", fired, [{{ _class: "Gone", id: 1, value: "a" }}]);
+fired.length = 0;
+
+// Too slow, too short, too diagonal, the wrong way: nothing.
+a.send("pointerdown", {{ clientX: 200, clientY: 20, timeStamp: 1000 }});
+a.send("pointerup", {{ clientX: 100, clientY: 20, timeStamp: 2500 }});
+a.send("pointerdown", {{ clientX: 200, clientY: 20, timeStamp: 1000 }});
+a.send("pointerup", {{ clientX: 180, clientY: 20, timeStamp: 1100 }});
+a.send("pointerdown", {{ clientX: 200, clientY: 20, timeStamp: 1000 }});
+a.send("pointerup", {{ clientX: 100, clientY: 120, timeStamp: 1100 }});
+a.send("pointerdown", {{ clientX: 100, clientY: 20, timeStamp: 1000 }});
+a.send("pointerup", {{ clientX: 200, clientY: 20, timeStamp: 1100 }});
+check("a swipe that was not one still sent something", fired, []);
+
+// The other way, on the row that asked for it.
+c.send("pointerdown", {{ clientX: 100, clientY: 100, timeStamp: 1000 }});
+c.send("pointerup", {{ clientX: 200, clientY: 100, timeStamp: 1100 }});
+check("a swipe right did not send its particle", fired, [{{ _class: "Back", value: "c" }}]);
+fired.length = 0;
+
+// Two taps close together are one double; a third alone is nothing yet.
+a.send("pointerdown", {{ clientX: 50, clientY: 20, timeStamp: 5000 }});
+a.send("pointerup", {{ clientX: 50, clientY: 20, timeStamp: 5050 }});
+check("one tap was already a double", fired, []);
+a.send("pointerdown", {{ clientX: 52, clientY: 21, timeStamp: 5200 }});
+a.send("pointerup", {{ clientX: 52, clientY: 21, timeStamp: 5250 }});
+check("two taps were not a double", fired, [{{ _class: "Cycle", value: "a" }}]);
+fired.length = 0;
+a.send("pointerdown", {{ clientX: 50, clientY: 20, timeStamp: 5400 }});
+a.send("pointerup", {{ clientX: 50, clientY: 20, timeStamp: 5450 }});
+check("the tap after a double counted as half of the next", fired, []);
+// Far apart in time: two singles.
+a.send("pointerdown", {{ clientX: 50, clientY: 20, timeStamp: 9000 }});
+a.send("pointerup", {{ clientX: 50, clientY: 20, timeStamp: 9050 }});
+check("two taps far apart were a double", fired, []);
+
+// Carrying the first row below the third: pressed on the row, moved past
+// the threshold, let go where the others' middles are all above it.
+list.send("pointerdown", {{ target: a, clientX: 50, clientY: 20 }});
+list.send("pointermove", {{ clientX: 50, clientY: 22 }});
+check("a nudge marked the row as carried", "data-code-dragging" in a.attrs, false);
+list.send("pointermove", {{ clientX: 50, clientY: 60 }});
+check("a carried row was not marked", "data-code-dragging" in a.attrs, true);
+check("the list did not take the pointer", list.captured, 1);
+list.send("pointerup", {{ clientX: 50, clientY: 110 }});
+check("the row's landing was not sent", fired, [{{ _class: "Move", from: 0, to: 2 }}]);
+check("a row let go was still marked", "data-code-dragging" in a.attrs, false);
+fired.length = 0;
+
+// Let go between the first and the second: one place down.
+list.send("pointerdown", {{ target: a, clientX: 50, clientY: 20 }});
+list.send("pointermove", {{ clientX: 50, clientY: 50 }});
+list.send("pointerup", {{ clientX: 50, clientY: 65 }});
+check("a move of one place was not sent as one", fired, [{{ _class: "Move", from: 0, to: 1 }}]);
+fired.length = 0;
+
+// Let go where it was: nothing to say. A press with no movement: nothing.
+list.send("pointerdown", {{ target: c, clientX: 50, clientY: 100 }});
+list.send("pointermove", {{ clientX: 50, clientY: 130 }});
+list.send("pointerup", {{ clientX: 50, clientY: 100 }});
+list.send("pointerdown", {{ target: b, clientX: 50, clientY: 60 }});
+list.send("pointerup", {{ clientX: 50, clientY: 60 }});
+check("a row put back where it was still sent a move", fired, []);
+
+// The browser taking the pointer for a scroll ends the drag, cleanly.
+list.send("pointerdown", {{ target: a, clientX: 50, clientY: 20 }});
+list.send("pointermove", {{ clientX: 50, clientY: 60 }});
+list.send("pointercancel", {{}});
+list.send("pointerup", {{ clientX: 50, clientY: 110 }});
+check("a cancelled drag still landed", fired, []);
+check("a cancelled drag left the row marked", "data-code-dragging" in a.attrs, false);
+"#
+        ),
+    )
+    .expect("write the probe");
+
+    let output = Command::new("node")
+        .arg(&probe)
+        .output()
+        .expect("run the probe under node");
+    assert!(
+        output.status.success(),
+        "dom's gestures did not hold: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
