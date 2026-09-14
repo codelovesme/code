@@ -60,24 +60,32 @@
     });
   }
 
-  /// Put the live stream into every viewfinder the page is showing.
+  /// The viewfinder the application is showing, if it is showing one.
+  ///
+  /// `querySelector` and never `querySelectorAll`: hosted inside another
+  /// application, `doc` is not the page but a stand-in scoped to this
+  /// guest's own container, and it offers exactly what `dom` reaches for —
+  /// which is the singular. Reaching for more works standing alone and
+  /// fails the moment the application is hosted, which is a bad way to find
+  /// out. One viewfinder is also all a camera has to show.
+  const sink = () => doc.querySelector(`[${SINK}="camera"]`);
+
+  /// Put the live stream into it.
   ///
   /// `srcObject` is a property, not an attribute, which is exactly why this
   /// is here and not in `dom`: a tree that is data cannot carry a live
   /// object. The application says *where*, this says *what*.
   function fillSinks() {
     if (!camStream) return;
-    for (const el of doc.querySelectorAll(`[${SINK}="camera"]`)) {
-      if (el.srcObject !== camStream) {
-        el.srcObject = camStream;
-        // A viewfinder nobody asked to hear, and one that plays without
-        // being told to: an application should not have to know either.
-        el.muted = true;
-        el.playsInline = true;
-        const played = el.play?.();
-        if (played && typeof played.catch === "function") played.catch(() => {});
-      }
-    }
+    const el = sink();
+    if (!el || el.srcObject === camStream) return;
+    el.srcObject = camStream;
+    // A viewfinder nobody asked to hear, and one that plays without being
+    // told to: an application should not have to know either.
+    el.muted = true;
+    el.playsInline = true;
+    const played = el.play?.();
+    if (played && typeof played.catch === "function") played.catch(() => {});
   }
 
   /// A redraw replaces the element the stream was attached to, so attaching
@@ -274,7 +282,8 @@
 
         case "StopCamera": {
           if (!camStream) return ok("StopResult", false);
-          for (const el of doc.querySelectorAll(`[${SINK}="camera"]`)) el.srcObject = null;
+          const shown = sink();
+          if (shown) shown.srcObject = null;
           if (ownView) ownView.srcObject = null;
           letGo(camStream);
           camStream = null;
