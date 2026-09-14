@@ -70,7 +70,11 @@ application redraws whenever anything changes. Attaching once would mean a
 viewfinder that goes black on the next keystroke.
 
 `TakePhoto` draws the frame from that same element, so a photo is what the
-reader could see rather than what the camera happened to be sending.
+reader could see rather than what the camera happened to be sending. It is
+cut down before it leaves — the longer side capped at 1600 pixels, JPEG at
+0.85 — because a phone's frame is thousands of pixels across, and as base64
+that is more than a service takes in one request. `width` and `height` on
+`Captured` are the picture's as sent.
 
 ## Bytes
 

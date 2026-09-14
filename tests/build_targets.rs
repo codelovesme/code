@@ -352,7 +352,14 @@ fn a_page_fires_events_back_into_the_program() {
              check('a small event after a large one did not arrive',\n\
                fire({{ _class: 'Removed', id: 7, confirmed: true }}), 1);\n\
              check('a larger event still did not arrive whole',\n\
-               fire({{ _class: 'Recorded', audio: big + big + big, size: big.length * 3 }}), 1);\n"
+               fire({{ _class: 'Recorded', audio: big + big + big, size: big.length * 3 }}), 1);\n\
+             // And again, many times over. The heap was a bump pointer over a\n\
+             // fixed 16 MB whose free did nothing, so a page died after a\n\
+             // while — or at once, handed a few of these. It frees now.\n\
+             for (let i = 0; i < 60; i++) {{\n\
+               check('event ' + i + ' of a long run did not arrive',\n\
+                 fire({{ _class: 'Recorded', audio: big + big + big, size: big.length * 3 }}), 1);\n\
+             }}\n"
         ),
     )
     .expect("write event probe");

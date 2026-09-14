@@ -16,6 +16,11 @@
   // is the whole of what passes between them.
   const SINK = "data-code-media";
 
+  // What a photograph is cut down to before it leaves: the longer side in
+  // pixels, and the JPEG quality. 1600 at 0.85 is a few hundred KB.
+  const PHOTO_MAX_SIDE = 1600;
+  const PHOTO_QUALITY = 0.85;
+
   let recorder = null;      // MediaRecorder, while recording
   let opening = false;      // the microphone asked for and not yet given
   let stopEarly = false;    // Stop came while it was still being asked for
@@ -278,9 +283,18 @@
               });
               return;
             }
+            // A phone's frame is several thousand pixels across, and as JPEG
+            // then base64 that is more than a service takes in one request.
+            // Nothing here needs it: the photograph is kept, not printed.
+            // So the longer side is capped, the way the application this
+            // replaced did before sending — a task-sized picture, in a
+            // request-sized body.
+            const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(width, height));
+            const w = Math.max(1, Math.round(width * scale));
+            const h = Math.max(1, Math.round(height * scale));
             const canvas = doc.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
+            canvas.width = w;
+            canvas.height = h;
             const pen = canvas.getContext("2d");
             if (!pen) {
               fire({
@@ -290,7 +304,7 @@
               });
               return;
             }
-            pen.drawImage(view, 0, 0, width, height);
+            pen.drawImage(view, 0, 0, w, h);
             canvas.toBlob(async (blob) => {
             if (!blob) {
               fire({
@@ -304,8 +318,8 @@
               fire({
                 _class: "Captured",
                 image_base64: await toBase64(blob),
-                width,
-                height,
+                width: w,
+                height: h,
               });
             } catch (e) {
               fire({
@@ -314,7 +328,7 @@
                 reason: `the frame could not be read: ${e}`,
               });
             }
-            }, "image/jpeg", 0.9);
+            }, "image/jpeg", PHOTO_QUALITY);
           });
           return ok("TakePhotoResult");
         }

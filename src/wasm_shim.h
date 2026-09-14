@@ -35,25 +35,112 @@ extern double code_host_tz_offset(void);
 extern int code_host_number_exact(double value, char *out, unsigned int cap);
 extern double code_host_number_parse(const char *ptr, unsigned int len);
 
-static unsigned char code_wasm_heap[16 * 1024 * 1024];
-static size_t code_wasm_heap_used;
+/* ---- The heap ------------------------------------------------------------
+ *
+ * A freestanding build brings its own allocator, and the first one was a
+ * bump pointer over a fixed 16 MB array whose `free` did nothing. Every
+ * redraw, every answer, every keystroke took a little of it for good, and a
+ * photograph took a few megabytes in one go — so a page died of "out of
+ * wasm memory" after a while, or at once when handed something large. The
+ * runtime releases what it makes (`code_release`, and a leak check in its
+ * tests), so it only needed a `free` that meant it.
+ *
+ * This one is a first-fit free list over memory the module grows as it
+ * needs: blocks in address order, each with a header, split when a fit is
+ * larger than asked, joined with a free neighbour on either side when let
+ * go. Not fast, and not meant to be — a page's allocations are a handler's
+ * worth at a time — but nothing is lost and the heap is as big as the
+ * browser allows, which is what a photograph needs. */
 
-typedef struct {
-    size_t size;
-} CodeWasmAlloc;
+typedef struct CodeWasmBlock {
+    size_t size;                  /* payload bytes, a multiple of 8 */
+    int free;
+    struct CodeWasmBlock *prev;   /* by address */
+    struct CodeWasmBlock *next;
+} CodeWasmBlock;
+
+#define CODE_WASM_PAGE 65536u
+#define CODE_WASM_HEADER ((sizeof(CodeWasmBlock) + 7u) & ~7u)
+
+static CodeWasmBlock *code_wasm_first;   /* lowest block, or NULL */
+static CodeWasmBlock *code_wasm_last;    /* highest block, or NULL */
+static unsigned char *code_wasm_heap_end; /* one past the memory grown */
+
+/* Grows the module's memory by at least `bytes` and answers where the new
+ * region starts, or NULL when the browser refused. */
+static unsigned char *code_wasm_grow(size_t bytes) {
+    size_t pages = (bytes + CODE_WASM_PAGE - 1) / CODE_WASM_PAGE;
+    if (pages < 16) {
+        pages = 16;   /* a megabyte at a time, so a small program grows twice, not two hundred times */
+    }
+    long before = __builtin_wasm_memory_grow(0, pages);
+    if (before < 0) {
+        return NULL;
+    }
+    return (unsigned char *)((size_t)before * CODE_WASM_PAGE);
+}
+
+static void code_wasm_split(CodeWasmBlock *block, size_t size) {
+    if (block->size < size + CODE_WASM_HEADER + 8u) {
+        return;   /* the remainder could not hold a block of its own */
+    }
+    CodeWasmBlock *rest = (CodeWasmBlock *)((unsigned char *)(block + 0) + CODE_WASM_HEADER + size);
+    rest->size = block->size - size - CODE_WASM_HEADER;
+    rest->free = 1;
+    rest->prev = block;
+    rest->next = block->next;
+    if (rest->next) {
+        rest->next->prev = rest;
+    } else {
+        code_wasm_last = rest;
+    }
+    block->next = rest;
+    block->size = size;
+}
 
 static void *malloc(size_t bytes) {
-    size_t aligned = (bytes + 7u) & ~7u;
-    size_t start = (code_wasm_heap_used + 7u) & ~7u;
-    if (aligned > sizeof(code_wasm_heap) - start - sizeof(CodeWasmAlloc)) {
+    size_t size = (bytes + 7u) & ~7u;
+    if (size == 0) {
+        size = 8;
+    }
+    for (CodeWasmBlock *b = code_wasm_first; b; b = b->next) {
+        if (b->free && b->size >= size) {
+            code_wasm_split(b, size);
+            b->free = 0;
+            return (unsigned char *)b + CODE_WASM_HEADER;
+        }
+    }
+    /* Nothing fits: more memory, as one new block on the end — joined to
+     * the last block when that one is free and adjacent, so a heap grown
+     * in steps does not end in a row of pieces. */
+    unsigned char *at = code_wasm_grow(size + CODE_WASM_HEADER);
+    if (!at) {
         code_host_error("out of wasm memory", 18);
         __builtin_trap();
     }
-    CodeWasmAlloc *allocation = (CodeWasmAlloc *)(code_wasm_heap + start);
-    allocation->size = bytes;
-    void *result = allocation + 1;
-    code_wasm_heap_used = start + sizeof(CodeWasmAlloc) + aligned;
-    return result;
+    size_t got = (size_t)(__builtin_wasm_memory_size(0)) * CODE_WASM_PAGE - (size_t)at;
+    if (code_wasm_last && code_wasm_last->free && code_wasm_heap_end == at) {
+        code_wasm_last->size += got;
+        code_wasm_heap_end = at + got;
+        CodeWasmBlock *b = code_wasm_last;
+        code_wasm_split(b, size);
+        b->free = 0;
+        return (unsigned char *)b + CODE_WASM_HEADER;
+    }
+    CodeWasmBlock *b = (CodeWasmBlock *)at;
+    b->size = got - CODE_WASM_HEADER;
+    b->free = 0;
+    b->prev = code_wasm_last;
+    b->next = NULL;
+    if (code_wasm_last) {
+        code_wasm_last->next = b;
+    } else {
+        code_wasm_first = b;
+    }
+    code_wasm_last = b;
+    code_wasm_heap_end = at + got;
+    code_wasm_split(b, size);
+    return (unsigned char *)b + CODE_WASM_HEADER;
 }
 
 static void *calloc(size_t count, size_t bytes) {
@@ -66,19 +153,49 @@ static void *calloc(size_t count, size_t bytes) {
 }
 
 static void free(void *ptr) {
-    (void)ptr;
+    if (!ptr) {
+        return;
+    }
+    CodeWasmBlock *b = (CodeWasmBlock *)((unsigned char *)ptr - CODE_WASM_HEADER);
+    b->free = 1;
+    /* Join with the next block when it is free and touches this one. */
+    CodeWasmBlock *n = b->next;
+    if (n && n->free && (unsigned char *)b + CODE_WASM_HEADER + b->size == (unsigned char *)n) {
+        b->size += CODE_WASM_HEADER + n->size;
+        b->next = n->next;
+        if (b->next) {
+            b->next->prev = b;
+        } else {
+            code_wasm_last = b;
+        }
+    }
+    /* And with the one before, the same way. */
+    CodeWasmBlock *p = b->prev;
+    if (p && p->free && (unsigned char *)p + CODE_WASM_HEADER + p->size == (unsigned char *)b) {
+        p->size += CODE_WASM_HEADER + b->size;
+        p->next = b->next;
+        if (p->next) {
+            p->next->prev = p;
+        } else {
+            code_wasm_last = p;
+        }
+    }
 }
 
 static void *realloc(void *old, size_t bytes) {
-    unsigned char *result = malloc(bytes);
-    if (old) {
-        CodeWasmAlloc *allocation = ((CodeWasmAlloc *)old) - 1;
-        size_t copied = allocation->size < bytes ? allocation->size : bytes;
-        unsigned char *source = old;
-        for (size_t i = 0; i < copied; i++) {
-            result[i] = source[i];
-        }
+    if (!old) {
+        return malloc(bytes);
     }
+    CodeWasmBlock *b = (CodeWasmBlock *)((unsigned char *)old - CODE_WASM_HEADER);
+    if (b->size >= bytes) {
+        return old;
+    }
+    unsigned char *result = malloc(bytes);
+    unsigned char *source = old;
+    for (size_t i = 0; i < b->size; i++) {
+        result[i] = source[i];
+    }
+    free(old);
     return result;
 }
 
