@@ -112,6 +112,26 @@ fn the_publish_workflow_builds_every_module() {
                      such module in crates/modules/"
                 );
             }
+            // And every module that *has* a page half is in it. A browser
+            // module absent here still publishes — its `.so`, for a machine
+            // it cannot work on — so the release looks complete and the one
+            // platform the module exists for is the one missing. That is how
+            // `media` shipped in 2.6.0 with no `media-wasm32.a`: the subset
+            // check above passed, because a missing name is a subset too.
+            for name in &on_disk {
+                let half = Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("crates/modules")
+                    .join(name)
+                    .join("page.mjs");
+                if half.is_file() {
+                    assert!(
+                        matrix.contains(name),
+                        "crates/modules/{name} has a page.mjs — it is a browser module — but \
+                         publish-modules.yml's wasm32 matrix does not build it, so a release \
+                         would carry no {name}-wasm32.a and no page could link it"
+                    );
+                }
+            }
             continue;
         }
         assert_eq!(

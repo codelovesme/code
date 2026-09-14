@@ -107,7 +107,12 @@ language suite's property to prove.
 Miss one of these and it half-exists:
 
 `src/module_install.rs` FIRST_PARTY · `.github/workflows/publish-modules.yml`
-(2 build matrices + dogfood case + handlers case + `setup` alternation) ·
+(2 build matrices + dogfood case + handlers case + `setup` alternation —
+**and the `build-wasm32` matrix, if the module has a `page.mjs`**: it is a
+third list, it is easy to miss, and missing it publishes a browser module's
+`.so` and not its archive, so the release looks complete and the one platform
+the module works on is the one absent. `media` shipped that way in 2.6.0.
+`tests/first_party_modules.rs` now refuses it) ·
 `tests/run_language_tests.rs` stem list + doc comment ·
 `crates/modules/<name>/README.md` · `README.md` (2 spots) ·
 `docs/todo/community-modules.md` · `.github/workflows/ci.yml` services if it
