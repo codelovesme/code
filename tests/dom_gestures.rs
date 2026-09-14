@@ -126,7 +126,7 @@ list.send("pointermove", {{ clientX: 50, clientY: 60 }});
 check("a carried row was not marked", "data-code-dragging" in a.attrs, true);
 check("the list did not take the pointer", list.captured, 1);
 list.send("pointerup", {{ clientX: 50, clientY: 110 }});
-check("the row's landing was not sent", fired, [{{ _class: "Move", from: 0, to: 2 }}]);
+check("the row's landing was not sent", fired, [{{ _class: "Move", from: 0, at: 2 }}]);
 check("a row let go was still marked", "data-code-dragging" in a.attrs, false);
 fired.length = 0;
 
@@ -134,7 +134,7 @@ fired.length = 0;
 list.send("pointerdown", {{ target: a, clientX: 50, clientY: 20 }});
 list.send("pointermove", {{ clientX: 50, clientY: 50 }});
 list.send("pointerup", {{ clientX: 50, clientY: 65 }});
-check("a move of one place was not sent as one", fired, [{{ _class: "Move", from: 0, to: 1 }}]);
+check("a move of one place was not sent as one", fired, [{{ _class: "Move", from: 0, at: 1 }}]);
 fired.length = 0;
 
 // Let go where it was: nothing to say. A press with no movement: nothing.

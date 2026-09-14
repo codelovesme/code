@@ -92,8 +92,9 @@
     }
     if (name === "reorder") {
       // On a container: a child pressed and carried among its siblings. What
-      // is sent is where it was and where it was let go — `from` and `to`,
-      // positions among the children — and nothing is moved here: the
+      // is sent is where it was and where it was let go — `from` and `at`,
+      // positions among the children (`to` is a word the language keeps for
+      // itself) — and nothing is moved here: the
       // application holds the list, so the application reorders it and
       // draws. While it is carried the child wears `data-code-dragging`, for
       // the application's own styles to pick up.
@@ -144,9 +145,9 @@
         const carried = drag;
         letGo();
         if (!carried.moved) return;
-        const to = slotAt(carried.child, e.clientY);
-        if (to === carried.from) return;
-        fire({ ...particle, from: carried.from, to });
+        const at = slotAt(carried.child, e.clientY);
+        if (at === carried.from) return;
+        fire({ ...particle, from: carried.from, at });
       });
     }
   }

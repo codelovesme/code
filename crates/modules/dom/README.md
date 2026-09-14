@@ -99,9 +99,9 @@ a program is not woken for every point a finger passes:
   than 10px. Sent with `value` the same way. A `click` on the same node still
   fires on each tap; give a node one or the other.
 - **`reorder`** — on a *container*: a child pressed, carried 8px or more, and
-  let go among its siblings. Sent with **`from`** and **`to`**, the child's
-  position among the children before and after — and nothing is moved on the
-  page. The program holds the list, so the program reorders it and draws.
+  let go among its siblings. Sent with **`from`** and **`at`**, the child's
+  position among the children before and after (`to` is a keyword, so it is
+  not a field a handler could bind) — and nothing is moved on the page. The program holds the list, so the program reorders it and draws.
   While it is carried the child wears `data-code-dragging`, for the program's
   own styles to pick up.
 
