@@ -105,6 +105,21 @@ are not the only way to learn about them.
 A 4xx or 5xx logs at `Info` and does *not* raise an `Exception`: the server
 answered, and what it answered is in `status`.
 
+## In a browser
+
+The browser half uses the same seven request particles, but it cannot block a
+page while waiting for the network. It returns immediately with
+`HttpResult { ok: true, value: request_id }`, then fires
+`HttpResponse { ok, status, body, _request_id }` into the program when the
+request finishes. A failed fetch fires `Exception { source: "http_client",
+message, _request_id }`. The body is still text; link the `json` module and
+send `Parse { text = response.body }` there when the API returns JSON.
+
+Both relative URLs (resolved against the page) and absolute `http(s)` URLs are
+accepted. The browser enforces its normal CORS and TLS rules. This keeps
+public API calls in `http_client`; `net_client` remains the particle transport
+between Euglena organelles and services.
+
 ## The decisions, and why
 
 **One particle per verb, not `Request { method }`.** Dispatch in this

@@ -30,6 +30,10 @@
 //! `code_release` needs no code here — `code-native` links the vendored
 //! `runtime.c` into the cdylib and re-exports it.
 
+#![cfg_attr(target_arch = "wasm32", no_std)]
+
+#[cfg(not(target_arch = "wasm32"))]
+mod machine {
 use std::time::Duration;
 
 use code_native::*;
@@ -411,4 +415,11 @@ fn response(out: &mut CodeValue, ok: bool, status: f64, body: &str) {
     owned_str(buf.slot_mut(3), body);
     object(out, &[c"_class", c"ok", c"status", c"body"], &mut buf);
     buf.release_all();
+}
+}
+
+#[cfg(target_arch = "wasm32")]
+mod page {
+    include!("../../browser_half.rs");
+    browser_half!("http_client", http_client_code_module_abi_version, http_client_code_module_dispatch);
 }

@@ -6,7 +6,7 @@
 
 [package]
 name = "azure_blob"
-version = "2.6.2"
+version = "2.6.3"
 edition = "2021"
 description = "The `azure_blob` native module for the Code programming language — put, get, list and delete objects in Azure Blob Storage (and Azurite), with `blob_storage`'s surface."
 license = "GPL-3.0"
