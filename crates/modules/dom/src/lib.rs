@@ -6,6 +6,8 @@
 //!   CSS selector, `"body"` by default) with `tree`, sets `styles` as the
 //!   page's stylesheet, and answers `RenderResult { ok }`. `ok` is false when
 //!   the selector matched nothing.
+//! - `Download { uri, name }` — asks the page to download an already fetched
+//!   URI under `name`, and answers `DownloadResult { ok }`.
 //!
 //! # The tree is a value, not markup
 //!
@@ -144,7 +146,7 @@ mod machine {
                 // A class this module does not handle answers null and does
                 // not end the program: it may have been meant for something
                 // else entirely.
-                Some("Render") => exception(out, "dom", NO_PAGE),
+                Some("Render") | Some("Download") => exception(out, "dom", NO_PAGE),
                 _ => null(out),
             }
         })

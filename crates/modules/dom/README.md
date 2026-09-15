@@ -21,11 +21,15 @@ emit Render {
 assert r.ok
 ```
 
-## The handler
+## The handlers
 
-```
-Render { into?, styles?, tree } → RenderResult { ok }
-```
+`Render { into?, styles?, tree } → RenderResult { ok }` replaces the selected
+page contents and stylesheet. `ok` is false when `into` matched nothing.
+
+`Download { uri, name } → DownloadResult { ok }` starts a browser download for
+an already fetched `data:` or `blob:` URI. The page uses a temporary anchor and
+removes it immediately, so the action stays inside the user's gesture and
+does not leave a hidden node behind. `name` is the suggested filename.
 
 `into` is a CSS selector, `"body"` by default; `ok` is false when it matched
 nothing. `styles` replaces the sheet set last time rather than stacking a new

@@ -32,6 +32,7 @@ fn a_file_box_sends_the_bytes_or_says_why_not() {
         format!(
             r#"import {{ readFileSync }} from "node:fs";
 const half = new Function("return (" + readFileSync({half:?}, "utf8") + ")")();
+let downloaded = null;
 
 class El {{
   constructor(tag) {{
@@ -43,6 +44,8 @@ class El {{
   hasAttribute(k) {{ return k in this.attrs; }}
   getAttribute(k) {{ return this.attrs[k]; }}
   appendChild(c) {{ c.parentNode = this; this.children.push(c); return c; }}
+  removeChild(c) {{ this.children = this.children.filter(child => child !== c); c.parentNode = null; return c; }}
+  click() {{ downloaded = this; }}
   replaceChildren(c) {{ this.children = []; this.appendChild(c); }}
   send(name, e) {{ for (const fn of this.listeners[name] || []) fn({{ target: this, ...e }}); }}
   focus() {{ this.focused = true; doc.activeElement = this; }}
@@ -71,6 +74,7 @@ const body = new El("body");
 const doc = {{
   createElement: (t) => new El(t),
   createTextNode: (s) => ({{ nodeType: 3, text: String(s) }}),
+  body,
   querySelector: (sel) => (sel === "body" ? body : null),
   getElementById: () => null,
   head: body,
@@ -143,6 +147,11 @@ const second = body.children[0].children[1];
 check("the caret did not come back after a render", [second !== first, second.focused, second.selectionStart, second.selectionEnd], [true, true, 2, 3]);
 dom({{ _class: "Render", into: "body", tree: {{ tag: "div", children: [ {{ tag: "p" }}, {{ tag: "button" }} ] }} }});
 check("a different node at the caret's place was focused", body.children[0].children[1].focused, undefined);
+
+const download = dom({{ _class: "Download", uri: "data:text/plain;base64,aGk=", name: "hello.txt" }});
+check("a download did not answer success", download, {{ _class: "DownloadResult", ok: true }});
+check("the download link was not clicked with its URI and name", [downloaded.attrs.href, downloaded.attrs.download, downloaded.attrs.rel], ["data:text/plain;base64,aGk=", "hello.txt", "noopener"]);
+check("the temporary download link was left on the page", body.children.includes(downloaded), false);
 "#
         ),
     )

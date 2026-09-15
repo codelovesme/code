@@ -296,6 +296,30 @@
   return [
     "dom",
     (particle) => {
+      if (particle._class === "Download") {
+        const uri = typeof particle.uri === "string" ? particle.uri : "";
+        const name = typeof particle.name === "string" && particle.name ? particle.name : "attachment";
+        const parent = doc.body || doc.documentElement;
+        if (!uri || !parent || typeof doc.createElement !== "function") {
+          return { _class: "DownloadResult", ok: false };
+        }
+
+        // A data/blob URI has already been fetched by the application. A
+        // temporary anchor keeps the download in the same user gesture that
+        // caused this particle, then disappears before the next render.
+        const link = doc.createElement("a");
+        link.setAttribute("href", uri);
+        link.setAttribute("download", name);
+        link.setAttribute("rel", "noopener");
+        if (typeof link.click !== "function") {
+          return { _class: "DownloadResult", ok: false };
+        }
+        parent.appendChild(link);
+        link.click();
+        if (typeof parent.removeChild === "function") parent.removeChild(link);
+        else if (typeof link.remove === "function") link.remove();
+        return { _class: "DownloadResult", ok: true };
+      }
       if (particle._class !== "Render") return null;
 
       const into = typeof particle.into === "string" ? particle.into : "body";
