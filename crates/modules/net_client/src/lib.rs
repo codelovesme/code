@@ -1,11 +1,10 @@
-//! The `net_client` module — send a particle, or fetch public JSON in a browser.
+//! The `net_client` native module — send a particle, get a particle back.
 //!
 //! Configure one destination per linked instance, then send particles to it.
 //!
 //! ```text
 //! Config { url } → ConfigResult { ok }
 //! Send { particle, timeout_ms? } → the far side's answer
-//! Get { path?, timeout_ms? } → Fetched { ok, status, body, _request_id } (browser)
 //! ```
 //!
 //! **It does not build the envelope.** Whatever particle the program hands
@@ -44,11 +43,6 @@
 //! ABI can stop a module that blocks with no deadline. A refused connection,
 //! a timeout or a malformed answer all come back as an `Exception` particle —
 //! a value the program can read — never as a dead program.
-//!
-//! The browser half also has `Get`: it performs a JSON GET against the
-//! configured origin without blocking the page. It returns a request id and
-//! later fires `Fetched`; the native half deliberately leaves machine-side
-//! GETs to `http_client`.
 
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
