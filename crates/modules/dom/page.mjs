@@ -323,7 +323,8 @@
     if (!el) return null;
     const id = el.id || (el.getAttribute && el.getAttribute("id"));
     const klass = el.className || (el.getAttribute && el.getAttribute("class")) || "";
-    return { id: id ? String(id) : "", className: String(klass) };
+    const key = el.getAttribute && el.getAttribute("data-focus-key");
+    return { id: id ? String(id) : "", className: String(klass), key: key ? String(key) : "" };
   }
 
   function focusOpener(target, opener, hint) {
@@ -335,6 +336,14 @@
     // case (the bottom add button) accessible after that replacement.
     if (hint && hint.className.includes("fab") && target.querySelector) {
       const replacement = target.querySelector(".fab");
+      if (replacement && typeof replacement.focus === "function") {
+        replacement.focus();
+        return;
+      }
+    }
+    if (hint && hint.key && typeof target.querySelectorAll === "function") {
+      const replacement = Array.from(target.querySelectorAll("[data-focus-key]"))
+        .find((el) => el.getAttribute && el.getAttribute("data-focus-key") === hint.key);
       if (replacement && typeof replacement.focus === "function") {
         replacement.focus();
         return;
