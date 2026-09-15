@@ -43,6 +43,15 @@
   // needs to remember lives on the node, and goes when the node does.
   const GESTURES = new Set(["swipeleft", "swiperight", "doubletap", "reorder"]);
 
+  // SVG needs its own namespace when it is created through the DOM API. A
+  // plain `createElement("svg")` looks like an element in the HTML namespace
+  // and its paths render as an empty box in browsers.
+  const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+  const SVG_TAGS = new Set([
+    "svg", "path", "circle", "ellipse", "line", "polyline", "polygon",
+    "rect", "g", "defs", "clipPath", "mask", "use", "symbol", "title", "desc",
+  ]);
+
   // How far a finger goes before it is a swipe and not a tap, how long it
   // may take, how much slower the other axis must be, and how close two
   // taps are before they are one double.
@@ -193,7 +202,11 @@
     if (spec === null || typeof spec !== "object" || Array.isArray(spec)) {
       return doc.createTextNode(String(spec));
     }
-    const el = doc.createElement(spec.tag || "div");
+    const tag = spec.tag || "div";
+    const isSvg = SVG_TAGS.has(String(tag));
+    const el = isSvg && typeof doc.createElementNS === "function"
+      ? doc.createElementNS(SVG_NAMESPACE, tag)
+      : doc.createElement(tag);
     // `media = "camera"` marks a node as somewhere a device may show itself.
     // It becomes a plain attribute and nothing more: this module does not
     // know what a camera is, and the tree stays data. Whatever owns the

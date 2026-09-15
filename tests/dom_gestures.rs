@@ -37,7 +37,7 @@ const half = new Function("return (" + readFileSync({half:?}, "utf8") + ")")();
 class El {{
   constructor(tag) {{
     this.tagName = tag.toUpperCase(); this.nodeType = 1; this.children = []; this.parentNode = null;
-    this.attrs = {{}}; this.listeners = {{}}; this.rect = {{ top: 0, height: 0 }}; this.captured = null;
+    this.attrs = {{}}; this.listeners = {{}}; this.rect = {{ top: 0, height: 0 }}; this.captured = null; this.namespaceURI = null;
   }}
   addEventListener(name, fn) {{ (this.listeners[name] ||= []).push(fn); }}
   setAttribute(k, v) {{ this.attrs[k] = String(v); }}
@@ -63,6 +63,7 @@ class El {{
 const body = new El("body");
 const doc = {{
   createElement: (t) => new El(t),
+  createElementNS: (ns, t) => {{ const el = new El(t); el.namespaceURI = ns; return el; }},
   createTextNode: (s) => ({{ nodeType: 3, text: String(s) }}),
   querySelector: (sel) => (sel === "body" ? body : null),
   getElementById: () => null,
@@ -76,7 +77,7 @@ const check = (what, got, want) => {{
 
 const r = dom({{ _class: "Render", into: "body", tree: {{
   tag: "ul", on: {{ reorder: "Move" }}, children: [
-    {{ tag: "li", attrs: {{ value: "a" }}, on: {{ swipeleft: {{ _class: "Gone", id: 1 }}, click: "Tapped", doubletap: "Cycle" }} }},
+    {{ tag: "li", attrs: {{ value: "a" }}, on: {{ swipeleft: {{ _class: "Gone", id: 1 }}, click: "Tapped", doubletap: "Cycle" }}, children: [{{ tag: "svg", children: [{{ tag: "path" }}] }}] }},
     {{ tag: "li", attrs: {{ value: "b" }} }},
     {{ tag: "li", attrs: {{ value: "c" }}, on: {{ swiperight: "Back" }} }},
   ] }} }});
@@ -84,6 +85,8 @@ check("render refused", r, {{ _class: "RenderResult", ok: true }});
 const list = body.children[0];
 const [a, b, c] = list.children;
 [a, b, c].forEach((li, i) => {{ li.rect = {{ top: i * 40, height: 40 }}; }});
+check("the svg was created in the svg namespace", a.children[0].namespaceURI, "http://www.w3.org/2000/svg");
+check("the svg path was created in the svg namespace", a.children[0].children[0].namespaceURI, "http://www.w3.org/2000/svg");
 
 // A swipe left: far enough, fast enough, along the one axis — with what the
 // element holds, as any event carries.
