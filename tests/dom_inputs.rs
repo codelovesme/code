@@ -136,15 +136,15 @@ told.send("keyup", {{ key: "Enter" }});
 check("a key event did not say its key", fired, [{{ _class: "Pressed", value: "x", key: "Escape" }}, {{ _class: "Told", key: "mine" }}]);
 
 // The caret survives a render: the box at the same place in the new tree,
-// of the same kind, is focused again with its selection; a different kind
-// of node there is not.
+// of the same kind, stays alive and keeps its selection; a different kind
+// of node there is replaced and is not focused.
 const twice = {{ tag: "div", children: [ {{ tag: "p" }}, {{ tag: "input", attrs: {{ type: "text" }} }} ] }};
 dom({{ _class: "Render", into: "body", tree: twice }});
 const first = body.children[0].children[1];
 first.focus(); first.selectionStart = 2; first.selectionEnd = 3;
 dom({{ _class: "Render", into: "body", tree: twice }});
 const second = body.children[0].children[1];
-check("the caret did not come back after a render", [second !== first, second.focused, second.selectionStart, second.selectionEnd], [true, true, 2, 3]);
+check("the caret did not survive an incremental render", [second === first, second.focused, second.selectionStart, second.selectionEnd], [true, true, 2, 3]);
 dom({{ _class: "Render", into: "body", tree: {{ tag: "div", children: [ {{ tag: "p" }}, {{ tag: "button" }} ] }} }});
 check("a different node at the caret's place was focused", body.children[0].children[1].focused, undefined);
 

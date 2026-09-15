@@ -275,6 +275,128 @@
     return el;
   }
 
+  // A render tree is small data, so keeping its previous shape lets the DOM
+  // keep the useful parts of the page alive. `data-focus-key` is the stable
+  // identity the applications already put on rows; a tree may also provide a
+  // plain `key` when it has one.
+  const renderChildren = (spec) =>
+    spec && typeof spec === "object" && !Array.isArray(spec) && Array.isArray(spec.children)
+      ? spec.children
+      : [];
+
+  const isElementSpec = (spec) =>
+    spec !== null && typeof spec === "object" && !Array.isArray(spec);
+
+  const specTag = (spec) => isElementSpec(spec) ? String(spec.tag || "div") : null;
+
+  const specKey = (spec) => {
+    if (!isElementSpec(spec)) return null;
+    if (spec.key !== undefined && spec.key !== null) return `key:${String(spec.key)}`;
+    const attrs = spec.attrs || {};
+    if (attrs["data-focus-key"] !== undefined && attrs["data-focus-key"] !== null) {
+      return `focus:${String(attrs["data-focus-key"])}`;
+    }
+    if (attrs["data-code-key"] !== undefined && attrs["data-code-key"] !== null) {
+      return `code:${String(attrs["data-code-key"])}`;
+    }
+    return null;
+  };
+
+  const eventShape = (spec) => JSON.stringify(spec?.on || {});
+
+  const mediaValue = (spec) =>
+    isElementSpec(spec) && typeof spec.media === "string" && spec.media ? spec.media : null;
+
+  const attrValues = (spec) => {
+    const attrs = { ...(isElementSpec(spec) ? spec.attrs || {} : {}) };
+    const media = mediaValue(spec);
+    if (media) attrs["data-code-media"] = media;
+    return attrs;
+  };
+
+  const canReuse = (dom, previous, next) => {
+    if (!dom || isElementSpec(previous) !== isElementSpec(next)) return false;
+    if (!isElementSpec(next)) return dom.nodeType === 3;
+    if (specTag(previous) !== specTag(next)) return false;
+    if (specKey(previous) !== specKey(next)) return false;
+    if (eventShape(previous) !== eventShape(next)) return false;
+    return mediaValue(previous) === mediaValue(next);
+  };
+
+  function updateAttrs(el, previous, next) {
+    const before = attrValues(previous);
+    const after = attrValues(next);
+    for (const key of Object.keys(before)) {
+      if (!(key in after) && typeof el.removeAttribute === "function") el.removeAttribute(key);
+    }
+    for (const [key, value] of Object.entries(after)) {
+      if (!(key in before) || String(before[key]) !== String(value)) {
+        el.setAttribute(key, String(value));
+      }
+    }
+  }
+
+  function childNodesOf(parent) {
+    if (parent && parent.childNodes) return Array.from(parent.childNodes);
+    return parent && parent.children ? Array.from(parent.children) : [];
+  }
+
+  function patchChildren(parent, previous, next) {
+    const oldSpecs = renderChildren(previous);
+    const newSpecs = renderChildren(next);
+    const current = childNodesOf(parent);
+    const slots = current.map((dom, index) => ({ dom, spec: oldSpecs[index], used: false, replaced: false }));
+    const keyed = new Map();
+    for (const slot of slots) {
+      const key = specKey(slot.spec);
+      if (key !== null && !keyed.has(key)) keyed.set(key, slot);
+    }
+
+    const wanted = [];
+    for (let index = 0; index < newSpecs.length; index += 1) {
+      const spec = newSpecs[index];
+      const key = specKey(spec);
+      let slot = key === null ? null : keyed.get(key);
+      if (slot?.used) slot = null;
+      if (!slot && key === null) {
+        const at = slots[index];
+        if (at && !at.used && specKey(at.spec) === null) slot = at;
+      }
+      if (slot) {
+        slot.used = true;
+        const patched = patchNode(slot.dom, slot.spec, spec);
+        if (patched !== slot.dom) slot.replaced = true;
+        wanted.push(patched);
+      } else {
+        wanted.push(node(spec));
+      }
+    }
+
+    for (let index = 0; index < wanted.length; index += 1) {
+      const currentAt = childNodesOf(parent)[index] || null;
+      if (currentAt === wanted[index]) continue;
+      if (typeof parent.insertBefore === "function") parent.insertBefore(wanted[index], currentAt);
+      else if (!wanted[index].parentNode || wanted[index].parentNode !== parent) parent.appendChild(wanted[index]);
+    }
+    for (const slot of slots) {
+      if ((!slot.used || slot.replaced) && slot.dom.parentNode === parent && typeof parent.removeChild === "function") {
+        parent.removeChild(slot.dom);
+      }
+    }
+  }
+
+  function patchNode(dom, previous, next) {
+    if (!canReuse(dom, previous, next)) return node(next);
+    if (!isElementSpec(next)) {
+      const text = String(next);
+      if (dom.nodeValue !== text) dom.nodeValue = text;
+      return dom;
+    }
+    updateAttrs(dom, previous, next);
+    patchChildren(dom, previous, next);
+    return dom;
+  }
+
   // `styles` arrives as selector -> property -> value, so there is no CSS to
   // parse. Braces and angle brackets are dropped anyway: nothing built here
   // may end a rule early and start a different one.
@@ -329,6 +451,7 @@
   const MODAL_SELECTOR = 'dialog[aria-modal="true"][open]';
   const FOCUSABLE_SELECTOR = 'button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])';
   let modalFocus = { dialog: null, opener: null, hint: null };
+  const rendered = new WeakMap();
 
   function openModal() {
     if (typeof doc.querySelectorAll === "function") {
@@ -510,7 +633,12 @@
       const scroll = scrollState(target);
       const activeBefore = doc.activeElement;
       const oldModal = openModal();
-      target.replaceChildren(node(tree));
+      const previous = rendered.get(target);
+      const canKeepRoot = previous && previous.dom && previous.dom.parentNode === target
+        && canReuse(previous.dom, previous.tree, tree);
+      const nextRoot = canKeepRoot ? patchNode(previous.dom, previous.tree, tree) : node(tree);
+      if (!canKeepRoot || nextRoot !== previous.dom) target.replaceChildren(nextRoot);
+      rendered.set(target, { tree, dom: nextRoot });
       const nextModal = openModal();
       if (nextModal && !modalFocus.dialog) {
         const opener = activeBefore && (!oldModal || !(oldModal.contains && oldModal.contains(activeBefore)))

@@ -45,7 +45,16 @@ class El {{
   hasAttribute(k) {{ return k in this.attrs; }}
   getAttribute(k) {{ return this.attrs[k]; }}
   appendChild(c) {{ c.parentNode = this; this.children.push(c); return c; }}
-  replaceChildren(c) {{ this.children = []; this.appendChild(c); }}
+  insertBefore(c, before) {{
+    if (c.parentNode === this) this.children = this.children.filter(child => child !== c);
+    else if (c.parentNode && c.parentNode.removeChild) c.parentNode.removeChild(c);
+    const at = before ? this.children.indexOf(before) : -1;
+    c.parentNode = this;
+    if (at < 0) this.children.push(c); else this.children.splice(at, 0, c);
+    return c;
+  }}
+  removeChild(c) {{ this.children = this.children.filter(child => child !== c); c.parentNode = null; return c; }}
+  replaceChildren(c) {{ for (const old of this.children) old.parentNode = null; this.children = []; this.appendChild(c); }}
   getBoundingClientRect() {{ return this.rect; }}
   setPointerCapture(id) {{ this.captured = id; }}
   // Straight to this element's listeners: bubbling is the browser's, and
@@ -77,9 +86,9 @@ const check = (what, got, want) => {{
 
 const r = dom({{ _class: "Render", into: "body", tree: {{
   tag: "ul", on: {{ reorder: "Move" }}, children: [
-    {{ tag: "li", attrs: {{ value: "a" }}, on: {{ swipeleft: {{ _class: "Gone", id: 1 }}, click: "Tapped", doubletap: "Cycle" }}, children: [{{ tag: "svg", children: [{{ tag: "path" }}] }}] }},
-    {{ tag: "li", attrs: {{ value: "b" }} }},
-    {{ tag: "li", attrs: {{ value: "c" }}, on: {{ swiperight: "Back" }} }},
+    {{ tag: "li", attrs: {{ value: "a", "data-focus-key": "a" }}, on: {{ swipeleft: {{ _class: "Gone", id: 1 }}, click: "Tapped", doubletap: "Cycle" }}, children: [{{ tag: "svg", children: [{{ tag: "path" }}] }}] }},
+    {{ tag: "li", attrs: {{ value: "b", "data-focus-key": "b" }} }},
+    {{ tag: "li", attrs: {{ value: "c", "data-focus-key": "c" }}, on: {{ swiperight: "Back" }} }},
   ] }} }});
 check("render refused", r, {{ _class: "RenderResult", ok: true }});
 const list = body.children[0];
@@ -188,6 +197,18 @@ list.send("pointermove", {{ clientX: -20, clientY: 24 }});
 list.send("pointerup", {{ clientX: -20, clientY: 24, timeStamp: 12100 }});
 a.send("pointerup", {{ clientX: -20, clientY: 24, timeStamp: 12100 }});
 check("a swipe on a carried list's row did not reach the row", fired, [{{ _class: "Gone", id: 1, value: "a" }}]);
+
+// A later render keeps keyed rows alive and moves them instead of replacing
+// the whole list. This is the small reconciliation guarantee that keeps a
+// long page stable while one item changes.
+dom({{ _class: "Render", into: "body", tree: {{
+  tag: "ul", on: {{ reorder: "Move" }}, children: [
+    {{ tag: "li", attrs: {{ value: "c again", "data-focus-key": "c" }}, on: {{ swiperight: "Back" }} }},
+    {{ tag: "li", attrs: {{ value: "a again", "data-focus-key": "a" }}, on: {{ swipeleft: {{ _class: "Gone", id: 1 }}, click: "Tapped", doubletap: "Cycle" }} }},
+  ] }} }});
+check("a keyed row was not kept", body.children[0].children[1] === a, true);
+check("c keyed row was not moved", body.children[0].children[0] === c, true);
+check("an omitted row was not removed", body.children[0].children.length, 2);
 "#
         ),
     )
