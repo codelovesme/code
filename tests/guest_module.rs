@@ -108,6 +108,16 @@ Later { text } =>
     return Drawn { ok = r.ok }
 
 Show { text } =>
+    if text = "modal"
+        emit Render {
+            into = "body"
+            tree = {
+                tag = "dialog"
+                attrs = { open = "open", "aria-modal" = "true" }
+                children = [{ tag = "button" }, { tag = "button" }]
+            }
+        } to dom get r
+        return Shown { }
     emit Delay { ms = 30, then = Later { text = text } } to clock get d
     return Shown { }
 
@@ -155,11 +165,18 @@ const node = (tag) => ({
     this.parent.children = this.parent.children.filter((c) => c !== this);
     this.parent = null;
   },
+  contains(other) {
+    for (let current = other; current; current = current.parent) if (current === this) return true;
+    return false;
+  },
+  focus() { doc.activeElement = this; this.focused = true; },
   get textContent() { return this.text; },
   set textContent(t) { this.text = String(t); },
   every() { return this.children.flatMap((c) => (c.every ? [c, ...c.every()] : [c])); },
   matches(sel) {
     if (sel.startsWith("#")) return this.attrs.id === sel.slice(1);
+    if (sel === 'dialog[aria-modal="true"][open]') return this.tag === "dialog" && this.attrs["aria-modal"] === "true" && "open" in this.attrs;
+    if (sel === 'button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])') return ["button", "input", "textarea", "select"].includes(this.tag);
     if (sel.startsWith("[")) return sel.slice(1, sel.indexOf("]")).split("=")[0] in this.attrs;
     return this.tag === sel;
   },
@@ -178,13 +195,20 @@ spare.setAttribute("id", "spare");
 body.appendChild(panel);
 body.appendChild(side);
 body.appendChild(spare);
-const doc = {
+let doc;
+const documentListeners = {};
+doc = {
   head, body,
   createElement: (tag) => node(tag),
   createTextNode: (text) => ({ text, every: () => [] }),
   getElementById: (id) => body.querySelector("#" + id),
   querySelector: (sel) => (sel === "body" ? body : body.querySelector(sel)),
   querySelectorAll: (sel) => body.querySelectorAll(sel),
+  activeElement: null,
+  addEventListener: (name, fn) => (documentListeners[name] ||= []).push(fn),
+  removeEventListener: (name, fn) => {
+    documentListeners[name] = (documentListeners[name] || []).filter((one) => one !== fn);
+  },
 };
 
 // One store for the whole origin, which is what a browser gives a page — and
@@ -271,6 +295,23 @@ check("the host could not say anything to its guest",
   { _class: "TellResult", ok: true });
 await settle();
 check("what the host said did not reach the guest's handlers", drawn(panel), "second");
+
+// A guest's document listener is delegated through the shell and scoped back
+// to its own panel. The modal focus trap therefore works while another guest
+// is mounted beside it, without receiving that other guest's key events.
+check("the guest could not draw a modal",
+  host.ask({ _class: "Say", app: "mail", text: "modal" }),
+  { _class: "TellResult", ok: true });
+await settle();
+const modal = panel.querySelector('dialog[aria-modal="true"][open]');
+const modalControls = modal.querySelectorAll('button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])');
+modalControls[1].focus();
+let tabPrevented = false;
+for (const listener of documentListeners.keydown || []) {
+  listener({ target: modalControls[1], key: "Tab", shiftKey: false, preventDefault: () => { tabPrevented = true; } });
+}
+check("a hosted modal did not trap Tab", tabPrevented, true);
+check("a hosted modal did not wrap focus to its first control", doc.activeElement === modalControls[0], true);
 
 lines.length = 0;
 check("the host could not tell its guest to trip",

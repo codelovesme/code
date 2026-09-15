@@ -148,24 +148,56 @@
   /// nothing found through this one is outside the container. `body` is the
   /// container, a selector searches within it, and the stylesheet it asks for
   /// is the stand-in above.
-  const documentFor = (container, sheet) => ({
-    createElement: (tag) => ctx.doc.createElement(tag),
-    createTextNode: (text) => ctx.doc.createTextNode(text),
-    querySelector: (selector) =>
-      WHOLE_PAGE.has(String(selector).trim()) ? container : container.querySelector(selector),
-    getElementById: (id) => (id === "code-style" ? sheet.standIn : idInside(container, id)),
-    // Where `dom` would put a stylesheet of its own making. It never gets
-    // that far — `getElementById` always answers — and both are the container
-    // so that nothing reached through this document is ever outside it.
-    head: container,
-    body: container,
-    // Where the caret is, if it is in here: `dom` keeps it across a render,
-    // and a caret elsewhere on the page is none of this guest's business.
-    get activeElement() {
-      const active = ctx.doc.activeElement;
-      return active && container.contains(active) ? active : null;
-    },
-  });
+  const documentFor = (container, sheet, leaving) => {
+    // A guest's document-level listeners are delegated to the real page but
+    // only receive events whose target is inside this guest's container.
+    // Keep the registrations reversible so unloading a guest cannot leave a
+    // focus trap (or any future document listener) pointing at dead Wasm.
+    const delegated = [];
+    const addEventListener = (name, listener, options) => {
+      if (typeof ctx.doc.addEventListener !== "function" || typeof listener !== "function") return;
+      const scoped = (event) => {
+        const target = event && event.target;
+        if (!target || !container.contains || container.contains(target)) listener(event);
+      };
+      ctx.doc.addEventListener(name, scoped, options);
+      delegated.push({ name, listener, options, scoped });
+    };
+    const removeEventListener = (name, listener, options) => {
+      for (let i = delegated.length - 1; i >= 0; i -= 1) {
+        const one = delegated[i];
+        if (one.name !== name || one.listener !== listener) continue;
+        ctx.doc.removeEventListener?.(name, one.scoped, options ?? one.options);
+        delegated.splice(i, 1);
+      }
+    };
+    leaving.push(() => {
+      for (const one of delegated) ctx.doc.removeEventListener?.(one.name, one.scoped, one.options);
+      delegated.length = 0;
+    });
+    return {
+      createElement: (tag) => ctx.doc.createElement(tag),
+      createTextNode: (text) => ctx.doc.createTextNode(text),
+      querySelector: (selector) =>
+        WHOLE_PAGE.has(String(selector).trim()) ? container : container.querySelector(selector),
+      querySelectorAll: (selector) =>
+        WHOLE_PAGE.has(String(selector).trim()) ? [container] : container.querySelectorAll(selector),
+      getElementById: (id) => (id === "code-style" ? sheet.standIn : idInside(container, id)),
+      addEventListener,
+      removeEventListener,
+      // Where `dom` would put a stylesheet of its own making. It never gets
+      // that far — `getElementById` always answers — and both are the container
+      // so that nothing reached through this document is ever outside it.
+      head: container,
+      body: container,
+      // Where the caret is, if it is in here: `dom` keeps it across a render,
+      // and a caret elsewhere on the page is none of this guest's business.
+      get activeElement() {
+        const active = ctx.doc.activeElement;
+        return active && container.contains(active) ? active : null;
+      },
+    };
+  };
 
   /// The address, minus the guest's public route.
   ///
@@ -294,7 +326,7 @@
           const sheet = sheetFor(app, rootSelector(app));
           const leaving = [];
           const host = createHost({
-            doc: documentFor(container, sheet),
+            doc: documentFor(container, sheet, leaving),
             // Whose line it is, in a console that now has more than one
             // application printing to it.
             log: (line) => ctx.log(`${app}: ${line}`),

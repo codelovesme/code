@@ -99,6 +99,8 @@ world of its own:
 - its **`dom`** gets a document that stops at its container — `body` means
   the container, a selector cannot match outside it, and its stylesheet is
   moved under it, so two guests cannot restyle each other or the shell;
+  document-level event listeners are delegated through the shell and filtered
+  back to that container, then removed when the guest is unloaded;
 - its **`router`** reads the path after its name, so the page keeps one
   address bar and every application on it still starts at its own root.
 
