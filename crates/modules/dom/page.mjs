@@ -538,10 +538,11 @@
   function restoreScroll(was) {
     for (const one of was.entries) {
       if (!one.el || one.el.isConnected === false) continue;
-      one.el.scrollTop = one.top;
-      one.el.scrollLeft = one.left;
+      if (one.el.scrollTop !== one.top) one.el.scrollTop = one.top;
+      if (one.el.scrollLeft !== one.left) one.el.scrollLeft = one.left;
     }
-    if (was.viewport && typeof globalThis.scrollTo === "function") {
+    if (was.viewport && typeof globalThis.scrollTo === "function"
+      && (globalThis.scrollX !== was.viewport.x || globalThis.scrollY !== was.viewport.y)) {
       globalThis.scrollTo(was.viewport.x, was.viewport.y);
     }
   }
