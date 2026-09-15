@@ -50,7 +50,15 @@ class El {{
   setPointerCapture(id) {{ this.captured = id; }}
   // Straight to this element's listeners: bubbling is the browser's, and
   // the half listens on the node the tree named.
-  send(name, e) {{ for (const fn of this.listeners[name] || []) fn({{ target: this, pointerId: 1, timeStamp: 0, clientX: 0, clientY: 0, ...e }}); }}
+  send(name, e) {{
+    const event = {{ target: this, pointerId: 1, timeStamp: 0, clientX: 0, clientY: 0, ...e,
+      defaultPrevented: false, immediateStopped: false,
+      preventDefault() {{ this.defaultPrevented = true; }},
+      stopImmediatePropagation() {{ this.immediateStopped = true; }}
+    }};
+    for (const fn of this.listeners[name] || []) {{ fn(event); if (event.immediateStopped) break; }}
+    return event;
+  }}
 }}
 const body = new El("body");
 const doc = {{
@@ -68,7 +76,7 @@ const check = (what, got, want) => {{
 
 const r = dom({{ _class: "Render", into: "body", tree: {{
   tag: "ul", on: {{ reorder: "Move" }}, children: [
-    {{ tag: "li", attrs: {{ value: "a" }}, on: {{ swipeleft: {{ _class: "Gone", id: 1 }}, doubletap: "Cycle" }} }},
+    {{ tag: "li", attrs: {{ value: "a" }}, on: {{ swipeleft: {{ _class: "Gone", id: 1 }}, click: "Tapped", doubletap: "Cycle" }} }},
     {{ tag: "li", attrs: {{ value: "b" }} }},
     {{ tag: "li", attrs: {{ value: "c" }}, on: {{ swiperight: "Back" }} }},
   ] }} }});
@@ -82,6 +90,10 @@ const [a, b, c] = list.children;
 a.send("pointerdown", {{ clientX: 200, clientY: 20, timeStamp: 1000 }});
 a.send("pointerup", {{ clientX: 100, clientY: 25, timeStamp: 1300 }});
 check("a swipe left did not send its particle", fired, [{{ _class: "Gone", id: 1, value: "a" }}]);
+fired.length = 0;
+const blockedClick = a.send("click", {{}});
+check("a click synthesized after a swipe", fired, []);
+check("the synthesized click was not prevented", blockedClick.defaultPrevented, true);
 fired.length = 0;
 
 // Too slow, too short, too diagonal, the wrong way: nothing.

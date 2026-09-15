@@ -58,6 +58,16 @@
       // `pointercancel` is the browser taking the pointer for a scroll — a
       // list that wants a swipe across it says `touch-action: pan-y`.
       let start = null;
+      let suppressClick = false;
+      // A swipe can finish over a child button. Browsers may still synthesize
+      // a click for that release; consume that one click so a swipe action
+      // cannot also activate the button underneath the finger.
+      el.addEventListener("click", (e) => {
+        if (!suppressClick) return;
+        suppressClick = false;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }, true);
       el.addEventListener("pointerdown", (e) => {
         start = { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId };
       });
@@ -71,7 +81,10 @@
         const dt = e.timeStamp - start.t;
         start = null;
         if (dt > SWIPE_MS || Math.abs(dx) < SWIPE_PX || Math.abs(dx) < Math.abs(dy) * 2) return;
-        if ((name === "swipeleft") === (dx < 0)) fire(meant(el, particle));
+        if ((name === "swipeleft") === (dx < 0)) {
+          suppressClick = true;
+          fire(meant(el, particle));
+        }
       });
       return;
     }
