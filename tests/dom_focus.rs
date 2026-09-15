@@ -75,9 +75,11 @@ class El {
 
 const body = new El("body"); body.isConnected = true;
 const app = new El("main"); app.setAttribute("id", "app"); body.appendChild(app);
+body.scrollTop = 240; app.scrollTop = 80;
 const opener = new El("button"); opener.setAttribute("class", "fab"); app.appendChild(opener);
 doc = {
   body, activeElement: opener, listeners: {},
+  scrollingElement: body,
   createElement: tag => new El(tag),
   createTextNode: text => ({ nodeType: 3, text: String(text), children: [] }),
   querySelector: sel => sel === "#app" ? app : (sel === "body" ? body : body.querySelector(sel)),
@@ -106,6 +108,8 @@ const openTree = { tag: "div", children: [
   ] },
 ] };
 dom({ _class: "Render", into: "#app", tree: openTree });
+check("render reset the page scroll", body.scrollTop, 240);
+check("render reset the app scroll", app.scrollTop, 80);
 const dialog = app.querySelector('dialog[aria-modal="true"][open]');
 const controls = dialog.querySelectorAll('button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])');
 check("opening a modal did not focus its autofocus control", doc.activeElement === controls[0], true);

@@ -389,6 +389,40 @@
     if (doc.body && typeof doc.body.focus === "function") doc.body.focus();
   }
 
+  // Replacing a drawn tree can make the browser discard its scroll anchor,
+  // especially when the focused node is one of the children being replaced.
+  // Keep the scroll positions of the target's ancestors (and the viewport)
+  // across the replacement so a small row action does not send a reader back
+  // to the top of a long list.
+  function scrollState(root) {
+    const entries = [];
+    const seen = new Set();
+    const remember = (el) => {
+      if (!el || seen.has(el) || typeof el.scrollTop !== "number") return;
+      seen.add(el);
+      entries.push({ el, top: el.scrollTop, left: el.scrollLeft });
+    };
+    for (let el = root; el; el = el.parentNode) remember(el);
+    remember(doc.scrollingElement);
+    remember(doc.documentElement);
+    remember(doc.body);
+    const viewport = typeof globalThis.scrollX === "number" && typeof globalThis.scrollY === "number"
+      ? { x: globalThis.scrollX, y: globalThis.scrollY }
+      : null;
+    return { entries, viewport };
+  }
+
+  function restoreScroll(was) {
+    for (const one of was.entries) {
+      if (!one.el || one.el.isConnected === false) continue;
+      one.el.scrollTop = one.top;
+      one.el.scrollLeft = one.left;
+    }
+    if (was.viewport && typeof globalThis.scrollTo === "function") {
+      globalThis.scrollTo(was.viewport.x, was.viewport.y);
+    }
+  }
+
   // Capture before the application handles the keydown. This works for
   // controls created by the tree and for controls supplied by the shell.
   if (doc && typeof doc.addEventListener === "function") {
@@ -473,6 +507,7 @@
       // caret and all. A redraw while someone types is then nothing they
       // notice, which is what lets an application redraw whenever it likes.
       const was = caretPath(target);
+      const scroll = scrollState(target);
       const activeBefore = doc.activeElement;
       const oldModal = openModal();
       target.replaceChildren(node(tree));
@@ -496,6 +531,7 @@
         modalFocus = { dialog: null, opener: null, hint: null };
         focusOpener(target, previous.opener, previous.hint);
       }
+      restoreScroll(scroll);
       return { _class: "RenderResult", ok: true };
     },
   ];
