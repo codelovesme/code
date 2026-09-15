@@ -77,6 +77,15 @@ a list what was chosen, a button whatever the application put on it — and a
 button that needs to say *which* row it belongs to says so in the particle
 rather than smuggling it through a value.
 
+A **file box** — `{ tag = "input", attrs = { type = "file" }, on = { change =
+"Chosen" } }` — is the one element whose value is not what it holds: the
+browser's `value` is a path it made up. So on `change` the file is read and
+the particle carries it as `file`: `{ name, type, size, data_base64 }`, with
+`value` the file's name like any other box's text. A file over 12 MB, or
+one that cannot be read, arrives with `data_base64 = ""` and `refused`
+saying why — the program is told rather than left waiting. One file per
+change; a box with `multiple` sends its first.
+
 **A listener is never a function, and nothing is held between renders.** `on`
 is data like every other field: this module serialises it and forgets it.
 There is no table of live listeners to grow, go stale or be swept, and a page

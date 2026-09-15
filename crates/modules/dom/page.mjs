@@ -22,6 +22,15 @@
     return null;
   }
 
+  // A file box: the one element whose value is not what it holds.
+  const isFileBox = (el) =>
+    String(el.tagName || "").toLowerCase() === "input" &&
+    String(el.getAttribute && el.getAttribute("type") || "").toLowerCase() === "file";
+  // How much of a file is carried into the program. Base64 makes it a third
+  // larger again, and it crosses as one event.
+  const FILE_CAP = 12 * 1024 * 1024;
+  const FILE_CAP_SAID = "12 MB";
+
   // The particle a gesture on `el` means, with what the element holds — the
   // same rule an ordinary event follows.
   const meant = (el, particle) => {
@@ -195,7 +204,34 @@
         continue;
       }
       el.addEventListener(event, (e) => {
-        const value = eventValue(e.target || el);
+        const target = e.target || el;
+        // A file box holds a file, and its `value` is a path the browser
+        // made up. What the application wants is the bytes, so they are
+        // read and sent as `file` — name, type, size, and the data as
+        // base64 — with `value` the file's name, the way every other box
+        // carries text. Too large to carry, and the data is empty and
+        // `refused` says why: the program is told, never left waiting.
+        if (isFileBox(target)) {
+          const chosen = target.files && target.files[0];
+          if (!chosen) return;
+          const said = { name: chosen.name, type: chosen.type || "", size: chosen.size };
+          if (chosen.size > FILE_CAP) {
+            fire({ ...particle, value: chosen.name, file: { ...said, data_base64: "", refused: `larger than ${FILE_CAP_SAID}` } });
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => {
+            const url = String(reader.result || "");
+            const data_base64 = url.slice(url.indexOf(",") + 1);
+            fire({ ...particle, value: chosen.name, file: { ...said, data_base64 } });
+          };
+          reader.onerror = () => {
+            fire({ ...particle, value: chosen.name, file: { ...said, data_base64: "", refused: "could not be read" } });
+          };
+          reader.readAsDataURL(chosen);
+          return;
+        }
+        const value = eventValue(target);
         // What the element holds, added only when the application did not
         // say it itself — an `on` that names `value` means that value.
         fire(value === null || "value" in particle ? particle : { ...particle, value });
