@@ -1,13 +1,29 @@
-// The page's half of `net_client`: one POST, and the answer as a particle.
+// The page's half of `net_client`: one configured destination, POST particles,
+// and GET JSON resources.
 //
 // `Send` cannot answer with the reply here — waiting means blocking, and
 // blocking in a page freezes the reader. So it answers as soon as the request
 // is on its way, and the reply arrives later as a particle at the program's
 // own handlers, carrying `_request_id` so two exchanges that both answer
 // `Pong` can be told apart.
+//
+// `Get` follows the same asynchronous shape, but is deliberately small: it
+// fetches a configured URL (or a path relative to it), parses a JSON response,
+// and fires `Fetched { ok, status, body, _request_id }`. This lets a public web
+// application read release metadata directly from a registry such as GitHub
+// without putting a catalogue or a backend into the application bundle.
 (ctx) => {
-  let next = 1;
   let destination = null;
+  // Aliases of the same static module share this page half, while each alias
+  // still has its own configured destination. Keep request ids page-global so
+  // an asynchronous reply from `release` cannot be mistaken for one from
+  // `assets` when both happened to allocate id 1.
+  const nextRequestId = () => {
+    const key = "__euglena_net_client_next_request_id";
+    const current = Number(globalThis[key] ?? 1);
+    globalThis[key] = current + 1;
+    return current;
+  };
   const exception = (message) => ({ _class: "Exception", source: "net_client", message });
 
   // What a sender is told when the exchange never produced a particle. The
@@ -19,6 +35,30 @@
     message,
     _request_id: id,
   });
+
+  const pageBase = () =>
+    typeof location !== "undefined" && location.origin ? location.origin : "http://localhost";
+
+  const configuredUrl = () => new URL(destination, pageBase());
+
+  const getUrl = (path) => {
+    if (path === undefined || path === null || path === "") return configuredUrl().href;
+    if (typeof path !== "string" || /[\s#]/.test(path)) {
+      throw new Error("Get path must be text without whitespace or a fragment");
+    }
+    const base = configuredUrl();
+    // A configured URL is an origin plus a destination prefix. Treat a
+    // leading slash in `path` as relative to that prefix so a client can
+    // configure `https://api.example/repos/project` and request
+    // `/releases/latest` without repeating the deployment path.
+    const prefix = base.pathname.endsWith("/") ? base.pathname.slice(0, -1) : base.pathname;
+    const relativePath = path.startsWith("/") ? `${prefix}${path}` : path;
+    const resolved = new URL(relativePath, base.origin + "/");
+    if (resolved.origin !== base.origin) {
+      throw new Error("Get path must stay on the configured origin");
+    }
+    return resolved.href;
+  };
 
   return [
     "net_client",
@@ -46,18 +86,62 @@
           // A relative path needs a base to resolve against; an absolute one
           // ignores it. `location` is the page's in a browser and absent in a
           // test harness, so a placeholder stands in to check the shape.
-          const base =
-            typeof location !== "undefined" && location.origin ? location.origin : "http://localhost";
-          new URL(url, base);
+          new URL(url, pageBase());
         } catch {
           return exception("Config url is not a valid HTTP destination");
         }
         destination = url;
         return { _class: "ConfigResult", ok: true };
       }
+      if (destination === null) return exception("net_client needs Config before Send or Get");
+
+      if (particle._class === "Get") {
+        let url;
+        try {
+          url = getUrl(particle.path);
+        } catch (e) {
+          return exception(e?.message || String(e));
+        }
+        const timeoutMs =
+          typeof particle.timeout_ms === "number" && particle.timeout_ms > 0
+            ? particle.timeout_ms
+            : 10_000;
+        const which = nextRequestId();
+        const stop = new AbortController();
+        const timer = setTimeout(() => stop.abort(), timeoutMs);
+
+        fetch(url, {
+          method: "GET",
+          headers: { accept: "application/json" },
+          signal: stop.signal,
+        })
+          .then((response) => response.text().then((text) => ({ response, text })))
+          .then(({ response, text }) => {
+            let body;
+            try {
+              body = JSON.parse(text);
+            } catch {
+              return ctx.fire(failed(which, `answer from '${url}' is not JSON`));
+            }
+            ctx.fire({
+              _class: "Fetched",
+              ok: response.ok,
+              status: response.status,
+              body,
+              _request_id: which,
+            });
+          })
+          .catch((e) => {
+            const why = e?.name === "AbortError" ? `no answer within ${timeoutMs}ms` : String(e);
+            ctx.fire(failed(which, `cannot reach '${url}': ${why}`));
+          })
+          .finally(() => clearTimeout(timer));
+
+        return { _class: "GetResult", ok: true, value: which };
+      }
+
       if (particle._class !== "Send") return null;
       if (Object.hasOwn(particle, "url")) return exception("url belongs in Config, not Send");
-      if (destination === null) return exception("net_client needs Config before Send");
 
       const url = destination;
       const payload = particle.particle;
@@ -74,7 +158,7 @@
         typeof particle.timeout_ms === "number" && particle.timeout_ms > 0
           ? particle.timeout_ms
           : 10_000;
-      const which = next++;
+      const which = nextRequestId();
 
       // Aborted rather than left hanging: a request nobody will answer would
       // otherwise be a particle that never arrives, which is the one failure

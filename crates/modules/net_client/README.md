@@ -1,4 +1,4 @@
-# `net_client` — send a particle, get a particle back
+# `net_client` — send a particle, or fetch public JSON in a browser
 
 The other half of [`net_server`](../net_server). Configure a destination once
 per linked instance, then send particles to that instance.
@@ -20,6 +20,8 @@ assert answer ∈ Pong
 ```
 Config { url } → ConfigResult { ok }
 Send { particle, timeout_ms? } → whatever the far side's handlers returned
+Get { path?, timeout_ms? } → GetResult { ok, value } (browser)
+Fetched { ok, status, body, _request_id } (browser, asynchronous)
 ```
 
 | Field | Kind | Default | Meaning |
@@ -27,6 +29,15 @@ Send { particle, timeout_ms? } → whatever the far side's handlers returned
 | `url` (Config) | String | — | `http://host:port/app`, or in a browser a same-origin path (`/api/todo`). Required |
 | `particle` | Particle | — | sent as written, `_class` and all. Required |
 | `timeout_ms` | Number | `10000` | connect, send and read deadline. A positive number |
+
+`Get` is available in the browser half for public JSON resources. It resolves
+an optional `path` against the URL from `Config` (a leading slash is appended
+to the configured destination path), keeps the request on that origin, and
+returns immediately with a request id. The later `Fetched` particle
+contains the parsed JSON `body` and the HTTP status. A non-JSON response or a
+timeout arrives as `Exception` with the same `_request_id`. The native module
+remains a particle `Send` client; applications that need a machine-side GET
+should use `http_client`.
 
 `Send` before a successful `Config` is an `Exception`. A `url` on `Send` is
 also refused: deployment addresses belong in configuration. A later successful
