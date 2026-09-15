@@ -261,6 +261,38 @@
       .join("\n");
   }
 
+  // Where the caret is, as a path of child positions under `root`, with the
+  // node's kind and its selection — or null when it is not under `root`.
+  function caretPath(root) {
+    const active = doc.activeElement;
+    if (!active || active === root || !(root.contains && root.contains(active))) return null;
+    const path = [];
+    let n = active;
+    while (n && n !== root) {
+      const parent = n.parentNode;
+      if (!parent) return null;
+      path.unshift(Array.prototype.indexOf.call(parent.children, n));
+      n = parent;
+    }
+    const sel = typeof active.selectionStart === "number"
+      ? { start: active.selectionStart, end: active.selectionEnd }
+      : null;
+    return { path, tag: active.tagName, sel };
+  }
+
+  function giveBack(root, was) {
+    let n = root;
+    for (const i of was.path) {
+      n = n.children && n.children[i];
+      if (!n) return;
+    }
+    if (n.tagName !== was.tag || typeof n.focus !== "function") return;
+    n.focus();
+    if (was.sel && typeof n.setSelectionRange === "function") {
+      try { n.setSelectionRange(was.sel.start, was.sel.end); } catch { /* a box that has no caret */ }
+    }
+  }
+
   return [
     "dom",
     (particle) => {
@@ -287,12 +319,20 @@
       // A tree already written as JSON is taken as one — for an application
       // that built the text itself rather than handing over a value.
       const tree = typeof particle.tree === "string" ? JSON.parse(particle.tree) : particle.tree;
+      // Every render is a new tree, and the node the reader was typing in
+      // goes with the old one. So where the caret was is remembered as a
+      // path of child positions from the root, and after the render the
+      // node at the same path — the same kind of node — gets it back,
+      // caret and all. A redraw while someone types is then nothing they
+      // notice, which is what lets an application redraw whenever it likes.
+      const was = caretPath(target);
       target.replaceChildren(node(tree));
       // A node the tree marked `autofocus` is focused now that it is on the
-      // page. Every render is a new tree, so the application says which
-      // render: leaving the mark on would pull the caret back on each redraw.
+      // page, ahead of the caret coming back: the application said so for
+      // this render, and says nothing on the ones after.
       const wanted = target.querySelector && target.querySelector("[autofocus]");
       if (wanted && typeof wanted.focus === "function") wanted.focus();
+      else if (was) giveBack(target, was);
       return { _class: "RenderResult", ok: true };
     },
   ];

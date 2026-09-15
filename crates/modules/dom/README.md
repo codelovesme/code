@@ -90,9 +90,17 @@ A **key event** — `on = { keydown = "Pressed" }` — adds `key` to the
 particle (`"Escape"`, `"Enter"`, `"a"`), since "a key was pressed" is never
 what an application wanted to know.
 
+**The caret survives a render.** Every render is a new tree, and the node
+the reader was typing in goes with the old one — so the page remembers
+where the caret was as a path of child positions, and after the render the
+node at the same path, if it is the same kind of node, gets it back, caret
+and selection too. An application may redraw whenever it likes while
+someone types.
+
 A node with **`autofocus`** in its `attrs` is focused once the render has
-put it on the page. Every render is a new tree, so the application says on
-*which* render — leave the mark on and each redraw pulls the caret back.
+put it on the page, ahead of the caret coming back — for opening a dialog
+on its first box. The application says on *which* render: leave the mark
+on and each redraw pulls the caret back there.
 
 **A listener is never a function, and nothing is held between renders.** `on`
 is data like every other field: this module serialises it and forgets it.

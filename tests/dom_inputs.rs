@@ -45,7 +45,9 @@ class El {{
   appendChild(c) {{ c.parentNode = this; this.children.push(c); return c; }}
   replaceChildren(c) {{ this.children = []; this.appendChild(c); }}
   send(name, e) {{ for (const fn of this.listeners[name] || []) fn({{ target: this, ...e }}); }}
-  focus() {{ this.focused = true; }}
+  focus() {{ this.focused = true; doc.activeElement = this; }}
+  contains(other) {{ for (let n = other; n; n = n.parentNode) if (n === this) return true; return false; }}
+  setSelectionRange(a, b) {{ this.selectionStart = a; this.selectionEnd = b; }}
   querySelector(sel) {{
     if (sel !== "[autofocus]") return null;
     for (const c of this.children) {{
@@ -72,6 +74,7 @@ const doc = {{
   querySelector: (sel) => (sel === "body" ? body : null),
   getElementById: () => null,
   head: body,
+  activeElement: null,
 }};
 const fired = [];
 const [, dom] = half({{ doc, fire: (p) => fired.push(p) }});
@@ -127,6 +130,19 @@ typing.value = "x";
 typing.send("keydown", {{ key: "Escape" }});
 told.send("keyup", {{ key: "Enter" }});
 check("a key event did not say its key", fired, [{{ _class: "Pressed", value: "x", key: "Escape" }}, {{ _class: "Told", key: "mine" }}]);
+
+// The caret survives a render: the box at the same place in the new tree,
+// of the same kind, is focused again with its selection; a different kind
+// of node there is not.
+const twice = {{ tag: "div", children: [ {{ tag: "p" }}, {{ tag: "input", attrs: {{ type: "text" }} }} ] }};
+dom({{ _class: "Render", into: "body", tree: twice }});
+const first = body.children[0].children[1];
+first.focus(); first.selectionStart = 2; first.selectionEnd = 3;
+dom({{ _class: "Render", into: "body", tree: twice }});
+const second = body.children[0].children[1];
+check("the caret did not come back after a render", [second !== first, second.focused, second.selectionStart, second.selectionEnd], [true, true, 2, 3]);
+dom({{ _class: "Render", into: "body", tree: {{ tag: "div", children: [ {{ tag: "p" }}, {{ tag: "button" }} ] }} }});
+check("a different node at the caret's place was focused", body.children[0].children[1].focused, undefined);
 "#
         ),
     )

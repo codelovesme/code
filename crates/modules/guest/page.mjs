@@ -159,6 +159,12 @@
     // so that nothing reached through this document is ever outside it.
     head: container,
     body: container,
+    // Where the caret is, if it is in here: `dom` keeps it across a render,
+    // and a caret elsewhere on the page is none of this guest's business.
+    get activeElement() {
+      const active = ctx.doc.activeElement;
+      return active && container.contains(active) ? active : null;
+    },
   });
 
   /// The address, minus the guest's public route.
