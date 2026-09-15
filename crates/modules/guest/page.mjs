@@ -177,6 +177,10 @@
     });
     return {
       createElement: (tag) => ctx.doc.createElement(tag),
+      createElementNS: (namespace, tag) =>
+        typeof ctx.doc.createElementNS === "function"
+          ? ctx.doc.createElementNS(namespace, tag)
+          : ctx.doc.createElement(tag),
       createTextNode: (text) => ctx.doc.createTextNode(text),
       querySelector: (selector) =>
         WHOLE_PAGE.has(String(selector).trim()) ? container : container.querySelector(selector),
