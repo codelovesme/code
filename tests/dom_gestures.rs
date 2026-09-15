@@ -95,6 +95,13 @@ const blockedClick = a.send("click", {{}});
 check("a click synthesized after a swipe", fired, []);
 check("the synthesized click was not prevented", blockedClick.defaultPrevented, true);
 fired.length = 0;
+// A real press on the now-visible confirmation control must still work if a
+// browser did not synthesize a click for the swipe.
+a.send("pointerdown", {{ clientX: 50, clientY: 20, timeStamp: 2000 }});
+a.send("pointerup", {{ clientX: 50, clientY: 20, timeStamp: 2050 }});
+a.send("click", {{}});
+check("a later deliberate click was swallowed", fired, [{{ _class: "Tapped", value: "a" }}]);
+fired.length = 0;
 
 // Too slow, too short, too diagonal, the wrong way: nothing.
 a.send("pointerdown", {{ clientX: 200, clientY: 20, timeStamp: 1000 }});

@@ -69,6 +69,10 @@
         e.stopImmediatePropagation();
       }, true);
       el.addEventListener("pointerdown", (e) => {
+        // A later deliberate press is a fresh gesture. This also means that
+        // on browsers which do not synthesize a click after a swipe, the
+        // visible confirmation button remains usable on its next tap.
+        suppressClick = false;
         start = { x: e.clientX, y: e.clientY, t: e.timeStamp, id: e.pointerId };
       });
       el.addEventListener("pointercancel", () => {
