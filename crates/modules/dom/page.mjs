@@ -293,6 +293,90 @@
     }
   }
 
+  // A page-level dialog is one focus scope. The tree is redrawn on every
+  // particle, so the element that opened it may be replaced along with the
+  // old tree; keep the element and a small hint for finding its replacement.
+  const MODAL_SELECTOR = 'dialog[aria-modal="true"][open]';
+  const FOCUSABLE_SELECTOR = 'button, input, textarea, select, a[href], [tabindex]:not([tabindex="-1"])';
+  let modalFocus = { dialog: null, opener: null, hint: null };
+
+  function openModal() {
+    if (typeof doc.querySelectorAll === "function") {
+      const all = Array.from(doc.querySelectorAll(MODAL_SELECTOR));
+      return all.length ? all[all.length - 1] : null;
+    }
+    return typeof doc.querySelector === "function" ? doc.querySelector(MODAL_SELECTOR) : null;
+  }
+
+  function modalControls(dialog) {
+    if (!dialog || typeof dialog.querySelectorAll !== "function") return [];
+    return Array.from(dialog.querySelectorAll(FOCUSABLE_SELECTOR)).filter((el) => {
+      if (!el || el.disabled || (el.getAttribute && el.getAttribute("aria-hidden") === "true")) return false;
+      if (el.hidden || (el.getAttribute && el.getAttribute("hidden") !== null)) return false;
+      if (el.getAttribute && String(el.getAttribute("type") || "").toLowerCase() === "hidden") return false;
+      if (typeof el.getClientRects === "function" && el.getClientRects().length === 0) return false;
+      return typeof el.focus === "function";
+    });
+  }
+
+  function openerHint(el) {
+    if (!el) return null;
+    const id = el.id || (el.getAttribute && el.getAttribute("id"));
+    const klass = el.className || (el.getAttribute && el.getAttribute("class")) || "";
+    return { id: id ? String(id) : "", className: String(klass) };
+  }
+
+  function focusOpener(target, opener, hint) {
+    if (opener && opener.isConnected !== false && typeof opener.focus === "function") {
+      opener.focus();
+      return;
+    }
+    // Render creates a fresh node for the opener. Keep the common, important
+    // case (the bottom add button) accessible after that replacement.
+    if (hint && hint.className.includes("fab") && target.querySelector) {
+      const replacement = target.querySelector(".fab");
+      if (replacement && typeof replacement.focus === "function") {
+        replacement.focus();
+        return;
+      }
+    }
+    if (hint && hint.id && typeof doc.getElementById === "function") {
+      const replacement = doc.getElementById(hint.id);
+      if (replacement && typeof replacement.focus === "function") {
+        replacement.focus();
+        return;
+      }
+    }
+    if (doc.body && typeof doc.body.focus === "function") doc.body.focus();
+  }
+
+  // Capture before the application handles the keydown. This works for
+  // controls created by the tree and for controls supplied by the shell.
+  if (doc && typeof doc.addEventListener === "function") {
+    doc.addEventListener("keydown", (e) => {
+      if (!e || e.key !== "Tab") return;
+      const dialog = openModal();
+      if (!dialog) return;
+      const controls = modalControls(dialog);
+      if (!controls.length) {
+        if (e.preventDefault) e.preventDefault();
+        if (typeof dialog.focus === "function") dialog.focus();
+        return;
+      }
+      const current = doc.activeElement;
+      const index = controls.indexOf(current);
+      if (e.shiftKey) {
+        if (index <= 0) {
+          if (e.preventDefault) e.preventDefault();
+          controls[controls.length - 1].focus();
+        }
+      } else if (index < 0 || index === controls.length - 1) {
+        if (e.preventDefault) e.preventDefault();
+        controls[0].focus();
+      }
+    }, true);
+  }
+
   return [
     "dom",
     (particle) => {
@@ -350,13 +434,29 @@
       // caret and all. A redraw while someone types is then nothing they
       // notice, which is what lets an application redraw whenever it likes.
       const was = caretPath(target);
+      const activeBefore = doc.activeElement;
+      const oldModal = openModal();
       target.replaceChildren(node(tree));
+      const nextModal = openModal();
+      if (nextModal && !modalFocus.dialog) {
+        const opener = activeBefore && (!oldModal || !(oldModal.contains && oldModal.contains(activeBefore)))
+          ? activeBefore
+          : null;
+        modalFocus = { dialog: nextModal, opener, hint: openerHint(opener) };
+      } else if (nextModal) {
+        modalFocus.dialog = nextModal;
+      }
       // A node the tree marked `autofocus` is focused now that it is on the
       // page, ahead of the caret coming back: the application said so for
       // this render, and says nothing on the ones after.
       const wanted = target.querySelector && target.querySelector("[autofocus]");
       if (wanted && typeof wanted.focus === "function") wanted.focus();
       else if (was) giveBack(target, was);
+      if (!nextModal && modalFocus.dialog) {
+        const previous = modalFocus;
+        modalFocus = { dialog: null, opener: null, hint: null };
+        focusOpener(target, previous.opener, previous.hint);
+      }
       return { _class: "RenderResult", ok: true };
     },
   ];

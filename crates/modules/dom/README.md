@@ -106,6 +106,10 @@ put it on the page, ahead of the caret coming back — for opening a dialog
 on its first box. The application says on *which* render: leave the mark
 on and each redraw pulls the caret back there.
 
+An open native dialog marked **`aria-modal="true"`** is a keyboard focus
+scope. `Tab` and `Shift+Tab` wrap through its controls, and when a redraw
+removes it, focus returns to the control that opened it (or its replacement).
+
 **A listener is never a function, and nothing is held between renders.** `on`
 is data like every other field: this module serialises it and forgets it.
 There is no table of live listeners to grow, go stale or be swept, and a page
