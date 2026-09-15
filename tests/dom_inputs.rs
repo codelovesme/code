@@ -1,4 +1,5 @@
-//! `dom`'s page half carries a chosen file into the program: a file box's
+//! `dom`'s page half carries a chosen file into the program, says which key
+//! a key event was, and focuses the node a render marked: a file box's
 //! `value` is a path the browser made up, so on `change` the bytes are read
 //! and sent as `file`, and a file too large to carry is refused with a word
 //! rather than dropped. Run under node against a document of the test's own
@@ -44,6 +45,17 @@ class El {{
   appendChild(c) {{ c.parentNode = this; this.children.push(c); return c; }}
   replaceChildren(c) {{ this.children = []; this.appendChild(c); }}
   send(name, e) {{ for (const fn of this.listeners[name] || []) fn({{ target: this, ...e }}); }}
+  focus() {{ this.focused = true; }}
+  querySelector(sel) {{
+    if (sel !== "[autofocus]") return null;
+    for (const c of this.children) {{
+      if (c.nodeType !== 1) continue;
+      if ("autofocus" in c.attrs) return c;
+      const deeper = c.querySelector(sel);
+      if (deeper) return deeper;
+    }}
+    return null;
+  }}
 }}
 // The browser's reader, answering at once with what the fake file says it is.
 globalThis.FileReader = class {{
@@ -102,6 +114,19 @@ check("an empty file box sent something", fired, []);
 text.value = "hi";
 text.send("change", {{}});
 check("a text box stopped carrying its text", fired, [{{ _class: "Typed", value: "hi" }}]);
+fired.length = 0;
+
+// A key event says which key; one the application already named is kept.
+dom({{ _class: "Render", into: "body", tree: {{ tag: "div", children: [
+  {{ tag: "input", attrs: {{ type: "text", autofocus: "" }}, on: {{ keydown: "Pressed" }} }},
+  {{ tag: "div", on: {{ keyup: {{ _class: "Told", key: "mine" }} }} }},
+] }} }});
+const [typing, told] = body.children[0].children;
+check("the autofocus node was not focused on render", typing.focused, true);
+typing.value = "x";
+typing.send("keydown", {{ key: "Escape" }});
+told.send("keyup", {{ key: "Enter" }});
+check("a key event did not say its key", fired, [{{ _class: "Pressed", value: "x", key: "Escape" }}, {{ _class: "Told", key: "mine" }}]);
 "#
         ),
     )

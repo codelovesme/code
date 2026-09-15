@@ -234,7 +234,11 @@
         const value = eventValue(target);
         // What the element holds, added only when the application did not
         // say it itself — an `on` that names `value` means that value.
-        fire(value === null || "value" in particle ? particle : { ...particle, value });
+        let sent = value === null || "value" in particle ? particle : { ...particle, value };
+        // A key event says which key, since "a key was pressed" is never
+        // what an application wanted to know.
+        if (typeof e.key === "string" && !("key" in sent)) sent = { ...sent, key: e.key };
+        fire(sent);
       });
     }
     for (const child of spec.children || []) el.appendChild(node(child));
@@ -284,6 +288,11 @@
       // that built the text itself rather than handing over a value.
       const tree = typeof particle.tree === "string" ? JSON.parse(particle.tree) : particle.tree;
       target.replaceChildren(node(tree));
+      // A node the tree marked `autofocus` is focused now that it is on the
+      // page. Every render is a new tree, so the application says which
+      // render: leaving the mark on would pull the caret back on each redraw.
+      const wanted = target.querySelector && target.querySelector("[autofocus]");
+      if (wanted && typeof wanted.focus === "function") wanted.focus();
       return { _class: "RenderResult", ok: true };
     },
   ];

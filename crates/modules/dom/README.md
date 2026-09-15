@@ -86,6 +86,14 @@ one that cannot be read, arrives with `data_base64 = ""` and `refused`
 saying why — the program is told rather than left waiting. One file per
 change; a box with `multiple` sends its first.
 
+A **key event** — `on = { keydown = "Pressed" }` — adds `key` to the
+particle (`"Escape"`, `"Enter"`, `"a"`), since "a key was pressed" is never
+what an application wanted to know.
+
+A node with **`autofocus`** in its `attrs` is focused once the render has
+put it on the page. Every render is a new tree, so the application says on
+*which* render — leave the mark on and each redraw pulls the caret back.
+
 **A listener is never a function, and nothing is held between renders.** `on`
 is data like every other field: this module serialises it and forgets it.
 There is no table of live listeners to grow, go stale or be swept, and a page
