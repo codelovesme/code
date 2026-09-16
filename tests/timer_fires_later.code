@@ -1,0 +1,49 @@
+| `timer` on a machine: a delay answers at once and fires later, from a
+| thread of its own, into the program's ring — the handler runs here, on the
+| program's thread, when a loop iteration drains. A cancelled one never
+| fires; a fired or unknown one cannot be cancelled.
+link "native_modules/timer.so" as clock
+
+fired = []
+
+Tick { label, _delay_id as id } =>
+    fired += [label]
+    return Ack {}
+
+Bare =>
+    fired += ["bare"]
+    return Ack {}
+
+| Answered at once, with the number it is known by.
+emit Delay { ms = 30, then = { _class = "Tick", label = "late" } } to clock get late
+assert late ∈ DelayResult
+assert late.value ∈ Number
+emit Delay { ms = 1, then = { _class = "Tick", label = "soon" } } to clock get soon
+assert soon ∈ DelayResult
+| A class name alone is the short way of writing the particle.
+emit Delay { ms = 5, then = "Bare" } to clock get bare
+assert bare ∈ DelayResult
+
+| One is cancelled while it is pending: `ok = true` says it was.
+emit Delay { ms = 40, then = { _class = "Tick", label = "never" } } to clock get doomed
+emit Cancel { id = doomed.value } to clock get cancelled
+assert cancelled.ok = true
+| Cancelling nothing is not an error, just `ok = false`.
+emit Cancel { id = 999999 } to clock get nothing
+assert nothing.ok = false
+
+| The event loop: nothing in it causes a push — the thread does.
+spins = 0
+loop
+    spins += 1
+    emit Length { value = fired } to core get n
+    if n.value = 3
+        break
+    if spins > 4000000
+        break
+
+| Soonest first, the bare one in between, the cancelled one absent.
+assert fired = ["soon", "bare", "late"]
+| Fired: cannot be cancelled any more.
+emit Cancel { id = late.value } to clock get gone
+assert gone.ok = false

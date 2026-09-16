@@ -1,0 +1,31 @@
+| The mock answers `later = true` the way `localai` does: `Sent { value = id }`
+| now, `ChatResult { content, _request_id }` on the inbound ring afterwards —
+| so a program's state machine around a slow model call can be tested.
+link "native_modules/localai_mock.so" as ai
+
+emit Config { endpoint = "mock", model = "m" } to ai get c
+
+arrived = []
+
+ChatResult { content, _request_id as id } =>
+    arrived += [{ content = content, id = id }]
+    return Seen {}
+
+emit ChatJson { user = "hello", later = true } to ai get sent
+assert sent ∈ Sent
+
+spins = 0
+loop
+    spins += 1
+    emit Length { value = arrived } to core get n
+    if n.value = 1
+        break
+    if spins > 4000000
+        break
+
+assert arrived[0].content = "{}"
+assert arrived[0].id = sent.value
+
+| Without `later`, the answer is the result itself.
+emit ChatJson { user = "hello" } to ai get r
+assert r ∈ ChatResult

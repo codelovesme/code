@@ -14,11 +14,15 @@
 //!   valid JSON so a downstream `Parse` succeeds.
 //! - `Transcribe { audio_base64, language? }` / `TranscribeWithOptions` →
 //!   `TranscribeResult { text, language }` — `text` is `"[mock transcript]"`.
+//! - `Chat`/`ChatJson { …, later = true }` → `Sent { value = id }` at once, and
+//!   the same `ChatResult` with `_request_id = id` a moment later on the
+//!   program's inbound ring — the shape `localai` answers with `later`.
 //!
 //! `code_release` needs no code here — `code-native` links the vendored
 //! `runtime.c` into the cdylib and re-exports it.
 
 use code_native::*;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 static MODEL: Mutex<Option<String>> = Mutex::new(None);
@@ -91,9 +95,35 @@ fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<()
     } else {
         format!("[mock {model}] {}", last_user.unwrap_or_default())
     };
+    if read_field_bool(particle, "later") == Some(true) {
+        let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            let mut reply = CodeValue::zeroed();
+            let mut b = SlotBuffer::new(3);
+            borrowed_str(b.slot_mut(0), c"ChatResult");
+            owned_str(b.slot_mut(1), &content);
+            number(b.slot_mut(2), id as f64);
+            object(&mut reply, &[c"_class", c"content", c"_request_id"], &mut b);
+            b.release_all();
+            emit_inbound(&reply);
+            release(&mut reply);
+        });
+        make_result(out, c"Sent", |slot| number(slot, id as f64));
+        return Ok(());
+    }
     one_str(out, c"ChatResult", c"content", &content);
     Ok(())
 }
+
+/// One number per `later` ask, as in `localai`.
+static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+code_native::declare_inbound!();
+code_native::declare_inbound_reply!(answered);
+
+/// Nothing waits on the program's answer to a late reply.
+fn answered(_particle: &CodeValue, _result: &CodeValue) {}
 
 fn transcribe(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     find_field(particle, "audio_base64")

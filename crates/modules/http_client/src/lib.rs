@@ -53,6 +53,14 @@ const DEFAULT_MAX_BODY_BYTES: f64 = 1_048_576.0;
 // dropped (decided 2026-08-28), which is exactly what makes diagnostics safe
 // to send unasked.
 code_native::declare_inbound!();
+code_native::declare_inbound_reply!(answered);
+
+/// The program answered a response pushed with `later`; nothing waits on it.
+fn answered(_particle: &CodeValue, _result: &CodeValue) {}
+
+/// One number per `later` request, so an answer finds its ask.
+static NEXT_REQUEST_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+use std::sync::atomic::Ordering;
 
 /// Push `Exception { source, message }` into the program. Best effort in
 /// both directions: the host may never have taken an inbound channel, and
@@ -286,6 +294,42 @@ fn request(out: &mut CodeValue, particle: &CodeValue, method: Method) {
     } else {
         (String::new(), String::new())
     };
+
+    // `later = true`: the request goes out on a thread of its own, this
+    // answers `Sent { id }` at once, and the same `HttpResponse` arrives
+    // afterwards as a particle carrying `_request_id = id` — the shape
+    // `net_client` already has in a browser. Nothing else about the request
+    // changes; a program that does not ask for it never sees it.
+    if read_field_bool(particle, "later") == Some(true) {
+        let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        let class = class.to_string();
+        std::thread::spawn(move || {
+            let outcome = perform(method, &url, &headers, &body, &content_type, timeout, max_body);
+            let (ok, status, text) = match outcome {
+                Ok((status, body)) => {
+                    report_log("Info", &format!("{class} {url} -> {} (later, {id})", status as i64));
+                    (true, status, body)
+                }
+                Err(message) => {
+                    report_exception(&format!("{class} {url}: {message} (later, {id})"));
+                    (false, 0.0, message)
+                }
+            };
+            let mut buf = SlotBuffer::new(5);
+            borrowed_str(buf.slot_mut(0), c"HttpResponse");
+            boolean(buf.slot_mut(1), ok);
+            number(buf.slot_mut(2), status);
+            owned_str(buf.slot_mut(3), &text);
+            number(buf.slot_mut(4), id as f64);
+            let mut particle = CodeValue::zeroed();
+            object(&mut particle, &[c"_class", c"ok", c"status", c"body", c"_request_id"], &mut buf);
+            buf.release_all();
+            emit_inbound(&particle);
+            release(&mut particle);
+        });
+        make_result(out, c"Sent", |slot| number(slot, id as f64));
+        return;
+    }
 
     match perform(
         method,

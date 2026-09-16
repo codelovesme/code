@@ -215,3 +215,14 @@ is a no-op that logs), and the JSON variants.
 ```sh
 cargo build --release        # -> target/release/libhttp_client.so
 ```
+
+## Answering later
+
+`later = true` on any request — `Get { url, later = true }` — sends it on a
+thread of its own and answers `Sent { value = id }` at once. The same
+`HttpResponse { ok, status, body }` arrives afterwards as a particle
+carrying `_request_id = id`, handled by the program's own `HttpResponse`
+handler when its loop next drains. A program whose handler must not hold
+the thread for the length of a request — a worker held by a host — asks
+this way; everything else is as before.
+

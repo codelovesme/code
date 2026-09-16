@@ -1,0 +1,37 @@
+| `later = true`: the request goes out on a thread of its own and `Get`
+| answers `Sent { id }` at once; the `HttpResponse` arrives afterwards as a
+| particle carrying `_request_id`, handled here on the program's thread when
+| a loop iteration drains. Port 1 refuses at once, so the response is a
+| quick `ok = false` — the shape is what this checks, not the network.
+link "native_modules/http_client.so" as http
+
+arrived = []
+
+HttpResponse { ok, status, _request_id as id } =>
+    arrived += [{ ok = ok, status = status, id = id }]
+    return Seen {}
+
+emit Get { url = "http://127.0.0.1:1/", later = true } to http get sent
+assert sent ∈ Sent
+assert sent.value ∈ Number
+| The answer comes later, never inside the emit — but port 1 refuses so
+| fast that it may already be on the ring by the next statement, so what is
+| asserted is the shape and the id, not that it has not landed yet.
+
+spins = 0
+loop
+    spins += 1
+    emit Length { value = arrived } to core get n
+    if n.value = 1
+        break
+    if spins > 4000000
+        break
+
+assert arrived[0].ok = false
+assert arrived[0].status = 0
+assert arrived[0].id = sent.value
+
+| Without `later`, the same request still answers in place.
+emit Get { url = "http://127.0.0.1:1/" } to http get r
+assert r ∈ HttpResponse
+assert not r.ok

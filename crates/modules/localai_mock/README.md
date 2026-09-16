@@ -30,6 +30,21 @@ assert t.text = "[mock transcript]"
 Every field on `Config` is accepted; only `model` is used (it appears in
 `Chat` replies).
 
+## Answering later
+
+`Chat` and `ChatJson` with `later = true` answer `Sent { value = id }` at
+once and push the same `ChatResult` with `_request_id = id` onto the
+program's inbound ring a moment later — the shape `localai` answers with
+`later`, so a program's state machine around a slow model call is tested
+without a model:
+
+```code
+ChatResult { content, _request_id as id } =>
+    …
+emit ChatJson { user = "…", later = true } to ai get sent
+assert sent ∈ Sent
+```
+
 ## Build
 
 ```sh

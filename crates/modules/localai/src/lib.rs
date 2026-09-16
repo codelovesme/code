@@ -161,7 +161,31 @@ fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<()
         )
     };
 
-    let mut resp = authorized(agent(timeout).post(&url), &api_key)
+    // `later = true`: the model is asked on a thread of its own, this
+    // answers `Sent { id }` at once, and the `ChatResult` — or the
+    // `Exception` — arrives afterwards as a particle carrying
+    // `_request_id = id`. A minute-long answer then never holds the
+    // program's thread. Without `later`, nothing changes.
+    if read_field_bool(particle, "later") == Some(true) {
+        let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        std::thread::spawn(move || {
+            let outcome = chat_perform(&url, body, timeout, &api_key, json_mode);
+            push_later(id, c"ChatResult", c"content", outcome);
+        });
+        make_result(out, c"Sent", |slot| number(slot, id as f64));
+        return Ok(());
+    }
+
+    let content = chat_perform(&url, body, timeout, &api_key, json_mode)?;
+    one_str(out, c"ChatResult", c"content", &content);
+    Ok(())
+}
+
+/// The one exchange with the model: the request, the read, the checks —
+/// and for `ChatJson`, the fence stripped and the JSON made canonical.
+/// Blocking, which is why a `later` caller runs it on a thread.
+fn chat_perform(url: &str, body: Json, timeout: Duration, api_key: &str, json_mode: bool) -> Result<String, String> {
+    let mut resp = authorized(agent(timeout).post(url), api_key)
         .header("Content-Type", "application/json")
         .send(body.to_string())
         .map_err(|e| format!("chat request to '{url}' failed: {e}"))?;
@@ -194,13 +218,49 @@ fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<()
         // Re-serialise so `content` is canonical text, not the model's
         // whitespace — the euglena apps carry it as a string and parse it
         // downstream.
-        let canonical = serde_json::to_string(&value).unwrap_or(content);
-        one_str(out, c"ChatResult", c"content", &canonical);
+        Ok(serde_json::to_string(&value).unwrap_or(content))
     } else {
-        one_str(out, c"ChatResult", c"content", content.trim());
+        Ok(content.trim().to_string())
     }
-    Ok(())
 }
+
+/// Push a `later` outcome into the program: the result class with its one
+/// text field and `_request_id`, or an `Exception` carrying the same id.
+fn push_later(id: u64, class: &'static std::ffi::CStr, key: &'static std::ffi::CStr, outcome: Result<String, String>) {
+    let mut particle = CodeValue::zeroed();
+    match outcome {
+        Ok(text) => {
+            let mut b = SlotBuffer::new(3);
+            borrowed_str(b.slot_mut(0), class);
+            owned_str(b.slot_mut(1), &text);
+            number(b.slot_mut(2), id as f64);
+            object(&mut particle, &[c"_class", key, c"_request_id"], &mut b);
+            b.release_all();
+        }
+        Err(message) => {
+            let mut b = SlotBuffer::new(5);
+            borrowed_str(b.slot_mut(0), c"Exception");
+            owned_str(b.slot_mut(1), "localai");
+            owned_str(b.slot_mut(2), &message);
+            null(b.slot_mut(3));
+            number(b.slot_mut(4), id as f64);
+            object(&mut particle, &[c"_class", c"source", c"message", c"innerException", c"_request_id"], &mut b);
+            b.release_all();
+        }
+    }
+    emit_inbound(&particle);
+    release(&mut particle);
+}
+
+/// One number per `later` ask, so an answer finds its question.
+static NEXT_REQUEST_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+use std::sync::atomic::Ordering;
+
+code_native::declare_inbound!();
+code_native::declare_inbound_reply!(answered);
+
+/// The program answered a particle pushed by `later`; nothing waits on it.
+fn answered(_particle: &CodeValue, _result: &CodeValue) {}
 
 fn transcribe(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let audio = find_field(particle, "audio_base64")

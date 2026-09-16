@@ -1,0 +1,31 @@
+| `later = true` on `Chat`: `Sent { id }` at once, and the outcome afterwards
+| as a particle carrying `_request_id` — here an `Exception`, since port 1
+| refuses, which is the same path a slow answer takes.
+link "native_modules/localai.so" as ai
+
+emit Config { endpoint = "http://127.0.0.1:1", model = "none" } to ai get c
+
+arrived = []
+
+Exception { source, message, _request_id as id } =>
+    arrived += [{ source = source, id = id }]
+    return Seen {}
+
+emit Chat { user = "hello", later = true } to ai get sent
+assert sent ∈ Sent
+
+spins = 0
+loop
+    spins += 1
+    emit Length { value = arrived } to core get n
+    if n.value = 1
+        break
+    if spins > 4000000
+        break
+
+assert arrived[0].source = "localai"
+assert arrived[0].id = sent.value
+
+| Without `later`, the failure is the answer itself.
+emit Chat { user = "hello" } to ai get r
+assert r ∈ Exception

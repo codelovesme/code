@@ -103,3 +103,11 @@ transcript.
 ```sh
 cargo build --release        # -> target/release/liblocalai.so
 ```
+
+## Answering later
+
+`later = true` on `Chat` or `ChatJson` asks the model on a thread of its
+own and answers `Sent { value = id }` at once; the `ChatResult { content }`
+— or the `Exception` — arrives afterwards carrying `_request_id = id`. A
+minute of model time then never holds the program's thread.
+

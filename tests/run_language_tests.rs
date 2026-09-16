@@ -173,6 +173,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         "net_client",
         "dom",
         "guest",
+        "timer",
         "mailer_mock",
         "oauth_mock",
         "mongodb_mock",
