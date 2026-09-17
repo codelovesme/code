@@ -96,6 +96,10 @@
         start = null;
         if (dt > SWIPE_MS || Math.abs(dx) < SWIPE_PX || Math.abs(dx) < Math.abs(dy) * 2) return;
         if ((name === "swipeleft") === (dx < 0)) {
+          // A node may also expose the live drag gesture. Mark this release
+          // so drag does not commit the same action a second time after the
+          // swipe handler has already fired.
+          el.__euglenaSwipeHandledPointer = e.pointerId;
           suppressClick = true;
           fire(meant(el, particle));
         }
@@ -176,6 +180,10 @@
         const wasHorizontal = horizontal;
         start = null;
         horizontal = false;
+        if (el.__euglenaSwipeHandledPointer === e.pointerId) {
+          delete el.__euglenaSwipeHandledPointer;
+          return;
+        }
         if (!wasHorizontal) return;
         suppressClick = true;
         fire({ ...particle, phase: "end", dx });
