@@ -92,7 +92,7 @@ single function. `wasm-ld` linked the module, but browsers rejected it before
 `main` with `local count too large`; their portable per-function limit is
 50,000 parameters and locals combined.
 
-The same source at `-O1` produces seven locals in that function. This is the
+The same source at `-O1` produces 19 locals in that function. This is the
 smallest LLVM pipeline that runs the local coalescing and stackification the
 wasm target needs, and it avoids imposing the full `-O2` cost on every edit.
 
