@@ -91,9 +91,18 @@ const r = dom({{ _class: "Render", into: "body", tree: {{
     {{ tag: "li", attrs: {{ value: "a", "data-focus-key": "a" }}, on: {{ swipeleft: {{ _class: "Gone", id: 1 }}, click: "Tapped", doubletap: "Cycle" }}, children: [{{ tag: "svg", children: [{{ tag: "path" }}] }}] }},
     {{ tag: "li", attrs: {{ value: "b", "data-focus-key": "b" }} }},
     {{ tag: "li", attrs: {{ value: "c", "data-focus-key": "c" }}, on: {{ swiperight: "Back" }} }},
-    {{ tag: "div", on: {{ edgeclose: "Close" }} }},
-    {{ tag: "div", on: {{ edgeclose: "Close" }} }},
-    {{ tag: "div", on: {{ edgeclose: "Close" }} }},
+    {{ tag: "div", on: {{ edgeclose: "Close" }}, children: [
+      {{ tag: "div", attrs: {{ class: "backdrop" }} }},
+      {{ tag: "div", attrs: {{ class: "editor" }} }},
+    ] }},
+    {{ tag: "div", on: {{ edgeclose: "Close" }}, children: [
+      {{ tag: "div", attrs: {{ class: "backdrop" }} }},
+      {{ tag: "div", attrs: {{ class: "editor" }} }},
+    ] }},
+    {{ tag: "div", on: {{ edgeclose: "Close" }}, children: [
+      {{ tag: "div", attrs: {{ class: "backdrop" }} }},
+      {{ tag: "div", attrs: {{ class: "editor" }} }},
+    ] }},
   ] }} }});
 check("render refused", r, {{ _class: "RenderResult", ok: true }});
 const list = body.children[0];
@@ -101,6 +110,8 @@ const [a, b, c] = list.children;
 const edge = list.children[3];
 const edgeBottom = list.children[4];
 const edgeWheel = list.children[5];
+const edgeSurface = edge.children[1];
+const edgeBottomSurface = edgeBottom.children[1];
 [a, b, c].forEach((li, i) => {{ li.rect = {{ top: i * 40, height: 40 }}; }});
 edge.rect = {{ top: 120, height: 40 }};
 edgeBottom.rect = {{ top: 160, height: 40 }};
@@ -149,11 +160,12 @@ edge.send("touchstart", {{ touches: [{{ clientY: 20 }}] }});
 const shortPull = edge.send("touchmove", {{ touches: [{{ clientY: 65 }}] }});
 check("a short outward pull closed too soon", fired, []);
 check("the short pull was allowed to bounce", shortPull.defaultPrevented, true);
-check("the surface followed a short pull", edge.style.transform, "translate3d(0, 45px, 0)");
+check("the surface followed a short pull", edgeSurface.style.transform, "translate3d(0, 45px, 0)");
+check("the backdrop stayed fixed during a short pull", edge.children[0].style.transform, "");
 edge.send("touchend", {{}});
 await new Promise(resolve => setTimeout(resolve, 230));
 check("a short pull did not settle back", fired, []);
-check("the short pull did not keep its transform", edge.style.transform, "");
+check("the short pull did not keep its transform", edgeSurface.style.transform, "");
 
 // A pull that starts in the middle remains ordinary page scrolling.
 edge.scrollTop = 100;
@@ -168,15 +180,15 @@ edgeBottom.send("pointerdown", {{ pointerType: "touch", clientY: 100 }});
 const bottomPull = edgeBottom.send("pointermove", {{ pointerType: "touch", clientY: 25 }});
 check("a bottom pull closed too soon", fired, []);
 check("the bottom pull was allowed to bounce", bottomPull.defaultPrevented, true);
-check("the surface followed the bottom pull", edgeBottom.style.transform, "translate3d(0, -75px, 0)");
+check("the surface followed the bottom pull", edgeBottomSurface.style.transform, "translate3d(0, -75px, 0)");
 edgeBottom.send("pointerup", {{ pointerType: "touch", clientY: 25 }});
 await new Promise(resolve => setTimeout(resolve, 230));
-check("a short bottom pull did not settle back", edgeBottom.style.transform, "");
+check("a short bottom pull did not settle back", edgeBottomSurface.style.transform, "");
 edgeBottom.send("pointerdown", {{ pointerType: "touch", clientY: 100 }});
 edgeBottom.send("pointermove", {{ pointerType: "touch", clientY: -10 }});
 edgeBottom.send("pointerup", {{ pointerType: "touch", clientY: -10 }});
 check("the bottom close fired before its animation", fired, []);
-check("the bottom close started its slide-away animation", edgeBottom.style.transform, "translate3d(0, -100%, 0)");
+check("the bottom close started its slide-away animation", edgeBottomSurface.style.transform, "translate3d(0, -100%, 0)");
 await new Promise(resolve => setTimeout(resolve, 230));
 check("the bottom close did not send its particle", fired, [{{ _class: "Close" }}]);
 fired.length = 0;
@@ -190,7 +202,7 @@ check("a long outward pull closed before release", fired, []);
 check("the long top pull was allowed to bounce", topPull.defaultPrevented, true);
 edge.send("touchend", {{ changedTouches: [{{ clientY: 125 }}] }});
 check("the top close fired before its animation", fired, []);
-check("the top close started its slide-away animation", edge.style.transform, "translate3d(0, 100%, 0)");
+check("the top close started its slide-away animation", edgeSurface.style.transform, "translate3d(0, 100%, 0)");
 await new Promise(resolve => setTimeout(resolve, 230));
 check("the top close did not send its particle", fired, [{{ _class: "Close" }}]);
 fired.length = 0;
@@ -200,6 +212,7 @@ edgeWheel.clientHeight = 100; edgeWheel.scrollHeight = 300; edgeWheel.scrollTop 
 const wheel = edgeWheel.send("wheel", {{ deltaY: -20 }});
 check("an outward wheel closed before its animation", fired, []);
 check("the outward wheel was allowed to overscroll", wheel.defaultPrevented, true);
+check("the wheel close left the backdrop fixed", edgeWheel.children[0].style.transform, "");
 await new Promise(resolve => setTimeout(resolve, 230));
 check("the outward wheel did not send its particle", fired, [{{ _class: "Close" }}]);
 fired.length = 0;

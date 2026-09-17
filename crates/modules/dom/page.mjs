@@ -246,6 +246,18 @@
       const atTop = () => el.scrollTop <= 0;
       const atBottom = () => el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
       const outward = (dy, edge) => (edge === "top" ? dy > 0 : dy < 0);
+      // The scroll host may contain a fixed backdrop followed by the modal
+      // surface. Transform only the first non-backdrop child so the scrim
+      // stays fixed while the dialog follows the pull.
+      const findSurface = () => {
+        const children = el.children ? Array.from(el.children) : [];
+        for (const child of children) {
+          const klass = child.getAttribute && child.getAttribute("class");
+          if (!String(klass || "").split(/\s+/).includes("backdrop")) return child;
+        }
+        return el;
+      };
+      let surface = el;
       let closeQueued = false;
       let settleTimer = null;
       let baseTransition = "";
@@ -258,27 +270,28 @@
           clearTimeout(settleTimer);
           settleTimer = null;
         }
-        baseTransition = el.style ? el.style.transition || "" : "";
-        baseTransform = el.style ? el.style.transform || "" : "";
-        baseWillChange = el.style ? el.style.willChange || "" : "";
-        if (el.style) el.style.willChange = "transform";
+        surface = findSurface();
+        baseTransition = surface.style ? surface.style.transition || "" : "";
+        baseTransform = surface.style ? surface.style.transform || "" : "";
+        baseWillChange = surface.style ? surface.style.willChange || "" : "";
+        if (surface.style) surface.style.willChange = "transform";
       };
       const restoreBase = () => {
-        if (!el.style) return;
-        el.style.transition = baseTransition;
-        el.style.transform = baseTransform;
-        el.style.willChange = baseWillChange;
+        if (!surface.style) return;
+        surface.style.transition = baseTransition;
+        surface.style.transform = baseTransform;
+        surface.style.willChange = baseWillChange;
       };
       const offset = (dy) => Math.max(-MAX_DRAG, Math.min(MAX_DRAG, dy));
       const moveSurface = (dy) => {
-        if (!el.style) return;
-        el.style.transition = "none";
-        el.style.transform = "translate3d(0, " + offset(dy) + "px, 0)";
+        if (!surface.style) return;
+        surface.style.transition = "none";
+        surface.style.transform = "translate3d(0, " + offset(dy) + "px, 0)";
       };
       const settleBack = () => {
-        if (!el.style || closeQueued) return;
-        el.style.transition = "transform " + ANIMATION_MS + "ms ease-out";
-        el.style.transform = baseTransform || "translate3d(0, 0, 0)";
+        if (!surface.style || closeQueued) return;
+        surface.style.transition = "transform " + ANIMATION_MS + "ms ease-out";
+        surface.style.transform = baseTransform || "translate3d(0, 0, 0)";
         settleTimer = setTimeout(() => {
           settleTimer = null;
           if (!closeQueued) restoreBase();
@@ -291,9 +304,9 @@
           clearTimeout(settleTimer);
           settleTimer = null;
         }
-        if (el.style) {
-          el.style.transition = "transform " + ANIMATION_MS + "ms ease-in";
-          el.style.transform = edge === "top" ? "translate3d(0, 100%, 0)" : "translate3d(0, -100%, 0)";
+        if (surface.style) {
+          surface.style.transition = "transform " + ANIMATION_MS + "ms ease-in";
+          surface.style.transform = edge === "top" ? "translate3d(0, 100%, 0)" : "translate3d(0, -100%, 0)";
         }
         setTimeout(() => fire(meant(el, particle)), ANIMATION_MS);
       };
