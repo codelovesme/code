@@ -38,6 +38,7 @@ class El {{
   constructor(tag) {{
     this.tagName = tag.toUpperCase(); this.nodeType = 1; this.children = []; this.parentNode = null;
     this.attrs = {{}}; this.listeners = {{}}; this.rect = {{ top: 0, height: 0 }}; this.captured = null; this.namespaceURI = null;
+    this.scrollTop = 0; this.scrollHeight = 0; this.clientHeight = 0;
   }}
   addEventListener(name, fn) {{ (this.listeners[name] ||= []).push(fn); }}
   setAttribute(k, v) {{ this.attrs[k] = String(v); }}
@@ -89,11 +90,14 @@ const r = dom({{ _class: "Render", into: "body", tree: {{
     {{ tag: "li", attrs: {{ value: "a", "data-focus-key": "a" }}, on: {{ swipeleft: {{ _class: "Gone", id: 1 }}, click: "Tapped", doubletap: "Cycle" }}, children: [{{ tag: "svg", children: [{{ tag: "path" }}] }}] }},
     {{ tag: "li", attrs: {{ value: "b", "data-focus-key": "b" }} }},
     {{ tag: "li", attrs: {{ value: "c", "data-focus-key": "c" }}, on: {{ swiperight: "Back" }} }},
+    {{ tag: "div", on: {{ edgeclose: "Close" }} }},
   ] }} }});
 check("render refused", r, {{ _class: "RenderResult", ok: true }});
 const list = body.children[0];
 const [a, b, c] = list.children;
+const edge = list.children[3];
 [a, b, c].forEach((li, i) => {{ li.rect = {{ top: i * 40, height: 40 }}; }});
+edge.rect = {{ top: 120, height: 40 }};
 check("the svg was created in the svg namespace", a.children[0].namespaceURI, "http://www.w3.org/2000/svg");
 check("the svg path was created in the svg namespace", a.children[0].children[0].namespaceURI, "http://www.w3.org/2000/svg");
 
@@ -130,6 +134,33 @@ check("a swipe that was not one still sent something", fired, []);
 c.send("pointerdown", {{ clientX: 100, clientY: 100, timeStamp: 1000 }});
 c.send("pointerup", {{ clientX: 200, clientY: 100, timeStamp: 1100 }});
 check("a swipe right did not send its particle", fired, [{{ _class: "Back", value: "c" }}]);
+fired.length = 0;
+
+// A second pull that starts at a modal page's top or bottom closes it, while
+// a pull that starts in the middle remains ordinary page scrolling.
+edge.clientHeight = 100; edge.scrollHeight = 300; edge.scrollTop = 0;
+edge.send("pointerdown", {{ pointerType: "touch", clientY: 20 }});
+edge.send("touchstart", {{ touches: [{{ clientY: 20 }}] }});
+const topPull = edge.send("touchmove", {{ touches: [{{ clientY: 75 }}] }});
+edge.send("pointermove", {{ pointerType: "touch", clientY: 75 }});
+check("an outward pull at the top did not close", fired, [{{ _class: "Close" }}]);
+check("the top pull was allowed to bounce", topPull.defaultPrevented, true);
+edge.send("pointerup", {{ pointerType: "touch" }}); edge.send("touchend", {{}}); fired.length = 0;
+edge.scrollTop = 100;
+edge.send("touchstart", {{ touches: [{{ clientY: 20 }}] }});
+edge.send("touchmove", {{ touches: [{{ clientY: 80 }}] }});
+check("a pull from the middle closed the dialog", fired, []);
+edge.send("touchend", {{}});
+edge.scrollTop = 200;
+edge.send("touchstart", {{ touches: [{{ clientY: 100 }}] }});
+const bottomPull = edge.send("touchmove", {{ touches: [{{ clientY: 40 }}] }});
+check("an outward pull at the bottom did not close", fired, [{{ _class: "Close" }}]);
+check("the bottom pull was allowed to bounce", bottomPull.defaultPrevented, true);
+edge.send("touchend", {{}}); fired.length = 0;
+edge.scrollTop = 0;
+const wheel = edge.send("wheel", {{ deltaY: -20 }});
+check("an outward wheel at the top did not close", fired, [{{ _class: "Close" }}]);
+check("the outward wheel was allowed to overscroll", wheel.defaultPrevented, true);
 fired.length = 0;
 
 // Two taps close together are one double; a third alone is nothing yet.

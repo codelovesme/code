@@ -41,7 +41,7 @@
   // Names in `on` the page reads as gestures rather than forwarding as
   // events. Nothing is held between renders here either: what a gesture
   // needs to remember lives on the node, and goes when the node does.
-  const GESTURES = new Set(["swipeleft", "swiperight", "doubletap", "drag", "reorder", "longreorder"]);
+  const GESTURES = new Set(["swipeleft", "swiperight", "doubletap", "drag", "edgeclose", "reorder", "longreorder"]);
 
   // SVG needs its own namespace when it is created through the DOM API. A
   // plain `createElement("svg")` looks like an element in the HTML namespace
@@ -230,6 +230,86 @@
         restoreSurface(dx <= -56 ? "-2.8rem" : "0px");
         fire({ ...particle, phase: "end", dx });
       });
+      return;
+    }
+    if (name === "edgeclose") {
+      // A modal page owns vertical scrolling. When a touch starts at one of
+      // its two scroll boundaries, a second pull in that same direction is a
+      // dismissal gesture instead of the browser's rubber-band bounce. A
+      // touch that starts in the middle is left entirely to native scrolling;
+      // reaching an edge never closes the dialog by itself.
+      const EDGE_PX = 48;
+      const atTop = () => el.scrollTop <= 0;
+      const atBottom = () => el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+      const outward = (dy, edge) => (edge === "top" ? dy > 0 : dy < 0);
+      let dismissed = false;
+      const fireClose = () => {
+        if (dismissed) return;
+        dismissed = true;
+        fire(meant(el, particle));
+      };
+      let touch = null;
+      el.addEventListener("touchstart", (e) => {
+        if (!e.touches || e.touches.length !== 1) {
+          touch = null;
+          return;
+        }
+        const edge = atTop() ? "top" : atBottom() ? "bottom" : null;
+        touch = edge ? { y: e.touches[0].clientY, edge, fired: false } : null;
+      }, { passive: true });
+      el.addEventListener("touchmove", (e) => {
+        if (!touch || !e.touches || e.touches.length !== 1) return;
+        const dy = e.touches[0].clientY - touch.y;
+        if (!outward(dy, touch.edge)) return;
+        // Suppress the platform bounce as soon as this is an outward pull.
+        e.preventDefault();
+        if (!touch.fired && Math.abs(dy) >= EDGE_PX) {
+          touch.fired = true;
+          fireClose();
+        }
+      }, { passive: false });
+      el.addEventListener("touchend", () => { touch = null; dismissed = false; }, { passive: true });
+      el.addEventListener("touchcancel", () => { touch = null; dismissed = false; }, { passive: true });
+
+      // Pointer events cover browsers that do not expose a TouchEvent stream.
+      // Mouse drags are deliberately excluded: desktop wheel scrolling has a
+      // separate boundary path, while a mouse drag should never dismiss a
+      // dialog accidentally.
+      let pointer = null;
+      el.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse") {
+          pointer = null;
+          return;
+        }
+        const edge = atTop() ? "top" : atBottom() ? "bottom" : null;
+        pointer = edge ? { y: e.clientY, id: e.pointerId, edge, fired: false } : null;
+      });
+      el.addEventListener("pointermove", (e) => {
+        if (!pointer || e.pointerId !== pointer.id) return;
+        const dy = e.clientY - pointer.y;
+        if (!outward(dy, pointer.edge)) return;
+        e.preventDefault();
+        if (!pointer.fired && Math.abs(dy) >= EDGE_PX) {
+          pointer.fired = true;
+          fireClose();
+        }
+      });
+      const clearPointer = (e) => {
+        if (pointer && (!e || e.pointerId === pointer.id)) pointer = null;
+        dismissed = false;
+      };
+      el.addEventListener("pointerup", clearPointer);
+      el.addEventListener("pointercancel", clearPointer);
+
+      // A wheel event has no continuation state: one outward wheel tick at a
+      // boundary is the extra scroll the user asked for. Preventing its
+      // default action avoids a desktop overscroll animation.
+      el.addEventListener("wheel", (e) => {
+        const edge = e.deltaY < 0 && atTop() ? "top" : e.deltaY > 0 && atBottom() ? "bottom" : null;
+        if (!edge) return;
+        e.preventDefault();
+        fireClose();
+      }, { passive: false });
       return;
     }
     if (name === "reorder" || name === "longreorder") {
