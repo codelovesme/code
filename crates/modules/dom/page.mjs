@@ -304,7 +304,13 @@
       // dialog accidentally.
       let pointer = null;
       el.addEventListener("touchstart", (e) => {
-        if (input && input !== "touch") return;
+        // On browsers that expose both APIs, pointerdown precedes touchstart.
+        // Prefer the touch stream once it appears: pointer events may be
+        // cancelled when the browser begins its native vertical-pan decision.
+        if (input === "pointer") {
+          pointer = null;
+          input = null;
+        } else if (input && input !== "touch") return;
         if (!e.touches || e.touches.length !== 1) {
           touch = null;
           input = null;

@@ -184,10 +184,11 @@ fired.length = 0;
 // A long top pull closes only after release, after its slide-away animation.
 edge.scrollTop = 0;
 edge.send("pointerdown", {{ pointerType: "touch", clientY: 20 }});
-const topPull = edge.send("pointermove", {{ pointerType: "touch", clientY: 125 }});
+edge.send("touchstart", {{ touches: [{{ clientY: 20 }}] }});
+const topPull = edge.send("touchmove", {{ touches: [{{ clientY: 125 }}] }});
 check("a long outward pull closed before release", fired, []);
 check("the long top pull was allowed to bounce", topPull.defaultPrevented, true);
-edge.send("pointerup", {{ pointerType: "touch", clientY: 125 }});
+edge.send("touchend", {{ changedTouches: [{{ clientY: 125 }}] }});
 check("the top close fired before its animation", fired, []);
 check("the top close started its slide-away animation", edge.style.transform, "translate3d(0, 100%, 0)");
 await new Promise(resolve => setTimeout(resolve, 230));
