@@ -250,6 +250,8 @@
       let settleTimer = null;
       let baseTransition = "";
       let baseTransform = "";
+      let baseWillChange = "";
+      let input = null;
 
       const rememberBase = () => {
         if (settleTimer !== null) {
@@ -258,22 +260,25 @@
         }
         baseTransition = el.style ? el.style.transition || "" : "";
         baseTransform = el.style ? el.style.transform || "" : "";
+        baseWillChange = el.style ? el.style.willChange || "" : "";
+        if (el.style) el.style.willChange = "transform";
       };
       const restoreBase = () => {
         if (!el.style) return;
         el.style.transition = baseTransition;
         el.style.transform = baseTransform;
+        el.style.willChange = baseWillChange;
       };
       const offset = (dy) => Math.max(-MAX_DRAG, Math.min(MAX_DRAG, dy));
       const moveSurface = (dy) => {
         if (!el.style) return;
         el.style.transition = "none";
-        el.style.transform = "translateY(" + offset(dy) + "px)";
+        el.style.transform = "translate3d(0, " + offset(dy) + "px, 0)";
       };
       const settleBack = () => {
         if (!el.style || closeQueued) return;
         el.style.transition = "transform " + ANIMATION_MS + "ms ease-out";
-        el.style.transform = baseTransform || "translateY(0px)";
+        el.style.transform = baseTransform || "translate3d(0, 0, 0)";
         settleTimer = setTimeout(() => {
           settleTimer = null;
           if (!closeQueued) restoreBase();
@@ -288,7 +293,7 @@
         }
         if (el.style) {
           el.style.transition = "transform " + ANIMATION_MS + "ms ease-in";
-          el.style.transform = edge === "top" ? "translateY(100%)" : "translateY(-100%)";
+          el.style.transform = edge === "top" ? "translate3d(0, 100%, 0)" : "translate3d(0, -100%, 0)";
         }
         setTimeout(() => fire(meant(el, particle)), ANIMATION_MS);
       };
@@ -299,13 +304,21 @@
       // dialog accidentally.
       let pointer = null;
       el.addEventListener("touchstart", (e) => {
+        if (input && input !== "touch") return;
         if (!e.touches || e.touches.length !== 1) {
           touch = null;
+          input = null;
           return;
         }
         if (closeQueued) return;
         const edge = atTop() ? "top" : atBottom() ? "bottom" : null;
-        touch = edge ? (rememberBase(), { y: e.touches[0].clientY, lastY: e.touches[0].clientY, edge, cancelled: false }) : null;
+        if (!edge) {
+          touch = null;
+          return;
+        }
+        input = "touch";
+        rememberBase();
+        touch = { y: e.touches[0].clientY, lastY: e.touches[0].clientY, edge, cancelled: false };
       }, { passive: true });
       el.addEventListener("touchmove", (e) => {
         if (!touch || !e.touches || e.touches.length !== 1) return;
@@ -326,6 +339,7 @@
         const gesture = touch;
         touch = null;
         pointer = null;
+        input = null;
         const changed = e && e.changedTouches && e.changedTouches[0];
         const y = changed && typeof changed.clientY === "number" ? changed.clientY : gesture.lastY;
         const dy = y - gesture.y;
@@ -345,9 +359,16 @@
           pointer = null;
           return;
         }
+        if (input) return;
         if (closeQueued) return;
         const edge = atTop() ? "top" : atBottom() ? "bottom" : null;
-        pointer = edge ? (rememberBase(), { y: e.clientY, lastY: e.clientY, id: e.pointerId, edge, cancelled: false }) : null;
+        if (!edge) {
+          pointer = null;
+          return;
+        }
+        input = "pointer";
+        rememberBase();
+        pointer = { y: e.clientY, lastY: e.clientY, id: e.pointerId, edge, cancelled: false };
       });
       el.addEventListener("pointermove", (e) => {
         if (!pointer || e.pointerId !== pointer.id) return;
@@ -366,6 +387,7 @@
         const gesture = pointer;
         pointer = null;
         touch = null;
+        input = null;
         const y = e && typeof e.clientY === "number" ? e.clientY : gesture.lastY;
         const dy = y - gesture.y;
         if (cancelled || gesture.cancelled || !outward(dy, gesture.edge)) {

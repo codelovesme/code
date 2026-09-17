@@ -39,7 +39,7 @@ class El {{
     this.tagName = tag.toUpperCase(); this.nodeType = 1; this.children = []; this.parentNode = null;
     this.attrs = {{}}; this.listeners = {{}}; this.rect = {{ top: 0, height: 0 }}; this.captured = null; this.namespaceURI = null;
     this.scrollTop = 0; this.scrollHeight = 0; this.clientHeight = 0;
-    this.style = {{ transition: "", transform: "" }};
+    this.style = {{ transition: "", transform: "", willChange: "" }};
   }}
   addEventListener(name, fn) {{ (this.listeners[name] ||= []).push(fn); }}
   setAttribute(k, v) {{ this.attrs[k] = String(v); }}
@@ -149,7 +149,7 @@ edge.send("touchstart", {{ touches: [{{ clientY: 20 }}] }});
 const shortPull = edge.send("touchmove", {{ touches: [{{ clientY: 65 }}] }});
 check("a short outward pull closed too soon", fired, []);
 check("the short pull was allowed to bounce", shortPull.defaultPrevented, true);
-check("the surface followed a short pull", edge.style.transform, "translateY(45px)");
+check("the surface followed a short pull", edge.style.transform, "translate3d(0, 45px, 0)");
 edge.send("touchend", {{}});
 await new Promise(resolve => setTimeout(resolve, 230));
 check("a short pull did not settle back", fired, []);
@@ -168,7 +168,7 @@ edgeBottom.send("pointerdown", {{ pointerType: "touch", clientY: 100 }});
 const bottomPull = edgeBottom.send("pointermove", {{ pointerType: "touch", clientY: 25 }});
 check("a bottom pull closed too soon", fired, []);
 check("the bottom pull was allowed to bounce", bottomPull.defaultPrevented, true);
-check("the surface followed the bottom pull", edgeBottom.style.transform, "translateY(-75px)");
+check("the surface followed the bottom pull", edgeBottom.style.transform, "translate3d(0, -75px, 0)");
 edgeBottom.send("pointerup", {{ pointerType: "touch", clientY: 25 }});
 await new Promise(resolve => setTimeout(resolve, 230));
 check("a short bottom pull did not settle back", edgeBottom.style.transform, "");
@@ -176,7 +176,7 @@ edgeBottom.send("pointerdown", {{ pointerType: "touch", clientY: 100 }});
 edgeBottom.send("pointermove", {{ pointerType: "touch", clientY: -10 }});
 edgeBottom.send("pointerup", {{ pointerType: "touch", clientY: -10 }});
 check("the bottom close fired before its animation", fired, []);
-check("the bottom close started its slide-away animation", edgeBottom.style.transform, "translateY(-100%)");
+check("the bottom close started its slide-away animation", edgeBottom.style.transform, "translate3d(0, -100%, 0)");
 await new Promise(resolve => setTimeout(resolve, 230));
 check("the bottom close did not send its particle", fired, [{{ _class: "Close" }}]);
 fired.length = 0;
@@ -189,7 +189,7 @@ check("a long outward pull closed before release", fired, []);
 check("the long top pull was allowed to bounce", topPull.defaultPrevented, true);
 edge.send("pointerup", {{ pointerType: "touch", clientY: 125 }});
 check("the top close fired before its animation", fired, []);
-check("the top close started its slide-away animation", edge.style.transform, "translateY(100%)");
+check("the top close started its slide-away animation", edge.style.transform, "translate3d(0, 100%, 0)");
 await new Promise(resolve => setTimeout(resolve, 230));
 check("the top close did not send its particle", fired, [{{ _class: "Close" }}]);
 fired.length = 0;
