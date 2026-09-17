@@ -15,6 +15,10 @@ assert box.count = 1
 assert box.messages[0].subject = "Hi"
 ```
 
+`Send { …, later = true }` returns `Sent { value }` immediately and pushes a
+`SendResult { ok, operation, _request_id }` after the message reaches the
+outbox, matching `azure_mailer`'s held-worker behavior.
+
 ## Beyond `mailer`'s surface
 
 ```

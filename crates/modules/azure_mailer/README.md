@@ -22,14 +22,20 @@ emit Send {
 assert r.ok
 ```
 
+For a held worker, add `later = true`. The call returns `Sent { value }`
+immediately; the module later pushes `SendResult { ok, operation, _request_id }`
+or `Exception { source, message, _request_id }` through the inbound ring.
+
 ## Handlers
 
 ```
 Config { connection_string, from }                             → ConfigResult { ok }
-Send   { recipient, subject?, text?, html?, from?, cc?, bcc? }  → SendResult   { ok, operation }
+Send   { recipient, subject?, text?, html?, from?, cc?, bcc?, later? }  → SendResult   { ok, operation }
 ```
 
 `Config` is the setup particle — `Send` is an `Exception` until it has run.
+The synchronous form is unchanged; `later` moves only the blocking network
+request to a worker thread.
 
 | `Config` field | Meaning |
 |---|---|

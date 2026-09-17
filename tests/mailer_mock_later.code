@@ -1,0 +1,32 @@
+| A mock held-worker send answers `Sent` immediately and pushes the
+| `SendResult` after the message has been filed in the outbox.
+link "native_modules/mailer_mock.so" as mailer
+
+emit Config { host = "mock", from = "me@x.test" } to mailer get c
+assert c.ok
+
+arrived = []
+SendResult { ok, operation, _request_id as id } =>
+    arrived += [{ ok = ok, operation = operation, id = id }]
+    return Seen {}
+
+emit Send { recipient = "you@x.test", text = "hello", later = true } to mailer get sent
+assert sent ∈ Sent
+assert sent.value ∈ Number
+
+spins = 0
+loop
+    spins += 1
+    emit Length { value = arrived } to core get n
+    if n.value = 1
+        break
+    if spins > 4000000
+        break
+
+assert arrived[0].ok
+assert arrived[0].operation = "mock-operation"
+assert arrived[0].id = sent.value
+
+emit Outbox {} to mailer get box
+assert box.count = 1
+assert box.messages[0].body = "hello"

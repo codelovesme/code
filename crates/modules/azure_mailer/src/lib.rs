@@ -18,7 +18,7 @@
 //!   `endpoint=https://….communication.azure.com/;accesskey=…`; `from` is a
 //!   sender on a domain linked to that resource.
 //! - `Send { recipient, subject?, text?, html?, from?, cc?, bcc? }` →
-//!   `SendResult { ok }`.
+//!   `SendResult { ok, operation }`.
 //!
 //! Requests are signed with Azure's HMAC-SHA256 scheme: the access key signs
 //! the method, the path, the date, the host and a hash of the body, so a
@@ -32,6 +32,7 @@ use code_native::*;
 use hmac::{Hmac, Mac};
 use serde_json::{json, Value as Json};
 use sha2::{Digest, Sha256};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -232,21 +233,67 @@ fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let content_hash = BASE64.encode(Sha256::digest(body.as_bytes()));
     let signature = sign("POST", &path, &date, &host, &content_hash, &access_key)?;
 
+    // `later = true` is the held-worker path: validation and signing happen
+    // now, while the blocking Azure request runs on its own thread. The
+    // caller gets a correlation id immediately and a `SendResult` (or
+    // `Exception`) carrying that id through the inbound ring afterwards.
+    if read_field_bool(particle, "later") == Some(true) {
+        let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        std::thread::spawn(move || {
+            let outcome = send_request(
+                &endpoint,
+                &host,
+                &path,
+                &date,
+                &content_hash,
+                &signature,
+                &body,
+            );
+            push_later(id, outcome);
+        });
+        make_result(out, c"Sent", |slot| number(slot, id as f64));
+        return Ok(());
+    }
+
+    let operation = send_request(
+        &endpoint,
+        &host,
+        &path,
+        &date,
+        &content_hash,
+        &signature,
+        &body,
+    )?;
+    send_result(out, true, &operation, None);
+    Ok(())
+}
+
+/// The only blocking part of `Send`. Keeping it separate makes the sync and
+/// `later` paths byte-for-byte identical on the wire.
+fn send_request(
+    endpoint: &str,
+    host: &str,
+    path: &str,
+    date: &str,
+    content_hash: &str,
+    signature: &str,
+    body: &str,
+) -> Result<String, String> {
     let mut response = ureq::post(&format!("{endpoint}{path}"))
         .config()
         .timeout_global(Some(Duration::from_secs(30)))
         .http_status_as_error(false)
         .build()
         .header("Content-Type", "application/json")
-        .header("x-ms-date", &date)
-        .header("x-ms-content-sha256", &content_hash)
+        .header("x-ms-date", date)
+        .header("x-ms-content-sha256", content_hash)
         .header(
             "Authorization",
             &format!(
                 "HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature={signature}"
             ),
         )
-        .send(&body)
+        .send(body)
         .map_err(|e| format!("the request to '{host}' failed: {e}"))?;
 
     let status = response.status().as_u16();
@@ -258,26 +305,78 @@ fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     if !(200..300).contains(&status) {
         // Azure explains itself in the body; pass that through rather than a
         // status nobody can act on.
-        return Err(format!("Azure refused the message: HTTP {status}: {}", trim(&reply)));
+        return Err(format!(
+            "Azure refused the message: HTTP {status}: {}",
+            trim(&reply)
+        ));
     }
 
     // Accepted for delivery, which is not delivery — a later bounce is
     // between Azure and the recipient, and this module never sees it. The
     // operation id it answers with is how that is followed up, so it is
     // handed back rather than dropped.
-    let operation = serde_json::from_str::<Json>(&reply)
+    Ok(serde_json::from_str::<Json>(&reply)
         .ok()
         .and_then(|v| v.get("id").and_then(Json::as_str).map(str::to_string))
-        .unwrap_or_default();
-
-    let mut b = SlotBuffer::new(3);
-    borrowed_str(b.slot_mut(0), c"SendResult");
-    boolean(b.slot_mut(1), true);
-    owned_str(b.slot_mut(2), &operation);
-    object(out, &[c"_class", c"ok", c"operation"], &mut b);
-    b.release_all();
-    Ok(())
+        .unwrap_or_default())
 }
+
+fn send_result(out: &mut CodeValue, ok: bool, operation: &str, request_id: Option<u64>) {
+    let mut b = SlotBuffer::new(if request_id.is_some() { 4 } else { 3 });
+    borrowed_str(b.slot_mut(0), c"SendResult");
+    boolean(b.slot_mut(1), ok);
+    owned_str(b.slot_mut(2), operation);
+    if let Some(id) = request_id {
+        number(b.slot_mut(3), id as f64);
+    }
+    if request_id.is_some() {
+        object(
+            out,
+            &[c"_class", c"ok", c"operation", c"_request_id"],
+            &mut b,
+        );
+    } else {
+        object(out, &[c"_class", c"ok", c"operation"], &mut b);
+    }
+    b.release_all();
+}
+
+fn push_later(id: u64, outcome: Result<String, String>) {
+    let mut particle = CodeValue::zeroed();
+    match outcome {
+        Ok(operation) => send_result(&mut particle, true, &operation, Some(id)),
+        Err(message) => {
+            let mut b = SlotBuffer::new(5);
+            borrowed_str(b.slot_mut(0), c"Exception");
+            owned_str(b.slot_mut(1), "azure_mailer");
+            owned_str(b.slot_mut(2), &message);
+            null(b.slot_mut(3));
+            number(b.slot_mut(4), id as f64);
+            object(
+                &mut particle,
+                &[
+                    c"_class",
+                    c"source",
+                    c"message",
+                    c"innerException",
+                    c"_request_id",
+                ],
+                &mut b,
+            );
+            b.release_all();
+        }
+    }
+    emit_inbound(&particle);
+    release(&mut particle);
+}
+
+static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+code_native::declare_inbound!();
+code_native::declare_inbound_reply!(answered);
+
+/// Nothing waits for the program's answer to a late send.
+fn answered(_particle: &CodeValue, _result: &CodeValue) {}
 
 /// Azure's HMAC scheme: the key signs the verb, the path, and the date, host
 /// and body hash it was sent with. Signing the body's hash is what stops a
@@ -324,9 +423,7 @@ fn address_list(particle: &CodeValue, field: &str) -> Result<Vec<String>, String
                     .ok_or_else(|| format!("every '{field}' address must be a string"))
             })
             .collect(),
-        Some(_) => Err(format!(
-            "'{field}' must be a string or an array of strings"
-        )),
+        Some(_) => Err(format!("'{field}' must be a string or an array of strings")),
     }
 }
 

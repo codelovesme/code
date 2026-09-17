@@ -107,6 +107,11 @@ emit Config {{
 }} to mail get c
 assert c.ok
 
+arrived = []
+SendResult {{ ok, operation, _request_id as id }} =>
+    arrived += [{{ ok = ok, operation = operation, id = id }}]
+    return Seen {{}}
+
 emit Send {{
     recipient = "reader@example.com"
     cc = ["one@example.com", "two@example.com"]
@@ -121,6 +126,21 @@ assert r.operation = "op-1"
 | `from` on the Send overrides the configured default.
 emit Send {{ recipient = "reader@example.com", from = "Other@example.com", text = "plain" }} to mail get o
 assert o.ok
+
+| A held send returns immediately and reports its result on the inbound ring.
+emit Send {{ recipient = "reader@example.com", text = "later", later = true }} to mail get sent
+assert sent ∈ Sent
+spins = 0
+loop
+    spins += 1
+    emit Length {{ value = arrived }} to core get n
+    if n.value = 1
+        break
+    if spins > 4000000
+        break
+assert arrived[0].ok
+assert arrived[0].operation = "op-1"
+assert arrived[0].id = sent.value
 "#
     );
 
@@ -148,6 +168,7 @@ assert o.ok
         // Two sends per mode, and the first is the one worth reading.
         let (head, body) = rx.recv().expect("the module sent nothing");
         let _ = rx.recv().expect("the second send never arrived");
+        let _ = rx.recv().expect("the later send never arrived");
 
         assert!(
             head.starts_with("POST /emails:send?api-version="),

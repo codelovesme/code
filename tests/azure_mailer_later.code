@@ -1,0 +1,30 @@
+| A held worker must never block on a mail transport. A refused loopback
+| request is enough to prove the async result and its correlation id.
+link "native_modules/azure_mailer.so" as mail
+
+emit Config {
+    connection_string = "endpoint=http://127.0.0.1:1/;accesskey=c2VjcmV0"
+    from = "sender@example.com"
+} to mail get c
+assert c.ok
+
+arrived = []
+Exception { source, _request_id as id } =>
+    arrived += [{ source = source, id = id }]
+    return Seen {}
+
+emit Send { recipient = "to@example.com", text = "hello", later = true } to mail get sent
+assert sent ∈ Sent
+assert sent.value ∈ Number
+
+spins = 0
+loop
+    spins += 1
+    emit Length { value = arrived } to core get n
+    if n.value = 1
+        break
+    if spins > 4000000
+        break
+
+assert arrived[0].source = "azure_mailer"
+assert arrived[0].id = sent.value

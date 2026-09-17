@@ -18,6 +18,7 @@
 //! `runtime.c` into the cdylib and re-exports it.
 
 use code_native::*;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 #[derive(Clone, Default)]
@@ -97,7 +98,7 @@ fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let html = find_field(particle, "html").and_then(read_str);
     let text = find_field(particle, "text").and_then(read_str);
 
-    OUTBOX.lock().unwrap_or_else(|e| e.into_inner()).push(Sent {
+    let message = Sent {
         from: opt(particle, "from").unwrap_or(default_from),
         recipient,
         cc: joined(particle, "cc"),
@@ -105,15 +106,58 @@ fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         subject: opt(particle, "subject").unwrap_or_default(),
         body: html.or(text).unwrap_or("").to_string(),
         html: html.is_some(),
-    });
+    };
 
-    let mut b = SlotBuffer::new(2);
+    if read_field_bool(particle, "later") == Some(true) {
+        let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        std::thread::spawn(move || {
+            // Keep the mock asynchronous without making the fixture's loop
+            // depend on a scheduler race.
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            OUTBOX
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(message);
+            let mut reply = CodeValue::zeroed();
+            let mut b = SlotBuffer::new(4);
+            borrowed_str(b.slot_mut(0), c"SendResult");
+            boolean(b.slot_mut(1), true);
+            owned_str(b.slot_mut(2), "mock-operation");
+            number(b.slot_mut(3), id as f64);
+            object(
+                &mut reply,
+                &[c"_class", c"ok", c"operation", c"_request_id"],
+                &mut b,
+            );
+            b.release_all();
+            emit_inbound(&reply);
+            release(&mut reply);
+        });
+        make_result(out, c"Sent", |slot| number(slot, id as f64));
+        return Ok(());
+    }
+
+    OUTBOX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(message);
+
+    let mut b = SlotBuffer::new(3);
     borrowed_str(b.slot_mut(0), c"SendResult");
     boolean(b.slot_mut(1), true);
-    object(out, &[c"_class", c"ok"], &mut b);
+    owned_str(b.slot_mut(2), "mock-operation");
+    object(out, &[c"_class", c"ok", c"operation"], &mut b);
     b.release_all();
     Ok(())
 }
+
+static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+code_native::declare_inbound!();
+code_native::declare_inbound_reply!(answered);
+
+/// Nothing waits for the program's answer to a late send.
+fn answered(_particle: &CodeValue, _result: &CodeValue) {}
 
 fn outbox(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let mut guard = OUTBOX.lock().unwrap_or_else(|e| e.into_inner());
