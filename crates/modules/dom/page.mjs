@@ -41,7 +41,7 @@
   // Names in `on` the page reads as gestures rather than forwarding as
   // events. Nothing is held between renders here either: what a gesture
   // needs to remember lives on the node, and goes when the node does.
-  const GESTURES = new Set(["swipeleft", "swiperight", "doubletap", "reorder"]);
+  const GESTURES = new Set(["swipeleft", "swiperight", "doubletap", "drag", "reorder", "longreorder"]);
 
   // SVG needs its own namespace when it is created through the DOM API. A
   // plain `createElement("svg")` looks like an element in the HTML namespace
@@ -60,6 +60,7 @@
   const TAP_PX = 10;
   const DOUBLE_MS = 350;
   const DRAG_PX = 8;
+  const LONG_REORDER_MS = 450;
 
   function gesture(el, name, particle) {
     if (name === "swipeleft" || name === "swiperight") {
@@ -125,7 +126,64 @@
       });
       return;
     }
-    if (name === "reorder") {
+    if (name === "drag") {
+      // A horizontal drag reports its live offset, then one final event. The
+      // application decides whether the release crossed its action threshold.
+      // Vertical movement remains available to the page for scrolling.
+      let start = null;
+      let horizontal = false;
+      let suppressClick = false;
+      el.addEventListener("click", (e) => {
+        if (!suppressClick) return;
+        suppressClick = false;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }, true);
+      el.addEventListener("pointerdown", (e) => {
+        suppressClick = false;
+        start = { x: e.clientX, y: e.clientY, id: e.pointerId };
+        horizontal = false;
+      });
+      const cancel = () => {
+        start = null;
+        horizontal = false;
+      };
+      el.addEventListener("pointercancel", cancel);
+      el.addEventListener("pointermove", (e) => {
+        if (!start || e.pointerId !== start.id) return;
+        const dx = e.clientX - start.x;
+        const dy = e.clientY - start.y;
+        if (!horizontal) {
+          if (Math.abs(dx) < DRAG_PX) return;
+          if (Math.abs(dy) > Math.abs(dx) * 1.2) {
+            cancel();
+            return;
+          }
+          horizontal = true;
+          try {
+            el.setPointerCapture(e.pointerId);
+          } catch {
+            // A browser without pointer capture still delivers the release.
+          }
+          fire({ ...particle, phase: "start", dx: 0 });
+        }
+        e.preventDefault();
+        fire({ ...particle, phase: "move", dx });
+      });
+      el.addEventListener("pointerup", (e) => {
+        if (!start || e.pointerId !== start.id) return;
+        const dx = e.clientX - start.x;
+        const wasHorizontal = horizontal;
+        start = null;
+        horizontal = false;
+        if (!wasHorizontal) return;
+        suppressClick = true;
+        fire({ ...particle, phase: "end", dx });
+      });
+      return;
+    }
+    if (name === "reorder" || name === "longreorder") {
+      const needsHold = name === "longreorder";
       // On a container: a child pressed and carried among its siblings. What
       // is sent is where it was and where it was let go — `from` and `at`,
       // positions among the children (`to` is a word the language keeps for
@@ -152,16 +210,30 @@
         return slot;
       };
       const letGo = () => {
+        if (drag && drag.timer !== null) clearTimeout(drag.timer);
         if (drag && drag.child.removeAttribute) drag.child.removeAttribute("data-code-dragging");
         drag = null;
       };
       el.addEventListener("pointerdown", (e) => {
         const child = childAt(e.target);
         if (!child) return;
-        drag = { child, from: indexOf(child), id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+        const candidate = { child, from: indexOf(child), id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, armed: !needsHold, timer: null };
+        if (needsHold) {
+          candidate.timer = setTimeout(() => {
+            if (!drag || drag !== candidate) return;
+            drag.armed = true;
+            drag.child.setAttribute("data-code-dragging", "");
+            try {
+              el.setPointerCapture(e.pointerId);
+            } catch {
+              // A page without pointer capture still receives the release.
+            }
+          }, LONG_REORDER_MS);
+        }
+        drag = candidate;
       });
       el.addEventListener("pointermove", (e) => {
-        if (!drag || e.pointerId !== drag.id || drag.moved) return;
+        if (!drag || e.pointerId !== drag.id || drag.moved || !drag.armed) return;
         const dx = Math.abs(e.clientX - drag.x);
         const dy = Math.abs(e.clientY - drag.y);
         if (dx + dy < DRAG_PX) return;
@@ -189,7 +261,7 @@
         if (!drag || e.pointerId !== drag.id) return;
         const carried = drag;
         letGo();
-        if (!carried.moved) return;
+        if (!carried.armed || !carried.moved) return;
         const at = slotAt(carried.child, e.clientY);
         if (at === carried.from) return;
         fire({ ...particle, from: carried.from, at });
