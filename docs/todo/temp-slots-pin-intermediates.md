@@ -121,3 +121,24 @@ Both halves are fixed: the merge copies its key characters through the same
 fixture now allocates objects of the released shape between building the
 merged object and reading it, which fails on the old runtime and passes on
 this one.
+
+## 2026-09-17: composite literals release each completed item
+
+Statement boundaries were still too coarse for a large array or object: the
+entire literal is one expression inside one statement, so every temporary
+used by every item remained live until the last item had been generated.
+
+Array and object generation now place a temporary-list watermark around each
+item or field value. Once `code_copy` has put the value into the literal's
+zeroed scratch buffer, that buffer owns a reference and the intermediate
+slots above the watermark are cleared immediately. The next item can reuse
+their runtime allocations instead of pinning them for the rest of the
+literal.
+
+Computed object keys are the deliberate exception. `keys_buf` temporarily
+holds pointers into their string values, and `code_object` copies those
+characters only after every field has been generated. Their temporaries stay
+alive until that call; literal keys point at immutable program data and need
+no slot. `tests/composite_literal_temp_lifetimes.code` covers both nested
+values and a computed key so an early clear cannot silently become a dangling
+pointer.

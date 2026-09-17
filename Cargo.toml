@@ -21,7 +21,7 @@ default = ["llvm", "native-modules", "install"]
 # The LLVM backend (codegen.rs, `code build`). Off for targets with no native
 # LLVM toolchain — currently just wasm32-unknown-unknown (crates/code-wasm),
 # which only ever needs the interpreter.
-llvm = ["dep:inkwell"]
+llvm = ["dep:inkwell", "dep:wasmparser"]
 # `link`ing a native `.so` module (src/native.rs), via dlopen/dlsym — off for
 # the same reason `llvm` is: wasm32-unknown-unknown has no dlopen, and
 # code-wasm's `NoModules` resolver refuses every `link` anyway, so there is
@@ -45,6 +45,7 @@ libloading = { version = "0.8", optional = true }
 libc = "0.2"
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
+wasmparser = { version = "0.239", optional = true }
 
 # Test-only, and for exactly one test: `tests/azure_mailer_module.rs`
 # recomputes Azure's HMAC-SHA256 request signature from the same key the

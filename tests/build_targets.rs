@@ -135,6 +135,41 @@ fn wasm_target_produces_a_runnable_module() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A browser rejects a single wasm function with more than 50,000 parameters
+/// and locals. At `-O0`, LLVM's wasm backend used to assign a distinct local
+/// to practically every intermediate produced by an application-sized style
+/// object; the linker accepted it and the page then failed before `main`.
+///
+/// Keep this deliberately in one expression and build it without `--release`:
+/// this is the development path that must still run in a browser.
+#[test]
+fn wasm_development_build_handles_an_application_sized_object() {
+    let dir = temp_dir("wasm-large-object");
+    let source = dir.join("large-object.code");
+    let out = dir.join("large-object.wasm");
+    let mut program = String::from("styles = {\n");
+    for rule in 0..160 {
+        program.push_str(&format!("    \".rule-{rule}\" = {{\n"));
+        for property in 0..8 {
+            program.push_str(&format!(
+                "        property{property} = \"value-{rule}-{property}\"\n"
+            ));
+        }
+        program.push_str("    }\n");
+    }
+    program.push_str(
+        "}\n\
+         assert styles[\".rule-0\"].property0 = \"value-0-0\"\n\
+         assert styles[\".rule-159\"].property7 = \"value-159-7\"\n",
+    );
+    fs::write(&source, program).expect("write large object program");
+
+    code::compile_file(&source, code::BuildTarget::Wasm, &out, false)
+        .expect("development wasm build must stay below the browser local limit");
+    run_wasm_under_node(&dir, &out);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// Each frame retains a modest array across a nested dispatch. The old
 /// implicit 64 KiB stack trapped in memset around the twelfth frame.
 /// Exercise the same chain both during boot and after main has returned.

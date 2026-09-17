@@ -155,6 +155,7 @@ pub fn replay_file(
 
 #[cfg(feature = "llvm")]
 mod compile {
+    use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
@@ -230,6 +231,11 @@ mod compile {
     /// distinguishes them across processes. See `scratch_dir`.
     static BUILD_SEQ: AtomicU64 = AtomicU64::new(0);
 
+    /// WebAssembly implementations cap a function at 50,000 parameters and
+    /// locals combined. A module over this limit can be linked successfully
+    /// yet rejected by every browser before any application code runs.
+    const WASM_MAX_FUNCTION_LOCALS: u64 = 50_000;
+
     /// A private directory for one build's intermediate files.
     ///
     /// Unique per build, and that is load-bearing rather than tidiness:
@@ -266,9 +272,10 @@ mod compile {
     /// libraries). Takes a path for the same reason `run_file` does —
     /// `link` resolves relative to it.
     ///
-    /// `release` selects the LLVM optimization level — off by default, `-O2`
-    /// when asked. It changes only how the object is compiled, never what the
-    /// program means, so no fixture's output depends on it.
+    /// `release` selects the LLVM optimization level — native development
+    /// builds use `-O0`, wasm development builds use the smallest safe `-O1`
+    /// pipeline, and release builds use `-O2`. It changes only how the object
+    /// is compiled, never what the program means.
     pub fn compile_file(
         source_path: &Path,
         target: BuildTarget,
@@ -359,6 +366,11 @@ mod compile {
                     &runtime_obj_path,
                 )?;
                 link_wasm(&obj_path, &runtime_obj_path, &static_modules, out_path)?;
+                if let Err(error) = validate_wasm_function_locals(out_path) {
+                    // Do not leave an artifact that the browser cannot load.
+                    let _ = fs::remove_file(out_path);
+                    return Err(error);
+                }
                 return write_web_host(out_path, &prefixes);
             }
 
@@ -601,6 +613,116 @@ mod compile {
         )
     }
 
+    /// Refuses a linked module that exceeds the browser-portable per-function
+    /// local limit. `wasm-ld` accepts such a module, so this must run on the
+    /// final artifact rather than on the LLVM object that precedes it.
+    fn validate_wasm_function_locals(path: &Path) -> Result<(), String> {
+        let bytes = fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        validate_wasm_function_locals_bytes(&bytes)
+            .map_err(|e| format!("{} is not browser-loadable: {e}", path.display()))
+    }
+
+    fn validate_wasm_function_locals_bytes(bytes: &[u8]) -> Result<(), String> {
+        use wasmparser::{KnownCustom, Name, Parser, Payload, TypeRef};
+
+        let mut parameter_counts = Vec::<u64>::new();
+        let mut imported_functions = 0u32;
+        let mut defined_types = Vec::<u32>::new();
+        let mut body_index = 0usize;
+        let mut function_names = BTreeMap::<u32, String>::new();
+        let mut violations = Vec::<(u32, u64)>::new();
+
+        for payload in Parser::new(0).parse_all(bytes) {
+            match payload.map_err(|e| format!("could not inspect linked wasm: {e}"))? {
+                Payload::TypeSection(types) => {
+                    for ty in types.into_iter_err_on_gc_types() {
+                        let ty = ty.map_err(|e| format!("could not inspect wasm types: {e}"))?;
+                        parameter_counts.push(ty.params().len() as u64);
+                    }
+                }
+                Payload::ImportSection(imports) => {
+                    for import in imports {
+                        let import =
+                            import.map_err(|e| format!("could not inspect wasm imports: {e}"))?;
+                        if matches!(import.ty, TypeRef::Func(_)) {
+                            imported_functions =
+                                imported_functions.checked_add(1).ok_or_else(|| {
+                                    "wasm contains too many imported functions".to_string()
+                                })?;
+                        }
+                    }
+                }
+                Payload::FunctionSection(functions) => {
+                    for type_index in functions {
+                        defined_types.push(type_index.map_err(|e| {
+                            format!("could not inspect wasm function signatures: {e}")
+                        })?);
+                    }
+                }
+                Payload::CodeSectionEntry(body) => {
+                    let type_index = *defined_types.get(body_index).ok_or_else(|| {
+                        "wasm code section has more bodies than its function section".to_string()
+                    })? as usize;
+                    let mut total = *parameter_counts.get(type_index).ok_or_else(|| {
+                        format!("wasm function refers to missing type {type_index}")
+                    })?;
+                    let locals = body
+                        .get_locals_reader()
+                        .map_err(|e| format!("could not inspect wasm locals: {e}"))?;
+                    for local in locals {
+                        let (count, _) =
+                            local.map_err(|e| format!("could not inspect wasm locals: {e}"))?;
+                        total = total
+                            .checked_add(u64::from(count))
+                            .ok_or_else(|| "wasm local count overflowed".to_string())?;
+                    }
+                    if total > WASM_MAX_FUNCTION_LOCALS {
+                        violations.push((imported_functions + body_index as u32, total));
+                    }
+                    body_index += 1;
+                }
+                Payload::CustomSection(section) => {
+                    if let KnownCustom::Name(names) = section.as_known() {
+                        for name in names {
+                            let name =
+                                name.map_err(|e| format!("could not inspect wasm names: {e}"))?;
+                            if let Name::Function(map) = name {
+                                for naming in map {
+                                    let naming = naming.map_err(|e| {
+                                        format!("could not inspect wasm function names: {e}")
+                                    })?;
+                                    function_names.insert(naming.index, naming.name.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if body_index != defined_types.len() {
+            return Err(format!(
+                "wasm function section declares {} bodies but code section contains {body_index}",
+                defined_types.len()
+            ));
+        }
+
+        if let Some((index, count)) = violations.first() {
+            let named = function_names
+                .get(index)
+                .map(|name| format!(" ('{name}')"))
+                .unwrap_or_default();
+            return Err(format!(
+                "function #{index}{named} declares {count} parameters and locals; the browser \
+                 limit is {WASM_MAX_FUNCTION_LOCALS}. The compiler should reduce temporary \
+                 lifetimes or optimize this function before it is shipped"
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Runs a linker/archiver and reports a failed status or spawn error as
     /// itself, naming the tool — a missing `ar` should read as "failed to
     /// run ar", not as some downstream mystery.
@@ -612,6 +734,62 @@ mod compile {
             Ok(())
         } else {
             Err(format!("{tool} failed with {status}"))
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{validate_wasm_function_locals_bytes, WASM_MAX_FUNCTION_LOCALS};
+
+        fn push_u32(mut value: u32, out: &mut Vec<u8>) {
+            loop {
+                let byte = (value & 0x7f) as u8;
+                value >>= 7;
+                out.push(if value == 0 { byte } else { byte | 0x80 });
+                if value == 0 {
+                    return;
+                }
+            }
+        }
+
+        fn push_section(id: u8, contents: &[u8], out: &mut Vec<u8>) {
+            out.push(id);
+            push_u32(contents.len() as u32, out);
+            out.extend_from_slice(contents);
+        }
+
+        fn module_with_locals(parameters: u32, locals: u32) -> Vec<u8> {
+            let mut module = b"\0asm\x01\0\0\0".to_vec();
+
+            let mut types = vec![1, 0x60];
+            push_u32(parameters, &mut types);
+            types.extend(std::iter::repeat_n(0x7f, parameters as usize));
+            types.push(0);
+            push_section(1, &types, &mut module);
+
+            push_section(3, &[1, 0], &mut module);
+
+            let mut body = vec![1];
+            push_u32(locals, &mut body);
+            body.extend([0x7f, 0x0b]);
+            let mut code = vec![1];
+            push_u32(body.len() as u32, &mut code);
+            code.extend(body);
+            push_section(10, &code, &mut module);
+            module
+        }
+
+        #[test]
+        fn wasm_local_validator_counts_parameters_and_locals() {
+            let at_limit = module_with_locals(1, WASM_MAX_FUNCTION_LOCALS as u32 - 1);
+            validate_wasm_function_locals_bytes(&at_limit).expect("the limit is accepted");
+
+            let over_limit = module_with_locals(2, WASM_MAX_FUNCTION_LOCALS as u32 - 1);
+            let error = validate_wasm_function_locals_bytes(&over_limit)
+                .expect_err("one local over the browser limit must be rejected");
+            assert!(error.contains("function #0"), "{error}");
+            assert!(error.contains("50001"), "{error}");
+            assert!(error.contains("50000"), "{error}");
         }
     }
 }

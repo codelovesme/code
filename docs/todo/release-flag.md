@@ -80,3 +80,24 @@ The rest of the suite builds at the new default, which means `-O2` is no
 longer exercised across the whole fixture corpus the way it was when it was
 hardcoded — that test is now the only `-O2` execution coverage. Worth
 remembering if an optimizer-triggered bug ever shows up in the wild.
+
+## 2026-09-17: the wasm development floor is `-O1`
+
+Native development builds remain `-O0`, and release builds remain `-O2`.
+Wasm development builds now use `OptimizationLevel::Less` (`-O1`). This is a
+target constraint rather than a release policy change: LLVM's wasm backend at
+`-O0` materializes nearly every intermediate IR value as a distinct wasm
+local. One application-sized object literal produced 50,320 locals in a
+single function. `wasm-ld` linked the module, but browsers rejected it before
+`main` with `local count too large`; their portable per-function limit is
+50,000 parameters and locals combined.
+
+The same source at `-O1` produces seven locals in that function. This is the
+smallest LLVM pipeline that runs the local coalescing and stackification the
+wasm target needs, and it avoids imposing the full `-O2` cost on every edit.
+
+The compiler also inspects the final linked module before writing `host.mjs`.
+If any function still exceeds 50,000, the invalid `.wasm` is removed and the
+build reports the function index, its name when present, the observed count,
+and the browser limit. A linker success can therefore no longer be mistaken
+for a browser-loadable artifact.

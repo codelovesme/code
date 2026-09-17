@@ -952,10 +952,18 @@ pub(crate) fn compile_to_object_traced(
     let llvm_target = Target::from_triple(&triple).map_err(|e| e.to_string())?;
     // Two of these arguments are deliberate, in the order they appear.
     //
-    // Optimization is opt-in rather than the default: `code build` is the
-    // inner loop of anyone writing a program, and `-O2` on every throwaway
-    // build costs far more than it buys (41x the wall time on an 8000-line
-    // program, for a 1.8% smaller artifact). `--release` asks for -O2.
+    // Optimization is opt-in rather than the default for native builds:
+    // `code build` is the inner loop of anyone writing a program, and `-O2`
+    // on every throwaway build costs far more than it buys (41x the wall time
+    // on an 8000-line program, for a 1.8% smaller artifact). `--release` asks
+    // for -O2.
+    //
+    // Wasm needs one target-specific exception. LLVM's wasm backend at -O0
+    // gives every intermediate IR value its own wasm local. A large object
+    // literal can therefore cross the browser-portable 50,000-local ceiling
+    // even though almost none of those values are simultaneously live. -O1
+    // runs the backend's local coalescing/stackification passes without making
+    // an ordinary development build pay the full -O2 cost.
     //
     // PIC, not Default: the system `cc` we link with produces PIE
     // executables by default on this target, which requires
@@ -969,6 +977,8 @@ pub(crate) fn compile_to_object_traced(
             "",
             if release {
                 OptimizationLevel::Default
+            } else if target == BuildTarget::Wasm {
+                OptimizationLevel::Less
             } else {
                 OptimizationLevel::None
             },
@@ -2247,6 +2257,28 @@ impl<'a, 'm> Gen<'a, 'm> {
         Ok(ptr)
     }
 
+    /// Clears and forgets the temporary slots allocated since `mark`.
+    ///
+    /// `gen_stmt` uses this at a statement boundary. Composite literals use
+    /// it sooner: once an array item or object value has been copied into the
+    /// literal's scratch buffer, that buffer owns its reference and every
+    /// temporary used to produce the item is dead. Keeping those temporaries
+    /// until the whole literal finishes made a large style object pin tens of
+    /// thousands of wasm locals in one function.
+    fn clear_temps_from(&mut self, mark: usize) -> Result<(), String> {
+        for i in mark..self.temps.len() {
+            let (buf, count) = self.temps[i];
+            for j in 0..count {
+                let slot = self.slot_at(buf, j, "temp")?;
+                self.builder
+                    .build_call(self.fn_clear, &[slot.into()], "")
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        self.temps.truncate(mark);
+        Ok(())
+    }
+
     /// Slots belong to whichever frame allocated them: a handler's are
     /// released when that invocation returns, `main`'s when the program ends.
     fn record_slot(&mut self, ptr: PointerValue<'a>, count: u64) {
@@ -2354,17 +2386,11 @@ impl<'a, 'm> Gen<'a, 'm> {
         let mark = self.temps.len();
         let result = self.gen_stmt_inner(stmt);
         if result.is_ok() {
-            for i in mark..self.temps.len() {
-                let (buf, count) = self.temps[i];
-                for j in 0..count {
-                    let slot = self.slot_at(buf, j, "temp")?;
-                    self.builder
-                        .build_call(self.fn_clear, &[slot.into()], "")
-                        .map_err(|e| e.to_string())?;
-                }
-            }
+            self.clear_temps_from(mark)?;
         }
-        self.temps.truncate(mark);
+        if result.is_err() {
+            self.temps.truncate(mark);
+        }
         result
     }
 
@@ -3311,11 +3337,13 @@ impl<'a, 'm> Gen<'a, 'm> {
                 let len = items.len() as u64;
                 let buf = self.alloc_temp_buffer(len, "arrbuf")?;
                 for (i, item) in items.iter().enumerate() {
+                    let item_mark = self.temps.len();
                     let item_ptr = self.gen_expr(item)?;
                     let dest = self.slot_at(buf, i as u64, "arrelem")?;
                     self.builder
                         .build_call(self.fn_copy, &[dest.into(), item_ptr.into()], "")
                         .map_err(|e| e.to_string())?;
+                    self.clear_temps_from(item_mark)?;
                 }
                 let out = self.alloc_temp("arr")?;
                 let len_val = self.i64_ty.const_int(len, false);
@@ -3373,11 +3401,18 @@ impl<'a, 'm> Gen<'a, 'm> {
                         .build_store(key_slot, key_ptr)
                         .map_err(|e| e.to_string())?;
 
+                    // The destination keeps its own reference. Everything
+                    // used to compute this field value can be cleared before
+                    // the next field; computed-key temporaries were allocated
+                    // above this watermark and deliberately remain until
+                    // `code_object` copies their characters.
+                    let value_mark = self.temps.len();
                     let value_ptr = self.gen_expr(value)?;
                     let dest = self.slot_at(values_buf, i as u64, "objelem")?;
                     self.builder
                         .build_call(self.fn_copy, &[dest.into(), value_ptr.into()], "")
                         .map_err(|e| e.to_string())?;
+                    self.clear_temps_from(value_mark)?;
                 }
 
                 let out = self.alloc_temp("obj")?;

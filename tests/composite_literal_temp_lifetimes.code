@@ -1,0 +1,19 @@
+| Array items and object field values are copied into their literal's scratch
+| buffer and their expression temporaries are released immediately. Computed
+| keys must remain alive until the completed object has copied their text.
+field = "dynamic"
+value = {
+    array = [
+        { nested = ["first", { deep = "kept" }] }
+        ["second", "third"]
+    ]
+    "$field" = {
+        list = [1, 2, 3]
+        text = "alive"
+    }
+}
+
+assert value.array[0].nested[1].deep = "kept"
+assert value.array[1][1] = "third"
+assert value.dynamic.list[2] = 3
+assert value.dynamic.text = "alive"
