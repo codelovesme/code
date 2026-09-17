@@ -39,6 +39,7 @@ class El {{
     this.tagName = tag.toUpperCase(); this.nodeType = 1; this.children = []; this.parentNode = null;
     this.attrs = {{}}; this.listeners = {{}}; this.rect = {{ top: 0, height: 0 }}; this.captured = null; this.namespaceURI = null;
     this.scrollTop = 0; this.scrollHeight = 0; this.clientHeight = 0;
+    this.style = {{ transition: "", transform: "" }};
   }}
   addEventListener(name, fn) {{ (this.listeners[name] ||= []).push(fn); }}
   setAttribute(k, v) {{ this.attrs[k] = String(v); }}
@@ -91,13 +92,19 @@ const r = dom({{ _class: "Render", into: "body", tree: {{
     {{ tag: "li", attrs: {{ value: "b", "data-focus-key": "b" }} }},
     {{ tag: "li", attrs: {{ value: "c", "data-focus-key": "c" }}, on: {{ swiperight: "Back" }} }},
     {{ tag: "div", on: {{ edgeclose: "Close" }} }},
+    {{ tag: "div", on: {{ edgeclose: "Close" }} }},
+    {{ tag: "div", on: {{ edgeclose: "Close" }} }},
   ] }} }});
 check("render refused", r, {{ _class: "RenderResult", ok: true }});
 const list = body.children[0];
 const [a, b, c] = list.children;
 const edge = list.children[3];
+const edgeBottom = list.children[4];
+const edgeWheel = list.children[5];
 [a, b, c].forEach((li, i) => {{ li.rect = {{ top: i * 40, height: 40 }}; }});
 edge.rect = {{ top: 120, height: 40 }};
+edgeBottom.rect = {{ top: 160, height: 40 }};
+edgeWheel.rect = {{ top: 200, height: 40 }};
 check("the svg was created in the svg namespace", a.children[0].namespaceURI, "http://www.w3.org/2000/svg");
 check("the svg path was created in the svg namespace", a.children[0].children[0].namespaceURI, "http://www.w3.org/2000/svg");
 
@@ -136,31 +143,64 @@ c.send("pointerup", {{ clientX: 200, clientY: 100, timeStamp: 1100 }});
 check("a swipe right did not send its particle", fired, [{{ _class: "Back", value: "c" }}]);
 fired.length = 0;
 
-// A second pull that starts at a modal page's top or bottom closes it, while
-// a pull that starts in the middle remains ordinary page scrolling.
+// A pull follows the finger. A short pull settles back and does not close.
 edge.clientHeight = 100; edge.scrollHeight = 300; edge.scrollTop = 0;
-edge.send("pointerdown", {{ pointerType: "touch", clientY: 20 }});
 edge.send("touchstart", {{ touches: [{{ clientY: 20 }}] }});
-const topPull = edge.send("touchmove", {{ touches: [{{ clientY: 75 }}] }});
-edge.send("pointermove", {{ pointerType: "touch", clientY: 75 }});
-check("an outward pull at the top did not close", fired, [{{ _class: "Close" }}]);
-check("the top pull was allowed to bounce", topPull.defaultPrevented, true);
-edge.send("pointerup", {{ pointerType: "touch" }}); edge.send("touchend", {{}}); fired.length = 0;
+const shortPull = edge.send("touchmove", {{ touches: [{{ clientY: 65 }}] }});
+check("a short outward pull closed too soon", fired, []);
+check("the short pull was allowed to bounce", shortPull.defaultPrevented, true);
+check("the surface followed a short pull", edge.style.transform, "translateY(45px)");
+edge.send("touchend", {{}});
+await new Promise(resolve => setTimeout(resolve, 230));
+check("a short pull did not settle back", fired, []);
+check("the short pull did not keep its transform", edge.style.transform, "");
+
+// A pull that starts in the middle remains ordinary page scrolling.
 edge.scrollTop = 100;
 edge.send("touchstart", {{ touches: [{{ clientY: 20 }}] }});
 edge.send("touchmove", {{ touches: [{{ clientY: 80 }}] }});
 check("a pull from the middle closed the dialog", fired, []);
 edge.send("touchend", {{}});
-edge.scrollTop = 200;
-edge.send("touchstart", {{ touches: [{{ clientY: 100 }}] }});
-const bottomPull = edge.send("touchmove", {{ touches: [{{ clientY: 40 }}] }});
-check("an outward pull at the bottom did not close", fired, [{{ _class: "Close" }}]);
+// The bottom edge has the same follow-and-settle behavior in the opposite
+// direction, and crosses the threshold only when the finger is released.
+edgeBottom.clientHeight = 100; edgeBottom.scrollHeight = 300; edgeBottom.scrollTop = 200;
+edgeBottom.send("pointerdown", {{ pointerType: "touch", clientY: 100 }});
+const bottomPull = edgeBottom.send("pointermove", {{ pointerType: "touch", clientY: 25 }});
+check("a bottom pull closed too soon", fired, []);
 check("the bottom pull was allowed to bounce", bottomPull.defaultPrevented, true);
-edge.send("touchend", {{}}); fired.length = 0;
+check("the surface followed the bottom pull", edgeBottom.style.transform, "translateY(-75px)");
+edgeBottom.send("pointerup", {{ pointerType: "touch", clientY: 25 }});
+await new Promise(resolve => setTimeout(resolve, 230));
+check("a short bottom pull did not settle back", edgeBottom.style.transform, "");
+edgeBottom.send("pointerdown", {{ pointerType: "touch", clientY: 100 }});
+edgeBottom.send("pointermove", {{ pointerType: "touch", clientY: -10 }});
+edgeBottom.send("pointerup", {{ pointerType: "touch", clientY: -10 }});
+check("the bottom close fired before its animation", fired, []);
+check("the bottom close started its slide-away animation", edgeBottom.style.transform, "translateY(-100%)");
+await new Promise(resolve => setTimeout(resolve, 230));
+check("the bottom close did not send its particle", fired, [{{ _class: "Close" }}]);
+fired.length = 0;
+
+// A long top pull closes only after release, after its slide-away animation.
 edge.scrollTop = 0;
-const wheel = edge.send("wheel", {{ deltaY: -20 }});
-check("an outward wheel at the top did not close", fired, [{{ _class: "Close" }}]);
+edge.send("pointerdown", {{ pointerType: "touch", clientY: 20 }});
+const topPull = edge.send("pointermove", {{ pointerType: "touch", clientY: 125 }});
+check("a long outward pull closed before release", fired, []);
+check("the long top pull was allowed to bounce", topPull.defaultPrevented, true);
+edge.send("pointerup", {{ pointerType: "touch", clientY: 125 }});
+check("the top close fired before its animation", fired, []);
+check("the top close started its slide-away animation", edge.style.transform, "translateY(100%)");
+await new Promise(resolve => setTimeout(resolve, 230));
+check("the top close did not send its particle", fired, [{{ _class: "Close" }}]);
+fired.length = 0;
+
+// A wheel event still closes at a boundary, after the same animation.
+edgeWheel.clientHeight = 100; edgeWheel.scrollHeight = 300; edgeWheel.scrollTop = 0;
+const wheel = edgeWheel.send("wheel", {{ deltaY: -20 }});
+check("an outward wheel closed before its animation", fired, []);
 check("the outward wheel was allowed to overscroll", wheel.defaultPrevented, true);
+await new Promise(resolve => setTimeout(resolve, 230));
+check("the outward wheel did not send its particle", fired, [{{ _class: "Close" }}]);
 fired.length = 0;
 
 // Two taps close together are one double; a third alone is nothing yet.

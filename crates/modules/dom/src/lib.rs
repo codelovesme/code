@@ -46,10 +46,11 @@
 //! written in a gene like any other.
 //!
 //! A vertically scrollable modal surface may use the `edgeclose` gesture. It
-//! sends its particle when a touch starts at the top or bottom and is pulled
-//! farther in that same direction, suppressing the browser's rubber-band
-//! overscroll. A touch that starts in the middle remains ordinary scrolling;
-//! an outward wheel tick at either boundary has the same meaning.
+//! follows a pull that starts at the top or bottom, suppressing the browser's
+//! rubber-band overscroll. On release it either settles back when the pull is
+//! short, or animates away and sends its particle when the pull crosses the
+//! dismissal threshold. A touch that starts in the middle remains ordinary
+//! scrolling; an outward wheel tick at either boundary has the same meaning.
 //!
 //! **A listener is never a function, and nothing is held between renders.**
 //! `on` is data like every other field: this module serialises it and forgets

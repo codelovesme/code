@@ -235,71 +235,149 @@
     if (name === "edgeclose") {
       // A modal page owns vertical scrolling. When a touch starts at one of
       // its two scroll boundaries, a second pull in that same direction is a
-      // dismissal gesture instead of the browser's rubber-band bounce. A
-      // touch that starts in the middle is left entirely to native scrolling;
-      // reaching an edge never closes the dialog by itself.
-      const EDGE_PX = 48;
+      // dismissal gesture instead of the browser's rubber-band bounce. The
+      // surface follows the finger while it is pulled, then either settles
+      // back or slides away after release. A touch that starts in the middle
+      // is left entirely to native scrolling; reaching an edge never closes
+      // the dialog by itself.
+      const EDGE_PX = 96;
+      const MAX_DRAG = 180;
+      const ANIMATION_MS = 200;
       const atTop = () => el.scrollTop <= 0;
       const atBottom = () => el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
       const outward = (dy, edge) => (edge === "top" ? dy > 0 : dy < 0);
-      let dismissed = false;
-      const fireClose = () => {
-        if (dismissed) return;
-        dismissed = true;
-        fire(meant(el, particle));
+      let closeQueued = false;
+      let settleTimer = null;
+      let baseTransition = "";
+      let baseTransform = "";
+
+      const rememberBase = () => {
+        if (settleTimer !== null) {
+          clearTimeout(settleTimer);
+          settleTimer = null;
+        }
+        baseTransition = el.style ? el.style.transition || "" : "";
+        baseTransform = el.style ? el.style.transform || "" : "";
+      };
+      const restoreBase = () => {
+        if (!el.style) return;
+        el.style.transition = baseTransition;
+        el.style.transform = baseTransform;
+      };
+      const offset = (dy) => Math.max(-MAX_DRAG, Math.min(MAX_DRAG, dy));
+      const moveSurface = (dy) => {
+        if (!el.style) return;
+        el.style.transition = "none";
+        el.style.transform = "translateY(" + offset(dy) + "px)";
+      };
+      const settleBack = () => {
+        if (!el.style || closeQueued) return;
+        el.style.transition = "transform " + ANIMATION_MS + "ms ease-out";
+        el.style.transform = baseTransform || "translateY(0px)";
+        settleTimer = setTimeout(() => {
+          settleTimer = null;
+          if (!closeQueued) restoreBase();
+        }, ANIMATION_MS);
+      };
+      const close = (edge) => {
+        if (closeQueued) return;
+        closeQueued = true;
+        if (settleTimer !== null) {
+          clearTimeout(settleTimer);
+          settleTimer = null;
+        }
+        if (el.style) {
+          el.style.transition = "transform " + ANIMATION_MS + "ms ease-in";
+          el.style.transform = edge === "top" ? "translateY(100%)" : "translateY(-100%)";
+        }
+        setTimeout(() => fire(meant(el, particle)), ANIMATION_MS);
       };
       let touch = null;
-      el.addEventListener("touchstart", (e) => {
-        if (!e.touches || e.touches.length !== 1) {
-          touch = null;
-          return;
-        }
-        const edge = atTop() ? "top" : atBottom() ? "bottom" : null;
-        touch = edge ? { y: e.touches[0].clientY, edge, fired: false } : null;
-      }, { passive: true });
-      el.addEventListener("touchmove", (e) => {
-        if (!touch || !e.touches || e.touches.length !== 1) return;
-        const dy = e.touches[0].clientY - touch.y;
-        if (!outward(dy, touch.edge)) return;
-        // Suppress the platform bounce as soon as this is an outward pull.
-        e.preventDefault();
-        if (!touch.fired && Math.abs(dy) >= EDGE_PX) {
-          touch.fired = true;
-          fireClose();
-        }
-      }, { passive: false });
-      el.addEventListener("touchend", () => { touch = null; dismissed = false; }, { passive: true });
-      el.addEventListener("touchcancel", () => { touch = null; dismissed = false; }, { passive: true });
-
       // Pointer events cover browsers that do not expose a TouchEvent stream.
       // Mouse drags are deliberately excluded: desktop wheel scrolling has a
       // separate boundary path, while a mouse drag should never dismiss a
       // dialog accidentally.
       let pointer = null;
+      el.addEventListener("touchstart", (e) => {
+        if (!e.touches || e.touches.length !== 1) {
+          touch = null;
+          return;
+        }
+        if (closeQueued) return;
+        const edge = atTop() ? "top" : atBottom() ? "bottom" : null;
+        touch = edge ? (rememberBase(), { y: e.touches[0].clientY, lastY: e.touches[0].clientY, edge, cancelled: false }) : null;
+      }, { passive: true });
+      el.addEventListener("touchmove", (e) => {
+        if (!touch || !e.touches || e.touches.length !== 1) return;
+        const y = e.touches[0].clientY;
+        const dy = y - touch.y;
+        touch.lastY = y;
+        if (!outward(dy, touch.edge)) {
+          if (Math.abs(dy) > 2) touch.cancelled = true;
+          return;
+        }
+        if (touch.cancelled) return;
+        // Suppress the platform bounce as soon as this is an outward pull.
+        e.preventDefault();
+        moveSurface(dy);
+      }, { passive: false });
+      const finishTouch = (e, cancelled = false) => {
+        if (!touch) return;
+        const gesture = touch;
+        touch = null;
+        pointer = null;
+        const changed = e && e.changedTouches && e.changedTouches[0];
+        const y = changed && typeof changed.clientY === "number" ? changed.clientY : gesture.lastY;
+        const dy = y - gesture.y;
+        if (cancelled || gesture.cancelled || !outward(dy, gesture.edge)) {
+          settleBack();
+        } else if (Math.abs(dy) >= EDGE_PX) {
+          close(gesture.edge);
+        } else {
+          settleBack();
+        }
+      };
+      el.addEventListener("touchend", (e) => finishTouch(e), { passive: true });
+      el.addEventListener("touchcancel", (e) => finishTouch(e, true), { passive: true });
+
       el.addEventListener("pointerdown", (e) => {
         if (e.pointerType === "mouse") {
           pointer = null;
           return;
         }
+        if (closeQueued) return;
         const edge = atTop() ? "top" : atBottom() ? "bottom" : null;
-        pointer = edge ? { y: e.clientY, id: e.pointerId, edge, fired: false } : null;
+        pointer = edge ? (rememberBase(), { y: e.clientY, lastY: e.clientY, id: e.pointerId, edge, cancelled: false }) : null;
       });
       el.addEventListener("pointermove", (e) => {
         if (!pointer || e.pointerId !== pointer.id) return;
         const dy = e.clientY - pointer.y;
-        if (!outward(dy, pointer.edge)) return;
-        e.preventDefault();
-        if (!pointer.fired && Math.abs(dy) >= EDGE_PX) {
-          pointer.fired = true;
-          fireClose();
+        pointer.lastY = e.clientY;
+        if (!outward(dy, pointer.edge)) {
+          if (Math.abs(dy) > 2) pointer.cancelled = true;
+          return;
         }
+        if (pointer.cancelled) return;
+        e.preventDefault();
+        moveSurface(dy);
       });
-      const clearPointer = (e) => {
-        if (pointer && (!e || e.pointerId === pointer.id)) pointer = null;
-        dismissed = false;
+      const finishPointer = (e, cancelled = false) => {
+        if (!pointer || (e && e.pointerId !== pointer.id)) return;
+        const gesture = pointer;
+        pointer = null;
+        touch = null;
+        const y = e && typeof e.clientY === "number" ? e.clientY : gesture.lastY;
+        const dy = y - gesture.y;
+        if (cancelled || gesture.cancelled || !outward(dy, gesture.edge)) {
+          settleBack();
+        } else if (Math.abs(dy) >= EDGE_PX) {
+          close(gesture.edge);
+        } else {
+          settleBack();
+        }
       };
-      el.addEventListener("pointerup", clearPointer);
-      el.addEventListener("pointercancel", clearPointer);
+      el.addEventListener("pointerup", (e) => finishPointer(e));
+      el.addEventListener("pointercancel", (e) => finishPointer(e, true));
 
       // A wheel event has no continuation state: one outward wheel tick at a
       // boundary is the extra scroll the user asked for. Preventing its
@@ -308,7 +386,8 @@
         const edge = e.deltaY < 0 && atTop() ? "top" : e.deltaY > 0 && atBottom() ? "bottom" : null;
         if (!edge) return;
         e.preventDefault();
-        fireClose();
+        rememberBase();
+        close(edge);
       }, { passive: false });
       return;
     }
