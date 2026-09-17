@@ -142,11 +142,11 @@
       let surfaceTransition = "";
       let surfaceTransform = "";
       let surfaceTimer = null;
-      const restoreSurface = () => {
+      const restoreSurface = (finalTransform = "0px") => {
         if (!surface) return;
         if (surfaceTimer !== null) clearTimeout(surfaceTimer);
         surface.style.transition = "transform .16s ease";
-        surface.style.transform = "translateX(0px)";
+        surface.style.transform = "translateX(" + finalTransform + ")";
         const released = surface;
         surfaceTimer = setTimeout(() => {
           if (released === surface) {
@@ -219,7 +219,7 @@
         horizontal = false;
         if (el.__euglenaSwipeHandledPointer === e.pointerId) {
           delete el.__euglenaSwipeHandledPointer;
-          restoreSurface();
+          restoreSurface(dx < 0 ? "-2.8rem" : "0px");
           return;
         }
         if (!wasHorizontal) {
@@ -227,7 +227,7 @@
           return;
         }
         suppressClick = true;
-        restoreSurface();
+        restoreSurface(dx <= -56 ? "-2.8rem" : "0px");
         fire({ ...particle, phase: "end", dx });
       });
       return;
