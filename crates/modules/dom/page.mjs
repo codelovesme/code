@@ -131,12 +131,32 @@
       return;
     }
     if (name === "drag") {
-      // A horizontal drag reports its live offset, then one final event. The
-      // application decides whether the release crossed its action threshold.
-      // Vertical movement remains available to the page for scrolling.
+      // A horizontal drag moves the card surface directly in the DOM, then
+      // reports one final event. The application decides whether the release
+      // crossed its action threshold. Vertical movement remains available to
+      // the page for scrolling.
       let start = null;
       let horizontal = false;
       let suppressClick = false;
+      let surface = null;
+      let surfaceTransition = "";
+      let surfaceTransform = "";
+      let surfaceTimer = null;
+      const restoreSurface = () => {
+        if (!surface) return;
+        if (surfaceTimer !== null) clearTimeout(surfaceTimer);
+        surface.style.transition = "transform .16s ease";
+        surface.style.transform = "translateX(0px)";
+        const released = surface;
+        surfaceTimer = setTimeout(() => {
+          if (released === surface) {
+            released.style.transition = surfaceTransition;
+            released.style.transform = surfaceTransform;
+            surface = null;
+          }
+          surfaceTimer = null;
+        }, 180);
+      };
       el.addEventListener("click", (e) => {
         if (!suppressClick) return;
         suppressClick = false;
@@ -145,10 +165,24 @@
       }, true);
       el.addEventListener("pointerdown", (e) => {
         suppressClick = false;
+        if (surfaceTimer !== null) {
+          clearTimeout(surfaceTimer);
+          if (surface) {
+            surface.style.transition = surfaceTransition;
+            surface.style.transform = surfaceTransform;
+          }
+          surfaceTimer = null;
+        }
         start = { x: e.clientX, y: e.clientY, id: e.pointerId };
         horizontal = false;
+        surface = el.firstElementChild || null;
+        if (surface) {
+          surfaceTransition = surface.style.transition;
+          surfaceTransform = surface.style.transform;
+        }
       });
       const cancel = () => {
+        restoreSurface();
         start = null;
         horizontal = false;
       };
@@ -169,10 +203,13 @@
           } catch {
             // A browser without pointer capture still delivers the release.
           }
-          fire({ ...particle, phase: "start", dx: 0 });
         }
         e.preventDefault();
-        fire({ ...particle, phase: "move", dx });
+        if (surface) {
+          const limited = Math.max(-180, Math.min(180, dx));
+          surface.style.transition = "none";
+          surface.style.transform = "translateX(" + limited + "px)";
+        }
       });
       el.addEventListener("pointerup", (e) => {
         if (!start || e.pointerId !== start.id) return;
@@ -182,10 +219,15 @@
         horizontal = false;
         if (el.__euglenaSwipeHandledPointer === e.pointerId) {
           delete el.__euglenaSwipeHandledPointer;
+          restoreSurface();
           return;
         }
-        if (!wasHorizontal) return;
+        if (!wasHorizontal) {
+          restoreSurface();
+          return;
+        }
         suppressClick = true;
+        restoreSurface();
         fire({ ...particle, phase: "end", dx });
       });
       return;
