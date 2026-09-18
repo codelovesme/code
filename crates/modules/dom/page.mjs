@@ -654,6 +654,15 @@
     for (const [key, value] of Object.entries(after)) {
       if (!(key in before) || String(before[key]) !== String(value)) {
         el.setAttribute(key, String(value));
+        // A box someone has typed in keeps its live value whatever its
+        // `value` attribute says — the attribute is only the default. Before
+        // trees were reconciled in place every render made a fresh element,
+        // so the attribute *was* the value; now the element is kept, and a
+        // program that clears a search box by drawing `value = ""` must
+        // reach the live value too, or the reader keeps seeing their words.
+        if (key === "value" && VALUED.has(String(el.tagName || "").toLowerCase()) && el.value !== String(value)) {
+          el.value = String(value);
+        }
       }
     }
   }

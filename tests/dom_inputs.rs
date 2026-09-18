@@ -148,6 +148,23 @@ check("the caret did not survive an incremental render", [second === first, seco
 dom({{ _class: "Render", into: "body", tree: {{ tag: "div", children: [ {{ tag: "p" }}, {{ tag: "button" }} ] }} }});
 check("a different node at the caret's place was focused", body.children[0].children[1].focused, undefined);
 
+// A box someone typed in keeps their words across a render that says the
+// same thing — and lets go of them when the program draws a different
+// value. The attribute is the default; the live value is what is shown, and
+// a kept element has to be told about a change to it.
+const search = (v) => ({{ tag: "div", children: [ {{ tag: "input", attrs: {{ type: "search", value: v }} }} ] }});
+dom({{ _class: "Render", into: "body", tree: search("") }});
+const box2 = body.children[0].children[0];
+box2.value = "task";
+dom({{ _class: "Render", into: "body", tree: search("") }});
+check("an unchanged value attribute wiped what was typed", [body.children[0].children[0] === box2, box2.value], [true, "task"]);
+dom({{ _class: "Render", into: "body", tree: search("") }});
+box2.setAttribute("value", "task");
+dom({{ _class: "Render", into: "body", tree: search("done") }});
+check("a changed value attribute did not reach the live value", box2.value, "done");
+dom({{ _class: "Render", into: "body", tree: search("") }});
+check("clearing the value attribute did not clear the box", box2.value, "");
+
 const download = dom({{ _class: "Download", uri: "data:text/plain;base64,aGk=", name: "hello.txt" }});
 check("a download did not answer success", download, {{ _class: "DownloadResult", ok: true }});
 check("the download link was not clicked with its URI and name", [downloaded.attrs.href, downloaded.attrs.download, downloaded.attrs.rel], ["data:text/plain;base64,aGk=", "hello.txt", "noopener"]);
