@@ -1,0 +1,17 @@
+| `clipboard` copies in a browser, and this is not one. `Copy` answers an
+| Exception rather than pretending — a program that copied into nothing
+| would tell its reader the text was kept when it was not.
+|
+| The module is linkable here anyway, so one application can be built both
+| ways and ask `Linked` which it is. The half that can actually copy is a
+| `.a` linked into a `--target wasm` build; nothing in this suite is one.
+
+link "native_modules/clipboard.so" as clip
+
+emit Copy { text = "hi" } to clip get r
+assert r ∈ Exception
+assert r.source = "clipboard"
+
+| A class it does not handle is null, not an error.
+emit Whatever {} to clip get other
+assert other = null

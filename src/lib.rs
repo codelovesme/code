@@ -204,6 +204,10 @@ mod compile {
     /// nobody needs yet.
     const WEB_MODULE_PARTS: &[(&str, &str)] = &[
         (
+            "clipboard",
+            include_str!("../crates/modules/clipboard/page.mjs"),
+        ),
+        (
             "console",
             include_str!("../crates/modules/console/page.mjs"),
         ),

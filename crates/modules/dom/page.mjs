@@ -932,23 +932,6 @@
         else if (typeof link.remove === "function") link.remove();
         return { _class: "DownloadResult", ok: true };
       }
-      if (particle._class === "Copy") {
-        const text = typeof particle.text === "string" ? particle.text : "";
-        const clipboard = globalThis.navigator?.clipboard;
-        if (typeof clipboard?.writeText !== "function") return { _class: "CopyResult", ok: false };
-        // The write is a promise the browser may refuse — outside a user
-        // gesture, or on an insecure page. The answer says it was asked;
-        // a refusal comes back as its own particle.
-        try {
-          const written = clipboard.writeText(text);
-          if (written && typeof written.catch === "function") {
-            written.catch((e) => fire({ _class: "CopyFailed", reason: String(e?.message ?? e ?? "refused") }));
-          }
-        } catch (e) {
-          return { _class: "CopyResult", ok: false };
-        }
-        return { _class: "CopyResult", ok: true };
-      }
       if (particle._class !== "Render") return null;
 
       const into = typeof particle.into === "string" ? particle.into : "body";

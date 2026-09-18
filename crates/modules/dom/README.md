@@ -31,11 +31,6 @@ an already fetched `data:` or `blob:` URI. The page uses a temporary anchor and
 removes it immediately, so the action stays inside the user's gesture and
 does not leave a hidden node behind. `name` is the suggested filename.
 
-`Copy { text } → CopyResult { ok }` puts `text` on the reader's clipboard.
-`ok` is false when the browser offers no clipboard; a browser that refuses
-afterwards — outside a click, or on an insecure page — fires
-`CopyFailed { reason }` on its own.
-
 `into` is a CSS selector, `"body"` by default; `ok` is false when it matched
 nothing. `styles` replaces the sheet set last time rather than stacking a new
 one, so an application can restyle itself.

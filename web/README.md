@@ -63,8 +63,8 @@ browser refusing storage. Everything is caught at the door and becomes an
 `Exception` particle — which is what the language reads a failure as anyway,
 and what the same module's machine half returns.
 
-The ones with a half here are `console`, `dom`, `storage`, `router`, `timer`,
-`net_client`, `guest`, `media` and `json`.
+The ones with a half here are `console`, `dom`, `storage`, `clipboard`,
+`router`, `timer`, `net_client`, `guest`, `media` and `json`.
 
 **A module from outside this repository cannot bring its own half yet**, and
 that is the honest limit of this design. The halves are embedded in the

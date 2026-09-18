@@ -285,6 +285,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "oauth_mock",
     "process",
     "strings",
+    "clipboard",
     "console",
     "dom",
     "guest",

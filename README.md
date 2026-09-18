@@ -1770,7 +1770,7 @@ crates/
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
                 azure_mailer,
                 oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,
-                media,
+                media, clipboard,
                 http_client, http_server, net_client, net_server — plus
                 <name>_mock twins for
                 mailer, oauth, mongodb, blob_storage, cloud_drive, git, localai

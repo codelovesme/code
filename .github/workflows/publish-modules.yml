@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, timer, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
       # Each module is its own workspace with its own Cargo.lock (see those
@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, dom, guest, http_client, json, media, net_client, router, storage, timer]
+        module: [console, dom, guest, http_client, json, media, net_client, router, storage, clipboard, timer]
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, timer, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
 
@@ -367,13 +367,14 @@ jobs:
               # is `code_abi.h`'s hosting section and a different thing.
               printf 'emit Load { app = "x", url = "x.wasm" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code
               ;;
-            router|storage)
+            router|storage|clipboard)
               # Same as `dom`: no browser on a build machine, and the
               # artifact says so rather than pretending. The half that can do
               # the work is a wasm archive, which this job does not build.
               case "$m" in
                 router)  printf 'emit Route { } to mod get r\nassert r ∈ Exception\nemit Where { } to mod get w\nassert w ∈ Exception\n' >> dogfood/demo.code ;;
                 storage) printf 'emit Get { key = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+                clipboard) printf 'emit Copy { text = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
               esac
               ;;
             timer)
@@ -452,7 +453,7 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer azure_mailer oauth mongodb azure_blob blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest media router storage timer oauth_mock; do
+          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer azure_mailer oauth mongodb azure_blob blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest media router storage clipboard timer oauth_mock; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
@@ -482,10 +483,11 @@ jobs:
               mailer_mock) handlers='["Config", "Send", "Outbox"]' ;;
               net_server) handlers='["Config", "Listen", "Stop"]' ;;
               membrane) handlers='["Config", "Listen", "Stop"]' ;;
-              dom) handlers='["Render", "Download", "Copy"]' ;;
+              dom) handlers='["Render", "Download"]' ;;
               guest) handlers='["Load", "Unload", "Tell"]' ;;
               router) handlers='["Route", "Navigate", "Watch", "Where"]' ;;
               storage) handlers='["Get", "Set", "Remove"]' ;;
+              clipboard) handlers='["Copy"]' ;;
               timer) handlers='["Delay", "Cancel"]' ;;
               net_client) handlers='["Config","Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
