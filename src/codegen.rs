@@ -436,7 +436,10 @@ pub(crate) fn compile_to_object_traced(
     // sees it — see `define_library_exports`.
     let fn_dispatch_copied = module.add_function(
         "code_dispatch_copied",
-        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        void_ty.fn_type(
+            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+            false,
+        ),
         None,
     );
     // What `Linked` answers. Called only from a library's start-up, which is
