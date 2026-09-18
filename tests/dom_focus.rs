@@ -24,10 +24,7 @@ fn a_modal_traps_tab_and_restores_its_opener() {
     fs::create_dir_all(&dir).expect("create the probe dir");
     let probe = dir.join("probe.mjs");
     let source = fs::read_to_string(&half).expect("read the page half");
-    let mut script = format!(
-        "const half = new Function(\"return (\" + {} + \")\")();\n",
-        format!("{source:?}")
-    );
+    let mut script = format!("const half = new Function(\"return (\" + {source:?} + \")\")();\n");
     script.push_str(
         r##"
 let doc;

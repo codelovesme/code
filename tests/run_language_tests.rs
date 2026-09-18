@@ -223,7 +223,9 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
 /// doubles.
 fn build_code_test_guests(tests_dir: &Path) {
     let modules_dir = tests_dir.join("native_modules");
-    for stem in ["test_keeper"] {
+    // One today; a list so the next is a line.
+    let guests = ["test_keeper"];
+    for stem in guests {
         let source = modules_dir.join(format!("{stem}.code"));
         let dest = modules_dir.join(format!("{stem}.so"));
         code::compile_file(&source, code::BuildTarget::Shared, &dest, false)
