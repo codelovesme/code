@@ -2,8 +2,12 @@
 //!
 //! Handlers:
 //!
-//! - `Record {}` — start recording audio. Answers `RecordResult { ok }` at
-//!   once; the recording itself arrives later as a `Recorded` particle.
+//! - `Record { until_silence_ms?, max_ms? }` — start recording audio.
+//!   Answers `RecordResult { ok }` at once; the recording itself arrives
+//!   later as a `Recorded` particle. With `until_silence_ms` the recording
+//!   ends itself: it waits for the person to speak, then for that much
+//!   quiet — one `Record`, one utterance — and `max_ms` (30 s by default)
+//!   caps it either way. Quiet with no speech fires nothing.
 //! - `StopRecording {}` — stop, and fire `Recorded { audio_base64, format,
 //!   ms }`. Answers `StopResult { ok }`.
 //! - `StartCamera {}` — open the camera and fill any viewfinder in the page

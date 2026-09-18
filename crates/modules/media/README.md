@@ -20,7 +20,8 @@ Recorded { audio_base64, format, ms } => {
 ## The handlers
 
 ```
-Record {}          → RecordResult      { ok }   · later: Recorded { audio_base64, format, ms }
+Record { until_silence_ms?, max_ms? }
+                   → RecordResult      { ok }   · later: Recorded { audio_base64, format, ms }
 StopRecording {}   → StopResult        { ok }
 StartCamera {}     → StartCameraResult { ok }   · later: CameraReady {}
 SwitchCamera {}    → SwitchCameraResult { ok }  · later: CameraReady {}
@@ -38,6 +39,17 @@ get to say `Played`.
 `ok = false` means the module was not in a state to do it — stopping a
 recording that never started, photographing with the camera shut. It is not
 an error and not a refusal.
+
+## A recording that ends itself
+
+`Record { until_silence_ms = 1200 }` is one utterance: the module watches the
+microphone's level, waits for the person to start speaking, and stops once
+they have been quiet for that long — `Recorded` then arrives as it would
+after `StopRecording`. Quiet with no speech at all fires nothing; the
+recorder keeps waiting (and is quietly restarted every twenty seconds so it
+holds little). `max_ms` caps the recording whether or not it went quiet —
+thirty seconds unless said otherwise — and `StopRecording` still ends it
+early. A browser without an `AudioContext` keeps only the cap.
 
 ## The answer comes later
 

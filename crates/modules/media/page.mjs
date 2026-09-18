@@ -8,6 +8,11 @@
 //
 // Asking for a device is asking a person. A refusal is `Denied`, not an
 // exception: a reader saying no is an answer.
+//
+// A recording can end itself: `Record { until_silence_ms }` watches the
+// microphone's level, waits for the person to start speaking, and stops
+// once they have been quiet for that long — one `Record`, one utterance.
+// Quiet with no speech at all fires nothing; the recorder keeps waiting.
 (ctx) => {
   const { doc, fire } = ctx;
 
@@ -22,6 +27,8 @@
   const PHOTO_QUALITY = 0.85;
 
   let recorder = null;      // MediaRecorder, while recording
+  let restarting = false;   // the recorder is being replaced, not finished
+  let level = null;         // { ctx, timer }, while the level is watched
   let opening = false;      // the microphone asked for and not yet given
   let stopEarly = false;    // Stop came while it was still being asked for
   let chunks = [];          // what it has handed over so far
@@ -43,6 +50,152 @@
   let ownView = null;
 
   const ok = (klass, value = true) => ({ _class: klass, ok: value });
+
+  // What counts as speech: the RMS of the signal over this, for at least
+  // this long. A room's hum and a breath sit well under it; a voice at a
+  // normal distance sits well over.
+  const SPEECH_LEVEL = 0.02;
+  const ONSET_MS = 150;
+  const LEVEL_EVERY_MS = 50;
+  // A recorder waiting for a first word is restarted this often so the
+  // bytes it holds stay small; nothing is fired when it is.
+  const WAITING_RESTART_MS = 20000;
+  const DEFAULT_MAX_MS = 30000;
+
+  /// Watch the microphone's level and stop the recorder when the person
+  /// has spoken and then gone quiet for `silenceMs`, or at `maxMs` whether
+  /// or not they have. Without an `AudioContext` only the cap applies.
+  function watchLevel(stream, silenceMs, maxMs) {
+    const AC = globalThis.AudioContext ?? globalThis.webkitAudioContext;
+    let analyser = null;
+    let audio = null;
+    let buffer = null;
+    if (typeof AC === "function") {
+      try {
+        audio = new AC();
+        analyser = audio.createAnalyser();
+        analyser.fftSize = 2048;
+        audio.createMediaStreamSource(stream).connect(analyser);
+        buffer = new Float32Array(analyser.fftSize);
+      } catch {
+        audio = null;
+        analyser = null;
+      }
+    }
+    let loudFor = 0;
+    let quietFor = 0;
+    let waitingFor = 0;
+    let spoke = false;
+    const begun = Date.now();
+    const timer = setInterval(() => {
+      if (!recorder) return;
+      if (Date.now() - begun >= maxMs) {
+        stopRecorder();
+        return;
+      }
+      if (!analyser) return;
+      analyser.getFloatTimeDomainData(buffer);
+      let sum = 0;
+      for (let i = 0; i < buffer.length; i++) sum += buffer[i] * buffer[i];
+      const rms = Math.sqrt(sum / buffer.length);
+      if (rms >= SPEECH_LEVEL) {
+        loudFor += LEVEL_EVERY_MS;
+        quietFor = 0;
+        if (loudFor >= ONSET_MS) spoke = true;
+      } else {
+        loudFor = 0;
+        quietFor += LEVEL_EVERY_MS;
+      }
+      if (spoke) {
+        if (quietFor >= silenceMs) stopRecorder();
+        return;
+      }
+      waitingFor += LEVEL_EVERY_MS;
+      if (waitingFor >= WAITING_RESTART_MS) {
+        waitingFor = 0;
+        restartRecorder();
+      }
+    }, LEVEL_EVERY_MS);
+    level = { timer, audio };
+  }
+
+  function stopWatchingLevel() {
+    if (!level) return;
+    clearInterval(level.timer);
+    const closed = level.audio?.close?.();
+    if (closed && typeof closed.catch === "function") closed.catch(() => {});
+    level = null;
+  }
+
+  function stopRecorder() {
+    try {
+      recorder?.stop();
+    } catch {
+      // Already stopped; `onstop` has fired or is about to.
+    }
+  }
+
+  /// Drop what the recorder holds and start it again on the same stream,
+  /// without firing: `onstop` sees `restarting` and starts over.
+  function restartRecorder() {
+    if (!recorder) return;
+    restarting = true;
+    stopRecorder();
+  }
+
+  /// A recorder on the stream: the pieces it hands over are kept, and its
+  /// stop is either the recording's end or, while `restarting`, a fresh
+  /// start with nothing kept.
+  function startRecorder(stream) {
+    chunks = [];
+    startedAt = Date.now();
+    recorder = new globalThis.MediaRecorder(stream);
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size) chunks.push(e.data);
+    };
+    // A recorder that fails mid-way says so through here and then
+    // stops; `onstop` still runs, with whatever was handed over.
+    recorder.onerror = (e) => {
+      fire({
+        _class: "Unavailable",
+        device: "microphone",
+        reason: `the recording failed: ${e?.error?.message ?? e?.error ?? "unknown"}`,
+      });
+    };
+    recorder.onstop = async () => {
+      if (restarting && micStream === stream) {
+        restarting = false;
+        startRecorder(stream);
+        return;
+      }
+      restarting = false;
+      const type = recorder?.mimeType || "audio/webm";
+      const blob = new Blob(chunks, { type });
+      const ms = Date.now() - startedAt;
+      recorder = null;
+      chunks = [];
+      stopWatchingLevel();
+      letGo(micStream);
+      micStream = null;
+      try {
+        fire({
+          _class: "Recorded",
+          audio_base64: await toBase64(blob),
+          // The subtype is what a caller needs — "webm", "mp4" —
+          // and every browser spells the rest of it differently.
+          format: String(type).split(";")[0].split("/")[1] || "webm",
+          ms,
+        });
+      } catch (e) {
+        fire({
+          _class: "Unavailable",
+          device: "microphone",
+          reason: `the recording could not be read: ${e}`,
+        });
+      }
+    };
+    recorder.start();
+  }
 
   /// A device that could not be had. `Denied` when the person said no,
   /// `Unavailable` when the browser has nothing to offer — different
@@ -158,6 +311,12 @@
             });
             return ok("RecordResult", false);
           }
+          // Optional: end the recording itself. `until_silence_ms` waits
+          // for speech and then for that much quiet; `max_ms` caps it
+          // either way (thirty seconds when only silence was asked for).
+          const untilSilence = Number(particle.until_silence_ms) > 0 ? Number(particle.until_silence_ms) : 0;
+          const maxMs =
+            Number(particle.max_ms) > 0 ? Number(particle.max_ms) : untilSilence > 0 ? DEFAULT_MAX_MS : Infinity;
           opening = true;
           stopEarly = false;
           media
@@ -175,47 +334,8 @@
                 return;
               }
               micStream = stream;
-              chunks = [];
-              startedAt = Date.now();
-              recorder = new globalThis.MediaRecorder(stream);
-              recorder.ondataavailable = (e) => {
-                if (e.data && e.data.size) chunks.push(e.data);
-              };
-              // A recorder that fails mid-way says so through here and then
-              // stops; `onstop` still runs, with whatever was handed over.
-              recorder.onerror = (e) => {
-                fire({
-                  _class: "Unavailable",
-                  device: "microphone",
-                  reason: `the recording failed: ${e?.error?.message ?? e?.error ?? "unknown"}`,
-                });
-              };
-              recorder.onstop = async () => {
-                const type = recorder?.mimeType || "audio/webm";
-                const blob = new Blob(chunks, { type });
-                const ms = Date.now() - startedAt;
-                recorder = null;
-                chunks = [];
-                letGo(micStream);
-                micStream = null;
-                try {
-                  fire({
-                    _class: "Recorded",
-                    audio_base64: await toBase64(blob),
-                    // The subtype is what a caller needs — "webm", "mp4" —
-                    // and every browser spells the rest of it differently.
-                    format: String(type).split(";")[0].split("/")[1] || "webm",
-                    ms,
-                  });
-                } catch (e) {
-                  fire({
-                    _class: "Unavailable",
-                    device: "microphone",
-                    reason: `the recording could not be read: ${e}`,
-                  });
-                }
-              };
-              recorder.start();
+              startRecorder(stream);
+              if (untilSilence > 0 || maxMs !== Infinity) watchLevel(stream, untilSilence, maxMs);
             })
             .catch((e) => {
               opening = false;
@@ -233,14 +353,11 @@
             return ok("StopResult");
           }
           if (!recorder) return ok("StopResult", false);
-          // `onstop` above is what fires `Recorded`; stopping is all this
-          // has to do. A recorder already inactive throws on `stop`, and
-          // that is not an error worth ending a handler over.
-          try {
-            recorder.stop();
-          } catch {
-            // Already stopped; `onstop` has fired or is about to.
-          }
+          // `onstop` is what fires `Recorded`; stopping is all this has to
+          // do — and a stop asked for is the recording's end even while
+          // the recorder was about to be restarted.
+          restarting = false;
+          stopRecorder();
           return ok("StopResult");
         }
 
