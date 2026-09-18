@@ -8,6 +8,8 @@
 //!   ms }`. Answers `StopResult { ok }`.
 //! - `StartCamera {}` — open the camera and fill any viewfinder in the page
 //!   (see below). Answers `StartCameraResult { ok }`.
+//! - `SwitchCamera {}` — switch between the front and rear camera and fire
+//!   `CameraReady {}` when the replacement stream has a frame.
 //! - `TakePhoto {}` — grab the current frame and fire `Captured {
 //!   image_base64, width, height }`. Answers `TakePhotoResult { ok }`.
 //! - `StopCamera {}` — release the camera. Answers `StopResult { ok }`.
@@ -84,7 +86,7 @@ mod machine {
         guarded(&mut *out, "media", |out| {
             match read_field_str(particle, "_class") {
                 Some("Record") | Some("StopRecording") | Some("StartCamera")
-                | Some("TakePhoto") | Some("StopCamera") => exception(out, "media", NO_BROWSER),
+                | Some("TakePhoto") | Some("SwitchCamera") | Some("StopCamera") => exception(out, "media", NO_BROWSER),
                 // A class this module does not handle answers null and does
                 // not end the program: it may have been meant for something
                 // else entirely.

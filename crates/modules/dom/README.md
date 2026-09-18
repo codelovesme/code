@@ -138,6 +138,10 @@ a program is not woken for every point a finger passes:
   not a field a handler could bind) — and nothing is moved on the page. The program holds the list, so the program reorders it and draws.
   While it is carried the child wears `data-code-dragging`, for the program's
   own styles to pick up.
+- **`longreorder`** — the same reorder particle, but only after the child has
+  been held for 450ms. Until then vertical movement is left to the browser's
+  scroll handling; once armed, the child wears `data-code-dragging` and can be
+  carried among its siblings.
 
 A gesture is read from pointer events, so it needs the browser not to take
 the pointer for a scroll first: a list swiped across says `"touch-action" =

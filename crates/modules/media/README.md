@@ -23,6 +23,7 @@ Recorded { audio_base64, format, ms } => {
 Record {}          → RecordResult      { ok }   · later: Recorded { audio_base64, format, ms }
 StopRecording {}   → StopResult        { ok }
 StartCamera {}     → StartCameraResult { ok }   · later: CameraReady {}
+SwitchCamera {}    → SwitchCameraResult { ok }  · later: CameraReady {}
 TakePhoto {}       → TakePhotoResult   { ok }   · later: Captured { image_base64, width, height }
 StopCamera {}      → StopResult        { ok }
 ```

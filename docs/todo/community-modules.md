@@ -470,8 +470,8 @@ is `tests/azure_blob_module.rs` — the same one `blob_storage` runs — against
 the CI job's Azurite service, skipped without
 `AZURE_BLOB_CONNECTION_STRING`.
 
-`media` — shipped: `Record`/`StopRecording`, `StartCamera`/`TakePhoto`/
-`StopCamera`. Browser only. The interesting answers cannot be return values —
+`media` — shipped: `Record`/`StopRecording`, `StartCamera`/`SwitchCamera`/
+`TakePhoto`/`StopCamera`. Browser only. The interesting answers cannot be return values —
 a recording does not exist when `Record` is asked — so they arrive as their
 own particles (`Recorded`, `Captured`), the shape `net_client` already uses
 for a reply that outlives its request. A refusal is `Denied`, not an

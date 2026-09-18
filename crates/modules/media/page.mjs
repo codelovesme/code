@@ -28,6 +28,7 @@
   let startedAt = 0;
   let micStream = null;
   let camStream = null;
+  let camFacingMode = "environment";
   let watching = null;      // MutationObserver, while the camera is open
 
   // The module's own view of the camera, off the page and never drawn.
@@ -137,6 +138,9 @@
   }
 
   const devices = () => globalThis.navigator?.mediaDevices ?? null;
+
+  const cameraConstraints = (mode = camFacingMode) => ({ video: { facingMode: { exact: mode } } });
+  const cameraFallbackConstraints = (mode = camFacingMode) => ({ video: { facingMode: { ideal: mode } } });
 
   return [
     "media",
@@ -254,7 +258,8 @@
             return ok("StartCameraResult", false);
           }
           media
-            .getUserMedia({ video: true })
+            .getUserMedia(cameraConstraints())
+            .catch(() => media.getUserMedia(cameraFallbackConstraints()))
             .then(async (stream) => {
               camStream = stream;
               watchForSinks();
@@ -267,6 +272,30 @@
             })
             .catch((e) => refused("camera", e));
           return ok("StartCameraResult");
+        }
+
+        case "SwitchCamera": {
+          if (!camStream) return ok("SwitchCameraResult", false);
+          const media = devices();
+          if (!media) return ok("SwitchCameraResult", false);
+          const shown = sink();
+          if (shown) shown.srcObject = null;
+          if (ownView) ownView.srcObject = null;
+          letGo(camStream);
+          camStream = null;
+          const nextFacingMode = camFacingMode === "environment" ? "user" : "environment";
+          camFacingMode = nextFacingMode;
+          media
+            .getUserMedia(cameraConstraints())
+            .catch(() => media.getUserMedia(cameraFallbackConstraints()))
+            .then(async (stream) => {
+              camStream = stream;
+              fillSinks();
+              await ownViewReady(stream);
+              fire({ _class: "CameraReady" });
+            })
+            .catch((e) => refused("camera", e));
+          return ok("SwitchCameraResult");
         }
 
         case "TakePhoto": {
