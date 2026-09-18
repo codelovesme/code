@@ -1,0 +1,24 @@
+| The control for the `runtime_link_keeps_*` fixtures: the same source, the
+| same three questions, linked as a `.code` file into this program rather
+| than as a `.so` of its own. It passes, which is what says the fault beside
+| it is in the runtime link and not in the program.
+
+link "native_modules/test_keeper.code"
+
+emit NoteClass { particle = TasksDelta { added = [] } } to this
+emit RecallClass to this get by_class
+assert by_class.class = "TasksDelta"
+
+emit NoteText { text = "eyJhbGciOiJFZERTQSJ9.a-value-worth-keeping" } to this
+emit RecallText to this get by_text
+assert by_text.text = "eyJhbGciOiJFZERTQSJ9.a-value-worth-keeping"
+
+emit NoteWhole {
+    particle = TasksDelta {
+        added = [{ subject = "Buy milk" }, { subject = "Buy eggs" }]
+        removed = []
+    }
+} to this
+emit RecallWhole to this get whole
+assert whole.subject = "Buy milk"
+assert whole.count = 2

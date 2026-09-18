@@ -1703,6 +1703,29 @@ void code_native_dispatch(void *handle, CodeValue *out, const CodeValue *particl
     nh->release(&result);
 }
 
+/* The other side of the same rule, for a module written in `code`. Its
+ * exported `code_module_dispatch` (generated — see `define_library_exports`
+ * in codegen.rs) is handed a particle built by *another* copy of this
+ * runtime: the program that linked it. That particle is the caller's, and
+ * the caller frees it when the call returns. A handler that kept a piece
+ * of it — `last = particle._class` — kept a pointer into memory that was
+ * never counted in this module's bookkeeping, and read noise, or worse,
+ * on the next call.
+ *
+ * So a particle is copied in before a single handler sees it, exactly as
+ * the module's answer is copied out by `code_native_dispatch` on the way
+ * back. Values never cross this boundary by shared ownership, in either
+ * direction. `chain` is the module's own `_code_dispatch_this`; the copy is
+ * released once it has answered, having by then retained whatever a
+ * handler chose to keep. */
+void code_dispatch_copied(void (*chain)(CodeValue *out, const CodeValue *particle), CodeValue *out,
+                          const CodeValue *particle) {
+    CodeValue own = {0};
+    code_native_copy_in(&own, particle);
+    chain(out, &own);
+    code_release(&own);
+}
+
 /* ---- Modules linked while the program is running ---------------------
  *
  * `link <expr> as <name>` inside a handler (see `ast::Stmt::LinkRuntime`).

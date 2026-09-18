@@ -1,0 +1,19 @@
+| A linked module keeps the whole particle it was sent, and reads a field out
+| of it on the next call. See `runtime_link_keeps_a_class_name.code` for why
+| this can go wrong. This one did not read wrong when it was found: it ended
+| the process — so a failure here may be a signal rather than an assertion.
+
+link "native_modules/test_keeper.so" as m
+
+emit NoteWhole {
+    particle = TasksDelta {
+        added = [{ subject = "Buy milk" }, { subject = "Buy eggs" }]
+        removed = []
+    }
+} to m get noted
+assert noted ∈ Noted
+
+emit RecallWhole to m get back
+assert back ∈ Recalled
+assert back.subject = "Buy milk"
+assert back.count = 2

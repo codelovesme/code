@@ -1,0 +1,37 @@
+| A module written in `code` that keeps what it was sent — the shape of any
+| program with state between calls. Built by `run_language_tests.rs` into
+| `test_keeper.so` for the `runtime_link_keeps_*` fixtures, which link it
+| and ask it to remember something across two calls.
+
+| The class of the last particle sent to `NoteClass`.
+last_class = ""
+
+| A string field of the last particle sent to `NoteText`.
+last_text = ""
+
+| The whole last particle sent to `NoteWhole`.
+last_whole = null
+
+NoteClass { particle } =>
+    last_class = particle._class
+    return Noted
+
+NoteText { text } =>
+    last_text = text
+    return Noted
+
+NoteWhole { particle } =>
+    last_whole = particle
+    return Noted
+
+RecallClass =>
+    return Recalled { class = last_class }
+
+RecallText =>
+    return Recalled { text = last_text }
+
+RecallWhole =>
+    if last_whole = null
+        return Recalled { subject = "", count = 0 }
+    emit Length { value = last_whole.added } to core get n
+    return Recalled { subject = last_whole.added[0].subject, count = n.value }

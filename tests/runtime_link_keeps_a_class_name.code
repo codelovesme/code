@@ -1,0 +1,23 @@
+| A module written in `code` keeps the class of a particle it was sent, and
+| reads it back on the next call.
+|
+| `kept = particle._class` is the natural line for a program that remembers
+| what it was last asked. As a program of its own it is fine — the value is
+| the program's. Linked as a module, the particle came from the linking
+| program's dispatch, and once the call returns that program is done with
+| it; what the module kept points into memory that was somebody else's.
+|
+| Found 2026-09-18 in a program that links other programs at runtime: a
+| class name kept this way read back as noise on the next call, and a whole
+| particle kept the same way ended the process. The module is
+| `native_modules/test_keeper.code`, built to a `.so` by the fixture runner
+| with `--target shared`, the same build any linked program gets.
+
+link "native_modules/test_keeper.so" as m
+
+emit NoteClass { particle = TasksDelta { added = [] } } to m get noted
+assert noted ∈ Noted
+
+emit RecallClass to m get back
+assert back ∈ Recalled
+assert back.class = "TasksDelta"

@@ -44,6 +44,7 @@ fn code_fixtures_run_as_expected() {
 
     build_native_dynamic_test_modules(&dir);
     build_native_static_test_modules(&dir);
+    build_code_test_guests(&dir);
 
     let mut fixtures: Vec<(String, PathBuf, Expect)> = Vec::new();
     for entry in fs::read_dir(&dir).expect("read tests/ directory") {
@@ -212,6 +213,21 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         fs::copy(&built, &dest).unwrap_or_else(|e| {
             panic!("cannot copy {} to {}: {e}", built.display(), dest.display())
         });
+    }
+}
+
+/// Builds the modules written in `code` that the `runtime_link_keeps_*`
+/// fixtures link — `native_modules/test_keeper.code` to `test_keeper.so`,
+/// the `--target shared` build any program gets when another will link it.
+/// A fixture cannot build, so the runner does it here, beside the Rust
+/// doubles.
+fn build_code_test_guests(tests_dir: &Path) {
+    let modules_dir = tests_dir.join("native_modules");
+    for stem in ["test_keeper"] {
+        let source = modules_dir.join(format!("{stem}.code"));
+        let dest = modules_dir.join(format!("{stem}.so"));
+        code::compile_file(&source, code::BuildTarget::Shared, &dest, false)
+            .unwrap_or_else(|e| panic!("build {stem}.code as a shared module: {e}"));
     }
 }
 

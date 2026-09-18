@@ -431,6 +431,14 @@ pub(crate) fn compile_to_object_traced(
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
         None,
     );
+    // `(chain, out, particle)`: the module's exported dispatch, with the
+    // inbound particle copied into this module's own heap before a handler
+    // sees it — see `define_library_exports`.
+    let fn_dispatch_copied = module.add_function(
+        "code_dispatch_copied",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     // What `Linked` answers. Called only from a library's start-up, which is
     // the whole of how the runtime knows which kind of build it is in.
     let fn_set_linked = module.add_function("code_set_linked", void_ty.fn_type(&[], false), None);
@@ -813,6 +821,7 @@ pub(crate) fn compile_to_object_traced(
         fn_runtime_drain_speakers,
         fn_runtime_any_serving,
         fn_set_program_dispatch,
+        fn_dispatch_copied,
         fn_set_linked,
         fn_runtime_dispatch,
         fn_native_dispatch,
@@ -1062,6 +1071,7 @@ struct Gen<'a, 'm> {
     /// still working. See `gen_keep_alive`.
     fn_runtime_any_serving: FunctionValue<'a>,
     fn_set_program_dispatch: FunctionValue<'a>,
+    fn_dispatch_copied: FunctionValue<'a>,
     /// `runtime.c`'s `code_set_linked` — see `lazy_init_fn`, its only caller.
     fn_set_linked: FunctionValue<'a>,
     fn_runtime_dispatch: FunctionValue<'a>,
@@ -3900,6 +3910,13 @@ impl<'a, 'm> Gen<'a, 'm> {
         // `_code_dispatch_this` chain — the chain keeps its internal name
         // because `emit ... to this` and the inbound drain call it too, and
         // the ABI name is what a *consumer* resolves.
+        //
+        // Thin, but not a bare call: the particle is the consumer's, built
+        // by the consumer's copy of the runtime and freed by it when this
+        // returns. `code_dispatch_copied` copies it into this module's own
+        // heap first, so a handler that keeps a piece of it keeps something
+        // that is its own — the mirror of the copy `code_native_dispatch`
+        // makes of the answer on the way back.
         let dispatch = self.module.add_function(
             &format!("{prefix}code_module_dispatch"),
             self.context
@@ -3916,8 +3933,13 @@ impl<'a, 'm> Gen<'a, 'm> {
         let particle = dispatch.get_nth_param(1).unwrap().into_pointer_value();
         match self.dispatch_fn {
             Some(chain) => {
+                let chain_ptr = chain.as_global_value().as_pointer_value();
                 self.builder
-                    .build_call(chain, &[out.into(), particle.into()], "")
+                    .build_call(
+                        self.fn_dispatch_copied,
+                        &[chain_ptr.into(), out.into(), particle.into()],
+                        "",
+                    )
                     .map_err(|e| e.to_string())?;
             }
             // A module with no handler at all answers null to everything —
