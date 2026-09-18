@@ -22,6 +22,12 @@
 //! - `Transcribe { audio_base64, language?, model?, audio_format? }` →
 //!   `TranscribeResult { text, language }` — Whisper-style transcription.
 //!   `TranscribeWithOptions` is an alias.
+//! - `Speak { text, model?, voice?, format?, later? }` → `SpeakResult {
+//!   audio_base64, format }` — text to speech through `/audio/speech`. The
+//!   bytes come back base64, `format` is the audio subtype the server chose
+//!   ("wav", "mp3"). With `later = true`, `Sent { value = id }` at once and
+//!   the `SpeakResult` (or `Exception`) afterwards with `_request_id = id`,
+//!   as for `Chat`.
 //!
 //! `<think>…</think>` blocks (some reasoning models emit them) are stripped
 //! from every reply.
@@ -82,6 +88,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             "Chat" => chat(out, particle, false),
             "ChatJson" => chat(out, particle, true),
             "Transcribe" | "TranscribeWithOptions" => transcribe(out, particle),
+            "Speak" => speak(out, particle),
             _ => {
                 null(out);
                 Ok(())
@@ -227,14 +234,28 @@ fn chat_perform(url: &str, body: Json, timeout: Duration, api_key: &str, json_mo
 /// Push a `later` outcome into the program: the result class with its one
 /// text field and `_request_id`, or an `Exception` carrying the same id.
 fn push_later(id: u64, class: &'static std::ffi::CStr, key: &'static std::ffi::CStr, outcome: Result<String, String>) {
+    push_later_fields(id, class, outcome.map(|text| vec![(key, text)]));
+}
+
+/// The same, for a result with several text fields.
+fn push_later_fields(
+    id: u64,
+    class: &'static std::ffi::CStr,
+    outcome: Result<Vec<(&'static std::ffi::CStr, String)>, String>,
+) {
     let mut particle = CodeValue::zeroed();
     match outcome {
-        Ok(text) => {
-            let mut b = SlotBuffer::new(3);
+        Ok(fields) => {
+            let mut keys: Vec<&std::ffi::CStr> = vec![c"_class"];
+            let mut b = SlotBuffer::new(fields.len() + 2);
             borrowed_str(b.slot_mut(0), class);
-            owned_str(b.slot_mut(1), &text);
-            number(b.slot_mut(2), id as f64);
-            object(&mut particle, &[c"_class", key, c"_request_id"], &mut b);
+            for (i, (key, text)) in fields.iter().enumerate() {
+                keys.push(key);
+                owned_str(b.slot_mut(i as i64 + 1), text);
+            }
+            keys.push(c"_request_id");
+            number(b.slot_mut(fields.len() as i64 + 1), id as f64);
+            object(&mut particle, &keys, &mut b);
             b.release_all();
         }
         Err(message) => {
@@ -380,6 +401,103 @@ fn part_field(body: &mut Vec<u8>, boundary: &str, name: &str, value: &str) {
     );
     body.extend_from_slice(value.as_bytes());
     body.extend_from_slice(b"\r\n");
+}
+
+/// `Speak`: text in, audio out. The server answers raw bytes with a
+/// content type, so what comes back is base64 and the subtype it named.
+fn speak(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let text = find_field(particle, "text")
+        .and_then(read_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or("Speak requires a non-empty string 'text'")?
+        .to_string();
+    let (url, timeout, api_key, body) = {
+        let guard = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+        let cfg = guard.as_ref().ok_or(NOT_CONFIGURED)?;
+        let mut body = json!({
+            "model": opt_str(particle, "model").unwrap_or_else(|| cfg.model.clone()),
+            "input": text,
+        });
+        if let Some(voice) = opt_str(particle, "voice") {
+            body["voice"] = json!(voice);
+        }
+        if let Some(format) = opt_str(particle, "format") {
+            body["response_format"] = json!(format);
+        }
+        (
+            format!("{}/audio/speech", cfg.base),
+            cfg.timeout,
+            cfg.api_key.clone(),
+            body,
+        )
+    };
+
+    if read_field_bool(particle, "later") == Some(true) {
+        let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        std::thread::spawn(move || {
+            let outcome = speak_perform(&url, body, timeout, &api_key)
+                .map(|(audio, format)| vec![(c"audio_base64", audio), (c"format", format)]);
+            push_later_fields(id, c"SpeakResult", outcome);
+        });
+        make_result(out, c"Sent", |slot| number(slot, id as f64));
+        return Ok(());
+    }
+
+    let (audio, format) = speak_perform(&url, body, timeout, &api_key)?;
+    let mut b = SlotBuffer::new(3);
+    borrowed_str(b.slot_mut(0), c"SpeakResult");
+    owned_str(b.slot_mut(1), &audio);
+    owned_str(b.slot_mut(2), &format);
+    object(out, &[c"_class", c"audio_base64", c"format"], &mut b);
+    b.release_all();
+    Ok(())
+}
+
+/// The one exchange with the speech model: the bytes and the audio subtype
+/// from the content type ("audio/wav" → "wav"). Blocking, as `chat_perform`.
+fn speak_perform(url: &str, body: Json, timeout: Duration, api_key: &str) -> Result<(String, String), String> {
+    let mut resp = authorized(agent(timeout).post(url), api_key)
+        .header("Content-Type", "application/json")
+        .send(body.to_string())
+        .map_err(|e| format!("speech request to '{url}' failed: {e}"))?;
+    let status = resp.status().as_u16();
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let bytes = resp
+        .body_mut()
+        .with_config()
+        .limit(64 * 1024 * 1024)
+        .read_to_vec()
+        .map_err(|e| format!("reading the speech response failed: {e}"))?;
+    if !(200..300).contains(&status) {
+        return Err(format!(
+            "speech rejected: HTTP {status}: {}",
+            trim(&String::from_utf8_lossy(&bytes))
+        ));
+    }
+    if bytes.is_empty() {
+        return Err("speech response carried no audio".to_string());
+    }
+    let format = content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .strip_prefix("audio/")
+        .map(|s| match s {
+            "wave" | "x-wav" => "wav",
+            "mpeg" => "mp3",
+            other => other,
+        })
+        .filter(|s| !s.is_empty())
+        .unwrap_or("wav")
+        .to_string();
+    Ok((B64.encode(&bytes), format))
 }
 
 // ---------------------------------------------------------------------------

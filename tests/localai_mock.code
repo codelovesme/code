@@ -36,5 +36,13 @@ assert t.language = "en"
 emit TranscribeWithOptions { audio_base64 = "aGVsbG8=" } to ai get t2
 assert t2.text = "[mock transcript]"
 
+| Speak hands back a few bytes and their kind; nothing to say is refused.
+emit Speak { text = "hello" } to ai get spoken
+assert spoken ∈ SpeakResult
+assert spoken.format = "wav"
+assert spoken.audio_base64 = "UklGRg=="
+emit Speak { text = "  " } to ai get silent
+assert silent ∈ Exception
+
 emit Embed {} to ai get u
 assert u = null

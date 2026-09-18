@@ -29,3 +29,26 @@ assert arrived[0].id = sent.value
 | Without `later`, the answer is the result itself.
 emit ChatJson { user = "hello" } to ai get r
 assert r ∈ ChatResult
+
+| Speak works the same way: `Sent` now, `SpeakResult` with the bytes later.
+heard = []
+
+SpeakResult { audio_base64, format, _request_id as id } =>
+    heard += [{ audio = audio_base64, format = format, id = id }]
+    return Seen {}
+
+emit Speak { text = "hello", later = true } to ai get said
+assert said ∈ Sent
+
+spins = 0
+loop
+    spins += 1
+    emit Length { value = heard } to core get n
+    if n.value = 1
+        break
+    if spins > 4000000
+        break
+
+assert heard[0].format = "wav"
+assert heard[0].audio = "UklGRg=="
+assert heard[0].id = said.value

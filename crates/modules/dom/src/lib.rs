@@ -8,6 +8,10 @@
 //!   the selector matched nothing.
 //! - `Download { uri, name }` — asks the page to download an already fetched
 //!   URI under `name`, and answers `DownloadResult { ok }`.
+//! - `Copy { text }` — puts `text` on the reader's clipboard and answers
+//!   `CopyResult { ok }`; `ok` is false when the browser offers no
+//!   clipboard. A browser that refuses afterwards fires `CopyFailed {
+//!   reason }`.
 //!
 //! # The tree is a value, not markup
 //!
@@ -153,7 +157,7 @@ mod machine {
                 // A class this module does not handle answers null and does
                 // not end the program: it may have been meant for something
                 // else entirely.
-                Some("Render") | Some("Download") => exception(out, "dom", NO_PAGE),
+                Some("Render") | Some("Download") | Some("Copy") => exception(out, "dom", NO_PAGE),
                 _ => null(out),
             }
         })

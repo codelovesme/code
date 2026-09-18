@@ -1,4 +1,4 @@
-//! The `media` native module — the page's microphone and camera.
+//! The `media` native module — the page's microphone, camera and speaker.
 //!
 //! Handlers:
 //!
@@ -13,6 +13,11 @@
 //! - `TakePhoto {}` — grab the current frame and fire `Captured {
 //!   image_base64, width, height }`. Answers `TakePhotoResult { ok }`.
 //! - `StopCamera {}` — release the camera. Answers `StopResult { ok }`.
+//! - `Play { audio_base64, format }` — play a sound the program holds, as
+//!   base64 bytes of the named subtype ("wav", "mp3", "webm"). Answers
+//!   `PlayResult { ok }` at once and fires `Played {}` when it ends; a sound
+//!   already playing is stopped first.
+//! - `StopPlaying {}` — stop the sound. Answers `StopResult { ok }`.
 //!
 //! Asking for a device is asking a *person*, and they may say no. A refusal
 //! fires `Denied { device, reason }` rather than an `Exception`: a reader
@@ -86,7 +91,8 @@ mod machine {
         guarded(&mut *out, "media", |out| {
             match read_field_str(particle, "_class") {
                 Some("Record") | Some("StopRecording") | Some("StartCamera")
-                | Some("TakePhoto") | Some("SwitchCamera") | Some("StopCamera") => exception(out, "media", NO_BROWSER),
+                | Some("TakePhoto") | Some("SwitchCamera") | Some("StopCamera") | Some("Play")
+                | Some("StopPlaying") => exception(out, "media", NO_BROWSER),
                 // A class this module does not handle answers null and does
                 // not end the program: it may have been meant for something
                 // else entirely.

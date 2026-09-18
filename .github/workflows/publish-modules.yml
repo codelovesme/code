@@ -475,14 +475,14 @@ jobs:
               oauth) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;
               azure_blob) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
-              media) handlers='["Record", "StopRecording", "StartCamera", "TakePhoto", "StopCamera"]' ;;
+              media) handlers='["Record", "StopRecording", "StartCamera", "TakePhoto", "StopCamera", "Play", "StopPlaying"]' ;;
               blob_storage) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
               cloud_drive) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode", "RefreshToken", "GetQuota", "ListFiles", "UploadFile", "DownloadFile", "DeleteFile"]' ;;
-              localai) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions"]' ;;
+              localai) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions", "Speak"]' ;;
               mailer_mock) handlers='["Config", "Send", "Outbox"]' ;;
               net_server) handlers='["Config", "Listen", "Stop"]' ;;
               membrane) handlers='["Config", "Listen", "Stop"]' ;;
-              dom) handlers='["Render"]' ;;
+              dom) handlers='["Render", "Download", "Copy"]' ;;
               guest) handlers='["Load", "Unload", "Tell"]' ;;
               router) handlers='["Route", "Navigate", "Watch", "Where"]' ;;
               storage) handlers='["Get", "Set", "Remove"]' ;;
@@ -493,7 +493,7 @@ jobs:
               blob_storage_mock) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
               cloud_drive_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode", "RefreshToken", "GetQuota", "ListFiles", "UploadFile", "DownloadFile", "DeleteFile"]' ;;
               git_mock) handlers='["Config", "Stash", "StashPop", "Init", "Clone", "Add", "Commit", "Push", "SetRemote", "Status"]' ;;
-              localai_mock) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions"]' ;;
+              localai_mock) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions", "Speak"]' ;;
               # `set -u` would fail on the unbound variable below anyway; this
               # says *why* instead of pointing at the heredoc.
               *) echo "::error::no handler list for '$m' — add one here when a module is added"; exit 1 ;;

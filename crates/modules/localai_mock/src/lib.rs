@@ -14,6 +14,9 @@
 //!   valid JSON so a downstream `Parse` succeeds.
 //! - `Transcribe { audio_base64, language? }` / `TranscribeWithOptions` →
 //!   `TranscribeResult { text, language }` — `text` is `"[mock transcript]"`.
+//! - `Speak { text }` → `SpeakResult { audio_base64, format = "wav" }` —
+//!   `audio_base64` is a few bytes of silence-shaped nonsense, enough to
+//!   be handed on. `later = true` works as for `Chat`.
 //! - `Chat`/`ChatJson { …, later = true }` → `Sent { value = id }` at once, and
 //!   the same `ChatResult` with `_request_id = id` a moment later on the
 //!   program's inbound ring — the shape `localai` answers with `later`.
@@ -51,6 +54,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             "Chat" => chat(out, particle, false),
             "ChatJson" => chat(out, particle, true),
             "Transcribe" | "TranscribeWithOptions" => transcribe(out, particle),
+            "Speak" => speak(out, particle),
             _ => {
                 null(out);
                 Ok(())
@@ -137,6 +141,39 @@ fn transcribe(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     borrowed_str(b.slot_mut(1), c"[mock transcript]");
     owned_str(b.slot_mut(2), &language);
     object(out, &[c"_class", c"text", c"language"], &mut b);
+    b.release_all();
+    Ok(())
+}
+
+fn speak(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    find_field(particle, "text")
+        .and_then(read_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or("Speak requires a non-empty string 'text'")?;
+    if read_field_bool(particle, "later") == Some(true) {
+        let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::SeqCst);
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            let mut reply = CodeValue::zeroed();
+            let mut b = SlotBuffer::new(4);
+            borrowed_str(b.slot_mut(0), c"SpeakResult");
+            borrowed_str(b.slot_mut(1), c"UklGRg==");
+            borrowed_str(b.slot_mut(2), c"wav");
+            number(b.slot_mut(3), id as f64);
+            object(&mut reply, &[c"_class", c"audio_base64", c"format", c"_request_id"], &mut b);
+            b.release_all();
+            emit_inbound(&reply);
+            release(&mut reply);
+        });
+        make_result(out, c"Sent", |slot| number(slot, id as f64));
+        return Ok(());
+    }
+    let mut b = SlotBuffer::new(3);
+    borrowed_str(b.slot_mut(0), c"SpeakResult");
+    borrowed_str(b.slot_mut(1), c"UklGRg==");
+    borrowed_str(b.slot_mut(2), c"wav");
+    object(out, &[c"_class", c"audio_base64", c"format"], &mut b);
     b.release_all();
     Ok(())
 }

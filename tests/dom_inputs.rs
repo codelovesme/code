@@ -169,6 +169,21 @@ const download = dom({{ _class: "Download", uri: "data:text/plain;base64,aGk=", 
 check("a download did not answer success", download, {{ _class: "DownloadResult", ok: true }});
 check("the download link was not clicked with its URI and name", [downloaded.attrs.href, downloaded.attrs.download, downloaded.attrs.rel], ["data:text/plain;base64,aGk=", "hello.txt", "noopener"]);
 check("the temporary download link was left on the page", body.children.includes(downloaded), false);
+
+// The clipboard: asked, the text goes; without one, the answer says so;
+// a browser that refuses afterwards fires its refusal.
+let clipboard = undefined;
+Object.defineProperty(globalThis, "navigator", {{ get: () => ({{ clipboard }}), configurable: true }});
+check("a copy with no clipboard claimed success", dom({{ _class: "Copy", text: "hi" }}), {{ _class: "CopyResult", ok: false }});
+let copied = null;
+clipboard = {{ writeText: (t) => {{ copied = t; return Promise.resolve(); }} }};
+check("a copy did not answer success", dom({{ _class: "Copy", text: "hello" }}), {{ _class: "CopyResult", ok: true }});
+check("the text did not reach the clipboard", copied, "hello");
+clipboard = {{ writeText: () => Promise.reject(new Error("not allowed")) }};
+fired.length = 0;
+dom({{ _class: "Copy", text: "no" }});
+await new Promise((r) => setTimeout(r, 0));
+check("a refused copy did not say why", fired, [{{ _class: "CopyFailed", reason: "not allowed" }}]);
 "#
         ),
     )

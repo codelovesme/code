@@ -26,7 +26,14 @@ StartCamera {}     → StartCameraResult { ok }   · later: CameraReady {}
 SwitchCamera {}    → SwitchCameraResult { ok }  · later: CameraReady {}
 TakePhoto {}       → TakePhotoResult   { ok }   · later: Captured { image_base64, width, height }
 StopCamera {}      → StopResult        { ok }
+Play { audio_base64, format } → PlayResult { ok }   · later: Played {}
+StopPlaying {}     → StopResult        { ok }
 ```
+
+`Play` is the speaker: bytes the program holds — a recording, or speech a
+model made — as base64 of the named subtype (`wav`, `mp3`, `webm`). One
+sound at a time; a new `Play` replaces the one playing, which then does not
+get to say `Played`.
 
 `ok = false` means the module was not in a state to do it — stopping a
 recording that never started, photographing with the camera shut. It is not

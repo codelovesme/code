@@ -1,4 +1,4 @@
-// The page's half of `media`: the microphone and the camera.
+// The page's half of `media`: the microphone, the camera and the speaker.
 //
 // A particle in, a particle out — but the interesting answers cannot be the
 // return value. A recording does not exist when `Record` is asked, and
@@ -30,6 +30,7 @@
   let camStream = null;
   let camFacingMode = "environment";
   let watching = null;      // MutationObserver, while the camera is open
+  let playing = null;       // HTMLAudioElement, while a sound plays
 
   // The module's own view of the camera, off the page and never drawn.
   //
@@ -360,6 +361,52 @@
             }, "image/jpeg", PHOTO_QUALITY);
           });
           return ok("TakePhotoResult");
+        }
+
+        case "Play": {
+          const audio = typeof particle.audio_base64 === "string" ? particle.audio_base64 : "";
+          const format = typeof particle.format === "string" && particle.format ? particle.format : "wav";
+          if (!audio || typeof globalThis.Audio !== "function") return ok("PlayResult", false);
+          // One sound at a time: a new one replaces what was playing, and
+          // the replaced one does not get to say it ended.
+          if (playing) {
+            playing.onended = null;
+            playing.onerror = null;
+            try { playing.pause(); } catch { /* already stopped */ }
+            playing = null;
+          }
+          const sound = new globalThis.Audio(`data:audio/${format};base64,${audio}`);
+          const done = () => {
+            if (playing !== sound) return;
+            playing = null;
+            fire({ _class: "Played" });
+          };
+          sound.onended = done;
+          sound.onerror = () => {
+            if (playing !== sound) return;
+            playing = null;
+            fire({ _class: "Unavailable", device: "speaker", reason: "the sound could not be played" });
+          };
+          playing = sound;
+          const started = sound.play?.();
+          if (started && typeof started.catch === "function") {
+            started.catch((e) => {
+              if (playing !== sound) return;
+              playing = null;
+              refused("speaker", e);
+            });
+          }
+          return ok("PlayResult");
+        }
+
+        case "StopPlaying": {
+          if (!playing) return ok("StopResult", false);
+          const sound = playing;
+          playing = null;
+          sound.onended = null;
+          sound.onerror = null;
+          try { sound.pause(); } catch { /* already stopped */ }
+          return ok("StopResult");
         }
 
         case "StopCamera": {
