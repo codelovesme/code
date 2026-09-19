@@ -51,7 +51,7 @@ pub fn run_source(src: &str) -> Result<Environment, String> {
 pub fn trace_file(path: &Path) -> Result<Vec<trace::TraceEvent>, String> {
     let program = loader::load(&path.display().to_string(), &FilesystemResolver)?;
     let recorder = std::rc::Rc::new(trace::Recorder::new());
-    let mut env = Environment::default();
+    let env = Environment::default();
     env.record_trace(std::rc::Rc::clone(&recorder));
     interpreter::run_with(&program, env)?;
     Ok(recorder.events())
@@ -115,7 +115,7 @@ pub fn replay_file(
     events: &[trace::TraceEvent],
 ) -> Result<Vec<trace::ReplayCase>, String> {
     let program = loader::load(&path.display().to_string(), &FilesystemResolver)?;
-    let mut env = interpreter::run(&program)?;
+    let env = interpreter::run(&program)?;
     let mut cases = Vec::new();
     for event in events {
         if !trace::is_replayable(event) {
@@ -134,7 +134,7 @@ pub fn replay_file(
             });
             continue;
         }
-        let actual = interpreter::ask_program(&event.particle, &mut env);
+        let actual = interpreter::ask_program(&event.particle, &env);
         let outcome = if actual == event.answer {
             trace::Outcome::Match
         } else {

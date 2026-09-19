@@ -80,13 +80,13 @@ fn dispatches_through_a_provided_closure() {
     };
 
     let result = interpreter::run_with(&program, env).expect("program should run");
-    assert_eq!(result.get("n"), Some(&Value::Number(42.0)));
+    assert_eq!(result.get("n"), Some(Value::Number(42.0)));
     // The alias itself is bound to whatever `vars` `provide_module` was
     // given — ordinary field access, exactly like a `.so`'s exported
     // variables.
     assert_eq!(
         result.get("m"),
-        Some(&Value::Object(Rc::new(vec![(
+        Some(Value::Object(Rc::new(vec![(
             "answer".to_string(),
             Value::Number(42.0)
         )])))
@@ -116,7 +116,7 @@ fn link_as_can_rename_a_provided_module() {
     };
 
     let result = interpreter::run_with(&program, env).expect("program should run");
-    assert_eq!(result.get("n"), Some(&Value::Number(20.0)));
+    assert_eq!(result.get("n"), Some(Value::Number(20.0)));
     assert_eq!(result.get("m"), None, "the host's own name is never bound");
 }
 

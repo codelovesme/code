@@ -177,7 +177,17 @@ emit { _class = 4 } to core
     let trace = code::trace::parse_trace(std::str::from_utf8(&compiled.stdout).unwrap()).unwrap();
     assert_eq!(trace.events[1].target, "module:bad");
     assert_eq!(trace.events[1].answer, code::value::Value::Null);
-    assert_eq!(trace.events[4].depth, 0);
+    // `Again` re-enters itself through a variable until the depth bound
+    // refuses it: the deepest boundary sits at the bound, and the first
+    // `Nested` after it is back at the top level.
+    let deepest = trace.events.iter().map(|e| e.depth).max().unwrap();
+    assert_eq!(deepest, code::interpreter::MOST_LIVE);
+    let first_nested = trace
+        .events
+        .iter()
+        .find(|e| e.particle_class == "Nested")
+        .expect("Nested is traced");
+    assert_eq!(first_nested.depth, 0);
     assert_eq!(trace.events.last().unwrap().particle_class, "");
     fs::remove_dir_all(dir).unwrap();
 }

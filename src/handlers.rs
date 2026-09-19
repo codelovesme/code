@@ -1,35 +1,26 @@
-//! The one rule handlers have beyond scoping: **the call graph must be
-//! acyclic**.
+//! The one rule handlers have beyond scoping: **a handler's depth is
+//! bounded**.
 //!
-//! A handler may emit to another handler in the same program, but no handler
-//! may re-enter one that is already running — not itself (`A => { emit A }`),
-//! and not around a longer loop (`A -> B -> A`, `A -> B -> C -> A`).
-//!
-//! This is what keeps handler calls bounded: with no cycle, the deepest a
-//! chain can go is the number of distinct handlers in the program, so the
-//! stack cannot run away. Allowing recursion instead meant a program could
+//! A handler may emit to another handler, and may be on the call stack more
+//! than once — a base module asks a linked module, which asks back through
+//! a furnished module, which runs the base's handler again — but not past
+//! `interpreter::MOST_LIVE` live invocations of one handler. Past that the
+//! emit answers an `Exception`, which is a loop being caught rather than the
+//! stack being overflowed: allowing recursion unbounded meant a program could
 //! overflow — measured at roughly 4k frames in a compiled binary, where it
-//! arrived as a bare SIGSEGV with no message. That is the same failure the
-//! iterative rewrite of value traversal removed (see `runtime.c`'s
-//! "Iterative traversal" section and `tests/stress_deep_nesting.code`);
-//! forbidding cycles closes the door recursion reopened, rather than capping
-//! depth at a number nobody could justify.
+//! arrived as a bare SIGSEGV with no message. The bound sits far below that
+//! and far above anything an exchange between modules reaches.
 //!
 //! Two halves, because dispatch is by the particle's *runtime* `_class`:
 //!
 //! - [`check_cycles`] runs before the program does, in both output modes,
 //!   and rejects every cycle it can see — which is every `emit` whose
-//!   particle is written literally at the call site.
-//! - A **re-entry guard** in each backend catches the rest at runtime, where
+//!   particle is written literally at the call site. A literal self-emit is
+//!   a loop by construction and is refused outright.
+//! - The **depth guard** in each backend catches the rest at runtime, where
 //!   the particle came from a variable and no static pass could have known
-//!   which handler it names. See `interpreter::dispatch_handler` and
+//!   which handler it names. See `interpreter::run_handler` and
 //!   `codegen`'s per-handler `_code_active_*` count.
-//!
-//! One entry the guard lets through: a linked module, dispatched into from a
-//! base module's handler, asking the base back through a furnished module
-//! (`runtime.c`'s `hosted_dispatch` → `code_take_linked_entry`). That is
-//! bounded not by this guard but by its companion in `code_native_dispatch`:
-//! a linked module cannot be on the stack twice.
 
 use std::collections::{HashMap, HashSet};
 

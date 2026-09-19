@@ -1037,11 +1037,10 @@ assert r._class = "Attached"
 /// One entry is not a loop. The base's `Module` is on the stack because it
 /// is relaying a request into one linked module; that module asks the base
 /// to note something; `Module` runs again, for a different linked module's
-/// question, and answers. What bounds it is the rule that a linked module
-/// cannot be on the stack twice — so the same request bouncing between two
-/// linked modules through the base is refused the moment one of them is
-/// reached a second time. (A handler re-entering *itself* is refused as it
-/// always was — `handlers.rs`'s static check and the language fixtures.)
+/// question, and answers. What bounds it is depth: a request bouncing
+/// between two linked modules through the base runs `Module` once per hop,
+/// and past `MOST_LIVE` live invocations the emit is refused, as an
+/// `Exception` that every frame above unwinds with.
 #[test]
 fn a_linked_module_may_ask_its_base_while_the_base_is_inside_it() {
     let dir = temp_dir("askback");
@@ -1115,13 +1114,19 @@ assert relayed.noted ∈ Noted
 emit Notes { } to this get kept
 assert kept.notes = ["./a.so: working"]
 
-| A loop: Module → a → Module → b → Module → a again. a is already on
-| the stack, so the third hop is refused — as an answer, not a crash — and
-| everything above it unwinds with that answer inside.
+| A loop: Module → a → Module → b → Module → a → … Every hop is another
+| live `Module`, so the bound stops it — as an answer, not a crash — and
+| everything above unwinds with that answer inside.
 emit Module { app = "./a.so", name = "test_math", particle = Relay { app = "a", then = "b" } } to this get looped
 assert looped ∈ Bounced
-assert looped.back ∈ Bounced
-assert looped.back.back ∈ Exception
+walk = looped
+hops = 0
+loop
+    if walk ∉ Bounced, break
+    walk = walk.back
+    hops += 1
+assert walk ∈ Exception
+assert hops > 10
 
 emit Let { } to this
 "#,

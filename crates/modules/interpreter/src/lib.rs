@@ -48,7 +48,9 @@ const SOURCE_AT_MOST: usize = 256 * 1024;
 
 struct Loaded {
     name: String,
-    env: Environment,
+    /// Boxed so the environment never moves once made — the same rule
+    /// `interpreter::run_with` keeps, and for the same reason.
+    env: Box<Environment>,
 }
 
 thread_local! {
@@ -109,7 +111,8 @@ fn load(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         entry_text: source.to_string(),
     };
     let program = loader::load(&identity, &resolver)?;
-    let env = prepare(&program, Environment::default())?;
+    let env = Box::new(Environment::default());
+    prepare(&program, &env)?;
     let id = NEXT_ID.with(|n| {
         let mut n = n.borrow_mut();
         let id = *n;
@@ -135,10 +138,10 @@ fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     // can ask for it meanwhile — but a borrow held across the dispatch would
     // turn a future mistake into a panic instead of an answer.
     let taken = PROGRAMS.with(|p| p.borrow_mut().remove(&id));
-    let Some(mut loaded) = taken else {
+    let Some(loaded) = taken else {
         return Err(format!("no program is loaded as {id}"));
     };
-    let answer = ask_program(&value, &mut loaded.env);
+    let answer = ask_program(&value, &loaded.env);
     PROGRAMS.with(|p| p.borrow_mut().insert(id, loaded));
     from_value(out, &answer);
     Ok(())

@@ -513,7 +513,7 @@ mod tests {
         let source = "Greet { who } =>\n    emit Length { value = who } to core get n\n    \
                       return Greeting { size = n.value }\n\nemit Greet { who = \"abc\" } to this\n";
         let recorder = Rc::new(Recorder::new());
-        let mut env = interpreter::Environment::default();
+        let env = interpreter::Environment::default();
         env.record_trace(Rc::clone(&recorder));
         interpreter::run_with(&program(source), env).expect("run traced program");
 
@@ -549,7 +549,7 @@ mod tests {
         let source = "Greet { who } =>\n    return Greeting { text = who }\n\n\
                       emit Greet { who = \"a\\\"b\\nc\" } to this\n";
         let recorder = Rc::new(Recorder::new());
-        let mut env = interpreter::Environment::default();
+        let env = interpreter::Environment::default();
         env.record_trace(Rc::clone(&recorder));
         interpreter::run_with(&program(source), env).expect("run traced program");
 

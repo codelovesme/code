@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
@@ -23,6 +24,14 @@ use crate::value::Value;
 /// as an ordinary `Value` binding (see `link_module`), the same for every
 /// format.
 pub type ModuleDispatch = Rc<dyn Fn(&Value) -> Result<Value, String>>;
+
+/// How many invocations of one handler may be live at once. An ordinary
+/// exchange nests a handful deep — a base module asks a linked module,
+/// which asks back, which asks on — and the runtime's stack carries
+/// thousands; this sits where a program that is looping is caught long
+/// before it can overflow, and a program that is merely deep never notices.
+/// `runtime.c`'s `CODE_MOST_LIVE` is the same number, on purpose.
+pub const MOST_LIVE: usize = 64;
 
 /// The field an address value carries. Underscore-prefixed for the same
 /// reason `_class` is: it names something the runtime put there, not
@@ -94,7 +103,8 @@ fn address_row(value: &Value) -> Result<usize, String> {
 /// *existing* binding and updates it in place — an error if there isn't
 /// one anywhere. Rebinding a name to a Value of a different variant is not
 /// an error — variables are untyped, only Values are.
-pub struct Environment {
+/// The environment's state, behind one cell — see [`Environment`].
+pub struct State {
     scopes: Vec<HashMap<String, Value>>,
     /// Every linked file's top level, kept for as long as the program runs.
     ///
@@ -169,25 +179,42 @@ pub struct Environment {
     /// What a linked module's queue signals after pushing, and what
     /// `keep_alive` sleeps on. One per environment — see [`Wakeup`].
     wakeup: Arc<Wakeup>,
-    /// Handlers currently on the call stack. `handlers::check_cycles` already
-    /// rejects every cycle it can see, but dispatch is by the particle's
-    /// runtime `_class`, so a particle held in a variable names a handler no
-    /// static pass could have resolved. This catches those.
     /// The handlers on the call stack, each with how many invocations of it
-    /// are live. A count rather than a set because one re-entry is allowed
-    /// — see `linked_entry` — and the inner invocation's exit must leave
-    /// the outer one guarded.
+    /// are live — bounded by [`MOST_LIVE`] in `run_handler`.
     active: HashMap<String, usize>,
-    /// Set by a linked module asking this program through a furnished
-    /// module (`native.rs`'s `hosted_dispatch`), and taken by the first
-    /// handler prologue that runs: the one re-entry the guard allows. The
-    /// mirror of `runtime.c`'s `code_take_linked_entry`.
-    pub linked_entry: bool,
     /// Where crossed particle boundaries are recorded, when somebody asked
     /// for a trace (`code trace`). `None` is the ordinary path every program
     /// already takes: tracing is opt-in, so no program's meaning changes by
     /// this field existing. See `crate::trace`.
     tracer: Option<Rc<crate::trace::Recorder>>,
+}
+
+/// A running program's whole world, reached through a shared reference.
+///
+/// **One hand on the state at a time, enforced.** Every interpreter frame
+/// holds `&Environment` — never `&mut` — and takes a short `RefCell` borrow
+/// for each single read or write. So a frame suspended inside a linked
+/// module's dispatch holds no borrow at all, and when that module asks the
+/// program a question through a furnished module (`native.rs`'s
+/// `hosted_dispatch`), the handler that answers it runs on the same state
+/// with nothing cached above it. Before this, the frames held `&mut` and
+/// the callback derived a second one from a raw pointer — two exclusive
+/// references to one `Vec` of scopes, and the outer frame's stale copy of
+/// it was freed twice the first time a nested handler ran (2026-09-19, a
+/// held application logging while served).
+///
+/// A borrow held across a dispatch is a bug, and `RefCell` turns it into a
+/// panic with a message rather than a corrupted heap.
+pub struct Environment {
+    state: RefCell<State>,
+}
+
+/// What `enter_file` put aside, for `leave_file` to restore.
+struct EnteredFile {
+    saved: Vec<HashMap<String, Value>>,
+    caller_file: usize,
+    saved_depth: usize,
+    file: usize,
 }
 
 /// A registered handler: the fields to seed its scope with, the body to
@@ -212,12 +239,13 @@ struct HandlerBody {
 /// only, not the dispatchers themselves.
 impl fmt::Debug for Environment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let st = self.state.borrow();
         f.debug_struct("Environment")
-            .field("scopes", &self.scopes)
-            .field("modules", &self.modules.keys().collect::<Vec<_>>())
+            .field("scopes", &st.scopes)
+            .field("modules", &st.modules.keys().collect::<Vec<_>>())
             .field(
                 "available_modules",
-                &self.available_modules.keys().collect::<Vec<_>>(),
+                &st.available_modules.keys().collect::<Vec<_>>(),
             )
             .finish()
     }
@@ -226,6 +254,14 @@ impl fmt::Debug for Environment {
 impl Default for Environment {
     fn default() -> Self {
         Environment {
+            state: RefCell::new(State::default()),
+        }
+    }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        State {
             scopes: vec![HashMap::new()],
             file_scopes: vec![HashMap::new()],
             current_file: 0,
@@ -237,7 +273,6 @@ impl Default for Environment {
             module_depth: 0,
             inbound: Vec::new(),
             active: HashMap::new(),
-            linked_entry: false,
             wakeup: Arc::new(Wakeup::default()),
             tracer: None,
         }
@@ -245,23 +280,41 @@ impl Default for Environment {
 }
 
 impl Environment {
+    /// A short shared borrow of the state. Never held across an emit.
+    fn st(&self) -> std::cell::Ref<'_, State> {
+        self.state.borrow()
+    }
+
+    /// A short exclusive borrow of the state. Never held across an emit.
+    fn st_mut(&self) -> std::cell::RefMut<'_, State> {
+        self.state.borrow_mut()
+    }
+
     /// This environment's own wakeup, for a host wiring a module's queue to
     /// it. Cloned rather than borrowed: the queue outlives the call and is
     /// signalled from the module's thread.
     pub fn wakeup(&self) -> Arc<Wakeup> {
-        Arc::clone(&self.wakeup)
+        Arc::clone(&self.st().wakeup)
     }
 
     /// Records every particle boundary this environment crosses into
     /// `recorder`. Attached before the program runs (`code trace`), and
     /// nothing else about execution changes — a traced run and an untraced
     /// one take exactly the same path through dispatch.
-    pub fn record_trace(&mut self, recorder: Rc<crate::trace::Recorder>) {
-        self.tracer = Some(recorder);
+    pub fn record_trace(&self, recorder: Rc<crate::trace::Recorder>) {
+        self.st_mut().tracer = Some(recorder);
     }
 
-    pub fn get(&self, name: &str) -> Option<&Value> {
-        self.scopes.iter().rev().find_map(|scope| scope.get(name))
+    /// The value bound to `name`, innermost scope first. A clone rather
+    /// than a borrow: values are `Rc` inside, and a borrow into the state
+    /// would have to outlive the cell's.
+    pub fn get(&self, name: &str) -> Option<Value> {
+        self.st()
+            .scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
+            .cloned()
     }
 
     /// Links a module under `alias`: binds `alias` to `vars` (an ordinary
@@ -271,9 +324,9 @@ impl Environment {
     /// calls once it has resolved its own way (`.so` via `NativeModule::open`;
     /// `JsBridge` via `available_modules`, below) — the one place an alias
     /// actually becomes usable.
-    pub fn link_module(&mut self, alias: &str, vars: Value, dispatch: ModuleDispatch) {
+    pub fn link_module(&self, alias: &str, vars: Value, dispatch: ModuleDispatch) {
         self.declare(alias.to_string(), vars);
-        self.modules.insert(alias.to_string(), dispatch);
+        self.st_mut().modules.insert(alias.to_string(), dispatch);
     }
 
     #[cfg(feature = "native-modules")]
@@ -284,20 +337,26 @@ impl Environment {
     /// Reuse would make a stale address a *live* one pointing at an
     /// unrelated module, which is the one failure this table exists to
     /// prevent; an ever-growing `Vec` of `None`s is the cheaper problem.
-    fn open_module(&mut self, module: RuntimeModule) -> Value {
-        self.runtime_modules.push(Some(module));
-        module_address(self.runtime_modules.len() - 1)
+    fn open_module(&self, module: RuntimeModule) -> Value {
+        let mut st = self.st_mut();
+        st.runtime_modules.push(Some(module));
+        module_address(st.runtime_modules.len() - 1)
     }
 
     /// Releases and drops a module. Dropping the row is what unloads it:
     /// the module's `Drop` runs when the last `Rc` inside goes, and the
     /// release point has to have run before that, while its code is still
     /// mapped.
-    fn release_module(&mut self, row: usize) {
-        let Some(slot) = self.runtime_modules.get_mut(row) else {
-            return;
-        };
-        let Some(module) = slot.take() else {
+    fn release_module(&self, row: usize) {
+        // Taken out of the table, then released with no borrow held: the
+        // module's release point may run its handlers, which reach this
+        // environment again.
+        let taken = self
+            .st_mut()
+            .runtime_modules
+            .get_mut(row)
+            .and_then(|slot| slot.take());
+        let Some(module) = taken else {
             return;
         };
         // Empty this guest's rows first: its stand-ins must stop answering
@@ -320,9 +379,10 @@ impl Environment {
     /// same reason: a guest still holding its world at exit is a guest whose
     /// release point never ran, which is exactly what `unlink` exists to
     /// guarantee.
-    fn unlink_all(&mut self) {
-        for row in 0..self.runtime_modules.len() {
-            while self.runtime_modules[row].is_some() {
+    fn unlink_all(&self) {
+        let rows = self.st().runtime_modules.len();
+        for row in 0..rows {
+            while self.st().runtime_modules[row].is_some() {
                 self.release_module(row);
             }
         }
@@ -331,7 +391,7 @@ impl Environment {
     /// The dispatcher an address names, or an error saying why not.
     fn module_at(&self, address: &Value) -> Result<ModuleDispatch, String> {
         let row = address_row(address)?;
-        match self.runtime_modules.get(row) {
+        match self.st().runtime_modules.get(row) {
             Some(Some(module)) => Ok(Rc::clone(&module.dispatch)),
             // Both readings of "nothing here" are the same mistake from the
             // program's side — an address that named something once and
@@ -344,26 +404,27 @@ impl Environment {
     /// what unloads it: the module's `Drop` runs once the last `Rc` inside
     /// the row goes, and the release point has to have run before that,
     /// while its code is still mapped.
-    fn close_module(&mut self, address: &Value) -> Result<(), String> {
+    fn close_module(&self, address: &Value) -> Result<(), String> {
         let row = address_row(address)?;
-        match self.runtime_modules.get(row) {
-            Some(Some(module)) => {
-                // Refused while anything it holds is still working —
-                // unmapping code a thread is running in is a crash, not a
-                // risk. See `runtime.c`'s `code_runtime_unlink`, which this
-                // must match: a failure rather than a silent skip, so a host
-                // can say the application is still running instead of
-                // marking something stopped that is still answering.
-                if (module.serving)() {
-                    return Err("this module is still working — stop what it holds before \
-                         unlinking it"
-                        .to_string());
-                }
-                self.release_module(row);
-                Ok(())
-            }
-            Some(None) | None => Err("this module has already been unlinked".to_string()),
+        // The serving check runs the module's own code, so the borrow is
+        // let go of first.
+        let serving = match self.st().runtime_modules.get(row) {
+            Some(Some(module)) => Rc::clone(&module.serving),
+            Some(None) | None => return Err("this module has already been unlinked".to_string()),
+        };
+        // Refused while anything it holds is still working — unmapping
+        // code a thread is running in is a crash, not a risk. See
+        // `runtime.c`'s `code_runtime_unlink`, which this must match: a
+        // failure rather than a silent skip, so a host can say the
+        // application is still running instead of marking something
+        // stopped that is still answering.
+        if serving() {
+            return Err("this module is still working — stop what it holds before \
+                 unlinking it"
+                .to_string());
         }
+        self.release_module(row);
+        Ok(())
     }
 
     /// Makes a module available under `name` for a *later* `link "<name>" as
@@ -377,17 +438,18 @@ impl Environment {
     /// pick up whatever it pushes. Separate from `link_module` because most
     /// modules never speak first — `code_module_set_inbound` is optional.
     pub fn link_inbound(
-        &mut self,
+        &self,
         drain: Rc<dyn Fn() -> Vec<Value>>,
         reply: InboundReply,
         serving: Rc<dyn Fn() -> bool>,
     ) -> usize {
-        self.inbound.push(InboundSource {
+        let mut st = self.st_mut();
+        st.inbound.push(InboundSource {
             drain,
             reply,
             serving,
         });
-        self.inbound.len() - 1
+        st.inbound.len() - 1
     }
 
     /// Stops listening to one source, without disturbing the rows around it.
@@ -397,8 +459,8 @@ impl Environment {
     /// importantly, stop holding the `Rc`s inside its row, which are what
     /// keep the module loaded. Overwritten rather than removed because every
     /// other row's index is an identity that outlives it.
-    fn drop_inbound(&mut self, row: usize) {
-        if let Some(slot) = self.inbound.get_mut(row) {
+    fn drop_inbound(&self, row: usize) {
+        if let Some(slot) = self.st_mut().inbound.get_mut(row) {
             *slot = InboundSource {
                 drain: Rc::new(Vec::new),
                 reply: Rc::new(|_, _| {}),
@@ -407,16 +469,17 @@ impl Environment {
         }
     }
 
-    pub fn provide_module(&mut self, name: &str, vars: Value, dispatch: ModuleDispatch) {
-        self.available_modules
+    pub fn provide_module(&self, name: &str, vars: Value, dispatch: ModuleDispatch) {
+        self.st_mut()
+            .available_modules
             .insert(name.to_string(), (vars, dispatch));
     }
 
     /// `let name = value` — always a new binding in the current scope,
     /// even if `name` already exists further out (shadowing) or even in
     /// this exact scope (re-`let`, just rebinds).
-    fn declare(&mut self, name: String, value: Value) {
-        self.scopes.last_mut().unwrap().insert(name, value);
+    fn declare(&self, name: String, value: Value) {
+        self.st_mut().scopes.last_mut().unwrap().insert(name, value);
     }
 
     /// `name = value` — the whole of assignment and declaration both.
@@ -428,22 +491,62 @@ impl Environment {
     ///
     /// Must match `codegen.rs`'s `gen_assign`, which reaches the same two
     /// cases through its slot table.
-    fn set(&mut self, name: &str, value: Value) {
-        for scope in self.scopes.iter_mut().rev() {
-            if let Some(slot) = scope.get_mut(name) {
-                *slot = value;
-                return;
+    fn set(&self, name: &str, value: Value) {
+        {
+            let mut st = self.st_mut();
+            for scope in st.scopes.iter_mut().rev() {
+                if let Some(slot) = scope.get_mut(name) {
+                    *slot = value;
+                    return;
+                }
             }
         }
         self.declare(name.to_string(), value);
     }
 
-    fn push_scope(&mut self) {
-        self.scopes.push(HashMap::new());
+    fn push_scope(&self) {
+        self.st_mut().scopes.push(HashMap::new());
     }
 
-    fn pop_scope(&mut self) {
-        self.scopes.pop();
+    /// Step into `file`'s world: the caller's whole scope stack goes home
+    /// (its file scope back into `file_scopes`, the rest kept aside) and
+    /// the file's own top level comes out as the one scope. Returns what
+    /// `leave_file` needs to undo it. One borrow, nothing held after.
+    fn enter_file(&self, file: usize, depth: usize) -> EnteredFile {
+        let mut st = self.st_mut();
+        let mut saved = std::mem::take(&mut st.scopes);
+        let caller_file = st.current_file;
+        if !saved.is_empty() {
+            let home = saved.remove(0);
+            st.file_scopes[caller_file] = home;
+        }
+        st.current_file = file;
+        let own = std::mem::take(&mut st.file_scopes[file]);
+        st.scopes.push(own);
+        let saved_depth = std::mem::replace(&mut st.module_depth, depth);
+        EnteredFile {
+            saved,
+            caller_file,
+            saved_depth,
+            file,
+        }
+    }
+
+    /// The other half of `enter_file`: the file keeps whatever ran changed,
+    /// and the caller gets its own world back.
+    fn leave_file(&self, entered: EnteredFile) {
+        let mut st = self.st_mut();
+        let own = st.scopes.pop().unwrap_or_default();
+        st.file_scopes[entered.file] = own;
+        st.current_file = entered.caller_file;
+        let home = std::mem::take(&mut st.file_scopes[entered.caller_file]);
+        st.scopes.push(home);
+        st.scopes.extend(entered.saved);
+        st.module_depth = entered.saved_depth;
+    }
+
+    fn pop_scope(&self) {
+        self.st_mut().scopes.pop();
     }
 }
 
@@ -477,14 +580,14 @@ impl Environment {
 /// one is running, and re-entry is exactly what the language forbids —
 /// the loop would quietly fill with `Exception`s. `codegen.rs`'s `gen_loop`
 /// makes the same test with `handler_frame`.
-fn drain_between_iterations(env: &mut Environment) -> Result<(), String> {
-    if env.active.is_empty() {
+fn drain_between_iterations(env: &Environment) -> Result<(), String> {
+    if env.st().active.is_empty() {
         drain_inbound(env)?;
     }
     Ok(())
 }
 
-fn drain_inbound(env: &mut Environment) -> Result<usize, String> {
+fn drain_inbound(env: &Environment) -> Result<usize, String> {
     let mut handled = 0usize;
     loop {
         // Guests first, and here rather than anywhere of their own: a
@@ -494,6 +597,7 @@ fn drain_inbound(env: &mut Environment) -> Result<usize, String> {
         #[cfg(feature = "native-modules")]
         {
             let drains: Vec<Rc<dyn Fn()>> = env
+                .st()
                 .runtime_modules
                 .iter()
                 .filter_map(|slot| slot.as_ref().map(|o| Rc::clone(&o.drain)))
@@ -502,7 +606,7 @@ fn drain_inbound(env: &mut Environment) -> Result<usize, String> {
                 drain();
             }
         }
-        let sources = env.inbound.clone();
+        let sources = env.st().inbound.clone();
         // Kept per source rather than pooled: the answer has to go back to
         // the module that asked, and once the particles are in one list
         // there is nothing left to say which module that was.
@@ -528,7 +632,8 @@ fn drain_inbound(env: &mut Environment) -> Result<usize, String> {
             // Null when nothing handled it, which the module is told as
             // plainly as it is told an answer: "nobody replied" is an answer
             // an HTTP server has to turn into a status.
-            let answer = if env.handlers.contains_key(class_of(&particle)) {
+            let handled_here = env.st().handlers.contains_key(class_of(&particle));
+            let answer = if handled_here {
                 dispatch_handler(&particle, env)?
             } else {
                 Value::Null
@@ -557,12 +662,21 @@ fn drain_inbound(env: &mut Environment) -> Result<usize, String> {
 /// already reads `runtime_modules` this same way; this is that made to
 /// agree.
 fn any_module_serving(env: &Environment) -> bool {
-    env.inbound.iter().any(|source| (source.serving)())
-        || env
-            .runtime_modules
-            .iter()
-            .flatten()
-            .any(|module| (module.serving)())
+    // Both lists cloned out before anything is asked: a module's `serving`
+    // is its own code, which may reach this environment.
+    type Serving = Vec<Rc<dyn Fn() -> bool>>;
+    let (sources, modules): (Serving, Serving) = {
+        let st = env.st();
+        (
+            st.inbound.iter().map(|s| Rc::clone(&s.serving)).collect(),
+            st.runtime_modules
+                .iter()
+                .flatten()
+                .map(|o| Rc::clone(&o.serving))
+                .collect(),
+        )
+    };
+    sources.iter().any(|serving| serving()) || modules.iter().any(|serving| serving())
 }
 
 /// Raised by every push, waited on by [`keep_alive`].
@@ -636,9 +750,9 @@ const SERVING_RECHECK: Duration = Duration::from_secs(1);
 /// should have answered it. So this parks, wakes on a push, drains, and parks
 /// again: a join with a dispatch pump in it. `codegen.rs` emits the same loop
 /// around `code_host_wait`.
-pub fn keep_alive(env: &mut Environment) -> Result<(), String> {
+pub fn keep_alive(env: &Environment) -> Result<(), String> {
     while any_module_serving(env) {
-        Arc::clone(&env.wakeup).wait(SERVING_RECHECK);
+        env.wakeup().wait(SERVING_RECHECK);
         drain_inbound(env)?;
     }
     Ok(())
@@ -651,7 +765,7 @@ pub fn keep_alive(env: &mut Environment) -> Result<(), String> {
 /// environment, and push work into it afterwards. Without it a program is a
 /// script that runs and ends, which is fine for a program that owns its
 /// process and useless for one being hosted alongside others.
-pub fn deliver(particle: &Value, env: &mut Environment) -> Result<Value, String> {
+pub fn deliver(particle: &Value, env: &Environment) -> Result<Value, String> {
     dispatch_handler(particle, env)
 }
 
@@ -661,7 +775,7 @@ pub fn deliver(particle: &Value, env: &mut Environment) -> Result<Value, String>
 /// A host driving several programs calls this instead of `keep_alive`: it
 /// decides when each one gets a turn, rather than each one parking on its own
 /// thread forever.
-pub fn drain(env: &mut Environment) -> Result<usize, String> {
+pub fn drain(env: &Environment) -> Result<usize, String> {
     drain_inbound(env)
 }
 
@@ -696,7 +810,7 @@ pub type InboundReply = Rc<dyn Fn(&Value, &Value)>;
 /// a loop.
 fn register_handlers(
     stmts: &[Stmt],
-    env: &mut Environment,
+    env: &Environment,
     depth: usize,
     file: usize,
 ) -> Result<(), String> {
@@ -707,7 +821,7 @@ fn register_handlers(
                 fields,
                 body,
             } => {
-                if env.handlers.contains_key(class_name) {
+                if env.st().handlers.contains_key(class_name) {
                     return Err(format!(
                         "duplicate handler for '{class_name}': only one handler per class"
                     ));
@@ -722,18 +836,22 @@ fn register_handlers(
                 // `to this` and the inbound drain dispatch against — and
                 // also its own depth's table, which is what a child's
                 // `emit … to base` will look up.
-                env.handlers.insert(class_name.clone(), Rc::clone(&handler));
-                if env.handler_tables.len() <= depth {
-                    env.handler_tables.resize_with(depth + 1, HashMap::new);
+                let mut st = env.st_mut();
+                st.handlers.insert(class_name.clone(), Rc::clone(&handler));
+                if st.handler_tables.len() <= depth {
+                    st.handler_tables.resize_with(depth + 1, HashMap::new);
                 }
-                env.handler_tables[depth].insert(class_name.clone(), handler);
+                st.handler_tables[depth].insert(class_name.clone(), handler);
             }
             Stmt::Import { body, file, .. } => {
                 // Room for the file's world, made before anything can run:
                 // handlers are hoisted, so one may be reached before the
                 // `link` that would otherwise create it.
-                if env.file_scopes.len() <= *file {
-                    env.file_scopes.resize_with(file + 1, HashMap::new);
+                {
+                    let mut st = env.st_mut();
+                    if st.file_scopes.len() <= *file {
+                        st.file_scopes.resize_with(file + 1, HashMap::new);
+                    }
                 }
                 register_handlers(body, env, depth + 1, *file)?
             }
@@ -756,8 +874,14 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 /// `run_with` is this followed by `keep_alive` and the unlinking; the
 /// `interpreter` module is this alone, keeping the environment and
 /// dispatching into it as the base module asks.
-pub fn prepare(program: &Program, mut env: Environment) -> Result<Environment, String> {
-    register_handlers(&program.statements, &mut env, 0, 0)?;
+///
+/// In place, through a shared reference, and the environment must not move
+/// afterwards: a linked module that this program hosts keeps the address
+/// (`native.rs`'s `HOSTING`) for as long as it may ask the program a
+/// question. `run_with` boxes the environment for that reason; a caller
+/// that keeps one itself must keep it where it is.
+pub fn prepare(program: &Program, env: &Environment) -> Result<(), String> {
+    register_handlers(&program.statements, env, 0, 0)?;
     crate::handlers::check_cycles(program)?;
     // The same pre-run check `code build` has always run (`verify.rs`, which
     // is where it moved out of `codegen.rs` on 2026-08-28 so both backends
@@ -780,11 +904,11 @@ pub fn prepare(program: &Program, mut env: Environment) -> Result<Environment, S
         // `parser::parse` does it for parse errors. A failure nested in an
         // `if` or `loop` body surfaces here too, and so reports the
         // *enclosing* top-level statement; see `Program::starts`.
-        exec(stmt, &mut env)
-            .and_then(|_| drain_inbound(&mut env))
+        exec(stmt, env)
+            .and_then(|_| drain_inbound(env))
             .map_err(|msg| locate(program, i, msg))?;
     }
-    Ok(env)
+    Ok(())
 }
 
 /// Like `run`, but against a caller-supplied `Environment` rather than
@@ -794,16 +918,22 @@ pub fn prepare(program: &Program, mut env: Environment) -> Result<Environment, S
 /// a `JsBridge`-formatted `ImportNative` only ever checks an alias is
 /// already present, never resolves one itself (see that arm below).
 pub fn run_with(program: &Program, env: Environment) -> Result<Environment, String> {
-    let mut env = prepare(program, env)?;
+    // Boxed so its address holds for the whole run: a hosted module keeps
+    // it (see `prepare`). Moving it out of a frame that returned it — which
+    // is what an earlier `prepare` did — left every such module pointing at
+    // a dead stack slot, and the next question it asked ran handlers on a
+    // stale copy of the state whose buffers the live one still owned.
+    let env = Box::new(env);
+    prepare(program, &env)?;
     // The last statement is not the end of the program: a module that is
     // still serving holds it open, and pushed particles keep reaching their
     // handlers until nothing does. See `keep_alive`.
-    keep_alive(&mut env)?;
+    keep_alive(&env)?;
     // Last, once nothing can reach them again: anything still linked at
     // runtime is closed, so a guest that was never `unlink`ed still reaches
     // its own release point. `codegen.rs`'s `emit_cleanup` does the same.
     env.unlink_all();
-    Ok(env)
+    Ok(*env)
 }
 
 /// Renders `msg` against the source `program` came from, pointing at the
@@ -874,14 +1004,14 @@ impl LoopIter {
 /// Runs `body` in a *new scope*, stopping early on a `break`. Pops the scope
 /// on every path, error included — hence the explicit `result` binding
 /// rather than `?` mid-function.
-fn exec_scoped_body(body: &[Stmt], env: &mut Environment) -> Result<Flow, String> {
+fn exec_scoped_body(body: &[Stmt], env: &Environment) -> Result<Flow, String> {
     env.push_scope();
     let result = exec_body(body, env);
     env.pop_scope();
     result
 }
 
-fn exec_body(body: &[Stmt], env: &mut Environment) -> Result<Flow, String> {
+fn exec_body(body: &[Stmt], env: &Environment) -> Result<Flow, String> {
     for stmt in body {
         let flow = exec(stmt, env)?;
         if flow != Flow::Normal {
@@ -891,7 +1021,7 @@ fn exec_body(body: &[Stmt], env: &mut Environment) -> Result<Flow, String> {
     Ok(Flow::Normal)
 }
 
-fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
+fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
     match stmt {
         // `exported` is a module-boundary marker consumed by `loader.rs`; a
         // declaration behaves identically either way.
@@ -914,11 +1044,15 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             // <alias>`) may rename. See `ast::NativeFormat::JsBridge`.
             NativeFormat::JsBridge => {
                 let (vars, dispatch) =
-                    env.available_modules.get(path).cloned().ok_or_else(|| {
-                        format!(
+                    env.st()
+                        .available_modules
+                        .get(path)
+                        .cloned()
+                        .ok_or_else(|| {
+                            format!(
                             "link \"{path}\": no module named '{path}' was provided before running"
                         )
-                    })?;
+                        })?;
                 env.link_module(alias, vars, dispatch);
                 Ok(Flow::Normal)
             }
@@ -1016,7 +1150,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                 // program's handlers instead of the filesystem, which is
                 // what lets a guest share what the host already has rather
                 // than opening its own.
-                let env_ptr: *mut Environment = env;
+                let env_ptr: *const Environment = env;
                 let guest = unsafe { module.host(path, env_ptr) };
                 // How its modules wake this program: the same wakeup
                 // this program's own modules signal, so one park covers
@@ -1066,26 +1200,15 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             // removed nothing travels back up either: a `.code` module
             // answers particles, and its names are its own. `link` is
             // top-level only, so there is exactly one frame to put away.
-            let caller_file = env.current_file;
-            let caller_scope = env.scopes.pop().unwrap_or_default();
-            env.file_scopes[caller_file] = caller_scope;
-            env.current_file = *file;
-            env.scopes.push(std::mem::take(&mut env.file_scopes[*file]));
-
             // Depth bookkeeping for `emit … to base`: statements in the
-            // body sit one level further out in the module graph. Decrement
+            // body sit one level further out in the module graph. Restored
             // on every path — the body may fail.
-            env.module_depth += 1;
+            let depth = env.st().module_depth + 1;
+            let entered = env.enter_file(*file, depth);
             let result = exec_body(body, env);
-            env.module_depth -= 1;
-
             // Kept rather than dropped: the file's handlers are still to
             // run, and this is the world they run in.
-            let module_scope = env.scopes.pop().unwrap_or_default();
-            env.file_scopes[*file] = module_scope;
-            env.current_file = caller_file;
-            env.scopes
-                .push(std::mem::take(&mut env.file_scopes[caller_file]));
+            env.leave_file(entered);
             result?;
 
             // An alias on a `.code` link binds an empty object. There is
@@ -1203,12 +1326,15 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             // call order: a boundary is numbered before the boundaries it
             // causes. `depth` is how many handlers were already running, which
             // is what tells a replay which boundaries are roots.
-            let traced = env.tracer.as_ref().map(|recorder| {
-                (
-                    Rc::clone(recorder),
-                    recorder.begin(env.active.values().sum(), trace_target(target), &value),
-                )
-            });
+            let traced = {
+                let st = env.st();
+                st.tracer.as_ref().map(|recorder| {
+                    (
+                        Rc::clone(recorder),
+                        recorder.begin(st.active.values().sum(), trace_target(target), &value),
+                    )
+                })
+            };
             let output = match target {
                 EmitTarget::Core => dispatch_core(&value)?,
                 EmitTarget::This => dispatch_handler(&value, env)?,
@@ -1224,8 +1350,12 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     // `run_handler` takes `env` mutably — holding the table
                     // borrow across the call would fight the borrow checker
                     // for no reason, since the `Rc` keeps everything alive.
-                    let parent = env.handler_tables.get(env.module_depth - 1);
-                    let handler = parent.and_then(|table| resolve_handler(table, &value));
+                    let handler = {
+                        let st = env.st();
+                        st.handler_tables
+                            .get(st.module_depth - 1)
+                            .and_then(|table| resolve_handler(table, &value))
+                    };
                     run_handler(&value, env, handler)?
                 }
                 EmitTarget::Module(alias) => {
@@ -1235,15 +1365,15 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
                     // variable holding an address (`Stmt::LinkRuntime`),
                     // which `verify_defined` has already confirmed is bound
                     // somewhere. Must match codegen.rs's `gen_emit`.
-                    match env.modules.get(alias) {
-                        Some(dispatch) => {
-                            let dispatch = dispatch.clone();
-                            dispatch(&value)?
-                        }
+                    // The dispatcher is cloned out and the borrow let go
+                    // before it runs: a module may reach this environment
+                    // again while it answers (`native.rs`'s hosting).
+                    let linked = env.st().modules.get(alias).cloned();
+                    match linked {
+                        Some(dispatch) => dispatch(&value)?,
                         None => {
                             let address = env
                                 .get(alias)
-                                .cloned()
                                 .ok_or_else(|| format!("no linked module named '{alias}'"))?;
                             let dispatch = env.module_at(&address)?;
                             dispatch(&value)?
@@ -1378,7 +1508,7 @@ fn trace_target(target: &EmitTarget) -> String {
 /// on the other side of an FFI boundary, and a value is the only thing that
 /// can cross it. That is also the answer a handler failing inside this
 /// program would already produce.
-pub fn ask_program(particle: &Value, env: &mut Environment) -> Value {
+pub fn ask_program(particle: &Value, env: &Environment) -> Value {
     match dispatch_handler(particle, env) {
         Ok(answer) => answer,
         Err(message) => exception(message),
@@ -1407,8 +1537,8 @@ fn host_exception(message: String) -> Value {
     ]))
 }
 
-fn dispatch_handler(particle: &Value, env: &mut Environment) -> Result<Value, String> {
-    let handler = resolve_handler(&env.handlers, particle);
+fn dispatch_handler(particle: &Value, env: &Environment) -> Result<Value, String> {
+    let handler = resolve_handler(&env.st().handlers, particle);
     run_handler(particle, env, handler)
 }
 
@@ -1446,60 +1576,48 @@ fn resolve_handler(
 /// `to base` arm alike.
 fn run_handler(
     particle: &Value,
-    env: &mut Environment,
+    env: &Environment,
     handler: Option<Rc<HandlerBody>>,
 ) -> Result<Value, String> {
     let Some(handler) = handler else {
         return Ok(Value::Null);
     };
     // Resolution succeeded, so the particle carried a real class — reading
-    // it back is how the re-entry guard below knows what to key on.
+    // it back is how the depth guard below knows what to key on.
     let class = class_of(particle);
-    // Re-entry is the *emit's* failure, so it is this dispatch's answer rather
-    // than an error thrown into the caller's body: the frame that tried to
-    // re-enter gets an Exception back and decides what to do, and the handler
-    // already running is untouched. `codegen.rs` reaches the same shape from
-    // the other side — the re-entered function writes the Exception into its
-    // own `out` and returns without clearing the guard.
+    // Depth is bounded, not forbidden. `handlers::check_cycles` refuses
+    // every cycle it can see before the program runs; dispatch is by the
+    // particle's runtime `_class`, so a particle held in a variable names
+    // a handler no static pass could resolve, and a linked module asking
+    // its base a question re-enters the handler that reached it. Both are
+    // ordinary — what is not is a handler that keeps re-entering itself,
+    // and that is caught by the count: past `MOST_LIVE` invocations of one
+    // handler the emit answers an `Exception`, and the invocations already
+    // running are untouched. `codegen.rs` keeps the same count in its
+    // per-handler `_code_active_*` and answers the same way.
     //
     // Decided 2026-08-28 (phase 4): a cycle answers rather than aborts, like
-    // every other runtime failure. `handlers::check_cycles` still refuses the
-    // statically visible ones before either backend runs at all; this is only
-    // for the cycles that go through a variable.
-    //
-    // One re-entry is not a loop: a linked module, reached by this very
-    // handler, asking its program through a furnished module. `native.rs`
-    // says so for exactly one prologue — this one — and a linked module
-    // cannot be on the stack twice (`runtime.c`'s `code_native_dispatch`),
-    // which is what bounds it. Taken whether or not the handler was running,
-    // so nothing nested under this entry inherits it.
-    let allowed = std::mem::take(&mut env.linked_entry);
-    let live = env.active.entry(class.to_string()).or_insert(0);
-    if *live > 0 && !allowed {
-        return Ok(exception(format!(
-            "handler '{class}' is already running — a handler cannot re-enter one \
-             that is already on the call stack"
-        )));
+    // every other runtime failure. Decided 2026-09-19: a bound rather than
+    // a ban, the same in both backends, so a program that talks back to
+    // what linked it is not a special case.
+    {
+        let mut st = env.st_mut();
+        let live = st.active.entry(class.to_string()).or_insert(0);
+        if *live >= MOST_LIVE {
+            return Ok(exception(format!(
+                "handler '{class}' is already running {MOST_LIVE} times — a handler that \
+                 keeps re-entering itself is a loop"
+            )));
+        }
+        *live += 1;
     }
-    *live += 1;
 
     // The caller's world steps aside entirely, and the handler's own file
     // takes its place: a handler sees the file it was written in and nothing
-    // else, whoever emitted to it and from wherever. The caller's file scope
-    // goes home first so that a handler in the *same* file finds the one map
-    // its top level declared, rather than a second copy of it.
-    //
-    // The depth counter steps aside for the same reason: a `to base` inside
-    // the body must mean this handler's own parent, not the caller's.
-    let mut saved: Vec<HashMap<String, Value>> = std::mem::take(&mut env.scopes);
-    let caller_file = env.current_file;
-    if !saved.is_empty() {
-        env.file_scopes[caller_file] = saved.remove(0);
-    }
-    env.current_file = handler.file;
-    env.scopes
-        .push(std::mem::take(&mut env.file_scopes[handler.file]));
-    let saved_depth = std::mem::replace(&mut env.module_depth, handler.defining_depth);
+    // else, whoever emitted to it and from wherever. The depth counter
+    // steps aside for the same reason: a `to base` inside the body must
+    // mean this handler's own parent, not the caller's.
+    let entered = env.enter_file(handler.file, handler.defining_depth);
 
     // A listed field the particle doesn't carry is null — the same answer
     // `.field` gives for an absent member.
@@ -1515,7 +1633,7 @@ fn run_handler(
         seeded.insert(entry.name.clone(), supplied.unwrap_or(Value::Null));
     }
 
-    env.scopes.push(seeded);
+    env.st_mut().scopes.push(seeded);
     let flow = exec_body(&handler.body, env);
     env.pop_scope();
     let result = match flow {
@@ -1540,7 +1658,7 @@ fn run_handler(
         // to agree here, since the result is a value the program can see.
         //
         // Only errors raised *by the body* convert. The two above this — a
-        // non-particle `emit` operand and a re-entered handler — happen
+        // non-particle `emit` operand and a handler past its depth — happen
         // before the body runs and belong to the caller, so they still
         // propagate.
         Err(e) => Ok(exception(e)),
@@ -1548,16 +1666,14 @@ fn run_handler(
 
     // The handler's file keeps whatever the body changed, and the caller
     // gets its own world back.
-    env.file_scopes[handler.file] = env.scopes.pop().unwrap_or_default();
-    env.current_file = caller_file;
-    env.scopes
-        .push(std::mem::take(&mut env.file_scopes[caller_file]));
-    env.scopes.extend(saved);
-    env.module_depth = saved_depth;
-    if let Some(live) = env.active.get_mut(class) {
-        *live -= 1;
-        if *live == 0 {
-            env.active.remove(class);
+    env.leave_file(entered);
+    {
+        let mut st = env.st_mut();
+        if let Some(live) = st.active.get_mut(class) {
+            *live -= 1;
+            if *live == 0 {
+                st.active.remove(class);
+            }
         }
     }
     result
@@ -1584,7 +1700,6 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
         // just an Rc refcount bump, not a deep copy (see value.rs).
         Expr::Ident(name) => env
             .get(name)
-            .cloned()
             .ok_or_else(|| format!("undefined variable '{name}'")),
         Expr::Array(items) => {
             let mut values = Vec::with_capacity(items.len());

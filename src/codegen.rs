@@ -19,6 +19,7 @@ use crate::ast::{
     BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopOver, NativeFormat, Program,
     Stmt, UnOp,
 };
+use crate::interpreter::MOST_LIVE;
 
 /// Byte size of one runtime `CodeValue` slot (`src/runtime.c`; 64 bytes on
 /// x86_64, this leaves headroom). Codegen never inspects the struct's fields
@@ -442,11 +443,6 @@ pub(crate) fn compile_to_object_traced(
         ),
         None,
     );
-    // Whether this handler entry is a linked module asking its base through
-    // a furnished module — the one re-entry the guard allows. See
-    // `runtime.c`'s `code_take_linked_entry`.
-    let fn_take_linked_entry =
-        module.add_function("code_take_linked_entry", i32_ty.fn_type(&[], false), None);
     // What `Linked` answers. Called only from a library's start-up, which is
     // the whole of how the runtime knows which kind of build it is in.
     let fn_set_linked = module.add_function("code_set_linked", void_ty.fn_type(&[], false), None);
@@ -830,7 +826,6 @@ pub(crate) fn compile_to_object_traced(
         fn_runtime_any_serving,
         fn_set_program_dispatch,
         fn_dispatch_copied,
-        fn_take_linked_entry,
         fn_set_linked,
         fn_runtime_dispatch,
         fn_native_dispatch,
@@ -1081,8 +1076,6 @@ struct Gen<'a, 'm> {
     fn_runtime_any_serving: FunctionValue<'a>,
     fn_set_program_dispatch: FunctionValue<'a>,
     fn_dispatch_copied: FunctionValue<'a>,
-    /// `runtime.c`'s `code_take_linked_entry` — see the handler prologue.
-    fn_take_linked_entry: FunctionValue<'a>,
     /// `runtime.c`'s `code_set_linked` — see `lazy_init_fn`, its only caller.
     fn_set_linked: FunctionValue<'a>,
     fn_runtime_dispatch: FunctionValue<'a>,
@@ -1466,16 +1459,21 @@ impl<'a, 'm> Gen<'a, 'm> {
 
         self.builder.position_at_end(start);
 
-        // Re-entry guard. `handlers::check_cycles` rejects every cycle it can
+        // Depth guard. `handlers::check_cycles` rejects every cycle it can
         // see before codegen runs, but dispatch is by the particle's runtime
-        // `_class`, so a particle held in a variable names a handler no static
-        // pass could resolve — this is what catches those.
+        // `_class`, so a particle held in a variable names a handler no
+        // static pass could resolve — and a linked module asking its base a
+        // question re-enters the handler that reached it. Both are
+        // ordinary; a handler that keeps re-entering itself is not, and the
+        // count catches it: past `MOST_LIVE` live invocations the emit
+        // answers an Exception. Same number and same answer as the
+        // interpreter's `run_handler`.
         let active =
             self.module
                 .add_global(self.i32_ty, None, &format!("_code_active_{class_name}"));
         active.set_initializer(&self.i32_ty.const_zero());
         let active = active.as_pointer_value();
-        let reenter = self.context.append_basic_block(function, "reentered");
+        let reenter = self.context.append_basic_block(function, "toodeep");
         let enter = self.context.append_basic_block(function, "enter");
         let running = self
             .builder
@@ -1485,38 +1483,11 @@ impl<'a, 'm> Gen<'a, 'm> {
         let is_running = self
             .builder
             .build_int_compare(
-                IntPredicate::NE,
+                IntPredicate::UGE,
                 running,
-                self.i32_ty.const_zero(),
-                "isrunning",
+                self.i32_ty.const_int(MOST_LIVE as u64, false),
+                "toodeep",
             )
-            .map_err(|e| e.to_string())?;
-        // One re-entry is not a loop: a linked module, reached by this very
-        // handler, asking its base through a furnished module. The runtime
-        // says so for exactly one prologue — this one — and the linked
-        // module cannot be on the stack twice, which is what bounds it.
-        // Taken whether or not the handler was running, so nothing nested
-        // under this entry inherits it.
-        let allowed = self
-            .builder
-            .build_call(self.fn_take_linked_entry, &[], "allowed")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .left()
-            .expect("code_take_linked_entry returns i32")
-            .into_int_value();
-        let not_allowed = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                allowed,
-                self.i32_ty.const_zero(),
-                "notallowed",
-            )
-            .map_err(|e| e.to_string())?;
-        let is_running = self
-            .builder
-            .build_and(is_running, not_allowed, "reentry")
             .map_err(|e| e.to_string())?;
         self.builder
             .build_conditional_branch(is_running, reenter, enter)
@@ -1536,10 +1507,10 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.builder.position_at_end(reenter);
         let msg = self.global_str(
             &format!(
-                "handler '{class_name}' is already running — a handler cannot re-enter one \
-                 that is already on the call stack"
+                "handler '{class_name}' is already running {MOST_LIVE} times — a handler that \
+                 keeps re-entering itself is a loop"
             ),
-            "reentry",
+            "toodeep",
         )?;
         let source = self.global_str("core", "excsource")?;
         self.builder
@@ -1560,9 +1531,8 @@ impl<'a, 'm> Gen<'a, 'm> {
         if self.tracing {
             self.trace_call("code_trace_enter", &[], false)?;
         }
-        // A count, not a flag: the allowed re-entry above means two
-        // invocations of this handler can be live at once, and the inner
-        // one's exit must leave the outer one guarded.
+        // A count: several invocations of this handler may be live at
+        // once, and each exit leaves the ones still running guarded.
         let entered = self
             .builder
             .build_int_add(running, self.i32_ty.const_int(1, false), "entered")

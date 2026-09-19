@@ -543,3 +543,124 @@ assert l.ok
         }
     }
 }
+
+/// A base module serving a request over the door reaches a linked module,
+/// and that module asks the base a question through a furnished module
+/// while the request is still being served — which re-enters the base's
+/// handlers from inside a frame that is blocked in the module's dispatch.
+///
+/// This is the shape a host takes: door → base `Impulse` → held program →
+/// its membrane → base `Module`. It crashed with a double free on
+/// 2026-09-19 (the interpreter's frames held `&mut` on the environment and
+/// the callback derived a second one) and was not covered by any fixture,
+/// because every hosting fixture drove the base from its own top level and
+/// never from the door.
+#[test]
+fn a_linked_module_asks_its_base_back_while_the_base_is_serving() {
+    let dir = workspace("askback-door");
+    let membrane = build_module("membrane");
+    fs::copy(&membrane, dir.join("membrane.so")).expect("copy membrane.so");
+
+    // The held program: its door is a membrane, and it logs while served.
+    let held = dir.join("held.code");
+    fs::write(
+        &held,
+        r#"link "membrane.so" as server
+
+Impulse { token, particle } =>
+    emit Log { source = "held", level = "Info", message = "served " + particle._class } to server get logged
+    return Served { logged = logged }
+
+emit Listen to server
+"#,
+    )
+    .expect("write the held program");
+    code::compile_file(
+        &held,
+        code::BuildTarget::Shared,
+        &dir.join("held.so"),
+        false,
+    )
+    .expect("build the held program");
+
+    for mode in ["run", "build"] {
+        let port = free_port();
+        let base = dir.join(format!("base-{mode}.code"));
+        fs::write(
+            &base,
+            format!(
+                r#"link "net_server.so" as net
+
+lines = []
+held = null
+
+Offer {{ app, name }} =>
+    if name = "membrane", return Offered {{ }}
+
+Module {{ app, name, particle }} =>
+    if particle._class = "Listen", return ListenResult {{ ok = true, port = 0 }}
+    if particle._class = "Log"
+        lines += [particle.message]
+        return Logged {{ ok = true }}
+    return Denied {{ }}
+
+Impulse {{ token, app, particle }} =>
+    if app = "lines", return Lines {{ items = lines }}
+    target = held
+    emit Impulse {{ token = token, particle = particle }} to target get answer
+    return answer
+
+Hold {{ }} =>
+    link "./held.so" as opened
+    held = opened
+    return Held {{ }}
+
+emit Hold {{ }} to this
+emit Config {{ port = {port} }} to net get c
+assert c.ok
+emit Listen {{ }} to net get l
+assert l.ok
+"#
+            ),
+        )
+        .expect("write the base");
+
+        let mut child = start(&dir, mode, &base, &format!("base-{mode}"));
+        await_listening(port);
+
+        let client = dir.join(format!("client-{mode}.code"));
+        fs::write(
+            &client,
+            format!(
+                r#"link "net_client.so" as net
+emit Config {{ url = "http://127.0.0.1:{port}/held" }} to net get c
+assert c.ok
+| Several requests, each of which logs from inside being served.
+emit Send {{ particle = Impulse {{ token = "t", particle = Ping {{ }} }} }} to net get one
+assert one ∈ Served
+assert one.logged ∈ Logged
+emit Send {{ particle = Impulse {{ token = "t", particle = Ping {{ }} }} }} to net get two
+assert two ∈ Served
+emit Send {{ particle = Impulse {{ token = "t", particle = Ping {{ }} }} }} to net get three
+assert three ∈ Served
+link "net_client.so" as asker
+emit Config {{ url = "http://127.0.0.1:{port}/lines" }} to asker get c2
+emit Send {{ particle = Impulse {{ token = "t", particle = Lines {{ }} }} }} to asker get kept
+assert kept ∈ Lines
+assert kept.items = ["served Ping", "served Ping", "served Ping"]
+"#
+            ),
+        )
+        .expect("write the client");
+
+        let ok = run_to_end(&dir, "run", &client, "client");
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(
+            ok,
+            "{mode}: the base did not survive a linked module asking back while serving"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}

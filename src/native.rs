@@ -734,7 +734,7 @@ struct StandIn {
 /// so there is exactly one of these while it matters.
 #[derive(Default)]
 struct Hosting {
-    env: Option<*mut crate::interpreter::Environment>,
+    env: Option<*const crate::interpreter::Environment>,
     /// The path each guest was linked from; `None` once its row is emptied.
     guests: Vec<Option<String>>,
     /// `None` once the guest that owns it is gone.
@@ -802,35 +802,22 @@ fn is_class(value: &Value, class: &str) -> bool {
 ///
 /// The environment comes back through a raw pointer because the round trip
 /// went out through C, which cannot carry a borrow. It is the same
-/// environment the caller is running in, and nothing touches it in between:
-/// every calling frame is blocked in this call. The borrow of `HOSTING` is
-/// dropped before dispatching, because the program's handlers may link
-/// another guest and reach it again.
+/// environment the caller is running in, and every calling frame is
+/// blocked in this call. **Shared, never exclusive:** the interpreter's
+/// frames hold `&Environment` and take short borrows of its state, so the
+/// frame suspended in the module's dispatch holds nothing across this —
+/// the handler that answers here runs on the same state with no stale
+/// view of it above. The borrow of `HOSTING` is dropped before dispatching,
+/// because the program's handlers may link another guest and reach it
+/// again.
 fn ask(particle: &Value) -> Value {
     let env = HOSTING.with(|h| h.borrow().env);
     let Some(env) = env else {
         return Value::Null;
     };
     // SAFETY: see this function's doc comment.
-    let env = unsafe { &mut *env };
+    let env = unsafe { &*env };
     crate::interpreter::ask_program(particle, env)
-}
-
-/// The same, for a question a linked module asks *while being dispatched
-/// into*: the handler that reached it is on the stack, and this entry is
-/// allowed back into it — once, for the first handler that runs. The
-/// mirror of `runtime.c`'s `hosted_dispatch` setting `linked_entry`.
-fn ask_from_linked(particle: &Value) -> Value {
-    let env = HOSTING.with(|h| h.borrow().env);
-    let Some(env) = env else {
-        return Value::Null;
-    };
-    // SAFETY: see `ask`.
-    let env = unsafe { &mut *env };
-    env.linked_entry = true;
-    let answer = crate::interpreter::ask_program(particle, env);
-    env.linked_entry = false;
-    answer
 }
 
 /// What a guest's `emit ... to <module>` becomes: an `Module` particle
@@ -861,7 +848,7 @@ unsafe extern "C" fn hosted_dispatch(
         Some((_, name, false)) => crate::interpreter::hosting_refusal(&name),
         Some((app, name, true)) => {
             let sent = unsafe { ffi_to_value(&*particle) };
-            ask_from_linked(&hosting_particle("Module", &app, &name, Some(sent)))
+            ask(&hosting_particle("Module", &app, &name, Some(sent)))
         }
     };
 
@@ -1005,7 +992,7 @@ impl NativeModule {
     pub unsafe fn host(
         &self,
         app: &str,
-        env: *mut crate::interpreter::Environment,
+        env: *const crate::interpreter::Environment,
     ) -> Option<usize> {
         let set_host = unsafe { self.lib.get::<SetHostFn>(b"code_module_set_host") }.ok()?;
         let guest = HOSTING.with(|h| {

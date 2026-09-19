@@ -1,23 +1,45 @@
 | The cycle a static pass cannot see: the particle comes from a variable, so
 | nothing at the call site names the handler it will reach.
-| `handlers::check_cycles` lets this through, and the runtime re-entry guard
+| `handlers::check_cycles` lets this through, and the runtime depth guard
 | catches it instead — which is why both halves exist.
 |
 | What the guard does changed on 2026-08-28 (phase 4): it answers with an
 | Exception instead of ending the program. Re-entry is the *emit's* failure,
-| so the frame that tried to re-enter gets it back, and the invocation
-| already running is untouched — it carries on and decides for itself.
+| so the frame that tried to go deeper gets it back, and the invocations
+| already running are untouched — they carry on and decide for themselves.
+|
+| And what it guards changed on 2026-09-19: depth is bounded, not
+| forbidden. A handler may be on the stack more than once — a base module
+| asks a linked module, which asks back — and only past sixty-four live
+| invocations is the emit refused. So this handler recurses 63 times and
+| every one is answered up to the bound; the one past it is the Exception, and it comes
+| back up through each frame as a value.
 | Was `fail_handler_dynamic_cycle.code`.
 Loopy { n } =>
+    if n = 0
+        return Bottom { }
     again = Loopy { n = n - 1 }
     emit again to this get r
-    return Ack { inner = r }
+    return Ack { inner = r, n = n }
 
-emit Loopy { n = 2 } to this get top
+| Well within the bound: every frame answers.
+emit Loopy { n = 10 } to this get shallow
+assert shallow ∈ Ack
+assert shallow.inner.inner.inner ∈ Ack
 
-| The outer invocation ran to completion: it got the Exception as an ordinary
-| value and chose to carry it.
-assert top ∈ Ack
-assert top.inner ∈ Exception
-assert top.inner.source = "core"
-assert top.inner.message = "handler 'Loopy' is already running — a handler cannot re-enter one that is already on the call stack"
+| Past it: the deepest emit gets the Exception, and the outer invocations
+| ran to completion with it inside.
+emit Loopy { n = 100 } to this get deep
+assert deep ∈ Ack
+assert deep.n = 100
+walk = deep
+steps = 0
+loop
+    if walk ∉ Ack, break
+    walk = walk.inner
+    steps += 1
+assert walk ∈ Exception
+assert walk.source = "core"
+assert walk.message = "handler 'Loopy' is already running 64 times — a handler that keeps re-entering itself is a loop"
+| 64 live invocations answered (n = 100 down to 37); the 65th was refused.
+assert steps = 64

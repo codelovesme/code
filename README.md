@@ -865,52 +865,23 @@ The rest of the rules:
 
 ### No recursion
 
-A handler may emit to another handler, but **no handler may re-enter one that
-is already running**: not itself, and not around a longer loop.
+A handler may emit to another handler, and a handler may be on the call
+stack more than once — but **not without bound**. A base module asks a
+linked module a question; the linked module asks back through a module the
+base furnished; the base's handler that reached it runs again to answer.
+That is ordinary. What is not is a handler that keeps re-entering itself,
+and the runtime stops it at a number: past **64 live invocations of one
+handler** the emit answers an `Exception`, and the invocations already
+running are untouched — each gets that answer back as a value and decides
+for itself. An ordinary exchange is a handful deep; 64 is where a loop is
+caught long before the stack could overflow, and it is the same number in
+both backends.
 
-```
-Third { n } =>
-    return Done { value = n + 1 }
-Second { n } =>
-    emit Third { n = n } to this get t
-    return Done { value = t.value }
-First { n } =>
-    emit Second { n = n } to this get s
-    return Done { value = s.value }
-```
-
-That chain is fine, and so is calling the same handler twice in a row or from
-inside a loop — the first call has returned before the next begins. What is
-rejected is a cycle:
-
-```
-Down { n } =>
-    emit Down { n = n - 1 } to this get inner   | error, before it runs:
-    return Done { value = 0 }                   | handler cycle: Down -> Down
-```
-
-This is what keeps handler calls bounded. With no cycle, the deepest a chain
-can reach is the number of distinct handlers in the program, so the stack
-cannot run away — where allowing recursion meant a program could overflow it,
-which in a compiled binary arrived as a bare segfault with no message.
-
-Cycles are caught **before the program runs**, in both output modes, and
-reported as the whole path (`handler cycle: A -> B -> C -> A`) — a refusal,
-like any other pre-run error. Because dispatch is by the particle's runtime
-`_class`, a particle held in a variable names a handler no static pass can
-resolve; those are caught at runtime instead, and a runtime catch is an
-answer rather than a refusal: the emit that tried to re-enter gets an
-`Exception` back, and the invocation already running is untouched.
-
-One entry is not a loop. A base module that furnishes a linked module's
-modules (`Offer`/`Module`, see [linking while the program runs](#linking-while-the-program-runs)) reaches that linked
-module from inside `Module`; if the linked module then asks its base
-something through a furnished module — a log line, say — that question
-needs `Module` again, and gets it: a dispatch that arrives from a linked
-module may re-enter the handler that is on the stack, once. What bounds it
-is a second rule: **a linked module cannot be on the stack twice** — a
-request that bounces base → a → base → b → base → a is refused at a, as an
-`Exception`, and every frame above unwinds with that answer inside.
+Cycles a static pass can see are still caught **before the program runs**,
+in both output modes, and reported as the whole path (`handler cycle: A ->
+B -> C -> A`) — a refusal, like any other pre-run error. Because dispatch
+is by the particle's runtime `_class`, a particle held in a variable names
+a handler no static pass can resolve; those are what the bound is for.
 
 ## Errors
 
