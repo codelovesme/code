@@ -34,9 +34,12 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 mod machine {
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
 use code_native::*;
+use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver};
+use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
 
 /// Whole-request budget when the particle doesn't say. Short enough that a
 /// language with no way to interrupt itself doesn't sit there looking hung.
@@ -46,6 +49,168 @@ const DEFAULT_TIMEOUT_SECONDS: f64 = 10.0;
 /// let a download run away with the process. Exceeding it fails the request
 /// rather than truncating — see `README.md`.
 const DEFAULT_MAX_BODY_BYTES: f64 = 1_048_576.0;
+
+/// The ordinary client remains backwards compatible. The catalog and worker
+/// opt into `public_https`, which makes the resolver and agent enforce the
+/// public-service boundary at the socket rather than trusting URL text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NetworkPolicy {
+    Default,
+    PublicHttps,
+}
+
+impl NetworkPolicy {
+    fn from_particle(particle: &CodeValue) -> Result<Self, String> {
+        match read_field_str(particle, "network_policy") {
+            None => Ok(Self::Default),
+            Some("public_https") => Ok(Self::PublicHttps),
+            Some(other) => Err(format!(
+                "unknown network_policy '{other}' (expected 'public_https')"
+            )),
+        }
+    }
+}
+
+/// Resolver used by the service catalog and other trusted crawlers. ureq uses
+/// the addresses returned here for the actual connector, so filtering this
+/// list closes the common resolve-then-connect gap instead of merely checking
+/// the hostname before handing it back to ureq.
+#[derive(Debug, Default)]
+struct PublicHttpsResolver;
+
+impl Resolver for PublicHttpsResolver {
+    fn resolve(
+        &self,
+        uri: &ureq::http::Uri,
+        config: &ureq::config::Config,
+        timeout: NextTimeout,
+    ) -> Result<ResolvedSocketAddrs, ureq::Error> {
+        if uri.scheme_str() != Some("https") {
+            return Err(ureq::Error::RequireHttpsOnly(uri.to_string()));
+        }
+
+        let authority = uri.authority().ok_or_else(|| {
+            ureq::Error::BadUri("public_https URL has no authority".to_string())
+        })?;
+        if authority.as_str().contains('@') {
+            return Err(ureq::Error::BadUri(
+                "public_https URL must not contain user-info".to_string(),
+            ));
+        }
+
+        let port = uri.port_u16().unwrap_or(443);
+        if port != 443 {
+            return Err(ureq::Error::BadUri(format!(
+                "public_https URL must use port 443, got {port}"
+            )));
+        }
+
+        let resolved = DefaultResolver::default().resolve(uri, config, timeout)?;
+        let mut allowed = self.empty();
+        for address in &resolved[..] {
+            if is_public_ip(address.ip()) {
+                allowed.push(*address);
+            }
+        }
+
+        if allowed.is_empty() {
+            return Err(ureq::Error::HostNotFound);
+        }
+        Ok(allowed)
+    }
+}
+
+/// Public service destinations exclude addresses that can reach this machine,
+/// private networks, documentation/test ranges and special-purpose address
+/// space. The check is applied to every resolved address; a hostname is safe
+/// only when all addresses ureq may try are safe.
+fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(value) => is_public_ipv4(value),
+        IpAddr::V6(value) => is_public_ipv6(value),
+    }
+}
+
+fn is_public_ipv4(value: Ipv4Addr) -> bool {
+    let [first, second, third, _] = value.octets();
+
+    if first == 0 || first >= 224 || first == 127 {
+        return false;
+    }
+    if first == 10
+        || (first == 172 && (16..=31).contains(&second))
+        || (first == 192 && second == 168)
+    {
+        return false;
+    }
+    if first == 169 && second == 254 {
+        return false;
+    }
+    if first == 100 && (64..=127).contains(&second) {
+        return false;
+    }
+    if first == 192 && second == 0 && third == 0 {
+        return false;
+    }
+    if first == 192 && second == 0 && third == 2 {
+        return false;
+    }
+    if first == 198 && (second == 18 || second == 19 || second == 51 && third == 100) {
+        return false;
+    }
+    if first == 203 && second == 0 && third == 113 {
+        return false;
+    }
+
+    true
+}
+
+fn is_public_ipv6(value: Ipv6Addr) -> bool {
+    if value.is_unspecified() || value.is_loopback() || value.is_multicast() {
+        return false;
+    }
+
+    let segments = value.segments();
+    // fc00::/7 unique-local and fe80::/10 link-local.
+    if segments[0] & 0xfe00 == 0xfc00 || segments[0] & 0xffc0 == 0xfe80 {
+        return false;
+    }
+    // Documentation, benchmarking, discard-only and NAT64 well-known ranges.
+    if (segments[0] == 0x2001 && segments[1] == 0x0db8)
+        || (segments[0] == 0x2001 && segments[1] == 0x0002)
+        || (segments[0] == 0x0100 && segments[1..].iter().all(|part| *part == 0))
+        || (segments[0] == 0x0064
+            && segments[1] == 0xff9b
+            && segments[2..].iter().all(|part| *part == 0))
+    {
+        return false;
+    }
+
+    // Reject private IPv4 space hidden inside IPv4-mapped IPv6 addresses.
+    if segments[..6] == [0, 0, 0, 0, 0, 0xffff] {
+        let embedded = Ipv4Addr::new(
+            (segments[6] >> 8) as u8,
+            segments[6] as u8,
+            (segments[7] >> 8) as u8,
+            segments[7] as u8,
+        );
+        return is_public_ipv4(embedded);
+    }
+
+    // IPv4-compatible addresses are deprecated but can still hide a local
+    // destination in the final 32 bits. Treat them with the same rule.
+    if segments[..6] == [0, 0, 0, 0, 0, 0] {
+        let embedded = Ipv4Addr::new(
+            (segments[6] >> 8) as u8,
+            segments[6] as u8,
+            (segments[7] >> 8) as u8,
+            segments[7] as u8,
+        );
+        return is_public_ipv4(embedded);
+    }
+
+    true
+}
 
 // The optional inbound export: this module speaks first, to report what went
 // wrong, rather than only answering. A program that defines no `Exception`
@@ -235,14 +400,17 @@ fn optional_number(particle: &CodeValue, name: &str, default: f64) -> f64 {
 /// Walks `keys`/`items` directly — `code-native` exposes `array_elems` for
 /// arrays but no equivalent pairs iterator for objects, and the layout is
 /// public and documented (`keys` is parallel to `items`, both `len` long).
-fn headers(particle: &CodeValue) -> Vec<(String, String)> {
+fn headers(
+    particle: &CodeValue,
+    network_policy: NetworkPolicy,
+) -> Result<Vec<(String, String)>, String> {
     let Some(field) = find_field(particle, "headers") else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     // Not an object: no headers. Nothing to refuse — a caller that meant to
     // send some and did not will see that in the request that arrives.
     if field.tag != CodeTag::Object || field.keys.is_null() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let mut out = Vec::new();
     for i in 0..field.len {
@@ -258,6 +426,13 @@ fn headers(particle: &CodeValue) -> Vec<(String, String)> {
         if name.is_empty() || name == "_class" {
             continue;
         }
+        if network_policy == NetworkPolicy::PublicHttps
+            && public_header_is_forbidden(name)
+        {
+            return Err(format!(
+                "network_policy public_https rejects header '{name}'"
+            ));
+        }
         // Rendered rather than required to be a String, for the same reason
         // the url is: `"X-Count" = 3` sends `3`, which is what the caller
         // plainly meant.
@@ -266,7 +441,30 @@ fn headers(particle: &CodeValue) -> Vec<(String, String)> {
             out.push((name.to_string(), value));
         }
     }
-    out
+    Ok(out)
+}
+
+/// Headers that must not cross the public-service boundary from an arbitrary
+/// caller. ureq owns framing and the transport hop headers; authorization and
+/// cookies are especially easy to accidentally turn into credential exfiltration
+/// when a catalog URL is user-controlled.
+fn public_header_is_forbidden(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "authorization"
+            | "cookie"
+            | "connection"
+            | "content-length"
+            | "expect"
+            | "keep-alive"
+            | "host"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+            | "transfer-encoding"
+            | "upgrade"
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -276,9 +474,24 @@ fn headers(particle: &CodeValue) -> Vec<(String, String)> {
 fn request(out: &mut CodeValue, particle: &CodeValue, method: Method) {
     let class = method.class();
     let url = url_text(particle);
+    let network_policy = match NetworkPolicy::from_particle(particle) {
+        Ok(policy) => policy,
+        Err(message) => {
+            report_exception(&format!("{class} {url}: {message}"));
+            response(out, false, 0.0, &message);
+            return;
+        }
+    };
     let timeout = optional_number(particle, "timeout_seconds", DEFAULT_TIMEOUT_SECONDS);
     let max_body = optional_number(particle, "max_body_bytes", DEFAULT_MAX_BODY_BYTES) as u64;
-    let headers = headers(particle);
+    let headers = match headers(particle, network_policy) {
+        Ok(headers) => headers,
+        Err(message) => {
+            report_exception(&format!("{class} {url}: {message}"));
+            response(out, false, 0.0, &message);
+            return;
+        }
+    };
 
     // Body-carrying methods only. An absent body is an empty one, which is a
     // legal request, and an absent content type takes the default.
@@ -304,10 +517,22 @@ fn request(out: &mut CodeValue, particle: &CodeValue, method: Method) {
         let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::SeqCst);
         let class = class.to_string();
         std::thread::spawn(move || {
-            let outcome = perform(method, &url, &headers, &body, &content_type, timeout, max_body);
+            let outcome = perform(
+                method,
+                &url,
+                &headers,
+                &body,
+                &content_type,
+                timeout,
+                max_body,
+                network_policy,
+            );
             let (ok, status, text) = match outcome {
                 Ok((status, body)) => {
-                    report_log("Info", &format!("{class} {url} -> {} (later, {id})", status as i64));
+                    report_log(
+                        "Info",
+                        &format!("{class} {url} -> {} (later, {id})", status as i64),
+                    );
                     (true, status, body)
                 }
                 Err(message) => {
@@ -322,7 +547,11 @@ fn request(out: &mut CodeValue, particle: &CodeValue, method: Method) {
             owned_str(buf.slot_mut(3), &text);
             number(buf.slot_mut(4), id as f64);
             let mut particle = CodeValue::zeroed();
-            object(&mut particle, &[c"_class", c"ok", c"status", c"body", c"_request_id"], &mut buf);
+            object(
+                &mut particle,
+                &[c"_class", c"ok", c"status", c"body", c"_request_id"],
+                &mut buf,
+            );
             buf.release_all();
             emit_inbound(&particle);
             release(&mut particle);
@@ -339,6 +568,7 @@ fn request(out: &mut CodeValue, particle: &CodeValue, method: Method) {
         &content_type,
         timeout,
         max_body,
+        network_policy,
     ) {
         Ok((status, body)) => {
             // `Info` for a request that completed, whatever the server
@@ -373,14 +603,29 @@ fn perform(
     content_type: &str,
     timeout_seconds: f64,
     max_body_bytes: u64,
+    network_policy: NetworkPolicy,
 ) -> Result<(f64, String), String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
+    let config = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs_f64(timeout_seconds)))
         // 4xx/5xx must reach us as a response, not an error — the status is
         // exactly what the caller asked for.
-        .http_status_as_error(false)
-        .build()
-        .into();
+        .http_status_as_error(false);
+    let agent: ureq::Agent = match network_policy {
+        NetworkPolicy::Default => config.build().into(),
+        NetworkPolicy::PublicHttps => {
+            // Do not let an environment proxy resolve an untrusted target on
+            // our behalf. The resolver must see and filter the target address.
+            // Redirects are returned to the caller instead of being followed;
+            // a catalog revision may explicitly model a second origin later.
+            let config = config
+                .https_only(true)
+                .max_redirects(0)
+                .max_redirects_will_error(false)
+                .proxy(None)
+                .build();
+            ureq::Agent::with_parts(config, DefaultConnector::new(), PublicHttpsResolver)
+        }
+    };
 
     // The two groups cannot share a variable: ureq types its builder by
     // whether a body is coming (`WithoutBody`/`WithBody`), so they only meet
@@ -395,11 +640,10 @@ fn perform(
             headers,
         )
         .send(body),
-        Method::Put => with_headers(
-            agent.put(url).header("Content-Type", content_type),
-            headers,
-        )
-        .send(body),
+        Method::Put => {
+            with_headers(agent.put(url).header("Content-Type", content_type), headers)
+                .send(body)
+        }
         Method::Patch => with_headers(
             agent.patch(url).header("Content-Type", content_type),
             headers,
@@ -408,7 +652,13 @@ fn perform(
     }
     .map_err(|e| e.to_string())?;
 
-    let status = response.status().as_u16() as f64;
+    let status_code = response.status().as_u16();
+    if network_policy == NetworkPolicy::PublicHttps && (300..400).contains(&status_code) {
+        return Err(format!(
+            "network_policy public_https does not follow redirect status {status_code}"
+        ));
+    }
+    let status = status_code as f64;
     let text = response
         .body_mut()
         .with_config()
@@ -460,10 +710,94 @@ fn response(out: &mut CodeValue, ok: bool, status: f64, body: &str) {
     object(out, &[c"_class", c"ok", c"status", c"body"], &mut buf);
     buf.release_all();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_ipv4_policy_rejects_special_ranges() {
+        for address in [
+            "0.0.0.0",
+            "10.0.0.1",
+            "100.64.0.1",
+            "127.0.0.1",
+            "169.254.1.1",
+            "172.16.0.1",
+            "192.0.0.1",
+            "192.0.2.1",
+            "192.168.1.1",
+            "198.18.0.1",
+            "198.51.100.1",
+            "203.0.113.1",
+            "224.0.0.1",
+            "240.0.0.1",
+        ] {
+            let ip = address.parse().expect("parse IPv4 fixture");
+            assert!(!is_public_ip(IpAddr::V4(ip)), "accepted {address}");
+        }
+
+        let public = "1.1.1.1".parse().expect("parse public IPv4 fixture");
+        assert!(is_public_ip(IpAddr::V4(public)));
+    }
+
+    #[test]
+    fn public_ipv6_policy_rejects_local_documentation_and_mapped_private() {
+        for address in [
+            "::",
+            "::1",
+            "fc00::1",
+            "fe80::1",
+            "2001:db8::1",
+            "2001:2::1",
+            "::ffff:127.0.0.1",
+            "::ffff:192.168.1.1",
+            "::192.0.2.1",
+        ] {
+            let ip = address.parse().expect("parse IPv6 fixture");
+            assert!(!is_public_ip(IpAddr::V6(ip)), "accepted {address}");
+        }
+
+        let public = "2606:4700:4700::1111"
+            .parse()
+            .expect("parse public IPv6 fixture");
+        assert!(is_public_ip(IpAddr::V6(public)));
+    }
+
+    #[test]
+    fn public_https_policy_rejects_credential_and_transport_headers() {
+        for header in [
+            "Authorization",
+            "Cookie",
+            "Connection",
+            "Host",
+            "Proxy-Authorization",
+            "Transfer-Encoding",
+            "Upgrade",
+        ] {
+            assert!(public_header_is_forbidden(header), "accepted {header}");
+        }
+        assert!(!public_header_is_forbidden("Accept"));
+        assert!(!public_header_is_forbidden("Content-Type"));
+    }
+
+    #[test]
+    fn policy_parser_keeps_default_client_unchanged() {
+        let particle = CodeValue::zeroed();
+        assert_eq!(
+            NetworkPolicy::from_particle(&particle),
+            Ok(NetworkPolicy::Default)
+        );
+    }
+}
 }
 
 #[cfg(target_arch = "wasm32")]
 mod page {
     include!("../../browser_half.rs");
-    browser_half!("http_client", http_client_code_module_abi_version, http_client_code_module_dispatch);
+    browser_half!(
+        "http_client",
+        http_client_code_module_abi_version,
+        http_client_code_module_dispatch
+    );
 }

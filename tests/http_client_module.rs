@@ -211,12 +211,19 @@ assert not too_big.ok
 assert too_big.status = 0
 assert too_big.body = "response body exceeds max_body_bytes ({})"
 
+| The trusted crawler policy refuses loopback before it attempts a socket.
+| The fixture server is HTTP on purpose: a policy request must require both
+| the public address and HTTPS, and it must never reach this handler.
+emit Get {{ url = "https://127.0.0.1:{port}/hello", network_policy = "public_https" }} to http get private
+assert not private.ok
+assert private.status = 0
+
 | Exact, because the split is the interesting part: ten requests got a
 | response and logged it — including the 500, which is news rather than a
-| fault — and only the one that went over the cap raised an Exception,
-| since that is the only request here that never produced a usable body.
+| fault — and the two requests that never produced a usable body raised
+| Exceptions: the cap and the public policy refusal.
 assert logs = 10
-assert exceptions = 1
+assert exceptions = 2
 "#,
         HELLO.len(),
         HELLO.len(),

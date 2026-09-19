@@ -24,7 +24,7 @@ assert r.status = 200
 Seven, one per HTTP method. Four carry no request body:
 
 ```
-Get     { url, headers?, timeout_seconds?, max_body_bytes? } → HttpResponse
+Get     { url, headers?, timeout_seconds?, max_body_bytes?, network_policy? } → HttpResponse
 Delete  { same }                                             → HttpResponse
 Head    { same }                                             → HttpResponse
 Options { same }                                             → HttpResponse
@@ -33,7 +33,7 @@ Options { same }                                             → HttpResponse
 and three do:
 
 ```
-Post  { url, body, content_type?, headers?,
+Post  { url, body, content_type?, headers?, network_policy?,
         timeout_seconds?, max_body_bytes? }                  → HttpResponse
 Put   { same }                                               → HttpResponse
 Patch { same }                                               → HttpResponse
@@ -63,6 +63,7 @@ status — refused, unresolvable, timed out, TLS rejected, or larger than
 | `headers` | Object | none | `{ Accept = "text/plain" }`; values are rendered as text |
 | `timeout_seconds` | Number | `10` | whole request, connect included; a non-positive value takes the default |
 | `max_body_bytes` | Number | `1048576` | a longer response fails the request |
+| `network_policy` | String | unrestricted | `public_https` requires HTTPS on port 443, blocks special/private addresses, disables proxies and does not follow redirects |
 
 ## Diagnostics
 
@@ -119,6 +120,25 @@ Both relative URLs (resolved against the page) and absolute `http(s)` URLs are
 accepted. The browser enforces its normal CORS and TLS rules. This keeps
 public API calls in `http_client`; `net_client` remains the particle transport
 between Euglena organelles and services.
+
+## Public service policy
+
+The native client keeps its historical behavior when `network_policy` is
+absent. A trusted crawler or gateway sends
+`network_policy = "public_https"` to opt into the public-service boundary:
+
+- the URL must use HTTPS and port 443;
+- user-info, loopback, private, link-local, multicast, documentation,
+  benchmarking, reserved and special-purpose IPv4/IPv6 addresses are refused;
+- every resolved address is filtered before ureq's connector uses it, including
+  IPv4-mapped IPv6 addresses;
+- environment proxies are disabled so the checked target is the connected
+  target;
+- redirects are returned as responses and are never followed implicitly.
+
+The catalog owns the registered origin and operation path. This module policy
+protects the network boundary; the catalog still has to construct the URL from
+its approved revision and reject caller-supplied destinations.
 
 ## The decisions, and why
 
@@ -225,4 +245,3 @@ carrying `_request_id = id`, handled by the program's own `HttpResponse`
 handler when its loop next drains. A program whose handler must not hold
 the thread for the length of a request — a worker held by a host — asks
 this way; everything else is as before.
-
