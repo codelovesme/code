@@ -170,6 +170,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         "blob_storage",
         "cloud_drive",
         "localai",
+        "interpreter",
         "net_server",
         "net_client",
         "dom",

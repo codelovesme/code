@@ -265,6 +265,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "git_mock",
     "http_client",
     "http_server",
+    "interpreter",
     "json",
     "json_store",
     "jwt",

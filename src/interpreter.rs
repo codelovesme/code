@@ -747,13 +747,16 @@ pub fn run(program: &Program) -> Result<Environment, String> {
     run_with(program, Environment::default())
 }
 
-/// Like `run`, but against a caller-supplied `Environment` rather than
-/// always starting from `Environment::default()` — the hook
-/// `crates/code-wasm` needs to pre-link its JS-callback modules
-/// (`Environment::link_module`) before the program itself ever runs, since
-/// a `JsBridge`-formatted `ImportNative` only ever checks an alias is
-/// already present, never resolves one itself (see that arm below).
-pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, String> {
+/// Everything that happens before a program is *open for business*: its
+/// handlers registered, the pre-run checks passed, its top-level
+/// statements executed. What comes back is an environment that answers
+/// `ask_program` — a program as a thing to be talked to rather than one
+/// that runs to its end.
+///
+/// `run_with` is this followed by `keep_alive` and the unlinking; the
+/// `interpreter` module is this alone, keeping the environment and
+/// dispatching into it as the base module asks.
+pub fn prepare(program: &Program, mut env: Environment) -> Result<Environment, String> {
     register_handlers(&program.statements, &mut env, 0, 0)?;
     crate::handlers::check_cycles(program)?;
     // The same pre-run check `code build` has always run (`verify.rs`, which
@@ -781,6 +784,17 @@ pub fn run_with(program: &Program, mut env: Environment) -> Result<Environment, 
             .and_then(|_| drain_inbound(&mut env))
             .map_err(|msg| locate(program, i, msg))?;
     }
+    Ok(env)
+}
+
+/// Like `run`, but against a caller-supplied `Environment` rather than
+/// always starting from `Environment::default()` — the hook
+/// `crates/code-wasm` needs to pre-link its JS-callback modules
+/// (`Environment::link_module`) before the program itself ever runs, since
+/// a `JsBridge`-formatted `ImportNative` only ever checks an alias is
+/// already present, never resolves one itself (see that arm below).
+pub fn run_with(program: &Program, env: Environment) -> Result<Environment, String> {
+    let mut env = prepare(program, env)?;
     // The last statement is not the end of the program: a module that is
     // still serving holds it open, and pushed particles keep reaching their
     // handlers until nothing does. See `keep_alive`.

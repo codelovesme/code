@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, interpreter, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
       # Each module is its own workspace with its own Cargo.lock (see those
@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, interpreter, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, oauth_mock]
     steps:
       - uses: actions/checkout@v4
 
@@ -413,6 +413,10 @@ jobs:
             git_mock)
               printf 'emit Config { repo_path = "/tmp/gitmock" } to mod get c\nassert c.ok\nemit Add { } to mod get _\nemit Commit { message = "m" } to mod get cm\nassert cm ∈ CommitResult\nemit Status { } to mod get s\nassert s.clean\n' >> dogfood/demo.code
               ;;
+            interpreter)
+              # Source in, a linked program out: loaded, asked, unloaded.
+              printf 'emit Load { source = "Ping {} =>\\n    return Pong {}\\n" } to mod get l\nassert l ∈ Loaded\nemit Send { id = l.id, particle = Ping {} } to mod get p\nassert p ∈ Pong\nemit Unload { id = l.id } to mod get u\nassert u.existed\n' >> dogfood/demo.code
+              ;;
             localai_mock)
               printf 'emit Config { endpoint = "mock" } to mod get c\nassert c.ok\nemit Chat { user = "ping" } to mod get r\nassert r.content = "[mock mock-model] ping"\n' >> dogfood/demo.code
               ;;
@@ -453,7 +457,7 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer azure_mailer oauth mongodb azure_blob blob_storage cloud_drive localai blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest media router storage clipboard timer oauth_mock; do
+          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer azure_mailer oauth mongodb azure_blob blob_storage cloud_drive localai interpreter blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest media router storage clipboard timer oauth_mock; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
@@ -480,6 +484,7 @@ jobs:
               blob_storage) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
               cloud_drive) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode", "RefreshToken", "GetQuota", "ListFiles", "UploadFile", "DownloadFile", "DeleteFile"]' ;;
               localai) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions", "Speak"]' ;;
+              interpreter) handlers='["Load", "Send", "Unload", "Loaded"]' ;;
               mailer_mock) handlers='["Config", "Send", "Outbox"]' ;;
               net_server) handlers='["Config", "Listen", "Stop"]' ;;
               membrane) handlers='["Config", "Listen", "Stop"]' ;;

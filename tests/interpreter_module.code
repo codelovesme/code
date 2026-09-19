@@ -1,0 +1,72 @@
+| `interpreter` — source text loaded as a linked program of its own: its
+| handlers, its own top level, nothing of the base's. Talked to with
+| particles, unloaded again. Bad source is an Exception at Load, a failing
+| handler an Exception at Send, and two programs never see each other.
+
+link "native_modules/interpreter.so" as plasmid
+
+| A program: a top-level value its handler reads, and two handlers.
+rule = "greeting = \"hello \"\n\nHello { who } =>\n    return Greeted { text = greeting + who }\n\nCount { items } =>\n    n = 0\n    loop one over items\n        n = n + one\n    return Counted { total = n }\n"
+
+emit Load { source = rule, name = "greeter" } to plasmid get first
+assert first ∈ Loaded
+assert first.id = 1
+
+emit Send { id = first.id, particle = Hello { who = "world" } } to plasmid get hi
+assert hi ∈ Greeted
+assert hi.text = "hello world"
+
+| Values cross whole: arrays, objects, numbers.
+emit Send { id = first.id, particle = Count { items = [1, 2, 3.5] } } to plasmid get counted
+assert counted ∈ Counted
+assert counted.total = 6.5
+
+| A class it has no handler for is null, as everywhere.
+emit Send { id = first.id, particle = Whatever {} } to plasmid get nothing
+assert nothing = null
+
+| A handler that fails answers an Exception; the program is still there.
+faulty = "Boom {} =>\n    x = 1 / 0\n    return Fine { x = x }\n"
+emit Load { source = faulty } to plasmid get second
+assert second ∈ Loaded
+assert second.id = 2
+emit Send { id = second.id, particle = Boom {} } to plasmid get boom
+assert boom ∈ Exception
+emit Send { id = first.id, particle = Hello { who = "again" } } to plasmid get still
+assert still.text = "hello again"
+
+| Source that does not hold up is refused at Load, with the reason.
+emit Load { source = "Loop {} =>\n    emit Loop {} to this get again\n    return again\n" } to plasmid get cyclic
+assert cyclic ∈ Exception
+emit Load { source = "Bad {} =>\n    return missing_name\n" } to plasmid get undefined
+assert undefined ∈ Exception
+emit Load { source = "link \"anything.so\" as x\n" } to plasmid get linking
+assert linking ∈ Exception
+emit Load { source = "   " } to plasmid get empty
+assert empty ∈ Exception
+
+| Two programs are two worlds: the second cannot see the first's top level.
+emit Load { source = "Peek {} =>\n    return Seen { value = greeting }\n" } to plasmid get third
+assert third ∈ Exception
+
+| What is loaded, by id and name.
+emit Loaded {} to plasmid get listing
+assert listing ∈ Programs
+emit Length { value = listing.items } to core get how_many
+assert how_many.value = 2
+assert listing.items[0].id = 1
+assert listing.items[0].name = "greeter"
+assert listing.items[1].name = ""
+
+| Unloading: once, then it is gone, and a Send to it says so.
+emit Unload { id = second.id } to plasmid get gone
+assert gone ∈ Unloaded
+assert gone.existed
+emit Unload { id = second.id } to plasmid get again
+assert not again.existed
+emit Send { id = second.id, particle = Boom {} } to plasmid get absent
+assert absent ∈ Exception
+
+| A class this module does not handle is null, not an error.
+emit Whatever {} to plasmid get other
+assert other = null
