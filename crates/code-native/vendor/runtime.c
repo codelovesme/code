@@ -1088,6 +1088,13 @@ typedef struct {
      * between two threads showing up as a flaky failure in an unrelated
      * test. */
     int closed;
+    /* Set while this module is being dispatched into. A linked module may
+     * not be entered again while it is on the call stack: that is the one
+     * way a call could loop through a base module and back — a linked
+     * module asks its base, the base asks the linked module, which asks its
+     * base again — and what bounds it is that each linked module can be on
+     * the stack once. See `code_take_linked_entry`. */
+    int busy;
 } NativeHandle;
 
 /* Shared by both native-module paths (`.so` here, `.a` in codegen's direct
@@ -1697,10 +1704,43 @@ void code_native_dispatch(void *handle, CodeValue *out, const CodeValue *particl
         return;
     }
     NativeHandle *nh = (NativeHandle *)handle;
+    if (nh->busy) {
+        code_make_exception(out, "core",
+                            "this module is already being dispatched into — a linked module cannot "
+                            "be entered while it is on the call stack",
+                            NULL);
+        return;
+    }
+    nh->busy = 1;
     CodeValue result = {0};
     nh->dispatch(&result, particle);
+    nh->busy = 0;
     code_native_copy_in(out, &result);
     nh->release(&result);
+}
+
+/* ---- Entry from a linked module ------------------------------------------
+ *
+ * A handler may not re-enter one already on the call stack (the guard in
+ * every handler's prologue — `handlers.rs` says why). One entry is not a
+ * loop, though: a linked module, dispatched into by its base, asking the
+ * base a question through a module the base furnished (`hosted_dispatch`
+ * below). The base's furnishing handler is on the stack — it is what
+ * reached the linked module — and the question needs it again.
+ *
+ * That entry is bounded by the rule above: a linked module cannot be on
+ * the stack twice, so a base's handler can be re-entered this way at most
+ * once per linked module. So `hosted_dispatch` sets this before asking,
+ * and the first handler prologue that runs takes it — one entry, for that
+ * handler alone, and nothing nested under it is excused. Cleared after
+ * the ask either way, so a question no handler answered leaves nothing
+ * behind. */
+static int linked_entry = 0;
+
+int code_take_linked_entry(void) {
+    int allowed = linked_entry;
+    linked_entry = 0;
+    return allowed;
 }
 
 /* The other side of the same rule, for a module written in `code`. Its
@@ -2577,7 +2617,9 @@ static void hosted_dispatch(void *ctx, CodeValue *out, const CodeValue *particle
         return;
     }
     const char *app = hosted_guests[o->guest].app;
+    linked_entry = 1;
     ask_program(out, "Module", app ? app : "", o->name, particle);
+    linked_entry = 0;
 }
 
 static void hosted_release(void *ctx, CodeValue *v) {

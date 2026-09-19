@@ -816,6 +816,23 @@ fn ask(particle: &Value) -> Value {
     crate::interpreter::ask_program(particle, env)
 }
 
+/// The same, for a question a linked module asks *while being dispatched
+/// into*: the handler that reached it is on the stack, and this entry is
+/// allowed back into it — once, for the first handler that runs. The
+/// mirror of `runtime.c`'s `hosted_dispatch` setting `linked_entry`.
+fn ask_from_linked(particle: &Value) -> Value {
+    let env = HOSTING.with(|h| h.borrow().env);
+    let Some(env) = env else {
+        return Value::Null;
+    };
+    // SAFETY: see `ask`.
+    let env = unsafe { &mut *env };
+    env.linked_entry = true;
+    let answer = crate::interpreter::ask_program(particle, env);
+    env.linked_entry = false;
+    answer
+}
+
 /// What a guest's `emit ... to <module>` becomes: an `Module` particle
 /// asked of the host's own handlers, on the host's thread, as an ordinary
 /// nested handler call.
@@ -844,7 +861,7 @@ unsafe extern "C" fn hosted_dispatch(
         Some((_, name, false)) => crate::interpreter::hosting_refusal(&name),
         Some((app, name, true)) => {
             let sent = unsafe { ffi_to_value(&*particle) };
-            ask(&hosting_particle("Module", &app, &name, Some(sent)))
+            ask_from_linked(&hosting_particle("Module", &app, &name, Some(sent)))
         }
     };
 

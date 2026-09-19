@@ -1028,3 +1028,106 @@ assert r._class = "Attached"
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A linked module, while being dispatched into, may ask its base a
+/// question through a furnished module — and that question re-enters the
+/// base's `Module` handler, which is the one that reached the linked module
+/// in the first place.
+///
+/// One entry is not a loop. The base's `Module` is on the stack because it
+/// is relaying a request into one linked module; that module asks the base
+/// to note something; `Module` runs again, for a different linked module's
+/// question, and answers. What bounds it is the rule that a linked module
+/// cannot be on the stack twice — so the same request bouncing between two
+/// linked modules through the base is refused the moment one of them is
+/// reached a second time. (A handler re-entering *itself* is refused as it
+/// always was — `handlers.rs`'s static check and the language fixtures.)
+#[test]
+fn a_linked_module_may_ask_its_base_while_the_base_is_inside_it() {
+    let dir = temp_dir("askback");
+    module("test_math", &dir.join("native_modules/test_math.so"));
+
+    // A module that, when worked, tells its base something through the
+    // furnished module — and, when asked to bounce, sends the base's
+    // request straight back at whoever sent it.
+    const NOTING: &str = r#"link "native_modules/test_math.so" as m
+
+Work { value } =>
+    emit Note { text = "working" } to m get noted
+    return Done { value = value, noted = noted }
+
+Bounce { via, next } =>
+    emit Relay { app = via, then = next } to m get back
+    return Bounced { back = back }
+"#;
+    build(&dir, "a", NOTING, code::BuildTarget::Shared, "a.so");
+    build(&dir, "b", NOTING, code::BuildTarget::Shared, "b.so");
+
+    fs::write(
+        dir.join("main.code"),
+        r#"notes = []
+a = null
+b = null
+
+Offer { app, name } =>
+    if name = "test_math",  return Offered { }
+    return Denied { }
+
+| `Module` is what reaches a linked module (`Relay`) and what it reaches
+| back through (`Note`) — on the stack twice, on purpose.
+Module { app, name, particle } =>
+    if particle._class = "Note"
+        notes += [app + ": " + particle.text]
+        return Noted { }
+    if particle._class = "Relay"
+        target = b
+        if particle.app = "a", target = a
+        if particle.then = null
+            emit Work { value = 1 } to target get worked
+            return worked
+        emit Bounce { via = particle.then, next = particle.app } to target get bounced
+        return bounced
+    return Denied { }
+
+Notes { } =>
+    return Kept { notes = notes }
+
+Hold { } =>
+    link "./a.so" as held_a
+    link "./b.so" as held_b
+    a = held_a
+    b = held_b
+    return Held { }
+
+Let { } =>
+    unlink a
+    unlink b
+    return Let { }
+
+emit Hold { } to this
+
+| The base's Module relays into a; a notes back through the base's Module.
+emit Relay { app = "a" } to this get direct
+assert direct = null
+emit Module { app = "./a.so", name = "test_math", particle = Relay { app = "a" } } to this get relayed
+assert relayed ∈ Done
+assert relayed.noted ∈ Noted
+emit Notes { } to this get kept
+assert kept.notes = ["./a.so: working"]
+
+| A loop: Module → a → Module → b → Module → a again. a is already on
+| the stack, so the third hop is refused — as an answer, not a crash — and
+| everything above it unwinds with that answer inside.
+emit Module { app = "./a.so", name = "test_math", particle = Relay { app = "a", then = "b" } } to this get looped
+assert looped ∈ Bounced
+assert looped.back ∈ Bounced
+assert looped.back.back ∈ Exception
+
+emit Let { } to this
+"#,
+    )
+    .expect("write host");
+    run_both_ways(&dir, "a linked module could not ask its base back");
+
+    let _ = fs::remove_dir_all(&dir);
+}

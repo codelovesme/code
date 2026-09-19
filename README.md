@@ -902,6 +902,16 @@ resolve; those are caught at runtime instead, and a runtime catch is an
 answer rather than a refusal: the emit that tried to re-enter gets an
 `Exception` back, and the invocation already running is untouched.
 
+One entry is not a loop. A base module that furnishes a linked module's
+modules (`Offer`/`Module`, see [linking while the program runs](#linking-while-the-program-runs)) reaches that linked
+module from inside `Module`; if the linked module then asks its base
+something through a furnished module — a log line, say — that question
+needs `Module` again, and gets it: a dispatch that arrives from a linked
+module may re-enter the handler that is on the stack, once. What bounds it
+is a second rule: **a linked module cannot be on the stack twice** — a
+request that bounces base → a → base → b → base → a is refused at a, as an
+`Exception`, and every frame above unwinds with that answer inside.
+
 ## Errors
 
 A runtime error does not end the program. It ends the **frame** — the handler

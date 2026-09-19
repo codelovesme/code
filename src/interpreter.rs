@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex};
@@ -173,7 +173,16 @@ pub struct Environment {
     /// rejects every cycle it can see, but dispatch is by the particle's
     /// runtime `_class`, so a particle held in a variable names a handler no
     /// static pass could have resolved. This catches those.
-    active: HashSet<String>,
+    /// The handlers on the call stack, each with how many invocations of it
+    /// are live. A count rather than a set because one re-entry is allowed
+    /// — see `linked_entry` — and the inner invocation's exit must leave
+    /// the outer one guarded.
+    active: HashMap<String, usize>,
+    /// Set by a linked module asking this program through a furnished
+    /// module (`native.rs`'s `hosted_dispatch`), and taken by the first
+    /// handler prologue that runs: the one re-entry the guard allows. The
+    /// mirror of `runtime.c`'s `code_take_linked_entry`.
+    pub linked_entry: bool,
     /// Where crossed particle boundaries are recorded, when somebody asked
     /// for a trace (`code trace`). `None` is the ordinary path every program
     /// already takes: tracing is opt-in, so no program's meaning changes by
@@ -227,7 +236,8 @@ impl Default for Environment {
             handler_tables: Vec::new(),
             module_depth: 0,
             inbound: Vec::new(),
-            active: HashSet::new(),
+            active: HashMap::new(),
+            linked_entry: false,
             wakeup: Arc::new(Wakeup::default()),
             tracer: None,
         }
@@ -1182,7 +1192,7 @@ fn exec(stmt: &Stmt, env: &mut Environment) -> Result<Flow, String> {
             let traced = env.tracer.as_ref().map(|recorder| {
                 (
                     Rc::clone(recorder),
-                    recorder.begin(env.active.len(), trace_target(target), &value),
+                    recorder.begin(env.active.values().sum(), trace_target(target), &value),
                 )
             });
             let output = match target {
@@ -1442,12 +1452,22 @@ fn run_handler(
     // every other runtime failure. `handlers::check_cycles` still refuses the
     // statically visible ones before either backend runs at all; this is only
     // for the cycles that go through a variable.
-    if !env.active.insert(class.to_string()) {
+    //
+    // One re-entry is not a loop: a linked module, reached by this very
+    // handler, asking its program through a furnished module. `native.rs`
+    // says so for exactly one prologue — this one — and a linked module
+    // cannot be on the stack twice (`runtime.c`'s `code_native_dispatch`),
+    // which is what bounds it. Taken whether or not the handler was running,
+    // so nothing nested under this entry inherits it.
+    let allowed = std::mem::take(&mut env.linked_entry);
+    let live = env.active.entry(class.to_string()).or_insert(0);
+    if *live > 0 && !allowed {
         return Ok(exception(format!(
             "handler '{class}' is already running — a handler cannot re-enter one \
              that is already on the call stack"
         )));
     }
+    *live += 1;
 
     // The caller's world steps aside entirely, and the handler's own file
     // takes its place: a handler sees the file it was written in and nothing
@@ -1520,7 +1540,12 @@ fn run_handler(
         .push(std::mem::take(&mut env.file_scopes[caller_file]));
     env.scopes.extend(saved);
     env.module_depth = saved_depth;
-    env.active.remove(class);
+    if let Some(live) = env.active.get_mut(class) {
+        *live -= 1;
+        if *live == 0 {
+            env.active.remove(class);
+        }
+    }
     result
 }
 

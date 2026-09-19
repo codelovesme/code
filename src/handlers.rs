@@ -23,7 +23,13 @@
 //! - A **re-entry guard** in each backend catches the rest at runtime, where
 //!   the particle came from a variable and no static pass could have known
 //!   which handler it names. See `interpreter::dispatch_handler` and
-//!   `codegen`'s per-handler `_code_active_*` flag.
+//!   `codegen`'s per-handler `_code_active_*` count.
+//!
+//! One entry the guard lets through: a linked module, dispatched into from a
+//! base module's handler, asking the base back through a furnished module
+//! (`runtime.c`'s `hosted_dispatch` → `code_take_linked_entry`). That is
+//! bounded not by this guard but by its companion in `code_native_dispatch`:
+//! a linked module cannot be on the stack twice.
 
 use std::collections::{HashMap, HashSet};
 

@@ -442,6 +442,11 @@ pub(crate) fn compile_to_object_traced(
         ),
         None,
     );
+    // Whether this handler entry is a linked module asking its base through
+    // a furnished module — the one re-entry the guard allows. See
+    // `runtime.c`'s `code_take_linked_entry`.
+    let fn_take_linked_entry =
+        module.add_function("code_take_linked_entry", i32_ty.fn_type(&[], false), None);
     // What `Linked` answers. Called only from a library's start-up, which is
     // the whole of how the runtime knows which kind of build it is in.
     let fn_set_linked = module.add_function("code_set_linked", void_ty.fn_type(&[], false), None);
@@ -825,6 +830,7 @@ pub(crate) fn compile_to_object_traced(
         fn_runtime_any_serving,
         fn_set_program_dispatch,
         fn_dispatch_copied,
+        fn_take_linked_entry,
         fn_set_linked,
         fn_runtime_dispatch,
         fn_native_dispatch,
@@ -1075,6 +1081,8 @@ struct Gen<'a, 'm> {
     fn_runtime_any_serving: FunctionValue<'a>,
     fn_set_program_dispatch: FunctionValue<'a>,
     fn_dispatch_copied: FunctionValue<'a>,
+    /// `runtime.c`'s `code_take_linked_entry` — see the handler prologue.
+    fn_take_linked_entry: FunctionValue<'a>,
     /// `runtime.c`'s `code_set_linked` — see `lazy_init_fn`, its only caller.
     fn_set_linked: FunctionValue<'a>,
     fn_runtime_dispatch: FunctionValue<'a>,
@@ -1483,6 +1491,33 @@ impl<'a, 'm> Gen<'a, 'm> {
                 "isrunning",
             )
             .map_err(|e| e.to_string())?;
+        // One re-entry is not a loop: a linked module, reached by this very
+        // handler, asking its base through a furnished module. The runtime
+        // says so for exactly one prologue — this one — and the linked
+        // module cannot be on the stack twice, which is what bounds it.
+        // Taken whether or not the handler was running, so nothing nested
+        // under this entry inherits it.
+        let allowed = self
+            .builder
+            .build_call(self.fn_take_linked_entry, &[], "allowed")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .left()
+            .expect("code_take_linked_entry returns i32")
+            .into_int_value();
+        let not_allowed = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                allowed,
+                self.i32_ty.const_zero(),
+                "notallowed",
+            )
+            .map_err(|e| e.to_string())?;
+        let is_running = self
+            .builder
+            .build_and(is_running, not_allowed, "reentry")
+            .map_err(|e| e.to_string())?;
         self.builder
             .build_conditional_branch(is_running, reenter, enter)
             .map_err(|e| e.to_string())?;
@@ -1525,8 +1560,15 @@ impl<'a, 'm> Gen<'a, 'm> {
         if self.tracing {
             self.trace_call("code_trace_enter", &[], false)?;
         }
+        // A count, not a flag: the allowed re-entry above means two
+        // invocations of this handler can be live at once, and the inner
+        // one's exit must leave the outer one guarded.
+        let entered = self
+            .builder
+            .build_int_add(running, self.i32_ty.const_int(1, false), "entered")
+            .map_err(|e| e.to_string())?;
         self.builder
-            .build_store(active, self.i32_ty.const_int(1, false))
+            .build_store(active, entered)
             .map_err(|e| e.to_string())?;
 
         let result = (|| -> Result<(), String> {
@@ -1573,8 +1615,17 @@ impl<'a, 'm> Gen<'a, 'm> {
         if self.tracing {
             self.trace_call("code_trace_leave", &[], false)?;
         }
+        let still = self
+            .builder
+            .build_load(self.i32_ty, active, "still")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let left = self
+            .builder
+            .build_int_sub(still, self.i32_ty.const_int(1, false), "left")
+            .map_err(|e| e.to_string())?;
         self.builder
-            .build_store(active, self.i32_ty.const_zero())
+            .build_store(active, left)
             .map_err(|e| e.to_string())?;
         let frame = self
             .handler_frame
