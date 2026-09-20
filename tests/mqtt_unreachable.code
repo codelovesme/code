@@ -1,0 +1,51 @@
+| `mqtt` with nobody to talk to: nothing here needs a network. Port 1 on
+| loopback is refused, so the connection thread never gets a ConnAck — a
+| publish is an Exception now, not something queued for a broker that may
+| come back; a subscription is kept for when one does; and Disconnect ends
+| the thread so the program can end.
+link "native_modules/mqtt.so" as bus
+
+| Config is checked where it arrives.
+emit Config {} to bus get no_url
+assert no_url ∈ Exception
+emit Config { url = "mqtt://127.0.0.1:notaport" } to bus get bad_port
+assert bad_port ∈ Exception
+
+| Nothing before Config.
+emit Publish { topic = "x", payload = "y" } to bus get too_early
+assert too_early ∈ Exception
+assert too_early.source = "mqtt"
+
+emit Config { url = "mqtt://127.0.0.1:1" } to bus get c
+assert c ∈ ConfigResult
+assert c.ok
+
+Spoke { topic, payload } =>
+    return Ack {}
+
+emit Subscribe { topic = "code/#" } to bus get no_then
+assert no_then ∈ Exception
+emit Subscribe { topic = "code/#", then = "Spoke" } to bus get s
+assert s ∈ Subscribed
+assert s.ok
+
+| Nobody answers on port 1.
+emit Publish { topic = "code/one", payload = "hello" } to bus get p
+assert p ∈ Exception
+assert p.message = "not connected to the broker"
+
+emit Status {} to bus get st
+assert st ∈ BusStatus
+assert st.connected = false
+assert st.subscribed = []
+
+emit Unsubscribe { topic = "code/#" } to bus get u
+assert u.ok
+emit Unsubscribe { topic = "code/#" } to bus get again
+assert again.ok = false
+
+emit Disconnect {} to bus get d
+assert d ∈ Disconnected
+assert d.ok
+emit Disconnect {} to bus get twice
+assert twice.ok = false

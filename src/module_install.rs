@@ -293,6 +293,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "router",
     "storage",
     "timer",
+    "mqtt",
 ];
 
 /// Where this repository's releases live. Overridable for offline work and

@@ -177,6 +177,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         "clipboard",
         "guest",
         "timer",
+        "mqtt",
         "mailer_mock",
         "oauth_mock",
         "mongodb_mock",

@@ -1596,7 +1596,10 @@ Drive: the OAuth flow, quota, upload, download, list, delete — see
 text loaded as a linked program of its own — talked to with particles,
 unloaded again; what a base module uses to run rules or plugins a person
 wrote into it while it runs — see
-[its README](crates/modules/interpreter/README.md)), `localai` (chat
+[its README](crates/modules/interpreter/README.md)), `mqtt` (a broker's
+messages arriving as the particle the program named, and particles
+published onto it — the house's sensors and switches, over Mosquitto — see
+[its README](crates/modules/mqtt/README.md)), `localai` (chat
 completions and audio transcription over an OpenAI-compatible endpoint — see
 [its README](crates/modules/localai/README.md)), `http_client` (the seven HTTP
 methods, and `Exception`/`Log` pushed back — see
@@ -1755,7 +1758,7 @@ crates/
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
                 azure_mailer,
                 oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,
-                media, clipboard, interpreter,
+                media, clipboard, interpreter, mqtt,
                 http_client, http_server, net_client, net_server — plus
                 <name>_mock twins for
                 mailer, oauth, mongodb, blob_storage, cloud_drive, git, localai

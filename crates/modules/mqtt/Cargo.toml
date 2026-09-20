@@ -1,0 +1,24 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree.
+[workspace]
+
+[package]
+name = "mqtt"
+version = "2.8.1"
+edition = "2021"
+description = "The `mqtt` native module for the Code programming language — a broker's messages as particles, and particles onto the broker. Written in Rust on code-native."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }
+# A pure-Rust client: a thread of its own keeps the connection, resends
+# what was asked for after a reconnect, and hands each message to this
+# module as it arrives.
+# No TLS: the broker is on the home network, over plain TCP.
+rumqttc = { version = "0.25", default-features = false }
