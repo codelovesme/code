@@ -294,6 +294,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "storage",
     "timer",
     "mqtt",
+    "ntfy",
 ];
 
 /// Where this repository's releases live. Overridable for offline work and

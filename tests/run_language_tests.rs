@@ -178,6 +178,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         "guest",
         "timer",
         "mqtt",
+        "ntfy",
         "mailer_mock",
         "oauth_mock",
         "mongodb_mock",

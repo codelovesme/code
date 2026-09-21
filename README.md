@@ -1599,7 +1599,10 @@ wrote into it while it runs — see
 [its README](crates/modules/interpreter/README.md)), `mqtt` (a broker's
 messages arriving as the particle the program named, and particles
 published onto it — the house's sensors and switches, over Mosquitto — see
-[its README](crates/modules/mqtt/README.md)), `localai` (chat
+[its README](crates/modules/mqtt/README.md)), `ntfy` (a push
+notification to a phone through an ntfy server — a sensor's battery is low,
+a door was left open — see [its README](crates/modules/ntfy/README.md)),
+`localai` (chat
 completions and audio transcription over an OpenAI-compatible endpoint — see
 [its README](crates/modules/localai/README.md)), `http_client` (the seven HTTP
 methods, and `Exception`/`Log` pushed back — see
@@ -1758,7 +1761,7 @@ crates/
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
                 azure_mailer,
                 oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,
-                media, clipboard, interpreter, mqtt,
+                media, clipboard, interpreter, mqtt, ntfy,
                 http_client, http_server, net_client, net_server — plus
                 <name>_mock twins for
                 mailer, oauth, mongodb, blob_storage, cloud_drive, git, localai

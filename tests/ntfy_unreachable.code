@@ -1,0 +1,45 @@
+| `ntfy` with nobody to talk to: nothing here needs a network. Config is
+| checked where it arrives; a notification before Config is an Exception;
+| port 1 on loopback is refused, so a Notify is an Exception carrying the
+| reason — nothing is queued for a server that may come back.
+link "native_modules/ntfy.so" as push
+
+emit Config {} to push get no_topic
+assert no_topic ∈ Exception
+assert no_topic.source = "ntfy"
+emit Config { topic = "has/slash" } to push get bad_topic
+assert bad_topic ∈ Exception
+emit Config { topic = "alerts", url = "ntfy.sh" } to push get bad_url
+assert bad_url ∈ Exception
+emit Config { topic = "alerts", username = "me" } to push get half_auth
+assert half_auth ∈ Exception
+
+| Nothing before Config.
+emit Notify { message = "hi" } to push get too_early
+assert too_early ∈ Exception
+assert too_early.source = "ntfy"
+
+emit Config { topic = "alerts", url = "http://127.0.0.1:1", timeout_seconds = 2 } to push get c
+assert c ∈ ConfigResult
+assert c.ok
+
+| The particle is checked before the wire is touched.
+emit Notify {} to push get no_message
+assert no_message ∈ Exception
+emit Notify { message = "hi", priority = 9 } to push get bad_priority
+assert bad_priority ∈ Exception
+emit Notify { message = "hi", priority = "loud" } to push get bad_name
+assert bad_name ∈ Exception
+emit Notify { message = "hi", tags = [1] } to push get bad_tag
+assert bad_tag ∈ Exception
+emit Notify { message = "hi", topic = "no spaces" } to push get bad_override
+assert bad_override ∈ Exception
+
+| Nobody answers on port 1: refused now, with the reason.
+emit Notify { message = "battery low", title = "Bedroom sensor", priority = "high", tags = ["battery", "warning"] } to push get refused
+assert refused ∈ Exception
+assert refused.source = "ntfy"
+
+| Not a handler of this module: null, not an error.
+emit Ping {} to push get nothing
+assert nothing = null
