@@ -8,9 +8,11 @@
 //! `Drop`) — over a `HashMap` of collections that lives for the process.
 //!
 //! `Find` supports the filter shapes the euglena apps use: exact-match on
-//! any field, `sort` by one key, `limit`, `skip`. No aggregation, no
-//! operators (`$gt`, …) — the same subset the real module ships, minus the
-//! server.
+//! any field, the comparison operators (`$gt`, `$gte`, `$lt`, `$lte`,
+//! `$ne`) as `{ field: { "$gte": value } }`, `sort` by one key, `limit`,
+//! `skip`. No aggregation. An operator outside that set is an error rather
+//! than a silent mismatch, so a fixture cannot pass on a filter the real
+//! server would read differently.
 //!
 //! `code_release` needs no code here — `code-native` links the vendored
 //! `runtime.c` into the cdylib and re-exports it.
@@ -179,6 +181,9 @@ fn insert_many(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> 
 fn find(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let coll = require_str(particle, "collection", "Find")?.to_string();
     let filter = optional_object(particle, "filter")?;
+    if let Some(op) = unsupported(&filter) {
+        return Err(format!("Find: the mock does not know the filter operator '{op}'"));
+    }
     let sort = optional_object(particle, "sort")?;
     let limit = whole_number(particle, "limit")?;
     let skip = whole_number(particle, "skip")?.unwrap_or(0).max(0) as usize;
@@ -233,6 +238,9 @@ fn find(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 fn count(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let coll = require_str(particle, "collection", "Count")?.to_string();
     let filter = optional_object(particle, "filter")?;
+    if let Some(op) = unsupported(&filter) {
+        return Err(format!("Count: the mock does not know the filter operator '{op}'"));
+    }
     let n = with_db(|db| {
         db.get(&coll)
             .map(|docs| docs.iter().filter(|d| matches_filter(d, &filter)).count())
@@ -253,11 +261,49 @@ fn drop_collection(out: &mut CodeValue, particle: &CodeValue) -> Result<(), Stri
 // Query helpers
 // ---------------------------------------------------------------------------
 
+/// The comparison operators a filter value may carry.
+const OPERATORS: [&str; 5] = ["$gt", "$gte", "$lt", "$lte", "$ne"];
+
+/// A filter value like `{ "$gte": 10 }` — every key an operator. A document
+/// with a `$` key could only be a query, never stored data.
+fn operators(want: &Json) -> Option<&Map<String, Json>> {
+    match want {
+        Json::Object(m) if !m.is_empty() && m.keys().all(|k| k.starts_with('$')) => Some(m),
+        _ => None,
+    }
+}
+
+/// The first operator in `filter` this module cannot honour, if any.
+fn unsupported(filter: &Option<Map<String, Json>>) -> Option<String> {
+    let ops = filter.as_ref()?.values().filter_map(operators);
+    for op in ops {
+        for key in op.keys() {
+            if !OPERATORS.contains(&key.as_str()) {
+                return Some(key.clone());
+            }
+        }
+    }
+    None
+}
+
+fn matches_one(got: Option<&Json>, want: &Json) -> bool {
+    use std::cmp::Ordering;
+    let Some(ops) = operators(want) else {
+        return got == Some(want);
+    };
+    ops.iter().all(|(op, v)| match op.as_str() {
+        "$gt" => json_cmp(got, Some(v)) == Ordering::Greater,
+        "$gte" => json_cmp(got, Some(v)) != Ordering::Less,
+        "$lt" => json_cmp(got, Some(v)) == Ordering::Less,
+        "$lte" => json_cmp(got, Some(v)) != Ordering::Greater,
+        "$ne" => got != Some(v),
+        _ => false,
+    })
+}
+
 fn matches_filter(doc: &Map<String, Json>, filter: &Option<Map<String, Json>>) -> bool {
     let Some(filter) = filter else { return true };
-    filter
-        .iter()
-        .all(|(k, want)| doc.get(k).map(|got| got == want).unwrap_or(false))
+    filter.iter().all(|(k, want)| matches_one(doc.get(k), want))
 }
 
 fn json_cmp(a: Option<&Json>, b: Option<&Json>) -> std::cmp::Ordering {

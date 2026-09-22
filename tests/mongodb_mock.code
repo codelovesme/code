@@ -58,5 +58,32 @@ assert dr.dropped
 emit Count { collection = "events" } to db get gone
 assert gone.count = 0
 
+| The comparison operators, the shape a time window is asked for in.
+emit Insert { collection = "readings", doc = { kind = "temperature", at = 10 } } to db
+emit Insert { collection = "readings", doc = { kind = "temperature", at = 20 } } to db
+emit Insert { collection = "readings", doc = { kind = "temperature", at = 30 } } to db
+
+emit Count { collection = "readings", filter = { at = { "\$gte" = 20 } } } to db get from20
+assert from20.count = 2
+emit Count { collection = "readings", filter = { at = { "\$gt" = 20 } } } to db get after20
+assert after20.count = 1
+emit Count { collection = "readings", filter = { at = { "\$lte" = 20 } } } to db get to20
+assert to20.count = 2
+emit Count { collection = "readings", filter = { at = { "\$lt" = 20 } } } to db get before20
+assert before20.count = 1
+emit Count { collection = "readings", filter = { at = { "\$ne" = 20 } } } to db get not20
+assert not20.count = 2
+
+| Two bounds at once, and an exact match beside them.
+emit Find { collection = "readings", filter = { kind = "temperature", at = { "\$gte" = 20, "\$lt" = 30 } }, sort = { at = 1 } } to db get window
+assert window.count = 1
+assert window.items[0].at = 20
+
+| An operator the mock cannot honour is an error, not an empty answer.
+emit Find { collection = "readings", filter = { at = { "\$in" = [10, 20] } } } to db get unknown
+assert unknown ∈ Exception
+
+emit Drop { collection = "readings" } to db
+
 emit Aggregate {} to db get u
 assert u = null
