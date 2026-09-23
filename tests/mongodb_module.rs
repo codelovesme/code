@@ -8,19 +8,15 @@
 
 #![cfg(all(feature = "llvm", feature = "native-modules"))]
 
-use std::path::{Path, PathBuf};
+#[path = "support/modules.rs"]
+mod modules;
+
+use std::path::PathBuf;
 use std::process::Command;
 use std::{env, fs};
 
 fn build_module() -> PathBuf {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/modules/mongodb");
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .expect("run cargo for crates/modules/mongodb");
-    assert!(status.success(), "cargo failed to build mongodb");
-    crate_dir.join("target/release/libmongodb.so")
+    modules::build_so("mongodb")
 }
 
 #[test]

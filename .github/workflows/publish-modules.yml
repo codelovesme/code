@@ -10,7 +10,12 @@ on:
   # Manual dry-run: builds every platform artifact and uploads them as
   # Actions artifacts, but creates no GitHub Release (guarded below), so
   # the pipeline can be exercised without cutting a tag.
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      rebuild_all:
+        description: "Build every module, reusing nothing from the previous release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -44,6 +49,97 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+  # Which modules this release builds, and which it takes as they are from
+  # the previous release. One version for everything still means every
+  # module is *released* at every tag — but a module whose source has not
+  # moved since the last release is the same bytes either way, and compiling
+  # all of them took most of this workflow's time. So each module is
+  # fingerprinted (scripts/module-hashes.sh — its own files, code-native,
+  # and the compiler for the two modules built on it, with the version
+  # number blanked), the fingerprints are published beside the artifacts as
+  # module-hashes.json, and the next release compares against them.
+  #
+  # Reused is only ever *not compiled*: every module, reused or built, still
+  # goes through dogfood below against this release's `code`, and gets a
+  # fresh module.json with this release's version.
+  #
+  # Everything is built when there is nothing trustworthy to compare with —
+  # no previous release, one without module-hashes.json, one missing the
+  # asset — or when a manual run asks for it (`rebuild_all`).
+  plan:
+    name: Plan (build what changed, reuse the rest)
+    needs: resolve
+    runs-on: ubuntu-latest
+    outputs:
+      all: ${{ steps.plan.outputs.all }}
+      wasm: ${{ steps.plan.outputs.wasm }}
+      build: ${{ steps.plan.outputs.build }}
+      build_wasm: ${{ steps.plan.outputs.build_wasm }}
+      reuse: ${{ steps.plan.outputs.reuse }}
+      previous: ${{ steps.plan.outputs.previous }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        run: |
+          set -euo pipefail
+          scripts/module-hashes.sh > hashes.txt
+          jq -Rn '[inputs | split(" ") | {key: .[0], value: .[1]}] | from_entries' \
+            hashes.txt > module-hashes.json
+
+          # The newest release that is not this one (release.yml may already
+          # have created this tag's).
+          previous=""
+          if [[ "${{ inputs.rebuild_all }}" != "true" ]]; then
+            previous="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 20 \
+              --json tagName -q '.[].tagName' | grep -vx "$GITHUB_REF_NAME" | head -n1 || true)"
+          fi
+          old='{}'
+          assets=''
+          if [[ -n "$previous" ]] && gh release download "$previous" --repo "$GITHUB_REPOSITORY" \
+               -p module-hashes.json -O previous-hashes.json 2>/dev/null; then
+            old="$(cat previous-hashes.json)"
+            assets="$(gh release view "$previous" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')"
+          fi
+
+          all=(); wasm=(); build=(); build_wasm=(); reuse=()
+          while read -r m hash half; do
+            all+=("$m")
+            [[ "$half" == 1 ]] && wasm+=("$m")
+            same="$(jq -r --arg m "$m" --arg h "$hash" '.[$m] == $h' <<<"$old")"
+            if [[ "$same" == true ]] && grep -qx "${m}-linux-x86_64.so" <<<"$assets" \
+                 && { [[ "$half" == 0 ]] || grep -qx "${m}-wasm32.a" <<<"$assets"; }; then
+              reuse+=("$m")
+            else
+              build+=("$m")
+              [[ "$half" == 1 ]] && build_wasm+=("$m")
+            fi
+          done < hashes.txt
+
+          json() { printf '%s\n' "$@" | jq -Rnc '[inputs | select(length > 0)]'; }
+          {
+            echo "all=$(json "${all[@]}")"
+            echo "wasm=$(json "${wasm[@]}")"
+            echo "build=$(json "${build[@]}")"
+            echo "build_wasm=$(json "${build_wasm[@]}")"
+            echo "reuse=$(json "${reuse[@]}")"
+            echo "previous=$previous"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Module release plan"
+            echo "Compared with: ${previous:-nothing — building everything}"
+            echo ""
+            echo "**Build (${#build[@]}):** ${build[*]:-none}"
+            echo ""
+            echo "**Reuse from ${previous:-—} (${#reuse[@]}):** ${reuse[*]:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-plan
+          path: module-hashes.json
+          if-no-files-found: error
+
   # Every build job compiles the same way — one self-contained crate, no
   # external dependencies — so the only differences are the runner, the
   # compiler invocation, and the artifact extension (.so vs .dylib).
@@ -55,15 +151,16 @@ jobs:
   # doc: <module>-<platform><ext>.
   build-linux-x86_64:
     name: Build ${{ matrix.module }} (linux-x86_64)
-    needs: resolve
+    needs: [resolve, plan]
+    if: needs.plan.outputs.build != '[]'
     runs-on: ubuntu-latest
     strategy:
-      # Every module, every release. Keep this list in step with
-      # crates/modules/ — the dogfood step below fails loudly on a module it
-      # has no demo for, which is what catches an addition here that was made
-      # without one.
+      # The modules `plan` found changed. The full list is crates/modules/
+      # itself, so a module added there is built without anyone editing this
+      # file — and the dogfood step below still fails loudly on a module it
+      # has no demo for.
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, interpreter, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, mqtt, ntfy, tty, syntax, oauth_mock]
+        module: ${{ fromJSON(needs.plan.outputs.build) }}
     steps:
       - uses: actions/checkout@v4
       # Each module is its own workspace with its own Cargo.lock (see those
@@ -93,16 +190,18 @@ jobs:
   # the module rather than opened beside it.
   #
   # A short list on purpose. Most modules reach for a socket, a file or a
-  # clock and do not compile for `wasm32-unknown-unknown` at all; the two
-  # here are the two a page can use, and a third joins them by being added
-  # to this list and building.
+  # clock and do not compile for `wasm32-unknown-unknown` at all. The ones
+  # that do are the ones with a page half — a `page.mjs` beside their
+  # Cargo.toml — which is how `plan` finds them; of those, the changed ones
+  # are built here.
   build-wasm32:
     name: Build ${{ matrix.module }} (wasm32)
-    needs: resolve
+    needs: [resolve, plan]
+    if: needs.plan.outputs.build_wasm != '[]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, dom, guest, http_client, json, media, net_client, router, storage, clipboard, timer]
+        module: ${{ fromJSON(needs.plan.outputs.build_wasm) }}
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
@@ -127,6 +226,41 @@ jobs:
         with:
           name: module-${{ matrix.module }}-wasm32
           path: "dist/*.a"
+
+  # The modules `plan` found unchanged: their artifacts from the previous
+  # release, under the same artifact names a build would have given them, so
+  # dogfood and publish below cannot tell the difference.
+  reuse:
+    name: Reuse ${{ matrix.module }} from ${{ needs.plan.outputs.previous }}
+    needs: [resolve, plan]
+    if: needs.plan.outputs.reuse != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: ${{ fromJSON(needs.plan.outputs.reuse) }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download from the previous release
+        run: |
+          set -euo pipefail
+          m="${{ matrix.module }}"
+          prev="${{ needs.plan.outputs.previous }}"
+          gh release download "$prev" --repo "$GITHUB_REPOSITORY" -D dist -p "${m}-linux-x86_64.so"
+          if [[ "${{ contains(fromJSON(needs.plan.outputs.wasm), matrix.module) }}" == true ]]; then
+            gh release download "$prev" --repo "$GITHUB_REPOSITORY" -D dist -p "${m}-wasm32.a"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: module-${{ matrix.module }}-linux-x86_64
+          path: "dist/*.so"
+          if-no-files-found: error
+      - if: contains(fromJSON(needs.plan.outputs.wasm), matrix.module)
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-${{ matrix.module }}-wasm32
+          path: "dist/*.a"
+          if-no-files-found: error
 
   # The `code` binary every dogfood job below needs — built once here rather
   # than 27 times over there. That is what it used to be: each of the 27
@@ -161,16 +295,22 @@ jobs:
           if-no-files-found: error
 
   # Proof the artifact actually loads: take the real `code` binary and run
-  # a script that links the just-built .so through BOTH output modes — the
-  # same parity invariant the fixture harness enforces, applied to the
-  # shipped artifact rather than the test-tree build.
+  # a script that links the .so through BOTH output modes — the same parity
+  # invariant the fixture harness enforces, applied to the shipped artifact
+  # rather than the test-tree build. Every module, built or reused: a reused
+  # one was proven against the previous release's `code`, and this is what
+  # proves it against this one.
+  #
+  # `!failure()` rather than the default: a build or reuse job with nothing
+  # to do is skipped, and a skipped dependency would otherwise skip this too.
   dogfood:
     name: Dogfood ${{ matrix.module }} (code run + code build)
-    needs: [resolve, build-code, build-linux-x86_64]
+    needs: [resolve, plan, build-code, build-linux-x86_64, reuse]
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, interpreter, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, mqtt, ntfy, tty, syntax, oauth_mock]
+        module: ${{ fromJSON(needs.plan.outputs.all) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -456,10 +596,13 @@ jobs:
     needs:
       [
         resolve,
+        plan,
         build-linux-x86_64,
         build-wasm32,
+        reuse,
         dogfood,
       ]
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     steps:
       # `pattern` rather than everything: since the `code` binary became an
@@ -471,6 +614,13 @@ jobs:
         with:
           path: dist
           pattern: module-*
+      # The fingerprints this release was planned from, published beside the
+      # artifacts for the next release's `plan` to compare against.
+      - name: Download the release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: release-plan
+          path: dist
       - name: Flatten into dist/
         run: find dist -type f \( -name '*.so' -o -name '*.dylib' -o -name '*.a' \) -exec mv {} dist/ \;
       - name: Write one module.json per module
@@ -478,7 +628,7 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer azure_mailer oauth mongodb azure_blob blob_storage cloud_drive localai interpreter blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest media router storage clipboard timer mqtt ntfy tty syntax oauth_mock; do
+          for m in $(jq -r '.[]' <<<'${{ needs.plan.outputs.all }}'); do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in

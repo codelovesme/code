@@ -62,7 +62,19 @@ Also worth knowing:
 - `src/runtime.c` and `crates/code-native/vendor/runtime.c` **must stay
   byte-identical** (`tests/native_crate_vendor_sync.rs` enforces it).
 - Each `crates/modules/<name>/` is its own standalone workspace (empty
-  `[workspace]` table).
+  `[workspace]` table). **Tests build them all into one shared
+  `target/modules/`** (`tests/support/modules.rs` — use it, never a bare
+  `cargo build` in a module dir from a test). Before 2026-09-24 each built
+  into its own `target/`: 11 GB of duplicate dependencies, and a one-line
+  `code-native` change took 210s to rebuild the modules; now 1.1 GB and 28s.
+  The old `crates/modules/*/target/` folders are dead weight and can go.
+- **The quick loop: `scripts/test-changed.sh`** (`-n` to only print the
+  plan). It diffs against `origin/main`; if only modules and fixtures moved,
+  it runs just their fixtures and tests (`ntfy`: ~28s). Anything shared —
+  `src/`, `code-native`, the runtime — gets the full `--workspace` suite, for
+  the reason above. `FIXTURES=console_,fail_emit cargo test --test
+  run_language_tests` is the manual form: only those fixtures, and only the
+  modules they link. CI always runs everything.
 - `target/release/code` on this machine may be stale. Prefer `target/debug/code`
   when a test needs `EUGLENA_TEST_CODE_BIN`.
 
@@ -107,12 +119,10 @@ language suite's property to prove.
 Miss one of these and it half-exists:
 
 `src/module_install.rs` FIRST_PARTY · `.github/workflows/publish-modules.yml`
-(2 build matrices + dogfood case + handlers case + `setup` alternation —
-**and the `build-wasm32` matrix, if the module has a `page.mjs`**: it is a
-third list, it is easy to miss, and missing it publishes a browser module's
-`.so` and not its archive, so the release looks complete and the one platform
-the module works on is the one absent. `media` shipped that way in 2.6.0.
-`tests/first_party_modules.rs` now refuses it) ·
+(dogfood case + handlers case + `setup` alternation — there are no module
+lists to edit any more: every matrix comes from the `plan` job, which reads
+`crates/modules/`, and a `page.mjs` is what sends a module to the wasm32
+build; `tests/first_party_modules.rs` holds the workflow to that) ·
 `tests/run_language_tests.rs` stem list + doc comment ·
 `crates/modules/<name>/README.md` · `README.md` (2 spots) ·
 `docs/todo/community-modules.md` · `.github/workflows/ci.yml` services if it
@@ -397,9 +407,22 @@ Cutting a release is the one act that is **not** pre-authorised — a tag
 publishes to package registries and cannot be taken back. Say it out loud first.
 
 A tag triggers `release.yml`, `publish-modules.yml`, `publish-crates-native.yml`
-(crates.io) and `publish-npm-wasm.yml`. `one_version.rs` forces all 32 manifests
+(crates.io) and `publish-npm-wasm.yml`. `one_version.rs` forces every manifest
 (every module crate + code-wasm + code-native + npm + `editor/vscode/package.json`)
-to the same version — bump them together.
+to the same version. **Bump with `scripts/bump-version.py X.Y.Z`** — about a
+hundred files, our own `Cargo.lock` entries included and third-party crates
+that share the number left alone; it refuses a major without `--major` and
+runs `one_version` after.
+
+**Every module is released at every tag, but only changed ones are compiled.**
+`publish-modules.yml`'s `plan` job fingerprints each module
+(`scripts/module-hashes.sh`: its files, `code-native`, and the compiler for
+`interpreter`/`syntax`, version number blanked) and compares with the
+`module-hashes.json` attached to the previous release. Unchanged modules are
+downloaded from that release; changed ones are built. Every module — reused
+or not — is still dogfooded against the new `code` and gets a fresh
+`module.json`. A manual run with `rebuild_all` builds everything; so does a
+previous release with no `module-hashes.json`.
 
 **The local build is ahead of the last release carrying module assets.** To
 exercise `code install` locally against real assets, point at a release that has

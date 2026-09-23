@@ -11,10 +11,13 @@
 
 #![cfg(all(feature = "llvm", feature = "native-modules"))]
 
+#[path = "support/modules.rs"]
+mod modules;
+
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 /// Exactly the bytes `http_client_module.code` asserts on — 26 of them, which is
@@ -99,21 +102,11 @@ fn handle(mut stream: TcpStream) {
     }
 }
 
-/// Build the module and return the `.so`'s path. Shares
-/// `crates/modules/http_client`'s target directory with the fixture harness, which
-/// builds the same crate — cargo's own lock serialises the two.
+/// Build the module and return the `.so`'s path. Shares the module target
+/// directory with the fixture harness, which builds the same crate — cargo's
+/// own lock serialises the two.
 fn build_http_client_module() -> PathBuf {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/modules/http_client");
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .expect("run cargo for crates/modules/http_client");
-    assert!(
-        status.success(),
-        "cargo failed to build crates/modules/http_client"
-    );
-    crate_dir.join("target/release/libhttp_client.so")
+    modules::build_so("http_client")
 }
 
 #[test]

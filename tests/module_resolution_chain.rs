@@ -16,9 +16,11 @@
 //! collide and no test depends on another test's artifacts. Environment
 //! changes are restored afterwards.
 
+#[path = "support/modules.rs"]
+mod modules;
+
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::{Mutex, MutexGuard};
 
 /// Serializes the tests' `HOME`/`CODE_MODULE_PATH` swaps: those are process
@@ -51,14 +53,7 @@ fn fixture_dir(name: &str) -> PathBuf {
 /// does not depend on which other test happened to run first. `cargo`'s own
 /// lock serialises the two when they overlap.
 fn build_test_math(dest: &Path) {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/native_modules/test_math");
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .unwrap_or_else(|e| panic!("failed to run cargo for test_math: {e}"));
-    assert!(status.success(), "cargo failed to build test_math");
-    let built = crate_dir.join("target/release/libtest_math.so");
+    let built = modules::build_so("test_math");
     fs::copy(&built, dest)
         .unwrap_or_else(|e| panic!("cannot copy {} to {}: {e}", built.display(), dest.display()));
 }

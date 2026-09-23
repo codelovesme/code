@@ -8,23 +8,19 @@
 
 #![cfg(all(feature = "llvm", feature = "native-modules"))]
 
+#[path = "support/modules.rs"]
+mod modules;
+
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::{channel, Sender};
 use std::{fs, thread};
 
 /// Build the module and return the `.so`'s path.
 fn build_module() -> PathBuf {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/modules/mailer");
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .expect("run cargo for crates/modules/mailer");
-    assert!(status.success(), "cargo failed to build mailer");
-    crate_dir.join("target/release/libmailer.so")
+    modules::build_so("mailer")
 }
 
 /// One connection of a plaintext SMTP server: enough of RFC 5321 to accept a

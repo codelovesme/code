@@ -14,9 +14,12 @@
 
 #![cfg(all(feature = "llvm", feature = "native-modules"))]
 
+#[path = "support/modules.rs"]
+mod modules;
+
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc::{channel, Sender};
 use std::{fs, thread};
@@ -25,14 +28,7 @@ use std::{fs, thread};
 const ACCESS_KEY_B64: &str = "c2VjcmV0LWtleQ==";
 
 fn build_module() -> PathBuf {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/modules/azure_mailer");
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .expect("run cargo for crates/modules/azure_mailer");
-    assert!(status.success(), "cargo failed to build azure_mailer");
-    crate_dir.join("target/release/libazure_mailer.so")
+    modules::build_so("azure_mailer")
 }
 
 /// One request: read the head and the body, hand both back, answer the way

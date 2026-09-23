@@ -12,14 +12,16 @@
 //! written, built and published without anyone editing it, so `code install
 //! env` answered "unknown module". So the list is held here to the two other
 //! places that enumerate the same set — the `crates/modules/` directory, which
-//! is the ground truth, and the publish workflow's build matrix, which decides
-//! what actually reaches a release.
+//! is the ground truth, and the release plan (`scripts/module-hashes.sh`,
+//! which every matrix in the publish workflow takes its modules from), which
+//! decides what actually reaches a release.
 //!
 //! The failure this stops is never a broken build; it is a module that exists
 //! and cannot be installed.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn repo(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(path)
@@ -38,36 +40,54 @@ fn modules_on_disk() -> Vec<String> {
     names
 }
 
-/// Every `module: [a, b, c]` matrix in the publish workflow. There is one per
-/// job (build, dogfood); both must cover every module or a release ships an
-/// artifact nothing proved, or proves an artifact it never built.
-fn workflow_matrices() -> Vec<(String, Vec<String>)> {
+/// Every `module:` matrix in the publish workflow, with the job it belongs
+/// to.
+fn workflow_matrices() -> Vec<(String, String)> {
     let text = fs::read_to_string(repo(".github/workflows/publish-modules.yml"))
         .expect("read publish-modules.yml");
     let mut job = String::new();
     let mut found = Vec::new();
     for line in text.lines() {
         // A job header is the only thing indented exactly two spaces and
-        // ending in a colon — enough to say which job a matrix belongs to,
-        // which is what tells a platform matrix from the browser's.
+        // ending in a colon — enough to say which job a matrix belongs to.
         if let Some(name) = line.strip_prefix("  ") {
             if !name.starts_with(' ') && name.ends_with(':') && !name.contains(' ') {
                 job = name.trim_end_matches(':').to_owned();
             }
         }
-        if let Some(rest) = line.trim().strip_prefix("module: [") {
-            if let Some(inner) = rest.strip_suffix(']') {
-                let mut names: Vec<String> = inner
-                    .split(',')
-                    .map(|name| name.trim().to_owned())
-                    .filter(|name| !name.is_empty())
-                    .collect();
-                names.sort();
-                found.push((job.clone(), names));
-            }
+        if let Some(rest) = line.trim().strip_prefix("module: ") {
+            found.push((job.clone(), rest.to_owned()));
         }
     }
     found
+}
+
+/// What `scripts/module-hashes.sh` plans a release from: each module's name
+/// and whether it has a browser half.
+fn release_plan() -> Vec<(String, bool)> {
+    let output = Command::new("bash")
+        .arg(repo("scripts/module-hashes.sh"))
+        .output()
+        .expect("run scripts/module-hashes.sh");
+    assert!(
+        output.status.success(),
+        "scripts/module-hashes.sh failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mut plan: Vec<(String, bool)> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|line| {
+            let fields: Vec<&str> = line.split(' ').collect();
+            assert_eq!(
+                fields.len(),
+                3,
+                "unexpected line from module-hashes.sh: {line}"
+            );
+            (fields[0].to_owned(), fields[2] == "1")
+        })
+        .collect();
+    plan.sort();
+    plan
 }
 
 #[test]
@@ -88,58 +108,61 @@ fn the_compiled_in_list_is_every_module_in_the_tree() {
 }
 
 #[test]
-fn the_publish_workflow_builds_every_module() {
-    let on_disk = modules_on_disk();
-    let matrices = workflow_matrices();
-
-    assert!(
-        matrices.len() >= 2,
-        "expected a `module:` matrix in both the build and dogfood jobs of \
-         publish-modules.yml, found {}",
-        matrices.len()
+fn the_release_plan_covers_every_module() {
+    let plan = release_plan();
+    let names: Vec<String> = plan.iter().map(|(name, _)| name.clone()).collect();
+    assert_eq!(
+        names,
+        modules_on_disk(),
+        "scripts/module-hashes.sh and `crates/modules/` disagree — a module the \
+         release plan does not list is never built, reused, dogfooded or \
+         attached to the release, so installing it by name fails."
     );
-    for (job, matrix) in &matrices {
-        // The browser's matrix is deliberately short: most modules reach for
-        // a socket, a file or a clock and do not compile for wasm at all. It
-        // is held to being a real subset instead — a name here with no module
-        // behind it would fail the release at the build step.
-        if job.contains("wasm") {
-            assert!(!matrix.is_empty(), "the wasm32 matrix builds nothing");
-            for name in matrix {
-                assert!(
-                    on_disk.contains(name),
-                    "publish-modules.yml builds '{name}' for wasm32, but there is no \
-                     such module in crates/modules/"
-                );
-            }
-            // And every module that *has* a page half is in it. A browser
-            // module absent here still publishes — its `.so`, for a machine
-            // it cannot work on — so the release looks complete and the one
-            // platform the module exists for is the one missing. That is how
-            // `media` shipped in 2.6.0 with no `media-wasm32.a`: the subset
-            // check above passed, because a missing name is a subset too.
-            for name in &on_disk {
-                let half = Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("crates/modules")
-                    .join(name)
-                    .join("page.mjs");
-                if half.is_file() {
-                    assert!(
-                        matrix.contains(name),
-                        "crates/modules/{name} has a page.mjs — it is a browser module — but \
-                         publish-modules.yml's wasm32 matrix does not build it, so a release \
-                         would carry no {name}-wasm32.a and no page could link it"
-                    );
-                }
-            }
-            continue;
-        }
+
+    // The browser's half: a module with a page.mjs is a browser module, and
+    // the plan is what sends it to the wasm32 build. That is how `media`
+    // shipped in 2.6.0 with no `media-wasm32.a` — back when the wasm32 list
+    // was typed out by hand, a module missing from it still passed.
+    for (name, wasm) in &plan {
+        let half = repo("crates/modules").join(name).join("page.mjs");
         assert_eq!(
-            matrix, &on_disk,
-            "a `module:` matrix in publish-modules.yml does not match \
-             `crates/modules/` — a module left out of it is never built, \
-             dogfooded or attached to the release, so installing it by name \
-             fails against a release that does not carry it."
+            *wasm,
+            half.is_file(),
+            "the release plan says {name} {} a browser half, but crates/modules/{name}/page.mjs {}",
+            if *wasm { "has" } else { "has no" },
+            if half.is_file() { "exists" } else { "does not" }
+        );
+    }
+}
+
+#[test]
+fn the_publish_workflow_takes_its_modules_from_the_plan() {
+    // Every matrix comes from `plan`, which lists crates/modules/ itself. A
+    // module list typed into the workflow is the drift this file exists to
+    // stop: it is how `env` and `http_server` once shipped uninstallable.
+    let expected = [
+        ("build-linux-x86_64", "build"),
+        ("build-wasm32", "build_wasm"),
+        ("reuse", "reuse"),
+        ("dogfood", "all"),
+    ];
+    let matrices = workflow_matrices();
+    for (job, output) in expected {
+        let want = format!("${{{{ fromJSON(needs.plan.outputs.{output}) }}}}");
+        assert!(
+            matrices.iter().any(|(j, m)| j == job && *m == want),
+            "publish-modules.yml's `{job}` job should take `module: {want}`; found {:?}",
+            matrices
+                .iter()
+                .filter(|(j, _)| j == job)
+                .collect::<Vec<_>>()
+        );
+    }
+    for (job, matrix) in &matrices {
+        assert!(
+            matrix.starts_with("${{ fromJSON(needs.plan.outputs."),
+            "publish-modules.yml's `{job}` job lists its modules by hand ({matrix}); \
+             take them from the `plan` job instead"
         );
     }
 }

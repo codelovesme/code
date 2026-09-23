@@ -9,21 +9,17 @@
 
 #![cfg(all(feature = "llvm", feature = "native-modules"))]
 
+#[path = "support/modules.rs"]
+mod modules;
+
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::{fs, thread};
 
 fn build_module() -> PathBuf {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/modules/cloud_drive");
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .expect("run cargo for crates/modules/cloud_drive");
-    assert!(status.success(), "cargo failed to build cloud_drive");
-    crate_dir.join("target/release/libcloud_drive.so")
+    modules::build_so("cloud_drive")
 }
 
 const FILE_BODY: &str = "hello world";

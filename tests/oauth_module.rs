@@ -8,21 +8,17 @@
 
 #![cfg(all(feature = "llvm", feature = "native-modules"))]
 
+#[path = "support/modules.rs"]
+mod modules;
+
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::{fs, thread};
 
 fn build_module() -> PathBuf {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/modules/oauth");
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .expect("run cargo for crates/modules/oauth");
-    assert!(status.success(), "cargo failed to build oauth");
-    crate_dir.join("target/release/liboauth.so")
+    modules::build_so("oauth")
 }
 
 /// Serve exactly two requests — `POST /token`, then `GET /userinfo` — with

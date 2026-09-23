@@ -14,23 +14,19 @@
 
 #![cfg(all(feature = "llvm", feature = "native-modules"))]
 
+#[path = "support/modules.rs"]
+mod modules;
+
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use std::{fs, thread};
 
 /// Build the module and return the `.so`'s path.
 fn build_module() -> PathBuf {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/modules/http_server");
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .expect("run cargo for crates/modules/http_server");
-    assert!(status.success(), "cargo failed to build http_server");
-    crate_dir.join("target/release/libhttp_server.so")
+    modules::build_so("http_server")
 }
 
 /// A port nothing is listening on: bind zero, read what the OS chose, let go.

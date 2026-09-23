@@ -8,19 +8,15 @@
 
 #![cfg(all(feature = "llvm", feature = "native-modules"))]
 
-use std::path::{Path, PathBuf};
+#[path = "support/modules.rs"]
+mod modules;
+
+use std::path::PathBuf;
 use std::process::Command;
 use std::{env, fs};
 
 fn build_module() -> PathBuf {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/modules/blob_storage");
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .expect("run cargo for crates/modules/blob_storage");
-    assert!(status.success(), "cargo failed to build blob_storage");
-    crate_dir.join("target/release/libblob_storage.so")
+    modules::build_so("blob_storage")
 }
 
 #[test]

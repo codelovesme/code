@@ -15,6 +15,9 @@
 //! than the published version would be, since it catches a template that
 //! stopped matching the ABI as it stands *now* rather than as it shipped.
 
+#[path = "support/modules.rs"]
+mod modules;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -69,15 +72,19 @@ fn the_module_template_builds_and_its_fixture_passes_in_both_modes() {
     std::fs::create_dir_all(&dir).expect("create test directory");
     let module = staged(&dir);
 
+    // Into the shared module target directory, so `code-native` and the
+    // template's dependencies are not rebuilt from nothing on every run —
+    // the copy is fresh each time, the crates it builds against are not.
     let status = Command::new(env!("CARGO"))
         .args(["build", "--release"])
         .current_dir(&module)
+        .env("CARGO_TARGET_DIR", modules::target_dir())
         .status()
         .expect("run cargo for the template");
     assert!(status.success(), "the module template does not build");
 
     // Beside the fixture, under the name the fixture's `link` uses.
-    let built = module.join("target/release/libgreet.so");
+    let built = modules::target_dir().join("release/libgreet.so");
     let linked = module.join("tests/greet.so");
     std::fs::copy(&built, &linked).expect("stage the built module beside its fixture");
 

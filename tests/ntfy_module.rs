@@ -14,6 +14,9 @@
 
 #![cfg(all(feature = "llvm", feature = "native-modules"))]
 
+#[path = "support/modules.rs"]
+mod modules;
+
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -23,16 +26,7 @@ use std::time::{Duration, Instant};
 use std::{fs, thread};
 
 fn build_module(name: &str) -> PathBuf {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("crates/modules")
-        .join(name);
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .unwrap_or_else(|e| panic!("run cargo for {name}: {e}"));
-    assert!(status.success(), "cargo failed to build {name}");
-    crate_dir.join(format!("target/release/lib{name}.so"))
+    modules::build_so(name)
 }
 
 fn workspace(tag: &str) -> PathBuf {

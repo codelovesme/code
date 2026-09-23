@@ -15,6 +15,9 @@
 
 #![cfg(all(feature = "llvm", feature = "native-modules"))]
 
+#[path = "support/modules.rs"]
+mod modules;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -56,24 +59,10 @@ fn build(dir: &Path, name: &str, source: &str, target: code::BuildTarget, out: &
 /// where the two suites start together. `cargo`'s own lock serialises the
 /// overlapping builds.
 fn module(stem: &str, dest: &Path) {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    // The `test_*` doubles live beside the fixtures; the shipped modules live
-    // under `crates/modules/`. Same split `run_language_tests.rs` makes.
-    let crate_dir = if stem.starts_with("test_") {
-        manifest_dir.join("tests/native_modules").join(stem)
-    } else {
-        manifest_dir.join("crates/modules").join(stem)
-    };
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .unwrap_or_else(|e| panic!("failed to run cargo for {stem}: {e}"));
-    assert!(status.success(), "cargo failed to build {stem}");
+    let built = modules::build_so(stem);
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).expect("create module directory");
     }
-    let built = crate_dir.join(format!("target/release/lib{stem}.so"));
     fs::copy(&built, dest)
         .unwrap_or_else(|e| panic!("cannot copy {} to {}: {e}", built.display(), dest.display()));
 }

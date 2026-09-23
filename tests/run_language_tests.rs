@@ -31,20 +31,24 @@
 //! there is no `dlopen` for a static archive — so these must *fail* under
 //! `code run` and succeed (with a clean exit, leak check included) under
 //! `code build`. There is no interpreted run at all for these.
+//!
+//! `FIXTURES=console_,fail_emit` runs only the fixtures whose names start
+//! with one of the comma-separated prefixes, and builds only the modules
+//! those fixtures `link` — the quick loop while working on one module
+//! (`scripts/test-changed.sh` sets it). Unset, everything runs, as on CI.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+#[path = "support/modules.rs"]
+mod modules;
 
 #[test]
 fn code_fixtures_run_as_expected() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
     let tmp_dir = std::env::temp_dir().join("code-compiler-tests");
     fs::create_dir_all(&tmp_dir).expect("create temp dir for compiled fixtures");
-
-    build_native_dynamic_test_modules(&dir);
-    build_native_static_test_modules(&dir);
-    build_code_test_guests(&dir);
 
     let mut fixtures: Vec<(String, PathBuf, Expect)> = Vec::new();
     for entry in fs::read_dir(&dir).expect("read tests/ directory") {
@@ -67,6 +71,33 @@ fn code_fixtures_run_as_expected() {
         "no .code fixtures found in {}",
         dir.display()
     );
+
+    let filter = std::env::var("FIXTURES").ok().map(|prefixes| {
+        prefixes
+            .split(',')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    });
+    // Everything the run needs, and — when filtered — nothing else: building
+    // forty-odd modules to run three fixtures is the wait this skips.
+    let wanted: Option<Vec<String>> = match &filter {
+        None => None,
+        Some(prefixes) => {
+            fixtures.retain(|(name, _, _)| prefixes.iter().any(|p| name.starts_with(p.as_str())));
+            assert!(
+                !fixtures.is_empty(),
+                "FIXTURES={} matches no fixture",
+                prefixes.join(",")
+            );
+            Some(linked_modules(&fixtures))
+        }
+    };
+    let wants = |stem: &str| wanted.as_ref().is_none_or(|w| w.iter().any(|m| m == stem));
+    build_native_dynamic_test_modules(&dir, &wants);
+    build_native_static_test_modules(&dir, &wants);
+    build_code_test_guests(&dir);
     // Sorted so a failing run names its fixtures in the same order every
     // time; the threads below finish in whatever order they finish.
     fixtures.sort_by(|a, b| a.0.cmp(&b.0));
@@ -117,6 +148,27 @@ fn code_fixtures_run_as_expected() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// Every `native_modules/<stem>.so` or `.a` the given fixtures name — which
+/// is every module they `link`, since that is the only way a fixture reaches
+/// one.
+fn linked_modules(fixtures: &[(String, PathBuf, Expect)]) -> Vec<String> {
+    let mut stems = Vec::new();
+    for (_, path, _) in fixtures {
+        let text = fs::read_to_string(path).unwrap_or_default();
+        for (at, _) in text.match_indices("native_modules/") {
+            let rest = &text[at + "native_modules/".len()..];
+            let stem: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !stem.is_empty() && !stems.contains(&stem) {
+                stems.push(stem);
+            }
+        }
+    }
+    stems
+}
+
 /// What a fixture's filename prefix (`fail_`/`buildonly_`/none) says about
 /// how the two output modes should behave — see this file's top comment.
 #[derive(Clone, Copy, PartialEq)]
@@ -142,11 +194,12 @@ enum Expect {
 /// fixtures cannot tell the difference. `http_client` is much the slowest to
 /// build cold (it pulls ureq and rustls); nothing here needs a network,
 /// though — its fixtures only ever talk to a refused port on loopback.
-fn build_native_dynamic_test_modules(tests_dir: &Path) {
+fn build_native_dynamic_test_modules(tests_dir: &Path, wants: &dyn Fn(&str) -> bool) {
     let modules_dir = tests_dir.join("native_modules");
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    // The Rust modules: `cargo build` inside each standalone workspace, then
-    // move the cdylib onto the same `native_modules/<stem>.so` convention.
+    // The Rust modules: `cargo build` inside each standalone workspace (into
+    // the shared module target directory — see `tests/support/modules.rs`),
+    // then copy the cdylib onto the same `native_modules/<stem>.so`
+    // convention.
     for stem in [
         "strings",
         "math",
@@ -193,29 +246,15 @@ fn build_native_dynamic_test_modules(tests_dir: &Path) {
         "test_timer",
         "test_panics",
     ] {
-        // `test_panics` is a test double rather than a shipped module, so
-        // it lives beside the other doubles instead of under crates/modules/.
-        // The `test_*` doubles live beside the fixtures; the shipped
-        // modules live under crates/modules/.
-        let crate_dir = if stem.starts_with("test_") {
-            modules_dir.join(stem)
-        } else {
-            manifest_dir.join("crates/modules").join(stem)
-        };
-        let cargo_status = Command::new("cargo")
-            .args(["build", "--release"])
-            .current_dir(&crate_dir)
-            .status()
-            .unwrap_or_else(|e| panic!("failed to run cargo for {stem}: {e}"));
-        assert!(
-            cargo_status.success(),
-            "cargo failed to build crates/modules/{stem}"
-        );
-        let built = crate_dir.join(format!("target/release/lib{stem}.so"));
+        if !wants(stem) {
+            continue;
+        }
+        let built = modules::build_so(stem);
         let dest = modules_dir.join(format!("{stem}.so"));
         // Copied, not moved: `tests/hosted_app.rs` builds the same crates
-        // for itself and takes them from `target/release/`, and a move would
-        // pull the file out from under it whenever the two suites overlap.
+        // for itself and takes them from the shared target directory, and a
+        // move would pull the file out from under it whenever the two suites
+        // overlap.
         fs::copy(&built, &dest).unwrap_or_else(|e| {
             panic!("cannot copy {} to {}: {e}", built.display(), dest.display())
         });
@@ -245,25 +284,21 @@ fn build_code_test_guests(tests_dir: &Path) {
 /// `staticlib` crate, which emits the archive directly, mirroring
 /// `build_native_dynamic_test_modules`' `cargo build` for the `.so`
 /// case.
-fn build_native_static_test_modules(tests_dir: &Path) {
+fn build_native_static_test_modules(tests_dir: &Path, wants: &dyn Fn(&str) -> bool) {
     let modules_dir = tests_dir.join("native_modules");
     for stem in [
         "test_math_static",
         "test_math_static_ambiguous",
         "test_events_static",
     ] {
-        let crate_dir = modules_dir.join(stem);
+        if !wants(stem) {
+            continue;
+        }
         // `cargo` emits the archive itself — no `cc -c` and `ar rcs` here,
         // because `crate-type = ["staticlib"]` is exactly that pair. The
         // crates take `code-native`'s `static-module` feature, which is what
         // keeps a second copy of `runtime.c` out of the archive.
-        let status = Command::new("cargo")
-            .args(["build", "--release"])
-            .current_dir(&crate_dir)
-            .status()
-            .unwrap_or_else(|e| panic!("failed to run cargo for {stem}: {e}"));
-        assert!(status.success(), "cargo failed to build {stem}");
-        let built = crate_dir.join(format!("target/release/lib{stem}.a"));
+        let built = modules::build_a(stem);
         let archive = modules_dir.join(format!("{stem}.a"));
         fs::copy(&built, &archive).unwrap_or_else(|e| {
             panic!(

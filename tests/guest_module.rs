@@ -37,6 +37,9 @@
 
 #![cfg(feature = "llvm")]
 
+#[path = "support/modules.rs"]
+mod modules;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -349,10 +352,6 @@ check("the second life did not say what the first did", lines, [
 ]);
 "##;
 
-fn repo(path: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join(path)
-}
-
 fn temp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("code-guest-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
@@ -383,27 +382,7 @@ fn wasm_target_installed() -> bool {
 /// archive is supposed to leave open, so the crate type is asked for on the
 /// command line — the same line the release workflow runs.
 fn archive(dir: &Path, module: &str) {
-    let crate_dir = repo("crates/modules").join(module);
-    let built = Command::new("cargo")
-        .args([
-            "rustc",
-            "--target",
-            "wasm32-unknown-unknown",
-            "--release",
-            "--crate-type",
-            "staticlib",
-        ])
-        .current_dir(&crate_dir)
-        .output()
-        .unwrap_or_else(|e| panic!("failed to run cargo for {module}: {e}"));
-    assert!(
-        built.status.success(),
-        "building {module} for wasm32 failed: {}",
-        String::from_utf8_lossy(&built.stderr)
-    );
-    let from = crate_dir
-        .join("target/wasm32-unknown-unknown/release")
-        .join(format!("lib{module}.a"));
+    let from = modules::build_wasm32_a(module);
     fs::copy(&from, dir.join(format!("{module}.a")))
         .unwrap_or_else(|e| panic!("copy {}: {e}", from.display()));
 }

@@ -11,19 +11,15 @@
 
 #![cfg(all(feature = "llvm", feature = "native-modules"))]
 
-use std::path::{Path, PathBuf};
+#[path = "support/modules.rs"]
+mod modules;
+
+use std::path::PathBuf;
 use std::process::Command;
 use std::{env, fs};
 
 fn build_module() -> PathBuf {
-    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/modules/azure_blob");
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .current_dir(&crate_dir)
-        .status()
-        .expect("run cargo for crates/modules/azure_blob");
-    assert!(status.success(), "cargo failed to build azure_blob");
-    crate_dir.join("target/release/libazure_blob.so")
+    modules::build_so("azure_blob")
 }
 
 #[test]
