@@ -63,7 +63,7 @@ jobs:
       # has no demo for, which is what catches an addition here that was made
       # without one.
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, interpreter, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, mqtt, ntfy, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, interpreter, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, mqtt, ntfy, tty, syntax, oauth_mock]
     steps:
       - uses: actions/checkout@v4
       # Each module is its own workspace with its own Cargo.lock (see those
@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, interpreter, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, mqtt, ntfy, oauth_mock]
+        module: [console, strings, math, env, http_client, http_server, json, crypto, jwt, markdown, fs, json_store, process, git, mailer, azure_mailer, oauth, mongodb, azure_blob, blob_storage, cloud_drive, localai, interpreter, blob_storage_mock, cloud_drive_mock, git_mock, localai_mock, mailer_mock, mongodb_mock, net_client, net_server, membrane, dom, guest, media, router, storage, clipboard, timer, mqtt, ntfy, tty, syntax, oauth_mock]
     steps:
       - uses: actions/checkout@v4
 
@@ -396,6 +396,15 @@ jobs:
               # Exception now, not something queued.
               printf 'emit Config { topic = "demo", url = "http://127.0.0.1:1", timeout_seconds = 2 } to mod get c\nassert c.ok\nemit Notify { message = "hi", priority = 9 } to mod get bad\nassert bad ∈ Exception\nemit Notify { message = "hi" } to mod get n\nassert n ∈ Exception\n' >> dogfood/demo.code
               ;;
+            tty)
+              # No terminal on a runner: nothing draws before Start, and a
+              # Stop on a terminal never started says so. Start itself is
+              # never sent here — it would wait on keys nobody presses.
+              printf 'emit Stop { } to mod get s\nassert not s.ok\nemit Draw { rows = [] } to mod get d\nassert d ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            syntax)
+              printf 'emit Highlight { source = "x = 1" } to mod get h\nassert h ∈ Highlighted\nassert h.lines[0][0].kind = "variable"\n' >> dogfood/demo.code
+              ;;
             membrane)
               # No socket, no thread, nothing pushed — so unlike net_server
               # there is nothing here that could hold the demo open. Run on
@@ -469,7 +478,7 @@ jobs:
           set -euo pipefail
           v="${{ needs.resolve.outputs.version }}"
           sum() { sha256sum "dist/$1" | cut -d' ' -f1; }
-          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer azure_mailer oauth mongodb azure_blob blob_storage cloud_drive localai interpreter blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest media router storage clipboard timer mqtt ntfy oauth_mock; do
+          for m in console strings math env http_client http_server json crypto jwt markdown fs json_store process git mailer azure_mailer oauth mongodb azure_blob blob_storage cloud_drive localai interpreter blob_storage_mock cloud_drive_mock git_mock localai_mock mailer_mock mongodb_mock net_client net_server membrane dom guest media router storage clipboard timer mqtt ntfy tty syntax oauth_mock; do
             # Handlers live with their module — keep this in sync when a
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
@@ -508,6 +517,8 @@ jobs:
               timer) handlers='["Delay", "Cancel"]' ;;
               mqtt) handlers='["Config", "Subscribe", "Unsubscribe", "Publish", "Status", "Disconnect"]' ;;
               ntfy) handlers='["Config", "Notify"]' ;;
+              tty) handlers='["Start", "Stop", "Draw", "Size"]' ;;
+              syntax) handlers='["Highlight"]' ;;
               net_client) handlers='["Config","Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb_mock) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;

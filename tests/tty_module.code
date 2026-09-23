@@ -1,0 +1,20 @@
+| `tty` — the terminal as a screen. A fixture has no terminal to take
+| over (and must not take over the one it may be run from), so this is what
+| holds without one: nothing draws before `Start`, `Stop` on a terminal never
+| started says so, and `Size` answers either a size or why there is none.
+| Key decoding and row rendering are the module's own unit tests.
+
+link "native_modules/tty.so" as tty
+
+emit Draw { rows = [[{ text = "hi", style = "plain" }]] } to tty get early
+assert early ∈ Exception
+
+emit Stop {} to tty get stopped
+assert stopped ∈ StopResult
+assert stopped.ok = false
+
+emit Size {} to tty get size
+assert size ∈ SizeResult or size ∈ Exception
+
+emit Whatever {} to tty get nothing
+assert nothing = null

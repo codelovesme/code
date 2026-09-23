@@ -191,7 +191,9 @@ needs one · `tests/<name>_module.rs` integration test.
 - **The comment marker is `|`, from 2.0.0.** Hard change, no transitional `--`;
   `--` now lexes as two `Minus` tokens. Three places recover comments from
   inter-token gaps and must stay in step: `src/lexer.rs`, `src/format.rs`'s
-  `gap()`, `crates/code-lsp/src/tokens.rs` — plus the VS Code extension's
+  `gap()`, `crates/code-lsp/src/tokens.rs`, `crates/modules/syntax/src/lib.rs`
+  (the terminal IDE's highlighter — its hand scanner is the fallback for a
+  line that does not lex) — plus the VS Code extension's
   `syntaxes/code.tmLanguage.json` and `language-configuration.json`.
   The VS Code extension's `syntaxes/code.tmLanguage.json` is **fallback**
   highlighting — the LSP's semantic tokens override it wherever the server is

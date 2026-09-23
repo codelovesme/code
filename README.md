@@ -1602,6 +1602,11 @@ published onto it — the house's sensors and switches, over Mosquitto — see
 [its README](crates/modules/mqtt/README.md)), `ntfy` (a push
 notification to a phone through an ntfy server — a sensor's battery is low,
 a door was left open — see [its README](crates/modules/ntfy/README.md)),
+`tty` (the terminal as a screen: keys pushed in as the particle the
+program named, rows of styled text drawn out, only what changed — see
+[its README](crates/modules/tty/README.md)), `syntax` (code source as
+coloured spans, by the language's own lexer, still coloured while it does
+not lex — see [its README](crates/modules/syntax/README.md)),
 `localai` (chat
 completions and audio transcription over an OpenAI-compatible endpoint — see
 [its README](crates/modules/localai/README.md)), `http_client` (the seven HTTP
@@ -1761,7 +1766,7 @@ crates/
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
                 azure_mailer,
                 oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,
-                media, clipboard, interpreter, mqtt, ntfy,
+                media, clipboard, interpreter, mqtt, ntfy, tty, syntax,
                 http_client, http_server, net_client, net_server — plus
                 <name>_mock twins for
                 mailer, oauth, mongodb, blob_storage, cloud_drive, git, localai

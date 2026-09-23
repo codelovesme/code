@@ -1,0 +1,30 @@
+| `syntax` — code source as coloured spans, from the language's own lexer.
+| Only the lines asked for come back; each is a list of `{ col, len, kind }`
+| in characters. Source that does not lex still gets colour.
+
+link "native_modules/syntax.so" as syntax
+
+source = "| greet\nHello { who } =>\n  n = p.size + 1\n"
+
+emit Highlight { source = source } to syntax get all
+assert all ∈ Highlighted
+emit Length { value = all.lines } to core get count
+assert count.value = 4
+assert all.lines[0][0] = { col = 0, len = 7, kind = "comment" }
+assert all.lines[1][0] = { col = 0, len = 5, kind = "class" }
+assert all.lines[3] = []
+
+emit Highlight { source = source, from = 2, until = 3 } to syntax get one
+emit Length { value = one.lines } to core get just
+assert just.value = 1
+assert one.lines[0][0] = { col = 2, len = 1, kind = "variable" }
+assert one.lines[0][2] = { col = 6, len = 1, kind = "variable" }
+assert one.lines[0][3] = { col = 8, len = 4, kind = "property" }
+
+| An unterminated string: the file does not lex, the lines still colour.
+emit Highlight { source = "if x ≤ 3, return Y\nname = \"open" } to syntax get broken
+assert broken.lines[0][0] = { col = 0, len = 2, kind = "keyword" }
+assert broken.lines[1][2].kind = "string"
+
+emit Highlight {} to syntax get missing
+assert missing ∈ Exception
