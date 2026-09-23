@@ -1,0 +1,34 @@
+| `pty` — a program on a pseudo-terminal: opened, typed into, resized,
+| its screen read as rows of spans, closed. What a fixture can hold without
+| waiting on the program's output is what is here; the output itself, with
+| its colours, is the module's own test.
+
+link "native_modules/pty.so" as pty
+
+emit Open { cols = 20, rows = 3, command = "/bin/sh", args = ["-c", "sleep 1"] } to pty get opened
+assert opened ∈ TerminalOpened
+
+emit Type { id = opened.id, name = "a", text = "a" } to pty get typed
+assert typed ∈ Typed
+assert typed.bytes = 1
+emit Type { id = opened.id, name = "ctrl+c", text = "" } to pty get interrupt
+assert interrupt.bytes = 1
+emit Write { id = opened.id, data = "hi" } to pty get written
+assert written.bytes = 2
+emit Resize { id = opened.id, cols = 30, rows = 4 } to pty get resized
+assert resized ∈ Resized
+
+emit Screen { id = opened.id } to pty get screen
+assert screen ∈ TerminalScreen
+emit Length { value = screen.lines } to core get { value as rows }
+assert rows = 4
+assert screen.cursor_row ≥ 0
+
+emit Close { id = opened.id } to pty get closed
+assert closed ∈ Closed
+emit Screen { id = opened.id } to pty get gone
+assert gone ∈ Exception
+emit Open { command = "/no/such/program" } to pty get missing
+assert missing ∈ Exception
+emit Whatever {} to pty get nothing
+assert nothing = null

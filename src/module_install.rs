@@ -297,6 +297,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "ntfy",
     "tty",
     "syntax",
+    "pty",
 ];
 
 /// Where this repository's releases live. Overridable for offline work and

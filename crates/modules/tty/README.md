@@ -46,10 +46,12 @@ Resize { cols, rows }
 - **`Draw`** takes a whole screen. `rows` is laid from the top at column
   0, one entry per row; `overlays` then go on top, in order, each `{ row,
   col, spans }` — panes side by side, a menu dropped over them. A row (and
-  an overlay's `spans`) is a list of spans `{ text, style, width?, align? }`,
+  an overlay's `spans`) is a list of spans `{ text, style, width?, align?, fg?, bg?, bold? }`,
   or a bare string. `width` pads or cuts a span to exactly that many
   characters (`align = "right"` pads on the left), so a program lays out
-  columns without counting characters. Everything is clipped at the edge;
+  columns without counting characters. `fg` / `bg` (`[r, g, b]`) and
+  `bold` win over the style's own — how a terminal's colours are shown (see
+  `pty`). Everything is clipped at the edge;
   only rows that changed since the last `Draw` are written. The cursor shows
   at `cursor_row`/`cursor_col` (zero-based), hidden if they are absent. Tabs
   become spaces and control characters are dropped: a program cannot move

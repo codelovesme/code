@@ -6,7 +6,7 @@
 
 [package]
 name = "syntax"
-version = "2.8.2"
+version = "2.8.3"
 edition = "2021"
 description = "The `syntax` native module for the Code programming language — source text as coloured spans, classified by the language's own lexer. Written in Rust on code-native."
 license = "GPL-3.0"

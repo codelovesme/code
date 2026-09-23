@@ -15,9 +15,11 @@
 //!   screen row; `overlays` then go on top, in order, each `{ row, col,
 //!   spans }` — which is how a program puts panes side by side and a menu
 //!   over them. A row (and an overlay's `spans`) is a list of spans `{
-//!   text, style, width?, align? }`, or a bare string. `width` pads or cuts
+//!   text, style, width?, align?, fg?, bg?, bold? }`, or a bare string. `width` pads or cuts
 //!   the span to exactly that many characters (`align = "right"` pads on the
 //!   left), so a program can lay out columns without counting characters.
+//!   `fg` / `bg` (`[r, g, b]`) and `bold` win over the style's own — how a
+//!   terminal's colours are shown.
 //!   Styles are names this module owns — see `screen.rs`. Only rows that
 //!   changed since the last `Draw` are written. The cursor shows at
 //!   `cursor_row` / `cursor_col` (zero-based) and is hidden when they are
@@ -263,7 +265,23 @@ fn span_of(v: &CodeValue) -> screen::Span {
         style: read_field_str(v, "style").unwrap_or("plain").to_string(),
         width: read_field_number(v, "width").filter(|w| *w >= 0.0).map(|w| w as usize),
         right: read_field_str(v, "align") == Some("right"),
+        fg: find_field(v, "fg").and_then(rgb),
+        bg: find_field(v, "bg").and_then(rgb),
+        bold: read_field_bool(v, "bold"),
     }
+}
+
+/// `[r, g, b]`, each 0–255, as a colour; anything else is no colour.
+fn rgb(v: &CodeValue) -> Option<(u8, u8, u8)> {
+    if v.tag != CodeTag::Array || v.len != 3 {
+        return None;
+    }
+    let parts: Vec<u8> = array_elems(v)
+        .filter_map(read_number)
+        .filter(|n| (0.0..=255.0).contains(n))
+        .map(|n| n as u8)
+        .collect();
+    (parts.len() == 3).then(|| (parts[0], parts[1], parts[2]))
 }
 
 /// A row as spans: a list of them, or a bare string.

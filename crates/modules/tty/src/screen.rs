@@ -49,8 +49,26 @@ fn style(name: &str) -> ((u8, u8, u8), (u8, u8, u8), bool) {
     }
 }
 
-fn sgr(name: &str) -> String {
-    let ((fr, fg, fb), (br, bg, bb), bold) = style(name);
+type Rgb = (u8, u8, u8);
+
+/// What a cell looks like: its colours and weight, worked out when it is
+/// written — from its style name, and whatever colours the span gave on top.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Look {
+    fg: Rgb,
+    bg: Rgb,
+    bold: bool,
+}
+
+impl Look {
+    fn of(span: &Span) -> Look {
+        let (fg, bg, bold) = style(&span.style);
+        Look { fg: span.fg.unwrap_or(fg), bg: span.bg.unwrap_or(bg), bold: span.bold.unwrap_or(bold) }
+    }
+}
+
+fn sgr(look: &Look) -> String {
+    let Look { fg: (fr, fg, fb), bg: (br, bg, bb), bold } = *look;
     format!(
         "\x1b[0;{}38;2;{fr};{fg};{fb};48;2;{br};{bg};{bb}m",
         if bold { "1;" } else { "" }
@@ -71,17 +89,21 @@ fn printable(c: char) -> Option<char> {
 /// A span as a program writes it: text in a style, and optionally a
 /// `width` it is padded or cut to — left-aligned, or right-aligned when
 /// `right`. The width is what lets a program lay text out in columns
-/// without counting characters itself.
+/// without counting characters itself. `fg`, `bg` and `bold`, when given,
+/// win over the style's — which is how a terminal's own colours get shown.
 #[derive(Debug, Clone, Default)]
 pub struct Span {
     pub text: String,
     pub style: String,
     pub width: Option<usize>,
     pub right: bool,
+    pub fg: Option<Rgb>,
+    pub bg: Option<Rgb>,
+    pub bold: Option<bool>,
 }
 
 /// One cell of the screen: a character and the style it is drawn in.
-type Cell = (char, String);
+type Cell = (char, Look);
 
 /// The screen as cells, before it is turned into bytes. Rows are laid at
 /// column 0 first, then overlays on top, in order — a menu drawn last is
@@ -93,7 +115,8 @@ pub struct Grid {
 
 impl Grid {
     pub fn new(cols: usize, rows: usize) -> Self {
-        Grid { cols, cells: vec![vec![(' ', "plain".to_string()); cols]; rows] }
+        let blank = Look::of(&Span { style: "plain".to_string(), ..Span::default() });
+        Grid { cols, cells: vec![vec![(' ', blank); cols]; rows] }
     }
 
     /// Writes `spans` from (`row`, `col`) rightward, clipped at the edge.
@@ -104,6 +127,7 @@ impl Grid {
         let Some(line) = self.cells.get_mut(row) else { return };
         let mut at = col;
         for span in spans {
+            let look = Look::of(span);
             let chars: Vec<char> = span.text.chars().filter_map(printable).collect();
             let run: Vec<char> = match span.width {
                 None => chars,
@@ -127,7 +151,7 @@ impl Grid {
                 if at >= cols {
                     return;
                 }
-                line[at] = (c, span.style.clone());
+                line[at] = (c, look);
                 at += 1;
             }
         }
@@ -140,11 +164,11 @@ impl Grid {
             .iter()
             .map(|line| {
                 let mut out = String::new();
-                let mut current: Option<&str> = None;
-                for (c, style_name) in line {
-                    if current != Some(style_name.as_str()) {
-                        out.push_str(&sgr(style_name));
-                        current = Some(style_name);
+                let mut current: Option<Look> = None;
+                for (c, look) in line {
+                    if current != Some(*look) {
+                        out.push_str(&sgr(look));
+                        current = Some(*look);
                     }
                     out.push(*c);
                 }
@@ -230,6 +254,16 @@ mod tests {
         let rows: Vec<String> = g.rows().iter().map(|r| visible(r)).collect();
         assert_eq!(rows, ["aaXYaa", "    lo"]);
         g.put(9, 0, &[span("off screen", "plain")]);
+    }
+
+    #[test]
+    fn a_span_may_bring_its_own_colours() {
+        let red = Span { fg: Some((205, 49, 49)), ..span("r", "plain") };
+        let row = one_row(&[red], 1);
+        assert!(row.contains("38;2;205;49;49;48;2;30;30;30"), "{row:?}");
+        let on_blue = Span { bg: Some((0, 0, 200)), bold: Some(true), ..span("b", "keyword") };
+        let row = one_row(&[on_blue], 1);
+        assert!(row.contains("1;38;2;197;134;192;48;2;0;0;200"), "{row:?}");
     }
 
     #[test]

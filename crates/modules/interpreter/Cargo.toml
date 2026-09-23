@@ -6,7 +6,7 @@
 
 [package]
 name = "interpreter"
-version = "2.8.2"
+version = "2.8.3"
 edition = "2021"
 description = "The `interpreter` native module for the Code programming language — source text loaded as a linked program of its own, talked to with particles, unloaded again. Written in Rust on code-native over the language's interpreter."
 license = "GPL-3.0"

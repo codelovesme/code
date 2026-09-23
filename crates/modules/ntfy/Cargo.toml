@@ -6,7 +6,7 @@
 
 [package]
 name = "ntfy"
-version = "2.8.2"
+version = "2.8.3"
 edition = "2021"
 description = "The `ntfy` native module for the Code programming language — push a notification to a phone through an ntfy server (ntfy.sh or your own)."
 license = "GPL-3.0"

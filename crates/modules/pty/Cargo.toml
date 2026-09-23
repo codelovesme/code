@@ -5,20 +5,17 @@
 [workspace]
 
 [package]
-name = "azure_blob"
+name = "pty"
 version = "2.8.3"
 edition = "2021"
-description = "The `azure_blob` native module for the Code programming language — put, get, list and delete objects in Azure Blob Storage (and Azurite), with `blob_storage`'s surface."
+description = "The `pty` native module for the Code programming language — a shell in a pseudo-terminal: keys in, its screen out, as coloured spans. Written in Rust on code-native."
 license = "GPL-3.0"
-repository = "https://github.com/codelovesme"
+repository = "https://github.com/codelovesme/code"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
 code-native = { path = "../../code-native" }
-ureq = "3"
-base64 = "0.22"
-hmac = "0.12"
-sha2 = "0.10"
-httpdate = "1"
+libc = "0.2"
+vt100 = "0.16"

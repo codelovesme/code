@@ -1607,6 +1607,9 @@ program named, rows of styled text drawn out, only what changed — see
 [its README](crates/modules/tty/README.md)), `syntax` (code source as
 coloured spans, by the language's own lexer, still coloured while it does
 not lex — see [its README](crates/modules/syntax/README.md)),
+`pty` (a shell on a pseudo-terminal: keys in, its screen out as coloured
+spans — an editor's integrated terminal; see
+[its README](crates/modules/pty/README.md)),
 `localai` (chat
 completions and audio transcription over an OpenAI-compatible endpoint — see
 [its README](crates/modules/localai/README.md)), `http_client` (the seven HTTP
@@ -1766,7 +1769,7 @@ crates/
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
                 azure_mailer,
                 oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,
-                media, clipboard, interpreter, mqtt, ntfy, tty, syntax,
+                media, clipboard, interpreter, mqtt, ntfy, tty, syntax, pty,
                 http_client, http_server, net_client, net_server — plus
                 <name>_mock twins for
                 mailer, oauth, mongodb, blob_storage, cloud_drive, git, localai

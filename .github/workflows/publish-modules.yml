@@ -536,6 +536,11 @@ jobs:
               # Exception now, not something queued.
               printf 'emit Config { topic = "demo", url = "http://127.0.0.1:1", timeout_seconds = 2 } to mod get c\nassert c.ok\nemit Notify { message = "hi", priority = 9 } to mod get bad\nassert bad ∈ Exception\nemit Notify { message = "hi" } to mod get n\nassert n ∈ Exception\n' >> dogfood/demo.code
               ;;
+            pty)
+              # A program on a pseudo-terminal: opened, its screen read, closed.
+              # The runner has no terminal of its own, and this needs none.
+              printf 'emit Open { command = "/bin/sh", args = ["-c", "true"] } to mod get o\nassert o ∈ TerminalOpened\nemit Screen { id = o.id } to mod get s\nassert s ∈ TerminalScreen\nemit Close { id = o.id } to mod get c\nassert c ∈ Closed\n' >> dogfood/demo.code
+              ;;
             tty)
               # No terminal on a runner: nothing draws before Start, and a
               # Stop on a terminal never started says so. Start itself is
@@ -668,6 +673,7 @@ jobs:
               mqtt) handlers='["Config", "Subscribe", "Unsubscribe", "Publish", "Status", "Disconnect"]' ;;
               ntfy) handlers='["Config", "Notify"]' ;;
               tty) handlers='["Start", "Stop", "Draw", "Size"]' ;;
+              pty) handlers='["Open", "Type", "Write", "Resize", "Screen", "Close"]' ;;
               syntax) handlers='["Highlight"]' ;;
               net_client) handlers='["Config","Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
