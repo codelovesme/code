@@ -60,7 +60,7 @@ pub fn run_with_modules(src: &str, modules: Object) -> String {
 }
 
 fn run_with_modules_inner(src: &str, modules: Object) -> Result<Environment, String> {
-    let mut env = Environment::default();
+    let env = Environment::default();
     let mut aliases = Vec::new();
 
     for key in Object::keys(&modules).iter() {

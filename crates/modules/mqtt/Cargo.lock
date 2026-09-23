@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "2.8.1"
+version = "2.8.2"
 dependencies = [
  "cc",
 ]
@@ -113,7 +113,7 @@ dependencies = [
 
 [[package]]
 name = "mqtt"
-version = "2.8.1"
+version = "2.8.2"
 dependencies = [
  "code-native",
  "rumqttc",

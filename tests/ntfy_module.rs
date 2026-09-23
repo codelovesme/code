@@ -95,9 +95,15 @@ fn serve(mut s: TcpStream, log: Arc<Mutex<Vec<Seen>>>) {
 
     // The topic `refused` is the server saying no; anything else is taken.
     let (status, answer) = if seen.path == "/refused" {
-        ("403 Forbidden", r#"{"code":40301,"http":403,"error":"forbidden"}"#)
+        (
+            "403 Forbidden",
+            r#"{"code":40301,"http":403,"error":"forbidden"}"#,
+        )
     } else {
-        ("200 OK", r#"{"id":"abc123","time":1,"event":"message","topic":"t","message":"m"}"#)
+        (
+            "200 OK",
+            r#"{"id":"abc123","time":1,"event":"message","topic":"t","message":"m"}"#,
+        )
     };
     log.lock().unwrap().push(seen);
     let _ = write!(
@@ -190,7 +196,10 @@ fn a_notification_is_one_post_with_its_headers() {
     fs::write(&source, fixture(port)).expect("write fixture");
     for mode in ["run", "build"] {
         log.lock().unwrap().clear();
-        assert!(run_to_end(&dir, mode, &source), "{mode}: the fixture failed");
+        assert!(
+            run_to_end(&dir, mode, &source),
+            "{mode}: the fixture failed"
+        );
 
         let seen = log.lock().unwrap().clone();
         assert_eq!(seen.len(), 3, "{mode}: three requests, got {seen:?}");
@@ -202,7 +211,10 @@ fn a_notification_is_one_post_with_its_headers() {
         assert_eq!(first.header("Title"), Some("Change a battery"));
         assert_eq!(first.header("Priority"), Some("high"));
         assert_eq!(first.header("Tags"), Some("battery,warning"));
-        assert_eq!(first.header("Click"), Some("https://apps.codeloves.me/home"));
+        assert_eq!(
+            first.header("Click"),
+            Some("https://apps.codeloves.me/home")
+        );
         assert_eq!(first.header("Authorization"), Some("Bearer tk_secret"));
         assert!(first.header("Markdown").is_none());
 
