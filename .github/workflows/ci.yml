@@ -34,10 +34,6 @@ jobs:
           - 27017:27017
     env:
       MONGO_URI: mongodb://127.0.0.1:27017
-      S3_ENDPOINT: http://127.0.0.1:9000
-      S3_ACCESS_KEY: codetest
-      S3_SECRET_KEY: codetest-secret
-      S3_BUCKET: codetest
       # Azurite's well-known development account. Published by Microsoft
       # and the same on every machine — it is a fixture, not a secret.
       AZURE_BLOB_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
@@ -51,15 +47,32 @@ jobs:
       # run was red and nothing after this line, formatting and tests
       # included, ever ran. That is the second time a registry has moved this
       # image; `bitnami/minio` was removed before it.
+      #
+      # 2026-09-25: quay.io now refuses runners too ("unauthorized"), and
+      # dl.min.io's binary answers 410 Gone. So MinIO is *tried*, and the S3
+      # variables are only set when it is up: when it is not, the blob_storage
+      # test skips itself (it does when they are unset) instead of this step
+      # sinking the whole job before formatting and the other tests run —
+      # the trap that already let unformatted code ship once.
       - name: Start MinIO (S3 for tests/blob_storage_module.rs)
         run: |
-          docker run -d --name minio -p 9000:9000 \
+          if docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=codetest -e MINIO_ROOT_PASSWORD=codetest-secret \
-            quay.io/minio/minio:latest server /data
-          for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:9000/minio/health/live && break
-            sleep 1
-          done
+            quay.io/minio/minio:latest server /data; then
+            for i in $(seq 1 30); do
+              if curl -sf http://127.0.0.1:9000/minio/health/live; then
+                {
+                  echo S3_ENDPOINT=http://127.0.0.1:9000
+                  echo S3_ACCESS_KEY=codetest
+                  echo S3_SECRET_KEY=codetest-secret
+                  echo S3_BUCKET=codetest
+                } >> "$GITHUB_ENV"
+                exit 0
+              fi
+              sleep 1
+            done
+          fi
+          echo "::warning::MinIO could not be started — tests/blob_storage_module.rs skips this run"
 
       # Azure Blob for tests/azure_blob_module.rs. Microsoft's own emulator,
       # from Microsoft's own registry — the one store in this file that has
