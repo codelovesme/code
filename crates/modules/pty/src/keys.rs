@@ -1,5 +1,20 @@
 //! A key, as the `tty` module names it, as the bytes a terminal sends for
 //! it — what a shell or a full-screen program in the terminal reads. Pure.
+//!
+//! A program can ask for more than the old bytes say — ctrl+tab told apart
+//! from tab, ctrl+j from enter, ctrl+shift+e from ctrl+e: kitty's keyboard
+//! protocol (`ESC [ > flags u`) or xterm's modifyOtherKeys (`ESC [ > 4 ; 2
+//! m`). `Modes` is what it asked for; with either, a key the old bytes lose
+//! is sent in that form (the `tty` module reads both).
+
+/// What the program in the terminal asked keys to be sent as.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Modes {
+    /// kitty's keyboard protocol flags (1: disambiguate), 0 when not asked.
+    pub kitty: u32,
+    /// xterm's modifyOtherKeys level, 0 when not asked.
+    pub modify_other: u16,
+}
 
 const SHIFT: u32 = 1;
 const ALT: u32 = 2;
@@ -30,11 +45,56 @@ fn param(mods: u32) -> u32 {
     1 + mods
 }
 
+/// The character a key is, for the extended forms: its code point.
+fn code_of(base: &str) -> Option<u32> {
+    match base {
+        "tab" => Some(9),
+        "enter" => Some(13),
+        "escape" => Some(27),
+        "backspace" => Some(127),
+        "space" => Some(32),
+        _ => {
+            let mut chars = base.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Some(c.to_ascii_lowercase() as u32),
+                _ => None,
+            }
+        }
+    }
+}
+
+/// Whether the old bytes lose `mods` on `base`: a modified tab, enter,
+/// backspace or escape; ctrl or alt with a character (alt alone is only
+/// lost with shift); ctrl+shift with anything.
+fn lost_in_legacy(mods: u32, base: &str) -> bool {
+    if mods == 0 {
+        return false;
+    }
+    match base {
+        "tab" => mods != SHIFT,
+        "enter" | "backspace" | "escape" | "space" => mods & (CTRL | SHIFT) != 0,
+        _ => {
+            let single = base.chars().count() == 1;
+            single && (mods & CTRL != 0 || mods == ALT | SHIFT)
+        }
+    }
+}
+
 /// `name` and `text` (see `tty`'s `Key`) as bytes. `app_cursor` is the
-/// terminal's application-cursor mode, in which the arrows say `ESC O`.
+/// terminal's application-cursor mode, in which the arrows say `ESC O`;
+/// `modes` what the program asked keys to be sent as (see `Modes`).
 /// Nothing for a key a terminal has no bytes for.
-pub fn bytes(name: &str, text: &str, app_cursor: bool) -> Vec<u8> {
+pub fn bytes(name: &str, text: &str, app_cursor: bool, modes: Modes) -> Vec<u8> {
     let (mods, base) = split(name);
+    if (modes.kitty & 1 != 0 || modes.modify_other >= 2) && lost_in_legacy(mods, base) {
+        if let Some(code) = code_of(base) {
+            return if modes.kitty & 1 != 0 {
+                format!("\x1b[{code};{}u", param(mods)).into_bytes()
+            } else {
+                format!("\x1b[27;{};{code}~", param(mods)).into_bytes()
+            };
+        }
+    }
     // Typed text, when nothing but shift is held.
     if !text.is_empty() && mods & (CTRL | ALT) == 0 {
         return text.as_bytes().to_vec();
@@ -125,50 +185,75 @@ fn out_or_char(mut out: Vec<u8>, c: char, mods: u32) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::bytes;
+    use super::{bytes, Modes};
+
+    fn bytes_(name: &str, text: &str, app_cursor: bool) -> Vec<u8> {
+        bytes(name, text, app_cursor, Modes::default())
+    }
+
+    const KITTY: Modes = Modes { kitty: 1, modify_other: 0 };
+    const XTERM: Modes = Modes { kitty: 0, modify_other: 2 };
+
+    #[test]
+    fn asked_for_more_keys_come_whole() {
+        assert_eq!(bytes("ctrl+tab", "", false, KITTY), b"\x1b[9;5u");
+        assert_eq!(bytes("ctrl+shift+tab", "", false, KITTY), b"\x1b[9;6u");
+        assert_eq!(bytes("ctrl+j", "", false, KITTY), b"\x1b[106;5u");
+        assert_eq!(bytes("ctrl+shift+e", "", false, KITTY), b"\x1b[101;6u");
+        assert_eq!(bytes("shift+enter", "", false, KITTY), b"\x1b[13;2u");
+        assert_eq!(bytes("ctrl+tab", "", false, XTERM), b"\x1b[27;5;9~");
+        // What the old bytes say well stays as it was.
+        assert_eq!(bytes("a", "a", false, KITTY), b"a");
+        assert_eq!(bytes("shift+tab", "", false, KITTY), b"\x1b[Z");
+        assert_eq!(bytes("up", "", false, KITTY), b"\x1b[A");
+        assert_eq!(bytes("alt+b", "", false, KITTY), b"\x1bb");
+        assert_eq!(bytes("enter", "", false, KITTY), b"\r");
+        // Not asked for: the old bytes, even where they lose something.
+        assert_eq!(bytes("ctrl+tab", "", false, Modes::default()), b"\t");
+    }
 
     #[test]
     fn typed_text_is_itself() {
-        assert_eq!(bytes("a", "a", false), b"a");
-        assert_eq!(bytes("shift+a", "A", false), b"A");
-        assert_eq!(bytes("∈", "∈", false), "∈".as_bytes());
-        assert_eq!(bytes("space", " ", false), b" ");
+        assert_eq!(bytes_("a", "a", false), b"a");
+        assert_eq!(bytes_("shift+a", "A", false), b"A");
+        assert_eq!(bytes_("∈", "∈", false), "∈".as_bytes());
+        assert_eq!(bytes_("space", " ", false), b" ");
     }
 
     #[test]
     fn control_keys() {
-        assert_eq!(bytes("ctrl+c", "", false), b"\x03");
-        assert_eq!(bytes("ctrl+d", "", false), b"\x04");
-        assert_eq!(bytes("ctrl+shift+e", "", false), b"\x05");
-        assert_eq!(bytes("enter", "", false), b"\r");
-        assert_eq!(bytes("backspace", "", false), b"\x7f");
-        assert_eq!(bytes("tab", "", false), b"\t");
-        assert_eq!(bytes("shift+tab", "", false), b"\x1b[Z");
-        assert_eq!(bytes("escape", "", false), b"\x1b");
+        assert_eq!(bytes_("ctrl+c", "", false), b"\x03");
+        assert_eq!(bytes_("ctrl+d", "", false), b"\x04");
+        assert_eq!(bytes_("ctrl+shift+e", "", false), b"\x05");
+        assert_eq!(bytes_("enter", "", false), b"\r");
+        assert_eq!(bytes_("backspace", "", false), b"\x7f");
+        assert_eq!(bytes_("tab", "", false), b"\t");
+        assert_eq!(bytes_("shift+tab", "", false), b"\x1b[Z");
+        assert_eq!(bytes_("escape", "", false), b"\x1b");
     }
 
     #[test]
     fn arrows_and_their_modes() {
-        assert_eq!(bytes("up", "", false), b"\x1b[A");
-        assert_eq!(bytes("up", "", true), b"\x1bOA");
-        assert_eq!(bytes("ctrl+left", "", false), b"\x1b[1;5D");
-        assert_eq!(bytes("shift+end", "", true), b"\x1b[1;2F");
-        assert_eq!(bytes("delete", "", false), b"\x1b[3~");
-        assert_eq!(bytes("ctrl+pagedown", "", false), b"\x1b[6;5~");
-        assert_eq!(bytes("f1", "", false), b"\x1bOP");
-        assert_eq!(bytes("f12", "", false), b"\x1b[24~");
+        assert_eq!(bytes_("up", "", false), b"\x1b[A");
+        assert_eq!(bytes_("up", "", true), b"\x1bOA");
+        assert_eq!(bytes_("ctrl+left", "", false), b"\x1b[1;5D");
+        assert_eq!(bytes_("shift+end", "", true), b"\x1b[1;2F");
+        assert_eq!(bytes_("delete", "", false), b"\x1b[3~");
+        assert_eq!(bytes_("ctrl+pagedown", "", false), b"\x1b[6;5~");
+        assert_eq!(bytes_("f1", "", false), b"\x1bOP");
+        assert_eq!(bytes_("f12", "", false), b"\x1b[24~");
     }
 
     #[test]
     fn alt_is_escape_first() {
-        assert_eq!(bytes("alt+b", "", false), b"\x1bb");
-        assert_eq!(bytes("alt+backspace", "", false), b"\x1b\x7f");
-        assert_eq!(bytes("ctrl+alt+x", "", false), b"\x1b\x18");
-        assert_eq!(bytes("alt+left", "", false), b"\x1b[1;3D");
+        assert_eq!(bytes_("alt+b", "", false), b"\x1bb");
+        assert_eq!(bytes_("alt+backspace", "", false), b"\x1b\x7f");
+        assert_eq!(bytes_("ctrl+alt+x", "", false), b"\x1b\x18");
+        assert_eq!(bytes_("alt+left", "", false), b"\x1b[1;3D");
     }
 
     #[test]
     fn unknown_keys_send_nothing() {
-        assert!(bytes("ctrl+wat", "", false).is_empty());
+        assert!(bytes_("ctrl+wat", "", false).is_empty());
     }
 }

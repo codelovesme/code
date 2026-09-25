@@ -7,16 +7,29 @@
 //!
 //! Handlers:
 //!
-//! - `Open { cols?, rows?, command?, args?, cwd?, env? }` → `TerminalOpened
-//!   { id }`. `command` defaults to `$SHELL`, else `/bin/sh`; the size to
-//!   80 × 24. `TERM` is `xterm-256color`.
+//! - `Open { cols?, rows?, command?, args?, cwd?, env?, scrollback? }` →
+//!   `TerminalOpened { id }`. `command` defaults to `$SHELL`, else
+//!   `/bin/sh`; the size to 80 × 24; `scrollback` (rows kept above the
+//!   screen) to 1000. `TERM` is `xterm-256color`.
 //! - `Type { id, name, text }` → `Typed { id, bytes }`: a key as the `tty`
 //!   module names it (`enter`, `ctrl+c`, `up`, `alt+b`, …) sent as the bytes
-//!   a terminal sends for it — see `keys.rs`.
+//!   a terminal sends for it — or, when the program asked for kitty's keys
+//!   or xterm's modifyOtherKeys, whole (ctrl+tab told from tab) — see
+//!   `keys.rs`.
+//! - `Paste { id, text }` → `Pasted { id, bytes }`: text as a paste, in the
+//!   brackets a program asked for (bracketed paste).
+//! - `Mouse { id, kind, button?, row, col, mods? }` → `MouseSent { id, sent }`:
+//!   `kind` press, release, drag, move or wheel, sent the way the program
+//!   asked for mouse reports (`sent = false`: it asked for none of this).
 //! - `Write { id, data }` → `Written { id, bytes }`: text sent as it is.
 //! - `Resize { id, cols, rows }` → `Resized { id }`. The program is told.
-//! - `Screen { id }` → `TerminalScreen { id, lines, cursor_row, cursor_col,
-//!   cursor_visible, alive, code }`. `lines` has one entry per row, each a
+//! - `Screen { id, scroll? }` → `TerminalScreen { id, lines, cursor_row,
+//!   cursor_col, cursor_visible, alive, code, scrolled, title, alternate,
+//!   mouse, keys }`: `scroll` rows up into the scrollback (`scrolled`, what
+//!   there was room for); the title the program set; whether it is on the
+//!   alternate screen; the mouse reports (`none`, `press`, `press_release`,
+//!   `button_motion`, `any_motion`) and keys (`legacy`, `kitty`, `xterm`) it
+//!   asked for. `lines` has one entry per row, each a
 //!   list of spans `{ text, fg?, bg?, bold? }` (`fg` / `bg` as `[r, g, b]`,
 //!   absent for the terminal's default). `code` is the exit code once the
 //!   program has ended.
@@ -53,9 +66,63 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 /// host must not unmap code a thread is in, so this is what keeps it serving.
 static THREADS: AtomicUsize = AtomicUsize::new(0);
 
+/// What the program asks of the terminal beyond its screen, caught as the
+/// emulator reads its output: its window title, the key forms it wants
+/// (see `keys::Modes`), and the answers it waits for, to be written back.
+#[derive(Default)]
+struct Hooks {
+    title: String,
+    kitty: Vec<u32>,
+    modify_other: u16,
+    replies: Vec<u8>,
+}
+
+impl Hooks {
+    fn modes(&self) -> keys::Modes {
+        keys::Modes { kitty: self.kitty.last().copied().unwrap_or(0), modify_other: self.modify_other }
+    }
+}
+
+impl vt100::Callbacks for Hooks {
+    fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
+        self.title = String::from_utf8_lossy(title).into_owned();
+    }
+
+    fn unhandled_csi(&mut self, _: &mut vt100::Screen, i1: Option<u8>, _i2: Option<u8>, params: &[&[u16]], c: char) {
+        let first = params.first().and_then(|p| p.first()).copied();
+        match (i1, c) {
+            // kitty: push flags, pop n, set, query.
+            (Some(b'>'), 'u') => self.kitty.push(u32::from(first.unwrap_or(0))),
+            (Some(b'<'), 'u') => {
+                for _ in 0..first.unwrap_or(1).max(1) {
+                    self.kitty.pop();
+                }
+            }
+            (Some(b'='), 'u') => {
+                let flags = u32::from(first.unwrap_or(0));
+                match self.kitty.last_mut() {
+                    Some(top) => *top = flags,
+                    None => self.kitty.push(flags),
+                }
+            }
+            (Some(b'?'), 'u') => {
+                let flags = self.kitty.last().copied().unwrap_or(0);
+                self.replies.extend(format!("\x1b[?{flags}u").into_bytes());
+            }
+            // xterm: modifyOtherKeys (`ESC [ > 4 ; n m`, or `ESC [ > 4 m` off).
+            (Some(b'>'), 'm') if first == Some(4) => {
+                self.modify_other = params.get(1).and_then(|p| p.first()).copied().unwrap_or(0);
+            }
+            _ => {}
+        }
+    }
+}
+
+type Emulator = vt100::Parser<Hooks>;
+
 struct Terminal {
     master: File,
-    parser: Arc<Mutex<vt100::Parser>>,
+    parser: Arc<Mutex<Emulator>>,
     pid: i32,
     alive: Arc<AtomicBool>,
     pending: Arc<AtomicBool>,
@@ -199,11 +266,12 @@ fn open(out: &mut CodeValue, p: &CodeValue) {
     std::mem::forget(child);
 
     let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
-    let parser = Arc::new(Mutex::new(vt100::Parser::new(rows, cols, 0)));
+    let scrollback = read_field_number(p, "scrollback").filter(|n| *n >= 0.0 && *n <= 100_000.0).map(|n| n as usize).unwrap_or(1000);
+    let parser = Arc::new(Mutex::new(vt100::Parser::new_with_callbacks(rows, cols, scrollback, Hooks::default())));
     let alive = Arc::new(AtomicBool::new(true));
     let pending = Arc::new(AtomicBool::new(false));
     let code = Arc::new(Mutex::new(None));
-    let Ok(mut reading) = master.try_clone() else {
+    let (Ok(mut reading), Ok(mut answering)) = (master.try_clone(), master.try_clone()) else {
         return exception(out, NAME, "Open: the pseudo-terminal could not be read");
     };
     {
@@ -215,7 +283,15 @@ fn open(out: &mut CodeValue, p: &CodeValue) {
                 match reading.read(&mut buf) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
-                        parser.lock().unwrap_or_else(|e| e.into_inner()).process(&buf[..n]);
+                        let replies = {
+                            let mut emulator = parser.lock().unwrap_or_else(|e| e.into_inner());
+                            emulator.process(&buf[..n]);
+                            std::mem::take(&mut emulator.callbacks_mut().replies)
+                        };
+                        // What the program asked and waits on (kitty's `ESC [ ? u`).
+                        if !replies.is_empty() {
+                            let _ = answering.write_all(&replies);
+                        }
                         if !pending.swap(true, Ordering::SeqCst) {
                             push(particle("TerminalOutput", vec![("id", Val::Num(id as f64))]));
                         }
@@ -264,8 +340,11 @@ fn type_key(out: &mut CodeValue, p: &CodeValue) {
     let name = read_field_str(p, "name").unwrap_or("").to_string();
     let text = read_field_str(p, "text").unwrap_or("").to_string();
     on(out, p, "Type", |out, id, term| {
-        let app_cursor = term.parser.lock().unwrap_or_else(|e| e.into_inner()).screen().application_cursor();
-        let bytes = keys::bytes(&name, &text, app_cursor);
+        let (app_cursor, modes) = {
+            let emulator = term.parser.lock().unwrap_or_else(|e| e.into_inner());
+            (emulator.screen().application_cursor(), emulator.callbacks().modes())
+        };
+        let bytes = keys::bytes(&name, &text, app_cursor, modes);
         send(out, id, term, &bytes, "Typed");
     });
 }
@@ -287,9 +366,16 @@ fn resize(out: &mut CodeValue, p: &CodeValue) {
 }
 
 fn screen(out: &mut CodeValue, p: &CodeValue) {
+    let scroll = read_field_number(p, "scroll").filter(|n| *n >= 0.0).map(|n| n as usize).unwrap_or(0);
     on(out, p, "Screen", |out, id, term| {
         term.pending.store(false, Ordering::SeqCst);
-        let parser = term.parser.lock().unwrap_or_else(|e| e.into_inner());
+        let mut parser = term.parser.lock().unwrap_or_else(|e| e.into_inner());
+        // `scroll` rows up into the scrollback (clamped to what there is),
+        // read, and back to the live screen.
+        parser.screen_mut().set_scrollback(scroll);
+        let scrolled = parser.screen().scrollback();
+        let title = parser.callbacks().title.clone();
+        let modes = parser.callbacks().modes();
         let s = parser.screen();
         let lines = render::rows(s)
             .into_iter()
@@ -324,12 +410,102 @@ fn screen(out: &mut CodeValue, p: &CodeValue) {
                     ("lines", Val::Arr(lines)),
                     ("cursor_row", Val::Num(row as f64)),
                     ("cursor_col", Val::Num(col as f64)),
-                    ("cursor_visible", Val::Bool(!s.hide_cursor())),
+                    ("cursor_visible", Val::Bool(!s.hide_cursor() && scrolled == 0)),
+                    ("scrolled", Val::Num(scrolled as f64)),
+                    ("title", Val::Str(title)),
+                    ("alternate", Val::Bool(s.alternate_screen())),
+                    ("mouse", Val::Str(mouse_mode(s.mouse_protocol_mode()).into())),
+                    ("keys", Val::Str(if modes.kitty & 1 != 0 { "kitty" } else if modes.modify_other >= 2 { "xterm" } else { "legacy" }.into())),
                     ("alive", Val::Bool(term.alive.load(Ordering::SeqCst))),
                     ("code", code.map(|c| Val::Num(c as f64)).unwrap_or(Val::Null)),
                 ],
             ),
         );
+        drop(parser);
+        term.parser.lock().unwrap_or_else(|e| e.into_inner()).screen_mut().set_scrollback(0);
+    });
+}
+
+fn mouse_mode(m: vt100::MouseProtocolMode) -> &'static str {
+    match m {
+        vt100::MouseProtocolMode::None => "none",
+        vt100::MouseProtocolMode::Press => "press",
+        vt100::MouseProtocolMode::PressRelease => "press_release",
+        vt100::MouseProtocolMode::ButtonMotion => "button_motion",
+        vt100::MouseProtocolMode::AnyMotion => "any_motion",
+    }
+}
+
+/// `Paste { id, text }`: `text` written as a paste — between the brackets
+/// a program that asked for bracketed paste reads it by, so an editor does
+/// not take a pasted newline for Enter.
+fn paste(out: &mut CodeValue, p: &CodeValue) {
+    let text = read_field_str(p, "text").unwrap_or("").to_string();
+    on(out, p, "Paste", |out, id, term| {
+        let bracketed = term.parser.lock().unwrap_or_else(|e| e.into_inner()).screen().bracketed_paste();
+        let mut data = Vec::new();
+        if bracketed {
+            data.extend_from_slice(b"\x1b[200~");
+        }
+        data.extend_from_slice(text.as_bytes());
+        if bracketed {
+            data.extend_from_slice(b"\x1b[201~");
+        }
+        send(out, id, term, &data, "Pasted");
+    });
+}
+
+/// `Mouse { id, kind, button?, row, col, mods? }` — `kind` press, release,
+/// move or wheel (`button` 0 left, 1 middle, 2 right; for a wheel 0 up, 1
+/// down), `row` / `col` from 0 — sent to the program the way it asked for
+/// mouse reports; `Mouse { sent = false }` when it asked for none of this.
+fn mouse(out: &mut CodeValue, p: &CodeValue) {
+    let kind = read_field_str(p, "kind").unwrap_or("press").to_string();
+    let button = read_field_number(p, "button").unwrap_or(0.0).max(0.0) as u32;
+    let row = read_field_number(p, "row").unwrap_or(0.0).max(0.0) as u32;
+    let col = read_field_number(p, "col").unwrap_or(0.0).max(0.0) as u32;
+    let mods = read_field_str(p, "mods").unwrap_or("").to_string();
+    on(out, p, "Mouse", |out, id, term| {
+        let (mode, encoding) = {
+            let emulator = term.parser.lock().unwrap_or_else(|e| e.into_inner());
+            (emulator.screen().mouse_protocol_mode(), emulator.screen().mouse_protocol_encoding())
+        };
+        use vt100::MouseProtocolMode as M;
+        let wanted = match kind.as_str() {
+            "press" | "wheel" => mode != M::None,
+            "release" => matches!(mode, M::PressRelease | M::ButtonMotion | M::AnyMotion),
+            "drag" => matches!(mode, M::ButtonMotion | M::AnyMotion),
+            "move" => mode == M::AnyMotion,
+            _ => false,
+        };
+        if !wanted {
+            return answer(out, particle("MouseSent", vec![("id", Val::Num(id as f64)), ("sent", Val::Bool(false))]));
+        }
+        let mut code = match kind.as_str() {
+            "wheel" => 64 + button.min(1),
+            "drag" | "move" => 32 + button.min(2),
+            _ => button.min(2),
+        };
+        if mods.contains("shift") {
+            code += 4;
+        }
+        if mods.contains("alt") {
+            code += 8;
+        }
+        if mods.contains("ctrl") {
+            code += 16;
+        }
+        let bytes = if encoding == vt100::MouseProtocolEncoding::Sgr {
+            let end = if kind == "release" { 'm' } else { 'M' };
+            format!("\x1b[<{code};{};{}{end}", col + 1, row + 1).into_bytes()
+        } else {
+            // The old form: one byte each, 32 on; a release is button 3.
+            let code = if kind == "release" { 3 + (code & !3) } else { code };
+            let at = |n: u32| (n + 1 + 32).min(255) as u8;
+            vec![0x1b, b'[', b'M', (code + 32).min(255) as u8, at(col), at(row)]
+        };
+        let _ = term.master.write_all(&bytes);
+        answer(out, particle("MouseSent", vec![("id", Val::Num(id as f64)), ("sent", Val::Bool(true))]));
     });
 }
 
@@ -389,6 +565,8 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
         Some("Resize") => resize(out, p),
         Some("Screen") => screen(out, p),
         Some("Close") => close(out, p),
+        Some("Paste") => paste(out, p),
+        Some("Mouse") => mouse(out, p),
         _ => null(out),
     })
 }
@@ -435,5 +613,63 @@ mod tests {
             }
         }
         assert_eq!(with_terminals(|t| *t.get(&id).unwrap().code.lock().unwrap()), Some(0));
+    }
+
+    /// Opens `script` on a `cols` × `rows` terminal; its id.
+    fn run(script: &str, cols: f64, rows: f64) -> u64 {
+        let mut opened = CodeValue::zeroed();
+        let req = build(&particle(
+            "Open",
+            vec![
+                ("cols", Val::Num(cols)),
+                ("rows", Val::Num(rows)),
+                ("command", Val::Str("/bin/sh".into())),
+                ("args", Val::Arr(vec![Val::Str("-c".into()), Val::Str(script.into())])),
+            ],
+        ));
+        open(&mut opened, &req);
+        read_field_number(&opened, "id").expect("an id") as u64
+    }
+
+    /// Waits (up to 4 s) for `check` on the terminal to hold.
+    fn wait(id: u64, check: impl Fn(&Terminal) -> bool) -> bool {
+        for _ in 0..200 {
+            if with_terminals(|t| check(t.get(&id).unwrap())) {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        false
+    }
+
+    fn text(term: &Terminal) -> String {
+        term.parser.lock().unwrap().screen().contents()
+    }
+
+    /// A program that asks for kitty's keys gets ctrl+tab whole.
+    #[test]
+    fn keys_as_the_program_asked() {
+        let id = run("stty raw -echo; printf '\\033[>1u'; head -c 6 | od -An -c; sleep 1", 40.0, 4.0);
+        assert!(wait(id, |t| t.parser.lock().unwrap().callbacks().modes().kitty == 1), "the program's ask was seen");
+        let mut typed = CodeValue::zeroed();
+        type_key(&mut typed, &build(&particle("Type", vec![("id", Val::Num(id as f64)), ("name", Val::Str("ctrl+tab".into())), ("text", Val::Str(String::new()))])));
+        assert_eq!(read_field_number(&typed, "bytes"), Some(6.0));
+        assert!(wait(id, |t| text(t).contains("[   9   ;   5   u")), "it read ESC [ 9 ; 5 u");
+    }
+
+    /// The title a program sets; the scrollback it scrolled off.
+    #[test]
+    fn title_and_scrollback() {
+        let id = run("printf '\\033]2;my title\\007'; seq 1 40; sleep 1", 20.0, 5.0);
+        assert!(wait(id, |t| text(t).contains("40")));
+        assert!(wait(id, |t| t.parser.lock().unwrap().callbacks().title == "my title"));
+        let mut shown = CodeValue::zeroed();
+        screen(&mut shown, &build(&particle("Screen", vec![("id", Val::Num(id as f64)), ("scroll", Val::Num(10.0))])));
+        assert_eq!(read_field_number(&shown, "scrolled"), Some(10.0));
+        assert_eq!(read_field_str(&shown, "title"), Some("my title"));
+        let first = find_field(&shown, "lines").and_then(|l| array_elems(l).next().map(|row| array_elems(row).filter_map(|s| find_field(s, "text").and_then(read_str)).collect::<String>()));
+        assert_eq!(first.as_deref().map(str::trim), Some("27"));
+        // And the live screen again after.
+        assert!(wait(id, |t| t.parser.lock().unwrap().screen().scrollback() == 0));
     }
 }

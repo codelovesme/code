@@ -24,6 +24,18 @@ emit Length { value = screen.lines } to core get { value as rows }
 assert rows = 4
 assert screen.cursor_row ≥ 0
 
+assert screen.scrolled = 0
+assert screen.title = ""
+assert screen.mouse = "none" and screen.keys = "legacy"
+emit Screen { id = opened.id, scroll = 5 } to pty get scrolled_up
+assert scrolled_up.scrolled = 0
+emit Paste { id = opened.id, text = "pasted" } to pty get pasted
+assert pasted ∈ Pasted
+assert pasted.bytes = 6
+emit Mouse { id = opened.id, kind = "press", row = 0, col = 0 } to pty get clicked
+assert clicked ∈ MouseSent
+assert clicked.sent = false
+
 emit Close { id = opened.id } to pty get closed
 assert closed ∈ Closed
 emit Screen { id = opened.id } to pty get gone

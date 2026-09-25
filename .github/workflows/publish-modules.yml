@@ -539,7 +539,7 @@ jobs:
             pty)
               # A program on a pseudo-terminal: opened, its screen read, closed.
               # The runner has no terminal of its own, and this needs none.
-              printf 'emit Open { command = "/bin/sh", args = ["-c", "true"] } to mod get o\nassert o ∈ TerminalOpened\nemit Screen { id = o.id } to mod get s\nassert s ∈ TerminalScreen\nemit Close { id = o.id } to mod get c\nassert c ∈ Closed\n' >> dogfood/demo.code
+              printf 'emit Open { command = "/bin/sh", args = ["-c", "true"] } to mod get o\nassert o ∈ TerminalOpened\nemit Screen { id = o.id } to mod get s\nassert s ∈ TerminalScreen\nassert s.keys = "legacy"\nemit Close { id = o.id } to mod get c\nassert c ∈ Closed\n' >> dogfood/demo.code
               ;;
             tty)
               # No terminal on a runner: nothing draws before Start, and a
@@ -673,7 +673,7 @@ jobs:
               mqtt) handlers='["Config", "Subscribe", "Unsubscribe", "Publish", "Status", "Disconnect"]' ;;
               ntfy) handlers='["Config", "Notify"]' ;;
               tty) handlers='["Start", "Stop", "Draw", "Size"]' ;;
-              pty) handlers='["Open", "Type", "Write", "Resize", "Screen", "Close"]' ;;
+              pty) handlers='["Open", "Type", "Write", "Resize", "Screen", "Close", "Paste", "Mouse"]' ;;
               syntax) handlers='["Highlight"]' ;;
               net_client) handlers='["Config","Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
