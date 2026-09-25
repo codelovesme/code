@@ -6,7 +6,7 @@
 
 [package]
 name = "pty"
-version = "2.9.0"
+version = "2.10.0"
 edition = "2021"
 description = "The `pty` native module for the Code programming language — a shell in a pseudo-terminal: keys in, its screen out, as coloured spans. Written in Rust on code-native."
 license = "GPL-3.0"
