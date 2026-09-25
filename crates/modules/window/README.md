@@ -21,6 +21,8 @@ Key { id, name, text } =>
 
 ```
 Open   { title?, cols?, rows?, font?, bold_font?, font_size?, headless? } → WindowOpened { id, cols, rows, cell_width, cell_height }
+Copy   { text }                        → Copied { ok }                 (the desktop clipboard)
+Paste  {}                              → Pasted { text }
 Draw   { id, rows?, overlays?, cursor_row?, cursor_col? }                 → Drawn { id }
 Title  { id, text }                                                        → Titled { id }
 Size   { id }                          → WindowSize { id, cols, rows, cell_width, cell_height, width, height }

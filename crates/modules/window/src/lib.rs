@@ -26,6 +26,8 @@
 //! - `Pixel { id, x, y }` → `WindowPixel { id, rgb }`: one pixel, drawn (a
 //!   test looks at colours with it).
 //! - `Close { id }` → `Closed { id }`.
+//! - `Copy { text }` → `Copied { ok }`: `text` on the desktop's clipboard.
+//! - `Paste {}` → `Pasted { text }`: what is on it ("" when nothing is).
 //!
 //! Pushed, from the window's own thread:
 //!
@@ -355,6 +357,33 @@ fn close(out: &mut CodeValue, p: &CodeValue) {
         send(Cmd::Close(id));
     }
     answer(out, particle("Closed", vec![("id", Val::Num(id as f64))]));
+}
+
+/// The desktop clipboard, made once: on X11 it is a thread serving whoever
+/// pastes what this program copied, so it has to outlive the call.
+static CLIPBOARD: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
+
+fn with_clipboard<R>(f: impl FnOnce(&mut arboard::Clipboard) -> Result<R, String>) -> Result<R, String> {
+    let mut guard = CLIPBOARD.lock().unwrap_or_else(|e| e.into_inner());
+    if guard.is_none() {
+        *guard = Some(arboard::Clipboard::new().map_err(|e| format!("no clipboard: {e}"))?);
+    }
+    f(guard.as_mut().expect("made above"))
+}
+
+fn copy_text(out: &mut CodeValue, p: &CodeValue) {
+    let text = read_field_str(p, "text").unwrap_or("").to_string();
+    match with_clipboard(|c| c.set_text(text).map_err(|e| e.to_string())) {
+        Ok(()) => answer(out, particle("Copied", vec![("ok", Val::Bool(true))])),
+        Err(e) => exception(out, NAME, &format!("Copy: {e}")),
+    }
+}
+
+fn paste_text(out: &mut CodeValue, _p: &CodeValue) {
+    match with_clipboard(|c| Ok(c.get_text().unwrap_or_default())) {
+        Ok(text) => answer(out, particle("Pasted", vec![("text", Val::Str(text))])),
+        Err(e) => exception(out, NAME, &format!("Paste: {e}")),
+    }
 }
 
 // ── The window thread ──────────────────────────────────────────────────
@@ -742,6 +771,8 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
         Some("Text") => text(out, p),
         Some("Pixel") => pixel(out, p),
         Some("Close") => close(out, p),
+        Some("Copy") => copy_text(out, p),
+        Some("Paste") => paste_text(out, p),
         _ => null(out),
     })
 }
@@ -820,5 +851,10 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         assert_eq!(THREADS.load(Ordering::SeqCst), 0, "the window thread ended with its last window");
+        // The desktop clipboard: copied, then pasted back.
+        let copied = call(copy_text, particle("Copy", vec![("text", Val::Str("from code".into()))]));
+        assert_eq!(read_field_str(&copied, "_class"), Some("Copied"), "{:?}", read_field_str(&copied, "message"));
+        let pasted = call(paste_text, particle("Paste", vec![]));
+        assert_eq!(read_field_str(&pasted, "text"), Some("from code"));
     }
 }
