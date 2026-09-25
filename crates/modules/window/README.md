@@ -25,6 +25,7 @@ Copy   { text }                        → Copied { ok }                 (the de
 Paste  {}                              → Pasted { text }
 Draw   { id, rows?, overlays?, cursor_row?, cursor_col? }                 → Drawn { id }
 Title  { id, text }                                                        → Titled { id }
+Font   { id, size }                                                        → FontSized { id, cell_width, cell_height }   (a Resize follows)
 Size   { id }                          → WindowSize { id, cols, rows, cell_width, cell_height, width, height }
 Text   { id }                          → WindowText { id, rows }       (what is drawn, as plain text)
 Pixel  { id, x, y }                    → WindowPixel { id, rgb }       (one pixel, drawn)

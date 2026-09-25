@@ -681,7 +681,7 @@ jobs:
               tty) handlers='["Start", "Stop", "Draw", "Size"]' ;;
               pty) handlers='["Open", "Type", "Write", "Resize", "Screen", "Close", "Paste", "Mouse"]' ;;
               syntax) handlers='["Highlight"]' ;;
-              window) handlers='["Open", "Draw", "Title", "Size", "Text", "Pixel", "Close", "Copy", "Paste"]' ;;
+              window) handlers='["Open", "Draw", "Title", "Font", "Size", "Text", "Pixel", "Close", "Copy", "Paste"]' ;;
               net_client) handlers='["Config","Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb_mock) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;

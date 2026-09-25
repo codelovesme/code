@@ -20,6 +20,9 @@
 //!   `overlays` (`{ row, col, spans }`) on top, spans `{ text, style?, fg?,
 //!   bg?, bold?, width?, align? }`; the cursor a block where it is given.
 //! - `Title { id, text }` → `Titled { id }`.
+//! - `Font { id, size }` → `FontSized { id, cell_width, cell_height }`: the
+//!   letters at another size (pixels, times the display's scale); the window
+//!   keeps its size, so a `Resize` with its new grid follows.
 //! - `Size { id }` → `WindowSize { id, cols, rows, cell_width, cell_height,
 //!   width, height }`.
 //! - `Text { id }` → `WindowText { id, rows }`: what is drawn, as plain text.
@@ -84,6 +87,8 @@ struct Shared {
     height: usize,
     title: String,
     headless: bool,
+    /// The display's scale, as the window thread last saw it.
+    scale: f32,
 }
 
 type SharedRef = Arc<Mutex<Shared>>;
@@ -237,7 +242,7 @@ fn open(out: &mut CodeValue, p: &CodeValue) {
     };
     let (width, height) = (cols * face.cell_w, rows * face.cell_h);
     let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
-    let screen = Arc::new(Mutex::new(Shared { grid: Grid::new(cols, rows), cursor: None, face, font_size, width, height, title, headless }));
+    let screen = Arc::new(Mutex::new(Shared { grid: Grid::new(cols, rows), cursor: None, face, font_size, width, height, title, headless, scale: 1.0 }));
     with_windows(|w| w.insert(id, screen.clone()));
     if !headless {
         if let Err(e) = open_window(id) {
@@ -298,6 +303,29 @@ fn title(out: &mut CodeValue, p: &CodeValue) {
             send(Cmd::Title(id, text));
         }
         answer(out, particle("Titled", vec![("id", Val::Num(id as f64))]));
+    });
+}
+
+fn font(out: &mut CodeValue, p: &CodeValue) {
+    let Some(size) = read_field_number(p, "size").filter(|n| *n >= 4.0 && *n <= 200.0) else {
+        return exception(out, NAME, "Font needs `size`, in pixels, 4 to 200");
+    };
+    on(out, p, "Font", |out, id, screen| {
+        let (headless, cw, ch) = {
+            let mut s = lock(screen);
+            s.font_size = size as f32;
+            let px = s.font_size * s.scale;
+            s.face.resize(px);
+            if s.headless {
+                s.width = s.grid.cols * s.face.cell_w;
+                s.height = s.grid.rows * s.face.cell_h;
+            }
+            (s.headless, s.face.cell_w, s.face.cell_h)
+        };
+        if !headless {
+            send(Cmd::Refit(id));
+        }
+        answer(out, particle("FontSized", vec![("id", Val::Num(id as f64)), ("cell_width", num(cw)), ("cell_height", num(ch))]));
     });
 }
 
@@ -394,6 +422,8 @@ enum Cmd {
     Redraw(u64),
     Title(u64, String),
     Close(u64),
+    /// The grid fitted again to the window, the letters' size having changed.
+    Refit(u64),
 }
 
 fn send(cmd: Cmd) {
@@ -492,6 +522,7 @@ impl App {
         let window = Arc::new(el.create_window(attrs).map_err(|e| format!("the window could not be made: {e}"))?);
         // On a scaled display the letters are drawn that much bigger.
         let scale = window.scale_factor() as f32;
+        lock(&screen).scale = scale;
         if (scale - 1.0).abs() > f32::EPSILON {
             let mut s = lock(&screen);
             let px = s.font_size * scale;
@@ -624,6 +655,13 @@ impl ApplicationHandler<Cmd> for App {
                     live.window.set_title(&text);
                 }
             }
+            Cmd::Refit(id) => {
+                if let Some(live) = self.by_id(id) {
+                    let size = live.window.inner_size();
+                    live.window.request_redraw();
+                    Self::fit(id, size.width as usize, size.height as usize);
+                }
+            }
             Cmd::Close(id) => {
                 self.windows.retain(|_, l| l.id != id);
                 if self.windows.is_empty() {
@@ -646,6 +684,7 @@ impl ApplicationHandler<Cmd> for App {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 if let Some(screen) = shared(id) {
                     let mut s = lock(&screen);
+                    s.scale = scale_factor as f32;
                     let px = s.font_size * scale_factor as f32;
                     s.face.resize(px);
                 }
@@ -767,6 +806,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
         Some("Open") => open(out, p),
         Some("Draw") => draw(out, p),
         Some("Title") => title(out, p),
+        Some("Font") => font(out, p),
         Some("Size") => size(out, p),
         Some("Text") => text(out, p),
         Some("Pixel") => pixel(out, p),
@@ -820,6 +860,9 @@ mod tests {
         let px = call(pixel, particle("Pixel", vec![("id", Val::Num(id)), ("x", Val::Num((cw * 9 + 1) as f64)), ("y", Val::Num(1.0))]));
         let rgb: Vec<f64> = array_elems(find_field(&px, "rgb").unwrap()).filter_map(read_number).collect();
         assert_eq!(rgb, [30.0, 30.0, 30.0]);
+        // Bigger letters: bigger cells, and the headless window grows with them.
+        let bigger = call(font, particle("Font", vec![("id", Val::Num(id)), ("size", Val::Num(30.0))]));
+        assert!(read_field_number(&bigger, "cell_width").unwrap() as usize > cw);
         let closed = call(close, particle("Close", vec![("id", Val::Num(id))]));
         assert_eq!(read_field_str(&closed, "_class"), Some("Closed"));
         let gone = call(text, particle("Text", vec![("id", Val::Num(id))]));
