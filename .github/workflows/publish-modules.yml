@@ -547,6 +547,12 @@ jobs:
               # never sent here — it would wait on keys nobody presses.
               printf 'emit Stop { } to mod get s\nassert not s.ok\nemit Draw { rows = [] } to mod get d\nassert d ∈ Exception\n' >> dogfood/demo.code
               ;;
+            window)
+              # No display on a runner: a window that is not headless cannot
+              # open, a font that is not there is refused, and a window never
+              # opened cannot be drawn on. Nothing starts a window thread here.
+              printf 'emit Open { headless = true, font = "/no/such/font.ttf" } to mod get o\nassert o ∈ Exception\nemit Draw { id = 99, rows = [] } to mod get d\nassert d ∈ Exception\n' >> dogfood/demo.code
+              ;;
             syntax)
               printf 'emit Highlight { source = "x = 1" } to mod get h\nassert h ∈ Highlighted\nassert h.lines[0][0].kind = "variable"\n' >> dogfood/demo.code
               ;;
@@ -675,6 +681,7 @@ jobs:
               tty) handlers='["Start", "Stop", "Draw", "Size"]' ;;
               pty) handlers='["Open", "Type", "Write", "Resize", "Screen", "Close", "Paste", "Mouse"]' ;;
               syntax) handlers='["Highlight"]' ;;
+              window) handlers='["Open", "Draw", "Title", "Size", "Text", "Pixel", "Close"]' ;;
               net_client) handlers='["Config","Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb_mock) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;

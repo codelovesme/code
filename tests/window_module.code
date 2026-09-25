@@ -1,0 +1,35 @@
+| `window` — a desktop window as a screen of letters. A fixture has no
+| display, so the window here is `headless`: drawn into memory, read back as
+| text and as pixels, closed. A machine with no font at all says so at
+| Open, and the rest is skipped. The real window is the module's own test
+| (under Xvfb).
+
+link "native_modules/window.so" as win
+
+Probe {} =>
+    emit Open { cols = 12, rows = 2, headless = true } to win get opened
+    if opened ∈ Exception, return Skipped { reason = opened.message }
+    assert opened ∈ WindowOpened
+    assert opened.cols = 12 and opened.rows = 2
+    emit Draw { id = opened.id, rows = [[{ text = "hi", bg = [200, 0, 0] }]], overlays = [{ row = 1, col = 3, spans = ["xy"] }] } to win get drawn
+    assert drawn ∈ Drawn
+    emit Text { id = opened.id } to win get shown
+    assert shown.rows = ["hi          ", "   xy       "]
+    emit Pixel { id = opened.id, x = 1, y = 1 } to win get red
+    assert red.rgb = [200, 0, 0]
+    emit Size { id = opened.id } to win get size
+    assert size.width = 12 * opened.cell_width
+    emit Title { id = opened.id, text = "t" } to win get titled
+    assert titled ∈ Titled
+    emit Close { id = opened.id } to win get closed
+    assert closed ∈ Closed
+    emit Text { id = opened.id } to win get gone
+    assert gone ∈ Exception
+    return Checked
+
+emit Probe to this get probed
+assert probed ∈ Checked or probed ∈ Skipped
+emit Open { headless = true, font = "/no/such/font.ttf" } to win get no_font
+assert no_font ∈ Exception
+emit Whatever {} to win get nothing
+assert nothing = null

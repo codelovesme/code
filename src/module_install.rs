@@ -298,6 +298,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "tty",
     "syntax",
     "pty",
+    "window",
 ];
 
 /// Where this repository's releases live. Overridable for offline work and

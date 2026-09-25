@@ -1,0 +1,22 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree.
+[workspace]
+
+[package]
+name = "window"
+version = "2.8.3"
+edition = "2021"
+description = "The `window` native module for the Code programming language — a desktop window as a screen of letters: rows of styled text drawn in, keys, mouse and resizes pushed out. Written in Rust on code-native."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }
+winit = { version = "0.30", default-features = false, features = ["x11", "wayland", "wayland-dlopen", "rwh_06"] }
+softbuffer = { version = "0.4", default-features = false, features = ["x11", "x11-dlopen", "wayland", "wayland-dlopen"] }
+fontdue = "0.9"

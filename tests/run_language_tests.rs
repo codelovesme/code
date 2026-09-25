@@ -235,6 +235,7 @@ fn build_native_dynamic_test_modules(tests_dir: &Path, wants: &dyn Fn(&str) -> b
         "pty",
         "tty",
         "syntax",
+        "window",
         "mailer_mock",
         "oauth_mock",
         "mongodb_mock",
