@@ -43,6 +43,22 @@ assert all.count = 3
 emit Count { collection = "events", filter = { kind = "signup" } } to db get signups
 assert signups.count = 2
 
+emit EnsureIndex { collection = "events", name = "owner_at", keys = { user = 1, at = -1 } } to db get indexed
+assert indexed ∈ EnsureIndexResult
+assert indexed.ok
+emit ReplaceOne { collection = "events", filter = { kind = "signup", user = "u1" }, doc = { _id = i1.id, kind = "signup", user = "u1", note = "updated" } } to db get replaced
+assert replaced.matched = 1
+emit Find { collection = "events", filter = { _id = i1.id } } to db get edited
+assert edited.items[0].note = "updated"
+emit ReplaceOne { collection = "events", filter = { _id = i1.id, note = "stale" }, doc = { _id = i1.id, kind = "signup", user = "u1" } } to db get conflict
+assert conflict.matched = 0
+emit DeleteOne { collection = "events", filter = { _id = i1.id } } to db get deleted_one
+assert deleted_one.deleted = 1
+emit DeleteMany { collection = "events", filter = { kind = "signup" } } to db get deleted_many
+assert deleted_many.deleted = 1
+emit Insert { collection = "events", doc = { kind = "signup", user = "u1" } } to db
+emit Insert { collection = "events", doc = { kind = "signup", user = "u2" } } to db
+
 emit Find { collection = "events", filter = { kind = "signup" }, sort = { user = -1 }, limit = 1 } to db get top
 assert top.count = 1
 assert top.items[0].user = "u2"

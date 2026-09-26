@@ -25,6 +25,10 @@ Insert     { collection, doc }                            → InsertResult      
 InsertMany { collection, docs }                           → InsertManyResult  { count }
 Find       { collection, filter?, sort?, limit?, skip? }  → FindResult        { items, count }
 Count      { collection, filter? }                        → CountResult       { count }
+ReplaceOne { collection, filter, doc }                    → ReplaceOneResult  { matched }
+DeleteOne  { collection, filter }                         → DeleteOneResult   { deleted }
+DeleteMany { collection, filter }                         → DeleteManyResult  { deleted }
+EnsureIndex { collection, name, keys, expire_after_seconds? } → EnsureIndexResult { ok }
 Drop       { collection }                                 → DropResult        { dropped }
 ```
 
@@ -55,6 +59,15 @@ does now.
 `InsertResult.id` is the new document's `_id` as a string (an `ObjectId` in
 hex, or the string you supplied).
 
+`ReplaceOne` replaces only an existing document and returns `matched = 0` on
+conflict. `ReplaceOne`, `DeleteOne`, and `DeleteMany` require a non-empty filter;
+they will not accidentally change an entire collection. `EnsureIndex` is safe
+to call again with the same name and keys. An index with
+`expire_after_seconds = 0` expires documents at their BSON date value.
+
+Code has no date kind. Use `{ "\$date_ms" = milliseconds_since_epoch }` where
+a BSON DateTime is needed, such as a TTL field. Other objects keep their shape.
+
 ## BSON ↔ values
 
 | BSON | value |
@@ -82,9 +95,8 @@ same as in the `json` module.
 - **Timeouts are the URL's**, not a hard-coded 30s, so a fixture can ask for
   a fast failure.
 
-**No aggregation pipeline, no transactions, no change streams, no indexes.**
-Each is a real feature to add when asked; the euglena apps needed
-insert/find/count and a KV layer.
+**No aggregation pipeline, transactions, or change streams.** Index creation,
+targeted replacement and deletion were added for bounded, versioned memories.
 
 **The connection is per link.** `Config` replaces it. An app that talks to
 two databases links `mongodb` twice.

@@ -674,7 +674,7 @@ jobs:
               mailer) handlers='["Config", "Send"]' ;;
               azure_mailer) handlers='["Config", "Send"]' ;;
               oauth) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
-              mongodb) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;
+              mongodb) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "ReplaceOne", "DeleteOne", "DeleteMany", "EnsureIndex", "Drop"]' ;;
               azure_blob) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
               media) handlers='["Record", "StopRecording", "StartCamera", "TakePhoto", "StopCamera", "Play", "StopPlaying"]' ;;
               blob_storage) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
@@ -698,7 +698,7 @@ jobs:
               window) handlers='["Open", "Draw", "Title", "Font", "Size", "Text", "Pixel", "Close", "Copy", "Paste"]' ;;
               net_client) handlers='["Config","Send"]' ;;
               oauth_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
-              mongodb_mock) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "Drop"]' ;;
+              mongodb_mock) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "ReplaceOne", "DeleteOne", "DeleteMany", "EnsureIndex", "Drop"]' ;;
               blob_storage_mock) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
               cloud_drive_mock) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode", "RefreshToken", "GetQuota", "ListFiles", "UploadFile", "DownloadFile", "DeleteFile"]' ;;
               git_mock) handlers='["Config", "Stash", "StashPop", "Init", "Clone", "Add", "Commit", "Push", "SetRemote", "Status"]' ;;

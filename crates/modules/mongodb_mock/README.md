@@ -4,6 +4,10 @@ A drop-in for [`mongodb`](../mongodb/README.md): the same nine particles and
 the same result shapes, over in-memory collections that live for the
 process.
 
+The additional `ReplaceOne`, `DeleteOne`, `DeleteMany`, and `EnsureIndex`
+particles mirror the real module. `EnsureIndex` validates its fields but has no
+storage effect; expiry is tested against real MongoDB.
+
 ```code
 link "mongodb_mock.so" as db
 

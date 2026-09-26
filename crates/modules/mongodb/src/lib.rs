@@ -30,6 +30,8 @@
 //! `runtime.c` into the cdylib and re-exports it.
 
 use driver::bson::{doc, Bson, Document};
+use driver::options::IndexOptions;
+use driver::IndexModel;
 use code_native::*;
 use driver::sync::{Client, Collection, Database};
 use std::sync::Mutex;
@@ -67,6 +69,10 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             "InsertMany" => insert_many(out, particle),
             "Find" => find(out, particle),
             "Count" => count(out, particle),
+            "ReplaceOne" => replace_one(out, particle),
+            "DeleteOne" => delete_one(out, particle),
+            "DeleteMany" => delete_many(out, particle),
+            "EnsureIndex" => ensure_index(out, particle),
             "Drop" => drop_collection(out, particle),
             _ => {
                 null(out);
@@ -243,6 +249,66 @@ fn count(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     Ok(())
 }
 
+fn replace_one(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let filter = require_doc(particle, "filter", "ReplaceOne")?;
+    if filter.is_empty() {
+        return Err("ReplaceOne requires a non-empty filter".into());
+    }
+    let replacement = require_doc(particle, "doc", "ReplaceOne")?;
+    let result = collection(particle)?
+        .replace_one(filter, replacement)
+        .run()
+        .map_err(|e| format!("ReplaceOne failed: {e}"))?;
+    one_number(out, c"ReplaceOneResult", c"matched", result.matched_count as f64);
+    Ok(())
+}
+
+fn delete_one(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let filter = require_doc(particle, "filter", "DeleteOne")?;
+    if filter.is_empty() {
+        return Err("DeleteOne requires a non-empty filter".into());
+    }
+    let result = collection(particle)?
+        .delete_one(filter)
+        .run()
+        .map_err(|e| format!("DeleteOne failed: {e}"))?;
+    one_number(out, c"DeleteOneResult", c"deleted", result.deleted_count as f64);
+    Ok(())
+}
+
+fn delete_many(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let filter = require_doc(particle, "filter", "DeleteMany")?;
+    if filter.is_empty() {
+        return Err("DeleteMany requires a non-empty filter".into());
+    }
+    let result = collection(particle)?
+        .delete_many(filter)
+        .run()
+        .map_err(|e| format!("DeleteMany failed: {e}"))?;
+    one_number(out, c"DeleteManyResult", c"deleted", result.deleted_count as f64);
+    Ok(())
+}
+
+fn ensure_index(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let keys = require_doc(particle, "keys", "EnsureIndex")?;
+    if keys.is_empty() {
+        return Err("EnsureIndex requires non-empty keys".into());
+    }
+    let name = require_str(particle, "name", "EnsureIndex")?;
+    let mut options = IndexOptions::default();
+    options.name = Some(name.to_string());
+    if let Some(seconds) = whole_number(particle, "expire_after_seconds")? {
+        options.expire_after = Some(std::time::Duration::from_secs(seconds as u64));
+    }
+    let model = IndexModel::builder().keys(keys).options(options).build();
+    collection(particle)?
+        .create_index(model)
+        .run()
+        .map_err(|e| format!("EnsureIndex failed: {e}"))?;
+    one_bool(out, c"EnsureIndexResult", c"ok", true);
+    Ok(())
+}
+
 fn collection(particle: &CodeValue) -> Result<Collection<Document>, String> {
     let name = require_str(particle, "collection", "this handler")?;
     Ok(database()?.collection(name))
@@ -290,8 +356,18 @@ fn code_to_bson(v: &CodeValue) -> Bson {
         CodeTag::Null => Bson::Null,
         CodeTag::Array => Bson::Array(array_elems(v).map(code_to_bson).collect()),
         CodeTag::Object => {
+            // An explicit wrapper is needed because Code has no DateTime kind.
+            // Epoch milliseconds are exactly representable at current dates.
+            let entries: Vec<_> = object_entries(v).collect();
+            if entries.len() == 1 && entries[0].0 == "$date_ms" {
+                if let Some(ms) = read_number(entries[0].1) {
+                    if ms.is_finite() && ms.fract() == 0.0 && ms.abs() < i64::MAX as f64 {
+                        return Bson::DateTime(driver::bson::DateTime::from_millis(ms as i64));
+                    }
+                }
+            }
             let mut d = Document::new();
-            for (key, value) in object_entries(v) {
+            for (key, value) in entries {
                 if key != "_class" {
                     d.insert(key, code_to_bson(value));
                 }
@@ -436,4 +512,3 @@ fn one_number(out: &mut CodeValue, class: &'static std::ffi::CStr, key: &'static
     object(out, &[c"_class", key], &mut b);
     b.release_all();
 }
-

@@ -58,6 +58,10 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             "InsertMany" => insert_many(out, particle),
             "Find" => find(out, particle),
             "Count" => count(out, particle),
+            "ReplaceOne" => replace_one(out, particle),
+            "DeleteOne" => delete_one(out, particle),
+            "DeleteMany" => delete_many(out, particle),
+            "EnsureIndex" => ensure_index(out, particle),
             "Drop" => drop_collection(out, particle),
             _ => {
                 null(out);
@@ -247,6 +251,82 @@ fn count(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
             .unwrap_or(0)
     })?;
     one_number(out, c"CountResult", c"count", n as f64);
+    Ok(())
+}
+
+fn replace_one(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let coll = require_str(particle, "collection", "ReplaceOne")?.to_string();
+    let filter = Some(require_object(particle, "filter", "ReplaceOne")?);
+    if filter.as_ref().is_some_and(Map::is_empty) {
+        return Err("ReplaceOne requires a non-empty filter".into());
+    }
+    if let Some(op) = unsupported(&filter) {
+        return Err(format!("ReplaceOne: the mock does not know the filter operator '{op}'"));
+    }
+    let doc = require_object(particle, "doc", "ReplaceOne")?;
+    let matched = with_db(|db| {
+        let Some(docs) = db.get_mut(&coll) else { return 0 };
+        let Some(pos) = docs.iter().position(|d| matches_filter(d, &filter)) else { return 0 };
+        if doc.get("_id") != docs[pos].get("_id") {
+            return -1;
+        }
+        docs[pos] = doc;
+        1
+    })?;
+    if matched < 0 {
+        return Err("ReplaceOne cannot change _id".into());
+    }
+    one_number(out, c"ReplaceOneResult", c"matched", matched as f64);
+    Ok(())
+}
+
+fn delete_one(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let coll = require_str(particle, "collection", "DeleteOne")?.to_string();
+    let filter = Some(require_object(particle, "filter", "DeleteOne")?);
+    if filter.as_ref().is_some_and(Map::is_empty) {
+        return Err("DeleteOne requires a non-empty filter".into());
+    }
+    if let Some(op) = unsupported(&filter) {
+        return Err(format!("DeleteOne: the mock does not know the filter operator '{op}'"));
+    }
+    let deleted = with_db(|db| {
+        let Some(docs) = db.get_mut(&coll) else { return 0 };
+        let Some(pos) = docs.iter().position(|d| matches_filter(d, &filter)) else { return 0 };
+        docs.remove(pos);
+        1
+    })?;
+    one_number(out, c"DeleteOneResult", c"deleted", deleted as f64);
+    Ok(())
+}
+
+fn delete_many(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let coll = require_str(particle, "collection", "DeleteMany")?.to_string();
+    let filter = Some(require_object(particle, "filter", "DeleteMany")?);
+    if filter.as_ref().is_some_and(Map::is_empty) {
+        return Err("DeleteMany requires a non-empty filter".into());
+    }
+    if let Some(op) = unsupported(&filter) {
+        return Err(format!("DeleteMany: the mock does not know the filter operator '{op}'"));
+    }
+    let deleted = with_db(|db| {
+        let Some(docs) = db.get_mut(&coll) else { return 0 };
+        let before = docs.len();
+        docs.retain(|d| !matches_filter(d, &filter));
+        before - docs.len()
+    })?;
+    one_number(out, c"DeleteManyResult", c"deleted", deleted as f64);
+    Ok(())
+}
+
+fn ensure_index(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    require_str(particle, "collection", "EnsureIndex")?;
+    require_str(particle, "name", "EnsureIndex")?;
+    let keys = require_object(particle, "keys", "EnsureIndex")?;
+    if keys.is_empty() {
+        return Err("EnsureIndex requires non-empty keys".into());
+    }
+    whole_number(particle, "expire_after_seconds")?;
+    one_bool(out, c"EnsureIndexResult", c"ok", true);
     Ok(())
 }
 

@@ -66,8 +66,18 @@ emit InsertMany {{ collection = "users", docs = [
 ] }} to db get im
 assert im.count = 3
 
-emit Insert {{ collection = "users", doc = {{ name = "deb", age = 22, role = "user" }} }} to db get ins
+emit Insert {{ collection = "users", doc = {{ _id = "deb", name = "deb", age = 22, role = "user" }} }} to db get ins
 assert ins.id ≠ ""
+
+emit EnsureIndex {{ collection = "users", name = "role_age", keys = {{ role = 1, age = -1 }} }} to db get indexed
+assert indexed.ok
+emit ReplaceOne {{ collection = "users", filter = {{ _id = ins.id, age = 22 }}, doc = {{ _id = ins.id, name = "deb", age = 23, role = "user" }} }} to db get replaced
+assert replaced.matched = 1
+emit ReplaceOne {{ collection = "users", filter = {{ _id = ins.id, age = 22 }}, doc = {{ _id = ins.id, name = "deb", age = 24, role = "user" }} }} to db get stale
+assert stale.matched = 0
+emit DeleteOne {{ collection = "users", filter = {{ _id = ins.id }} }} to db get removed
+assert removed.deleted = 1
+emit Insert {{ collection = "users", doc = {{ name = "deb", age = 22, role = "user" }} }} to db
 
 emit Count {{ collection = "users" }} to db get n
 assert n.count = 4
@@ -82,6 +92,12 @@ assert fr.items[0].age = 22
 
 emit Drop {{ collection = "users" }} to db get last
 assert last.dropped
+
+emit EnsureIndex {{ collection = "ephemeral", name = "expiry", keys = {{ expires_at = 1 }}, expire_after_seconds = 0 }} to db get ttl
+assert ttl.ok
+emit Insert {{ collection = "ephemeral", doc = {{ expires_at = {{ "\$date_ms" = 1760000000000 }} }} }} to db get dated
+assert dated.id ≠ ""
+emit Drop {{ collection = "ephemeral" }} to db
 "#
     );
 
