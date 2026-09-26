@@ -22,3 +22,7 @@
 /tests/native_modules/*.so
 /tests/native_modules/*.a
 /tests/native_modules/*.o
+
+# Standalone first-party module tests build their native fixture beside the
+# checked-in source; the shared test runner rebuilds it on every machine.
+/crates/modules/*/tests/*.so

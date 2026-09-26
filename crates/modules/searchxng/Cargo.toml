@@ -1,0 +1,17 @@
+[workspace]
+
+[package]
+name = "searchxng"
+version = "2.10.0"
+edition = "2021"
+description = "SearXNG search module for the Code programming language"
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }
+serde_json = "1"
+ureq = "3"

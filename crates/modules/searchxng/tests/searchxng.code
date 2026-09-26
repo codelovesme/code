@@ -1,0 +1,9 @@
+link "searchxng.so" as search
+
+emit Config { endpoint = "http://127.0.0.1:8082", max_results = 3 } to search get configured
+assert configured.ok
+
+emit Search { query = "weather API", limit = 3 } to search get found
+assert found.ok
+assert found.status = 200
+assert found.results ∈ Array

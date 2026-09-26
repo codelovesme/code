@@ -386,6 +386,18 @@ jobs:
               # artifact loads, routes, and that Parse and Stringify agree.
               printf 'emit Stringify { value = { a = 1 } } to mod get s\nemit Parse { text = s.value } to mod get p\nassert p.value = { a = 1 }\n' >> dogfood/demo.code
               ;;
+            searchxng)
+              # Nothing is listening on port 1: Config succeeds, and a
+              # refused search comes back as an Exception rather than ending
+              # the program.
+              printf 'emit Config { endpoint = "http://127.0.0.1:1" } to mod get c\nassert c.ok\nemit Search { query = "code" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            api_registry)
+              # The registry endpoint is deliberately unreachable here:
+              # Config and Stop route locally, while a failed warm is an
+              # Exception and never leaves the worker running.
+              printf 'emit Config { endpoint = "https://127.0.0.1:1" } to mod get c\nassert c.ok\nemit Warm { wait = true } to mod get w\nassert w ∈ Exception\nemit Stop { } to mod get s\nassert s.ok\n' >> dogfood/demo.code
+              ;;
             crypto)
               # Cost 4 keeps this quick. Hash then verify — proof the artifact
               # loads, routes, and that the two agree on a real bcrypt string.
@@ -650,6 +662,8 @@ jobs:
               http_client) handlers='["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"]' ;;
               http_server) handlers='["Config", "Listen"]' ;;
               json) handlers='["Parse", "Stringify"]' ;;
+              searchxng) handlers='["Config", "Search"]' ;;
+              api_registry) handlers='["Config", "Warm", "Search", "Stop"]' ;;
               crypto) handlers='["Hash", "Verify", "RandomCode"]' ;;
               jwt) handlers='["Config", "Sign", "Decode"]' ;;
               markdown) handlers='["RenderMarkdown", "SplitByHeading"]' ;;
@@ -700,7 +714,7 @@ jobs:
               http_server) setup='"setup": "Config",' ;;
               net_client|net_server) setup='"setup": "Config",' ;;
               membrane) setup='"setup": "Config",' ;;
-              jwt|fs|json_store|git|mailer|azure_mailer|oauth|mongodb|azure_blob|blob_storage|cloud_drive|localai|*_mock) setup='"setup": "Config",' ;;
+              jwt|fs|json_store|git|mailer|azure_mailer|oauth|mongodb|azure_blob|blob_storage|cloud_drive|localai|searchxng|api_registry|*_mock) setup='"setup": "Config",' ;;
               *) setup='' ;;
             esac
             # The browser archive, for the few modules that have one. Absent

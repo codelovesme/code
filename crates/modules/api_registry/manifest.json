@@ -1,0 +1,7 @@
+{
+  "name": "api_registry",
+  "kind": "native-rust-module",
+  "source": "src/lib.rs",
+  "output": "modules/api_registry.so",
+  "description": "Searches and caches a public OpenAPI registry and returns bounded direct JSON specifications"
+}

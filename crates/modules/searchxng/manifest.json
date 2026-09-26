@@ -1,0 +1,7 @@
+{
+  "name": "searchxng",
+  "kind": "native-rust-module",
+  "source": "src/lib.rs",
+  "output": "modules/searchxng.so",
+  "description": "Searches a configured SearXNG endpoint and returns bounded JSON results"
+}

@@ -12,7 +12,7 @@ Three tiers, distinguished by *where the bytes live*:
 | tier | what | how users get it |
 |---|---|---|
 | **core** | `Length` (shipped), `Timestamp` | compiled into the `code` binary — nothing to install, works everywhere including the wasm playground |
-| **first-party modules** | `console`, `console`, `math`, `strings`, `env`, `http_client`, `http_server`, `net_client`, `net_server`, … | native: GitHub Releases + `code install <name>`; browser: npm |
+| **first-party modules** | `console`, `console`, `math`, `strings`, `env`, `http_client`, `http_server`, `net_client`, `net_server`, `searchxng`, `api_registry`, … | native: GitHub Releases + `code install <name>`; browser: npm |
 | **community modules** | anyone's | the author publishes to *their own* GitHub Releases (a template repo provides the CI); consumers install by URL first, by name once an index exists |
 
 The rule separating tier 1 from tier 2: **fundamentals are core**. Only
@@ -509,6 +509,20 @@ multi-turn, where the organelle only took `system` + `user`. A failed call
 is an `Exception`, not `{ ok: false }`. Error/guard paths are a `.code`
 fixture; the chat/transcribe round trips are `tests/localai_module.rs`,
 against a fake OpenAI endpoint on loopback (no service, no env var).
+
+`searchxng` — shipped: `Config { endpoint, max_results? }` followed by
+bounded `Search { query, limit?, language?, categories? }` requests to one
+configured SearXNG endpoint. Results keep only the useful title, URL, content,
+engine and publication fields, and transport or malformed-response failures
+are `Exception`s. The endpoint is configured explicitly so an application can
+choose its own LAN search service without giving the module a crawler or
+redirect-following policy.
+
+`api_registry` — shipped: `Config { endpoint, max_results?, cache_seconds? }`,
+then `Warm`, `Search` and `Stop` for a bounded, cached search over an HTTPS
+OpenAPI registry. Warming can run in the background, searches never wait for
+the network, and results are limited to HTTPS JSON specification URLs. `Stop`
+joins a refresh worker before a host unloads the module.
 
 ### Mock twins
 

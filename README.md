@@ -1622,7 +1622,11 @@ their answers back, with no protocol of their own and no policy — authenticati
 and authorization are a chain of handlers, because that is where a user and
 their permissions can be read; see
 [`net_server`](crates/modules/net_server/README.md) and
-[`net_client`](crates/modules/net_client/README.md)).
+[`net_client`](crates/modules/net_client/README.md)), `searchxng` (bounded
+queries against a configured SearXNG endpoint — see
+[`crates/modules/searchxng`](crates/modules/searchxng/README.md)), and
+`api_registry` (cached search over the public OpenAPI registry — see
+[`crates/modules/api_registry`](crates/modules/api_registry/README.md)).
 Seven of these ship a `<name>_mock` twin — `mailer_mock`, `oauth_mock`,
 `mongodb_mock`, `blob_storage_mock`, `cloud_drive_mock`, `git_mock`,
 `localai_mock` — same particles and results, but no SMTP server, no
@@ -1769,7 +1773,7 @@ crates/
                 json_store, crypto, jwt, markdown, fs, process, git, mailer,
                 azure_mailer,
                 oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,
-                media, clipboard, interpreter, mqtt, ntfy, tty, syntax, pty,
+                searchxng, api_registry, media, clipboard, interpreter, mqtt, ntfy, tty, syntax, pty,
                 http_client, http_server, net_client, net_server — plus
                 <name>_mock twins for
                 mailer, oauth, mongodb, blob_storage, cloud_drive, git, localai

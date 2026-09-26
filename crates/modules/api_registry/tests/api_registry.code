@@ -1,0 +1,19 @@
+link "api_registry.so" as registry
+
+emit Config {
+    endpoint = "https://api.apis.guru/v2"
+    max_results = 3
+    cache_seconds = 300
+} to registry get configured
+assert configured.ok
+
+emit Warm { wait = true } to registry get warmed
+assert warmed.ready
+
+emit Search { query = "news", limit = 3 } to registry get found
+assert found.ok
+assert found.results ∈ Array
+assert found.results[0].url ∈ String
+
+emit Stop to registry get stopped
+assert stopped.ok
