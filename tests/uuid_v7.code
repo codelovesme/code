@@ -1,0 +1,35 @@
+| `uuid.V7 {}` → `UuidResult { value }`: a version-7 UUID, time-ordered.
+| `uuid.Parse { value }` → `ParsedUuid { value, version, unix_ms }` reads
+| one back; anything that is not a UUID is an Exception.
+link "native_modules/uuid.so" as u
+
+emit V7 {} to u get a
+assert a ∈ UuidResult
+emit V7 {} to u get b
+assert a.value ≠ b.value
+
+| Made now, and it says so: version 7, a millisecond stamp near the clock.
+emit Parse { value = a.value } to u get pa
+assert pa ∈ ParsedUuid
+assert pa.value = a.value
+assert pa.version = 7
+emit Timestamp to core get now
+assert pa.unix_ms ≥ (now.value - 60) * 1000
+assert pa.unix_ms ≤ (now.value + 60) * 1000
+
+| Two made one after the other sort in that order.
+emit Parse { value = b.value } to u get pb
+assert pb.unix_ms ≥ pa.unix_ms
+
+| Any spelling in, the canonical one out; a version 4 has no time in it.
+emit Parse { value = "{67E55044-10B1-426F-9247-BB680E5FE0C8}" } to u get four
+assert four.value = "67e55044-10b1-426f-9247-bb680e5fe0c8"
+assert four.version = 4
+assert four.unix_ms = null
+
+| Not a UUID, or not a string: refused, with the module named.
+emit Parse { value = "camera-1" } to u get bad
+assert bad ∈ Exception
+assert bad.source = "uuid"
+emit Parse { value = 7 } to u get not_text
+assert not_text ∈ Exception

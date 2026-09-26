@@ -548,6 +548,11 @@ jobs:
               # Exception now, not something queued.
               printf 'emit Config { topic = "demo", url = "http://127.0.0.1:1", timeout_seconds = 2 } to mod get c\nassert c.ok\nemit Notify { message = "hi", priority = 9 } to mod get bad\nassert bad ∈ Exception\nemit Notify { message = "hi" } to mod get n\nassert n ∈ Exception\n' >> dogfood/demo.code
               ;;
+            uuid)
+              # Two made one after the other: both version 7, in order, and
+              # read back with their time — proof the artifact loads and routes.
+              printf 'emit V7 {} to mod get a\nemit V7 {} to mod get b\nassert a.value ≠ b.value\nemit Parse { value = a.value } to mod get pa\nemit Parse { value = b.value } to mod get pb\nassert pa.version = 7\nassert pb.unix_ms ≥ pa.unix_ms\n' >> dogfood/demo.code
+              ;;
             pty)
               # A program on a pseudo-terminal: opened, its screen read, closed.
               # The runner has no terminal of its own, and this needs none.
@@ -665,6 +670,7 @@ jobs:
               searchxng) handlers='["Config", "Search"]' ;;
               api_registry) handlers='["Config", "Warm", "Search", "Stop"]' ;;
               crypto) handlers='["Hash", "Verify", "RandomCode"]' ;;
+              uuid) handlers='["V7", "Parse"]' ;;
               jwt) handlers='["Config", "Sign", "Decode"]' ;;
               markdown) handlers='["RenderMarkdown", "SplitByHeading"]' ;;
               fs) handlers='["Config", "ReadFile", "WriteFile", "DeleteFile", "CreateDir", "RemoveDir", "ListDir", "Exists"]' ;;

@@ -1562,7 +1562,9 @@ rather than the source — see [its README](crates/modules/env/README.md)),
 interpolation's compact rendering can't do; see
 [its README](crates/modules/json/README.md)), `crypto` (bcrypt password
 hashing and verification, and random codes — see
-[its README](crates/modules/crypto/README.md)), `jwt` (sign and verify
+[its README](crates/modules/crypto/README.md)), `uuid` (time-ordered
+version-7 UUIDs, and reading one back — see
+[its README](crates/modules/uuid/README.md)), `jwt` (sign and verify
 HS256 JSON Web Tokens — see [its README](crates/modules/jwt/README.md)),
 `markdown` (CommonMark + GFM to HTML, with a table of contents and a
 split-by-heading — see [its README](crates/modules/markdown/README.md)),
@@ -1770,7 +1772,7 @@ crates/
   code-lsp/     diagnostics, semantic tokens and formatting, over the real
                 lexer/parser and the same `code format` the CLI runs
   modules/      first-party modules: console, dom, guest, math, strings, env, json,
-                json_store, crypto, jwt, markdown, fs, process, git, mailer,
+                json_store, crypto, uuid, jwt, markdown, fs, process, git, mailer,
                 azure_mailer,
                 oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,
                 searchxng, api_registry, media, clipboard, interpreter, mqtt, ntfy, tty, syntax, pty,

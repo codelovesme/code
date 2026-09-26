@@ -1,0 +1,21 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree.
+[workspace]
+
+[package]
+name = "uuid"
+version = "2.11.0"
+edition = "2021"
+description = "The `uuid` native module for the Code programming language — time-ordered UUIDs (version 7), and reading one back."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+code-native = { path = "../../code-native" }
+# Renamed so the crate's own name (`uuid`) does not shadow the library.
+uuid-rs = { package = "uuid", version = "1.10", features = ["v7", "std"] }

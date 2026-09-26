@@ -301,6 +301,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "syntax",
     "pty",
     "window",
+    "uuid",
 ];
 
 /// Where this repository's releases live. Overridable for offline work and
