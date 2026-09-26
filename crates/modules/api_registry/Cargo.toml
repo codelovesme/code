@@ -2,7 +2,7 @@
 
 [package]
 name = "api_registry"
-version = "2.10.0"
+version = "2.11.0"
 edition = "2021"
 description = "Cached public OpenAPI registry search for the Code programming language"
 license = "GPL-3.0"
