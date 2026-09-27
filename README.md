@@ -1600,7 +1600,8 @@ unloaded again; what a base module uses to run rules or plugins a person
 wrote into it while it runs — see
 [its README](crates/modules/interpreter/README.md)), `mqtt` (a broker's
 messages arriving as the particle the program named, and particles
-published onto it — the house's sensors and switches, over Mosquitto — see
+published onto it — the house's sensors and switches, over Mosquitto — and
+a will the broker publishes if the program vanishes; see
 [its README](crates/modules/mqtt/README.md)), `ntfy` (a push
 notification to a phone through an ntfy server — a sensor's battery is low,
 a door was left open — see [its README](crates/modules/ntfy/README.md)),

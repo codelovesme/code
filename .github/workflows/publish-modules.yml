@@ -540,7 +540,7 @@ jobs:
               # Nobody answers on port 1: Config and Subscribe are taken,
               # a Publish is refused now rather than queued, and Disconnect
               # joins the connection thread so the demo ends.
-              printf 'emit Config { url = "mqtt://127.0.0.1:1" } to mod get c\nassert c.ok\nemit Subscribe { topic = "demo/#", then = "X" } to mod get s\nassert s.ok\nemit Publish { topic = "demo/one", payload = "hi" } to mod get p\nassert p ∈ Exception\nemit Disconnect { } to mod get d\nassert d.ok\n' >> dogfood/demo.code
+              printf 'emit Config { url = "mqtt://127.0.0.1:1" } to mod get c\nassert c.ok\nemit Subscribe { topic = "demo/#", then = "X" } to mod get s\nassert s.ok\nemit Publish { topic = "demo/one", payload = "hi" } to mod get p\nassert p ∈ Exception\nemit SetWill { topic = "demo/gone", payload = "bye" } to mod get w\nassert w.ok\nemit Disconnect { } to mod get d\nassert d.ok\n' >> dogfood/demo.code
               ;;
             ntfy)
               # Nobody answers on port 1: Config is taken, the particle is
@@ -696,7 +696,7 @@ jobs:
               storage) handlers='["Get", "Set", "Remove"]' ;;
               clipboard) handlers='["Copy"]' ;;
               timer) handlers='["Delay", "Cancel"]' ;;
-              mqtt) handlers='["Config", "Subscribe", "Unsubscribe", "Publish", "Status", "Disconnect"]' ;;
+              mqtt) handlers='["Config", "Subscribe", "Unsubscribe", "Publish", "Status", "Disconnect", "SetWill"]' ;;
               ntfy) handlers='["Config", "Notify"]' ;;
               tty) handlers='["Start", "Stop", "Draw", "Size"]' ;;
               pty) handlers='["Open", "Type", "Write", "Resize", "Screen", "Close", "Paste", "Mouse"]' ;;

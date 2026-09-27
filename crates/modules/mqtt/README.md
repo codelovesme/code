@@ -17,7 +17,8 @@ emit Publish { topic = "zigbee2mqtt/hall-light/set", payload = "{\"state\":\"ON\
 ## The handlers
 
 ```
-Config { url, username?, password?, client_id? }  → ConfigResult { ok }
+Config { url, username?, password?, client_id?, will? }  → ConfigResult { ok }
+SetWill { topic?, payload?, retain? }              → WillSet { ok }        | SetWill {} clears it
 Subscribe { topic, then }                          → Subscribed { ok }
 Unsubscribe { topic }                              → Unsubscribed { ok }   | ok = false when it was not subscribed
 Publish { topic, payload, retain? }                → Published { ok }      | Exception when not connected
@@ -54,6 +55,20 @@ queued: a command to a device that cannot be delivered is something the
 program should know about now, not something a broker that comes back in
 an hour should carry out then. `payload` is text (`Stringify` an object
 first); a number or a boolean is written as its text.
+
+**The will** is what the broker publishes for this program if its
+connection ends without a `Disconnect` — the program crashed, hung, or
+lost the network. `will = { topic, payload, retain? }` in `Config` when it
+is known up front; `SetWill` when it is learned while running (a device
+registered at runtime). A broker takes a will only when a connection
+opens, so `SetWill` on a live connection ends it cleanly — the old will is
+not published — and opens it again at once, asking for every subscription
+again. `SetWill {}` clears it. The will is one topic, never a filter.
+
+```code
+| Home turns the boiler over to its own thermostat if Home itself dies.
+emit SetWill { topic = "diyless_thermostat_C04E302073C0/cmnd/things/thermostat/properties/mode", payload = "heat", retain = true } to bus
+```
 
 `Disconnect` ends the connection and **joins the thread**, so a host that
 unloads the application right after finds nothing of this module still

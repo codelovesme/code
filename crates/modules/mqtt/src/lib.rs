@@ -3,9 +3,18 @@
 //!
 //! Handlers:
 //!
-//! - `Config { url, username?, password?, client_id? }` → `ConfigResult
-//!   { ok }`. `url` is `mqtt://host:port` (port 1883 when left out).
-//!   Nothing is opened yet: the first `Subscribe` or `Publish` connects.
+//! - `Config { url, username?, password?, client_id?, will? }` →
+//!   `ConfigResult { ok }`. `url` is `mqtt://host:port` (port 1883 when
+//!   left out). Nothing is opened yet: the first `Subscribe` or `Publish`
+//!   connects. `will` is `{ topic, payload, retain? }`: the message the
+//!   broker publishes for this program if its connection ends without a
+//!   `Disconnect` — a crash, a hang, a cut cable.
+//! - `SetWill { topic?, payload?, retain? }` → `WillSet { ok }`. The will
+//!   changed after `Config` — a program that learns only while running
+//!   what it must leave behind. `SetWill {}` clears it. A broker takes a
+//!   will only when a connection opens, so a live connection is ended
+//!   cleanly (the old will is not published) and opened again at once,
+//!   with every subscription asked for again.
 //! - `Subscribe { topic, then }` → `Subscribed { ok }`. Every message on
 //!   that filter (`zigbee2mqtt/#`, `home/+/temperature`) arrives as `then`
 //!   — a class name, or a whole particle written where the subscription is
@@ -59,7 +68,7 @@
 //! `Disconnect` is how either lets go.
 
 use code_native::*;
-use rumqttc::{Client, Event, MqttOptions, Packet, QoS};
+use rumqttc::{Client, Event, LastWill, MqttOptions, Packet, QoS};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -72,6 +81,49 @@ struct Settings {
     username: Option<String>,
     password: Option<String>,
     client_id: String,
+    will: Option<Will>,
+}
+
+/// What the broker is to publish for this program if it vanishes.
+#[derive(Clone)]
+struct Will {
+    topic: String,
+    payload: String,
+    retain: bool,
+}
+
+/// A payload as `Publish` takes it: text, or a number or a boolean written
+/// as text. `None` for anything else.
+fn payload_text(p: Option<&CodeValue>) -> Option<String> {
+    match p {
+        None => Some(String::new()),
+        Some(p) if p.tag == CodeTag::Str => Some(read_str(p).unwrap_or("").to_string()),
+        Some(p) if p.tag == CodeTag::Number => {
+            Some(read_number(p).map(|n| format!("{n}")).unwrap_or_default())
+        }
+        Some(p) if p.tag == CodeTag::Bool => {
+            Some(read_bool(p).map(|b| b.to_string()).unwrap_or_default())
+        }
+        _ => None,
+    }
+}
+
+/// `{ topic, payload, retain? }` read off `v`; the reason when it is not one.
+fn read_will(v: &CodeValue, what: &str) -> Result<Will, String> {
+    let topic = match read_field_str(v, "topic") {
+        Some(t) if !t.is_empty() => t.to_string(),
+        _ => return Err(format!("{what} needs a `topic`")),
+    };
+    if topic.contains('+') || topic.contains('#') {
+        return Err(format!("{what}: a will's topic is one topic, not a filter"));
+    }
+    let payload = payload_text(find_field(v, "payload"))
+        .ok_or_else(|| format!("{what} takes `payload` as text — Stringify an object first"))?;
+    Ok(Will {
+        topic,
+        payload,
+        retain: read_field_bool(v, "retain").unwrap_or(false),
+    })
 }
 
 /// One remembered subscription: the filter, and the particle to push for
@@ -313,6 +365,21 @@ fn handle_config(out: &mut CodeValue, particle: &CodeValue) {
         exception(out, "mqtt", "Config: the url names no host");
         return;
     }
+    let will = match find_field(particle, "will") {
+        None => None,
+        Some(w) if w.tag == CodeTag::Null => None,
+        Some(w) if w.tag == CodeTag::Object => match read_will(w, "Config's will") {
+            Ok(will) => Some(will),
+            Err(reason) => {
+                exception(out, "mqtt", &reason);
+                return;
+            }
+        },
+        Some(_) => {
+            exception(out, "mqtt", "Config's will is { topic, payload, retain? }");
+            return;
+        }
+    };
     let client_id = read_field_str(particle, "client_id")
         .filter(|c| !c.is_empty())
         .map(str::to_string)
@@ -325,6 +392,7 @@ fn handle_config(out: &mut CodeValue, particle: &CodeValue) {
             .map(str::to_string),
         password: read_field_str(particle, "password").map(str::to_string),
         client_id,
+        will,
     });
     simple_ok(out, c"ConfigResult", true);
 }
@@ -336,6 +404,12 @@ fn ensure_bus() -> Result<(), String> {
     if slot.as_ref().is_some_and(|b| b.thread.is_some()) {
         return Ok(());
     }
+    start_bus(&mut slot, Vec::new())
+}
+
+/// A connection and its thread into `slot`, carrying `subscriptions` over
+/// from one that ended — the `ConnAck` asks for each of them again.
+fn start_bus(slot: &mut Option<Bus>, subscriptions: Vec<Subscription>) -> Result<(), String> {
     let guard = settings();
     let s = guard
         .as_ref()
@@ -349,11 +423,19 @@ fn ensure_bus() -> Result<(), String> {
     if let Some(user) = &s.username {
         options.set_credentials(user.clone(), s.password.clone().unwrap_or_default());
     }
+    if let Some(w) = &s.will {
+        options.set_last_will(LastWill::new(
+            w.topic.clone(),
+            w.payload.clone().into_bytes(),
+            QoS::AtLeastOnce,
+            w.retain,
+        ));
+    }
     drop(guard);
 
     let (client, mut connection) = Client::new(options, 64);
     let shared = Arc::new(Shared {
-        subscriptions: Mutex::new(Vec::new()),
+        subscriptions: Mutex::new(subscriptions),
         connected: AtomicBool::new(false),
         stopping: AtomicBool::new(false),
         sent: Mutex::new(Vec::new()),
@@ -569,16 +651,9 @@ fn handle_publish(out: &mut CodeValue, particle: &CodeValue) {
             return;
         }
     };
-    let payload = match find_field(particle, "payload") {
-        Some(p) if p.tag == CodeTag::Str => read_str(p).unwrap_or("").to_string(),
-        Some(p) if p.tag == CodeTag::Number => {
-            read_number(p).map(|n| format!("{n}")).unwrap_or_default()
-        }
-        Some(p) if p.tag == CodeTag::Bool => {
-            read_bool(p).map(|b| b.to_string()).unwrap_or_default()
-        }
-        None => String::new(),
-        _ => {
+    let payload = match payload_text(find_field(particle, "payload")) {
+        Some(p) => p,
+        None => {
             exception(
                 out,
                 "mqtt",
@@ -639,29 +714,76 @@ fn handle_status(out: &mut CodeValue) {
     release(&mut subscribed);
 }
 
+/// End a connection cleanly — a `DISCONNECT` first, so the broker drops
+/// its will — and join its thread. Answers the subscriptions it had.
+fn end_bus(mut b: Bus) -> Vec<Subscription> {
+    b.shared.stopping.store(true, Ordering::SeqCst);
+    let _ = b.client.try_disconnect();
+    if let Some(handle) = b.thread.take() {
+        let _ = handle.join();
+    }
+    let mut subs = b
+        .shared
+        .subscriptions
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    std::mem::take(&mut *subs)
+}
+
 fn handle_disconnect(out: &mut CodeValue) {
     let taken = bus().take();
     let ok = match taken {
-        Some(mut b) => {
-            b.shared.stopping.store(true, Ordering::SeqCst);
-            let _ = b.client.try_disconnect();
-            if let Some(handle) = b.thread.take() {
-                let _ = handle.join();
-            }
-            let mut subs = b
-                .shared
-                .subscriptions
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            for s in subs.iter_mut() {
+        Some(b) => {
+            for mut s in end_bus(b) {
                 release(&mut s.then);
             }
-            subs.clear();
             true
         }
         None => false,
     };
     simple_ok(out, c"Disconnected", ok);
+}
+
+fn handle_set_will(out: &mut CodeValue, particle: &CodeValue) {
+    let will =
+        if find_field(particle, "topic").is_none() && find_field(particle, "payload").is_none() {
+            None
+        } else {
+            match read_will(particle, "SetWill") {
+                Ok(w) => Some(w),
+                Err(reason) => {
+                    exception(out, "mqtt", &reason);
+                    return;
+                }
+            }
+        };
+    {
+        let mut guard = settings();
+        match guard.as_mut() {
+            Some(s) => s.will = will,
+            None => {
+                exception(out, "mqtt", "mqtt needs Config before SetWill");
+                return;
+            }
+        }
+    }
+    // A broker reads a will off CONNECT only: a live connection is ended
+    // and opened again, keeping what it was subscribed to.
+    let mut slot = bus();
+    if let Some(b) = slot.take() {
+        let subs = end_bus(b)
+            .into_iter()
+            .map(|mut s| {
+                s.acked = false;
+                s
+            })
+            .collect();
+        if let Err(reason) = start_bus(&mut slot, subs) {
+            exception(out, "mqtt", &reason);
+            return;
+        }
+    }
+    simple_ok(out, c"WillSet", true);
 }
 
 #[no_mangle]
@@ -684,6 +806,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             Some("Publish") => handle_publish(out, particle),
             Some("Status") => handle_status(out),
             Some("Disconnect") => handle_disconnect(out),
+            Some("SetWill") => handle_set_will(out, particle),
             _ => null(out),
         }
     });

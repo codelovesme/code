@@ -8,7 +8,11 @@
 //! connection is made once there is one; `Status` says when the broker has
 //! it; a retained message arrives marked so; a message the program
 //! publishes comes back as the particle it named, on the program's own
-//! thread; and `Disconnect` lets the program end.
+//! thread; and `Disconnect` lets the program end. And the will: what
+//! `Config` and `SetWill` say is what each CONNECT carries, a changed will
+//! reconnects with every subscription asked for again, and the old
+//! connection is ended with a DISCONNECT — so the broker never publishes a
+//! will the program replaced.
 //!
 //! Both output modes, because a module is exactly where `code run` and
 //! `code build` could differ.
@@ -22,6 +26,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{fs, thread};
 
@@ -91,15 +96,59 @@ fn publish_body(topic: &str, payload: &[u8]) -> Vec<u8> {
     body
 }
 
+/// What one connection told the broker: the will its CONNECT carried
+/// (topic, payload, retain), and whether it ended with a DISCONNECT.
+#[derive(Debug, Clone, PartialEq)]
+struct Seen {
+    will: Option<(String, String, bool)>,
+    said_goodbye: bool,
+}
+
+type Log = Arc<Mutex<Vec<Seen>>>;
+
+fn take_string(body: &[u8], at: &mut usize) -> String {
+    let len = u16::from_be_bytes([body[*at], body[*at + 1]]) as usize;
+    let text = String::from_utf8_lossy(&body[*at + 2..*at + 2 + len]).into_owned();
+    *at += 2 + len;
+    text
+}
+
+/// The will out of a CONNECT body (MQTT 3.1.1: protocol name, level,
+/// flags, keep-alive, then client id and — when flag 0x04 — will topic and
+/// will message).
+fn connect_will(body: &[u8]) -> Option<(String, String, bool)> {
+    let mut at = 0;
+    take_string(body, &mut at);
+    let flags = body[at + 1];
+    at += 4;
+    take_string(body, &mut at);
+    if flags & 0x04 == 0 {
+        return None;
+    }
+    let topic = take_string(body, &mut at);
+    let payload = take_string(body, &mut at);
+    Some((topic, payload, flags & 0x20 != 0))
+}
+
 /// Serves one client until it disconnects or goes away. Publishes are
 /// echoed straight back at QoS 0 — the client subscribed to everything
 /// this test publishes, and a broker that checks filters is not the thing
 /// under test.
-fn serve(mut s: TcpStream) {
+fn serve(mut s: TcpStream, log: Log) {
     s.set_read_timeout(Some(Duration::from_secs(20))).ok();
+    let mut mine: Option<usize> = None;
     while let Some((first, body)) = read_packet(&mut s) {
         match first >> 4 {
-            1 => write_packet(&mut s, 0x20, &[0x00, 0x00]),
+            1 => {
+                let mut seen = log.lock().unwrap();
+                seen.push(Seen {
+                    will: connect_will(&body),
+                    said_goodbye: false,
+                });
+                mine = Some(seen.len() - 1);
+                drop(seen);
+                write_packet(&mut s, 0x20, &[0x00, 0x00]);
+            }
             8 => {
                 let pkid = [body[0], body[1]];
                 write_packet(&mut s, 0x90, &[pkid[0], pkid[1], 0x01]);
@@ -124,21 +173,34 @@ fn serve(mut s: TcpStream) {
                 write_packet(&mut s, 0x30, &publish_body(&topic, &payload));
             }
             12 => write_packet(&mut s, 0xD0, &[]),
-            14 => return,
+            14 => {
+                if let Some(i) = mine {
+                    log.lock().unwrap()[i].said_goodbye = true;
+                }
+                return;
+            }
             _ => {}
         }
     }
 }
 
 fn broker() -> u16 {
+    logged_broker().0
+}
+
+/// A broker, and what every connection to it said.
+fn logged_broker() -> (u16, Log) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let port = listener.local_addr().expect("port").port();
+    let log: Log = Arc::new(Mutex::new(Vec::new()));
+    let for_thread = Arc::clone(&log);
     thread::spawn(move || {
         for stream in listener.incoming().flatten() {
-            thread::spawn(move || serve(stream));
+            let log = Arc::clone(&for_thread);
+            thread::spawn(move || serve(stream, log));
         }
     });
-    port
+    (port, log)
 }
 
 // --- the program ------------------------------------------------------------
@@ -243,6 +305,90 @@ fn messages_come_back_as_the_particle_the_program_named() {
         assert!(
             run_to_end(&dir, mode, &source),
             "{mode}: the fixture failed"
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+fn will_fixture(port: u16) -> String {
+    r#"link "mqtt.so" as bus
+
+Spoke { topic, payload } =>
+    return Ack {}
+
+| Waits until the broker holds the one filter again — after a SetWill the
+| connection is new, and so is its subscription.
+Settled =>
+    spins = 0
+    loop
+        spins += 1
+        emit Status {} to bus get st
+        if st.subscribed = ["code/test/#"] and st.connected, return Ready { ok = true }
+        if spins > 4000000, return Ready { ok = false }
+
+emit Config { url = "mqtt://127.0.0.1:PORT", will = { topic = "boiler/mode", payload = "heat" } } to bus get c
+assert c.ok
+emit Subscribe { topic = "code/test/#", then = "Spoke" } to bus get s
+assert s.ok
+emit Settled to this get first
+assert first.ok
+
+| A will is one topic.
+emit SetWill { topic = "boiler/#", payload = "x" } to bus get filter
+assert filter ∈ Exception
+emit SetWill { topic = "boiler/mode", payload = { mode = "heat" } } to bus get object_payload
+assert object_payload ∈ Exception
+
+emit SetWill { topic = "boiler/mode", payload = "heat", retain = true } to bus get w
+assert w ∈ WillSet
+assert w.ok
+emit Settled to this get second
+assert second.ok
+
+emit SetWill {} to bus get cleared
+assert cleared.ok
+emit Settled to this get third
+assert third.ok
+
+emit Disconnect {} to bus get d
+assert d.ok
+"#
+    .replace("PORT", &port.to_string())
+}
+
+#[test]
+fn a_will_rides_on_every_connect_and_a_replaced_one_is_never_left_behind() {
+    let dir = workspace("will");
+    let source = dir.join("program.code");
+    for mode in ["run", "build"] {
+        let (port, log) = logged_broker();
+        fs::write(&source, will_fixture(port)).expect("write fixture");
+        assert!(
+            run_to_end(&dir, mode, &source),
+            "{mode}: the fixture failed"
+        );
+        // The last goodbye is written by the broker thread after the program
+        // has already ended; give it a moment.
+        thread::sleep(Duration::from_millis(300));
+        let seen = log.lock().unwrap().clone();
+        let will = |retain| Some(("boiler/mode".to_string(), "heat".to_string(), retain));
+        assert_eq!(
+            seen,
+            vec![
+                Seen {
+                    will: will(false),
+                    said_goodbye: true
+                },
+                Seen {
+                    will: will(true),
+                    said_goodbye: true
+                },
+                Seen {
+                    will: None,
+                    said_goodbye: true
+                },
+            ],
+            "{mode}: each connection's will, and a DISCONNECT before the next"
         );
     }
     let _ = fs::remove_dir_all(&dir);

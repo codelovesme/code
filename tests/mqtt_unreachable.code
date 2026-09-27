@@ -15,10 +15,21 @@ assert bad_port ∈ Exception
 emit Publish { topic = "x", payload = "y" } to bus get too_early
 assert too_early ∈ Exception
 assert too_early.source = "mqtt"
+emit SetWill { topic = "x", payload = "gone" } to bus get will_early
+assert will_early ∈ Exception
 
+emit Config { url = "mqtt://127.0.0.1:1", will = { topic = "boiler/mode" } } to bus get will_without_payload
+assert will_without_payload.ok
+emit Config { url = "mqtt://127.0.0.1:1", will = "gone" } to bus get will_not_object
+assert will_not_object ∈ Exception
 emit Config { url = "mqtt://127.0.0.1:1" } to bus get c
 assert c ∈ ConfigResult
 assert c.ok
+
+| A will set before there is a connection is simply kept for the first one.
+emit SetWill { topic = "boiler/mode", payload = "heat", retain = true } to bus get will
+assert will ∈ WillSet
+assert will.ok
 
 Spoke { topic, payload } =>
     return Ack {}
