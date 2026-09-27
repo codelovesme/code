@@ -176,7 +176,8 @@ fn the_publish_workflow_takes_its_modules_from_the_plan() {
 fn every_module_taking_config_is_released_with_setup() {
     let text = fs::read_to_string(repo(".github/workflows/publish-modules.yml"))
         .expect("read publish-modules.yml");
-    let at = text.find("case \"$m\" in\n              http_server) setup=")
+    let at = text
+        .find("case \"$m\" in\n              http_server) setup=")
         .expect("the setup case in publish-modules.yml");
     let block = &text[at..at + text[at..].find("esac").expect("end of the setup case")];
     let listed: Vec<&str> = block
@@ -192,7 +193,9 @@ fn every_module_taking_config_is_released_with_setup() {
         if !takes_config {
             continue;
         }
-        let covered = listed.iter().any(|p| *p == name || (p.starts_with('*') && name.ends_with(&p[1..])));
+        let covered = listed
+            .iter()
+            .any(|p| *p == name || (p.starts_with('*') && name.ends_with(&p[1..])));
         assert!(
             covered,
             "`{name}` answers Config but publish-modules.yml releases it without `\"setup\": \"Config\"` — add it to the setup case"
