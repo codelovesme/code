@@ -166,3 +166,36 @@ fn the_publish_workflow_takes_its_modules_from_the_plan() {
         );
     }
 }
+
+/// Every module whose dispatch answers `Config` is released with `"setup":
+/// "Config"`: that line is how euglena knows a manifest's `config` block has
+/// somewhere to go. `mqtt` and `ntfy` shipped without it for weeks — each
+/// release was refused as "stateless" by any app configuring it, so the apps
+/// pinned hand-built copies instead, and nothing said why.
+#[test]
+fn every_module_taking_config_is_released_with_setup() {
+    let text = fs::read_to_string(repo(".github/workflows/publish-modules.yml"))
+        .expect("read publish-modules.yml");
+    let at = text.find("case \"$m\" in\n              http_server) setup=")
+        .expect("the setup case in publish-modules.yml");
+    let block = &text[at..at + text[at..].find("esac").expect("end of the setup case")];
+    let listed: Vec<&str> = block
+        .lines()
+        .filter(|l| l.contains("setup='\"setup\""))
+        .flat_map(|l| l.trim().split(')').next().unwrap_or("").split('|'))
+        .collect();
+    for name in modules_on_disk() {
+        let src = repo(&format!("crates/modules/{name}/src"));
+        let takes_config = fs::read_dir(&src).into_iter().flatten().flatten().any(|e| {
+            fs::read_to_string(e.path()).is_ok_and(|code| code.contains("Some(\"Config\")"))
+        });
+        if !takes_config {
+            continue;
+        }
+        let covered = listed.iter().any(|p| *p == name || (p.starts_with('*') && name.ends_with(&p[1..])));
+        assert!(
+            covered,
+            "`{name}` answers Config but publish-modules.yml releases it without `\"setup\": \"Config\"` — add it to the setup case"
+        );
+    }
+}
