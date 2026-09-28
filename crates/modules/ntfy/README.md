@@ -28,7 +28,7 @@ environment (`${NTFY_TOPIC}` in a manifest), never in the source.
 
 ```
 Config { topic, url?, token?, username?, password?, timeout_seconds? }  → ConfigResult { ok }
-Notify { message, title?, priority?, tags?, click?, topic?, markdown? } → Notified { ok, id }
+Notify { message, title?, priority?, tags?, click?, topic?, markdown?, attach?, file?, file_url?, filename? } → Notified { ok, id }
 ```
 
 `Config` is the setup particle. `url` is `https://ntfy.sh` unless said;
@@ -45,6 +45,14 @@ the rest as ntfy's headers:
 - `click` — a URL the notification opens when tapped.
 - `topic` — this one notification to another topic than Config's.
 - `markdown = true` — the message is Markdown.
+- `attach` — a URL of a picture or file the phone fetches and shows.
+- `file` — a path on this machine; its bytes are uploaded with the
+  notification (a `PUT`, the message in the `Message` header), so the phone
+  needs no way back to where it lives. `filename` names it on the phone
+  (the path's last part otherwise). At most 15 MB, ntfy.sh's limit.
+- `file_url` — the same upload, the bytes read from a URL this machine can
+  reach (a loopback service, say) instead of from disk.
+  One of `attach`, `file`, `file_url`.
 
 The answer carries the message's `id` from the server. A server that
 refuses (a topic that needs auth, a rate limit) is an `Exception` with the
