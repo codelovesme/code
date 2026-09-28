@@ -87,8 +87,11 @@ fn serve(mut s: TcpStream, log: Arc<Mutex<Vec<Seen>>>) {
     reader.read_exact(&mut body).expect("body");
     seen.body = String::from_utf8_lossy(&body).into_owned();
 
-    // The topic `refused` is the server saying no; anything else is taken.
-    let (status, answer) = if seen.path == "/refused" {
+    // The topic `refused` is the server saying no; a GET under /files/ is
+    // a file to fetch; anything else is taken.
+    let (status, answer) = if seen.method == "GET" && seen.path.starts_with("/files/") {
+        ("200 OK", "FETCHEDBYTES")
+    } else if seen.path == "/refused" {
         (
             "403 Forbidden",
             r#"{"code":40301,"http":403,"error":"forbidden"}"#,
@@ -266,11 +269,17 @@ assert sent.ok
 emit Notify { message = "Kapıda biri var", file = "seen.jpg", filename = "door.jpg" } to push get named
 assert named.ok
 
-| Not both; not a file that is not there.
+| Read from a URL here, then uploaded.
+emit Notify { message = "From a service", file_url = "http://127.0.0.1:PORT/files/seen.jpg?x=1" } to push get fetched
+assert fetched.ok
+
+| Not both; not a file that is not there; not a URL that is refused.
 emit Notify { message = "x", attach = "https://example.com/p.jpg", file = "seen.jpg" } to push get both
 assert both ∈ Exception
 emit Notify { message = "x", file = "missing.jpg" } to push get missing
 assert missing ∈ Exception
+emit Notify { message = "x", file_url = "http://127.0.0.1:PORT/refused" } to push get unread
+assert unread ∈ Exception
 "#
         .replace("PORT", &port.to_string()),
     )
@@ -282,7 +291,7 @@ assert missing ∈ Exception
             "{mode}: the fixture failed"
         );
         let seen = log.lock().unwrap().clone();
-        assert_eq!(seen.len(), 3, "{mode}: three requests, got {seen:?}");
+        assert_eq!(seen.len(), 6, "{mode}: six requests, got {seen:?}");
 
         assert_eq!(seen[0].method, "POST");
         assert_eq!(seen[0].body, "Person at the door");
@@ -302,6 +311,19 @@ assert missing ∈ Exception
         assert_eq!(
             seen[2].header("Message"),
             Some("=?UTF-8?B?S2FwxLFkYSBiaXJpIHZhcg==?=")
+        );
+
+        assert_eq!(
+            (seen[3].method.as_str(), seen[3].path.as_str()),
+            ("GET", "/files/seen.jpg?x=1")
+        );
+        assert_eq!(seen[4].method, "PUT");
+        assert_eq!(seen[4].body, "FETCHEDBYTES");
+        assert_eq!(seen[4].header("Filename"), Some("seen.jpg"));
+        assert_eq!(seen[4].header("Message"), Some("From a service"));
+        assert_eq!(
+            (seen[5].method.as_str(), seen[5].path.as_str()),
+            ("GET", "/refused")
         );
     }
     let _ = fs::remove_dir_all(&dir);
