@@ -2,7 +2,7 @@
 
 [package]
 name = "searchxng"
-version = "2.12.1"
+version = "2.13.0"
 edition = "2021"
 description = "SearXNG search module for the Code programming language"
 license = "GPL-3.0"
