@@ -241,3 +241,68 @@ fn basic_auth_is_the_pair_encoded() {
     assert_eq!(seen[0].header("Authorization"), Some("Basic bWU6cHc="));
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_picture_rides_along_by_url_or_as_an_uploaded_file() {
+    let (port, log) = server();
+    let dir = workspace("attach");
+    fs::write(dir.join("seen.jpg"), "JPEGBYTES").expect("write the picture");
+    let source = dir.join("program.code");
+    fs::write(
+        &source,
+        r#"link "ntfy.so" as push
+emit Config { topic = "house", url = "http://127.0.0.1:PORT" } to push get c
+assert c.ok
+
+| A URL the phone fetches.
+emit Notify { message = "Person at the door", attach = "https://example.com/p.jpg" } to push get linked
+assert linked.ok
+
+| A file of this machine, uploaded: the message moves to a header.
+emit Notify { message = "Person at the door", title = "Door", file = "seen.jpg", click = "https://example.com/live" } to push get sent
+assert sent.ok
+
+| Named otherwise, and a message that is not ASCII.
+emit Notify { message = "Kapıda biri var", file = "seen.jpg", filename = "door.jpg" } to push get named
+assert named.ok
+
+| Not both; not a file that is not there.
+emit Notify { message = "x", attach = "https://example.com/p.jpg", file = "seen.jpg" } to push get both
+assert both ∈ Exception
+emit Notify { message = "x", file = "missing.jpg" } to push get missing
+assert missing ∈ Exception
+"#
+        .replace("PORT", &port.to_string()),
+    )
+    .expect("write fixture");
+    for mode in ["run", "build"] {
+        log.lock().unwrap().clear();
+        assert!(
+            run_to_end(&dir, mode, &source),
+            "{mode}: the fixture failed"
+        );
+        let seen = log.lock().unwrap().clone();
+        assert_eq!(seen.len(), 3, "{mode}: three requests, got {seen:?}");
+
+        assert_eq!(seen[0].method, "POST");
+        assert_eq!(seen[0].body, "Person at the door");
+        assert_eq!(seen[0].header("Attach"), Some("https://example.com/p.jpg"));
+
+        let upload = &seen[1];
+        assert_eq!(upload.method, "PUT");
+        assert_eq!(upload.path, "/house");
+        assert_eq!(upload.body, "JPEGBYTES");
+        assert_eq!(upload.header("Filename"), Some("seen.jpg"));
+        assert_eq!(upload.header("Message"), Some("Person at the door"));
+        assert_eq!(upload.header("Title"), Some("Door"));
+        assert_eq!(upload.header("Click"), Some("https://example.com/live"));
+        assert!(upload.header("Attach").is_none());
+
+        assert_eq!(seen[2].header("Filename"), Some("door.jpg"));
+        assert_eq!(
+            seen[2].header("Message"),
+            Some("=?UTF-8?B?S2FwxLFkYSBiaXJpIHZhcg==?=")
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

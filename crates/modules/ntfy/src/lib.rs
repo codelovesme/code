@@ -22,6 +22,13 @@
 //!   this one. The server refusing, or not answering, is an `Exception`
 //!   carrying its words — nothing is queued for later.
 //!
+//!   A picture or any file rides along in one of two ways: `attach` is a
+//!   URL the phone fetches itself (ntfy's `Attach` header); `file` is a
+//!   path on this machine whose bytes are uploaded with the notification
+//!   (a `PUT`, the message in the `Message` header, `filename` or the
+//!   path's last part as its name), so the phone needs no way back to
+//!   where the file lives. At most 15 MB — ntfy.sh's own limit. Not both.
+//!
 //! `code_release` needs no code here — `code-native` links the vendored
 //! `runtime.c` into the cdylib and re-exports it.
 
@@ -41,6 +48,8 @@ static SETUP: Mutex<Option<Setup>> = Mutex::new(None);
 
 const DEFAULT_URL: &str = "https://ntfy.sh";
 const DEFAULT_TIMEOUT_SECONDS: f64 = 10.0;
+/// The largest file `Notify { file }` uploads: ntfy.sh's attachment limit.
+const MAX_FILE_BYTES: u64 = 15 * 1024 * 1024;
 
 /// The ABI version this module speaks. Must equal `CODE_ABI_VERSION` or the
 /// host refuses to load us.
@@ -164,8 +173,8 @@ fn base64(bytes: &[u8]) -> String {
 // Notify
 // ---------------------------------------------------------------------------
 
-/// `Notify { message, title?, priority?, tags?, click?, topic?, markdown? }`
-/// → `Notified { ok, id }`.
+/// `Notify { message, title?, priority?, tags?, click?, topic?, markdown?,
+/// attach?, file?, filename? }` → `Notified { ok, id }`.
 fn notify(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let guard = SETUP.lock().unwrap_or_else(|e| e.into_inner());
     let setup = guard
@@ -201,6 +210,39 @@ fn notify(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     if let Some(auth) = &setup.auth {
         headers.push(("Authorization", auth.clone()));
     }
+    let attach = find_field(particle, "attach").and_then(read_str).filter(|s| !s.is_empty());
+    let file = find_field(particle, "file").and_then(read_str).filter(|s| !s.is_empty());
+    if attach.is_some() && file.is_some() {
+        return Err("Notify takes 'attach' (a URL) or 'file' (a path), not both".to_string());
+    }
+    if let Some(url) = attach {
+        headers.push(("Attach", header_safe(url)));
+    }
+    // With a file, the body is the file and the message moves to a header.
+    let mut body = message.as_bytes().to_vec();
+    let mut content_type = "text/plain; charset=utf-8";
+    if let Some(path) = file {
+        let size = std::fs::metadata(path)
+            .map_err(|e| format!("Notify cannot read the file '{path}': {e}"))?
+            .len();
+        if size > MAX_FILE_BYTES {
+            return Err(format!("the file '{path}' is {size} bytes; ntfy takes at most {MAX_FILE_BYTES}"));
+        }
+        body = std::fs::read(path).map_err(|e| format!("Notify cannot read the file '{path}': {e}"))?;
+        let name = find_field(particle, "filename")
+            .and_then(read_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                std::path::Path::new(path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "file".to_string())
+            });
+        headers.push(("Filename", header_text(&name)));
+        headers.push(("Message", header_text(message)));
+        content_type = "application/octet-stream";
+    }
 
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(setup.timeout))
@@ -209,14 +251,14 @@ fn notify(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         .http_status_as_error(false)
         .build()
         .into();
-    let mut request = agent
-        .post(&format!("{}/{}", setup.url, topic))
-        .header("Content-Type", "text/plain; charset=utf-8");
+    let target = format!("{}/{}", setup.url, topic);
+    let mut request = if file.is_some() { agent.put(&target) } else { agent.post(&target) }
+        .header("Content-Type", content_type);
     for (name, value) in &headers {
         request = request.header(*name, value.as_str());
     }
     let mut response = request
-        .send(message.as_bytes())
+        .send(&body[..])
         .map_err(|e| format!("ntfy at {} did not answer: {e}", setup.url))?;
 
     let status = response.status().as_u16();
@@ -272,6 +314,17 @@ fn tag_list(particle: &CodeValue) -> Result<Vec<String>, String> {
         Some(v) if v.tag == CodeTag::Str => Ok(vec![one(v)?]),
         Some(v) if v.tag == CodeTag::Array => array_elems(v).map(one).collect(),
         Some(_) => Err("'tags' must be a string or an array of strings".to_string()),
+    }
+}
+
+/// Text for a header that may not be ASCII — a message or a file name
+/// moved out of the body. ntfy reads RFC 2047's `=?UTF-8?B?…?=`.
+fn header_text(s: &str) -> String {
+    let flat = header_safe(s);
+    if flat.is_ascii() {
+        flat
+    } else {
+        format!("=?UTF-8?B?{}?=", base64(flat.as_bytes()))
     }
 }
 
