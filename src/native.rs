@@ -557,6 +557,38 @@ impl NativeModule {
         }
     }
 
+    /// Ask a held library to record its steps for this program's `Trace`
+    /// (`runtime.c`'s `code_module_flows`). A no-op for anything built
+    /// before that existed, which simply stays unrecorded.
+    pub fn flows_on(&self) {
+        // SAFETY: resolved from a library that is still loaded.
+        if let Ok(on) = unsafe { self.lib.get::<ModuleReleaseFn>(b"code_module_flows") } {
+            unsafe { on() }
+        }
+    }
+
+    /// The traces it finished since the last call, copied out of its heap
+    /// and released there (`runtime.c`'s `code_module_flows_take`).
+    pub fn flows_take(&self) -> Vec<Value> {
+        // SAFETY: as `dispatch` — the out value is filled by the module's own
+        // runtime, copied, then handed back to that runtime to release.
+        unsafe {
+            let Ok(take) = self.lib.get::<ReleaseFn>(b"code_module_flows_take") else {
+                return Vec::new();
+            };
+            let mut result = CodeValueFfi::NULL;
+            take(&mut result);
+            let value = ffi_to_value(&result);
+            if let Ok(release) = self.lib.get::<ReleaseFn>(b"code_release") {
+                release(&mut result);
+            }
+            match value {
+                Value::Array(ref items) => items.iter().cloned().collect(),
+                _ => Vec::new(),
+            }
+        }
+    }
+
     /// Tell the module it may let go of everything it owns — `code_abi.h`
     /// item 9, and a no-op for the modules that export no such point.
     ///

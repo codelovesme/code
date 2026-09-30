@@ -883,6 +883,57 @@ B -> C -> A`) — a refusal, like any other pre-run error. Because dispatch
 is by the particle's runtime `_class`, a particle held in a variable names
 a handler no static pass can resolve; those are what the bound is for.
 
+### Watching an interaction: `Trace`
+
+A program that defines `Trace` is handed one particle after each
+**interaction**: everything that happened because of one thing arriving at the
+top of the program. That is a top-level `emit`, or a particle a module pushed
+(a request at a door, a timer's tick). A program that does not define it
+records nothing. There is no flag and nothing to link. Where a trace goes is
+the handler's own business:
+
+```code
+Trace { root, started, ms, ok, steps, dropped } =>
+    if ms > 250
+        emit Print { value = "slow: $root.class took $ms ms" } to console
+```
+
+- `root` is `{ from, class, particle, program }`. `from` is `this` for a
+  top-level statement, or the alias of the module that pushed the particle.
+  `particle` is the root's particle, whole, so redact it before sending it
+  anywhere. `program` is explained below.
+- `started` is Unix milliseconds. `ms` is how long the whole interaction took.
+  `ok` is false when the root answered an `Exception`.
+- `steps` is every boundary crossed, in call order, starting with the root:
+  `{ id, parent, target, class, at, ms, ok, program }`. `parent` is the `id` of the
+  step it ran inside (null for the root), which makes the list a tree. `at` is
+  milliseconds from `started`. `target` is `this`, `base` or `module:<alias>`.
+  Emits to `core` are not steps.
+- Names and timings only: a step records its class, never its particle or its
+  answer.
+- At most 500 steps are kept. The rest are counted in `dropped`.
+- `Trace` itself is never traced, so writing a trace somewhere never makes
+  another one. It runs after the root has answered, with nothing else
+  running.
+
+**A host sees inside what it holds.** When a program that defines `Trace`
+links a `--target shared` library while running (`link path as app`), the
+library records too, and the host's `Trace` gets it:
+
+- A call into the library (`emit X to app`) is spliced into the host's own
+  trace, under the step that made the call. The library's steps carry
+  `program`: the path it was linked from. The host's own steps have
+  `program = null`.
+- Something the library did on its own, such as a timer of its own firing,
+  is an interaction of its own. It reaches the host's `Trace` with
+  `root.program` set to that path.
+- The library needs no `Trace` of its own, and its source does not change.
+
+Both output modes behave the same. A compiled executable without `Trace`
+carries none of the recording; a shared library carries it switched off
+until a host asks. The browser build does not record yet. See
+[`docs/todo/trace-handler.md`](docs/todo/trace-handler.md).
+
 ## Errors
 
 A runtime error does not end the program. It ends the **frame** — the handler

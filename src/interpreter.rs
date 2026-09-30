@@ -63,6 +63,11 @@ struct RuntimeModule {
     /// Which `Environment::inbound` row listens to it, for a module that
     /// speaks first — `None` for the rest, which is most of them.
     inbound: Option<usize>,
+    /// The traces it finished since last asked, when this program defines
+    /// `Trace` and asked it to record (see `crate::flows`).
+    flows_take: FlowsTake,
+    /// The path it was linked from — what a trace calls it.
+    program: Value,
 }
 
 /// The value a `link` inside a handler binds: an ordinary object, so
@@ -187,6 +192,9 @@ pub struct State {
     /// already takes: tracing is opt-in, so no program's meaning changes by
     /// this field existing. See `crate::trace`.
     tracer: Option<Rc<crate::trace::Recorder>>,
+    /// The interaction running now, recorded for the program's own `Trace`
+    /// handler. `None` unless the program defines one — see `crate::flows`.
+    flows: Option<crate::flows::Flows>,
 }
 
 /// A running program's whole world, reached through a shared reference.
@@ -275,6 +283,7 @@ impl Default for State {
             active: HashMap::new(),
             wakeup: Arc::new(Wakeup::default()),
             tracer: None,
+            flows: None,
         }
     }
 }
@@ -439,12 +448,14 @@ impl Environment {
     /// modules never speak first — `code_module_set_inbound` is optional.
     pub fn link_inbound(
         &self,
+        name: &str,
         drain: Rc<dyn Fn() -> Vec<Value>>,
         reply: InboundReply,
         serving: Rc<dyn Fn() -> bool>,
     ) -> usize {
         let mut st = self.st_mut();
         st.inbound.push(InboundSource {
+            name: name.into(),
             drain,
             reply,
             serving,
@@ -462,6 +473,7 @@ impl Environment {
     fn drop_inbound(&self, row: usize) {
         if let Some(slot) = self.st_mut().inbound.get_mut(row) {
             *slot = InboundSource {
+                name: Rc::from(""),
                 drain: Rc::new(Vec::new),
                 reply: Rc::new(|_, _| {}),
                 serving: Rc::new(|| false),
@@ -605,6 +617,10 @@ fn drain_inbound(env: &Environment) -> Result<usize, String> {
             for drain in drains {
                 drain();
             }
+            // What they did on their own — a timer of theirs firing — are
+            // interactions of their own, handed to `Trace` now.
+            absorb_guests(env, None, None);
+            deliver_pending(env)?;
         }
         let sources = env.st().inbound.clone();
         // Kept per source rather than pooled: the answer has to go back to
@@ -634,7 +650,20 @@ fn drain_inbound(env: &Environment) -> Result<usize, String> {
             // an HTTP server has to turn into a status.
             let handled_here = env.st().handlers.contains_key(class_of(&particle));
             let answer = if handled_here {
-                dispatch_handler(&particle, env)?
+                // A pushed particle is an interaction of its own: the root
+                // of a trace, from the module that pushed it.
+                let from = Rc::clone(&sources[source].name);
+                let flow = env
+                    .st_mut()
+                    .flows
+                    .as_mut()
+                    .and_then(|flows| flows.begin("this", &particle, Some(&from)));
+                let answer = dispatch_handler(&particle, env);
+                if let Some(opened) = flow {
+                    let ok = matches!(&answer, Ok(a) if !crate::flows::is_exception(a));
+                    finish_flow(env, opened, ok)?;
+                }
+                answer?
             } else {
                 Value::Null
             };
@@ -784,6 +813,9 @@ pub fn drain(env: &Environment) -> Result<usize, String> {
 /// speak at all.
 #[derive(Clone)]
 struct InboundSource {
+    /// The alias it was linked under — where a trace says a pushed particle
+    /// came from.
+    name: Rc<str>,
     drain: Rc<dyn Fn() -> Vec<Value>>,
     reply: InboundReply,
     /// `code_module_serving` behind a closure, so this stays free of any
@@ -883,6 +915,12 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 pub fn prepare(program: &Program, env: &Environment) -> Result<(), String> {
     register_handlers(&program.statements, env, 0, 0)?;
     crate::handlers::check_cycles(program)?;
+    // A program that answers `Trace` is given one after each interaction;
+    // one that does not records nothing. Decided once, here, because the
+    // handlers are all known by now and never change while it runs.
+    if env.st().handlers.contains_key(crate::flows::HANDLER) {
+        env.st_mut().flows = Some(crate::flows::Flows::new());
+    }
     // The same pre-run check `code build` has always run (`verify.rs`, which
     // is where it moved out of `codegen.rs` on 2026-08-28 so both backends
     // could share it). Interpreting used to find an undefined name only on
@@ -1080,6 +1118,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                     let asking = Rc::clone(&module);
                     env.link_module(alias, Value::Object(Rc::new(vars)), dispatch);
                     env.link_inbound(
+                        alias,
                         Rc::new(move || inbound.take()),
                         Rc::new(move |particle, answer| module.reply(particle, answer)),
                         Rc::new(move || asking.serving()),
@@ -1164,11 +1203,18 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                     let replying = Rc::clone(&module);
                     let serving = Rc::clone(&module);
                     env.link_inbound(
+                        alias,
                         Rc::new(move || queue.take()),
                         Rc::new(move |particle, answer| replying.reply(particle, answer)),
                         Rc::new(move || serving.serving()),
                     )
                 });
+                // A program that answers `Trace` wants to see inside what
+                // it holds too: asked once, before anything runs in it.
+                if env.st().flows.is_some() {
+                    module.flows_on();
+                }
+                let taking = Rc::clone(&module);
                 let module = RuntimeModule {
                     dispatch: Rc::new(move |v| dispatching.dispatch(v)),
                     release: Rc::new(move || module.release()),
@@ -1176,6 +1222,8 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                     serving: Rc::new(move || asking.serving()),
                     guest,
                     inbound,
+                    flows_take: Rc::new(move || taking.flows_take()),
+                    program: Value::Str(Rc::from(path)),
                 };
                 let address = env.open_module(module);
                 env.declare(alias.clone(), address);
@@ -1335,52 +1383,35 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                     )
                 })
             };
-            let output = match target {
-                EmitTarget::Core => dispatch_core(&value)?,
-                EmitTarget::This => dispatch_handler(&value, env)?,
-                EmitTarget::Base => {
-                    // `verify_defined` refused a `to base` outside a linked
-                    // module, so `module_depth >= 1` here. The parent's
-                    // level may define no handlers at all — then it has no
-                    // slot in `handler_tables` either — and that answers
-                    // null, the same answer a table lacking the class gives.
-                    // Mirrors codegen's `base_dispatches[..] == None`.
-                    //
-                    // The handler is cloned out of the table *before*
-                    // `run_handler` takes `env` mutably — holding the table
-                    // borrow across the call would fight the borrow checker
-                    // for no reason, since the `Rc` keeps everything alive.
-                    let handler = {
-                        let st = env.st();
-                        st.handler_tables
-                            .get(st.module_depth - 1)
-                            .and_then(|table| resolve_handler(table, &value))
-                    };
-                    run_handler(&value, env, handler)?
-                }
-                EmitTarget::Module(alias) => {
-                    // A statically linked alias first — every program that
-                    // ran before this existed takes exactly this path. Only
-                    // when the name is not one does it become an ordinary
-                    // variable holding an address (`Stmt::LinkRuntime`),
-                    // which `verify_defined` has already confirmed is bound
-                    // somewhere. Must match codegen.rs's `gen_emit`.
-                    // The dispatcher is cloned out and the borrow let go
-                    // before it runs: a module may reach this environment
-                    // again while it answers (`native.rs`'s hosting).
-                    let linked = env.st().modules.get(alias).cloned();
-                    match linked {
-                        Some(dispatch) => dispatch(&value)?,
-                        None => {
-                            let address = env
-                                .get(alias)
-                                .ok_or_else(|| format!("no linked module named '{alias}'"))?;
-                            let dispatch = env.module_at(&address)?;
-                            dispatch(&value)?
-                        }
+            // The program's own record of this interaction, when it asked for
+            // one: opened before the target runs, closed whatever it answers.
+            // At the top of the program an emit *is* an interaction — the
+            // root — and nothing to `core` is ever one of its steps.
+            let flow = if matches!(target, EmitTarget::Core) {
+                None
+            } else {
+                let top = env.st().active.is_empty();
+                let target_name = trace_target(target);
+                env.st_mut()
+                    .flows
+                    .as_mut()
+                    .and_then(|flows| flows.begin(&target_name, &value, top.then_some("this")))
+            };
+            let output = emit_to(target, &value, env);
+            // A call into a program this one holds: what it did inside is
+            // part of this interaction, under this step.
+            if let (Some(opened), EmitTarget::Module(alias)) = (flow, target) {
+                if !env.st().modules.contains_key(alias) {
+                    if let Some(address) = env.get(alias) {
+                        absorb_guests(env, Some(&address), Some(opened));
                     }
                 }
-            };
+            }
+            if let Some(opened) = flow {
+                let ok = matches!(&output, Ok(answer) if !crate::flows::is_exception(answer));
+                finish_flow(env, opened, ok)?;
+            }
+            let output = output?;
             if let Some((recorder, sequence)) = traced {
                 recorder.finish(sequence, &output);
             }
@@ -1535,6 +1566,137 @@ fn host_exception(message: String) -> Value {
         ("message".to_string(), Value::Str(message.into())),
         ("innerException".to_string(), Value::Null),
     ]))
+}
+
+/// Where an `emit` goes, and what it answers. Split out of `exec` so the
+/// statement can close its trace step whether this answers or fails.
+fn emit_to(target: &EmitTarget, value: &Value, env: &Environment) -> Result<Value, String> {
+    let value = value.clone();
+    Ok(match target {
+        EmitTarget::Core => dispatch_core(&value)?,
+        EmitTarget::This => dispatch_handler(&value, env)?,
+        EmitTarget::Base => {
+            // `verify_defined` refused a `to base` outside a linked
+            // module, so `module_depth >= 1` here. The parent's
+            // level may define no handlers at all — then it has no
+            // slot in `handler_tables` either — and that answers
+            // null, the same answer a table lacking the class gives.
+            // Mirrors codegen's `base_dispatches[..] == None`.
+            //
+            // The handler is cloned out of the table *before*
+            // `run_handler` takes `env` mutably — holding the table
+            // borrow across the call would fight the borrow checker
+            // for no reason, since the `Rc` keeps everything alive.
+            let handler = {
+                let st = env.st();
+                st.handler_tables
+                    .get(st.module_depth - 1)
+                    .and_then(|table| resolve_handler(table, &value))
+            };
+            run_handler(&value, env, handler)?
+        }
+        EmitTarget::Module(alias) => {
+            // A statically linked alias first — every program that
+            // ran before this existed takes exactly this path. Only
+            // when the name is not one does it become an ordinary
+            // variable holding an address (`Stmt::LinkRuntime`),
+            // which `verify_defined` has already confirmed is bound
+            // somewhere. Must match codegen.rs's `gen_emit`.
+            // The dispatcher is cloned out and the borrow let go
+            // before it runs: a module may reach this environment
+            // again while it answers (`native.rs`'s hosting).
+            let linked = env.st().modules.get(alias).cloned();
+            match linked {
+                Some(dispatch) => dispatch(&value)?,
+                None => {
+                    let address = env
+                        .get(alias)
+                        .ok_or_else(|| format!("no linked module named '{alias}'"))?;
+                    let dispatch = env.module_at(&address)?;
+                    dispatch(&value)?
+                }
+            }
+        }
+    })
+}
+
+/// Closes a step of the program's own trace, and when it was the root,
+/// hands the finished interaction to the program's `Trace` handler. Nothing
+/// is recorded while that handler runs, so delivering a trace never makes
+/// another; what it answers is nobody's business.
+fn finish_flow(env: &Environment, opened: crate::flows::Opened, ok: bool) -> Result<(), String> {
+    let finished = env
+        .st_mut()
+        .flows
+        .as_mut()
+        .and_then(|flows| flows.finish(opened, ok));
+    let Some(trace) = finished else {
+        return Ok(());
+    };
+    set_delivering(env, true);
+    let delivered = dispatch_handler(&trace, env);
+    set_delivering(env, false);
+    delivered?;
+    deliver_pending(env)
+}
+
+/// Hands every held program's own finished interaction to `Trace`, once
+/// nothing of this program's is running.
+fn deliver_pending(env: &Environment) -> Result<(), String> {
+    loop {
+        let next = env
+            .st_mut()
+            .flows
+            .as_mut()
+            .and_then(|flows| flows.next_pending());
+        let Some(trace) = next else {
+            return Ok(());
+        };
+        set_delivering(env, true);
+        let delivered = dispatch_handler(&trace, env);
+        set_delivering(env, false);
+        delivered?;
+    }
+}
+
+/// A held library's `code_module_flows_take`, behind a closure.
+type FlowsTake = Rc<dyn Fn() -> Vec<Value>>;
+
+/// Collects what the programs this one holds recorded — one of them, when
+/// `address` names it, or all of them — and folds it into this program's
+/// own traces. `under` is the step that called into it, when one did.
+fn absorb_guests(env: &Environment, address: Option<&Value>, under: Option<crate::flows::Opened>) {
+    if env.st().flows.is_none() {
+        return;
+    }
+    // Cloned out and the borrow let go before any of them is asked: taking
+    // runs the module's own code.
+    let guests: Vec<(FlowsTake, Value)> = {
+        let st = env.st();
+        let row = address.and_then(|a| address_row(a).ok());
+        st.runtime_modules
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| row.is_none_or(|r| r == *i))
+            .filter_map(|(_, m)| m.as_ref())
+            .map(|m| (Rc::clone(&m.flows_take), m.program.clone()))
+            .collect()
+    };
+    for (take, program) in guests {
+        let traces = take();
+        if traces.is_empty() {
+            continue;
+        }
+        if let Some(flows) = env.st_mut().flows.as_mut() {
+            flows.absorb(traces, &program, under);
+        }
+    }
+}
+
+fn set_delivering(env: &Environment, delivering: bool) {
+    if let Some(flows) = env.st_mut().flows.as_mut() {
+        flows.set_delivering(delivering);
+    }
 }
 
 fn dispatch_handler(particle: &Value, env: &Environment) -> Result<Value, String> {
