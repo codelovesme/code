@@ -1731,11 +1731,27 @@ int code_most_live(void) { return CODE_MOST_LIVE; }
  * direction. `chain` is the module's own `_code_dispatch_this`; the copy is
  * released once it has answered, having by then retained whatever a
  * handler chose to keep. */
+#ifndef CODE_WASM
+static int flows_hosted;
+long long code_flow_begin(const char *target, const CodeValue *particle, const char *root_from);
+void code_flow_finish(long long id, const CodeValue *answer);
+#endif
 void code_dispatch_copied(void (*chain)(CodeValue *out, const CodeValue *particle), CodeValue *out,
                           const CodeValue *particle) {
     CodeValue own = {0};
     code_native_copy_in(&own, particle);
+#ifndef CODE_WASM
+    /* A call from whoever holds this library is where an interaction of its
+     * starts, seen from inside: a root from `host`, which the host splices
+     * under the step that called. Only once the host asked for it
+     * (`code_module_flows`), and against this library's own copy of the
+     * particle — the host's belongs to the host's allocator. */
+    long long flow = flows_hosted ? code_flow_begin("this", &own, "host") : -1;
+#endif
     chain(out, &own);
+#ifndef CODE_WASM
+    code_flow_finish(flow, out);
+#endif
     code_release(&own);
 }
 
@@ -1764,6 +1780,14 @@ typedef struct {
     /* Which guest row this program keeps for it, or -1 for a module that
      * cannot be hosted. A row, not a pointer — see the hosting tables. */
     long long guest;
+
+    /* The name it was linked as — a codegen literal, never freed. Where a
+     * trace says a particle this module pushed came from. */
+    const char *name;
+
+    /* Its `code_module_flows_take`, when this program defines `Trace` and the
+     * library can record — NULL otherwise. */
+    void (*flows_take)(CodeValue *out);
 } RuntimeModule;
 
 static RuntimeModule *runtime_modules = NULL;
@@ -1845,6 +1869,382 @@ static void (*code_program_dispatch)(CodeValue *out, const CodeValue *particle) 
 void code_set_program_dispatch(void (*fn)(CodeValue *out, const CodeValue *particle)) {
     code_program_dispatch = fn;
 }
+
+#ifndef CODE_WASM
+/* ---- Flows — what one interaction did, for the program's `Trace` --------
+ *
+ * The compiled half of `src/flows.rs`, which this must match field for field
+ * and rule for rule; the design is `docs/todo/trace-handler.md`. Only a
+ * program that defines `Trace` calls any of this — codegen emits the calls
+ * for no one else — and it is switched on by `code_flow_on` at the start of
+ * `main`.
+ *
+ * Nothing here is `heap_alloc`ed: a step's class name is `malloc`ed and freed
+ * again when the trace is delivered, so the leak check sees only the Trace
+ * value itself, which the program owns once it is handed over. The root's
+ * particle is retained, not copied, and released on delivery. */
+#define FLOW_MOST_STEPS 500
+typedef struct {
+    long long parent;
+    char *target, *class_name;
+    /* Which held program it ran in, or NULL for this program's own step. */
+    char *program;
+    double at, ms;
+    int ok;
+} FlowStep;
+static int flows_on, flows_delivering, flow_running;
+static FlowStep flow_steps[FLOW_MOST_STEPS];
+static long long flow_open[FLOW_MOST_STEPS];
+static long long flow_len, flow_depth, flow_dropped;
+static double flow_started, flow_clock;
+static char *flow_from;
+static CodeValue flow_particle;
+static const char **flow_handled;
+static size_t flow_handled_len, flow_handled_cap;
+/* Held by a host that asked for this library's steps (`code_module_flows`),
+ * `flows_hosted` (declared above `code_dispatch_copied`) sends a finished
+ * interaction to the outbox for the host to collect, rather than to a
+ * `Trace` handler of its own. */
+static CodeValue *flow_outbox;
+static size_t flow_outbox_len, flow_outbox_cap;
+/* Whole interactions a held program had on its own, waiting to be handed
+ * to `Trace` the moment nothing of this program's is running. */
+static CodeValue *flow_pending;
+static size_t flow_pending_len, flow_pending_cap;
+
+static double flow_mono_ms(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec * 1000.0 + (double)t.tv_nsec / 1e6;
+}
+static double flow_unix_ms(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_REALTIME, &t);
+    return (double)t.tv_sec * 1000.0 + (double)t.tv_nsec / 1e6;
+}
+static const char *flow_class(const CodeValue *particle) {
+    if (particle->tag != CODE_OBJECT) return "";
+    const CodeValue *c = find_field(particle, "_class");
+    return c && c->tag == CODE_STR && c->str ? c->str : "";
+}
+static double flow_round(double ms) { return floor(ms * 1000.0 + 0.5) / 1000.0; }
+
+void code_flow_on(void) { flows_on = 1; }
+
+/* A class the program answers. A pushed particle nobody answers is dropped
+ * rather than handled, so it is no interaction — the interpreter asks its
+ * handler table the same question. */
+void code_flow_handles(const char *class_name) {
+    flow_handled = grow(flow_handled, &flow_handled_cap, flow_handled_len + 1, sizeof(const char *));
+    flow_handled[flow_handled_len++] = class_name;
+}
+static int flow_is_handled(const CodeValue *particle) {
+    const char *class_name = flow_class(particle);
+    for (size_t i = 0; i < flow_handled_len; i++) {
+        if (strcmp(flow_handled[i], class_name) == 0) return 1;
+    }
+    return 0;
+}
+
+/* Opens a boundary; answers the step to close, or a negative number when
+ * nothing was opened (-1: not recording, -2: past the cap, only counted).
+ * `root_from` is where a root came from, NULL when something is already
+ * running. The root is always step 0 — that is how `code_flow_finish` knows
+ * the interaction is over. */
+long long code_flow_begin(const char *target, const CodeValue *particle, const char *root_from) {
+    if (!flows_on || flows_delivering) return -1;
+    if (!flow_running) {
+        if (!root_from) return -1;
+        flow_running = 1;
+        flow_started = flow_unix_ms();
+        flow_clock = flow_mono_ms();
+        flow_from = strdup(root_from);
+        memset(&flow_particle, 0, sizeof flow_particle);
+        code_copy(&flow_particle, particle);
+        flow_len = flow_depth = flow_dropped = 0;
+    }
+    if (flow_len >= FLOW_MOST_STEPS) {
+        flow_dropped++;
+        return -2;
+    }
+    long long id = flow_len++;
+    flow_steps[id] = (FlowStep){
+        flow_depth ? flow_open[flow_depth - 1] : -1,
+        strdup(target),
+        strdup(flow_class(particle)),
+        NULL,
+        flow_mono_ms() - flow_clock,
+        0.0,
+        1,
+    };
+    flow_open[flow_depth++] = id;
+    return id;
+}
+
+/* The same, for a particle a module pushed: a root from `from`, but only
+ * when the program answers its class. */
+long long code_flow_begin_push(const char *from, const CodeValue *particle) {
+    if (!flows_on || flow_running || !flow_is_handled(particle)) return -1;
+    return code_flow_begin("this", particle, from);
+}
+
+/* Where a finished trace goes: to the host that asked for it, when this is a
+ * held library, otherwise to this program's own `Trace` — run with nothing
+ * recording, so the handler's own work is never another trace. Takes the
+ * value over either way. */
+static void flow_hand_over(CodeValue trace) {
+    if (flows_hosted) {
+        flow_outbox = grow(flow_outbox, &flow_outbox_cap, flow_outbox_len + 1, sizeof(CodeValue));
+        flow_outbox[flow_outbox_len++] = trace;
+        return;
+    }
+    if (code_program_dispatch) {
+        CodeValue answer = {0};
+        flows_delivering = 1;
+        code_program_dispatch(&answer, &trace);
+        flows_delivering = 0;
+        code_release(&answer);
+    }
+    code_release(&trace);
+}
+
+static void flow_deliver_pending(void) {
+    size_t next = 0;
+    while (!flow_running && next < flow_pending_len) {
+        flow_hand_over(flow_pending[next++]);
+    }
+    if (next == flow_pending_len) {
+        flow_pending_len = 0;
+    } else {
+        memmove(flow_pending, flow_pending + next, (flow_pending_len - next) * sizeof(CodeValue));
+        flow_pending_len -= next;
+    }
+}
+
+static const CodeValue *flow_field(const CodeValue *v, const char *name) {
+    return v && v->tag == CODE_OBJECT ? find_field(v, name) : NULL;
+}
+static double flow_number(const CodeValue *v) { return v && v->tag == CODE_NUMBER ? v->number : 0.0; }
+static const char *flow_text(const CodeValue *v) {
+    return v && v->tag == CODE_STR && v->str ? v->str : "";
+}
+
+/* `obj` with a null `program` field filled in — how a held program's own
+ * interaction says which one it was. */
+static void flow_stamped(CodeValue *out, const CodeValue *obj, const char *program) {
+    if (obj->tag != CODE_OBJECT) {
+        code_copy(out, obj);
+        return;
+    }
+    char *values = calloc((size_t)(obj->len ? obj->len : 1), CODE_VALUE_SLOT_SIZE);
+    if (!values) code_runtime_error("out of memory");
+    for (long long i = 0; i < obj->len; i++) {
+        const CodeValue *v = slot_at(obj->items, i);
+        if (strcmp(obj->keys[i], "program") == 0 && v->tag == CODE_NULL)
+            code_str_owned(slot_at(values, i), program);
+        else
+            code_copy(slot_at(values, i), v);
+    }
+    code_object(out, obj->keys, values, obj->len);
+    for (long long i = 0; i < obj->len; i++) code_release(slot_at(values, i));
+    free(values);
+}
+
+/* Adds a held program's steps under `parent`, renumbered into this
+ * interaction and placed from the step that made the call — the `started`
+ * times are whole milliseconds, and a guest's steps are often a fraction of
+ * one. Past the cap they are counted. Must match `flows.rs`'s `splice`. */
+static void flow_splice(long long parent, const CodeValue *trace, const char *program) {
+    const CodeValue *steps = flow_field(trace, "steps");
+    double offset = flow_steps[parent].at;
+    long long base = flow_len;
+    for (long long i = 0; steps && steps->tag == CODE_ARRAY && i < steps->len; i++) {
+        const CodeValue *step = slot_at(steps->items, i);
+        if (flow_len >= FLOW_MOST_STEPS) {
+            flow_dropped++;
+            continue;
+        }
+        const CodeValue *own_parent = flow_field(step, "parent");
+        const CodeValue *own_program = flow_field(step, "program");
+        const CodeValue *ok = flow_field(step, "ok");
+        flow_steps[flow_len++] = (FlowStep){
+            own_parent && own_parent->tag == CODE_NUMBER ? base + (long long)own_parent->number : parent,
+            strdup(flow_text(flow_field(step, "target"))),
+            strdup(flow_text(flow_field(step, "class"))),
+            strdup(own_program && own_program->tag == CODE_STR ? flow_text(own_program) : program),
+            offset + flow_number(flow_field(step, "at")),
+            flow_number(flow_field(step, "ms")),
+            ok && ok->tag == CODE_BOOL && ok->boolean,
+        };
+    }
+    flow_dropped += (long long)flow_number(flow_field(trace, "dropped"));
+}
+
+/* What a held program reported: the one whose root came from `host` is this
+ * program's own call seen from inside, spliced under the innermost step
+ * still open — the emit that made the call, which closes only after this.
+ * Anything else it did on its own, and waits in `flow_pending`. Must match
+ * `flows.rs`'s `absorb`. */
+static void flow_absorb(const CodeValue *traces, const char *program, int called) {
+    for (long long i = 0; traces->tag == CODE_ARRAY && i < traces->len; i++) {
+        const CodeValue *trace = slot_at(traces->items, i);
+        int from_host = strcmp(flow_text(flow_field(flow_field(trace, "root"), "from")), "host") == 0;
+        if (from_host && called && flow_running && flow_depth > 0) {
+            flow_splice(flow_open[flow_depth - 1], trace, program);
+            continue;
+        }
+        /* A call this program made while it was not recording — the `Trace`
+         * handler itself, shipping a trace to a held library — is dropped.
+         * Queued, it would come back as a trace, be shipped, and make
+         * another, forever. */
+        if (from_host) continue;
+        /* Stamped: the root, and every step that does not already say. */
+        const char *keys[7];
+        char *fields = calloc((size_t)(trace->len ? trace->len : 1), CODE_VALUE_SLOT_SIZE);
+        if (!fields) code_runtime_error("out of memory");
+        for (long long f = 0; f < trace->len && f < 7; f++) {
+            const CodeValue *v = slot_at(trace->items, f);
+            keys[f] = trace->keys[f];
+            if (strcmp(trace->keys[f], "root") == 0) {
+                flow_stamped(slot_at(fields, f), v, program);
+            } else if (strcmp(trace->keys[f], "steps") == 0 && v->tag == CODE_ARRAY) {
+                char *items = calloc((size_t)(v->len ? v->len : 1), CODE_VALUE_SLOT_SIZE);
+                if (!items) code_runtime_error("out of memory");
+                for (long long s = 0; s < v->len; s++)
+                    flow_stamped(slot_at(items, s), slot_at(v->items, s), program);
+                code_array(slot_at(fields, f), items, v->len);
+                for (long long s = 0; s < v->len; s++) code_release(slot_at(items, s));
+                free(items);
+            } else {
+                code_copy(slot_at(fields, f), v);
+            }
+        }
+        CodeValue stamped = {0};
+        long long n = trace->len < 7 ? trace->len : 7;
+        code_object(&stamped, keys, fields, n);
+        for (long long f = 0; f < n; f++) code_release(slot_at(fields, f));
+        free(fields);
+        flow_pending = grow(flow_pending, &flow_pending_cap, flow_pending_len + 1, sizeof(CodeValue));
+        flow_pending[flow_pending_len++] = stamped;
+    }
+}
+
+/* Asks one held library for what it recorded, copied into this runtime's
+ * heap and released in its own. `take` is its `code_module_flows_take`. */
+static void flow_collect(void (*take)(CodeValue *), void (*release)(CodeValue *),
+                         const char *program, int called) {
+    if (!flows_on || !take) return;
+    CodeValue theirs = {0};
+    take(&theirs);
+    CodeValue ours = {0};
+    code_native_copy_in(&ours, &theirs);
+    release(&theirs);
+    if (ours.tag == CODE_ARRAY && ours.len > 0) flow_absorb(&ours, program, called);
+    code_release(&ours);
+}
+
+static void flow_deliver(void) {
+    long long n = flow_len;
+    char *items = calloc((size_t)(n ? n : 1), CODE_VALUE_SLOT_SIZE);
+    if (!items) code_runtime_error("out of memory");
+    for (long long i = 0; i < n; i++) {
+        FlowStep *step = &flow_steps[i];
+        const char *keys[8] = {"id", "parent", "target", "class", "at", "ms", "ok", "program"};
+        char fields[8 * CODE_VALUE_SLOT_SIZE] = {0};
+        code_number(slot_at(fields, 0), (double)i);
+        if (step->parent < 0) code_null(slot_at(fields, 1));
+        else code_number(slot_at(fields, 1), (double)step->parent);
+        code_str_owned(slot_at(fields, 2), step->target);
+        code_str_owned(slot_at(fields, 3), step->class_name);
+        code_number(slot_at(fields, 4), flow_round(step->at));
+        code_number(slot_at(fields, 5), flow_round(step->ms));
+        code_bool(slot_at(fields, 6), step->ok);
+        if (step->program) code_str_owned(slot_at(fields, 7), step->program);
+        else code_null(slot_at(fields, 7));
+        code_object(slot_at(items, i), keys, fields, 8);
+        for (int f = 0; f < 8; f++) code_release(slot_at(fields, f));
+        free(step->target);
+        free(step->class_name);
+        free(step->program);
+    }
+    char root_fields[4 * CODE_VALUE_SLOT_SIZE] = {0};
+    const char *root_keys[4] = {"from", "class", "particle", "program"};
+    code_str_owned(slot_at(root_fields, 0), flow_from);
+    code_str_owned(slot_at(root_fields, 1), flow_class(&flow_particle));
+    code_copy(slot_at(root_fields, 2), &flow_particle);
+    code_null(slot_at(root_fields, 3));
+
+    const char *keys[7] = {"_class", "root", "started", "ms", "ok", "steps", "dropped"};
+    char fields[7 * CODE_VALUE_SLOT_SIZE] = {0};
+    code_str(slot_at(fields, 0), "Trace");
+    code_object(slot_at(fields, 1), root_keys, root_fields, 4);
+    code_number(slot_at(fields, 2), floor(flow_started));
+    code_number(slot_at(fields, 3), n ? flow_round(flow_steps[0].ms) : 0.0);
+    code_bool(slot_at(fields, 4), n ? flow_steps[0].ok : 1);
+    code_array(slot_at(fields, 5), items, n);
+    code_number(slot_at(fields, 6), (double)flow_dropped);
+    CodeValue trace = {0};
+    code_object(&trace, keys, fields, 7);
+    for (int f = 0; f < 7; f++) code_release(slot_at(fields, f));
+    for (int f = 0; f < 4; f++) code_release(slot_at(root_fields, f));
+    for (long long i = 0; i < n; i++) code_release(slot_at(items, i));
+    free(items);
+
+    /* Handed over with nothing recording, so the handler's own work is never
+     * another trace; what it answers is nobody's business. */
+    free(flow_from);
+    flow_from = NULL;
+    code_release(&flow_particle);
+    memset(&flow_particle, 0, sizeof flow_particle);
+    flow_running = 0;
+    flow_len = flow_depth = flow_dropped = 0;
+    flow_hand_over(trace);
+    flow_deliver_pending();
+}
+
+/* A host that wants this library's steps in its own traces says so, once,
+ * right after linking it. Optional, like every hosting export: a host that
+ * never asks leaves recording off, and a library built before this existed
+ * simply has no such symbol. */
+void code_module_flows(void) {
+    flows_on = 1;
+    flows_hosted = 1;
+}
+
+/* Every interaction finished since the last call, as an array of `Trace`
+ * particles, oldest first. The host calls it right after each call into
+ * this library and after each drain of it, so nothing waits here long. */
+void code_module_flows_take(CodeValue *out) {
+    char *items = calloc(flow_outbox_len ? flow_outbox_len : 1, CODE_VALUE_SLOT_SIZE);
+    if (!items) code_runtime_error("out of memory");
+    for (size_t i = 0; i < flow_outbox_len; i++) *slot_at(items, (long long)i) = flow_outbox[i];
+    memset(out, 0, sizeof *out);
+    code_array(out, items, (long long)flow_outbox_len);
+    for (size_t i = 0; i < flow_outbox_len; i++) code_release(slot_at(items, (long long)i));
+    free(items);
+    flow_outbox_len = 0;
+}
+
+/* Closes a boundary opened by `code_flow_begin`. A step a failure jumped past
+ * (its frame ended before it could close) is closed here too, as not ok —
+ * whatever is still open above `id` ended when this did. Closing the root
+ * ends the interaction and hands its `Trace` to the program. */
+void code_flow_finish(long long id, const CodeValue *answer) {
+    if (id < 0 || !flow_running) return;
+    double now = flow_mono_ms() - flow_clock;
+    while (flow_depth > 0) {
+        long long top = flow_open[--flow_depth];
+        FlowStep *step = &flow_steps[top];
+        step->ms = now - step->at;
+        if (top == id) {
+            step->ok = strcmp(flow_class(answer), "Exception") != 0;
+            break;
+        }
+        step->ok = 0;
+    }
+    if (id == 0) flow_deliver();
+}
+#endif
 
 /* ---- Events — a whole particle, built where the event happens ------------
  *
@@ -2712,7 +3112,7 @@ static void close_hosted_guest(long long guest) {
  * with the address value naming it. On any failure `out` is null and the
  * frame's landing block turns the failure into an `Exception` — a host must
  * survive a guest it cannot load. */
-void code_runtime_link(CodeValue *out, const CodeValue *path) {
+void code_runtime_link(CodeValue *out, const CodeValue *path, const char *name) {
     code_null(out);
     if (path->tag != CODE_STR) {
         fail("'link' needs a path");
@@ -2815,6 +3215,20 @@ void code_runtime_link(CodeValue *out, const CodeValue *path) {
     runtime_modules[row].handle = nh;
     runtime_modules[row].path = kept;
     runtime_modules[row].guest = guest;
+    runtime_modules[row].name = name;
+    runtime_modules[row].flows_take = NULL;
+#ifndef CODE_WASM
+    /* A program that answers `Trace` wants to see inside what it holds too:
+     * asked once, before anything runs in it. */
+    if (flows_on) {
+        void (*record)(void) = (void (*)(void))dlsym(nh->lib, "code_module_flows");
+        if (record) {
+            record();
+            runtime_modules[row].flows_take =
+                (void (*)(CodeValue *))dlsym(nh->lib, "code_module_flows_take");
+        }
+    }
+#endif
 
     module_address(out, row);
 }
@@ -2929,8 +3343,18 @@ void code_runtime_drain_guests(void) {
         NativeHandle *nh = runtime_modules[i].handle;
         if (nh && nh->module_drain) {
             nh->module_drain();
+#ifndef CODE_WASM
+            /* What it did on its own — a timer of its own firing — is an
+             * interaction of its own, handed to `Trace` below. */
+            if (runtime_modules[i].flows_take) {
+                flow_collect(runtime_modules[i].flows_take, nh->release, runtime_modules[i].path, 0);
+            }
+#endif
         }
     }
+#ifndef CODE_WASM
+    flow_deliver_pending();
+#endif
 }
 
 /* Empties the inbound queues of modules linked while the program ran, the
@@ -2963,11 +3387,18 @@ void code_runtime_drain_speakers(void) {
             while (code_poll_inbound(nh, &particle)) {
                 more = 1;
                 CodeValue answer = {0};
+#ifndef CODE_WASM
+                long long flow = code_flow_begin_push(
+                    runtime_modules[i].name ? runtime_modules[i].name : "", &particle);
+#endif
                 if (code_program_dispatch) {
                     code_program_dispatch(&answer, &particle);
                 } else {
                     code_null(&answer);
                 }
+#ifndef CODE_WASM
+                code_flow_finish(flow, &answer);
+#endif
                 code_native_reply(nh, &particle, &answer);
                 code_release(&answer);
                 code_release(&particle);
@@ -3003,6 +3434,15 @@ void code_runtime_dispatch(CodeValue *out, const CodeValue *address, const CodeV
         return;
     }
     code_native_dispatch(nh, out, particle);
+#ifndef CODE_WASM
+    /* A call into a program this one holds: what it did inside is part of
+     * this interaction, under the step that called. */
+    for (long long i = 0; i < runtime_module_count; i++) {
+        if (runtime_modules[i].handle == nh && runtime_modules[i].flows_take) {
+            flow_collect(runtime_modules[i].flows_take, nh->release, runtime_modules[i].path, 1);
+        }
+    }
+#endif
 }
 
 /* `link "x.so" as x` — build the object of the module's exported variables

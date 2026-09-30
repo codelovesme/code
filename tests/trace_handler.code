@@ -1,0 +1,97 @@
+| A program that answers `Trace` is given one after each interaction: a
+| root and everything that happened inside it, in call order, with the
+| step each one ran inside. See docs/todo/trace-handler.md.
+traces = []
+
+Trace { root, started, ms, ok, steps, dropped } =>
+    traces += [{ root = root, started = started, ms = ms, ok = ok, steps = steps, dropped = dropped }]
+    | Its own work is never traced: this would otherwise be one more
+    | interaction, and delivering it one more, forever.
+    emit Note {} to this
+
+Note {} =>
+    return Noted
+
+Inner { text } =>
+    emit Length { value = text } to core get size
+    return InnerDone { size = size.value }
+
+Outer { word } =>
+    emit Inner { text = word } to this get first
+    emit Inner { text = "ab" } to this
+    return OuterDone { size = first.size }
+
+Fails {} =>
+    broken = 1 - "a"
+    return Unreachable
+
+Unreachable {} =>
+    nowhere = 5
+    emit Ping {} to nowhere
+    return Reached
+
+Many {} =>
+    n = 0
+    loop
+        if n = 600, break
+        emit Note {} to this
+        n += 1
+    return Done
+
+| `core` is no interaction and no step.
+emit Timestamp to core get now
+assert traces = []
+
+emit Outer { word = "hello" } to this get answer
+assert answer.size = 5
+
+| Delivered as soon as its root answered, before the next line.
+emit Length { value = traces } to core get count
+assert count.value = 1
+first = traces[0]
+assert first.root = { from = "this", class = "Outer", particle = Outer { word = "hello" }, program = null }
+assert first.ok
+assert first.dropped = 0
+assert first.started ≥ now.value * 1000
+assert first.ms ≥ 0
+
+| The root, then its two children, each saying which step it ran inside.
+emit Length { value = first.steps } to core get stepped
+assert stepped.value = 3
+assert first.steps[0].id = 0
+assert first.steps[0].parent = null
+assert first.steps[0].class = "Outer"
+assert first.steps[0].target = "this"
+assert first.steps[1].parent = 0
+assert first.steps[1].class = "Inner"
+assert first.steps[2].parent = 0
+assert first.steps[2].ok
+assert first.steps[2].at ≥ first.steps[1].at
+assert first.steps[0].ms ≥ first.steps[1].ms
+
+| A root that answers an Exception is an interaction that did not go well.
+emit Fails {} to this get failed
+assert failed ∈ Exception
+assert traces[1].ok = false
+assert traces[1].steps[0].ok = false
+
+| A step whose frame failed before it answered still closes, as not ok.
+emit Unreachable {} to this get lost
+assert lost ∈ Exception
+lost_trace = traces[2]
+emit Length { value = lost_trace.steps } to core get lost_steps
+assert lost_steps.value = 2
+assert lost_trace.steps[1].class = "Ping"
+assert lost_trace.steps[1].parent = 0
+assert lost_trace.steps[1].ok = false
+assert lost_trace.ok = false
+
+| Past the cap, steps are counted rather than kept.
+emit Many {} to this
+many = traces[3]
+emit Length { value = many.steps } to core get kept
+assert kept.value = 500
+assert many.dropped = 101
+
+emit Length { value = traces } to core get total
+assert total.value = 4

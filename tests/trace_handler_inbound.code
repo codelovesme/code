@@ -1,0 +1,22 @@
+| A particle a module pushed is an interaction of its own, and its trace
+| says which module it came from — the alias it was linked under.
+link "native_modules/test_events.so" as ev
+
+traces = []
+
+Trace { root, steps } =>
+    traces += [root]
+
+Tick { value } =>
+    return Ack {}
+
+| `Start` is this program's own statement, and its root; the three ticks
+| it causes are each a root from `ev`.
+emit Start { value = 3 } to ev
+
+emit Length { value = traces } to core get count
+assert count.value = 4
+assert traces[0].from = "this"
+assert traces[0].class = "Start"
+assert traces[1] = { from = "ev", class = "Tick", particle = Tick { value = 0 }, program = null }
+assert traces[3].particle.value = 2

@@ -415,7 +415,10 @@ pub(crate) fn compile_to_object_traced(
     // holds an address value instead.
     let fn_runtime_link = module.add_function(
         "code_runtime_link",
-        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        void_ty.fn_type(
+            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+            false,
+        ),
         None,
     );
     let fn_runtime_unlink = module.add_function(
@@ -856,6 +859,8 @@ pub(crate) fn compile_to_object_traced(
         failed_flag,
         location_slot,
         handler_fns: HashMap::new(),
+        flows: false,
+        flows_self: false,
         tracing,
         handler_depths: HashMap::new(),
         dispatch_fn: None,
@@ -874,6 +879,16 @@ pub(crate) fn compile_to_object_traced(
     // a chain of handler calls resolve at all, whatever order they are
     // written in.
     gen.declare_handlers(&program.statements)?;
+    // Decided now that every handler is known, and only for an executable:
+    // a library cannot know whether its host will want its steps (see
+    // docs/todo/trace-handler.md), and the browser has no clock for it yet.
+    //
+    // A shared library is the exception: whether it records is its host's
+    // choice (`code_module_flows`), not its own, so it always carries the
+    // calls and they stay off until asked.
+    gen.flows_self =
+        target == BuildTarget::Exe && gen.handler_fns.contains_key(crate::flows::HANDLER);
+    gen.flows = gen.flows_self || target == BuildTarget::Shared;
     // After the declarations above (every handler function must exist for
     // the chains to branch to) and before any body below (a module's
     // `emit ... to base` calls its parent's chain).
@@ -888,6 +903,7 @@ pub(crate) fn compile_to_object_traced(
         gen.trace_call("code_trace_init", &[], false)?;
     }
     gen.gen_publish_dispatch()?;
+    gen.gen_flows_on()?;
     for (i, stmt) in program.statements.iter().enumerate() {
         gen.gen_locate(program, i)?;
         gen.gen_stmt(stmt)?;
@@ -1180,6 +1196,14 @@ struct Gen<'a, 'm> {
     /// Every `ClassName => { ... }` in the program, by class name, declared
     /// up front and defined as its statement is reached.
     handler_fns: HashMap<String, FunctionValue<'a>>,
+    /// Whether this program defines `Trace`, and so records what each
+    /// interaction did for it (`crate::flows`, `runtime.c`'s `code_flow_*`).
+    /// False for everyone else, whose objects carry none of those calls.
+    flows: bool,
+    /// Whether this program switches its own recording on, which only an
+    /// executable that defines `Trace` does — a library is switched on by
+    /// its host.
+    flows_self: bool,
     /// Each handler's level in the module graph, recorded where its
     /// declaration is collected — restored as `dispatch_depth` while its
     /// body is generated, so a `to base` inside the body means *its*
@@ -1816,21 +1840,23 @@ impl<'a, 'm> Gen<'a, 'm> {
         // The handle to poll, and how this module hears the answer. Kept
         // together because the answer has to go back to the module that
         // asked, and a pooled list of particles no longer says which that was.
-        let handles: Vec<(PointerValue<'a>, Option<FunctionValue<'a>>)> = self
+        let handles: Vec<(String, PointerValue<'a>, Option<FunctionValue<'a>>)> = self
             .native_links
-            .values()
-            .filter_map(|link| match link {
+            .iter()
+            .filter_map(|(alias, link)| match link {
                 // A `.so` replies through the runtime, which holds the
                 // dlsym'd pointer; `None` here means "use `code_native_reply`
                 // with this handle", which is a no-op for a module that
                 // exports none.
-                NativeLink::Dynamic(slot) => Some((*slot, None)),
+                NativeLink::Dynamic(slot) => Some((alias.clone(), *slot, None)),
                 // A `.a` is here too since 2026-08-28, when it stopped being
                 // a `.so`-only story: it has no handle to *call* through, but
                 // `code_static_open` gave it one to queue into, and from this
                 // function's point of view the two are the same pointer. Its
                 // reply, like its dispatch, is a direct call.
-                NativeLink::Static { inbound, reply, .. } => inbound.map(|slot| (slot, *reply)),
+                NativeLink::Static { inbound, reply, .. } => {
+                    inbound.map(|slot| (alias.clone(), slot, *reply))
+                }
             })
             .collect();
 
@@ -1897,7 +1923,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_store(progress, self.i32_ty.const_zero())
             .map_err(|e| e.to_string())?;
 
-        for (handle_slot, static_reply) in handles {
+        for (alias, handle_slot, static_reply) in handles {
             let poll = self.context.append_basic_block(drain, "poll");
             let handle_body = self.context.append_basic_block(drain, "handle");
             let next = self.context.append_basic_block(drain, "poll_next");
@@ -1953,10 +1979,25 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.builder
                 .build_call(self.fn_null, &[result.into()], "")
                 .map_err(|e| e.to_string())?;
+            // A pushed particle is an interaction of its own: the root of a
+            // trace, from the module that pushed it.
+            let flow_id = if self.flows {
+                let from = self.global_str(&alias, "flow_from")?;
+                self.flow_call(
+                    "code_flow_begin_push",
+                    &[from.into(), particle.into()],
+                    true,
+                )?
+            } else {
+                None
+            };
             if let Some(dispatch) = self.dispatch_fn {
                 self.builder
                     .build_call(dispatch, &[result.into(), particle.into()], "")
                     .map_err(|e| e.to_string())?;
+            }
+            if let Some(id) = flow_id {
+                self.flow_call("code_flow_finish", &[id.into(), result.into()], false)?;
             }
             match static_reply {
                 Some(reply) => {
@@ -2941,16 +2982,29 @@ impl<'a, 'm> Gen<'a, 'm> {
             .map_err(|e| e.to_string())?;
         self.check_failed()?;
         let trace_id = if self.tracing {
-            let name = match target {
-                EmitTarget::This => "this".to_string(),
-                EmitTarget::Base => "base".to_string(),
-                EmitTarget::Core => "core".to_string(),
-                EmitTarget::Module(alias) => format!("module:{alias}"),
-            };
-            let name = self.global_str(&name, "trace_target")?;
+            let name = self.global_str(&trace_target_name(target), "trace_target")?;
             self.trace_call(
                 "code_trace_begin",
                 &[name.into(), particle_ptr.into()],
+                true,
+            )?
+        } else {
+            None
+        };
+        // The program's own record of this interaction, when it defines
+        // `Trace`. At the top of the program an emit *is* an interaction —
+        // the root — and nothing to `core` is ever one of its steps. Must
+        // match interpreter.rs's `Stmt::Emit` arm.
+        let flow_id = if self.flows && !matches!(target, EmitTarget::Core) {
+            let name = self.global_str(&trace_target_name(target), "flow_target")?;
+            let from = if self.handler_frame.is_none() {
+                self.global_str("this", "flow_from")?
+            } else {
+                self.i8_ptr_ty.const_null()
+            };
+            self.flow_call(
+                "code_flow_begin",
+                &[name.into(), particle_ptr.into(), from.into()],
                 true,
             )?
         } else {
@@ -3027,6 +3081,9 @@ impl<'a, 'm> Gen<'a, 'm> {
                     if let Some(id) = trace_id {
                         self.trace_call("code_trace_finish", &[id.into(), temp.into()], false)?;
                     }
+                    if let Some(id) = flow_id {
+                        self.flow_call("code_flow_finish", &[id.into(), temp.into()], false)?;
+                    }
                     self.bind_emit_result(temp, result)?;
                     return Ok(());
                 };
@@ -3077,7 +3134,41 @@ impl<'a, 'm> Gen<'a, 'm> {
         if let Some(id) = trace_id {
             self.trace_call("code_trace_finish", &[id.into(), temp.into()], false)?;
         }
+        if let Some(id) = flow_id {
+            self.flow_call("code_flow_finish", &[id.into(), temp.into()], false)?;
+        }
         self.bind_emit_result(temp, result)
+    }
+
+    /// A call into `runtime.c`'s `code_flow_*`, declared on first use — the
+    /// same shape `trace_call` has, and only ever emitted into a program that
+    /// defines `Trace`.
+    fn flow_call(
+        &self,
+        name: &str,
+        args: &[inkwell::values::BasicMetadataValueEnum<'a>],
+        returns_id: bool,
+    ) -> Result<Option<IntValue<'a>>, String> {
+        self.trace_call(name, args, returns_id)
+    }
+
+    /// Switches recording on at the start of `main`, and tells the runtime
+    /// which classes this program answers: a pushed particle nobody answers
+    /// is dropped, and a dropped particle is no interaction.
+    fn gen_flows_on(&mut self) -> Result<(), String> {
+        if !self.flows {
+            return Ok(());
+        }
+        if self.flows_self {
+            self.flow_call("code_flow_on", &[], false)?;
+        }
+        let mut classes: Vec<String> = self.handler_fns.keys().cloned().collect();
+        classes.sort();
+        for class in classes {
+            let name = self.global_str(&class, "flow_handles")?;
+            self.flow_call("code_flow_handles", &[name.into()], false)?;
+        }
+        Ok(())
     }
 
     /// Only traced executable objects contain these calls. Handler depth is
@@ -3197,8 +3288,13 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn gen_link_runtime(&mut self, alias: &str, path: &Expr) -> Result<(), String> {
         let path_ptr = self.gen_expr(path)?;
         let temp = self.alloc_temp("module_address")?;
+        let name = self.global_str(alias, "link_name")?;
         self.builder
-            .build_call(self.fn_runtime_link, &[temp.into(), path_ptr.into()], "")
+            .build_call(
+                self.fn_runtime_link,
+                &[temp.into(), path_ptr.into(), name.into()],
+                "",
+            )
             .map_err(|e| e.to_string())?;
         // Before the binding: a failed link leaves `temp` null, and the
         // landing block this jumps to turns the failure into an `Exception`
@@ -4200,6 +4296,17 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.builder.position_at_end(resume);
         }
         Ok(f)
+    }
+}
+
+/// How a trace names where an `emit` went — `code trace`'s spelling, and
+/// the `Trace` handler's. Must match interpreter.rs's `trace_target`.
+fn trace_target_name(target: &EmitTarget) -> String {
+    match target {
+        EmitTarget::This => "this".to_string(),
+        EmitTarget::Base => "base".to_string(),
+        EmitTarget::Core => "core".to_string(),
+        EmitTarget::Module(alias) => format!("module:{alias}"),
     }
 }
 

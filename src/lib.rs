@@ -2,6 +2,7 @@ pub mod ast;
 #[cfg(feature = "llvm")]
 pub mod codegen;
 pub mod diagnostics;
+pub mod flows;
 pub mod format;
 pub mod handlers;
 pub mod interpreter;
