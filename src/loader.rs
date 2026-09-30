@@ -123,50 +123,84 @@ impl FilesystemResolver {
         Self::locate_native_inner(base, module_ref)
     }
 
+    /// In order: the script's own directory, then the project's
+    /// `.code/modules/` — verbatim, then through the lockfile's pinned
+    /// layout — and only then `$CODE_MODULE_PATH` and `~/.code/modules/`.
+    ///
+    /// The pin is asked before the later roots on purpose. It used to come
+    /// after *every* root's verbatim spelling, the global one included, so a
+    /// flat `~/.code/modules/mongodb.so` from two weeks earlier quietly
+    /// replaced every project's pin of `mongodb` (found 2026-10-01; see
+    /// `tests/module_resolution_chain.rs`,
+    /// `a_pinned_module_wins_over_a_global_copy_of_the_same_name`). A pin is
+    /// the project saying which bytes it means; a global copy is a fallback
+    /// for a project that says nothing.
     fn locate_native_inner(base: &Path, module_ref: &str) -> Option<PathBuf> {
-        for root in Self::candidate_roots(base) {
+        let roots = Self::candidate_roots(base);
+        let project = find_project_code_dir(base).map(|dir| dir.join(MODULES_DIR));
+        // The script directory, and the project's own modules directory.
+        let own = 1 + usize::from(project.is_some());
+        for root in roots.iter().take(own) {
             if let Ok(canonical) = fs::canonicalize(root.join(module_ref)) {
                 return Some(canonical);
             }
         }
-        #[cfg(feature = "install")]
-        {
-            let file_name = Path::new(module_ref).file_name().and_then(|n| n.to_str())?;
-            let code_dir = find_project_code_dir(base)?;
-            let lock_path = code_dir.join(crate::module_install::LOCK_FILE_NAME);
-            let text = fs::read_to_string(&lock_path).ok()?;
-            let lock: crate::module_install::Lockfile = serde_json::from_str(&text).ok()?;
-            for entry in lock.modules.values() {
-                // `link` may name the pinned asset outright
-                // (`console-linux-x86_64.so`) or, more cleanly, just the
-                // module with a native extension (`console.so` / `console.a`):
-                // the lockfile already says which asset that is on this
-                // platform, so the platform suffix need not be written by hand.
-                let asset_ext = Path::new(&entry.asset)
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or_default();
-                let by_module_name = format!("{}.{asset_ext}", entry.name);
-                if entry.asset != file_name && by_module_name != file_name {
-                    continue;
-                }
-                for root in [
-                    Some(code_dir.join(MODULES_DIR)),
-                    crate::module_install::global_code_dir().map(|g| g.join(MODULES_DIR)),
-                ]
-                .into_iter()
-                .flatten()
-                {
-                    let candidate = root
-                        .join(&entry.name)
-                        .join(&entry.version)
-                        .join(&entry.asset);
-                    if let Ok(canonical) = fs::canonicalize(&candidate) {
-                        return Some(canonical);
-                    }
+        if let Some(pinned) = Self::locate_pinned(base, module_ref) {
+            return Some(pinned);
+        }
+        for root in roots.iter().skip(own) {
+            if let Ok(canonical) = fs::canonicalize(root.join(module_ref)) {
+                return Some(canonical);
+            }
+        }
+        None
+    }
+
+    /// The lockfile's pinned location for `module_ref`, when the project
+    /// has one: `<root>/<name>/<version>/<asset>` under the project's
+    /// `.code/modules/`, then the global one.
+    #[cfg(feature = "install")]
+    fn locate_pinned(base: &Path, module_ref: &str) -> Option<PathBuf> {
+        let file_name = Path::new(module_ref).file_name().and_then(|n| n.to_str())?;
+        let code_dir = find_project_code_dir(base)?;
+        let lock_path = code_dir.join(crate::module_install::LOCK_FILE_NAME);
+        let text = fs::read_to_string(&lock_path).ok()?;
+        let lock: crate::module_install::Lockfile = serde_json::from_str(&text).ok()?;
+        for entry in lock.modules.values() {
+            // `link` may name the pinned asset outright
+            // (`console-linux-x86_64.so`) or, more cleanly, just the
+            // module with a native extension (`console.so` / `console.a`):
+            // the lockfile already says which asset that is on this
+            // platform, so the platform suffix need not be written by hand.
+            let asset_ext = Path::new(&entry.asset)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or_default();
+            let by_module_name = format!("{}.{asset_ext}", entry.name);
+            if entry.asset != file_name && by_module_name != file_name {
+                continue;
+            }
+            for root in [
+                Some(code_dir.join(MODULES_DIR)),
+                crate::module_install::global_code_dir().map(|g| g.join(MODULES_DIR)),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let candidate = root
+                    .join(&entry.name)
+                    .join(&entry.version)
+                    .join(&entry.asset);
+                if let Ok(canonical) = fs::canonicalize(&candidate) {
+                    return Some(canonical);
                 }
             }
         }
+        None
+    }
+
+    #[cfg(not(feature = "install"))]
+    fn locate_pinned(_base: &Path, _module_ref: &str) -> Option<PathBuf> {
         None
     }
 
