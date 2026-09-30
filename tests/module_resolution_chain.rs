@@ -260,3 +260,59 @@ fn refuses_tampered_module_while_locked() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A project's pinned module wins over a flat copy of the same name in
+/// `~/.code/modules/`. The global root is documented as the last resort,
+/// but the verbatim spelling (`test_math.so`) used to be tried in every root
+/// — the global one included — before the lockfile's pinned layout was
+/// looked at at all, so any module ever installed globally silently
+/// replaced every project's pin of it. Found 2026-10-01: a held application
+/// pinned `mongodb` 2.14.0 and ran a two-week-old global copy that did not
+/// know `EnsureIndex`. The global copy here is not a module at all, so
+/// loading it would fail: success is the proof the pin was used.
+#[test]
+fn a_pinned_module_wins_over_a_global_copy_of_the_same_name() {
+    let _env = env_guard();
+    let dir = fixture_dir("pin-over-global");
+    let script = dir.join("proj");
+    fs::create_dir_all(&script).unwrap();
+    fs::write(script.join("main.code"), MAIN_CODE).unwrap();
+
+    let installed = dir
+        .join(".code")
+        .join("modules")
+        .join("test_math")
+        .join("0.0.0");
+    fs::create_dir_all(&installed).unwrap();
+    let so = installed.join("test_math-linux-x86_64.so");
+    build_test_math(&so);
+    let digest = code::module_install::sha256_of(&so).unwrap();
+    let lock = serde_json::json!({
+        "modules": {
+            "test_math": {
+                "name": "test_math",
+                "version": "0.0.0",
+                "source": "https://example.invalid/test_math",
+                "asset": "test_math-linux-x86_64.so",
+                "sha256": digest,
+                "global": false
+            }
+        }
+    });
+    fs::write(
+        dir.join(".code").join("lock.json"),
+        serde_json::to_string_pretty(&lock).unwrap(),
+    )
+    .unwrap();
+
+    let home = dir.join("fake-home");
+    let global = home.join(".code").join("modules");
+    fs::create_dir_all(&global).unwrap();
+    fs::write(global.join("test_math.so"), b"not a module").unwrap();
+
+    assert!(
+        run_with_env(&script, Some(&home), None),
+        "the project's pinned test_math must be linked, not ~/.code/modules/test_math.so"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
