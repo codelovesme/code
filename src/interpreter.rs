@@ -1400,10 +1400,14 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
             let output = emit_to(target, &value, env);
             // A call into a program this one holds: what it did inside is
             // part of this interaction, under this step.
-            if let (Some(opened), EmitTarget::Module(alias)) = (flow, target) {
+            // Collected even when this call was not recorded (the `Trace`
+            // handler's own work): a held library records every call from
+            // its host, and one left behind would be spliced under whatever
+            // call came next.
+            if let EmitTarget::Module(alias) = target {
                 if !env.st().modules.contains_key(alias) {
                     if let Some(address) = env.get(alias) {
-                        absorb_guests(env, Some(&address), Some(opened));
+                        absorb_guests(env, Some(&address), flow);
                     }
                 }
             }

@@ -174,6 +174,11 @@ impl Flows {
                 (true, Some(parent), Some(interaction)) => {
                     interaction.splice(parent, &trace, program)
                 }
+                // A call this program made while it was not recording — the
+                // `Trace` handler itself, shipping a trace to a held
+                // library — is dropped. Queued, it would come back as a
+                // trace, be shipped, and make another, forever.
+                (true, _, _) => {}
                 _ => self.pending.push(stamp(trace, program)),
             }
         }

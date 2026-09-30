@@ -2093,6 +2093,11 @@ static void flow_absorb(const CodeValue *traces, const char *program, int called
             flow_splice(flow_open[flow_depth - 1], trace, program);
             continue;
         }
+        /* A call this program made while it was not recording — the `Trace`
+         * handler itself, shipping a trace to a held library — is dropped.
+         * Queued, it would come back as a trace, be shipped, and make
+         * another, forever. */
+        if (from_host) continue;
         /* Stamped: the root, and every step that does not already say. */
         const char *keys[7];
         char *fields = calloc((size_t)(trace->len ? trace->len : 1), CODE_VALUE_SLOT_SIZE);

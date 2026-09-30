@@ -35,12 +35,19 @@ Tick { value } =>
 "#;
 
 const HOST: &str = r#"traces = []
+keeper = null
 
+| Shipping every trace into a held program is what a host does with the
+| program that keeps its log. That must neither come back as a trace nor
+| land inside the next one.
 Trace { root, ok, steps } =>
     traces += [{ root = root, ok = ok, steps = steps }]
+    if keeper ≠ null
+        emit Ping { who = "shipped" } to keeper
 
 Hold {} =>
     link "guest.so" as app
+    keeper = app
     emit Ping { who = "ada" } to app get pong
     emit Kick {} to app
     return Held { text = pong.text }
@@ -92,6 +99,21 @@ assert tick.steps[0].program = "./guest.so"
 assert tick.steps[1].class = "Shout"
 assert tick.steps[1].parent = 0
 assert traces[2].root.particle.value = 1
+
+| After three traces were shipped into the guest, the next call into it is
+| still exactly its own four steps — nothing left over was spliced in.
+Again {} =>
+    emit Ping { who = "again" } to keeper
+    return Done
+
+emit Again {} to this
+emit Length { value = traces } to core get total
+assert total.value = 4
+again = traces[3]
+emit Length { value = again.steps } to core get again_steps
+assert again_steps.value = 4
+assert again.steps[2].class = "Ping"
+assert again.steps[3].class = "Shout"
 "#;
 
 fn temp_dir(tag: &str) -> PathBuf {

@@ -135,6 +135,12 @@ Trace {
   - Anything else the library finished — its own timer, its lazy top level
     — is stamped with `program` and queued, then handed to `Trace` the
     moment the host has no interaction running.
+  - **A call from the host that the host was not recording is dropped**,
+    never queued. The case is the `Trace` handler itself shipping a trace
+    into a held library (the host's log keeper): queued, that call came
+    back as a trace, was shipped, and made another — measured as a hang.
+    The host also collects after a call it did not record, so a leftover
+    cannot be spliced under whatever call comes next.
   - `tests/trace_hosted.rs` runs an interpreted and a compiled host over the
     same guest, leak check on.
 
