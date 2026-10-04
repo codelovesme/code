@@ -1600,7 +1600,9 @@ rules that make a module unable to break someone else's program.
 
 First-party modules today: `console` (print one line to wherever this
 program's output goes — stdout on a machine, the page's console in a
-browser), `dom` (a page drawn from a value: a tree of tags, attributes and
+browser), `canvas` (bounded 2D command frames and pointer coordinates in a
+browser — see [its README](crates/modules/canvas/README.md)), `dom` (a page
+drawn from a value: a tree of tags, attributes and
 text, with its stylesheet in the same particle and nothing else in either —
 see [its README](crates/modules/dom/README.md)), `guest` (one application
 running inside another in a browser — the same two questions a machine host
@@ -1823,7 +1825,7 @@ crates/
   code-native/  the crate for writing native modules in Rust (crates.io)
   code-lsp/     diagnostics, semantic tokens and formatting, over the real
                 lexer/parser and the same `code format` the CLI runs
-  modules/      first-party modules: console, dom, guest, math, strings, env, json,
+  modules/      first-party modules: console, canvas, dom, guest, math, strings, env, json,
                 json_store, crypto, uuid, jwt, markdown, fs, process, git, mailer,
                 azure_mailer,
                 oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,

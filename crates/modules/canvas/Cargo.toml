@@ -1,0 +1,21 @@
+# Standalone workspace, like the other first-party modules.
+[workspace]
+
+[package]
+name = "canvas"
+version = "2.14.1"
+edition = "2021"
+description = "The `canvas` module for the Code programming language — draw bounded 2D frames in a browser page."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+code-native = { path = "../../code-native", default-features = false, features = ["static-module"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+code-native = { path = "../../code-native" }

@@ -691,6 +691,7 @@ jobs:
               net_server) handlers='["Config", "Listen", "Stop"]' ;;
               membrane) handlers='["Config", "Listen", "Stop"]' ;;
               dom) handlers='["Render", "Download"]' ;;
+              canvas) handlers='["Draw"]' ;;
               guest) handlers='["Load", "Unload", "Tell"]' ;;
               router) handlers='["Route", "Navigate", "Watch", "Where"]' ;;
               storage) handlers='["Get", "Set", "Remove"]' ;;

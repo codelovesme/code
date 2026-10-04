@@ -1,0 +1,18 @@
+| `canvas` is linkable in a machine program, but cannot draw without a page.
+| A module that cannot answer its work says so as Exception; an unknown
+| particle is still null so another handler may own it.
+
+link "native_modules/canvas.so" as canvas
+
+emit Draw {
+    into = "#aquarium-canvas"
+    width = 960
+    height = 600
+    commands = []
+} to canvas get answer
+assert answer ∈ Exception
+assert answer.source = "canvas"
+assert answer.message = "there is no browser here — `canvas` draws into a page, and this program is running on a machine; ask `Linked` which build target is active"
+
+emit Whatever {} to canvas get other
+assert other = null

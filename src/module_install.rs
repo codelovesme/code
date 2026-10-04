@@ -256,6 +256,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "azure_blob",
     "blob_storage",
     "blob_storage_mock",
+    "canvas",
     "cloud_drive",
     "cloud_drive_mock",
     "crypto",
