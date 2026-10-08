@@ -285,11 +285,27 @@ fn wasm_spells_random_fractions_as_rust_does() {
             continue;
         }
         let spelled = format!("{x}");
-        program.push_str(&format!("x{written} = {spelled}\nassert \"$x{written}\" = \"{spelled}\"\n"));
+        program.push_str(&format!(
+            "x{written} = {spelled}\nassert \"$x{written}\" = \"{spelled}\"\n"
+        ));
         written += 1;
     }
     // and the everyday kind: coordinates, alphas and ties at a few digits
-    for (i, x) in [0.1_f64, 0.7, 123.45, -3.3, 0.125, 2.675, 1.0005, 2181495296738027.25, 9.95, 0.3 * 3.0].iter().enumerate() {
+    for (i, x) in [
+        0.1_f64,
+        0.7,
+        123.45,
+        -3.3,
+        0.125,
+        2.675,
+        1.0005,
+        2181495296738027.25,
+        9.95,
+        0.3 * 3.0,
+    ]
+    .iter()
+    .enumerate()
+    {
         program.push_str(&format!("y{i} = {x}\nassert \"$y{i}\" = \"{x}\"\n"));
     }
     let dir = temp_dir("wasm-random-numbers");
