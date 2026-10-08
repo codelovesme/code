@@ -261,6 +261,9 @@ fn wasm_spells_numbers_the_way_the_other_modes_do() {
 /// thousand doubles drawn from every magnitude, with their bits chosen at
 /// random, must spell exactly as Rust spells them.
 #[test]
+// 2181495296738027.25 is written as the tie runtime.c's comment cites, not as
+// the double it rounds to
+#[allow(clippy::excessive_precision)]
 fn wasm_spells_random_fractions_as_rust_does() {
     let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
     let mut next = || {
