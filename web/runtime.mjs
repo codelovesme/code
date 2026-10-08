@@ -128,6 +128,14 @@ export function createHost({
       return b.length;
     },
     code_host_number_parse: (ptr, len) => Number(str(ptr, len)),
+    // The significant digits of the shortest spelling that reads back as
+    // `value`: `toExponential()`'s, without its sign, point and exponent.
+    code_host_number_shortest(value, ptr, cap) {
+      const b = enc.encode(value.toExponential().replace(/^-|e.*$|\./g, ""));
+      if (b.length >= cap) return 0;
+      new Uint8Array(memory.buffer).set(b, ptr);
+      return b.length;
+    },
   };
 
   // The world every module's half is given. `fire` and `ask` are passed as

@@ -3681,6 +3681,27 @@ static void number_exact(char *out, size_t cap, double d) {
 #endif
 }
 
+/* The page's own shortest spelling of `d`, as its significant digits
+ * (`toExponential()` with no argument, sign, point and exponent removed);
+ * answers how many, or 0 when there is no such help. On wasm every candidate
+ * the search below tries is checked by a call out to the page, which made a
+ * fraction cost up to eighteen calls. These digits change nothing it decides:
+ * no shorter decimal of any rounding reads back as `d`, so the search starts
+ * at their length; and when its own candidate there is the same digits, that
+ * candidate is known to read back without asking. Natively `strtod` is cheap,
+ * and the search starts at one, as it always has. */
+static int number_shortest(double d, char *digits, unsigned int cap) {
+#ifdef CODE_WASM
+    int n = code_host_number_shortest(d, digits, cap);
+    return (n >= 1 && n <= 17) ? n : 0;
+#else
+    (void)d;
+    (void)digits;
+    (void)cap;
+    return 0;
+#endif
+}
+
 /* Reading one back — the round-trip half of "shortest that round-trips". */
 static double number_parse(const char *text, size_t len) {
 #ifdef CODE_WASM
@@ -3728,7 +3749,9 @@ static void text_push_number(TextBuf *t, double d) {
     char m[48];
     size_t n = 1;
     int exp10 = fullexp;
-    for (int len = 1; len <= 17; len++) {
+    char shortest[24];
+    int nshort = number_shortest(d, shortest, sizeof shortest);
+    for (int len = nshort > 0 ? nshort : 1; len <= 17; len++) {
         n = (size_t)len;
         exp10 = fullexp;
         memcpy(m, full, n);
@@ -3764,6 +3787,16 @@ static void text_push_number(TextBuf *t, double d) {
         }
         o += (size_t)snprintf(sci + o, sizeof sci - o, "e%d", exp10);
         sci[o] = '\0';
+        if (len == nshort) {
+            /* byte by byte: the freestanding build has no `memcmp` */
+            size_t same = 0;
+            while (same < n && m[same] == shortest[same]) {
+                same++;
+            }
+            if (same == n) {
+                break;
+            }
+        }
         if (number_parse(sci, o) == d) {
             break;
         }

@@ -42,6 +42,12 @@ const WASM_HOST_JS: &str = "\
     code_host_number_parse(ptr, len) {\n\
       return Number(dec.decode(new Uint8Array(memory.buffer, ptr, len)));\n\
     },\n\
+    code_host_number_shortest(value, ptr, cap) {\n\
+      const b = enc.encode(value.toExponential().replace(/^-|e.*$|\\./g, ''));\n\
+      if (b.length >= cap) return 0;\n\
+      new Uint8Array(memory.buffer).set(b, ptr);\n\
+      return b.length;\n\
+    },\n\
   };\n";
 
 /// One private directory per test; the tag distinguishes tests within this
@@ -249,6 +255,49 @@ fn wasm_spells_numbers_the_way_the_other_modes_do() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// The search for a fraction's shortest spelling starts at the length the
+/// page says can first succeed (`code_host_number_shortest`) rather than at
+/// one. That may only skip candidates, never change the answer: so a few
+/// thousand doubles drawn from every magnitude, with their bits chosen at
+/// random, must spell exactly as Rust spells them.
+#[test]
+fn wasm_spells_random_fractions_as_rust_does() {
+    let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+    let mut next = || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let mut program = String::new();
+    let mut written = 0;
+    while written < 2000 {
+        // random mantissa and sign; a binary exponent from 2^-40 to 2^50,
+        // so the literal written positionally stays a sensible length
+        let bits = next();
+        let exponent = (bits >> 52) % 91;
+        let x = f64::from_bits((bits & 0x800f_ffff_ffff_ffff) | ((1023 - 40 + exponent) << 52));
+        // fractions only: whole numbers take the `%lld` path
+        if x.fract() == 0.0 {
+            continue;
+        }
+        let spelled = format!("{x}");
+        program.push_str(&format!("x{written} = {spelled}\nassert \"$x{written}\" = \"{spelled}\"\n"));
+        written += 1;
+    }
+    // and the everyday kind: coordinates, alphas and ties at a few digits
+    for (i, x) in [0.1_f64, 0.7, 123.45, -3.3, 0.125, 2.675, 1.0005, 2181495296738027.25, 9.95, 0.3 * 3.0].iter().enumerate() {
+        program.push_str(&format!("y{i} = {x}\nassert \"$y{i}\" = \"{x}\"\n"));
+    }
+    let dir = temp_dir("wasm-random-numbers");
+    let source = dir.join("random_numbers.code");
+    fs::write(&source, program).expect("write the program");
+    let out = dir.join("random_numbers.wasm");
+    code::compile_file(&source, code::BuildTarget::Wasm, &out, false).expect("build --target wasm");
+    run_wasm_under_node(&dir, &out);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// A wasm build writes the page's half beside the module, holding the halves
 /// of the modules it linked and no others.
 ///
@@ -290,6 +339,7 @@ fn a_wasm_build_writes_the_pages_half_beside_it() {
         "code_host_error",
         "code_host_number_exact",
         "code_host_number_parse",
+        "code_host_number_shortest",
         "code_event_fire",
         "code_web_ask",
     ] {

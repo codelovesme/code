@@ -34,6 +34,11 @@ extern double code_host_tz_offset(void);
  * `code_host_number_parse` is `strtod`; in JavaScript, `Number(text)`. */
 extern int code_host_number_exact(double value, char *out, unsigned int cap);
 extern double code_host_number_parse(const char *ptr, unsigned int len);
+/* `code_host_number_shortest` writes the significant digits of the shortest
+ * spelling that reads back as `value` and returns how many — in JavaScript,
+ * the digits of `value.toExponential()`. Only help for the search in
+ * `text_push_number`: the spelling itself is still decided there. */
+extern int code_host_number_shortest(double value, char *out, unsigned int cap);
 
 /* ---- The heap ------------------------------------------------------------
  *
