@@ -1,7 +1,9 @@
 //! The `canvas` module — draw bounded 2D command frames into a browser page.
 //!
 //! `Draw { into?, width, height, commands, event? } → CanvasResult { ok,
-//! width, height, reason? }` clears the selected canvas and paints the frame.
+//! width, height, view_width, view_height, time, reason? }` clears the
+//! selected canvas and paints the frame, answering the element's on-page size
+//! and the page clock so a scene can fit the screen and move by time.
 //! An optional event class receives `{ x, y }` on a pointer click, with the
 //! coordinates expressed in the frame's logical width and height. The page
 //! resizes the backing surface for its display density while preserving those
@@ -33,7 +35,7 @@ mod machine {
         let particle = &*particle;
         guarded(&mut *out, "canvas", |out| {
             match read_field_str(particle, "_class") {
-                Some("Draw") => exception(out, "canvas", NO_BROWSER),
+                Some("Draw") | Some("Keep") => exception(out, "canvas", NO_BROWSER),
                 _ => null(out),
             }
         })

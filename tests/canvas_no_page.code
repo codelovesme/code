@@ -16,3 +16,7 @@ assert answer.message = "there is no browser here — `canvas` draws into a page
 
 emit Whatever {} to canvas get other
 assert other = null
+
+emit Keep { name = "sand", commands = [] } to canvas get kept
+assert kept ∈ Exception
+assert kept.source = "canvas"
