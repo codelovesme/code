@@ -470,6 +470,7 @@ mod compile {
         run_command(
             Command::new("clang")
                 .arg("--target=wasm32-unknown-unknown")
+                .arg("-O2")
                 .arg("-nostdlib")
                 .arg("-fno-builtin")
                 .arg("-DCODE_WASM")

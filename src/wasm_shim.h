@@ -62,7 +62,12 @@ typedef struct CodeWasmBlock {
     int free;
     struct CodeWasmBlock *prev;   /* by address */
     struct CodeWasmBlock *next;
+    unsigned int kind;            /* CODE_WASM_BIG — the word just before the payload */
 } CodeWasmBlock;
+
+/* The word just before every payload says which allocator it came from. */
+#define CODE_WASM_BIG 0xB16B10C5u
+#define CODE_WASM_SMALL 0x5A11B10Cu
 
 #define CODE_WASM_PAGE 65536u
 #define CODE_WASM_HEADER ((sizeof(CodeWasmBlock) + 7u) & ~7u)
@@ -103,7 +108,7 @@ static void code_wasm_split(CodeWasmBlock *block, size_t size) {
     block->size = size;
 }
 
-static void *malloc(size_t bytes) {
+static void *code_wasm_big_alloc(size_t bytes) {
     size_t size = (bytes + 7u) & ~7u;
     if (size == 0) {
         size = 8;
@@ -112,6 +117,7 @@ static void *malloc(size_t bytes) {
         if (b->free && b->size >= size) {
             code_wasm_split(b, size);
             b->free = 0;
+            b->kind = CODE_WASM_BIG;
             return (unsigned char *)b + CODE_WASM_HEADER;
         }
     }
@@ -130,6 +136,7 @@ static void *malloc(size_t bytes) {
         CodeWasmBlock *b = code_wasm_last;
         code_wasm_split(b, size);
         b->free = 0;
+        b->kind = CODE_WASM_BIG;
         return (unsigned char *)b + CODE_WASM_HEADER;
     }
     CodeWasmBlock *b = (CodeWasmBlock *)at;
@@ -145,22 +152,12 @@ static void *malloc(size_t bytes) {
     code_wasm_last = b;
     code_wasm_heap_end = at + got;
     code_wasm_split(b, size);
+    b->kind = CODE_WASM_BIG;
     return (unsigned char *)b + CODE_WASM_HEADER;
 }
 
-static void *calloc(size_t count, size_t bytes) {
-    size_t total = count * bytes;
-    unsigned char *result = malloc(total);
-    for (size_t i = 0; i < total; i++) {
-        result[i] = 0;
-    }
-    return result;
-}
 
-static void free(void *ptr) {
-    if (!ptr) {
-        return;
-    }
+static void code_wasm_big_free(void *ptr) {
     CodeWasmBlock *b = (CodeWasmBlock *)((unsigned char *)ptr - CODE_WASM_HEADER);
     b->free = 1;
     /* Join with the next block when it is free and touches this one. */
@@ -187,20 +184,103 @@ static void free(void *ptr) {
     }
 }
 
+/* ---- Small blocks --------------------------------------------------------
+ *
+ * Nearly everything a program allocates is small — an object, a list, a
+ * piece of text — and the first-fit list above walks every block from the
+ * lowest on each request, so a page holding a few thousand values paid for a
+ * few thousand steps per allocation (a profile of Aquarium put a third of
+ * its time in `malloc`). Requests up to 2 KB now come from size classes
+ * eight bytes apart: each class keeps a list of its freed blocks, and new
+ * ones are cut from 64 KB pieces taken from the first-fit list. A freed small
+ * block waits in its class rather than joining its neighbours — some memory
+ * held for reuse, in exchange for an allocation that is a few instructions. */
+
+#define CODE_WASM_SMALL_MAX 2048u
+#define CODE_WASM_SMALL_HEADER 8u
+#define CODE_WASM_PIECE 65536u
+
+typedef struct CodeWasmSmall {
+    unsigned int size;   /* the class's payload bytes */
+    unsigned int kind;   /* CODE_WASM_SMALL */
+} CodeWasmSmall;
+
+static void *code_wasm_free_small[CODE_WASM_SMALL_MAX / 8u + 1u];
+static unsigned char *code_wasm_piece_at;
+static unsigned char *code_wasm_piece_end;
+
+static void *malloc(size_t bytes) {
+    size_t size = (bytes + 7u) & ~7u;
+    if (size == 0) {
+        size = 8;
+    }
+    if (size > CODE_WASM_SMALL_MAX) {
+        return code_wasm_big_alloc(size);
+    }
+    unsigned int cls = (unsigned int)(size / 8u);
+    void *reused = code_wasm_free_small[cls];
+    if (reused) {
+        code_wasm_free_small[cls] = *(void **)reused;
+        return reused;
+    }
+    size_t need = CODE_WASM_SMALL_HEADER + size;
+    if (!code_wasm_piece_at || (size_t)(code_wasm_piece_end - code_wasm_piece_at) < need) {
+        code_wasm_piece_at = code_wasm_big_alloc(CODE_WASM_PIECE);
+        code_wasm_piece_end = code_wasm_piece_at + CODE_WASM_PIECE;
+    }
+    CodeWasmSmall *h = (CodeWasmSmall *)code_wasm_piece_at;
+    code_wasm_piece_at += need;
+    h->size = (unsigned int)size;
+    h->kind = CODE_WASM_SMALL;
+    return (unsigned char *)h + CODE_WASM_SMALL_HEADER;
+}
+
+/* The payload size of a block from either allocator. */
+static size_t code_wasm_size_of(void *ptr) {
+    unsigned int kind = ((unsigned int *)ptr)[-1];
+    if (kind == CODE_WASM_SMALL) {
+        return ((CodeWasmSmall *)((unsigned char *)ptr - CODE_WASM_SMALL_HEADER))->size;
+    }
+    return ((CodeWasmBlock *)((unsigned char *)ptr - CODE_WASM_HEADER))->size;
+}
+
+static void free(void *ptr) {
+    if (!ptr) {
+        return;
+    }
+    unsigned int kind = ((unsigned int *)ptr)[-1];
+    if (kind == CODE_WASM_SMALL) {
+        unsigned int cls = ((CodeWasmSmall *)((unsigned char *)ptr - CODE_WASM_SMALL_HEADER))->size / 8u;
+        *(void **)ptr = code_wasm_free_small[cls];
+        code_wasm_free_small[cls] = ptr;
+        return;
+    }
+    code_wasm_big_free(ptr);
+}
+
 static void *realloc(void *old, size_t bytes) {
     if (!old) {
         return malloc(bytes);
     }
-    CodeWasmBlock *b = (CodeWasmBlock *)((unsigned char *)old - CODE_WASM_HEADER);
-    if (b->size >= bytes) {
+    size_t have = code_wasm_size_of(old);
+    if (have >= bytes) {
         return old;
     }
     unsigned char *result = malloc(bytes);
     unsigned char *source = old;
-    for (size_t i = 0; i < b->size; i++) {
+    for (size_t i = 0; i < have; i++) {
         result[i] = source[i];
     }
     free(old);
+    return result;
+}
+
+static void *calloc(size_t count, size_t bytes) {
+    size_t total = count * bytes;
+    unsigned char *result = malloc(total);
+    for (size_t i = 0; i < total; i++) {
+        result[i] = 0;
+    }
     return result;
 }
 
