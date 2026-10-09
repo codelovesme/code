@@ -142,10 +142,6 @@ def main() -> None:
     dist_dir.mkdir(parents=True, exist_ok=True)
     (dist_dir / "index.html").write_text(page)
 
-    # The comparison page is hand-authored content, independent of the
-    # generated playground examples, but belongs in the same Pages artifact.
-    shutil.copy2(site_dir / "compare.html", dist_dir / "compare.html")
-
     # The same list, on its own, for `site/check_examples.mjs` to run through
     # the engine the page will actually load. The page embeds it rather than
     # fetching it, so this file is for the deploy's own check — not something
