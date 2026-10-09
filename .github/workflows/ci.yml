@@ -29,7 +29,9 @@ jobs:
     # env vars are unset, so a fork without either still passes.
     services:
       mongodb:
-        image: mongo:7
+        # Docker Hub's anonymous pull limit stopped CI at step one (2026-10-09),
+        # as it once did for MinIO; Google's mirror serves the same image.
+        image: mirror.gcr.io/library/mongo:7
         ports:
           - 27017:27017
     env:
