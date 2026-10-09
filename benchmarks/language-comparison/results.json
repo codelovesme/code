@@ -1,0 +1,168 @@
+{
+  "measured_at_utc": "2026-10-09T21:35:12+00:00",
+  "workload": {
+    "inner_iterations_per_repetition": 100000,
+    "repetitions": 100,
+    "total_inner_iterations_per_process": 10000000,
+    "operation": "double-precision sum of i*i for i=0..99,999, checked each repetition"
+  },
+  "environment": {
+    "cpu": "Intel(R) Core(TM) i7-5930K CPU @ 3.50GHz",
+    "architecture": "x86_64",
+    "kernel": "6.12.107+deb13-amd64",
+    "distribution": "Debian GNU/Linux 13 (trixie)",
+    "pinned_logical_cpu": 0,
+    "code": "Code v2.14.3",
+    "code_commit": "80d8961",
+    "llvm": null,
+    "c_compiler": "gcc (Debian 14.2.0-19) 14.2.0",
+    "java_runtime": "openjdk version \"26.0.2.1\" 2026-08-18",
+    "java_compiler": "javac 26.0.2.1",
+    "python_runtime": "CPython 3.13.5",
+    "code_compile_command": "code build --release (LLVM optimization level -O2)",
+    "c_compile_commands": [
+      "gcc -std=c17 -O2 -march=native",
+      "gcc -std=c17 -O3 -march=native"
+    ],
+    "java_compile_command": "javac --release 26; HotSpot default runtime settings"
+  },
+  "timed_runs_per_mode": 7,
+  "compile_samples_seconds": {
+    "code build --release": [
+      0.2595210380386561,
+      0.2542029949836433,
+      0.25406103511340916,
+      0.25358444615267217,
+      0.25517631811089814
+    ],
+    "javac --release 26": [
+      1.0904616499319673,
+      1.0727996199857444,
+      1.1196915819309652,
+      1.115936413872987,
+      1.0925028899218887
+    ],
+    "GCC -O2 -march=native": [
+      0.032036676071584225,
+      0.03226259117946029,
+      0.03172611608169973,
+      0.03170365607365966,
+      0.03178593888878822
+    ],
+    "GCC -O3 -march=native": [
+      0.031965936068445444,
+      0.031926779076457024,
+      0.03166014817543328,
+      0.03197866608388722,
+      0.031947951996698976
+    ]
+  },
+  "samples_seconds": {
+    "code run (interpreter)": [
+      4.791844515129924,
+      4.835834698984399,
+      4.853755180025473,
+      4.864519998198375,
+      4.817804616177455,
+      4.75721247587353,
+      4.77952565997839
+    ],
+    "code build --release (native)": [
+      0.8415307360701263,
+      0.8290545667987317,
+      0.8479050260502845,
+      0.8574541320558637,
+      0.8289487089496106,
+      0.8360866159200668,
+      0.8550432568881661
+    ],
+    "C (GCC -O2 -march=native)": [
+      0.014675779966637492,
+      0.014662798028439283,
+      0.01467033987864852,
+      0.014543055091053247,
+      0.014760479098185897,
+      0.014710293151438236,
+      0.014695649035274982
+    ],
+    "C (GCC -O3 -march=native)": [
+      0.014681305037811399,
+      0.014706450048834085,
+      0.014512458117678761,
+      0.014706277986988425,
+      0.01469870307482779,
+      0.01470813900232315,
+      0.014507543062791228
+    ],
+    "Java 26 (HotSpot default)": [
+      0.05307654198259115,
+      0.05273830285295844,
+      0.05312650604173541,
+      0.05220746714621782,
+      0.04943438502959907,
+      0.052648286102339625,
+      0.051921091973781586
+    ],
+    "Python (CPython)": [
+      1.503200211096555,
+      1.4036835490260273,
+      1.3235164619982243,
+      1.4350620438344777,
+      1.3324766419827938,
+      1.3177131821867079,
+      1.418233877979219
+    ]
+  },
+  "summary": [
+    {
+      "mode": "code run (interpreter)",
+      "median_seconds": 4.817804616177455,
+      "min_seconds": 4.75721247587353,
+      "max_seconds": 4.864519998198375,
+      "million_iterations_per_second": 2.075634193720003
+    },
+    {
+      "mode": "code build --release (native)",
+      "median_seconds": 0.8415307360701263,
+      "min_seconds": 0.8289487089496106,
+      "max_seconds": 0.8574541320558637,
+      "million_iterations_per_second": 11.88310726082224
+    },
+    {
+      "mode": "C (GCC -O2 -march=native)",
+      "median_seconds": 0.014675779966637492,
+      "min_seconds": 0.014543055091053247,
+      "max_seconds": 0.014760479098185897,
+      "million_iterations_per_second": 681.394789424006
+    },
+    {
+      "mode": "C (GCC -O3 -march=native)",
+      "median_seconds": 0.01469870307482779,
+      "min_seconds": 0.014507543062791228,
+      "max_seconds": 0.01470813900232315,
+      "million_iterations_per_second": 680.3321319637691
+    },
+    {
+      "mode": "Java 26 (HotSpot default)",
+      "median_seconds": 0.052648286102339625,
+      "min_seconds": 0.04943438502959907,
+      "max_seconds": 0.05312650604173541,
+      "million_iterations_per_second": 189.9397063099384
+    },
+    {
+      "mode": "Python (CPython)",
+      "median_seconds": 1.4036835490260273,
+      "min_seconds": 1.3177131821867079,
+      "max_seconds": 1.503200211096555,
+      "million_iterations_per_second": 7.124112843623972
+    }
+  ],
+  "notes": [
+    "Process startup is included in runtime measurements; compilation is excluded.",
+    "No separate memory measurement was made.",
+    "One workload is a useful data point, not a universal language ranking.",
+    "Python uses float (IEEE 754 binary64) values; its process startup and source parsing are included in run time.",
+    "Python and code run execute source directly; parsing is part of their runtime measurement."
+  ],
+  "compile_runs_per_compiler": 5
+}
