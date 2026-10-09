@@ -842,6 +842,7 @@ pub(crate) fn compile_to_object_traced(
         loop_blocks: Vec::new(),
         slots: Vec::new(),
         temps: Vec::new(),
+        temp_pool: Vec::new(),
         native_links: HashMap::new(),
         web_instance,
         static_native_fns,
@@ -1152,6 +1153,20 @@ struct Gen<'a, 'm> {
     /// hold it to the end. A binding's slot must never appear here — it is
     /// read by every later statement in its scope.
     temps: Vec<(PointerValue<'a>, u64)>,
+    /// Temporary slots whose statement has ended, ready for the next one —
+    /// per function, like `temps`, and keyed by how many slots they span.
+    ///
+    /// A temporary used to get a slot of its own for the life of the
+    /// function, so a large handler held thousands, every one zeroed when
+    /// the handler was entered and released when it returned: in a browser
+    /// profile of Aquarium that zeroing alone was a third of the time. A
+    /// slot goes back here only from `clear_temps_from`, after the clear
+    /// that empties it has been generated, and a statement only ever runs
+    /// after the statements before it have ended — so a reused slot is
+    /// empty when its next user writes it, exactly as a fresh one is. (A
+    /// `break` or `continue` that skips a clear leaves a value behind, as it
+    /// always did; every write releases what a slot held first.)
+    temp_pool: Vec<(PointerValue<'a>, u64)>,
     /// What `link "x" as x` bound `x` to for `emit ... to x` dispatch, by
     /// alias. A raw SSA value either way, not a `CodeValue` slot (see
     /// `alloc_slot`'s doc comment; this never needs to survive a
@@ -1465,6 +1480,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         // enclosing statement in `main` would emit clears naming memory that
         // belongs to another frame.
         let saved_temps = std::mem::take(&mut self.temps);
+        let saved_pool = std::mem::take(&mut self.temp_pool);
         let saved_env = std::mem::replace(&mut self.env, vec![HashMap::new()]);
         self.env.insert(0, saved_env[0].clone());
         self.env.truncate(2);
@@ -1643,6 +1659,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.handler_frame = saved_frame;
         self.env = saved_env;
         self.temps = saved_temps;
+        self.temp_pool = saved_pool;
         self.loop_blocks = saved_loops;
         self.dispatch_depth = saved_depth;
         if let Some(block) = saved_block {
@@ -2317,9 +2334,18 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// accumulator or container, a handler's field bindings, a module
     /// object. Clearing one of those would blank a live variable.
     fn alloc_temp(&mut self, hint: &str) -> Result<PointerValue<'a>, String> {
-        let ptr = self.alloc_slot(hint)?;
+        let ptr = match self.reuse_temp(1) {
+            Some(ptr) => ptr,
+            None => self.alloc_slot(hint)?,
+        };
         self.temps.push((ptr, 1));
         Ok(ptr)
+    }
+
+    /// A pooled temporary spanning exactly `count` slots, if one is free.
+    fn reuse_temp(&mut self, count: u64) -> Option<PointerValue<'a>> {
+        let at = self.temp_pool.iter().rposition(|(_, c)| *c == count)?;
+        Some(self.temp_pool.swap_remove(at).0)
     }
 
     /// `alloc_buffer`'s temporary counterpart — an array's or object's
@@ -2327,7 +2353,10 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// into the finished block, so the scratch slots hold a reference of
     /// their own until something drops it.
     fn alloc_temp_buffer(&mut self, len: u64, hint: &str) -> Result<PointerValue<'a>, String> {
-        let ptr = self.alloc_buffer(len, hint)?;
+        let ptr = match self.reuse_temp(len) {
+            Some(ptr) => ptr,
+            None => self.alloc_buffer(len, hint)?,
+        };
         self.temps.push((ptr, len));
         Ok(ptr)
     }
@@ -2350,7 +2379,9 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .map_err(|e| e.to_string())?;
             }
         }
-        self.temps.truncate(mark);
+        // Cleared now, so free for whatever is generated next (`temp_pool`).
+        let freed = self.temps.split_off(mark);
+        self.temp_pool.extend(freed);
         Ok(())
     }
 
