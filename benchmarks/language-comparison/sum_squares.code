@@ -1,0 +1,16 @@
+n = 100000
+repetitions = 100
+expected = n * (n - 1) * (2 * n - 1) / 6
+batch = 0
+loop
+    if batch = repetitions
+        break
+    i = 0
+    subtotal = 0
+    loop
+        if i = n
+            break
+        subtotal = subtotal + i * i
+        i = i + 1
+    assert subtotal = expected
+    batch = batch + 1

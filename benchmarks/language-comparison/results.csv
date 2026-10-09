@@ -1,0 +1,36 @@
+mode,run,elapsed_seconds
+code run (interpreter),1,4.789398871
+code run (interpreter),2,4.834739123
+code run (interpreter),3,4.839203507
+code run (interpreter),4,4.948345852
+code run (interpreter),5,4.740664410
+code run (interpreter),6,4.733825521
+code run (interpreter),7,5.683531489
+code build --release (native),1,0.825901165
+code build --release (native),2,0.842235895
+code build --release (native),3,0.849490226
+code build --release (native),4,0.861452415
+code build --release (native),5,0.830682661
+code build --release (native),6,0.829091373
+code build --release (native),7,0.828664200
+C (GCC -O2 -march=native),1,0.014557367
+C (GCC -O2 -march=native),2,0.014572180
+C (GCC -O2 -march=native),3,0.014831203
+C (GCC -O2 -march=native),4,0.014712650
+C (GCC -O2 -march=native),5,0.014702744
+C (GCC -O2 -march=native),6,0.014555939
+C (GCC -O2 -march=native),7,0.014743309
+C (GCC -O3 -march=native),1,0.014690302
+C (GCC -O3 -march=native),2,0.014697485
+C (GCC -O3 -march=native),3,0.014697022
+C (GCC -O3 -march=native),4,0.014700957
+C (GCC -O3 -march=native),5,0.014746049
+C (GCC -O3 -march=native),6,0.014723910
+C (GCC -O3 -march=native),7,0.015413377
+Java 26 (HotSpot default),1,0.050799056
+Java 26 (HotSpot default),2,0.052982855
+Java 26 (HotSpot default),3,0.052371823
+Java 26 (HotSpot default),4,0.051630532
+Java 26 (HotSpot default),5,0.051220209
+Java 26 (HotSpot default),6,0.052086698
+Java 26 (HotSpot default),7,0.070482209

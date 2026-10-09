@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>code vs C vs Java — a practical comparison</title>
+<meta name="description" content="An evidence-based comparison of code, C, and Java: performance, memory management, types, concurrency, tooling, and best-fit use cases." />
+<meta property="og:title" content="code vs C vs Java" />
+<meta property="og:description" content="A practical comparison of the code language with C and Java, based on their current runtime and language designs." />
+<meta property="og:type" content="website" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #07090f;
+    --panel: rgba(255, 255, 255, 0.035);
+    --panel-2: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.1);
+    --border-2: rgba(255, 255, 255, 0.17);
+    --text: #e8ecf4;
+    --muted: #9aa3b5;
+    --muted-2: #6b7385;
+    --teal: #5eead4;
+    --violet: #a78bfa;
+    --amber: #fbbf24;
+    --green: #86efac;
+    --red: #f87171;
+    --grad: linear-gradient(120deg, #5eead4 0%, #a78bfa 52%, #f472b6 100%);
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--teal); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: var(--mono); }
+  .bg-grid {
+    position: fixed; inset: 0; z-index: -2; pointer-events: none;
+    background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: radial-gradient(ellipse 90% 65% at 50% 0%, #000 25%, transparent 78%);
+  }
+  .glow { position: fixed; z-index: -1; width: 480px; height: 480px; border-radius: 50%; filter: blur(110px); opacity: .16; pointer-events: none; }
+  .glow.one { top: -250px; left: -180px; background: #0d9488; }
+  .glow.two { top: 34%; right: -300px; background: #7c3aed; }
+  .wrap { width: min(1120px, calc(100% - 2.5rem)); margin-inline: auto; }
+  nav {
+    position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border);
+    background: rgba(7, 9, 15, .84); backdrop-filter: blur(14px);
+  }
+  .nav-inner { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 1.2rem; }
+  .logo { display: inline-flex; align-items: center; gap: .55rem; color: var(--text); font-size: 1.05rem; font-weight: 750; }
+  .logo img { display: block; width: 30px; height: 30px; }
+  .nav-links { display: flex; align-items: center; gap: 1.25rem; font-size: .88rem; }
+  .nav-links a { color: var(--muted); }
+  .nav-links a:hover { color: var(--text); text-decoration: none; }
+  header { padding: 5rem 0 3.5rem; }
+  .eyebrow { color: var(--teal); font-size: .78rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+  h1 { max-width: 860px; margin: .7rem 0 1rem; font-size: clamp(2.45rem, 6.5vw, 4.7rem); letter-spacing: -.045em; line-height: 1.05; }
+  h1 .accent { background: var(--grad); color: transparent; background-clip: text; }
+  .lede { max-width: 76ch; margin: 0; color: var(--muted); font-size: 1.12rem; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.6rem; }
+  .button { display: inline-flex; align-items: center; justify-content: center; padding: .62rem 1rem; border: 1px solid var(--border-2); border-radius: 9px; background: var(--panel); color: var(--text); font-size: .9rem; font-weight: 650; }
+  .button.primary { color: #08100f; border: 0; background: var(--grad); }
+  .button:hover { text-decoration: none; transform: translateY(-1px); }
+  .notice { margin-top: 2rem; padding: 1rem 1.15rem; border: 1px solid rgba(251,191,36,.24); border-left: 3px solid var(--amber); border-radius: 9px; background: rgba(251,191,36,.055); color: var(--muted); }
+  .notice strong { color: var(--text); }
+  section { padding: 2.8rem 0; scroll-margin-top: 78px; }
+  .section-head { max-width: 760px; margin-bottom: 1.5rem; }
+  .kicker { margin-bottom: .35rem; color: var(--violet); font-size: .74rem; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+  h2 { margin: 0 0 .5rem; font-size: clamp(1.65rem, 3.6vw, 2.35rem); letter-spacing: -.025em; line-height: 1.2; }
+  h3 { margin: 0 0 .45rem; font-size: 1.07rem; }
+  p { margin: .5rem 0 1rem; }
+  .section-head p, .muted { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+  .card { padding: 1.25rem; border: 1px solid var(--border); border-radius: 13px; background: var(--panel); }
+  .card p:last-child { margin-bottom: 0; }
+  .card .tag { display: inline-block; margin-bottom: .8rem; padding: .17rem .58rem; border: 1px solid var(--border); border-radius: 999px; color: var(--teal); font-family: var(--mono); font-size: .72rem; }
+  .table-shell { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.018); }
+  table { width: 100%; min-width: 850px; border-collapse: collapse; text-align: left; }
+  th, td { padding: .9rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  thead th { position: sticky; top: 62px; z-index: 1; background: #111522; color: var(--text); font-size: .88rem; }
+  tbody th { width: 175px; color: var(--text); font-size: .86rem; }
+  td { color: var(--muted); font-size: .88rem; }
+  tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+  .lang-code { color: var(--teal); }
+  .lang-c { color: var(--amber); }
+  .lang-java { color: var(--violet); }
+  .prose { max-width: 84ch; }
+  .prose p, .prose li { color: var(--muted); }
+  .prose strong { color: var(--text); }
+  .prose ul { padding-left: 1.3rem; }
+  .prose li { margin: .45rem 0; }
+  .runtime-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+  .runtime { padding: 1.2rem; border-top: 2px solid var(--border-2); background: var(--panel); border-radius: 0 0 12px 12px; }
+  .runtime.code { border-top-color: var(--teal); }
+  .runtime.c { border-top-color: var(--amber); }
+  .runtime.java { border-top-color: var(--violet); }
+  .runtime p { margin-bottom: 0; color: var(--muted); font-size: .91rem; }
+  .good { color: var(--green); }
+  .hard { color: var(--red); }
+  .sources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem 1.6rem; padding-left: 1.2rem; color: var(--muted); }
+  .sources li { padding-left: .15rem; }
+  .sources a { color: var(--teal); }
+  footer { margin-top: 2rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .86rem; }
+  .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; padding: 1.6rem 0 2.5rem; }
+  @media (max-width: 780px) {
+    .cards, .runtime-grid { grid-template-columns: 1fr; }
+    .sources { grid-template-columns: 1fr; }
+    header { padding: 3.7rem 0 2.5rem; }
+    thead th { position: static; }
+  }
+  @media (max-width: 520px) {
+    .wrap { width: min(100% - 1.5rem, 1120px); }
+    .nav-links { gap: .75rem; font-size: .8rem; }
+    .nav-links a:nth-child(2), .nav-links a:nth-child(3), .nav-links a:nth-child(4) { display: none; }
+    header { padding-top: 3rem; }
+    .lede { font-size: 1rem; }
+    section { padding: 2rem 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .button:hover { transform: none; } }
+</style>
+</head>
+<body>
+<div class="bg-grid" aria-hidden="true"></div>
+<div class="glow one" aria-hidden="true"></div>
+<div class="glow two" aria-hidden="true"></div>
+
+<nav>
+  <div class="wrap nav-inner">
+    <a class="logo" href="index.html"><img src="logo.png" alt="" />code</a>
+    <div class="nav-links">
+      <a href="#at-a-glance">At a glance</a>
+      <a href="#performance">Performance</a>
+      <a href="#memory">Memory</a>
+      <a href="#fit">Choose a fit</a>
+      <a href="index.html#playground">Playground</a>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap">
+  <header>
+    <div class="eyebrow">A practical language comparison · reviewed 9 October 2026</div>
+    <h1>Where does <span class="accent">code</span> fit next to C and Java?</h1>
+    <p class="lede">
+      These languages solve different problems. <code>code</code> is a small,
+      data-oriented language built around JSON-shaped values and message handlers.
+      C gives programmers direct control over memory and machine-facing details.
+      Java is a statically typed, general-purpose language with a large runtime and ecosystem.
+      This guide compares the current designs so you can judge the trade-offs for your work.
+    </p>
+    <div class="hero-actions">
+      <a class="button primary" href="index.html#playground">Try code in the browser</a>
+      <a class="button" href="https://github.com/codelovesme/code">Read the source</a>
+    </div>
+    <aside class="notice">
+      <strong>About performance claims:</strong> the performance section includes
+      one reproducible numeric-loop benchmark. Its results are specific to that
+      workload and machine; they are not a universal speed ranking, and memory use
+      was not measured.
+    </aside>
+  </header>
+
+  <section id="at-a-glance">
+    <div class="section-head">
+      <div class="kicker">Quick orientation</div>
+      <h2>Three different starting points</h2>
+      <p>Choose by the kind of control, structure, and runtime your application needs.</p>
+    </div>
+    <div class="cards">
+      <article class="card">
+        <span class="tag">code</span>
+        <h3>Message handlers over data</h3>
+        <p>Useful when the program naturally passes JSON-like particles between handlers and modules. The small core keeps the language surface compact; the trade-off is a deliberately narrow programming model.</p>
+      </article>
+      <article class="card">
+        <span class="tag" style="color:var(--amber)">C</span>
+        <h3>Direct systems control</h3>
+        <p>Useful for operating systems, embedded work, libraries, and tight control over data layout or resource use. That control also puts allocation, bounds, and lifetime discipline close to the programmer.</p>
+      </article>
+      <article class="card">
+        <span class="tag" style="color:var(--violet)">Java</span>
+        <h3>General-purpose managed applications</h3>
+        <p>Useful for large application codebases that benefit from static types, classes and interfaces, a broad standard library, managed memory, and mature JVM tooling.</p>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="matrix-title">
+    <div class="section-head">
+      <div class="kicker">Side by side</div>
+      <h2 id="matrix-title">The practical differences</h2>
+      <p>On a narrow screen, swipe the table horizontally to see every column.</p>
+    </div>
+    <div class="table-shell" role="region" aria-label="Comparison table for code, C, and Java" tabindex="0">
+      <table>
+        <thead>
+          <tr><th scope="col">Topic</th><th scope="col" class="lang-code">code</th><th scope="col" class="lang-c">C</th><th scope="col" class="lang-java">Java</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Core model</th>
+            <td>Six JSON-shaped value kinds; handlers receive and return objects called particles.</td>
+            <td>Procedural language with functions, structs, unions, pointers, and arrays.</td>
+            <td>Class-based language with methods, interfaces, objects, arrays, and generics.</td>
+          </tr>
+          <tr>
+            <th scope="row">Types</th>
+            <td>Values are dynamically typed. Optional annotations and <code>code check --strict</code> catch some problems when they can be proven before running.</td>
+            <td>Static types with integer, floating-point, pointer, aggregate, and other types; types and layouts are close to the implementation.</td>
+            <td>Static types checked by the compiler, with primitive and reference types, classes, interfaces, and generic types.</td>
+          </tr>
+          <tr>
+            <th scope="row">Reuse and abstraction</th>
+            <td>No user-defined functions or recursion. A handler is the reusable unit and is reached through <code>emit</code>.</td>
+            <td>Functions, function pointers, macros, and aggregate types support many programming styles.</td>
+            <td>Methods, classes, interfaces, lambdas, and generics support larger application structures.</td>
+          </tr>
+          <tr>
+            <th scope="row">Numbers</th>
+            <td>One numeric kind: 64-bit floating point. There are no separate integer widths or bitwise operators.</td>
+            <td>Several integer and floating types; useful when width, representation, or bit-level behavior matters.</td>
+            <td>Primitive integer widths and <code>float</code>/<code>double</code>, as well as reference types.</td>
+          </tr>
+          <tr>
+            <th scope="row">Updating data</th>
+            <td>Bindings may be reassigned, but arrays and objects cannot be changed in place. Build a replacement value when the contents change.</td>
+            <td>Programs can update arrays, structs, and pointed-to storage directly.</td>
+            <td>Objects and collection implementations can be mutable or immutable, according to their APIs.</td>
+          </tr>
+          <tr>
+            <th scope="row">Memory</th>
+            <td>Users do not allocate or free language values. The interpreter uses Rust reference-counted values; the native runtime uses reference counting for heap values.</td>
+            <td>Programmers can choose storage duration and allocation strategy. Dynamic allocation is explicit through library APIs such as <code>malloc</code>/<code>free</code>.</td>
+            <td>Objects are allocated on the managed heap and reclaimed by a garbage collector; the JVM provides collector and heap settings.</td>
+          </tr>
+          <tr>
+            <th scope="row">Execution</th>
+            <td><code>code run</code> interprets. <code>code build</code> compiles through LLVM to a native executable or WebAssembly.</td>
+            <td>Typical toolchains compile ahead of time to native machine code.</td>
+            <td>Typical Java toolchains compile to JVM bytecode; the JVM interprets and JIT-compiles hot code.</td>
+          </tr>
+          <tr>
+            <th scope="row">Errors</th>
+            <td>A runtime failure inside a handler can return an <code>Exception</code> particle. The caller decides whether to inspect it; an unhandled failure at the program's top level ends the run.</td>
+            <td>Programs commonly use return codes, output parameters, or library conventions to report errors.</td>
+            <td>Exceptions carry failures through method calls; Java also distinguishes checked exceptions in its type and compile-time rules.</td>
+          </tr>
+          <tr>
+            <th scope="row">Memory safety boundary</th>
+            <td>Language code has no raw pointers or pointer arithmetic. Native modules still run in-process, so a faulty native module can affect the whole process.</td>
+            <td>Pointers and manual storage access give control, and invalid accesses can produce undefined behavior.</td>
+            <td>Managed references and runtime checks avoid many manual pointer-lifetime errors; native interfaces can cross that boundary.</td>
+          </tr>
+          <tr>
+            <th scope="row">Concurrency</th>
+            <td>No language-level thread construct. Native modules and the host runtime can provide asynchronous or threaded work.</td>
+            <td>Low-level platform APIs and implementation/library facilities give control over concurrency.</td>
+            <td>Standard concurrency APIs include platform and virtual threads, executors, and higher-level coordination tools.</td>
+          </tr>
+          <tr>
+            <th scope="row">I/O and ecosystem</th>
+            <td>No core I/O. Explicit modules provide capabilities such as terminal, file, network, or database access; the module ecosystem is much smaller.</td>
+            <td>Standard library plus a broad platform and third-party ecosystem. Many platform capabilities are reachable through C interfaces.</td>
+            <td>Large standard library and package ecosystem for server, desktop, data, and enterprise applications.</td>
+          </tr>
+          <tr>
+            <th scope="row">Deployment</th>
+            <td>Builds native executables/modules and WebAssembly. The language and tooling ecosystem is younger and its prebuilt CLI platform coverage is narrower.</td>
+            <td>Native artifacts can target a wide range of operating systems, processors, and embedded environments when a suitable toolchain is available.</td>
+            <td>JVM bytecode runs on compatible Java runtimes; deployment includes the JVM runtime and application dependencies.</td>
+          </tr>
+          <tr>
+            <th scope="row">Common fit</th>
+            <td>Small programs whose logic is naturally expressed as data transformations and handler dispatch.</td>
+            <td>Systems software, embedded targets, native libraries, and performance- or memory-constrained components.</td>
+            <td>Long-lived, general-purpose applications that benefit from static types, a large ecosystem, and managed concurrency.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="performance">
+    <div class="section-head">
+      <div class="kicker">Runtime and speed</div>
+      <h2>What performance can we reasonably expect?</h2>
+      <p>Execution strategy matters, but it does not produce a universal speed ranking by itself.</p>
+    </div>
+    <div class="runtime-grid">
+      <article class="runtime code">
+        <h3 class="lang-code">code</h3>
+        <p><code>code run</code> walks the program through the interpreter, so it pays interpretation and dynamic-value costs. <code>code build</code> generates LLVM code and removes interpreter dispatch, but its values remain dynamically tagged and operations still use runtime helpers. Native release builds use LLVM optimization (the CLI's <code>--release</code> option). This gives code a compiled path, but it does not make the language equivalent to a statically typed C program.</p>
+      </article>
+      <article class="runtime c">
+        <h3 class="lang-c">C</h3>
+        <p>A native C compiler can optimize statically typed operations and data layouts ahead of execution. For tight numeric or low-level workloads, C offers fewer language-runtime abstractions and more control over representation. That makes it a strong fit for constrained code, though a particular C program is not automatically faster than every Java or compiled-code program.</p>
+      </article>
+      <article class="runtime java">
+        <h3 class="lang-java">Java</h3>
+        <p>The JVM can profile running code and JIT-compile frequently used paths, applying optimizations such as inlining. Startup and warm-up can matter for short programs; long-running workloads give the runtime time to optimize. Garbage collection and heap configuration can also affect throughput, pauses, and total memory.</p>
+      </article>
+    </div>
+    <div class="prose">
+      <h3>Measured numeric-loop benchmark</h3>
+      <p>Each process sums <code>i * i</code> for <code>i = 0…99,999</code>, repeats that 100 times, and checks each subtotal. All implementations use double-precision numbers and execute 10 million inner iterations. Times are wall-clock medians over seven fresh process launches; throughput is calculated from the same 10 million iterations. Compiler times are separate medians over five builds.</p>
+    </div>
+    <div class="table-shell">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Implementation</th>
+            <th scope="col">Median run time</th>
+            <th scope="col">Range (7 runs)</th>
+            <th scope="col">Throughput</th>
+            <th scope="col">Median compile time</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row"><code>code run</code> (interpreter)</th>
+            <td>4.8347 s</td>
+            <td>4.7338–5.6835 s</td>
+            <td>2.07 M iterations/s</td>
+            <td>Parsing is included in run time</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>code build --release</code> (native)</th>
+            <td>0.8307 s</td>
+            <td>0.8259–0.8615 s</td>
+            <td>12.04 M iterations/s</td>
+            <td>0.2526 s</td>
+          </tr>
+          <tr>
+            <th scope="row">C, GCC <code>-O2</code></th>
+            <td>0.0147 s</td>
+            <td>0.0146–0.0148 s</td>
+            <td>680.15 M iterations/s</td>
+            <td>0.0315 s</td>
+          </tr>
+          <tr>
+            <th scope="row">C, GCC <code>-O3</code></th>
+            <td>0.0147 s</td>
+            <td>0.0147–0.0154 s</td>
+            <td>680.23 M iterations/s</td>
+            <td>0.0317 s</td>
+          </tr>
+          <tr>
+            <th scope="row">Java 26, HotSpot defaults</th>
+            <td>0.0521 s</td>
+            <td>0.0508–0.0705 s</td>
+            <td>191.99 M iterations/s</td>
+            <td>1.0956 s</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose">
+      <p><strong>Test machine and commands:</strong> Intel Core i7-5930K at 3.50 GHz, x86-64, Debian 13, Linux 6.12.107; runs pinned to logical CPU 0. <code>code</code> v2.14.3 (commit <code>80d8961</code>) used <code>code build --release</code> (LLVM <code>-O2</code>); C used GCC 14.2 with <code>-std=c17 -O2/-O3 -march=native</code>; Java used Temurin OpenJDK/Javac 26.0.2.1 with default HotSpot settings.</p>
+      <p>Process startup is included in each run. The Java measurement includes JVM startup and JIT warm-up; the <code>code run</code> measurement includes parsing and interpretation. The compiler column excludes run time. <code>-march=native</code> tunes C for this particular CPU. This numeric loop does not measure memory, allocation, I/O, concurrency, or application-level work, and the runtimes are not directly comparable for every workload.</p>
+      <p>Reproduce the measurements with the <a href="https://github.com/codelovesme/code/tree/main/benchmarks/language-comparison">benchmark sources and runner</a>; inspect the <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.csv">raw run samples</a> and <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.json">full machine and compiler report</a>.</p>
+    </div>
+    <div class="prose">
+      <p><strong>The table is one measurement; these broader expectations come from the implementations.</strong> C's explicit types and direct representations are a natural advantage for CPU-heavy numeric work. Java's optimizing JIT can make it highly competitive for long-running workloads. The compiled <code>code</code> backend avoids interpreter dispatch, but dynamic values, generic runtime operations, and allocation-heavy data updates remain part of its model.</p>
+      <ul>
+        <li><strong>Match the workload.</strong> Compare equivalent algorithms and outputs. A task mostly waiting on a network or database may spend little time in language-level computation.</li>
+        <li><strong>Separate cold and warm behavior.</strong> Report startup and compilation separately from steady-state throughput; warm up the JVM before measuring hot code.</li>
+        <li><strong>Compare both code modes.</strong> A comparison with C or Java should include <code>code run</code> and <code>code build --release</code>, rather than treating the interpreter as the only implementation.</li>
+        <li><strong>Measure more than elapsed time.</strong> Peak resident memory, allocation rate, and output correctness reveal trade-offs a single timing hides.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="memory">
+    <div class="section-head">
+      <div class="kicker">Memory management</div>
+      <h2>Less manual work, more runtime representation</h2>
+      <p>The three languages put responsibility for allocation, lifetimes, and reclamation in different places.</p>
+    </div>
+    <div class="cards">
+      <article class="card">
+        <span class="tag">code values</span>
+        <h3>Automatic reference counting</h3>
+        <p>Strings, arrays, and objects are reference-counted internally. Values cannot be mutated in place, so the language cannot construct reference cycles; when the last reference goes away, the runtime releases the heap block. A program author does not call <code>malloc</code> or <code>free</code> for a <code>.code</code> value, and there is no tracing garbage collector.</p>
+        <p>That simplicity costs bookkeeping and a dynamic representation. Constructing a new array or object by combining values may allocate and copy references. Large repeated updates can therefore use more time and memory than mutating a purpose-built C or Java collection.</p>
+        <p><a href="https://github.com/codelovesme/code/blob/main/src/value.rs">Interpreter value model</a> · <a href="https://github.com/codelovesme/code/blob/main/src/runtime.c">Native runtime</a></p>
+      </article>
+      <article class="card">
+        <span class="tag" style="color:var(--amber)">C values</span>
+        <h3>Programmer-directed lifetimes</h3>
+        <p>C gives the programmer control over automatic, static, thread, and dynamically allocated storage. APIs such as <code>malloc</code> return storage that the program later releases with <code>free</code>. This enables compact layouts and custom allocators, arenas, or pools.</p>
+        <p>The program must get those lifetimes right. A missed free can retain memory; freeing too early or twice can invalidate later accesses. The C standard gives undefined behavior for invalid or already-freed pointers passed to <code>free</code>.</p>
+      </article>
+      <article class="card">
+        <span class="tag" style="color:var(--violet)">Java objects</span>
+        <h3>Garbage-collected heap</h3>
+        <p>The JVM tracks reachable objects and reclaims unreachable ones. Developers avoid pairing every object allocation with a manual free, and can choose among collectors and set heap limits.</p>
+        <p>Collection consumes CPU and can introduce pauses; collector choice, allocation rate, heap size, and latency targets affect the result. Java reduces many lifetime mistakes, while still requiring attention to memory use and non-heap resources.</p>
+      </article>
+    </div>
+    <div class="prose">
+      <p><strong>A useful summary:</strong> C offers the most direct memory control and the most lifetime responsibility. Java automates heap reclamation and gives the JVM responsibility for scheduling it. <code>code</code> automates release for its small immutable value graph using reference counts, while paying for dynamic tagged values and their runtime bookkeeping.</p>
+      <p>The current native module ABI reserves an 80-byte stride for each <code>CodeValue</code> slot. That is a concrete ABI layout detail, not a measurement of total memory per variable or a promise about future ABI versions. See the <a href="https://github.com/codelovesme/code/blob/main/src/code_abi.h">current ABI definition</a>.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="types-title">
+    <div class="section-head">
+      <div class="kicker">Types and correctness</div>
+      <h2 id="types-title">Flexible values versus compile-time contracts</h2>
+    </div>
+    <div class="prose">
+      <p><code>code</code> keeps its value space deliberately small: <code>Number</code>, <code>String</code>, <code>Boolean</code>, <code>Null</code>, <code>Array</code>, and <code>Object</code>. A binding can hold any of those kinds. Optional annotations are development-time contracts: <code>code check</code> and <code>--strict</code> report mismatches they can prove from known handlers and values, while dynamic data is still checked as it runs.</p>
+      <p>C and Java both have static type systems. C lets programs express low-level representation and pointer operations; the language does not automatically make an out-of-bounds access safe. Java's compiler rejects many type mismatches before execution, while runtime checks still matter for cases such as null references, casts, and array stores. Static types reduce some classes of mistakes; they do not prove that a program's logic is correct.</p>
+      <p>For anyone sending or receiving JSON-shaped data, <code>code</code>'s six-kind model can keep data and messages direct. If a program needs distinct domain types, generic collection APIs, typed numeric widths, or compile-time guarantees across a large codebase, C or Java provides a broader type vocabulary.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="structure-title">
+    <div class="section-head">
+      <div class="kicker">Program structure</div>
+      <h2 id="structure-title">The biggest constraint is the programming model</h2>
+    </div>
+    <div class="prose">
+      <p>In <code>code</code>, a handler is the unit of reuse: it accepts a particle and returns a particle, and <code>emit</code> dispatches it. The language has one loop form and intentionally has no functions, recursion, or in-place mutation. This keeps the surface area small and makes data exchange explicit, but it limits how freely a program can be decomposed as it grows.</p>
+      <p>C and Java both support ordinary functions or methods, recursion, and richer control flow. Java also provides classes, interfaces, and generics; C provides structs, unions, pointers, and function pointers. Those facilities make them more flexible choices for algorithm-heavy code and large general-purpose systems. The extra surface area asks developers to learn and maintain more concepts.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="errors-title">
+    <div class="section-head">
+      <div class="kicker">Errors and trust boundaries</div>
+      <h2 id="errors-title">What happens when something goes wrong?</h2>
+    </div>
+    <div class="prose">
+      <p>Inside a <code>code</code> handler, a runtime failure is represented as an <code>Exception</code> particle. The calling handler can inspect the result and choose what to do next; errors do not automatically propagate through every caller. Failures before the program starts, and unhandled failures at the top level, still stop the run. Optional strict checks can reject some known problems earlier, but they do not prove that every dynamic input is valid.</p>
+      <p>C has no built-in exception model comparable to Java's. C libraries and applications use conventions such as return values, error codes, and output parameters. That keeps control explicit, but callers must consistently check the conventions they use. Invalid pointer or lifetime operations can be undefined behavior.</p>
+      <p>Java exceptions propagate through method calls and can be caught at chosen boundaries; checked exceptions are also part of method declarations and compile-time checking. The JVM enforces many runtime checks, but exceptions still need thoughtful handling and native code can bypass managed-language guarantees.</p>
+      <p><strong>One important limit for code:</strong> native modules use an in-process ABI. They can perform powerful system work, but they are not isolated from the process. The language's lack of raw pointers does not sandbox a linked C or Rust module.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="concurrency-title">
+    <div class="section-head">
+      <div class="kicker">Concurrency and integration</div>
+      <h2 id="concurrency-title">The host and modules matter</h2>
+    </div>
+    <div class="prose">
+      <p>The <code>code</code> language itself does not expose thread creation or a general async/await system. Its runtime can receive particles from modules, and native modules may do work on their own threads. That makes the module and host design part of any concurrent application; it is not a general-purpose concurrency API inside the language.</p>
+      <p>C applications typically use operating-system APIs and platform libraries where they need concurrency. Java includes a larger standard concurrency toolkit, including executors and virtual threads for high-throughput tasks that mostly wait for I/O. Virtual threads make blocking I/O tasks easier to scale; they do not make a CPU-bound thread run faster.</p>
+      <p><code>code</code> keeps I/O out of its core and requires a linked module to provide capabilities such as terminal, files, and network access. This makes those dependencies visible and swappable, but the first-party modules and community ecosystem are much smaller than C's or Java's.</p>
+    </div>
+  </section>
+
+  <section id="fit">
+    <div class="section-head">
+      <div class="kicker">Decision guide</div>
+      <h2>Which one should you reach for?</h2>
+    </div>
+    <div class="cards">
+      <article class="card">
+        <h3 class="lang-code">Try code when…</h3>
+        <ul>
+          <li>your program mostly passes and reshapes JSON-like values;</li>
+          <li>message handlers and explicit module capabilities fit the design;</li>
+          <li>a compact language and a WebAssembly output are useful.</li>
+        </ul>
+        <p class="hard"><strong>Look elsewhere</strong> for general-purpose abstraction, rich numeric code, built-in concurrency, or a large library ecosystem.</p>
+      </article>
+      <article class="card">
+        <h3 class="lang-c">Choose C when…</h3>
+        <ul>
+          <li>you need precise control over memory layout, allocation, or the hardware;</li>
+          <li>you are building a native library, embedded system, or low-level component;</li>
+          <li>you can take responsibility for pointer and lifetime correctness.</li>
+        </ul>
+        <p class="good"><strong>Strong fit</strong> for code where representation and system integration are central requirements.</p>
+      </article>
+      <article class="card">
+        <h3 class="lang-java">Choose Java when…</h3>
+        <ul>
+          <li>you need a general-purpose language for a growing application;</li>
+          <li>static types, classes, interfaces, and standard libraries are valuable;</li>
+          <li>managed memory and established concurrency tooling fit the runtime.</li>
+        </ul>
+        <p class="good"><strong>Strong fit</strong> for long-running services and broad application ecosystems.</p>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="sources-title">
+    <div class="section-head">
+      <div class="kicker">References and scope</div>
+      <h2 id="sources-title">Sources behind this comparison</h2>
+      <p>Language facts come from primary specifications and official project documentation. The performance section combines the single local measurement above with architectural expectations; the benchmark scope and raw data are linked with the table.</p>
+    </div>
+    <ul class="sources">
+      <li><a href="https://open-std.org/jtc1/sc22/wg14/">WG14, the C language standards committee</a> and its <a href="https://open-std.org/jtc1/sc22/wg14/www/docs/n3220.pdf">C23 committee draft</a> (ISO/IEC 9899:2024).</li>
+      <li><a href="https://docs.oracle.com/en/java/javase/26/docs/specs/jls/index.html">Java Language Specification, Java SE 26</a>, including its <a href="https://docs.oracle.com/en/java/javase/26/docs/specs/jls/jls-4.html">types, values, and variables chapter</a>.</li>
+      <li>Oracle's <a href="https://docs.oracle.com/en/java/javase/26/vm/java-virtual-machine-technology-overview.html">Java VM technology overview</a> and <a href="https://docs.oracle.com/en/java/javase/26/vm/java-hotspot-virtual-machine-performance-enhancements.html">HotSpot performance guide</a>.</li>
+      <li>Oracle's <a href="https://docs.oracle.com/en/java/javase/26/gctuning/index.html">Java SE 26 garbage-collection guide</a> and <a href="https://docs.oracle.com/en/java/javase/26/core/virtual-threads.html">virtual threads documentation</a>.</li>
+      <li>LLVM's <a href="https://llvm.org/docs/CodeGenerator.html">target-independent code generator documentation</a>.</li>
+      <li>The current <a href="https://github.com/codelovesme/code/blob/main/README.md">code language guide</a>, <a href="https://github.com/codelovesme/code/blob/main/src/runtime.c">native runtime</a>, and <a href="https://github.com/codelovesme/code/blob/main/src/code_abi.h">native module ABI</a>.</li>
+    </ul>
+    <div class="prose"><p>This page describes the current <code>code</code> implementation as of 9 October 2026. C is described using the C23 standard, and Java using Java SE 26 documentation. The benchmark was run on 9 October 2026 and is not a general language ranking. Compiler flags, JVM settings, hardware, and program design can change performance results.</p></div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span><a href="index.html">Back to code</a> · <a href="index.html#playground">Open the playground</a></span>
+    <span>Comparison based on public specifications and the current implementation</span>
+  </div>
+</footer>
+</body>
+</html>
