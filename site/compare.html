@@ -363,7 +363,7 @@
     </div>
     <div class="prose">
       <h3>Measured numeric-loop benchmark</h3>
-      <p>Each process sums <code>i * i</code> for <code>i = 0…99,999</code>, repeats that 100 times, and checks each subtotal. All implementations use double-precision numbers and execute 10 million inner iterations. The Python result is a CPython 3.13.5 plain-language loop, without a native numerical package. Times are wall-clock medians over seven fresh process launches; throughput is calculated from the same 10 million iterations. Compiler times are separate medians over five builds.</p>
+      <p>Each process sums <code>i * i</code> for <code>i = 0…99,999</code>, repeats that 100 times, and checks each subtotal. All implementations use double-precision numbers and execute 10 million inner iterations. The Python result is a CPython 3.13.5 plain-language loop, without a native numerical package. Run-time results below are sorted from shortest to longest median; times are wall-clock medians over seven fresh process launches. Compiler times are separate medians over five builds.</p>
     </div>
     <div class="table-shell">
       <table>
@@ -378,29 +378,15 @@
         </thead>
         <tbody>
           <tr>
-            <th scope="row"><code>code run</code> (interpreter)</th>
-            <td>4.8178 s</td>
-            <td>4.7572–4.8645 s</td>
-            <td>2.07 M iterations/s</td>
-            <td>No separate build; parsing is in run time</td>
-          </tr>
-          <tr>
-            <th scope="row"><code>code build --release</code> (native)</th>
-            <td>0.8415 s</td>
-            <td>0.8289–0.8575 s</td>
-            <td>11.88 M iterations/s</td>
-            <td>0.2542 s</td>
-          </tr>
-          <tr>
             <th scope="row">C, GCC <code>-O2</code></th>
-            <td>0.0147 s</td>
+            <td>0.01468 s</td>
             <td>0.0145–0.0148 s</td>
             <td>681.39 M iterations/s</td>
             <td>0.0318 s</td>
           </tr>
           <tr>
             <th scope="row">C, GCC <code>-O3</code></th>
-            <td>0.0147 s</td>
+            <td>0.01470 s</td>
             <td>0.0145–0.0147 s</td>
             <td>680.33 M iterations/s</td>
             <td>0.0319 s</td>
@@ -413,10 +399,24 @@
             <td>1.0925 s</td>
           </tr>
           <tr>
+            <th scope="row"><code>code build --release</code> (native)</th>
+            <td>0.8415 s</td>
+            <td>0.8289–0.8575 s</td>
+            <td>11.88 M iterations/s</td>
+            <td>0.2542 s</td>
+          </tr>
+          <tr>
             <th scope="row">Python 3.13.5 (CPython)</th>
             <td>1.4037 s</td>
             <td>1.3177–1.5032 s</td>
             <td>7.12 M iterations/s</td>
+            <td>No separate build; parsing is in run time</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>code run</code> (interpreter)</th>
+            <td>4.8178 s</td>
+            <td>4.7572–4.8645 s</td>
+            <td>2.07 M iterations/s</td>
             <td>No separate build; parsing is in run time</td>
           </tr>
         </tbody>
@@ -434,24 +434,14 @@
       </div>
       <div role="list" aria-label="Median runtime by implementation">
         <div class="benchmark-row" role="listitem">
-          <span class="bar-label"><code>code run</code> (interpreter)</span>
-          <div class="bar-track"><span class="bar code" style="width:89.4%" aria-hidden="true"></span></div>
-          <span class="bar-value">4.8178 s</span>
-        </div>
-        <div class="benchmark-row" role="listitem">
-          <span class="bar-label"><code>code build --release</code></span>
-          <div class="bar-track"><span class="bar code" style="width:64.2%" aria-hidden="true"></span></div>
-          <span class="bar-value">0.8415 s</span>
-        </div>
-        <div class="benchmark-row" role="listitem">
           <span class="bar-label">C, GCC <code>-O2</code></span>
           <div class="bar-track"><span class="bar c" style="width:5.6%" aria-hidden="true"></span></div>
-          <span class="bar-value">0.0147 s</span>
+          <span class="bar-value">0.01468 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">C, GCC <code>-O3</code></span>
           <div class="bar-track"><span class="bar c" style="width:5.6%" aria-hidden="true"></span></div>
-          <span class="bar-value">0.0147 s</span>
+          <span class="bar-value">0.01470 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">Java 26, HotSpot defaults</span>
@@ -459,9 +449,19 @@
           <span class="bar-value">0.0526 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
+          <span class="bar-label"><code>code build --release</code></span>
+          <div class="bar-track"><span class="bar code" style="width:64.2%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.8415 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
           <span class="bar-label">Python 3.13.5 (CPython)</span>
           <div class="bar-track"><span class="bar python" style="width:71.6%" aria-hidden="true"></span></div>
           <span class="bar-value">1.4037 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label"><code>code run</code> (interpreter)</span>
+          <div class="bar-track"><span class="bar code" style="width:89.4%" aria-hidden="true"></span></div>
+          <span class="bar-value">4.8178 s</span>
         </div>
       </div>
     </figure>
@@ -482,6 +482,39 @@
         </tbody>
       </table>
     </div>
+    <figure class="benchmark-chart" aria-labelledby="compile-chart-title">
+      <figcaption>
+        <h3 id="compile-chart-title">Compile/build time at a glance</h3>
+        <p>Logarithmic scale in seconds. Bars follow the same fastest-to-slowest order as the compile/build table.</p>
+      </figcaption>
+      <div class="benchmark-axis" aria-hidden="true">
+        <span class="axis-spacer"></span>
+        <div class="axis-ticks"><span>0.01 s</span><span>0.1 s</span><span>1 s</span><span>10 s</span></div>
+        <span class="axis-value"></span>
+      </div>
+      <div role="list" aria-label="Median compile and build times by implementation, fastest to slowest">
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label">C, GCC <code>-O2</code></span>
+          <div class="bar-track"><span class="bar c" style="width:16.7%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.0318 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label">C, GCC <code>-O3</code></span>
+          <div class="bar-track"><span class="bar c" style="width:16.8%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.0319 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label"><code>code build --release</code></span>
+          <div class="bar-track"><span class="bar code" style="width:46.8%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.2542 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label">Java 26, <code>javac --release 26</code></span>
+          <div class="bar-track"><span class="bar java" style="width:68%" aria-hidden="true"></span></div>
+          <span class="bar-value">1.0925 s</span>
+        </div>
+      </div>
+    </figure>
     <div class="prose">
       <p><strong>Test machine and commands:</strong> Intel Core i7-5930K at 3.50 GHz, x86-64, Debian 13, Linux 6.12.107; runs pinned to logical CPU 0. <code>code</code> v2.14.3 (compiler source commit <code>80d8961</code>) used <code>code build --release</code> (LLVM <code>-O2</code>); C used GCC 14.2 with <code>-std=c17 -O2/-O3 -march=native</code>; Java used Temurin OpenJDK/Javac 26.0.2.1 with default HotSpot settings; Python used CPython 3.13.5 and IEEE 754 binary64 <code>float</code> values.</p>
       <p>Process startup is included in each run. Java includes JVM startup and JIT warm-up; <code>code run</code> and Python include parsing and interpretation. Build times are measured separately over five invocations; interpreted entries have no separate build time. <code>-march=native</code> tunes C for this particular CPU. This numeric loop does not measure memory, allocation, I/O, concurrency, or application-level work, and the runtimes are not directly comparable for every workload.</p>
