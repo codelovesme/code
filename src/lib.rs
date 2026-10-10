@@ -15,6 +15,8 @@ pub mod module_install;
 pub mod native;
 pub mod parser;
 pub mod span;
+#[cfg(feature = "llvm")]
+mod split;
 pub mod timings;
 pub mod trace;
 pub mod value;
@@ -328,7 +330,11 @@ mod compile {
         // Every path below is inside `scratch`, so the whole directory can be
         // removed as one on the way out, on success and failure alike.
         let result = (|| {
-            codegen::compile_to_object_traced(&program, target, &obj_path, release, tracing)?;
+            // One object, or one per part of a large program (ticket 116),
+            // in the order they link.
+            let objects =
+                codegen::compile_to_object_traced(&program, target, &obj_path, release, tracing)?;
+            let mut inputs: Vec<&Path> = objects.iter().map(PathBuf::as_path).collect();
 
             // `Static` never links against the C runtime — there is no link
             // step beyond archiving the object.
@@ -384,7 +390,7 @@ mod compile {
             let runtime_obj = runtime_obj.as_path();
             if wasm {
                 crate::timings::measure("link", || {
-                    link_wasm(&obj_path, runtime_obj, &static_modules, out_path)
+                    link_wasm(&objects, runtime_obj, &static_modules, out_path)
                 })?;
                 if let Err(error) = validate_wasm_function_locals(out_path) {
                     // Do not leave an artifact that the browser cannot load.
@@ -396,13 +402,15 @@ mod compile {
 
             match target {
                 BuildTarget::Exe => crate::timings::measure("link", || {
-                    cc_link(&[&obj_path, runtime_obj], &static_modules, out_path)
+                    inputs.push(runtime_obj);
+                    cc_link(&inputs, &static_modules, out_path)
                 }),
                 BuildTarget::Shared => crate::timings::measure("link", || {
-                    cc_link_shared(&[&obj_path, runtime_obj], &static_modules, out_path)
+                    inputs.push(runtime_obj);
+                    cc_link_shared(&inputs, &static_modules, out_path)
                 }),
                 BuildTarget::Static => {
-                    crate::timings::measure("archive", || ar_archive(&obj_path, out_path))
+                    crate::timings::measure("archive", || ar_archive(&objects, out_path))
                 }
                 // Refused earlier, in `compile_to_object` — unreachable.
                 BuildTarget::Wasm => unreachable!("wasm refused before codegen"),
@@ -470,9 +478,9 @@ mod compile {
 
     /// Archives the program object into a static library. No runtime, no
     /// system libraries — consumers of the archive supply their own.
-    fn ar_archive(obj_path: &Path, out_path: &Path) -> Result<(), String> {
+    fn ar_archive(objects: &[PathBuf], out_path: &Path) -> Result<(), String> {
         run_command(
-            Command::new("ar").arg("rcs").arg(out_path).arg(obj_path),
+            Command::new("ar").arg("rcs").arg(out_path).args(objects),
             "ar",
         )
     }
@@ -643,7 +651,7 @@ mod compile {
     }
 
     fn link_wasm(
-        obj_path: &Path,
+        objects: &[PathBuf],
         runtime_obj_path: &Path,
         static_modules: &[&str],
         out_path: &Path,
@@ -720,7 +728,7 @@ mod compile {
                 // caught — two modules sharing a prefix — is caught above by
                 // name, with a better error than the linker's.
                 .arg("--allow-multiple-definition")
-                .arg(obj_path)
+                .args(objects)
                 .arg(runtime_obj_path)
                 .args(static_modules)
                 .arg("-o")
