@@ -1174,6 +1174,8 @@ fn a_large_program_builds_the_same_on_any_number_of_cores() {
             .args(["--target", target, "--release", "--timings", "-o"])
             .arg(&artifact)
             .env("CODE_BUILD_JOBS", jobs)
+            // The code generator itself, every time — not the build cache.
+            .env("CODE_CACHE", "0")
             .output()
             .expect("spawn code build");
         assert!(
@@ -1216,5 +1218,91 @@ fn a_large_program_builds_the_same_on_any_number_of_cores() {
         shared_one == shared_four,
         "the shared library depends on the number of cores"
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A rebuild takes every unchanged part from the shared cache (ticket 118),
+/// and what it links is the same bytes a build without the cache makes. The
+/// cache stays within its limit, and `code cache clean` empties it.
+#[test]
+fn a_rebuild_takes_unchanged_parts_from_the_cache() {
+    let dir = temp_dir("build-cache");
+    let cache = dir.join("cache");
+    let src = dir.join("large.code");
+    fs::write(&src, large_program(120)).expect("write the program");
+    let code = |args: &[&str], env: &[(&str, &str)]| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_code"));
+        cmd.args(args)
+            .env("CODE_CACHE_DIR", &cache)
+            .env_remove("CODE_CACHE");
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let output = cmd.output().expect("spawn code");
+        assert!(
+            output.status.success(),
+            "code {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        (
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    };
+    let build = |out: &str, env: &[(&str, &str)]| {
+        let artifact = dir.join(out);
+        let (_, report) = code(
+            &[
+                "build",
+                src.to_str().unwrap(),
+                "--release",
+                "--timings",
+                "-o",
+                artifact.to_str().unwrap(),
+            ],
+            env,
+        );
+        let line = report
+            .lines()
+            .find(|l| l.starts_with("parts: "))
+            .unwrap_or_else(|| panic!("no parts line in:\n{report}"))
+            .to_string();
+        (fs::read(&artifact).expect("read the artifact"), line)
+    };
+    let parts_and_hits = |line: &str| -> (usize, usize) {
+        let numbers: Vec<usize> = line
+            .split(|c: char| !c.is_ascii_digit())
+            .filter_map(|n| n.parse().ok())
+            .collect();
+        (numbers[0], numbers[1])
+    };
+    let (first, line) = build("first", &[]);
+    let (parts, hits) = parts_and_hits(&line);
+    assert!(parts > 1 && hits == 0, "a cold build: {line}");
+    let (second, line) = build("second", &[]);
+    assert_eq!(
+        parts_and_hits(&line),
+        (parts, parts),
+        "a rebuild of the same program: {line}"
+    );
+    let (without, _) = build("without", &[("CODE_CACHE", "0")]);
+    assert!(
+        first == second && first == without,
+        "the cache changed what was built"
+    );
+
+    let (listed, _) = code(&["cache"], &[]);
+    assert!(
+        listed.contains("entries") && !listed.contains(" 0 entries"),
+        "code cache: {listed}"
+    );
+    // Over its limit, the cache trims itself at the end of a build.
+    build("trimmed", &[("CODE_CACHE_LIMIT", "1")]);
+    let objects = fs::read_dir(cache.join("objects"))
+        .map(|d| d.count())
+        .unwrap_or(0);
+    assert_eq!(objects, 0, "a cache over its limit kept {objects} objects");
+    code(&["cache", "clean"], &[]);
+    assert!(!cache.exists(), "code cache clean left {}", cache.display());
     let _ = fs::remove_dir_all(&dir);
 }

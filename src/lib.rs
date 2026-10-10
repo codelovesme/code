@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod cache;
 #[cfg(feature = "llvm")]
 pub mod codegen;
 pub mod diagnostics;
@@ -511,28 +512,20 @@ mod compile {
         }
         let key = runtime_key(wasm, flags);
         let name = format!("{key:016x}-{kind}.o");
-        let cached = cache_dir().map(|dir| dir.join("runtime").join(&name));
-        if let Some(path) = cached.as_ref().filter(|p| p.is_file()) {
-            return Ok(path.clone());
-        }
         let built = scratch.join("runtime.o");
+        // Copied out, so a build trimming the cache meanwhile cannot take it
+        // from under this one's link.
+        if let Some(path) = crate::cache::get("runtime", &name) {
+            if fs::copy(&path, &built).is_ok() {
+                return Ok(built);
+            }
+        }
         crate::timings::measure("runtime compile", || {
             compile_runtime(wasm, flags, scratch, &built)
         })?;
-        // Kept for next time when the cache can be written; a build that
-        // cannot write it still has the object it just made. Written beside
-        // and renamed, so a build running at the same time never reads half.
-        if let Some(path) = cached {
-            if let Some(dir) = path.parent() {
-                let partial = dir.join(format!("{name}.{}.partial", std::process::id()));
-                let kept = fs::create_dir_all(dir).is_ok()
-                    && fs::copy(&built, &partial).is_ok()
-                    && fs::rename(&partial, &path).is_ok();
-                if !kept {
-                    let _ = fs::remove_file(&partial);
-                }
-            }
-        }
+        // Kept for next time; a build that cannot write the cache still has
+        // the object it just made.
+        crate::cache::put("runtime", &name, &built);
         Ok(built)
     }
 
@@ -588,19 +581,6 @@ mod compile {
         )
             .hash(&mut hasher);
         hasher.finish()
-    }
-
-    /// The shared cache (ticket 118's, which this is the first user of):
-    /// `CODE_CACHE_DIR`, else `$XDG_CACHE_HOME/code`, else `~/.cache/code`.
-    fn cache_dir() -> Option<PathBuf> {
-        let from = |name: &str| {
-            std::env::var_os(name)
-                .filter(|v| !v.is_empty())
-                .map(PathBuf::from)
-        };
-        from("CODE_CACHE_DIR")
-            .or_else(|| from("XDG_CACHE_HOME").map(|d| d.join("code")))
-            .or_else(|| from("HOME").map(|d| d.join(".cache").join("code")))
     }
 
     /// Links the one `.wasm`: the program, the runtime, and every `.a`

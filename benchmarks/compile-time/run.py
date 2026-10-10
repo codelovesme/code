@@ -63,9 +63,12 @@ def main() -> int:
             continue
         runs = []
         for i in range(args.runs):
+            # A clean build every time: the build cache (ticket 118) would
+            # otherwise answer runs 2-5 from what run 1 compiled.
             done = subprocess.run(
                 [args.code, "build", entry, *flags, "--timings", "-o", str(out / f"artifact-{i}")],
                 cwd=cwd, capture_output=True, text=True,
+                env={**__import__("os").environ, "CODE_CACHE": "0"},
             )
             if done.returncode != 0:
                 print(f"{name} failed:\n{done.stderr}", file=sys.stderr)

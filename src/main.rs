@@ -138,6 +138,7 @@ fn main() -> ExitCode {
             status
         }
         "init" => cmd_init(args.collect()),
+        "cache" => cmd_cache(args.collect()),
         #[cfg(feature = "install")]
         "install" => cmd_install(args.collect()),
         #[cfg(feature = "install")]
@@ -193,6 +194,7 @@ resolves relative to the file doing the linking. --strict refuses errors that
         "handlers" => HANDLERS_HELP,
         "format" => FORMAT_HELP,
         "test" => TEST_HELP,
+        "cache" => CACHE_HELP,
         _ => HELP,
     }
 }
@@ -217,6 +219,7 @@ commands:
   test [path]...                 run the fixtures in tests/, or the ones named
   handlers [path]                describe source handlers as JSON
   format [--check] <path>...     the canonical layout, rewritten in place
+  cache [clean]                  where the build cache is and how big; empty it
 
   -h, --help [command]           this, or one command's own help
   -v, --version                  which build this is
@@ -224,6 +227,48 @@ commands:
 `run` and `build` take either a file or a directory, and default to `.`. A
 directory means its main.code. Artifacts always go in a build/ beside what
 you named.";
+
+const CACHE_HELP: &str = "\
+usage: code cache [clean]
+
+`code build` keeps what it compiled — the C runtime, and each part of a
+large program's machine code — in one cache shared by every project, keyed
+by content, so an unchanged part is not compiled twice. With no argument,
+says where the cache is and how big it is; `clean` empties it.
+
+  CODE_CACHE_DIR     where it is (default $XDG_CACHE_HOME/code, ~/.cache/code)
+  CODE_CACHE_LIMIT   bytes it may hold before the least used go (default 1 GB)
+  CODE_CACHE=0       build without it";
+
+/// `code cache [clean]` (ticket 118).
+fn cmd_cache(args: Vec<String>) -> ExitCode {
+    match args.first().map(String::as_str) {
+        None => {
+            let Some(dir) = code::cache::dir() else {
+                println!("the build cache is off (CODE_CACHE=0, or no home directory)");
+                return ExitCode::SUCCESS;
+            };
+            let (bytes, entries) = code::cache::size();
+            println!(
+                "{}: {entries} entries, {:.1} MB",
+                dir.display(),
+                bytes as f64 / 1_000_000.0
+            );
+            ExitCode::SUCCESS
+        }
+        Some("clean") if args.len() == 1 => match code::cache::clean() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("cannot empty the build cache: {e}");
+                ExitCode::FAILURE
+            }
+        },
+        _ => {
+            eprintln!("{CACHE_HELP}");
+            ExitCode::FAILURE
+        }
+    }
+}
 
 const BUILD_HELP: &str = "\
 usage: code build [path] [options]
