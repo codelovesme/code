@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>code vs C vs Java — a practical comparison</title>
-<meta name="description" content="An evidence-based comparison of code, C, and Java: performance, memory management, types, concurrency, tooling, and best-fit use cases." />
-<meta property="og:title" content="code vs C vs Java" />
-<meta property="og:description" content="A practical comparison of the code language with C and Java, based on their current runtime and language designs." />
+<title>code vs C vs Java vs Python — a practical comparison</title>
+<meta name="description" content="An evidence-based comparison of code, C, Java, and Python: performance, memory management, types, concurrency, tooling, and best-fit use cases." />
+<meta property="og:title" content="code vs C vs Java vs Python" />
+<meta property="og:description" content="A practical comparison of the code language with C, Java, and Python, based on their current runtime and language designs." />
 <meta property="og:type" content="website" />
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
 <style>
@@ -23,6 +23,7 @@
     --teal: #5eead4;
     --violet: #a78bfa;
     --amber: #fbbf24;
+    --blue: #60a5fa;
     --green: #86efac;
     --red: #f87171;
     --grad: linear-gradient(120deg, #5eead4 0%, #a78bfa 52%, #f472b6 100%);
@@ -81,12 +82,12 @@
   h3 { margin: 0 0 .45rem; font-size: 1.07rem; }
   p { margin: .5rem 0 1rem; }
   .section-head p, .muted { color: var(--muted); }
-  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
   .card { padding: 1.25rem; border: 1px solid var(--border); border-radius: 13px; background: var(--panel); }
   .card p:last-child { margin-bottom: 0; }
   .card .tag { display: inline-block; margin-bottom: .8rem; padding: .17rem .58rem; border: 1px solid var(--border); border-radius: 999px; color: var(--teal); font-family: var(--mono); font-size: .72rem; }
   .table-shell { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.018); }
-  table { width: 100%; min-width: 850px; border-collapse: collapse; text-align: left; }
+  table { width: 100%; min-width: 1080px; border-collapse: collapse; text-align: left; }
   th, td { padding: .9rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
   thead th { position: sticky; top: 62px; z-index: 1; background: #111522; color: var(--text); font-size: .88rem; }
   tbody th { width: 175px; color: var(--text); font-size: .86rem; }
@@ -95,16 +96,18 @@
   .lang-code { color: var(--teal); }
   .lang-c { color: var(--amber); }
   .lang-java { color: var(--violet); }
+  .lang-python { color: var(--blue); }
   .prose { max-width: 84ch; }
   .prose p, .prose li { color: var(--muted); }
   .prose strong { color: var(--text); }
   .prose ul { padding-left: 1.3rem; }
   .prose li { margin: .45rem 0; }
-  .runtime-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+  .runtime-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
   .runtime { padding: 1.2rem; border-top: 2px solid var(--border-2); background: var(--panel); border-radius: 0 0 12px 12px; }
   .runtime.code { border-top-color: var(--teal); }
   .runtime.c { border-top-color: var(--amber); }
   .runtime.java { border-top-color: var(--violet); }
+  .runtime.python { border-top-color: var(--blue); }
   .runtime p { margin-bottom: 0; color: var(--muted); font-size: .91rem; }
   .good { color: var(--green); }
   .hard { color: var(--red); }
@@ -150,13 +153,14 @@
 
 <main class="wrap">
   <header>
-    <div class="eyebrow">A practical language comparison · reviewed 9 October 2026</div>
-    <h1>Where does <span class="accent">code</span> fit next to C and Java?</h1>
+    <div class="eyebrow">A practical language comparison · reviewed 10 October 2026</div>
+    <h1>Where does <span class="accent">code</span> fit next to C, Java, and Python?</h1>
     <p class="lede">
       These languages solve different problems. <code>code</code> is a small,
       data-oriented language built around JSON-shaped values and message handlers.
       C gives programmers direct control over memory and machine-facing details.
       Java is a statically typed, general-purpose language with a large runtime and ecosystem.
+      Python is a dynamically typed, general-purpose language with an extensive standard library and package ecosystem.
       This guide compares the current designs so you can judge the trade-offs for your work.
     </p>
     <div class="hero-actions">
@@ -174,7 +178,7 @@
   <section id="at-a-glance">
     <div class="section-head">
       <div class="kicker">Quick orientation</div>
-      <h2>Three different starting points</h2>
+      <h2>Four different starting points</h2>
       <p>Choose by the kind of control, structure, and runtime your application needs.</p>
     </div>
     <div class="cards">
@@ -193,6 +197,11 @@
         <h3>General-purpose managed applications</h3>
         <p>Useful for large application codebases that benefit from static types, classes and interfaces, a broad standard library, managed memory, and mature JVM tooling.</p>
       </article>
+      <article class="card">
+        <span class="tag" style="color:var(--blue)">Python</span>
+        <h3>Readable automation and broad application work</h3>
+        <p>Useful for scripting, services, data work, and fast iteration, with dynamic typing, a large standard library, and a broad third-party package ecosystem.</p>
+      </article>
     </div>
   </section>
 
@@ -202,10 +211,10 @@
       <h2 id="matrix-title">The practical differences</h2>
       <p>On a narrow screen, swipe the table horizontally to see every column.</p>
     </div>
-    <div class="table-shell" role="region" aria-label="Comparison table for code, C, and Java" tabindex="0">
+    <div class="table-shell" role="region" aria-label="Comparison table for code, C, Java, and Python" tabindex="0">
       <table>
         <thead>
-          <tr><th scope="col">Topic</th><th scope="col" class="lang-code">code</th><th scope="col" class="lang-c">C</th><th scope="col" class="lang-java">Java</th></tr>
+          <tr><th scope="col">Topic</th><th scope="col" class="lang-code">code</th><th scope="col" class="lang-c">C</th><th scope="col" class="lang-java">Java</th><th scope="col" class="lang-python">Python</th></tr>
         </thead>
         <tbody>
           <tr>
@@ -213,78 +222,91 @@
             <td>Six JSON-shaped value kinds; handlers receive and return objects called particles.</td>
             <td>Procedural language with functions, structs, unions, pointers, and arrays.</td>
             <td>Class-based language with methods, interfaces, objects, arrays, and generics.</td>
+            <td>General-purpose, dynamically typed language with functions, classes, modules, iterators, and several programming styles.</td>
           </tr>
           <tr>
             <th scope="row">Types</th>
             <td>Values are dynamically typed. Optional annotations and <code>code check --strict</code> catch some problems when they can be proven before running.</td>
             <td>Static types with integer, floating-point, pointer, aggregate, and other types; types and layouts are close to the implementation.</td>
             <td>Static types checked by the compiler, with primitive and reference types, classes, interfaces, and generic types.</td>
+            <td>Types are determined at runtime. Optional annotations help external static type checkers, but Python does not enforce them at runtime.</td>
           </tr>
           <tr>
             <th scope="row">Reuse and abstraction</th>
             <td>No user-defined functions or recursion. A handler is the reusable unit and is reached through <code>emit</code>.</td>
             <td>Functions, function pointers, macros, and aggregate types support many programming styles.</td>
             <td>Methods, classes, interfaces, lambdas, and generics support larger application structures.</td>
+            <td>Functions, classes, modules, generators, and exceptions support reusable programs; the language is not restricted to one abstraction style.</td>
           </tr>
           <tr>
             <th scope="row">Numbers</th>
             <td>One numeric kind: 64-bit floating point. There are no separate integer widths or bitwise operators.</td>
             <td>Several integer and floating types; useful when width, representation, or bit-level behavior matters.</td>
             <td>Primitive integer widths and <code>float</code>/<code>double</code>, as well as reference types.</td>
+            <td>Integers have arbitrary precision; <code>float</code> is typically a C double-precision value. The standard library also provides complex, decimal, and fraction types.</td>
           </tr>
           <tr>
             <th scope="row">Updating data</th>
             <td>Bindings may be reassigned, but arrays and objects cannot be changed in place. Build a replacement value when the contents change.</td>
             <td>Programs can update arrays, structs, and pointed-to storage directly.</td>
             <td>Objects and collection implementations can be mutable or immutable, according to their APIs.</td>
+            <td>Lists, dictionaries, and sets are mutable; tuples and frozensets are immutable. Mutability is part of each value type's behavior.</td>
           </tr>
           <tr>
             <th scope="row">Memory</th>
             <td>Users do not allocate or free language values. The interpreter uses Rust reference-counted values; the native runtime uses reference counting for heap values.</td>
             <td>Programmers can choose storage duration and allocation strategy. Dynamic allocation is explicit through library APIs such as <code>malloc</code>/<code>free</code>.</td>
             <td>Objects are allocated on the managed heap and reclaimed by a garbage collector; the JVM provides collector and heap settings.</td>
+            <td>Memory is managed by the implementation. In CPython, reference counting is supplemented by a collector for reference cycles; other Python implementations can differ.</td>
           </tr>
           <tr>
             <th scope="row">Execution</th>
             <td><code>code run</code> interprets. <code>code build</code> compiles through LLVM to a native executable or WebAssembly.</td>
             <td>Typical toolchains compile ahead of time to native machine code.</td>
             <td>Typical Java toolchains compile to JVM bytecode; the JVM interprets and JIT-compiles hot code.</td>
+            <td>CPython typically compiles source to implementation-specific bytecode and interprets it. Bytecode is not a portable Python language contract, and other implementations may execute differently.</td>
           </tr>
           <tr>
             <th scope="row">Errors</th>
             <td>A runtime failure inside a handler can return an <code>Exception</code> particle. The caller decides whether to inspect it; an unhandled failure at the program's top level ends the run.</td>
             <td>Programs commonly use return codes, output parameters, or library conventions to report errors.</td>
             <td>Exceptions carry failures through method calls; Java also distinguishes checked exceptions in its type and compile-time rules.</td>
+            <td>Exceptions propagate through calls until handled with <code>try</code>/<code>except</code>; functions do not declare checked exceptions.</td>
           </tr>
           <tr>
             <th scope="row">Memory safety boundary</th>
             <td>Language code has no raw pointers or pointer arithmetic. Native modules still run in-process, so a faulty native module can affect the whole process.</td>
             <td>Pointers and manual storage access give control, and invalid accesses can produce undefined behavior.</td>
             <td>Managed references and runtime checks avoid many manual pointer-lifetime errors; native interfaces can cross that boundary.</td>
+            <td>Managed objects avoid direct pointer and lifetime work in ordinary Python code; native extensions can cross into lower-level code and its risks.</td>
           </tr>
           <tr>
             <th scope="row">Concurrency</th>
             <td>No language-level thread construct. Native modules and the host runtime can provide asynchronous or threaded work.</td>
             <td>Low-level platform APIs and implementation/library facilities give control over concurrency.</td>
             <td>Standard concurrency APIs include platform and virtual threads, executors, and higher-level coordination tools.</td>
+            <td>Threads, <code>asyncio</code>, and processes cover different needs. In the usual GIL-enabled CPython build, threads help with I/O overlap but do not run Python bytecode in parallel for CPU-bound work; optional free-threaded builds are available.</td>
           </tr>
           <tr>
             <th scope="row">I/O and ecosystem</th>
             <td>No core I/O. Explicit modules provide capabilities such as terminal, file, network, or database access; the module ecosystem is much smaller.</td>
             <td>Standard library plus a broad platform and third-party ecosystem. Many platform capabilities are reachable through C interfaces.</td>
             <td>Large standard library and package ecosystem for server, desktop, data, and enterprise applications.</td>
+            <td>Extensive standard library and a very large PyPI package ecosystem; many numeric and data packages use optimized native code for hot operations.</td>
           </tr>
           <tr>
             <th scope="row">Deployment</th>
             <td>Builds native executables/modules and WebAssembly. The language and tooling ecosystem is younger and its prebuilt CLI platform coverage is narrower.</td>
             <td>Native artifacts can target a wide range of operating systems, processors, and embedded environments when a suitable toolchain is available.</td>
             <td>JVM bytecode runs on compatible Java runtimes; deployment includes the JVM runtime and application dependencies.</td>
+            <td>Applications commonly ship with a compatible Python interpreter and dependencies; native packages can require platform-specific wheels or builds.</td>
           </tr>
           <tr>
             <th scope="row">Common fit</th>
             <td>Small programs whose logic is naturally expressed as data transformations and handler dispatch.</td>
             <td>Systems software, embedded targets, native libraries, and performance- or memory-constrained components.</td>
             <td>Long-lived, general-purpose applications that benefit from static types, a large ecosystem, and managed concurrency.</td>
+            <td>Automation, scripting, web services, scientific and data work, and applications that benefit from readable syntax and rapid iteration.</td>
           </tr>
         </tbody>
       </table>
@@ -310,10 +332,14 @@
         <h3 class="lang-java">Java</h3>
         <p>The JVM can profile running code and JIT-compile frequently used paths, applying optimizations such as inlining. Startup and warm-up can matter for short programs; long-running workloads give the runtime time to optimize. Garbage collection and heap configuration can also affect throughput, pauses, and total memory.</p>
       </article>
+      <article class="runtime python">
+        <h3 class="lang-python">Python</h3>
+        <p>CPython's usual execution path includes dynamic dispatch and interpreter overhead, so tight numeric loops written in plain Python often run slower than optimized native code or a warmed-up JVM. Python is often used with libraries that move intensive work into compiled native kernels; benchmark the application and its actual dependencies to understand that effect.</p>
+      </article>
     </div>
     <div class="prose">
       <h3>Measured numeric-loop benchmark</h3>
-      <p>Each process sums <code>i * i</code> for <code>i = 0…99,999</code>, repeats that 100 times, and checks each subtotal. All implementations use double-precision numbers and execute 10 million inner iterations. Python is included as an additional interpreted-language reference. Times are wall-clock medians over seven fresh process launches; throughput is calculated from the same 10 million iterations. Compiler times are separate medians over five builds.</p>
+      <p>Each process sums <code>i * i</code> for <code>i = 0…99,999</code>, repeats that 100 times, and checks each subtotal. All implementations use double-precision numbers and execute 10 million inner iterations. The Python result is a CPython 3.13.5 plain-language loop, without a native numerical package. Times are wall-clock medians over seven fresh process launches; throughput is calculated from the same 10 million iterations. Compiler times are separate medians over five builds.</p>
     </div>
     <div class="table-shell">
       <table>
@@ -378,7 +404,7 @@
       <p>Reproduce the measurements with the <a href="https://github.com/codelovesme/code/tree/main/benchmarks/language-comparison">benchmark sources and runner</a>; inspect the <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.csv">raw run samples</a> and <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.json">full machine and compiler report</a>.</p>
     </div>
     <div class="prose">
-      <p><strong>The table is one measurement; these broader expectations come from the implementations.</strong> C's explicit types and direct representations are a natural advantage for CPU-heavy numeric work. Java's optimizing JIT can make it highly competitive for long-running workloads. The compiled <code>code</code> backend avoids interpreter dispatch, but dynamic values, generic runtime operations, and allocation-heavy data updates remain part of its model.</p>
+      <p><strong>The table is one measurement; these broader expectations come from the implementations.</strong> C's explicit types and direct representations are a natural advantage for CPU-heavy numeric work. Java's optimizing JIT can make it highly competitive for long-running workloads. Plain CPython loops pay dynamic dispatch and interpreter costs, while Python libraries can call compiled kernels for intensive operations. The compiled <code>code</code> backend avoids interpreter dispatch, but dynamic values, generic runtime operations, and allocation-heavy data updates remain part of its model.</p>
       <ul>
         <li><strong>Match the workload.</strong> Compare equivalent algorithms and outputs. A task mostly waiting on a network or database may spend little time in language-level computation.</li>
         <li><strong>Separate cold and warm behavior.</strong> Report startup and compilation separately from steady-state throughput; warm up the JVM before measuring hot code.</li>
@@ -392,7 +418,7 @@
     <div class="section-head">
       <div class="kicker">Memory management</div>
       <h2>Less manual work, more runtime representation</h2>
-      <p>The three languages put responsibility for allocation, lifetimes, and reclamation in different places.</p>
+      <p>These languages put responsibility for allocation, lifetimes, and reclamation in different places.</p>
     </div>
     <div class="cards">
       <article class="card">
@@ -414,9 +440,16 @@
         <p>The JVM tracks reachable objects and reclaims unreachable ones. Developers avoid pairing every object allocation with a manual free, and can choose among collectors and set heap limits.</p>
         <p>Collection consumes CPU and can introduce pauses; collector choice, allocation rate, heap size, and latency targets affect the result. Java reduces many lifetime mistakes, while still requiring attention to memory use and non-heap resources.</p>
       </article>
+      <article class="card">
+        <span class="tag" style="color:var(--blue)">Python objects</span>
+        <h3>Implementation-managed memory</h3>
+        <p>Python code does not explicitly free ordinary objects. CPython primarily uses reference counting and supplements it with a cyclic garbage collector; its objects live in memory managed by the interpreter. This describes CPython, and another Python implementation may manage memory differently.</p>
+        <p>Automatic reclamation removes manual lifetime bookkeeping from typical code, but does not make memory use disappear. Object overhead, retained references, allocation patterns, and extension modules all affect an application's footprint.</p>
+        <p><a href="https://docs.python.org/3.15/c-api/memory.html">CPython memory management</a> · <a href="https://docs.python.org/3.15/library/gc.html">cyclic garbage collector</a></p>
+      </article>
     </div>
     <div class="prose">
-      <p><strong>A useful summary:</strong> C offers the most direct memory control and the most lifetime responsibility. Java automates heap reclamation and gives the JVM responsibility for scheduling it. <code>code</code> automates release for its small immutable value graph using reference counts, while paying for dynamic tagged values and their runtime bookkeeping.</p>
+      <p><strong>A useful summary:</strong> C offers the most direct memory control and the most lifetime responsibility. Java and CPython automate object reclamation through their runtimes, with collector behavior and object costs that depend on the implementation. <code>code</code> automates release for its small immutable value graph using reference counts, while paying for dynamic tagged values and their runtime bookkeeping.</p>
       <p>The current native module ABI reserves an 80-byte stride for each <code>CodeValue</code> slot. That is a concrete ABI layout detail, not a measurement of total memory per variable or a promise about future ABI versions. See the <a href="https://github.com/codelovesme/code/blob/main/src/code_abi.h">current ABI definition</a>.</p>
     </div>
   </section>
@@ -429,7 +462,8 @@
     <div class="prose">
       <p><code>code</code> keeps its value space deliberately small: <code>Number</code>, <code>String</code>, <code>Boolean</code>, <code>Null</code>, <code>Array</code>, and <code>Object</code>. A binding can hold any of those kinds. Optional annotations are development-time contracts: <code>code check</code> and <code>--strict</code> report mismatches they can prove from known handlers and values, while dynamic data is still checked as it runs.</p>
       <p>C and Java both have static type systems. C lets programs express low-level representation and pointer operations; the language does not automatically make an out-of-bounds access safe. Java's compiler rejects many type mismatches before execution, while runtime checks still matter for cases such as null references, casts, and array stores. Static types reduce some classes of mistakes; they do not prove that a program's logic is correct.</p>
-      <p>For anyone sending or receiving JSON-shaped data, <code>code</code>'s six-kind model can keep data and messages direct. If a program needs distinct domain types, generic collection APIs, typed numeric widths, or compile-time guarantees across a large codebase, C or Java provides a broader type vocabulary.</p>
+      <p>Python determines types at runtime, which supports concise and flexible code but moves many type errors to execution. Type annotations can document intent and feed external static checkers, but the Python runtime does not enforce them. Python's built-in <code>int</code> grows to hold arbitrary-precision integers; that convenience differs from fixed-width machine integer types.</p>
+      <p>For anyone sending or receiving JSON-shaped data, <code>code</code>'s six-kind model can keep data and messages direct. Python offers flexible built-in collections and optional annotation-based tooling. If a program needs distinct domain types, generic collection APIs, typed numeric widths, or compiler-enforced guarantees across a large codebase, C or Java provides stronger compile-time checks.</p>
     </div>
   </section>
 
@@ -441,6 +475,7 @@
     <div class="prose">
       <p>In <code>code</code>, a handler is the unit of reuse: it accepts a particle and returns a particle, and <code>emit</code> dispatches it. The language has one loop form and intentionally has no functions, recursion, or in-place mutation. This keeps the surface area small and makes data exchange explicit, but it limits how freely a program can be decomposed as it grows.</p>
       <p>C and Java both support ordinary functions or methods, recursion, and richer control flow. Java also provides classes, interfaces, and generics; C provides structs, unions, pointers, and function pointers. Those facilities make them more flexible choices for algorithm-heavy code and large general-purpose systems. The extra surface area asks developers to learn and maintain more concepts.</p>
+      <p>Python also provides functions, classes, modules, comprehensions, iterators, generators, and exceptions. It is a general-purpose language with a broad abstraction toolkit, while dynamic typing and concise syntax support quick iteration. Its extensive standard library and package ecosystem make it common in automation, services, scientific computing, and data applications.</p>
     </div>
   </section>
 
@@ -453,6 +488,7 @@
       <p>Inside a <code>code</code> handler, a runtime failure is represented as an <code>Exception</code> particle. The calling handler can inspect the result and choose what to do next; errors do not automatically propagate through every caller. Failures before the program starts, and unhandled failures at the top level, still stop the run. Optional strict checks can reject some known problems earlier, but they do not prove that every dynamic input is valid.</p>
       <p>C has no built-in exception model comparable to Java's. C libraries and applications use conventions such as return values, error codes, and output parameters. That keeps control explicit, but callers must consistently check the conventions they use. Invalid pointer or lifetime operations can be undefined behavior.</p>
       <p>Java exceptions propagate through method calls and can be caught at chosen boundaries; checked exceptions are also part of method declarations and compile-time checking. The JVM enforces many runtime checks, but exceptions still need thoughtful handling and native code can bypass managed-language guarantees.</p>
+      <p>Python exceptions likewise propagate through calls until a matching <code>except</code> handler catches them. This keeps error handling in the control flow rather than checked method declarations; unhandled exceptions produce a traceback and end the current top-level operation.</p>
       <p><strong>One important limit for code:</strong> native modules use an in-process ABI. They can perform powerful system work, but they are not isolated from the process. The language's lack of raw pointers does not sandbox a linked C or Rust module.</p>
     </div>
   </section>
@@ -465,7 +501,9 @@
     <div class="prose">
       <p>The <code>code</code> language itself does not expose thread creation or a general async/await system. Its runtime can receive particles from modules, and native modules may do work on their own threads. That makes the module and host design part of any concurrent application; it is not a general-purpose concurrency API inside the language.</p>
       <p>C applications typically use operating-system APIs and platform libraries where they need concurrency. Java includes a larger standard concurrency toolkit, including executors and virtual threads for high-throughput tasks that mostly wait for I/O. Virtual threads make blocking I/O tasks easier to scale; they do not make a CPU-bound thread run faster.</p>
+      <p>Python offers threads, <code>asyncio</code>, and multiprocessing. In the usual GIL-enabled CPython build, threads are useful for overlapping I/O, while CPU-bound Python bytecode typically needs processes or native code for parallel execution. Optional free-threaded CPython builds have been available since Python 3.13, but are not the default and depend on compatible extension modules.</p>
       <p><code>code</code> keeps I/O out of its core and requires a linked module to provide capabilities such as terminal, files, and network access. This makes those dependencies visible and swappable, but the first-party modules and community ecosystem are much smaller than C's or Java's.</p>
+      <p>Python includes a broad standard library for common file, network, data, and operating-system tasks, alongside a large third-party ecosystem. That breadth speeds up prototyping and integration, while package versions, dependency management, and native package compatibility become part of deployment.</p>
     </div>
   </section>
 
@@ -502,6 +540,15 @@
         </ul>
         <p class="good"><strong>Strong fit</strong> for long-running services and broad application ecosystems.</p>
       </article>
+      <article class="card">
+        <h3 class="lang-python">Choose Python when…</h3>
+        <ul>
+          <li>readable, concise code and rapid iteration matter;</li>
+          <li>automation, data work, scientific packages, or service development fit the task;</li>
+          <li>the runtime and dependency ecosystem fit your deployment environment.</li>
+        </ul>
+        <p class="good"><strong>Strong fit</strong> for scripting, integration, and applications that benefit from its broad library ecosystem.</p>
+      </article>
     </div>
   </section>
 
@@ -516,10 +563,12 @@
       <li><a href="https://docs.oracle.com/en/java/javase/26/docs/specs/jls/index.html">Java Language Specification, Java SE 26</a>, including its <a href="https://docs.oracle.com/en/java/javase/26/docs/specs/jls/jls-4.html">types, values, and variables chapter</a>.</li>
       <li>Oracle's <a href="https://docs.oracle.com/en/java/javase/26/vm/java-virtual-machine-technology-overview.html">Java VM technology overview</a> and <a href="https://docs.oracle.com/en/java/javase/26/vm/java-hotspot-virtual-machine-performance-enhancements.html">HotSpot performance guide</a>.</li>
       <li>Oracle's <a href="https://docs.oracle.com/en/java/javase/26/gctuning/index.html">Java SE 26 garbage-collection guide</a> and <a href="https://docs.oracle.com/en/java/javase/26/core/virtual-threads.html">virtual threads documentation</a>.</li>
+      <li>Python's official docs on <a href="https://docs.python.org/3.15/library/typing.html">type annotations</a>, <a href="https://docs.python.org/3.15/library/stdtypes.html#numeric-types-int-float-complex">built-in numeric types</a>, and <a href="https://docs.python.org/3.15/library/exceptions.html">exceptions</a>.</li>
+      <li>Python's official docs on <a href="https://docs.python.org/3.15/library/gc.html">cyclic garbage collection</a>, <a href="https://docs.python.org/3.15/library/threading.html">threading and the GIL</a>, <a href="https://docs.python.org/3.15/library/dis.html">CPython bytecode</a>, and the <a href="https://docs.python.org/3.15/library/index.html">standard library</a>; the <a href="https://pypi.org/">Python Package Index</a>.</li>
       <li>LLVM's <a href="https://llvm.org/docs/CodeGenerator.html">target-independent code generator documentation</a>.</li>
       <li>The current <a href="https://github.com/codelovesme/code/blob/main/README.md">code language guide</a>, <a href="https://github.com/codelovesme/code/blob/main/src/runtime.c">native runtime</a>, and <a href="https://github.com/codelovesme/code/blob/main/src/code_abi.h">native module ABI</a>.</li>
     </ul>
-    <div class="prose"><p>This page describes the current <code>code</code> implementation as of 9 October 2026. C is described using the C23 standard, and Java using Java SE 26 documentation. The benchmark was run on 9 October 2026 and is not a general language ranking. Compiler flags, JVM settings, hardware, and program design can change performance results.</p></div>
+    <div class="prose"><p>This page describes the current <code>code</code> implementation as of 10 October 2026. C is described using the C23 standard, Java using Java SE 26 documentation, and Python using the official Python 3.15 documentation. CPython-specific details are labeled as such; Python implementations can differ. The benchmark was run on 9 October 2026 and is not a general language ranking. Compiler flags, runtime settings, hardware, and program design can change performance results.</p></div>
   </section>
 </main>
 
