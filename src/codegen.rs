@@ -344,6 +344,11 @@ pub(crate) fn compile_to_object_traced(
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_move = module.add_function(
+        "code_move",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_field = module.add_function(
         "code_field",
         void_ty.fn_type(
@@ -802,6 +807,7 @@ pub(crate) fn compile_to_object_traced(
         fn_array,
         fn_object,
         fn_copy,
+        fn_move,
         fn_field,
         fn_index,
         fn_length_of,
@@ -874,6 +880,7 @@ pub(crate) fn compile_to_object_traced(
         dispatch_depth: 0,
         drain_fn: None,
         handler_frame: None,
+        top_unwind: std::cell::Cell::new(None),
         global_count: 0,
         stream_fn,
     };
@@ -1101,6 +1108,7 @@ struct Gen<'a, 'm> {
     fn_array: FunctionValue<'a>,
     fn_object: FunctionValue<'a>,
     fn_copy: FunctionValue<'a>,
+    fn_move: FunctionValue<'a>,
     fn_field: FunctionValue<'a>,
     fn_index: FunctionValue<'a>,
     fn_length_of: FunctionValue<'a>,
@@ -1195,7 +1203,11 @@ struct Gen<'a, 'm> {
     /// because the safe answer for a slot nobody classified is the old one:
     /// hold it to the end. A binding's slot must never appear here — it is
     /// read by every later statement in its scope.
-    temps: Vec<(PointerValue<'a>, u64)>,
+    /// The statement's temporaries: where, how many slots, and whether it is
+    /// *plain* — written only by something that never makes a heap value (a
+    /// number or boolean literal, null, `-`, `*`, `/`, a comparison), so
+    /// clearing it would do nothing (see `alloc_plain_temp`).
+    temps: Vec<(PointerValue<'a>, u64, bool)>,
     /// Temporary slots whose statement has ended, ready for the next one —
     /// per function, like `temps`, and keyed by how many slots they span.
     ///
@@ -1301,6 +1313,9 @@ struct Gen<'a, 'm> {
     /// Set while a handler body is being generated — see `HandlerFrame`.
     /// `None` means the statement stream belongs to `main`.
     handler_frame: Option<HandlerFrame<'a>>,
+    /// Outside a handler, the landing block `check_failed` shares within one
+    /// function (inside one, `HandlerFrame::unwind`).
+    top_unwind: std::cell::Cell<Option<(FunctionValue<'a>, BasicBlock<'a>)>>,
     /// Names the globals that back `main`'s slots apart. See `alloc_zeroed`.
     global_count: usize,
     /// The function the top-level statements are generated into — `main`
@@ -1321,6 +1336,9 @@ struct HandlerFrame<'a> {
     exit: BasicBlock<'a>,
     slots: Vec<(PointerValue<'a>, u64)>,
     alloca_builder: Builder<'a>,
+    /// The frame's one landing block for a failed helper, made the first
+    /// time a check needs it (see `check_failed`).
+    unwind: std::cell::Cell<Option<BasicBlock<'a>>>,
 }
 
 /// See `Gen::native_links`. A `.so` (`NativeFormat::Dynamic`) dispatches
@@ -1540,6 +1558,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             exit,
             slots: Vec::new(),
             alloca_builder,
+            unwind: std::cell::Cell::new(None),
         });
 
         self.builder.position_at_end(start);
@@ -2298,8 +2317,30 @@ impl<'a, 'm> Gen<'a, 'm> {
             )
             .map_err(|e| e.to_string())?;
         let function = self.current_function();
-        let unwind = self.context.append_basic_block(function, "unwind");
         let ok = self.context.append_basic_block(function, "ok");
+        // One landing block per function, shared by every check in it: each
+        // check used to make its own, identical one, which was a good part of
+        // the code a program compiled to (ticket 117).
+        let shared = match &self.handler_frame {
+            Some(frame) => frame.unwind.get(),
+            None => self
+                .top_unwind
+                .get()
+                .filter(|(owner, _)| *owner == function)
+                .map(|(_, block)| block),
+        };
+        if let Some(unwind) = shared {
+            self.builder
+                .build_conditional_branch(bad, unwind, ok)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(ok);
+            return Ok(());
+        }
+        let unwind = self.context.append_basic_block(function, "unwind");
+        match &self.handler_frame {
+            Some(frame) => frame.unwind.set(Some(unwind)),
+            None => self.top_unwind.set(Some((function, unwind))),
+        }
         self.builder
             .build_conditional_branch(bad, unwind, ok)
             .map_err(|e| e.to_string())?;
@@ -2387,7 +2428,20 @@ impl<'a, 'm> Gen<'a, 'm> {
             Some(ptr) => ptr,
             None => self.alloc_slot(hint)?,
         };
-        self.temps.push((ptr, 1));
+        self.temps.push((ptr, 1, false));
+        Ok(ptr)
+    }
+
+    /// A temporary only ever written by something that never makes a heap
+    /// value. It came out of the pool cleared (or zeroed), and what writes
+    /// it leaves `heap` at 0, so the clear at its statement's end would do
+    /// nothing — and it is skipped. Those clears were a sixth of a large
+    /// program's instructions (ticket 117).
+    fn alloc_plain_temp(&mut self, hint: &str) -> Result<PointerValue<'a>, String> {
+        let ptr = self.alloc_temp(hint)?;
+        if let Some(last) = self.temps.last_mut() {
+            last.2 = true;
+        }
         Ok(ptr)
     }
 
@@ -2406,7 +2460,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             Some(ptr) => ptr,
             None => self.alloc_buffer(len, hint)?,
         };
-        self.temps.push((ptr, len));
+        self.temps.push((ptr, len, false));
         Ok(ptr)
     }
 
@@ -2420,7 +2474,10 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// thousands of wasm locals in one function.
     fn clear_temps_from(&mut self, mark: usize) -> Result<(), String> {
         for i in mark..self.temps.len() {
-            let (buf, count) = self.temps[i];
+            let (buf, count, plain) = self.temps[i];
+            if plain {
+                continue;
+            }
             for j in 0..count {
                 let slot = self.slot_at(buf, j, "temp")?;
                 self.builder
@@ -2430,7 +2487,8 @@ impl<'a, 'm> Gen<'a, 'm> {
         }
         // Cleared now, so free for whatever is generated next (`temp_pool`).
         let freed = self.temps.split_off(mark);
-        self.temp_pool.extend(freed);
+        self.temp_pool
+            .extend(freed.into_iter().map(|(ptr, count, _)| (ptr, count)));
         Ok(())
     }
 
@@ -3405,9 +3463,25 @@ impl<'a, 'm> Gen<'a, 'm> {
                 fresh
             }
         };
+        // A value just computed into a temporary of this statement is moved,
+        // not copied: the temporary would only be cleared at the statement's
+        // end, so copying (a retain) and clearing it (a release) was two
+        // calls for nothing. Moved, it is empty, so its clear is skipped too.
+        let temp = self
+            .temps
+            .iter()
+            .rposition(|(ptr, count, _)| *ptr == value_ptr && *count == 1);
+        let helper = if temp.is_some() {
+            self.fn_move
+        } else {
+            self.fn_copy
+        };
         self.builder
-            .build_call(self.fn_copy, &[slot.into(), value_ptr.into()], "")
+            .build_call(helper, &[slot.into(), value_ptr.into()], "")
             .map_err(|e| e.to_string())?;
+        if let Some(at) = temp {
+            self.temps[at].2 = true;
+        }
         Ok(())
     }
 
@@ -3480,7 +3554,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn gen_expr(&mut self, expr: &Expr) -> Result<PointerValue<'a>, String> {
         match expr {
             Expr::Number(n) => {
-                let slot = self.alloc_temp("num")?;
+                let slot = self.alloc_plain_temp("num")?;
                 let arg = self.f64_ty.const_float(*n);
                 self.builder
                     .build_call(self.fn_number, &[slot.into(), arg.into()], "")
@@ -3526,7 +3600,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 Ok(acc)
             }
             Expr::Bool(b) => {
-                let slot = self.alloc_temp("bool")?;
+                let slot = self.alloc_plain_temp("bool")?;
                 let arg = self.i32_ty.const_int(*b as u64, false);
                 self.builder
                     .build_call(self.fn_bool, &[slot.into(), arg.into()], "")
@@ -3534,7 +3608,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 Ok(slot)
             }
             Expr::Null => {
-                let slot = self.alloc_temp("null")?;
+                let slot = self.alloc_plain_temp("null")?;
                 self.builder
                     .build_call(self.fn_null, &[slot.into()], "")
                     .map_err(|e| e.to_string())?;
@@ -3761,7 +3835,13 @@ impl<'a, 'm> Gen<'a, 'm> {
                     BinOp::Eq | BinOp::Ne | BinOp::And | BinOp::Or => unreachable!("handled above"),
                     BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => unreachable!("handled above"),
                 };
-                let out = self.alloc_temp("binop")?;
+                // `+` may join strings or lists; `-`, `*` and `/` only make
+                // numbers (or fail, writing nothing).
+                let out = if matches!(op, BinOp::Add) {
+                    self.alloc_temp("binop")?
+                } else {
+                    self.alloc_plain_temp("binop")?
+                };
                 self.builder
                     .build_call(fn_val, &[out.into(), lhs_ptr.into(), rhs_ptr.into()], "")
                     .map_err(|e| e.to_string())?;
@@ -3915,7 +3995,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .builder
             .build_int_z_extend(result, self.i32_ty, "eq_as_i32")
             .map_err(|e| e.to_string())?;
-        let out = self.alloc_temp("eq")?;
+        let out = self.alloc_plain_temp("eq")?;
         self.builder
             .build_call(self.fn_bool, &[out.into(), as_i32.into()], "")
             .map_err(|e| e.to_string())?;
@@ -3967,7 +4047,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .builder
             .build_int_z_extend(result, self.i32_ty, "cmp_as_i32")
             .map_err(|e| e.to_string())?;
-        let out = self.alloc_temp("cmp")?;
+        let out = self.alloc_plain_temp("cmp")?;
         self.builder
             .build_call(self.fn_bool, &[out.into(), as_i32.into()], "")
             .map_err(|e| e.to_string())?;
@@ -4427,15 +4507,27 @@ mod tests {
     fn a_statement_releases_its_own_temporaries() {
         let dir = std::env::temp_dir().join(format!("code-clear-test-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
-        let obj = dir.join("prog.o");
-        compile_to_object(&trivial_program(), BuildTarget::Exe, &obj, false).expect("codegen");
-        let bytes = fs::read(&obj).expect("read object");
-        assert!(
+        let calls_clear = |source: &str, name: &str| {
+            let program = parse(&tokenize(source).expect("tokenize")).expect("parse");
+            let obj = dir.join(name);
+            compile_to_object(&program, BuildTarget::Exe, &obj, false).expect("codegen");
+            let bytes = fs::read(&obj).expect("read object");
             bytes
                 .windows(b"code_clear".len())
-                .any(|w| w == b"code_clear"),
+                .any(|w| w == b"code_clear")
+        };
+        // Strings are heap values: the literals' temporaries hold references
+        // the statement must drop.
+        assert!(
+            calls_clear("a = \"x\" + \"y\"\nassert a = \"xy\"\n", "strings.o"),
             "the compiled object never calls code_clear — a statement's \
              intermediates are being held to program exit again"
+        );
+        // Numbers are not (ticket 117): their temporaries are plain, and the
+        // one `a = 1` computes is moved into `a` — nothing is left to clear.
+        assert!(
+            !calls_clear("a = 1\nassert a = 1\n", "numbers.o"),
+            "a statement of numbers clears temporaries that cannot hold anything"
         );
         let _ = fs::remove_dir_all(&dir);
     }

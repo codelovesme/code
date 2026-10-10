@@ -149,3 +149,51 @@ What is left is almost all LLVM's backend (116, 117).
 
 Builds: todo-api 965 → 389 ms, aquarium-web 3681 → 1335 ms; sum_squares unchanged
 (one part). On one core Aquarium's backend is 3.45 s against 3.29 s unsplit.
+
+## 2026-10-10 — after 117 (less code per operation)
+
+`Code v2.14.8`, median of 5 builds, ms
+
+**sum_squares (14 lines), exe**
+
+| stage | ms |
+|---|---|
+| load and parse | 0.1 |
+| checks | 0.0 |
+| IR generation | 0.2 |
+| IR verify | 0.1 |
+| LLVM backend | 8.1 |
+| link | 19.6 |
+| other | 0.3 |
+| total | 28.8 |
+
+**todo-api, shared**
+
+| stage | ms |
+|---|---|
+| load and parse | 91.8 |
+| checks | 0.2 |
+| IR generation | 13.7 |
+| IR verify | 6.8 |
+| LLVM backend | 247.2 |
+| link | 30.0 |
+| other | 8.5 |
+| total | 401.6 |
+
+**aquarium-web, wasm**
+
+| stage | ms |
+|---|---|
+| load and parse | 130.7 |
+| checks | 0.9 |
+| IR generation | 43.6 |
+| IR verify | 33.6 |
+| LLVM backend | 713.2 |
+| link | 115.9 |
+| other | 28.7 |
+| total | 1079.4 |
+
+aquarium-web: IR 128k → 95k instructions, wasm 1.20 → 1.00 MB, build 1335 → 1079 ms.
+sum_squares runs in 276 ms (was 328). An LLVM IR pipeline under --release
+was measured and left out: no run-time gain (every operation is a runtime
+call), builds 25–190% slower.
