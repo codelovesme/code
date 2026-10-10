@@ -16,9 +16,14 @@
 
   // A colour, or a gradient described as data: `linear` runs from (x0, y0) to
   // (x1, y1); `radial` from the circle (x0, y0, r0) to the circle (x1, y1, r1).
+  // A gradient is made once per description: a kept drawing hands the same
+  // description back every frame, and its gradient is reused with it.
+  const gradients = new WeakMap();
   function style(ctx2d, value) {
     if (typeof value === "string") return value;
     if (!value || typeof value !== "object" || !Array.isArray(value.stops)) return null;
+    const made = gradients.get(value);
+    if (made !== undefined) return made;
     let gradient;
     try {
       if (value.type === "linear") {
@@ -31,20 +36,21 @@
           number(value.x1), number(value.y1), Math.max(0, number(value.r1)),
         );
       } else {
-        return null;
+        gradient = null;
       }
     } catch {
-      return null;
+      gradient = null;
     }
-    for (const stop of value.stops.slice(0, 16)) {
-      if (!stop || typeof stop.color !== "string" || !finite(stop.at)) continue;
-      try { gradient.addColorStop(clamp(stop.at, 0, 1), stop.color); } catch { /* ignore an invalid stop */ }
+    if (gradient !== null) {
+      for (const stop of value.stops.slice(0, 16)) {
+        if (!stop || typeof stop.color !== "string" || !finite(stop.at)) continue;
+        try { gradient.addColorStop(clamp(stop.at, 0, 1), stop.color); } catch { /* ignore an invalid stop */ }
+      }
     }
+    gradients.set(value, gradient);
     return gradient;
   }
 
-  // `budget.left` counts every command painted in one frame, nested ones too,
-  // so a group cannot carry more than a flat frame could.
   // A flat path: SVG's letters, each followed by its numbers —
   // M x y, L x y, Q cx cy x y, C cx1 cy1 cx2 cy2 x y, Z.
   function tracePath(ctx2d, d) {
@@ -52,47 +58,85 @@
     let i = 0;
     while (i < n) {
       const letter = d[i];
-      const at = (k) => d[i + k];
-      if (letter === "M" && finite(at(1)) && finite(at(2))) { ctx2d.moveTo(at(1), at(2)); i += 3; }
-      else if (letter === "L" && finite(at(1)) && finite(at(2))) { ctx2d.lineTo(at(1), at(2)); i += 3; }
-      else if (letter === "Q" && [at(1), at(2), at(3), at(4)].every(finite)) { ctx2d.quadraticCurveTo(at(1), at(2), at(3), at(4)); i += 5; }
-      else if (letter === "C" && [at(1), at(2), at(3), at(4), at(5), at(6)].every(finite)) { ctx2d.bezierCurveTo(at(1), at(2), at(3), at(4), at(5), at(6)); i += 7; }
+      if (letter === "M" && finite(d[i + 1]) && finite(d[i + 2])) { ctx2d.moveTo(d[i + 1], d[i + 2]); i += 3; }
+      else if (letter === "L" && finite(d[i + 1]) && finite(d[i + 2])) { ctx2d.lineTo(d[i + 1], d[i + 2]); i += 3; }
+      else if (letter === "Q" && finite(d[i + 1]) && finite(d[i + 2]) && finite(d[i + 3]) && finite(d[i + 4])) {
+        ctx2d.quadraticCurveTo(d[i + 1], d[i + 2], d[i + 3], d[i + 4]); i += 5;
+      } else if (letter === "C" && finite(d[i + 1]) && finite(d[i + 2]) && finite(d[i + 3]) && finite(d[i + 4]) && finite(d[i + 5]) && finite(d[i + 6])) {
+        ctx2d.bezierCurveTo(d[i + 1], d[i + 2], d[i + 3], d[i + 4], d[i + 5], d[i + 6]); i += 7;
+      }
       else if (letter === "Z") { ctx2d.closePath(); i += 1; }
       else return;
     }
   }
 
-  function paint(ctx2d, command, budget, depth, kept) {
+  // What one frame has set on the context, so a setting is only made when it
+  // changes. Nothing is saved or restored: a group's transform is multiplied
+  // in and the one before it put back, and alpha is carried down as a number.
+  // (Saving and restoring around every command cost more than the drawing.)
+  const frameState = (matrix) => ({
+    matrix, alpha: 1, globalAlpha: 1,
+    lineWidth: null, lineJoin: null, lineCap: null, fillStyle: null, strokeStyle: null,
+    font: null, textAlign: null, textBaseline: null,
+  });
+  const set = (ctx2d, state, key, value) => {
+    if (state[key] !== value) { ctx2d[key] = value; state[key] = value; }
+  };
+  const isMatrix = (m) => Array.isArray(m) && m.length === 6
+    && finite(m[0]) && finite(m[1]) && finite(m[2]) && finite(m[3]) && finite(m[4]) && finite(m[5]);
+  const times = (a, b) => [
+    a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5],
+  ];
+
+  // `budget.left` counts every command painted in one frame, nested ones too,
+  // so a group cannot carry more than a flat frame could.
+  function paint(ctx2d, command, budget, depth, kept, state) {
     if (!command || typeof command !== "object" || typeof command.op !== "string") return;
     if (budget.left <= 0) return;
     budget.left -= 1;
     const op = command.op;
-    ctx2d.save();
+    const outerMatrix = state.matrix;
+    const outerAlpha = state.alpha;
     const matrix = command.transform;
-    if (Array.isArray(matrix) && matrix.length === 6 && matrix.every(finite)) {
+    const moved = isMatrix(matrix);
+    if (moved) {
       ctx2d.transform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
+      state.matrix = times(outerMatrix, matrix);
     }
-    ctx2d.globalAlpha *= clamp(number(command.alpha, 1), 0, 1);
+    if (command.alpha !== undefined) state.alpha = outerAlpha * clamp(number(command.alpha, 1), 0, 1);
     if (op === "group" || op === "use") {
       const children = op === "group" ? command.commands : kept?.get(String(command.name));
       if (Array.isArray(children) && depth < MAX_DEPTH) {
-        for (const child of children) paint(ctx2d, child, budget, depth + 1, kept);
+        for (const child of children) paint(ctx2d, child, budget, depth + 1, kept, state);
       }
-      ctx2d.restore();
-      return;
+    } else {
+      draw(ctx2d, command, op, state);
     }
-    ctx2d.lineWidth = clamp(number(command.line_width, 1), 0.01, 1024);
-    ctx2d.lineJoin = ["round", "bevel", "miter"].includes(command.line_join) ? command.line_join : "round";
-    ctx2d.lineCap = ["round", "butt", "square"].includes(command.line_cap) ? command.line_cap : "round";
-    const fill = style(ctx2d, command.fill);
-    if (fill !== null) ctx2d.fillStyle = fill;
-    const stroke = style(ctx2d, command.stroke);
-    if (stroke !== null) ctx2d.strokeStyle = stroke;
+    if (moved) {
+      ctx2d.setTransform(outerMatrix[0], outerMatrix[1], outerMatrix[2], outerMatrix[3], outerMatrix[4], outerMatrix[5]);
+      state.matrix = outerMatrix;
+    }
+    state.alpha = outerAlpha;
+  }
 
-    if (op === "rect" && [command.x, command.y, command.width, command.height].every(finite)) {
+  function draw(ctx2d, command, op, state) {
+    set(ctx2d, state, "globalAlpha", state.alpha);
+    const join = command.line_join;
+    const cap = command.line_cap;
+    set(ctx2d, state, "lineWidth", clamp(number(command.line_width, 1), 0.01, 1024));
+    set(ctx2d, state, "lineJoin", join === "bevel" || join === "miter" ? join : "round");
+    set(ctx2d, state, "lineCap", cap === "butt" || cap === "square" ? cap : "round");
+    const fill = style(ctx2d, command.fill);
+    if (fill !== null) set(ctx2d, state, "fillStyle", fill);
+    const stroke = style(ctx2d, command.stroke);
+    if (stroke !== null) set(ctx2d, state, "strokeStyle", stroke);
+
+    if (op === "rect" && finite(command.x) && finite(command.y) && finite(command.width) && finite(command.height)) {
       if (fill !== null) ctx2d.fillRect(command.x, command.y, command.width, command.height);
       if (stroke !== null) ctx2d.strokeRect(command.x, command.y, command.width, command.height);
-    } else if (op === "ellipse" && [command.x, command.y, command.rx, command.ry].every(finite)) {
+    } else if (op === "ellipse" && finite(command.x) && finite(command.y) && finite(command.rx) && finite(command.ry)) {
       ctx2d.beginPath();
       ctx2d.ellipse(command.x, command.y, Math.max(0, command.rx), Math.max(0, command.ry), number(command.rotation), 0, Math.PI * 2);
       if (fill !== null) ctx2d.fill();
@@ -138,12 +182,12 @@
       if (fill !== null) ctx2d.fill();
       if (stroke !== null) ctx2d.stroke();
     } else if (op === "text" && typeof command.text === "string" && finite(command.x) && finite(command.y)) {
-      ctx2d.font = `${clamp(number(command.size, 14), 6, 96)}px ${typeof command.font === "string" ? command.font.slice(0, 80) : "system-ui, sans-serif"}`;
-      ctx2d.textAlign = ["left", "center", "right"].includes(command.align) ? command.align : "left";
-      ctx2d.textBaseline = "alphabetic";
+      const align = command.align;
+      set(ctx2d, state, "font", `${clamp(number(command.size, 14), 6, 96)}px ${typeof command.font === "string" ? command.font.slice(0, 80) : "system-ui, sans-serif"}`);
+      set(ctx2d, state, "textAlign", align === "center" || align === "right" ? align : "left");
+      set(ctx2d, state, "textBaseline", "alphabetic");
       if (fill !== null) ctx2d.fillText(command.text.slice(0, 512), command.x, command.y);
     }
-    ctx2d.restore();
   }
 
   function keep(particle) {
@@ -189,7 +233,8 @@
     let ctx2d;
     try { ctx2d = canvas.getContext("2d"); } catch { return result(false, { reason: "Canvas 2D is unavailable" }); }
     if (!ctx2d) return result(false, { reason: "Canvas 2D is unavailable" });
-    ctx2d.setTransform(pixelWidth / width, 0, 0, pixelHeight / height, 0, 0);
+    const frame = [pixelWidth / width, 0, 0, pixelHeight / height, 0, 0];
+    ctx2d.setTransform(frame[0], frame[1], frame[2], frame[3], frame[4], frame[5]);
     ctx2d.globalAlpha = 1;
     // `clear = false` paints over what is there, so one scene can be sent as
     // several smaller frames — a scene built a piece at a time never has to
@@ -197,7 +242,8 @@
     if (particle.clear !== false) ctx2d.clearRect(0, 0, width, height);
     const budget = { left: MAX_COMMANDS };
     const kept = keptBy.get(canvas);
-    for (const command of particle.commands) paint(ctx2d, command, budget, 0, kept);
+    const state = frameState(frame);
+    for (const command of particle.commands) paint(ctx2d, command, budget, 0, kept, state);
 
     const eventClass = typeof particle.event === "string" ? particle.event : "";
     const config = { eventClass, width, height };

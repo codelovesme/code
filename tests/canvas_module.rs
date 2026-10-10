@@ -30,6 +30,7 @@ fn a_frame_draws_and_pointer_coordinates_use_its_logical_size() {
 const half = new Function("return (" + readFileSync({half:?}, "utf8") + ")")();
 const fired = [];
 const calls = [];
+const alphas = [];
 class Context {{
   save() {{ calls.push(["save"]); }} restore() {{ calls.push(["restore"]); }}
   setTransform(...args) {{ calls.push(["transform", ...args]); }} clearRect(...args) {{ calls.push(["clear", ...args]); }}
@@ -40,6 +41,7 @@ class Context {{
   bezierCurveTo(...args) {{ calls.push(["bezier", ...args]); }} closePath() {{ calls.push(["close"]); }}
   quadraticCurveTo(...args) {{ calls.push(["quad", ...args]); }}
   transform(...args) {{ calls.push(["transform-by", ...args]); }}
+  set globalAlpha(value) {{ alphas.push(value); }}
   set strokeStyle(value) {{ calls.push(["strokeStyle", value]); }} set lineCap(value) {{ calls.push(["cap", value]); }}
   createRadialGradient(...args) {{
     calls.push(["radial", ...args]); return {{ radial: true, addColorStop: (...stop) => calls.push(["stop", ...stop]) }};
@@ -108,6 +110,15 @@ draw({{ _class: "Draw", into: "#tank", width: 960, height: 600, commands: [{{ op
 check("a use paints what was kept, compact points and paths included",
   calls.some(c => c[0] === "line" && c[1] === 4 && c[2] === 4) && calls.some(c => c[0] === "quad" && c[1] === 3)
     && calls.some(c => c[0] === "bezier") && calls.some(c => c[0] === "line" && c[1] === 7) && calls.some(c => c[0] === "transform-by" && c[5] === 10), true);
+check("nothing is saved or restored per command", calls.some(c => c[0] === "save" || c[0] === "restore"), false);
+check("a use's transform is put back afterwards", calls.filter(c => c[0] === "transform").map(c => c.slice(1)), [[1, 0, 0, 1, 0, 0], [1, 0, 0, 1, 0, 0]]);
+draw({{ _class: "Keep", into: "#tank", name: "glow", commands: [{{ op: "ellipse", x: 0, y: 0, rx: 2, ry: 2, alpha: 0.5, fill: {{ type: "radial", x0: 0, y0: 0, r0: 0, x1: 0, y1: 0, r1: 2, stops: [{{ at: 0, color: "white" }}] }} }}] }});
+calls.length = 0;
+alphas.length = 0;
+const twice = {{ _class: "Draw", into: "#tank", width: 960, height: 600, commands: [{{ op: "use", name: "glow" }}, {{ op: "group", alpha: 0.5, commands: [{{ op: "use", name: "glow" }}] }}] }};
+draw(twice); draw(twice);
+check("a kept drawing's gradient is made once", calls.filter(c => c[0] === "radial").length, 1);
+check("alpha multiplies down a group and comes back", alphas, [1, 0.5, 0.25, 1, 0.5, 0.25]);
 draw({{ _class: "Keep", into: "#tank", name: "reef", commands: [] }});
 calls.length = 0;
 draw({{ _class: "Draw", into: "#tank", width: 960, height: 600, commands: [{{ op: "use", name: "reef" }}] }});
