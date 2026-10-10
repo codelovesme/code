@@ -103,8 +103,8 @@
   .axis-ticks { display: flex; justify-content: space-between; color: var(--muted-2); font: .7rem var(--mono); }
   .benchmark-row { margin-top: .65rem; }
   .bar-label { color: var(--text); font-size: .82rem; }
-  .bar-track { height: 16px; overflow: hidden; border-radius: 999px; background-color: rgba(255,255,255,.055); background-image: linear-gradient(to right, var(--border-2) 1px, transparent 1px); background-size: 33.3333% 100%; }
-  .bar { display: block; height: 100%; min-width: 2px; border-radius: inherit; }
+  .bar-track { height: 16px; overflow: hidden; border-radius: 999px; background-color: rgba(255,255,255,.055); background-image: linear-gradient(to right, var(--border-2) 1px, transparent 1px); background-size: 20% 100%; }
+  .bar { display: block; height: 100%; border-radius: inherit; }
   .bar.code { background: var(--teal); }
   .bar.c { background: var(--amber); }
   .bar.java { background: var(--violet); }
@@ -425,42 +425,42 @@
     <figure class="benchmark-chart" aria-labelledby="benchmark-chart-title">
       <figcaption>
         <h3 id="benchmark-chart-title">Median runtime at a glance</h3>
-        <p>Logarithmic scale in seconds. Each equal step is a 10× increase; the chart shows run time, not separate build time.</p>
+        <p>Linear scale from 0 to 5 seconds, shared with the compile/build chart. Each bar's length is proportional to its measured median run time.</p>
       </figcaption>
       <div class="benchmark-axis" aria-hidden="true">
         <span class="axis-spacer"></span>
-        <div class="axis-ticks"><span>0.01 s</span><span>0.1 s</span><span>1 s</span><span>10 s</span></div>
+        <div class="axis-ticks"><span>0 s</span><span>1 s</span><span>2 s</span><span>3 s</span><span>4 s</span><span>5 s</span></div>
         <span class="axis-value"></span>
       </div>
       <div role="list" aria-label="Median runtime by implementation">
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">C, GCC <code>-O2</code></span>
-          <div class="bar-track"><span class="bar c" style="width:5.6%" aria-hidden="true"></span></div>
+          <div class="bar-track"><span class="bar c" style="width:0.2936%" aria-hidden="true"></span></div>
           <span class="bar-value">0.01468 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">C, GCC <code>-O3</code></span>
-          <div class="bar-track"><span class="bar c" style="width:5.6%" aria-hidden="true"></span></div>
+          <div class="bar-track"><span class="bar c" style="width:0.294%" aria-hidden="true"></span></div>
           <span class="bar-value">0.01470 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">Java 26, HotSpot defaults</span>
-          <div class="bar-track"><span class="bar java" style="width:24%" aria-hidden="true"></span></div>
+          <div class="bar-track"><span class="bar java" style="width:1.052%" aria-hidden="true"></span></div>
           <span class="bar-value">0.0526 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label"><code>code build --release</code></span>
-          <div class="bar-track"><span class="bar code" style="width:64.2%" aria-hidden="true"></span></div>
+          <div class="bar-track"><span class="bar code" style="width:16.83%" aria-hidden="true"></span></div>
           <span class="bar-value">0.8415 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">Python 3.13.5 (CPython)</span>
-          <div class="bar-track"><span class="bar python" style="width:71.6%" aria-hidden="true"></span></div>
+          <div class="bar-track"><span class="bar python" style="width:28.074%" aria-hidden="true"></span></div>
           <span class="bar-value">1.4037 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label"><code>code run</code> (interpreter)</span>
-          <div class="bar-track"><span class="bar code" style="width:89.4%" aria-hidden="true"></span></div>
+          <div class="bar-track"><span class="bar code" style="width:96.356%" aria-hidden="true"></span></div>
           <span class="bar-value">4.8178 s</span>
         </div>
       </div>
@@ -485,32 +485,32 @@
     <figure class="benchmark-chart" aria-labelledby="compile-chart-title">
       <figcaption>
         <h3 id="compile-chart-title">Compile/build time at a glance</h3>
-        <p>Logarithmic scale in seconds. Bars follow the same fastest-to-slowest order as the compile/build table.</p>
+        <p>Linear scale from 0 to 5 seconds, the same axis as the runtime chart. Bar lengths are proportional to the median compile/build times.</p>
       </figcaption>
       <div class="benchmark-axis" aria-hidden="true">
         <span class="axis-spacer"></span>
-        <div class="axis-ticks"><span>0.01 s</span><span>0.1 s</span><span>1 s</span><span>10 s</span></div>
+        <div class="axis-ticks"><span>0 s</span><span>1 s</span><span>2 s</span><span>3 s</span><span>4 s</span><span>5 s</span></div>
         <span class="axis-value"></span>
       </div>
       <div role="list" aria-label="Median compile and build times by implementation, fastest to slowest">
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">C, GCC <code>-O2</code></span>
-          <div class="bar-track"><span class="bar c" style="width:16.7%" aria-hidden="true"></span></div>
+          <div class="bar-track"><span class="bar c" style="width:0.636%" aria-hidden="true"></span></div>
           <span class="bar-value">0.0318 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">C, GCC <code>-O3</code></span>
-          <div class="bar-track"><span class="bar c" style="width:16.8%" aria-hidden="true"></span></div>
+          <div class="bar-track"><span class="bar c" style="width:0.638%" aria-hidden="true"></span></div>
           <span class="bar-value">0.0319 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label"><code>code build --release</code></span>
-          <div class="bar-track"><span class="bar code" style="width:46.8%" aria-hidden="true"></span></div>
+          <div class="bar-track"><span class="bar code" style="width:5.084%" aria-hidden="true"></span></div>
           <span class="bar-value">0.2542 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">Java 26, <code>javac --release 26</code></span>
-          <div class="bar-track"><span class="bar java" style="width:68%" aria-hidden="true"></span></div>
+          <div class="bar-track"><span class="bar java" style="width:21.85%" aria-hidden="true"></span></div>
           <span class="bar-value">1.0925 s</span>
         </div>
       </div>
