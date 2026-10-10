@@ -498,6 +498,18 @@ void code_copy(CodeValue *out, const CodeValue *src) {
     *out = *src;
 }
 
+/* `out` takes over `src`'s value, reference and all, and `src` is left
+ * zeroed: what `code_copy` then `code_clear` of a temporary nothing else
+ * holds did, in one call and without touching the count (ticket 117). */
+void code_move(CodeValue *out, CodeValue *src) {
+    if (out == src) {
+        return;
+    }
+    code_release(out);
+    *out = *src;
+    memset(src, 0, sizeof *src);
+}
+
 /* The wrong *kind* of operand for `.`/`[]` is a runtime error; a member
  * that simply isn't there is still null. Must match interpreter.rs's
  * `Expr::Field`/`Expr::Index` eval rules — and their message text — exactly. */
