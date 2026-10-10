@@ -1099,3 +1099,122 @@ fn a_runtime_compiled_from_source_is_cached_and_reused() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A program large enough to be compiled in parts on several cores
+/// (ticket 116): handlers that read and write the program's top-level state
+/// and call one another across parts, so a part that lost a function or a
+/// global would fail to link or answer wrongly.
+fn large_program(handlers: usize) -> String {
+    let mut src = String::from("total = 0\nlabel = \"\"\n");
+    for i in 0..handlers {
+        // Each calls the next — never the last back to the first: a
+        // handler cannot re-enter one that is running.
+        let onward = if i + 1 < handlers {
+            format!(
+                "\x20   if depth > 0\n\
+                 \x20       emit H{} {{ x = x, depth = depth - 1 }} to this get deeper\n\
+                 \x20       return R {{ value = a + deeper.value, text = label, size = item.a }}\n",
+                i + 1
+            )
+        } else {
+            String::new()
+        };
+        src.push_str(&format!(
+            "H{i} {{ x, depth }} =>\n\
+             \x20   a = x * {i} + 1\n\
+             \x20   b = a - x / 2 + {i} * 3\n\
+             \x20   c = (a + b) * (a - b) + {i}\n\
+             \x20   total = total + x\n\
+             \x20   label = \"h{i}-$a\"\n\
+             \x20   items = [a, b, c, a + b, a * 2, b * 2]\n\
+             \x20   item = {{ name = \"h{i}\", a = a, b = b, c = c }}\n\
+             {onward}\
+             \x20   return R {{ value = a, text = label, size = items[0] }}\n"
+        ));
+    }
+    let mut calls = 0;
+    for i in 0..handlers {
+        let value = if i + 1 < handlers {
+            (2 * i + 1) + (2 * (i + 1) + 1)
+        } else {
+            2 * i + 1
+        };
+        calls += if i + 1 < handlers { 2 } else { 1 };
+        // `label` is the program's own state: the handler called last wrote it.
+        let last = if i + 1 < handlers { i + 1 } else { i };
+        src.push_str(&format!(
+            "emit H{i} {{ x = 2, depth = 1 }} to this get r{i}\n\
+             assert r{i}.value = {value}\n\
+             assert r{i}.text = \"h{last}-{}\"\n",
+            2 * last + 1,
+        ));
+    }
+    src.push_str(&format!("assert total = {}\n", 2 * calls));
+    src
+}
+
+/// The same program comes out byte for byte the same whatever the number of
+/// cores compiles it (the owner's requirement for ticket 116), and it runs.
+#[test]
+fn a_large_program_builds_the_same_on_any_number_of_cores() {
+    let dir = temp_dir("parts");
+    let src = dir.join("large.code");
+    fs::write(&src, large_program(120)).expect("write the program");
+    let build = |jobs: &str, sub: &str, target: &str| {
+        let out = dir.join(sub);
+        fs::create_dir_all(&out).expect("create output dir");
+        let artifact = out.join(if target == "shared" {
+            "large.so"
+        } else {
+            "large"
+        });
+        let output = Command::new(env!("CARGO_BIN_EXE_code"))
+            .arg("build")
+            .arg(&src)
+            .args(["--target", target, "--release", "--timings", "-o"])
+            .arg(&artifact)
+            .env("CODE_BUILD_JOBS", jobs)
+            .output()
+            .expect("spawn code build");
+        assert!(
+            output.status.success(),
+            "build with {jobs} job(s) failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report = String::from_utf8_lossy(&output.stderr).into_owned();
+        (
+            fs::read(&artifact).expect("read the artifact"),
+            artifact,
+            report,
+        )
+    };
+    let (one, exe, report) = build("1", "one", "exe");
+    let instructions: usize = report
+        .lines()
+        .find_map(|l| l.strip_prefix("IR: "))
+        .and_then(|l| l.split_whitespace().next())
+        .and_then(|n| n.parse().ok())
+        .expect("the report counts IR instructions");
+    assert!(
+        instructions > 3 * 6_000,
+        "the program is too small to be split into several parts ({instructions} instructions)"
+    );
+    let (four, _, _) = build("4", "four", "exe");
+    let (twelve, _, _) = build("12", "twelve", "exe");
+    assert!(
+        one == four && one == twelve,
+        "the executable depends on the number of cores"
+    );
+    let status = Command::new(&exe).status().expect("run the program");
+    assert!(
+        status.success(),
+        "the program built in parts did not run correctly"
+    );
+    let (shared_one, _, _) = build("1", "shared-one", "shared");
+    let (shared_four, _, _) = build("4", "shared-four", "shared");
+    assert!(
+        shared_one == shared_four,
+        "the shared library depends on the number of cores"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

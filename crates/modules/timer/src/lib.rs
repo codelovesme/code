@@ -102,6 +102,13 @@ mod machine {
         /// thread is gone, not merely told to go — so a host that unloads
         /// right after finds nothing of this module still running.
         thread: Option<thread::JoinHandle<()>>,
+        /// Set by the thread, under the table's lock, once it has decided to
+        /// push. From then on `Cancel` answers `ok = false` and leaves it.
+        /// Deciding under the same lock `Cancel` takes the entry under is what
+        /// makes the two exclusive: a fired delay could be "cancelled" (and
+        /// a cancelled one fire) in the gap between the push and the thread
+        /// removing its entry — a gap a faster runtime started to land in.
+        fired: bool,
     }
     static PENDING: Mutex<Option<HashMap<u64, Pending>>> = Mutex::new(None);
 
@@ -237,7 +244,7 @@ mod machine {
         // two finds it; the thread's own removal at the end is what frees a
         // fired delay, and `Cancel` takes the entry for a cancelled one.
         with_pending(|p| {
-            p.insert(id, Pending { flag: Arc::clone(&pending), thread: None });
+            p.insert(id, Pending { flag: Arc::clone(&pending), thread: None, fired: false });
         });
         // The particle crosses to the thread whole and is released there
         // after the push; `CodeValue` is `Send` for exactly this.
@@ -262,7 +269,17 @@ mod machine {
             }
             let was_cancelled = *cancelled;
             drop(cancelled);
-            if !was_cancelled {
+            // Fire only if `Cancel` has not taken the entry; mark it fired in
+            // the same breath, so a `Cancel` from now on finds it spent.
+            let fire = !was_cancelled
+                && with_pending(|p| match p.get_mut(&id) {
+                    Some(entry) => {
+                        entry.fired = true;
+                        true
+                    }
+                    None => false,
+                });
+            if fire {
                 emit_inbound(&carried);
             }
             release(&mut carried);
@@ -288,9 +305,14 @@ mod machine {
                 // the table's lock held — the thread's last act takes that
                 // lock itself. When this answers, no thread of the delay is
                 // left, which is what `code_module_serving` then reports.
-                let taken = with_pending(|p| p.remove(&id));
+                // A fired one is not taken: its thread is finishing its push
+                // and removes the entry itself.
+                let taken = with_pending(|p| match p.get(&id) {
+                    Some(entry) if entry.fired => None,
+                    _ => p.remove(&id),
+                });
                 match taken {
-                    Some(Pending { flag, thread: handle }) => {
+                    Some(Pending { flag, thread: handle, .. }) => {
                         let (cancelled, wake) = &*flag;
                         *cancelled.lock().unwrap_or_else(|e| e.into_inner()) = true;
                         wake.notify_all();

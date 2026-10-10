@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::rc::Rc;
 
@@ -236,7 +236,7 @@ pub fn compile_to_object(
     target: BuildTarget,
     obj_path: &Path,
     release: bool,
-) -> Result<(), String> {
+) -> Result<Vec<std::path::PathBuf>, String> {
     compile_to_object_traced(program, target, obj_path, release, false)
 }
 
@@ -246,7 +246,7 @@ pub(crate) fn compile_to_object_traced(
     obj_path: &Path,
     release: bool,
     tracing: bool,
-) -> Result<(), String> {
+) -> Result<Vec<std::path::PathBuf>, String> {
     if tracing && target != BuildTarget::Exe {
         return Err("compiled tracing supports native executables only".into());
     }
@@ -847,7 +847,7 @@ pub(crate) fn compile_to_object_traced(
         slots: Vec::new(),
         temps: Vec::new(),
         temp_pool: Vec::new(),
-        native_links: HashMap::new(),
+        native_links: BTreeMap::new(),
         web_instance,
         static_native_fns,
         fn_check_particle,
@@ -987,7 +987,7 @@ pub(crate) fn compile_to_object_traced(
         Target::initialize_native(&InitializationConfig::default())?;
         TargetMachine::get_default_triple()
     };
-    let llvm_target = Target::from_triple(&triple).map_err(|e| e.to_string())?;
+    let triple = triple.as_str().to_string_lossy().into_owned();
     // Two of these arguments are deliberate, in the order they appear.
     //
     // Optimization is opt-in rather than the default for native builds:
@@ -1008,27 +1008,40 @@ pub(crate) fn compile_to_object_traced(
     // position-independent object code — Default relocation produced
     // relocations `ld` rejected ("can not be used when making a PIE
     // object").
-    let target_machine = llvm_target
-        .create_target_machine(
-            &triple,
-            "generic",
-            "",
-            if release {
-                OptimizationLevel::Default
-            } else if target == BuildTarget::Wasm {
-                OptimizationLevel::Less
-            } else {
-                OptimizationLevel::None
-            },
-            RelocMode::PIC,
-            CodeModel::Default,
-        )
-        .ok_or_else(|| "failed to create target machine".to_string())?;
+    let machine = || -> Result<TargetMachine, String> {
+        let triple = TargetTriple::create(&triple);
+        Target::from_triple(&triple)
+            .map_err(|e| e.to_string())?
+            .create_target_machine(
+                &triple,
+                "generic",
+                "",
+                if release {
+                    OptimizationLevel::Default
+                } else if target == BuildTarget::Wasm {
+                    OptimizationLevel::Less
+                } else {
+                    OptimizationLevel::None
+                },
+                RelocMode::PIC,
+                CodeModel::Default,
+            )
+            .ok_or_else(|| "failed to create target machine".to_string())
+    };
 
+    // A large program is compiled in parts, on every core (ticket 116,
+    // `split.rs`). Not an archive: a `.a` module keeps its internals
+    // internal, so two archives can never clash, and it is small anyway.
+    let (parts, owner) = crate::split::plan(&module);
     crate::timings::measure("LLVM backend", || {
-        target_machine
-            .write_to_file(&module, FileType::Object, obj_path)
-            .map_err(|e| e.to_string())
+        if parts == 1 || target == BuildTarget::Static {
+            machine()?
+                .write_to_file(&module, FileType::Object, obj_path)
+                .map_err(|e| e.to_string())?;
+            return Ok(vec![obj_path.to_path_buf()]);
+        }
+        crate::split::prepare(&module);
+        crate::split::compile_parts(&module, parts, &owner, obj_path, &machine)
     })
 }
 
@@ -1204,7 +1217,9 @@ struct Gen<'a, 'm> {
     /// written once at `link` time and only ever read afterward). Storing it
     /// directly relies on `link` being top-level-only: the block that opens
     /// a module always dominates every block that could `emit ... to` it.
-    native_links: HashMap<String, NativeLink<'a>>,
+    /// Ordered by alias, so a program's code comes out the same every build
+    /// (a `HashMap` here made two builds of one program differ).
+    native_links: BTreeMap<String, NativeLink<'a>>,
     /// Every `.a` static module's declared entry points, by alias — built
     /// once before `Gen` exists (see `compile_to_object`), consumed (via
     /// `remove`) the one time each is `link`ed.
@@ -2110,7 +2125,11 @@ impl<'a, 'm> Gen<'a, 'm> {
         let Some(dispatch) = self.dispatch_fn else {
             return Ok(());
         };
-        let names: Vec<String> = self.handler_fns.keys().cloned().collect();
+        // Sorted: a `HashMap`'s order changes from run to run, and with it
+        // the order the chain's strings were made in — so the same program
+        // built twice gave two different binaries.
+        let mut names: Vec<String> = self.handler_fns.keys().cloned().collect();
+        names.sort();
         self.gen_dispatch_chain(&dispatch, &names)
     }
 
