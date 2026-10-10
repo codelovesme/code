@@ -56,3 +56,50 @@ Read: a small program is almost all the C runtime's compile (done on every
 build, without optimisation, inside the `cc` link — ticket 111); a large one
 is mostly LLVM's backend on one core (ticket 116) over a lot of IR
 (ticket 117).
+
+## 2026-10-10 — after 111 (runtime compiled once, embedded, -O2)
+
+`Code v2.14.6`, median of 5 builds, ms
+
+**sum_squares (14 lines), exe**
+
+| stage | ms |
+|---|---|
+| load and parse | 0.1 |
+| checks | 0.0 |
+| IR generation | 0.2 |
+| IR verify | 0.1 |
+| LLVM backend | 9.2 |
+| link | 22.3 |
+| other | 0.5 |
+| total | 34.1 |
+
+**todo-api, shared**
+
+| stage | ms |
+|---|---|
+| load and parse | 95.5 |
+| checks | 0.2 |
+| IR generation | 14.8 |
+| IR verify | 8.8 |
+| LLVM backend | 810.2 |
+| link | 31.1 |
+| other | 5.9 |
+| total | 964.6 |
+
+**aquarium-web, wasm**
+
+| stage | ms |
+|---|---|
+| load and parse | 133.9 |
+| checks | 0.9 |
+| IR generation | 56.1 |
+| IR verify | 44.7 |
+| LLVM backend | 3280.6 |
+| link | 123.0 |
+| other | 35.5 |
+| total | 3681.1 |
+
+Builds: sum_squares 276 → 34 ms, todo-api 1205 → 965 ms, aquarium-web 4526 → 3681 ms.
+And every program now runs on an optimised runtime: sum_squares 828 → 336 ms.
+What is left is almost all LLVM's backend (116, 117).
