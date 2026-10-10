@@ -1,0 +1,58 @@
+# Compile-time baseline
+
+Where `code build` spends its time, stage by stage (`code build --timings`,
+ticket 115). Each compile-speed change adds a section below with the same
+three programs, so a gain — or a regression — is a number, not a feeling.
+
+    benchmarks/compile-time/run.py [--code PATH] [--apps PATH] [--runs N]
+
+Machine: Intel Core i7-5930K, 12 logical cores, Debian 13.
+
+## 2026-10-10 — before any compile-speed work
+
+`Code v2.14.5`, median of 5 builds, ms
+
+**sum_squares (14 lines), exe**
+
+| stage | ms |
+|---|---|
+| load and parse | 0.1 |
+| checks | 0.0 |
+| IR generation | 0.3 |
+| IR verify | 0.1 |
+| LLVM backend | 11.2 |
+| runtime compile and link | 263.8 |
+| other | 0.6 |
+| total | 276.4 |
+
+**todo-api, shared**
+
+| stage | ms |
+|---|---|
+| load and parse | 89.3 |
+| checks | 0.3 |
+| IR generation | 18.5 |
+| IR verify | 10.1 |
+| LLVM backend | 811.6 |
+| runtime compile and link | 264.1 |
+| other | 6.3 |
+| total | 1204.5 |
+
+**aquarium-web, wasm**
+
+| stage | ms |
+|---|---|
+| load and parse | 130.6 |
+| checks | 0.9 |
+| IR generation | 54.8 |
+| IR verify | 45.1 |
+| LLVM backend | 3290.5 |
+| runtime compile | 851.7 |
+| link | 124.3 |
+| other | 35.7 |
+| total | 4525.8 |
+
+Read: a small program is almost all the C runtime's compile (done on every
+build, without optimisation, inside the `cc` link — ticket 111); a large one
+is mostly LLVM's backend on one core (ticket 116) over a lot of IR
+(ticket 117).

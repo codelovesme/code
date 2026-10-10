@@ -15,6 +15,7 @@ pub mod module_install;
 pub mod native;
 pub mod parser;
 pub mod span;
+pub mod timings;
 pub mod trace;
 pub mod value;
 pub mod verify;
@@ -298,8 +299,9 @@ mod compile {
         release: bool,
         tracing: bool,
     ) -> Result<(), String> {
-        let program: Program =
-            loader::load(&source_path.display().to_string(), &FilesystemResolver)?;
+        let program: Program = crate::timings::measure("load and parse", || {
+            loader::load(&source_path.display().to_string(), &FilesystemResolver)
+        })?;
 
         let scratch = scratch_dir()?;
         let obj_path = scratch.join("program.o");
@@ -365,13 +367,17 @@ mod compile {
             if target == BuildTarget::Wasm {
                 fs::write(&wasm_shim_path, WASM_SHIM_H)
                     .map_err(|e| format!("write wasm_shim.h: {e}"))?;
-                compile_wasm_runtime(
-                    &runtime_c_path,
-                    &wasm_shim_path,
-                    &abi_h_path,
-                    &runtime_obj_path,
-                )?;
-                link_wasm(&obj_path, &runtime_obj_path, &static_modules, out_path)?;
+                crate::timings::measure("runtime compile", || {
+                    compile_wasm_runtime(
+                        &runtime_c_path,
+                        &wasm_shim_path,
+                        &abi_h_path,
+                        &runtime_obj_path,
+                    )
+                })?;
+                crate::timings::measure("link", || {
+                    link_wasm(&obj_path, &runtime_obj_path, &static_modules, out_path)
+                })?;
                 if let Err(error) = validate_wasm_function_locals(out_path) {
                     // Do not leave an artifact that the browser cannot load.
                     let _ = fs::remove_file(out_path);
@@ -380,14 +386,18 @@ mod compile {
                 return write_web_host(out_path, &prefixes);
             }
 
+            // Native `cc` compiles `runtime.c` inside the link, so the two are
+            // one stage here.
             match target {
-                BuildTarget::Exe => {
+                BuildTarget::Exe => crate::timings::measure("runtime compile and link", || {
                     cc_link(&[&obj_path, &runtime_c_path], &static_modules, out_path)
-                }
-                BuildTarget::Shared => {
+                }),
+                BuildTarget::Shared => crate::timings::measure("runtime compile and link", || {
                     cc_link_shared(&[&obj_path, &runtime_c_path], &static_modules, out_path)
+                }),
+                BuildTarget::Static => {
+                    crate::timings::measure("archive", || ar_archive(&obj_path, out_path))
                 }
-                BuildTarget::Static => ar_archive(&obj_path, out_path),
                 // Refused earlier, in `compile_to_object` — unreachable.
                 BuildTarget::Wasm => unreachable!("wasm refused before codegen"),
             }

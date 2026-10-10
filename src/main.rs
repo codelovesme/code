@@ -77,6 +77,7 @@ fn main() -> ExitCode {
             let mut target = BuildTarget::Exe;
             let mut release = false;
             let mut strict = false;
+            let mut timings = false;
             while let Some(arg) = args.next() {
                 match arg.as_str() {
                     // `--output` too: the long form is what a reader
@@ -84,6 +85,7 @@ fn main() -> ExitCode {
                     "-o" | "--output" => out = args.next().map(PathBuf::from),
                     "-r" | "--release" => release = true,
                     "--strict" => strict = true,
+                    "--timings" => timings = true,
                     "-t" | "--target" => {
                         let Some(value) = args.next() else {
                             eprintln!("--target takes a value (exe|shared|static|wasm)");
@@ -105,6 +107,8 @@ fn main() -> ExitCode {
                     }
                 }
             }
+            code::timings::enable(timings);
+            let started = std::time::Instant::now();
             let entry = match entry_point(&path) {
                 Ok(entry) => entry,
                 Err(message) => {
@@ -127,7 +131,11 @@ fn main() -> ExitCode {
                     }
                 }
             }
-            build_file(&entry, target, &out, release)
+            let status = build_file(&entry, target, &out, release);
+            if let Some(report) = code::timings::report(started.elapsed()) {
+                eprint!("{report}");
+            }
+            status
         }
         "init" => cmd_init(args.collect()),
         #[cfg(feature = "install")]
@@ -232,6 +240,8 @@ options:
   -t, --target exe|shared|static|wasm   default exe
   -r, --release                         -O2; the default is unoptimized
       --strict                          refuse errors `code check` can prove
+      --timings                         say where the build's time went
+                                        (also CODE_TIMINGS=1)
   -o, --output <path>                   where to write it";
 
 const MODULE_HELP: &str = "\

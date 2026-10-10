@@ -250,12 +250,16 @@ pub(crate) fn compile_to_object_traced(
     if tracing && target != BuildTarget::Exe {
         return Err("compiled tracing supports native executables only".into());
     }
-    crate::verify::verify_defined(program)?;
-    crate::handlers::check_cycles(program)?;
-    if target == BuildTarget::Wasm {
-        reject_wasm_native_links(&program.statements)?;
-    }
+    crate::timings::measure("checks", || -> Result<(), String> {
+        crate::verify::verify_defined(program)?;
+        crate::handlers::check_cycles(program)?;
+        if target == BuildTarget::Wasm {
+            reject_wasm_native_links(&program.statements)?;
+        }
+        Ok(())
+    })?;
 
+    let ir_started = std::time::Instant::now();
     let context = Context::create();
     // Declared before `module` deliberately: locals drop in reverse, so this
     // puts the module's `Drop` *before* the builders'. `Module`'s `Drop`
@@ -970,7 +974,11 @@ pub(crate) fn compile_to_object_traced(
         hide_internal_symbols(&module, lib_mode);
     }
 
-    module.verify().map_err(|e| e.to_string())?;
+    crate::timings::record("IR generation", ir_started.elapsed());
+    crate::timings::measure("IR verify", || module.verify().map_err(|e| e.to_string()))?;
+    if crate::timings::enabled() {
+        crate::timings::functions(ir_sizes(&module));
+    }
 
     let triple = if target == BuildTarget::Wasm {
         Target::initialize_webassembly(&InitializationConfig::default());
@@ -1017,9 +1025,31 @@ pub(crate) fn compile_to_object_traced(
         )
         .ok_or_else(|| "failed to create target machine".to_string())?;
 
-    target_machine
-        .write_to_file(&module, FileType::Object, obj_path)
-        .map_err(|e| e.to_string())
+    crate::timings::measure("LLVM backend", || {
+        target_machine
+            .write_to_file(&module, FileType::Object, obj_path)
+            .map_err(|e| e.to_string())
+    })
+}
+
+/// Each defined function's IR instruction count, for `--timings`: the
+/// backend's work follows it, so it says which handlers a build pays for.
+fn ir_sizes(module: &Module) -> Vec<(String, usize)> {
+    let mut sizes = Vec::new();
+    for function in module.get_functions() {
+        let mut count = 0;
+        for block in function.get_basic_blocks() {
+            let mut at = block.get_first_instruction();
+            while let Some(instruction) = at {
+                count += 1;
+                at = instruction.get_next_instruction();
+            }
+        }
+        if count > 0 {
+            sizes.push((function.get_name().to_string_lossy().into_owned(), count));
+        }
+    }
+    sizes
 }
 
 /// Codegen state for one module. Only ever used within `compile_to_object`,

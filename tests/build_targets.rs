@@ -979,3 +979,68 @@ fn the_pages_half_holds_the_linked_modules_and_no_others() {
     // how a trailing comma becomes a syntax error in the page.
     assert!(!two.contains("__CODE_WEB_PARTS__"));
 }
+
+/// `--timings` (ticket 115) names every stage a native build goes through and
+/// a total, and the functions with the most IR — on stderr, so a build's own
+/// output is untouched. `CODE_TIMINGS=1` does the same for a build another
+/// tool starts. Without either, a build says nothing extra.
+#[test]
+fn timings_name_each_stage_only_when_asked() {
+    let dir = temp_dir("timings");
+    let src = dir.join("arith.code");
+    fs::copy(fixture("arithmetic_basic.code"), &src).expect("copy fixture");
+    let build = |extra: &[&str], env: Option<&str>| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_code"));
+        cmd.arg("build")
+            .arg(&src)
+            .args(["-o", "arith"])
+            .args(extra)
+            .current_dir(&dir);
+        cmd.env_remove("CODE_TIMINGS");
+        if let Some(value) = env {
+            cmd.env("CODE_TIMINGS", value);
+        }
+        let output = cmd.output().expect("spawn code build");
+        assert!(
+            output.status.success(),
+            "code build failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        (
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    };
+    let (stdout, stderr) = build(&["--timings"], None);
+    assert!(
+        stdout.is_empty(),
+        "timings must not touch stdout, got: {stdout}"
+    );
+    for stage in [
+        "load and parse",
+        "checks",
+        "IR generation",
+        "IR verify",
+        "LLVM backend",
+        "runtime compile and link",
+        "other",
+        "total",
+        "IR: ",
+        "main",
+    ] {
+        assert!(
+            stderr.contains(stage),
+            "no '{stage}' in the report:\n{stderr}"
+        );
+    }
+    let (_, by_env) = build(&[], Some("1"));
+    assert!(
+        by_env.contains("LLVM backend"),
+        "CODE_TIMINGS=1 gave no report:\n{by_env}"
+    );
+    let (_, quiet) = build(&[], None);
+    assert!(quiet.is_empty(), "a plain build printed: {quiet}");
+    let (_, off) = build(&[], Some("0"));
+    assert!(off.is_empty(), "CODE_TIMINGS=0 printed: {off}");
+    let _ = fs::remove_dir_all(&dir);
+}
