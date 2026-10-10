@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the small Code/C/Java/Python/Rust comparison benchmark on this machine."""
+"""Run the small Code/C/Java/Python/Rust/Go comparison benchmark on this machine."""
 
 from __future__ import annotations
 
@@ -29,8 +29,10 @@ def command_from_env(name: str, default: str) -> list[str]:
     return shlex.split(os.environ.get(name, default))
 
 
-def checked(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True)
+def checked(
+    command: list[str], cwd: Path, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True)
     if result.returncode:
         raise RuntimeError(
             f"command failed ({result.returncode}): {' '.join(command)}\n"
@@ -91,6 +93,7 @@ def main() -> None:
     java = command_from_env("JAVA", "java")
     python = command_from_env("PYTHON", "python3")
     rustc = command_from_env("RUSTC", "rustc")
+    go = command_from_env("GO", "go")
 
     pinned_cpu = None
     if not args.no_pin and hasattr(os, "sched_getaffinity"):
@@ -105,6 +108,29 @@ def main() -> None:
         code_out = temp / "code-native"
         c_out: dict[str, Path] = {}
         java_classes = temp / "java-classes"
+        go_env = os.environ.copy()
+        go_env["GO111MODULE"] = "off"
+        go_sources: dict[int, Path] = {}
+        go_outputs: dict[int, Path] = {}
+        source = (HERE / "sum_squares.go").read_text()
+        for index in range(args.compile_runs):
+            go_sources[index] = temp / f"sum-squares-go-{index}.go"
+            go_sources[index].write_text(f"{source}\n// build sample {index}\n")
+            go_outputs[index] = temp / f"sum-squares-go-{index}"
+        go_warmup_source = temp / "sum-squares-go-warmup.go"
+        go_warmup_source.write_text(source)
+
+        # Warm the standard-library dependencies used by this program before
+        # timing. Each sample changes a source comment, forcing the main package
+        # to rebuild while keeping those cached dependencies reusable.
+        checked(
+            go + [
+                "build", "-trimpath", "-o", str(temp / "sum-squares-go-warmup"),
+                str(go_warmup_source),
+            ],
+            REPO,
+            env=go_env,
+        )
 
         compile_builders = {
             "code build --release": lambda index: code + [
@@ -119,6 +145,9 @@ def main() -> None:
                 "--edition", "2024", "-C", "opt-level=3", "-C", "target-cpu=native",
                 str(HERE / "sum_squares.rs"), "-o", str(temp / f"sum-squares-rust-{index}"),
             ],
+            "go build -trimpath (default optimizations)": lambda index: go + [
+                "build", "-trimpath", "-o", str(go_outputs[index]), str(go_sources[index]),
+            ],
         }
         for optimization in ("-O2", "-O3"):
             label = f"GCC {optimization} -march=native"
@@ -132,7 +161,11 @@ def main() -> None:
             compile_samples[label] = []
             for index in range(args.compile_runs):
                 started = time.perf_counter()
-                checked(build_command(index), REPO)
+                checked(
+                    build_command(index),
+                    REPO,
+                    env=go_env if label.startswith("go build") else None,
+                )
                 compile_samples[label].append(time.perf_counter() - started)
 
         # Retain the last compiler output for each implementation.
@@ -143,6 +176,7 @@ def main() -> None:
         }
         java_classes = temp / f"java-classes-{args.compile_runs - 1}"
         rust_out = temp / f"sum-squares-rust-{args.compile_runs - 1}"
+        go_out = go_outputs[args.compile_runs - 1]
 
         modes = {
             "code run (interpreter)": code + ["run", str(HERE / "sum_squares.code")],
@@ -152,6 +186,7 @@ def main() -> None:
             "Java 26 (HotSpot default)": java + ["-cp", str(java_classes), "SumSquares"],
             "Python (CPython)": python + [str(HERE / "sum_squares.py")],
             "Rust (rustc -C opt-level=3)": [str(rust_out)],
+            "Go (go build; default optimizations)": [str(go_out)],
         }
         samples: dict[str, list[float]] = {name: [] for name in modes}
         order_rng = random.Random(20261009)
@@ -213,6 +248,7 @@ def main() -> None:
                     REPO,
                 ).stdout.strip(),
                 "rust_compiler": version(rustc + ["--version"], REPO),
+                "go_toolchain": version(go + ["version"], REPO),
                 "code_compile_command": "code build --release (LLVM optimization level -O2)",
                 "c_compile_commands": [
                     "gcc -std=c17 -O2 -march=native",
@@ -220,6 +256,7 @@ def main() -> None:
                 ],
                 "java_compile_command": "javac --release 26; HotSpot default runtime settings",
                 "rust_compile_command": "rustc --edition 2024 -C opt-level=3 -C target-cpu=native",
+                "go_compile_command": "GO111MODULE=off go build -trimpath (default compiler optimizations)",
             },
             "timed_runs_per_mode": args.runs,
             "compile_runs_per_compiler": args.compile_runs,
@@ -229,11 +266,13 @@ def main() -> None:
             "notes": [
                 "Process startup is included in runtime measurements; separate ahead-of-time build time is excluded.",
                 "Python and code run execute source directly; source parsing is part of their runtime measurement, and CPython compiles the Python source to bytecode during each launch.",
-                "Rust, C, Java, and code native run prebuilt binaries; their compilation is measured separately.",
+                "Go, Rust, C, Java, and code native run prebuilt binaries; their compilation is measured separately.",
+                "Go runs a prebuilt binary. An untimed build warms the cache for this program's standard-library dependencies; each timed Go build changes only a source comment so the main package is rebuilt while those dependencies can be reused.",
                 "No separate memory measurement was made.",
                 "One workload is a useful data point, not a universal language ranking.",
                 "Python uses float (IEEE 754 binary64) values; its process startup, source parsing, and bytecode generation are included in run time.",
                 "Rust uses f64 values and a rustc release optimization level of 3, targeting the local CPU.",
+                "Go uses float64 values and the Go toolchain's default compiler optimization settings; go build process startup is included in its separate build measurement.",
             ],
         }
         (args.output_dir / "results.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -248,6 +287,7 @@ def main() -> None:
             "C (GCC -O3 -march=native)": "GCC -O3 -march=native",
             "Java 26 (HotSpot default)": "javac --release 26",
             "Rust (rustc -C opt-level=3)": "rustc --edition 2024 -C opt-level=3 -C target-cpu=native",
+            "Go (go build; default optimizations)": "go build -trimpath (default optimizations)",
         }
         for row in rows:
             compile_label = compile_labels.get(row["mode"])

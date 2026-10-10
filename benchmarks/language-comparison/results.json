@@ -1,5 +1,5 @@
 {
-  "measured_at_utc": "2026-10-10T07:53:51+00:00",
+  "measured_at_utc": "2026-10-10T10:50:51+00:00",
   "workload": {
     "inner_iterations_per_repetition": 100000,
     "repetitions": 100,
@@ -20,176 +20,203 @@
     "java_compiler": "javac 26.0.2.1",
     "python_runtime": "CPython 3.13.5",
     "rust_compiler": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "go_toolchain": "go version go1.27.1 linux/amd64",
     "code_compile_command": "code build --release (LLVM optimization level -O2)",
     "c_compile_commands": [
       "gcc -std=c17 -O2 -march=native",
       "gcc -std=c17 -O3 -march=native"
     ],
     "java_compile_command": "javac --release 26; HotSpot default runtime settings",
-    "rust_compile_command": "rustc --edition 2024 -C opt-level=3 -C target-cpu=native"
+    "rust_compile_command": "rustc --edition 2024 -C opt-level=3 -C target-cpu=native",
+    "go_compile_command": "GO111MODULE=off go build -trimpath (default compiler optimizations)"
   },
   "timed_runs_per_mode": 7,
   "compile_runs_per_compiler": 5,
   "compile_samples_seconds": {
     "code build --release": [
-      0.2613639710471034,
-      0.25635200506076217,
-      0.26313099288381636,
-      0.2614339420106262,
-      0.2750108898617327
+      0.2542780719231814,
+      0.25276415795087814,
+      0.25230077211745083,
+      0.2531855187844485,
+      0.2515038959681988
     ],
     "javac --release 26": [
-      1.1279402289073914,
-      1.107882129959762,
-      1.134452394908294,
-      1.114827173994854,
-      1.140111334854737
+      1.0951879748608917,
+      1.068998265080154,
+      1.1386550499591976,
+      1.1076681080739945,
+      1.117179944878444
     ],
     "rustc --edition 2024 -C opt-level=3 -C target-cpu=native": [
-      0.07330270996317267,
-      0.07348655397072434,
-      0.07473775884136558,
-      0.0776524730026722,
-      0.07354003889486194
+      0.07364383293315768,
+      0.07576330192387104,
+      0.07739686407148838,
+      0.0764061079826206,
+      0.08235552092082798
+    ],
+    "go build -trimpath (default optimizations)": [
+      0.22066552308388054,
+      0.21627664705738425,
+      0.209482739912346,
+      0.22675984888337553,
+      0.21159975789487362
     ],
     "GCC -O2 -march=native": [
-      0.03224386996589601,
-      0.0317637100815773,
-      0.03176226909272373,
-      0.03225977998226881,
-      0.03226191899739206
+      0.03328168787993491,
+      0.03341753897257149,
+      0.03428536304272711,
+      0.034972438821569085,
+      0.032329389126971364
     ],
     "GCC -O3 -march=native": [
-      0.032431369880214334,
-      0.032393784960731864,
-      0.03300488321110606,
-      0.032005061162635684,
-      0.0318703418597579
+      0.03236041311174631,
+      0.0326472909655422,
+      0.033023866126313806,
+      0.03441387112252414,
+      0.034098298056051135
     ]
   },
   "samples_seconds": {
     "code run (interpreter)": [
-      4.86240650084801,
-      4.878651897888631,
-      4.877489777980372,
-      4.915808046935126,
-      4.907733686035499,
-      4.970570361008868,
-      4.8903941051103175
+      4.942387568997219,
+      4.769037857186049,
+      4.782534282188863,
+      4.728685345035046,
+      4.749605986988172,
+      4.733264422044158,
+      4.8074295821134
     ],
     "code build --release (native)": [
-      0.8694641620386392,
-      0.9773462701123208,
-      0.8391012360807508,
-      0.8764351902063936,
-      0.8727866888511926,
-      0.8524854169227183,
-      0.8605370582081378
+      0.8432545228861272,
+      0.8667948970105499,
+      0.8257296429947019,
+      0.8330704730469733,
+      0.8447047730442137,
+      0.8952375580556691,
+      0.8286762090865523
     ],
     "C (GCC -O2 -march=native)": [
-      0.01479623606428504,
-      0.014598875073716044,
-      0.014842381002381444,
-      0.014845403144136071,
-      0.014813254121690989,
-      0.014654516009613872,
-      0.014832935994490981
+      0.014685860835015774,
+      0.01469921600073576,
+      0.014518914045765996,
+      0.014700451865792274,
+      0.01453941804356873,
+      0.014499303884804249,
+      0.014728529145941138
     ],
     "C (GCC -O3 -march=native)": [
-      0.014815542846918106,
-      0.014726626919582486,
-      0.01476375199854374,
-      0.014764731982722878,
-      0.01489735092036426,
-      0.01481324597261846,
-      0.014583455864340067
+      0.014510571956634521,
+      0.014490994857624173,
+      0.014680681051686406,
+      0.014675593003630638,
+      0.014599521877244115,
+      0.014737715013325214,
+      0.014595508109778166
     ],
     "Java 26 (HotSpot default)": [
-      0.05414172797463834,
-      0.05473914719186723,
-      0.050390396965667605,
-      0.049833990167826414,
-      0.054342097137123346,
-      0.050409814110025764,
-      0.053184298099949956
+      0.057556728133931756,
+      0.0495229777880013,
+      0.04975622706115246,
+      0.054421751061454415,
+      0.05249281297437847,
+      0.05191985284909606,
+      0.05436046188697219
     ],
     "Python (CPython)": [
-      1.4700404801405966,
-      1.4248067699372768,
-      1.516348394099623,
-      1.455574193969369,
-      1.3993822091724724,
-      1.563599358079955,
-      1.3868301108013839
+      1.4798759759869426,
+      1.285039387876168,
+      1.351473179878667,
+      1.2830050562042743,
+      1.730724235996604,
+      1.361901065101847,
+      1.4270171388052404
     ],
     "Rust (rustc -C opt-level=3)": [
-      0.009382939897477627,
-      0.009372382890433073,
-      0.00940145505592227,
-      0.009193116100504994,
-      0.009436249965801835,
-      0.009354866808280349,
-      0.009391944855451584
+      0.00919515104033053,
+      0.009331137174740434,
+      0.009192161029204726,
+      0.009315526811406016,
+      0.009319541975855827,
+      0.00934043014422059,
+      0.0093308100476861
+    ],
+    "Go (go build; default optimizations)": [
+      0.015502125956118107,
+      0.015397934941574931,
+      0.015388831030577421,
+      0.015552000841125846,
+      0.015771014848724008,
+      0.015364940976724029,
+      0.015494724968448281
     ]
   },
   "summary": [
     {
       "mode": "code run (interpreter)",
-      "median_seconds": 4.8903941051103175,
-      "min_seconds": 4.86240650084801,
-      "max_seconds": 4.970570361008868,
-      "million_iterations_per_second": 2.044824974238844
+      "median_seconds": 4.769037857186049,
+      "min_seconds": 4.728685345035046,
+      "max_seconds": 4.942387568997219,
+      "million_iterations_per_second": 2.096859010026911
     },
     {
       "mode": "code build --release (native)",
-      "median_seconds": 0.8694641620386392,
-      "min_seconds": 0.8391012360807508,
-      "max_seconds": 0.9773462701123208,
-      "million_iterations_per_second": 11.501336612371606
+      "median_seconds": 0.8432545228861272,
+      "min_seconds": 0.8257296429947019,
+      "max_seconds": 0.8952375580556691,
+      "million_iterations_per_second": 11.858815729530805
     },
     {
       "mode": "C (GCC -O2 -march=native)",
-      "median_seconds": 0.014813254121690989,
-      "min_seconds": 0.014598875073716044,
-      "max_seconds": 0.014845403144136071,
-      "million_iterations_per_second": 675.0711165723567
+      "median_seconds": 0.014685860835015774,
+      "min_seconds": 0.014499303884804249,
+      "max_seconds": 0.014728529145941138,
+      "million_iterations_per_second": 680.9270571430727
     },
     {
       "mode": "C (GCC -O3 -march=native)",
-      "median_seconds": 0.014764731982722878,
-      "min_seconds": 0.014583455864340067,
-      "max_seconds": 0.01489735092036426,
-      "million_iterations_per_second": 677.2896393718231
+      "median_seconds": 0.014599521877244115,
+      "min_seconds": 0.014490994857624173,
+      "max_seconds": 0.014737715013325214,
+      "million_iterations_per_second": 684.9539378126302
     },
     {
       "mode": "Java 26 (HotSpot default)",
-      "median_seconds": 0.053184298099949956,
-      "min_seconds": 0.049833990167826414,
-      "max_seconds": 0.05473914719186723,
-      "million_iterations_per_second": 188.0254202322435
+      "median_seconds": 0.05249281297437847,
+      "min_seconds": 0.0495229777880013,
+      "max_seconds": 0.057556728133931756,
+      "million_iterations_per_second": 190.50226942269146
     },
     {
       "mode": "Python (CPython)",
-      "median_seconds": 1.455574193969369,
-      "min_seconds": 1.3868301108013839,
-      "max_seconds": 1.563599358079955,
-      "million_iterations_per_second": 6.870141035359988
+      "median_seconds": 1.361901065101847,
+      "min_seconds": 1.2830050562042743,
+      "max_seconds": 1.730724235996604,
+      "million_iterations_per_second": 7.3426772738827175
     },
     {
       "mode": "Rust (rustc -C opt-level=3)",
-      "median_seconds": 0.009382939897477627,
-      "min_seconds": 0.009193116100504994,
-      "max_seconds": 0.009436249965801835,
-      "million_iterations_per_second": 1065.764047224501
+      "median_seconds": 0.009319541975855827,
+      "min_seconds": 0.009192161029204726,
+      "max_seconds": 0.00934043014422059,
+      "million_iterations_per_second": 1073.0141058334236
+    },
+    {
+      "mode": "Go (go build; default optimizations)",
+      "median_seconds": 0.015494724968448281,
+      "min_seconds": 0.015364940976724029,
+      "max_seconds": 0.015771014848724008,
+      "million_iterations_per_second": 645.3809293396868
     }
   ],
   "notes": [
     "Process startup is included in runtime measurements; separate ahead-of-time build time is excluded.",
     "Python and code run execute source directly; source parsing is part of their runtime measurement, and CPython compiles the Python source to bytecode during each launch.",
-    "Rust, C, Java, and code native run prebuilt binaries; their compilation is measured separately.",
+    "Go, Rust, C, Java, and code native run prebuilt binaries; their compilation is measured separately.",
+    "Go runs a prebuilt binary. An untimed build warms the cache for this program's standard-library dependencies; each timed Go build changes only a source comment so the main package is rebuilt while those dependencies can be reused.",
     "No separate memory measurement was made.",
     "One workload is a useful data point, not a universal language ranking.",
     "Python uses float (IEEE 754 binary64) values; its process startup, source parsing, and bytecode generation are included in run time.",
-    "Rust uses f64 values and a rustc release optimization level of 3, targeting the local CPU."
+    "Rust uses f64 values and a rustc release optimization level of 3, targeting the local CPU.",
+    "Go uses float64 values and the Go toolchain's default compiler optimization settings; go build process startup is included in its separate build measurement."
   ]
 }
