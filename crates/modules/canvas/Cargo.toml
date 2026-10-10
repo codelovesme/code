@@ -3,7 +3,7 @@
 
 [package]
 name = "canvas"
-version = "2.14.5"
+version = "2.14.6"
 edition = "2021"
 description = "The `canvas` module for the Code programming language — draw bounded 2D frames in a browser page."
 license = "GPL-3.0"
