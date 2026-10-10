@@ -1,43 +1,50 @@
 mode,run,elapsed_seconds
-code run (interpreter),1,4.791844515
-code run (interpreter),2,4.835834699
-code run (interpreter),3,4.853755180
-code run (interpreter),4,4.864519998
-code run (interpreter),5,4.817804616
-code run (interpreter),6,4.757212476
-code run (interpreter),7,4.779525660
-code build --release (native),1,0.841530736
-code build --release (native),2,0.829054567
-code build --release (native),3,0.847905026
-code build --release (native),4,0.857454132
-code build --release (native),5,0.828948709
-code build --release (native),6,0.836086616
-code build --release (native),7,0.855043257
-C (GCC -O2 -march=native),1,0.014675780
-C (GCC -O2 -march=native),2,0.014662798
-C (GCC -O2 -march=native),3,0.014670340
-C (GCC -O2 -march=native),4,0.014543055
-C (GCC -O2 -march=native),5,0.014760479
-C (GCC -O2 -march=native),6,0.014710293
-C (GCC -O2 -march=native),7,0.014695649
-C (GCC -O3 -march=native),1,0.014681305
-C (GCC -O3 -march=native),2,0.014706450
-C (GCC -O3 -march=native),3,0.014512458
-C (GCC -O3 -march=native),4,0.014706278
-C (GCC -O3 -march=native),5,0.014698703
-C (GCC -O3 -march=native),6,0.014708139
-C (GCC -O3 -march=native),7,0.014507543
-Java 26 (HotSpot default),1,0.053076542
-Java 26 (HotSpot default),2,0.052738303
-Java 26 (HotSpot default),3,0.053126506
-Java 26 (HotSpot default),4,0.052207467
-Java 26 (HotSpot default),5,0.049434385
-Java 26 (HotSpot default),6,0.052648286
-Java 26 (HotSpot default),7,0.051921092
-Python (CPython),1,1.503200211
-Python (CPython),2,1.403683549
-Python (CPython),3,1.323516462
-Python (CPython),4,1.435062044
-Python (CPython),5,1.332476642
-Python (CPython),6,1.317713182
-Python (CPython),7,1.418233878
+code run (interpreter),1,4.862406501
+code run (interpreter),2,4.878651898
+code run (interpreter),3,4.877489778
+code run (interpreter),4,4.915808047
+code run (interpreter),5,4.907733686
+code run (interpreter),6,4.970570361
+code run (interpreter),7,4.890394105
+code build --release (native),1,0.869464162
+code build --release (native),2,0.977346270
+code build --release (native),3,0.839101236
+code build --release (native),4,0.876435190
+code build --release (native),5,0.872786689
+code build --release (native),6,0.852485417
+code build --release (native),7,0.860537058
+C (GCC -O2 -march=native),1,0.014796236
+C (GCC -O2 -march=native),2,0.014598875
+C (GCC -O2 -march=native),3,0.014842381
+C (GCC -O2 -march=native),4,0.014845403
+C (GCC -O2 -march=native),5,0.014813254
+C (GCC -O2 -march=native),6,0.014654516
+C (GCC -O2 -march=native),7,0.014832936
+C (GCC -O3 -march=native),1,0.014815543
+C (GCC -O3 -march=native),2,0.014726627
+C (GCC -O3 -march=native),3,0.014763752
+C (GCC -O3 -march=native),4,0.014764732
+C (GCC -O3 -march=native),5,0.014897351
+C (GCC -O3 -march=native),6,0.014813246
+C (GCC -O3 -march=native),7,0.014583456
+Java 26 (HotSpot default),1,0.054141728
+Java 26 (HotSpot default),2,0.054739147
+Java 26 (HotSpot default),3,0.050390397
+Java 26 (HotSpot default),4,0.049833990
+Java 26 (HotSpot default),5,0.054342097
+Java 26 (HotSpot default),6,0.050409814
+Java 26 (HotSpot default),7,0.053184298
+Python (CPython),1,1.470040480
+Python (CPython),2,1.424806770
+Python (CPython),3,1.516348394
+Python (CPython),4,1.455574194
+Python (CPython),5,1.399382209
+Python (CPython),6,1.563599358
+Python (CPython),7,1.386830111
+Rust (rustc -C opt-level=3),1,0.009382940
+Rust (rustc -C opt-level=3),2,0.009372383
+Rust (rustc -C opt-level=3),3,0.009401455
+Rust (rustc -C opt-level=3),4,0.009193116
+Rust (rustc -C opt-level=3),5,0.009436250
+Rust (rustc -C opt-level=3),6,0.009354867
+Rust (rustc -C opt-level=3),7,0.009391945

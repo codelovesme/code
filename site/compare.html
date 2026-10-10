@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>code vs C vs Java vs Python — a practical comparison</title>
-<meta name="description" content="An evidence-based comparison of code, C, Java, and Python: performance, memory management, types, concurrency, tooling, and best-fit use cases." />
-<meta property="og:title" content="code vs C vs Java vs Python" />
-<meta property="og:description" content="A practical comparison of the code language with C, Java, and Python, based on their current runtime and language designs." />
+<title>code vs C vs Java vs Python vs Rust — a practical comparison</title>
+<meta name="description" content="An evidence-based comparison of code, C, Java, Python, and Rust: performance, memory management, types, concurrency, tooling, and best-fit use cases." />
+<meta property="og:title" content="code vs C vs Java vs Python vs Rust" />
+<meta property="og:description" content="A practical comparison of the code language with C, Java, Python, and Rust, based on their current runtime and language designs." />
 <meta property="og:type" content="website" />
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
 <style>
@@ -24,6 +24,7 @@
     --violet: #a78bfa;
     --amber: #fbbf24;
     --blue: #60a5fa;
+    --rust: #fb923c;
     --green: #86efac;
     --red: #f87171;
     --grad: linear-gradient(120deg, #5eead4 0%, #a78bfa 52%, #f472b6 100%);
@@ -82,12 +83,13 @@
   h3 { margin: 0 0 .45rem; font-size: 1.07rem; }
   p { margin: .5rem 0 1rem; }
   .section-head p, .muted { color: var(--muted); }
-  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
   .card { padding: 1.25rem; border: 1px solid var(--border); border-radius: 13px; background: var(--panel); }
   .card p:last-child { margin-bottom: 0; }
   .card .tag { display: inline-block; margin-bottom: .8rem; padding: .17rem .58rem; border: 1px solid var(--border); border-radius: 999px; color: var(--teal); font-family: var(--mono); font-size: .72rem; }
   .table-shell { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.018); }
   table { width: 100%; min-width: 1080px; border-collapse: collapse; text-align: left; }
+  .comparison-matrix { min-width: 1400px; }
   .compact-table table { min-width: 620px; }
   th, td { padding: .9rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
   thead th { position: sticky; top: 62px; z-index: 1; background: #111522; color: var(--text); font-size: .88rem; }
@@ -109,22 +111,25 @@
   .bar.c { background: var(--amber); }
   .bar.java { background: var(--violet); }
   .bar.python { background: var(--blue); }
+  .bar.rust { background: var(--rust); }
   .bar-value { color: var(--text); font: .8rem var(--mono); text-align: right; white-space: nowrap; }
   .lang-code { color: var(--teal); }
   .lang-c { color: var(--amber); }
   .lang-java { color: var(--violet); }
   .lang-python { color: var(--blue); }
+  .lang-rust { color: var(--rust); }
   .prose { max-width: 84ch; }
   .prose p, .prose li { color: var(--muted); }
   .prose strong { color: var(--text); }
   .prose ul { padding-left: 1.3rem; }
   .prose li { margin: .45rem 0; }
-  .runtime-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .runtime-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
   .runtime { padding: 1.2rem; border-top: 2px solid var(--border-2); background: var(--panel); border-radius: 0 0 12px 12px; }
   .runtime.code { border-top-color: var(--teal); }
   .runtime.c { border-top-color: var(--amber); }
   .runtime.java { border-top-color: var(--violet); }
   .runtime.python { border-top-color: var(--blue); }
+  .runtime.rust { border-top-color: var(--rust); }
   .runtime p { margin-bottom: 0; color: var(--muted); font-size: .91rem; }
   .good { color: var(--green); }
   .hard { color: var(--red); }
@@ -178,13 +183,14 @@
 <main class="wrap">
   <header>
     <div class="eyebrow">A practical language comparison · reviewed 10 October 2026</div>
-    <h1>Where does <span class="accent">code</span> fit next to C, Java, and Python?</h1>
+    <h1>Where does <span class="accent">code</span> fit next to C, Java, Python, and Rust?</h1>
     <p class="lede">
       These languages solve different problems. <code>code</code> is a small,
       data-oriented language built around JSON-shaped values and message handlers.
       C gives programmers direct control over memory and machine-facing details.
       Java is a statically typed, general-purpose language with a large runtime and ecosystem.
       Python is a dynamically typed, general-purpose language with an extensive standard library and package ecosystem.
+      Rust is a compiled systems language with ownership rules checked by its compiler.
       This guide compares the current designs so you can judge the trade-offs for your work.
     </p>
     <div class="hero-actions">
@@ -202,7 +208,7 @@
   <section id="at-a-glance">
     <div class="section-head">
       <div class="kicker">Quick orientation</div>
-      <h2>Four different starting points</h2>
+      <h2>Five different starting points</h2>
       <p>Choose by the kind of control, structure, and runtime your application needs.</p>
     </div>
     <div class="cards">
@@ -226,6 +232,11 @@
         <h3>Readable automation and broad application work</h3>
         <p>Useful for scripting, services, data work, and fast iteration, with dynamic typing, a large standard library, and a broad third-party package ecosystem.</p>
       </article>
+      <article class="card">
+        <span class="tag" style="color:var(--rust)">Rust</span>
+        <h3>Native performance with checked ownership</h3>
+        <p>Useful for systems, command-line tools, and services where native binaries, resource control, and compile-time memory-safety checks matter. Ownership and borrowing add rules developers must learn and work within.</p>
+      </article>
     </div>
   </section>
 
@@ -235,10 +246,10 @@
       <h2 id="matrix-title">The practical differences</h2>
       <p>On a narrow screen, swipe the table horizontally to see every column.</p>
     </div>
-    <div class="table-shell" role="region" aria-label="Comparison table for code, C, Java, and Python" tabindex="0">
-      <table>
+    <div class="table-shell" role="region" aria-label="Comparison table for code, C, Java, Python, and Rust" tabindex="0">
+      <table class="comparison-matrix">
         <thead>
-          <tr><th scope="col">Topic</th><th scope="col" class="lang-code">code</th><th scope="col" class="lang-c">C</th><th scope="col" class="lang-java">Java</th><th scope="col" class="lang-python">Python</th></tr>
+          <tr><th scope="col">Topic</th><th scope="col" class="lang-code">code</th><th scope="col" class="lang-c">C</th><th scope="col" class="lang-java">Java</th><th scope="col" class="lang-python">Python</th><th scope="col" class="lang-rust">Rust</th></tr>
         </thead>
         <tbody>
           <tr>
@@ -247,6 +258,7 @@
             <td>Procedural language with functions, structs, unions, pointers, and arrays.</td>
             <td>Class-based language with methods, interfaces, objects, arrays, and generics.</td>
             <td>General-purpose, dynamically typed language with functions, classes, modules, iterators, and several programming styles.</td>
+            <td>Multi-paradigm systems language with functions, structs, enums, traits, generics, and pattern matching; no class inheritance.</td>
           </tr>
           <tr>
             <th scope="row">Types</th>
@@ -254,6 +266,7 @@
             <td>Static types with integer, floating-point, pointer, aggregate, and other types; types and layouts are close to the implementation.</td>
             <td>Static types checked by the compiler, with primitive and reference types, classes, interfaces, and generic types.</td>
             <td>Types are determined at runtime. Optional annotations help external static type checkers, but Python does not enforce them at runtime.</td>
+            <td>Statically typed with type inference, algebraic enums, traits, and generics. The compiler checks ownership, borrowing, and lifetimes.</td>
           </tr>
           <tr>
             <th scope="row">Reuse and abstraction</th>
@@ -261,6 +274,7 @@
             <td>Functions, function pointers, macros, and aggregate types support many programming styles.</td>
             <td>Methods, classes, interfaces, lambdas, and generics support larger application structures.</td>
             <td>Functions, classes, modules, generators, and exceptions support reusable programs; the language is not restricted to one abstraction style.</td>
+            <td>Functions, modules and crates, structs, enums, traits, generics, and macros support reusable programs; composition favors traits over class inheritance.</td>
           </tr>
           <tr>
             <th scope="row">Numbers</th>
@@ -268,6 +282,7 @@
             <td>Several integer and floating types; useful when width, representation, or bit-level behavior matters.</td>
             <td>Primitive integer widths and <code>float</code>/<code>double</code>, as well as reference types.</td>
             <td>Integers have arbitrary precision; <code>float</code> is typically a C double-precision value. The standard library also provides complex, decimal, and fraction types.</td>
+            <td>Explicit signed and unsigned integer widths, plus <code>f32</code> and <code>f64</code>; numeric conversions are generally explicit.</td>
           </tr>
           <tr>
             <th scope="row">Updating data</th>
@@ -275,6 +290,7 @@
             <td>Programs can update arrays, structs, and pointed-to storage directly.</td>
             <td>Objects and collection implementations can be mutable or immutable, according to their APIs.</td>
             <td>Lists, dictionaries, and sets are mutable; tuples and frozensets are immutable. Mutability is part of each value type's behavior.</td>
+            <td>Bindings are immutable by default; <code>mut</code> enables mutation. Ownership and borrowing control how mutable data can be shared.</td>
           </tr>
           <tr>
             <th scope="row">Memory</th>
@@ -282,6 +298,7 @@
             <td>Programmers can choose storage duration and allocation strategy. Dynamic allocation is explicit through library APIs such as <code>malloc</code>/<code>free</code>.</td>
             <td>Objects are allocated on the managed heap and reclaimed by a garbage collector; the JVM provides collector and heap settings.</td>
             <td>Memory is managed by the implementation. In CPython, reference counting is supplemented by a collector for reference cycles; other Python implementations can differ.</td>
+            <td>Ownership and borrowing are checked at compile time; values are released when their owners leave scope. No tracing garbage collector is required.</td>
           </tr>
           <tr>
             <th scope="row">Execution</th>
@@ -289,6 +306,7 @@
             <td>Typical toolchains compile ahead of time to native machine code.</td>
             <td>Typical Java toolchains compile to JVM bytecode; the JVM interprets and JIT-compiles hot code.</td>
             <td>CPython typically compiles source to implementation-specific bytecode and interprets it. Bytecode is not a portable Python language contract, and other implementations may execute differently.</td>
+            <td><code>rustc</code> compiles ahead of time to native code, usually through LLVM; optimized builds use the compiler's release optimization settings.</td>
           </tr>
           <tr>
             <th scope="row">Errors</th>
@@ -296,6 +314,7 @@
             <td>Programs commonly use return codes, output parameters, or library conventions to report errors.</td>
             <td>Exceptions carry failures through method calls; Java also distinguishes checked exceptions in its type and compile-time rules.</td>
             <td>Exceptions propagate through calls until handled with <code>try</code>/<code>except</code>; functions do not declare checked exceptions.</td>
+            <td><code>Result</code> and <code>Option</code> represent recoverable outcomes; <code>?</code> propagates errors. Panics handle unrecoverable failures.</td>
           </tr>
           <tr>
             <th scope="row">Memory safety boundary</th>
@@ -303,6 +322,7 @@
             <td>Pointers and manual storage access give control, and invalid accesses can produce undefined behavior.</td>
             <td>Managed references and runtime checks avoid many manual pointer-lifetime errors; native interfaces can cross that boundary.</td>
             <td>Managed objects avoid direct pointer and lifetime work in ordinary Python code; native extensions can cross into lower-level code and its risks.</td>
+            <td>Safe Rust checks references and lifetimes at compile time and prevents data races through its type system. <code>unsafe</code> code can cross that safety boundary.</td>
           </tr>
           <tr>
             <th scope="row">Concurrency</th>
@@ -310,6 +330,7 @@
             <td>Low-level platform APIs and implementation/library facilities give control over concurrency.</td>
             <td>Standard concurrency APIs include platform and virtual threads, executors, and higher-level coordination tools.</td>
             <td>Threads, <code>asyncio</code>, and processes cover different needs. In the usual GIL-enabled CPython build, threads help with I/O overlap but do not run Python bytecode in parallel for CPU-bound work; optional free-threaded builds are available.</td>
+            <td>Standard threads plus ecosystem async runtimes; ownership and the <code>Send</code>/<code>Sync</code> traits catch many data races at compile time in safe code.</td>
           </tr>
           <tr>
             <th scope="row">I/O and ecosystem</th>
@@ -317,6 +338,7 @@
             <td>Standard library plus a broad platform and third-party ecosystem. Many platform capabilities are reachable through C interfaces.</td>
             <td>Large standard library and package ecosystem for server, desktop, data, and enterprise applications.</td>
             <td>Extensive standard library and a very large PyPI package ecosystem; many numeric and data packages use optimized native code for hot operations.</td>
+            <td>Cargo and <a href="https://crates.io/">crates.io</a> provide dependency management and a broad library ecosystem; native system and embedded libraries are common.</td>
           </tr>
           <tr>
             <th scope="row">Deployment</th>
@@ -324,6 +346,7 @@
             <td>Native artifacts can target a wide range of operating systems, processors, and embedded environments when a suitable toolchain is available.</td>
             <td>JVM bytecode runs on compatible Java runtimes; deployment includes the JVM runtime and application dependencies.</td>
             <td>Applications commonly ship with a compatible Python interpreter and dependencies; native packages can require platform-specific wheels or builds.</td>
+            <td>Builds target-specific native binaries; cross-compilation is supported, while target libraries and dynamic dependencies still shape deployment.</td>
           </tr>
           <tr>
             <th scope="row">Common fit</th>
@@ -331,6 +354,7 @@
             <td>Systems software, embedded targets, native libraries, and performance- or memory-constrained components.</td>
             <td>Long-lived, general-purpose applications that benefit from static types, a large ecosystem, and managed concurrency.</td>
             <td>Automation, scripting, web services, scientific and data work, and applications that benefit from readable syntax and rapid iteration.</td>
+            <td>Systems software, command-line tools, embedded work, and performance-sensitive services that benefit from compile-time memory-safety checks.</td>
           </tr>
         </tbody>
       </table>
@@ -350,7 +374,7 @@
       </article>
       <article class="runtime c">
         <h3 class="lang-c">C</h3>
-        <p>A native C compiler can optimize statically typed operations and data layouts ahead of execution. For tight numeric or low-level workloads, C offers fewer language-runtime abstractions and more control over representation. That makes it a strong fit for constrained code, though a particular C program is not automatically faster than every Java or compiled-code program.</p>
+        <p>A native C compiler can optimize statically typed operations and data layouts ahead of execution. For tight numeric or low-level workloads, C offers fewer language-runtime abstractions and more control over representation. That makes it a strong fit for constrained code, though a particular C program is not automatically faster than every Java, Rust, or compiled-code program.</p>
       </article>
       <article class="runtime java">
         <h3 class="lang-java">Java</h3>
@@ -360,10 +384,14 @@
         <h3 class="lang-python">Python</h3>
         <p>CPython's usual execution path includes dynamic dispatch and interpreter overhead, so tight numeric loops written in plain Python often run slower than optimized native code or a warmed-up JVM. Python is often used with libraries that move intensive work into compiled native kernels; benchmark the application and its actual dependencies to understand that effect.</p>
       </article>
+      <article class="runtime rust">
+        <h3 class="lang-rust">Rust</h3>
+        <p><code>rustc</code> compiles Rust ahead of time to optimized native code. Ownership checks happen during compilation, so ordinary safe Rust does not need a tracing garbage collector to reclaim owned values. The benchmark's optimized Rust binary led this particular numeric loop; that result depends on this workload, compiler, and CPU.</p>
+      </article>
     </div>
     <div class="prose">
       <h3>Measured numeric-loop benchmark</h3>
-      <p>Each process sums <code>i * i</code> for <code>i = 0…99,999</code>, repeats that 100 times, and checks each subtotal. All implementations use double-precision numbers and execute 10 million inner iterations. The Python result is a CPython 3.13.5 plain-language loop, without a native numerical package. Run-time results below are sorted from shortest to longest median; times are wall-clock medians over seven fresh process launches. Compiler times are separate medians over five builds.</p>
+      <p>Each process sums <code>i * i</code> for <code>i = 0…99,999</code>, repeats that 100 times, and checks each subtotal. All implementations use double-precision numbers and execute 10 million inner iterations. Python is a CPython 3.13.5 plain-language loop with no native numerical package; Rust is a Rust 1.97.1 <code>f64</code> loop compiled with <code>rustc -C opt-level=3 -C target-cpu=native</code>. Each timed run starts a fresh process; Python's source parsing and bytecode compilation happen during that run. Compiler/build times are separate medians over five invocations.</p>
     </div>
     <div class="table-shell">
       <table>
@@ -378,45 +406,52 @@
         </thead>
         <tbody>
           <tr>
-            <th scope="row">C, GCC <code>-O2</code></th>
-            <td>0.01468 s</td>
-            <td>0.0145–0.0148 s</td>
-            <td>681.39 M iterations/s</td>
-            <td>0.0318 s</td>
+            <th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th>
+            <td>0.00938 s</td>
+            <td>0.00919–0.00944 s</td>
+            <td>1,065.76 M iterations/s</td>
+            <td>0.07354 s</td>
           </tr>
           <tr>
             <th scope="row">C, GCC <code>-O3</code></th>
-            <td>0.01470 s</td>
-            <td>0.0145–0.0147 s</td>
-            <td>680.33 M iterations/s</td>
-            <td>0.0319 s</td>
+            <td>0.01476 s</td>
+            <td>0.01458–0.01490 s</td>
+            <td>677.29 M iterations/s</td>
+            <td>0.03239 s</td>
+          </tr>
+          <tr>
+            <th scope="row">C, GCC <code>-O2</code></th>
+            <td>0.01481 s</td>
+            <td>0.01460–0.01485 s</td>
+            <td>675.07 M iterations/s</td>
+            <td>0.03224 s</td>
           </tr>
           <tr>
             <th scope="row">Java 26, HotSpot defaults</th>
-            <td>0.0526 s</td>
-            <td>0.0494–0.0531 s</td>
-            <td>189.94 M iterations/s</td>
-            <td>1.0925 s</td>
+            <td>0.05318 s</td>
+            <td>0.04983–0.05474 s</td>
+            <td>188.02 M iterations/s</td>
+            <td>1.12794 s</td>
           </tr>
           <tr>
             <th scope="row"><code>code build --release</code> (native)</th>
-            <td>0.8415 s</td>
-            <td>0.8289–0.8575 s</td>
-            <td>11.88 M iterations/s</td>
-            <td>0.2542 s</td>
+            <td>0.8695 s</td>
+            <td>0.8391–0.9773 s</td>
+            <td>11.50 M iterations/s</td>
+            <td>0.26143 s</td>
           </tr>
           <tr>
             <th scope="row">Python 3.13.5 (CPython)</th>
-            <td>1.4037 s</td>
-            <td>1.3177–1.5032 s</td>
-            <td>7.12 M iterations/s</td>
-            <td>No separate build; parsing is in run time</td>
+            <td>1.4556 s</td>
+            <td>1.3868–1.5636 s</td>
+            <td>6.87 M iterations/s</td>
+            <td>No separate build; parsing/bytecode generation is in run time</td>
           </tr>
           <tr>
             <th scope="row"><code>code run</code> (interpreter)</th>
-            <td>4.8178 s</td>
-            <td>4.7572–4.8645 s</td>
-            <td>2.07 M iterations/s</td>
+            <td>4.8904 s</td>
+            <td>4.8624–4.9706 s</td>
+            <td>2.04 M iterations/s</td>
             <td>No separate build; parsing is in run time</td>
           </tr>
         </tbody>
@@ -432,42 +467,47 @@
         <div class="axis-ticks"><span>0 s</span><span>1 s</span><span>2 s</span><span>3 s</span><span>4 s</span><span>5 s</span></div>
         <span class="axis-value"></span>
       </div>
-      <div role="list" aria-label="Median runtime by implementation">
+      <div role="list" aria-label="Median runtime by implementation, fastest to slowest">
         <div class="benchmark-row" role="listitem">
-          <span class="bar-label">C, GCC <code>-O2</code></span>
-          <div class="bar-track"><span class="bar c" style="width:0.2936%" aria-hidden="true"></span></div>
-          <span class="bar-value">0.01468 s</span>
+          <span class="bar-label">Rust 1.97.1, <code>-C opt-level=3</code></span>
+          <div class="bar-track"><span class="bar rust" style="width:0.187659%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.00938 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">C, GCC <code>-O3</code></span>
-          <div class="bar-track"><span class="bar c" style="width:0.294%" aria-hidden="true"></span></div>
-          <span class="bar-value">0.01470 s</span>
+          <div class="bar-track"><span class="bar c" style="width:0.295295%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.01476 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label">C, GCC <code>-O2</code></span>
+          <div class="bar-track"><span class="bar c" style="width:0.296265%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.01481 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">Java 26, HotSpot defaults</span>
-          <div class="bar-track"><span class="bar java" style="width:1.052%" aria-hidden="true"></span></div>
-          <span class="bar-value">0.0526 s</span>
+          <div class="bar-track"><span class="bar java" style="width:1.063686%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.05318 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label"><code>code build --release</code></span>
-          <div class="bar-track"><span class="bar code" style="width:16.83%" aria-hidden="true"></span></div>
-          <span class="bar-value">0.8415 s</span>
+          <div class="bar-track"><span class="bar code" style="width:17.389283%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.8695 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">Python 3.13.5 (CPython)</span>
-          <div class="bar-track"><span class="bar python" style="width:28.074%" aria-hidden="true"></span></div>
-          <span class="bar-value">1.4037 s</span>
+          <div class="bar-track"><span class="bar python" style="width:29.111484%" aria-hidden="true"></span></div>
+          <span class="bar-value">1.4556 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label"><code>code run</code> (interpreter)</span>
-          <div class="bar-track"><span class="bar code" style="width:96.356%" aria-hidden="true"></span></div>
-          <span class="bar-value">4.8178 s</span>
+          <div class="bar-track"><span class="bar code" style="width:97.807882%" aria-hidden="true"></span></div>
+          <span class="bar-value">4.8904 s</span>
         </div>
       </div>
     </figure>
     <div class="prose">
       <h3>Compile/build times, fastest to slowest</h3>
-      <p>These are the separate compile or build medians from five invocations, sorted by measured time. The interpreter and Python entries have no separate build stage, so their startup and parsing are included in run time instead.</p>
+      <p>These are separate compiler/build-process medians over five invocations, sorted by measured time. Rust is compiled directly with <code>rustc</code>; Cargo startup is not part of its measurement. The interpreter and Python entries have no separate build invocation: <code>code run</code> parses source during its launch, and each <code>python3 sum_squares.py</code> launch parses and compiles the <code>.py</code> source to CPython bytecode. The benchmark passes the source file, not a precompiled <code>.pyc</code> file.</p>
     </div>
     <div class="table-shell compact-table" role="region" aria-label="Compile and build times ordered from fastest to slowest" tabindex="0">
       <table>
@@ -475,10 +515,11 @@
           <tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median compile/build time</th></tr>
         </thead>
         <tbody>
-          <tr><td>1 · fastest</td><th scope="row">C, GCC <code>-O2</code></th><td>0.0318 s</td></tr>
-          <tr><td>2</td><th scope="row">C, GCC <code>-O3</code></th><td>0.0319 s</td></tr>
-          <tr><td>3</td><th scope="row"><code>code build --release</code></th><td>0.2542 s</td></tr>
-          <tr><td>4 · slowest</td><th scope="row">Java 26, <code>javac --release 26</code></th><td>1.0925 s</td></tr>
+          <tr><td>1 · fastest</td><th scope="row">C, GCC <code>-O2</code></th><td>0.03224 s</td></tr>
+          <tr><td>2</td><th scope="row">C, GCC <code>-O3</code></th><td>0.03239 s</td></tr>
+          <tr><td>3</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.07354 s</td></tr>
+          <tr><td>4</td><th scope="row"><code>code build --release</code></th><td>0.26143 s</td></tr>
+          <tr><td>5 · slowest</td><th scope="row">Java 26, <code>javac --release 26</code></th><td>1.12794 s</td></tr>
         </tbody>
       </table>
     </div>
@@ -495,37 +536,42 @@
       <div role="list" aria-label="Median compile and build times by implementation, fastest to slowest">
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">C, GCC <code>-O2</code></span>
-          <div class="bar-track"><span class="bar c" style="width:0.636%" aria-hidden="true"></span></div>
-          <span class="bar-value">0.0318 s</span>
+          <div class="bar-track"><span class="bar c" style="width:0.644877%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.03224 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">C, GCC <code>-O3</code></span>
-          <div class="bar-track"><span class="bar c" style="width:0.638%" aria-hidden="true"></span></div>
-          <span class="bar-value">0.0319 s</span>
+          <div class="bar-track"><span class="bar c" style="width:0.647876%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.03239 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span>
+          <div class="bar-track"><span class="bar rust" style="width:1.470801%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.07354 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label"><code>code build --release</code></span>
-          <div class="bar-track"><span class="bar code" style="width:5.084%" aria-hidden="true"></span></div>
-          <span class="bar-value">0.2542 s</span>
+          <div class="bar-track"><span class="bar code" style="width:5.228679%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.26143 s</span>
         </div>
         <div class="benchmark-row" role="listitem">
           <span class="bar-label">Java 26, <code>javac --release 26</code></span>
-          <div class="bar-track"><span class="bar java" style="width:21.85%" aria-hidden="true"></span></div>
-          <span class="bar-value">1.0925 s</span>
+          <div class="bar-track"><span class="bar java" style="width:22.558805%" aria-hidden="true"></span></div>
+          <span class="bar-value">1.12794 s</span>
         </div>
       </div>
     </figure>
     <div class="prose">
-      <p><strong>Test machine and commands:</strong> Intel Core i7-5930K at 3.50 GHz, x86-64, Debian 13, Linux 6.12.107; runs pinned to logical CPU 0. <code>code</code> v2.14.3 (compiler source commit <code>80d8961</code>) used <code>code build --release</code> (LLVM <code>-O2</code>); C used GCC 14.2 with <code>-std=c17 -O2/-O3 -march=native</code>; Java used Temurin OpenJDK/Javac 26.0.2.1 with default HotSpot settings; Python used CPython 3.13.5 and IEEE 754 binary64 <code>float</code> values.</p>
-      <p>Process startup is included in each run. Java includes JVM startup and JIT warm-up; <code>code run</code> and Python include parsing and interpretation. Build times are measured separately over five invocations; interpreted entries have no separate build time. <code>-march=native</code> tunes C for this particular CPU. This numeric loop does not measure memory, allocation, I/O, concurrency, or application-level work, and the runtimes are not directly comparable for every workload.</p>
+      <p><strong>Test machine and commands:</strong> Intel Core i7-5930K at 3.50 GHz, x86-64, Debian 13, Linux 6.12.107; runs pinned to logical CPU 0. <code>code</code> v2.14.4 (compiler source commit <code>1145de8</code>) used <code>code build --release</code> (LLVM <code>-O2</code>); C used GCC 14.2 with <code>-std=c17 -O2/-O3 -march=native</code>; Java used Temurin OpenJDK/Javac 26.0.2.1 with default HotSpot settings; Python used CPython 3.13.5 and IEEE 754 binary64 <code>float</code> values; Rust used <code>rustc 1.97.1</code>, edition 2024, <code>-C opt-level=3 -C target-cpu=native</code>, and <code>f64</code>.</p>
+      <p>Process startup is included in each runtime. Java includes JVM startup and JIT warm-up; <code>code run</code> and Python include source processing. For Python, the harness passes the <code>.py</code> source file to CPython on each launch, so source parsing and bytecode generation are timed along with the loop. The compiled Rust, C, Java, and native <code>code</code> programs are built first; each compiler/build command is timed separately over five invocations. <code>-march=native</code> and <code>target-cpu=native</code> tune generated code for this particular CPU. This numeric loop does not measure memory, allocation, I/O, concurrency, or application-level work, and the runtimes are not directly comparable for every workload.</p>
       <p>Reproduce the measurements with the <a href="https://github.com/codelovesme/code/tree/main/benchmarks/language-comparison">benchmark sources and runner</a>; inspect the <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.csv">raw run samples</a> and <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.json">full machine and compiler report</a>.</p>
     </div>
     <div class="prose">
-      <p><strong>The table is one measurement; these broader expectations come from the implementations.</strong> C's explicit types and direct representations are a natural advantage for CPU-heavy numeric work. Java's optimizing JIT can make it highly competitive for long-running workloads. Plain CPython loops pay dynamic dispatch and interpreter costs, while Python libraries can call compiled kernels for intensive operations. The compiled <code>code</code> backend avoids interpreter dispatch, but dynamic values, generic runtime operations, and allocation-heavy data updates remain part of its model.</p>
+      <p><strong>The table is one measurement; these broader expectations come from the implementations.</strong> Rust and C emit optimized native code for this workload; Java's JIT can optimize hot code as it runs. Plain CPython loops pay dynamic dispatch and interpreter costs, while Python libraries can call compiled kernels for intensive operations. The compiled <code>code</code> backend avoids interpreter dispatch, but dynamic values, generic runtime operations, and allocation-heavy data updates remain part of its model. Compiler flags, workload shape, and target hardware can change the ordering.</p>
       <ul>
         <li><strong>Match the workload.</strong> Compare equivalent algorithms and outputs. A task mostly waiting on a network or database may spend little time in language-level computation.</li>
         <li><strong>Separate cold and warm behavior.</strong> Report startup and compilation separately from steady-state throughput; warm up the JVM before measuring hot code.</li>
-        <li><strong>Compare both code modes.</strong> A comparison with C or Java should include <code>code run</code> and <code>code build --release</code>, rather than treating the interpreter as the only implementation.</li>
+        <li><strong>Compare both code modes.</strong> A comparison with C, Java, or Rust should include <code>code run</code> and <code>code build --release</code>, rather than treating the interpreter as the only implementation.</li>
         <li><strong>Measure more than elapsed time.</strong> Peak resident memory, allocation rate, and output correctness reveal trade-offs a single timing hides.</li>
       </ul>
     </div>
@@ -542,7 +588,7 @@
         <span class="tag">code values</span>
         <h3>Automatic reference counting</h3>
         <p>Strings, arrays, and objects are reference-counted internally. Values cannot be mutated in place, so the language cannot construct reference cycles; when the last reference goes away, the runtime releases the heap block. A program author does not call <code>malloc</code> or <code>free</code> for a <code>.code</code> value, and there is no tracing garbage collector.</p>
-        <p>That simplicity costs bookkeeping and a dynamic representation. Constructing a new array or object by combining values may allocate and copy references. Large repeated updates can therefore use more time and memory than mutating a purpose-built C or Java collection.</p>
+        <p>That simplicity costs bookkeeping and a dynamic representation. Constructing a new array or object by combining values may allocate and copy references. Large repeated updates can therefore use more time and memory than mutating a purpose-built C, Java, or Rust collection.</p>
         <p><a href="https://github.com/codelovesme/code/blob/main/src/value.rs">Interpreter value model</a> · <a href="https://github.com/codelovesme/code/blob/main/src/runtime.c">Native runtime</a></p>
       </article>
       <article class="card">
@@ -564,9 +610,16 @@
         <p>Automatic reclamation removes manual lifetime bookkeeping from typical code, but does not make memory use disappear. Object overhead, retained references, allocation patterns, and extension modules all affect an application's footprint.</p>
         <p><a href="https://docs.python.org/3.15/c-api/memory.html">CPython memory management</a> · <a href="https://docs.python.org/3.15/library/gc.html">cyclic garbage collector</a></p>
       </article>
+      <article class="card">
+        <span class="tag" style="color:var(--rust)">Rust values</span>
+        <h3>Ownership and borrowing</h3>
+        <p>Each value has an owner, and the compiler checks moves, references, and lifetimes. When an owner leaves scope, its value is dropped and its resources are released; ordinary safe Rust needs no tracing garbage collector.</p>
+        <p>This gives predictable reclamation and compile-time checks for many lifetime errors, but ownership and borrowing rules shape how data can be shared and mutated. <code>unsafe</code> code and foreign interfaces still require care.</p>
+        <p><a href="https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html">The Rust Book: ownership</a></p>
+      </article>
     </div>
     <div class="prose">
-      <p><strong>A useful summary:</strong> C offers the most direct memory control and the most lifetime responsibility. Java and CPython automate object reclamation through their runtimes, with collector behavior and object costs that depend on the implementation. <code>code</code> automates release for its small immutable value graph using reference counts, while paying for dynamic tagged values and their runtime bookkeeping.</p>
+      <p><strong>A useful summary:</strong> C offers the most direct memory control and the most lifetime responsibility. Rust checks ownership and borrowing at compile time, then releases values deterministically without a tracing collector. Java and CPython reclaim objects through managed runtimes; collector behavior and object costs depend on the implementation. <code>code</code> uses reference counts for its small immutable value graph, with dynamic-value bookkeeping and allocation costs.</p>
       <p>The current native module ABI reserves an 80-byte stride for each <code>CodeValue</code> slot. That is a concrete ABI layout detail, not a measurement of total memory per variable or a promise about future ABI versions. See the <a href="https://github.com/codelovesme/code/blob/main/src/code_abi.h">current ABI definition</a>.</p>
     </div>
   </section>
@@ -579,8 +632,9 @@
     <div class="prose">
       <p><code>code</code> keeps its value space deliberately small: <code>Number</code>, <code>String</code>, <code>Boolean</code>, <code>Null</code>, <code>Array</code>, and <code>Object</code>. A binding can hold any of those kinds. Optional annotations are development-time contracts: <code>code check</code> and <code>--strict</code> report mismatches they can prove from known handlers and values, while dynamic data is still checked as it runs.</p>
       <p>C and Java both have static type systems. C lets programs express low-level representation and pointer operations; the language does not automatically make an out-of-bounds access safe. Java's compiler rejects many type mismatches before execution, while runtime checks still matter for cases such as null references, casts, and array stores. Static types reduce some classes of mistakes; they do not prove that a program's logic is correct.</p>
+      <p>Rust is also statically typed, with type inference, enums, traits, and generics. Its ownership and borrowing rules are enforced by the compiler, which catches many invalid-reference and data-race mistakes before a program runs; unsafe blocks and logic errors still need review.</p>
       <p>Python determines types at runtime, which supports concise and flexible code but moves many type errors to execution. Type annotations can document intent and feed external static checkers, but the Python runtime does not enforce them. Python's built-in <code>int</code> grows to hold arbitrary-precision integers; that convenience differs from fixed-width machine integer types.</p>
-      <p>For anyone sending or receiving JSON-shaped data, <code>code</code>'s six-kind model can keep data and messages direct. Python offers flexible built-in collections and optional annotation-based tooling. If a program needs distinct domain types, generic collection APIs, typed numeric widths, or compiler-enforced guarantees across a large codebase, C or Java provides stronger compile-time checks.</p>
+      <p>For anyone sending or receiving JSON-shaped data, <code>code</code>'s six-kind model can keep data and messages direct. Python offers flexible built-in collections and optional annotation-based tooling. C is the choice for low-level representation control; Rust adds compiler-checked ownership and memory safety in safe code; Java offers a broad static type system with managed memory.</p>
     </div>
   </section>
 
@@ -593,6 +647,7 @@
       <p>In <code>code</code>, a handler is the unit of reuse: it accepts a particle and returns a particle, and <code>emit</code> dispatches it. The language has one loop form and intentionally has no functions, recursion, or in-place mutation. This keeps the surface area small and makes data exchange explicit, but it limits how freely a program can be decomposed as it grows.</p>
       <p>C and Java both support ordinary functions or methods, recursion, and richer control flow. Java also provides classes, interfaces, and generics; C provides structs, unions, pointers, and function pointers. Those facilities make them more flexible choices for algorithm-heavy code and large general-purpose systems. The extra surface area asks developers to learn and maintain more concepts.</p>
       <p>Python also provides functions, classes, modules, comprehensions, iterators, generators, and exceptions. It is a general-purpose language with a broad abstraction toolkit, while dynamic typing and concise syntax support quick iteration. Its extensive standard library and package ecosystem make it common in automation, services, scientific computing, and data applications.</p>
+      <p>Rust uses functions, modules and crates, structs, enums, traits, generics, and pattern matching. It supports low-level systems programming while checking ownership and many concurrency constraints during compilation. The borrow checker can require a different way to structure data and APIs, especially for newcomers.</p>
     </div>
   </section>
 
@@ -606,6 +661,7 @@
       <p>C has no built-in exception model comparable to Java's. C libraries and applications use conventions such as return values, error codes, and output parameters. That keeps control explicit, but callers must consistently check the conventions they use. Invalid pointer or lifetime operations can be undefined behavior.</p>
       <p>Java exceptions propagate through method calls and can be caught at chosen boundaries; checked exceptions are also part of method declarations and compile-time checking. The JVM enforces many runtime checks, but exceptions still need thoughtful handling and native code can bypass managed-language guarantees.</p>
       <p>Python exceptions likewise propagate through calls until a matching <code>except</code> handler catches them. This keeps error handling in the control flow rather than checked method declarations; unhandled exceptions produce a traceback and end the current top-level operation.</p>
+      <p>Rust commonly returns <code>Result</code> for recoverable errors and <code>Option</code> for values that may be absent. The <code>?</code> operator propagates errors through the call chain, while panics are generally reserved for unrecoverable failures.</p>
       <p><strong>One important limit for code:</strong> native modules use an in-process ABI. They can perform powerful system work, but they are not isolated from the process. The language's lack of raw pointers does not sandbox a linked C or Rust module.</p>
     </div>
   </section>
@@ -619,8 +675,10 @@
       <p>The <code>code</code> language itself does not expose thread creation or a general async/await system. Its runtime can receive particles from modules, and native modules may do work on their own threads. That makes the module and host design part of any concurrent application; it is not a general-purpose concurrency API inside the language.</p>
       <p>C applications typically use operating-system APIs and platform libraries where they need concurrency. Java includes a larger standard concurrency toolkit, including executors and virtual threads for high-throughput tasks that mostly wait for I/O. Virtual threads make blocking I/O tasks easier to scale; they do not make a CPU-bound thread run faster.</p>
       <p>Python offers threads, <code>asyncio</code>, and multiprocessing. In the usual GIL-enabled CPython build, threads are useful for overlapping I/O, while CPU-bound Python bytecode typically needs processes or native code for parallel execution. Optional free-threaded CPython builds have been available since Python 3.13, but are not the default and depend on compatible extension modules.</p>
-      <p><code>code</code> keeps I/O out of its core and requires a linked module to provide capabilities such as terminal, files, and network access. This makes those dependencies visible and swappable, but the first-party modules and community ecosystem are much smaller than C's or Java's.</p>
+      <p>Rust provides standard threads and supports async programming through its ecosystem. The ownership system and <code>Send</code>/<code>Sync</code> traits prevent many data races in safe concurrent code at compile time; async applications usually select a separate executor/runtime library.</p>
+      <p><code>code</code> keeps I/O out of its core and requires a linked module to provide capabilities such as terminal, files, and network access. This makes those dependencies visible and swappable, but the first-party modules and community ecosystem are much smaller than those around C, Java, or Rust.</p>
       <p>Python includes a broad standard library for common file, network, data, and operating-system tasks, alongside a large third-party ecosystem. That breadth speeds up prototyping and integration, while package versions, dependency management, and native package compatibility become part of deployment.</p>
+      <p>Rust's Cargo build tool manages packages and dependencies from crates.io. Its ecosystem covers command-line applications, servers, native libraries, and embedded targets; platform support and library availability still vary by target.</p>
     </div>
   </section>
 
@@ -666,6 +724,15 @@
         </ul>
         <p class="good"><strong>Strong fit</strong> for scripting, integration, and applications that benefit from its broad library ecosystem.</p>
       </article>
+      <article class="card">
+        <h3 class="lang-rust">Choose Rust when…</h3>
+        <ul>
+          <li>you need a native systems language with compile-time ownership checks;</li>
+          <li>predictable resource release and memory safety in safe code matter;</li>
+          <li>you can invest in the compiler and borrow-checker learning curve.</li>
+        </ul>
+        <p class="good"><strong>Strong fit</strong> for systems, embedded work, native tools, and services where control and safety both matter.</p>
+      </article>
     </div>
   </section>
 
@@ -682,10 +749,11 @@
       <li>Oracle's <a href="https://docs.oracle.com/en/java/javase/26/gctuning/index.html">Java SE 26 garbage-collection guide</a> and <a href="https://docs.oracle.com/en/java/javase/26/core/virtual-threads.html">virtual threads documentation</a>.</li>
       <li>Python's official docs on <a href="https://docs.python.org/3.15/library/typing.html">type annotations</a>, <a href="https://docs.python.org/3.15/library/stdtypes.html#numeric-types-int-float-complex">built-in numeric types</a>, and <a href="https://docs.python.org/3.15/library/exceptions.html">exceptions</a>.</li>
       <li>Python's official docs on <a href="https://docs.python.org/3.15/library/gc.html">cyclic garbage collection</a>, <a href="https://docs.python.org/3.15/library/threading.html">threading and the GIL</a>, <a href="https://docs.python.org/3.15/library/dis.html">CPython bytecode</a>, and the <a href="https://docs.python.org/3.15/library/index.html">standard library</a>; the <a href="https://pypi.org/">Python Package Index</a>.</li>
+      <li>The official <a href="https://doc.rust-lang.org/book/">Rust Book</a> chapters on <a href="https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html">ownership</a> and <a href="https://doc.rust-lang.org/book/ch16-00-concurrency.html">concurrency</a>, the <a href="https://doc.rust-lang.org/reference/">Rust Reference</a>, the <a href="https://doc.rust-lang.org/rustc/codegen-options/index.html">rustc code-generation options</a>, and the <a href="https://doc.rust-lang.org/cargo/">Cargo Book</a>.</li>
       <li>LLVM's <a href="https://llvm.org/docs/CodeGenerator.html">target-independent code generator documentation</a>.</li>
       <li>The current <a href="https://github.com/codelovesme/code/blob/main/README.md">code language guide</a>, <a href="https://github.com/codelovesme/code/blob/main/src/runtime.c">native runtime</a>, and <a href="https://github.com/codelovesme/code/blob/main/src/code_abi.h">native module ABI</a>.</li>
     </ul>
-    <div class="prose"><p>This page describes the current <code>code</code> implementation as of 10 October 2026. C is described using the C23 standard, Java using Java SE 26 documentation, and Python using the official Python 3.15 documentation. CPython-specific details are labeled as such; Python implementations can differ. The benchmark was run on 9 October 2026 and is not a general language ranking. Compiler flags, runtime settings, hardware, and program design can change performance results.</p></div>
+    <div class="prose"><p>This page describes the current <code>code</code> implementation as of 10 October 2026. C is described using the C23 standard, Java using Java SE 26 documentation, Python using the official Python 3.15 documentation, and Rust using the official Rust documentation. CPython-specific details are labeled as such; Python implementations can differ. The benchmark was run on 10 October 2026 and is not a general language ranking. Compiler flags, runtime settings, hardware, and program design can change performance results.</p></div>
   </section>
 </main>
 

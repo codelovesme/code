@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the small Code/C/Java/Python comparison benchmark on this machine."""
+"""Run the small Code/C/Java/Python/Rust comparison benchmark on this machine."""
 
 from __future__ import annotations
 
@@ -90,6 +90,7 @@ def main() -> None:
     javac = command_from_env("JAVAC", "javac")
     java = command_from_env("JAVA", "java")
     python = command_from_env("PYTHON", "python3")
+    rustc = command_from_env("RUSTC", "rustc")
 
     pinned_cpu = None
     if not args.no_pin and hasattr(os, "sched_getaffinity"):
@@ -114,6 +115,10 @@ def main() -> None:
                 "--release", "26", "-d", str(temp / f"java-classes-{index}"),
                 str(HERE / "SumSquares.java"),
             ],
+            "rustc --edition 2024 -C opt-level=3 -C target-cpu=native": lambda index: rustc + [
+                "--edition", "2024", "-C", "opt-level=3", "-C", "target-cpu=native",
+                str(HERE / "sum_squares.rs"), "-o", str(temp / f"sum-squares-rust-{index}"),
+            ],
         }
         for optimization in ("-O2", "-O3"):
             label = f"GCC {optimization} -march=native"
@@ -137,6 +142,7 @@ def main() -> None:
             for optimization in ("-O2", "-O3")
         }
         java_classes = temp / f"java-classes-{args.compile_runs - 1}"
+        rust_out = temp / f"sum-squares-rust-{args.compile_runs - 1}"
 
         modes = {
             "code run (interpreter)": code + ["run", str(HERE / "sum_squares.code")],
@@ -145,6 +151,7 @@ def main() -> None:
             "C (GCC -O3 -march=native)": [str(c_out["-O3"])],
             "Java 26 (HotSpot default)": java + ["-cp", str(java_classes), "SumSquares"],
             "Python (CPython)": python + [str(HERE / "sum_squares.py")],
+            "Rust (rustc -C opt-level=3)": [str(rust_out)],
         }
         samples: dict[str, list[float]] = {name: [] for name in modes}
         order_rng = random.Random(20261009)
@@ -205,12 +212,14 @@ def main() -> None:
                     ],
                     REPO,
                 ).stdout.strip(),
+                "rust_compiler": version(rustc + ["--version"], REPO),
                 "code_compile_command": "code build --release (LLVM optimization level -O2)",
                 "c_compile_commands": [
                     "gcc -std=c17 -O2 -march=native",
                     "gcc -std=c17 -O3 -march=native",
                 ],
                 "java_compile_command": "javac --release 26; HotSpot default runtime settings",
+                "rust_compile_command": "rustc --edition 2024 -C opt-level=3 -C target-cpu=native",
             },
             "timed_runs_per_mode": args.runs,
             "compile_runs_per_compiler": args.compile_runs,
@@ -218,11 +227,13 @@ def main() -> None:
             "samples_seconds": samples,
             "summary": rows,
             "notes": [
-                "Process startup is included in runtime measurements; compilation is excluded.",
-                "Python and code run execute source directly; parsing is part of their runtime measurement.",
+                "Process startup is included in runtime measurements; separate ahead-of-time build time is excluded.",
+                "Python and code run execute source directly; source parsing is part of their runtime measurement, and CPython compiles the Python source to bytecode during each launch.",
+                "Rust, C, Java, and code native run prebuilt binaries; their compilation is measured separately.",
                 "No separate memory measurement was made.",
                 "One workload is a useful data point, not a universal language ranking.",
-                "Python uses float (IEEE 754 binary64) values; its process startup and source parsing are included in run time.",
+                "Python uses float (IEEE 754 binary64) values; its process startup, source parsing, and bytecode generation are included in run time.",
+                "Rust uses f64 values and a rustc release optimization level of 3, targeting the local CPU.",
             ],
         }
         (args.output_dir / "results.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -236,11 +247,14 @@ def main() -> None:
             "C (GCC -O2 -march=native)": "GCC -O2 -march=native",
             "C (GCC -O3 -march=native)": "GCC -O3 -march=native",
             "Java 26 (HotSpot default)": "javac --release 26",
+            "Rust (rustc -C opt-level=3)": "rustc --edition 2024 -C opt-level=3 -C target-cpu=native",
         }
         for row in rows:
             compile_label = compile_labels.get(row["mode"])
             if compile_label:
                 compile_value = f"{median(compile_samples[compile_label]):.3f}"
+            elif row["mode"] == "Python (CPython)":
+                compile_value = "bytecode in run"
             else:
                 compile_value = "parse in run"
             print(
