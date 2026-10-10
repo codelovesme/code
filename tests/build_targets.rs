@@ -1022,7 +1022,7 @@ fn timings_name_each_stage_only_when_asked() {
         "IR generation",
         "IR verify",
         "LLVM backend",
-        "runtime compile and link",
+        "link",
         "other",
         "total",
         "IR: ",
@@ -1042,5 +1042,60 @@ fn timings_name_each_stage_only_when_asked() {
     assert!(quiet.is_empty(), "a plain build printed: {quiet}");
     let (_, off) = build(&[], Some("0"));
     assert!(off.is_empty(), "CODE_TIMINGS=0 printed: {off}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// The runtime comes compiled with `code` (ticket 111). When it is not —
+/// `CODE_RUNTIME_FROM_SOURCE=1` stands in for a `code` built without a C
+/// compiler — the first build compiles it and keeps it in the shared cache,
+/// and the next build uses the kept object instead of compiling again.
+#[test]
+fn a_runtime_compiled_from_source_is_cached_and_reused() {
+    let dir = temp_dir("runtime-cache");
+    let cache = dir.join("cache");
+    let src = dir.join("arith.code");
+    fs::copy(fixture("arithmetic_basic.code"), &src).expect("copy fixture");
+    let build = |out: &str| {
+        let output = Command::new(env!("CARGO_BIN_EXE_code"))
+            .arg("build")
+            .arg(&src)
+            .args(["--timings", "-o", out])
+            .env("CODE_RUNTIME_FROM_SOURCE", "1")
+            .env("CODE_CACHE_DIR", &cache)
+            .current_dir(&dir)
+            .output()
+            .expect("spawn code build");
+        assert!(
+            output.status.success(),
+            "code build failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            Command::new(dir.join(out))
+                .status()
+                .expect("run it")
+                .success(),
+            "{out} did not run"
+        );
+        String::from_utf8_lossy(&output.stderr).into_owned()
+    };
+    let first = build("first");
+    assert!(
+        first.contains("runtime compile"),
+        "the first build did not compile the runtime:\n{first}"
+    );
+    let kept: Vec<_> = fs::read_dir(cache.join("runtime"))
+        .expect("a runtime cache")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        kept.len() == 1 && kept[0].ends_with("-exe.o"),
+        "expected one cached exe runtime, found {kept:?}"
+    );
+    let second = build("second");
+    assert!(
+        !second.contains("runtime compile"),
+        "the second build compiled again:\n{second}"
+    );
     let _ = fs::remove_dir_all(&dir);
 }

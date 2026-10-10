@@ -177,6 +177,25 @@ mod compile {
     const CODE_ABI_H: &str = include_str!("code_abi.h");
     /// Freestanding libc-shaped helpers used only by the wasm runtime build.
     const WASM_SHIM_H: &str = include_str!("wasm_shim.h");
+    /// `runtime.c` compiled `-O2` when `code` itself was built (`build.rs`),
+    /// for this machine and for wasm32 (ticket 111). Compiling it inside
+    /// every build used to be most of a small program's build time, and was
+    /// done without optimisation. Empty when `build.rs` had no compiler for
+    /// it; then `runtime_object` compiles it once and caches it.
+    const RUNTIME_EXE_O: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/runtime-exe.o"));
+    const RUNTIME_SHARED_O: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/runtime-shared.o"));
+    const RUNTIME_WASM_O: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/runtime-wasm32.o"));
+    /// The flags `build.rs` compiles the runtime with — the fallback must
+    /// make the same objects (see `build.rs` for why exe and shared differ).
+    const EXE_RUNTIME_FLAGS: &[&str] = &["-O2", "-fPIE", "-pthread"];
+    const SHARED_RUNTIME_FLAGS: &[&str] = &["-O2", "-fPIC", "-pthread"];
+    const WASM_RUNTIME_FLAGS: &[&str] = &[
+        "--target=wasm32-unknown-unknown",
+        "-O2",
+        "-nostdlib",
+        "-fno-builtin",
+        "-DCODE_WASM",
+    ];
     /// The language's own half of a page: the four functions a host with no
     /// operating system has to supply, and the wiring that lets a page fire a
     /// particle back.
@@ -305,10 +324,6 @@ mod compile {
 
         let scratch = scratch_dir()?;
         let obj_path = scratch.join("program.o");
-        let runtime_c_path = scratch.join("runtime.c");
-        let abi_h_path = scratch.join("code_abi.h");
-        let wasm_shim_path = scratch.join("wasm_shim.h");
-        let runtime_obj_path = scratch.join("runtime.o");
 
         // Every path below is inside `scratch`, so the whole directory can be
         // removed as one on the way out, on success and failure alike.
@@ -316,16 +331,16 @@ mod compile {
             codegen::compile_to_object_traced(&program, target, &obj_path, release, tracing)?;
 
             // `Static` never links against the C runtime — there is no link
-            // step beyond archiving the object — so skip writing the sources
-            // it would not even read.
-            if !matches!(target, BuildTarget::Static) {
-                fs::write(&runtime_c_path, RUNTIME_C)
-                    .map_err(|e| format!("write runtime.c: {e}"))?;
-                fs::write(&abi_h_path, CODE_ABI_H).map_err(|e| format!("write code_abi.h: {e}"))?;
-            }
+            // step beyond archiving the object.
+            let wasm = target == BuildTarget::Wasm;
+            let runtime_obj = if matches!(target, BuildTarget::Static) {
+                None
+            } else {
+                Some(runtime_object(target, &scratch)?)
+            };
 
             // Every `.a` static module `link`ed in this program (see
-            // `ast::NativeFormat::Static`) — appended after `runtime_c_path`
+            // `ast::NativeFormat::Static`) — appended after the runtime object
             // so its unresolved `code_number`/etc. references are satisfied
             // by that plain (non-archive) object regardless of `.a`-vs-.o
             // ordering quirks, while `obj_path`'s own references to
@@ -364,19 +379,12 @@ mod compile {
                 }
             }
 
-            if target == BuildTarget::Wasm {
-                fs::write(&wasm_shim_path, WASM_SHIM_H)
-                    .map_err(|e| format!("write wasm_shim.h: {e}"))?;
-                crate::timings::measure("runtime compile", || {
-                    compile_wasm_runtime(
-                        &runtime_c_path,
-                        &wasm_shim_path,
-                        &abi_h_path,
-                        &runtime_obj_path,
-                    )
-                })?;
+            // Unused by `Static`, which only archives.
+            let runtime_obj = runtime_obj.unwrap_or_default();
+            let runtime_obj = runtime_obj.as_path();
+            if wasm {
                 crate::timings::measure("link", || {
-                    link_wasm(&obj_path, &runtime_obj_path, &static_modules, out_path)
+                    link_wasm(&obj_path, runtime_obj, &static_modules, out_path)
                 })?;
                 if let Err(error) = validate_wasm_function_locals(out_path) {
                     // Do not leave an artifact that the browser cannot load.
@@ -386,14 +394,12 @@ mod compile {
                 return write_web_host(out_path, &prefixes);
             }
 
-            // Native `cc` compiles `runtime.c` inside the link, so the two are
-            // one stage here.
             match target {
-                BuildTarget::Exe => crate::timings::measure("runtime compile and link", || {
-                    cc_link(&[&obj_path, &runtime_c_path], &static_modules, out_path)
+                BuildTarget::Exe => crate::timings::measure("link", || {
+                    cc_link(&[&obj_path, runtime_obj], &static_modules, out_path)
                 }),
-                BuildTarget::Shared => crate::timings::measure("runtime compile and link", || {
-                    cc_link_shared(&[&obj_path, &runtime_c_path], &static_modules, out_path)
+                BuildTarget::Shared => crate::timings::measure("link", || {
+                    cc_link_shared(&[&obj_path, runtime_obj], &static_modules, out_path)
                 }),
                 BuildTarget::Static => {
                     crate::timings::measure("archive", || ar_archive(&obj_path, out_path))
@@ -471,29 +477,122 @@ mod compile {
         )
     }
 
-    fn compile_wasm_runtime(
-        runtime_c_path: &Path,
-        shim_path: &Path,
-        abi_h_path: &Path,
-        runtime_obj_path: &Path,
+    /// The runtime object a build links, as a file: the one embedded in this
+    /// binary (`build.rs`), written into the build's scratch directory; or,
+    /// when none is embedded for this target, one compiled once and kept in
+    /// the shared cache (`~/.cache/code/runtime/`), keyed by everything that
+    /// makes it — the runtime's sources, the flags, the target and this
+    /// compiler's version — so a cached object is never one of the wrong
+    /// make.
+    fn runtime_object(target: BuildTarget, scratch: &Path) -> Result<PathBuf, String> {
+        let wasm = target == BuildTarget::Wasm;
+        let (embedded, flags, kind) = match target {
+            BuildTarget::Wasm => (RUNTIME_WASM_O, WASM_RUNTIME_FLAGS, "wasm32"),
+            BuildTarget::Shared => (RUNTIME_SHARED_O, SHARED_RUNTIME_FLAGS, "shared"),
+            _ => (RUNTIME_EXE_O, EXE_RUNTIME_FLAGS, "exe"),
+        };
+        // `CODE_RUNTIME_FROM_SOURCE=1` takes the fallback even when an object
+        // is embedded — for tests of the fallback, and for someone changing
+        // `runtime.c` with a `code` built before the change.
+        let from_source =
+            std::env::var("CODE_RUNTIME_FROM_SOURCE").is_ok_and(|v| !v.is_empty() && v != "0");
+        if !embedded.is_empty() && !from_source {
+            let path = scratch.join("runtime.o");
+            fs::write(&path, embedded).map_err(|e| format!("write runtime.o: {e}"))?;
+            return Ok(path);
+        }
+        let key = runtime_key(wasm, flags);
+        let name = format!("{key:016x}-{kind}.o");
+        let cached = cache_dir().map(|dir| dir.join("runtime").join(&name));
+        if let Some(path) = cached.as_ref().filter(|p| p.is_file()) {
+            return Ok(path.clone());
+        }
+        let built = scratch.join("runtime.o");
+        crate::timings::measure("runtime compile", || {
+            compile_runtime(wasm, flags, scratch, &built)
+        })?;
+        // Kept for next time when the cache can be written; a build that
+        // cannot write it still has the object it just made. Written beside
+        // and renamed, so a build running at the same time never reads half.
+        if let Some(path) = cached {
+            if let Some(dir) = path.parent() {
+                let partial = dir.join(format!("{name}.{}.partial", std::process::id()));
+                let kept = fs::create_dir_all(dir).is_ok()
+                    && fs::copy(&built, &partial).is_ok()
+                    && fs::rename(&partial, &path).is_ok();
+                if !kept {
+                    let _ = fs::remove_file(&partial);
+                }
+            }
+        }
+        Ok(built)
+    }
+
+    /// Compiles `runtime.c` with `flags` (`EXE_`/`SHARED_RUNTIME_FLAGS` with `cc`,
+    /// `WASM_RUNTIME_FLAGS` with `clang`) into `obj`.
+    fn compile_runtime(
+        wasm: bool,
+        flags: &[&str],
+        scratch: &Path,
+        obj: &Path,
     ) -> Result<(), String> {
+        let runtime_c = scratch.join("runtime.c");
+        fs::write(&runtime_c, RUNTIME_C).map_err(|e| format!("write runtime.c: {e}"))?;
+        fs::write(scratch.join("code_abi.h"), CODE_ABI_H)
+            .map_err(|e| format!("write code_abi.h: {e}"))?;
+        let mut command = Command::new(if wasm { "clang" } else { "cc" });
+        command.args(flags);
+        if wasm {
+            let shim = scratch.join("wasm_shim.h");
+            fs::write(&shim, WASM_SHIM_H).map_err(|e| format!("write wasm_shim.h: {e}"))?;
+            command.arg("-include").arg(shim);
+        }
+        command
+            .arg("-I")
+            .arg(scratch)
+            .arg("-c")
+            .arg(&runtime_c)
+            .arg("-o")
+            .arg(obj);
         run_command(
-            Command::new("clang")
-                .arg("--target=wasm32-unknown-unknown")
-                .arg("-O2")
-                .arg("-nostdlib")
-                .arg("-fno-builtin")
-                .arg("-DCODE_WASM")
-                .arg("-include")
-                .arg(shim_path)
-                .arg("-I")
-                .arg(abi_h_path.parent().unwrap_or_else(|| Path::new(".")))
-                .arg("-c")
-                .arg(runtime_c_path)
-                .arg("-o")
-                .arg(runtime_obj_path),
-            "clang (wasm runtime)",
+            &mut command,
+            if wasm {
+                "clang (wasm runtime)"
+            } else {
+                "cc (runtime)"
+            },
         )
+    }
+
+    /// What a cached runtime object is keyed by. `DefaultHasher` is stable
+    /// within one build of `code`, and `code`'s version is part of the key,
+    /// so a different `code` never reads another's object.
+    fn runtime_key(wasm: bool, flags: &[&str]) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (
+            env!("CARGO_PKG_VERSION"),
+            RUNTIME_C,
+            CODE_ABI_H,
+            WASM_SHIM_H,
+            flags,
+            wasm,
+        )
+            .hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// The shared cache (ticket 118's, which this is the first user of):
+    /// `CODE_CACHE_DIR`, else `$XDG_CACHE_HOME/code`, else `~/.cache/code`.
+    fn cache_dir() -> Option<PathBuf> {
+        let from = |name: &str| {
+            std::env::var_os(name)
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from)
+        };
+        from("CODE_CACHE_DIR")
+            .or_else(|| from("XDG_CACHE_HOME").map(|d| d.join("code")))
+            .or_else(|| from("HOME").map(|d| d.join(".cache").join("code")))
     }
 
     /// Links the one `.wasm`: the program, the runtime, and every `.a`

@@ -46,6 +46,18 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
+      # The binary embeds the C runtime compiled at build time (build.rs,
+      # ticket 111). A runner without `cc` or `clang` would leave an object
+      # empty and ship a `code` that compiles the runtime on every user's
+      # first build instead — so a release refuses to go out that way.
+      - name: The C runtime is embedded
+        run: |
+          set -euo pipefail
+          for kind in exe shared wasm32; do
+            obj=$(ls -t target/release/build/code-*/out/runtime-$kind.o | head -1)
+            test -s "$obj" || { echo "::error::runtime-$kind.o is empty: build.rs could not compile the runtime"; exit 1; }
+          done
+
       - name: Determine version string
         id: version
         run: |
