@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 static ON: AtomicBool = AtomicBool::new(false);
 static STAGES: Mutex<Vec<(&'static str, Duration)>> = Mutex::new(Vec::new());
 static FUNCTIONS: Mutex<Vec<(String, usize)>> = Mutex::new(Vec::new());
+static NOTES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// How many of the largest functions the report names.
 const SHOWN: usize = 8;
@@ -57,6 +58,14 @@ pub fn measure<T>(name: &'static str, f: impl FnOnce() -> T) -> T {
     out
 }
 
+/// A line the report adds under the stages (how many parts, how many came
+/// from the cache).
+pub fn note(line: String) {
+    if enabled() {
+        NOTES.lock().unwrap_or_else(|e| e.into_inner()).push(line);
+    }
+}
+
 /// The IR size of each function the backend is about to compile.
 pub fn functions(sizes: Vec<(String, usize)>) {
     if enabled() {
@@ -83,6 +92,9 @@ pub fn report(total: Duration) -> Option<String> {
         ms(total.saturating_sub(counted))
     ));
     out.push_str(&format!("  {:>9.1} ms  total\n", ms(total)));
+    for line in NOTES.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+        out.push_str(&format!("{line}\n"));
+    }
     let mut functions = FUNCTIONS.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let all: usize = functions.iter().map(|(_, n)| n).sum();
     if all > 0 {

@@ -1048,7 +1048,19 @@ pub(crate) fn compile_to_object_traced(
             return Ok(vec![obj_path.to_path_buf()]);
         }
         crate::split::prepare(&module);
-        crate::split::compile_parts(&module, parts, &owner, obj_path, &machine)
+        // Everything besides a part's IR that decides its object: the
+        // settings `machine` makes the target machine with.
+        let machine_key = format!(
+            "{triple}|generic|{}|pic|default-code-model",
+            if release {
+                "O2"
+            } else if target == BuildTarget::Wasm {
+                "O1"
+            } else {
+                "O0"
+            }
+        );
+        crate::split::compile_parts(&module, parts, &owner, obj_path, &machine, &machine_key)
     })
 }
 

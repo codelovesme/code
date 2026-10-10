@@ -11,7 +11,7 @@
 //!
 //! **The output does not depend on the machine.** Which function goes in
 //! which part is decided by the program alone — its functions in module
-//! order, packed into parts of about `PART_SIZE` IR instructions — and the
+//! order, cut into parts of a few thousand IR instructions (see `plan`) — and the
 //! objects are linked in part order. The number of cores only decides how
 //! many parts are compiled at once. A program smaller than one part is not
 //! split at all and builds exactly as before.
@@ -36,10 +36,16 @@ use inkwell::targets::{FileType, TargetMachine};
 use inkwell::values::{AsValueRef, FunctionValue, GlobalValue};
 use inkwell::GlobalVisibility;
 
-/// About how many IR instructions a part holds. Small enough that a large
-/// app has a part per core and more (Aquarium: ~128,000 instructions),
-/// large enough that a small program stays in one part and pays nothing.
-pub(crate) const PART_SIZE: usize = 6_000;
+/// How many IR instructions a part holds: at least `MIN_PART` before it may
+/// end, at most about `MAX_PART`. Small enough that a large app has a part
+/// per core and more (Aquarium: ~100,000 instructions), large enough that a
+/// small program stays in one part and pays nothing.
+///
+/// Measured on Aquarium (2026-10-10): 1,500–6,000 builds it in 0.99 s cold
+/// and 0.74 s after one handler changes; 3,000–12,000 took 1.04 s and 0.92 s,
+/// 800–3,000 1.06 s and 0.74 s. One core pays the same for all three.
+pub(crate) const MIN_PART: usize = 1_500;
+pub(crate) const MAX_PART: usize = 6_000;
 
 /// How many parts to compile at once: `CODE_BUILD_JOBS`, else the
 /// machine's cores. Only the speed depends on it, never the output.
@@ -64,9 +70,13 @@ fn instructions(function: FunctionValue) -> usize {
     count
 }
 
-/// Each defined function's part, by name: functions in module order, a new
-/// part begun once the current one holds `PART_SIZE` instructions. One part
-/// means "do not split".
+/// Each defined function's part, by name: functions in module order. A part
+/// ends after a function whose *name* says so (one in four, by its hash)
+/// once it holds `MIN_PART` instructions, or at `MAX_PART` regardless. Ends
+/// chosen by content rather than by count are what lets the build cache
+/// (ticket 118) keep working when a function is added or grows: only the
+/// part it lands in changes, not every part after it. One part means "do
+/// not split".
 pub(crate) fn plan(module: &Module) -> (usize, HashMap<String, usize>) {
     let mut owner = HashMap::new();
     let mut part = 0;
@@ -77,14 +87,22 @@ pub(crate) fn plan(module: &Module) -> (usize, HashMap<String, usize>) {
         if function.count_basic_blocks() == 0 {
             continue;
         }
-        if filled >= PART_SIZE {
+        let name = name_of(function.as_global_value());
+        filled += instructions(function);
+        let boundary = crate::cache::key(&[name.as_bytes()]).as_bytes()[0].is_multiple_of(4);
+        owner.insert(name, part);
+        if filled >= MAX_PART || (filled >= MIN_PART && boundary) {
             part += 1;
             filled = 0;
         }
-        filled += instructions(function);
-        owner.insert(name_of(function.as_global_value()), part);
     }
-    (part + 1, owner)
+    // A last part left empty by a boundary on the last function is no part.
+    let parts = if filled == 0 && part > 0 {
+        part
+    } else {
+        part + 1
+    };
+    (parts, owner)
 }
 
 fn name_of(global: GlobalValue) -> String {
@@ -177,6 +195,7 @@ fn keep_part(module: &Module, part: usize, owner: &HashMap<String, usize>) {
         // read, so nothing points into it.
         unsafe { function.delete() };
     }
+    let mut kept = 0;
     let mut next = module.get_first_global();
     while let Some(global) = next {
         next = global.get_next_global();
@@ -195,6 +214,12 @@ fn keep_part(module: &Module, part: usize, owner: &HashMap<String, usize>) {
             if !used {
                 // SAFETY: nothing uses it.
                 unsafe { global.delete() };
+            } else {
+                // Named by its place among this part's own constants, not
+                // the whole program's: a string added elsewhere then leaves
+                // this part — and its cached object — as it was.
+                global.set_name(&format!("__code_k{kept}"));
+                kept += 1;
             }
         } else if part != 0 {
             // Part 0 owns the program's state; here it becomes `extern`.
@@ -203,6 +228,33 @@ fn keep_part(module: &Module, part: usize, owner: &HashMap<String, usize>) {
                 llvm_sys::core::LLVMSetInitializer(global.as_value_ref(), std::ptr::null_mut())
             };
             global.set_linkage(Linkage::External);
+        }
+    }
+}
+
+/// Drops every declaration this part does not use — of a function or a
+/// global another part defines, or of a runtime function. Without this each
+/// part named everything in the program, so adding one handler anywhere
+/// changed every part and emptied the build cache of them all (ticket 118).
+fn drop_unused_declarations(module: &Module) {
+    // SAFETY: only read to see whether anything uses the value.
+    let unused = |value: &dyn AsValueRef| unsafe {
+        llvm_sys::core::LLVMGetFirstUse(value.as_value_ref()).is_null()
+    };
+    let mut next = module.get_first_function();
+    while let Some(function) = next {
+        next = function.get_next_function();
+        if function.count_basic_blocks() == 0 && unused(&function) {
+            // SAFETY: a declaration nothing uses.
+            unsafe { function.delete() };
+        }
+    }
+    let mut next = module.get_first_global();
+    while let Some(global) = next {
+        next = global.get_next_global();
+        if global.get_initializer().is_none() && unused(&global) {
+            // SAFETY: a declaration nothing uses.
+            unsafe { global.delete() };
         }
     }
 }
@@ -240,12 +292,14 @@ pub(crate) fn compile_parts(
     owner: &HashMap<String, usize>,
     obj_path: &Path,
     machine: &(dyn Fn() -> Result<TargetMachine, String> + Sync),
+    machine_key: &str,
 ) -> Result<Vec<PathBuf>, String> {
     let bitcode = module.write_bitcode_to_memory().as_slice().to_vec();
     let paths: Vec<PathBuf> = (0..parts)
         .map(|part| obj_path.with_extension(format!("{part}.o")))
         .collect();
     let taken = AtomicUsize::new(0);
+    let hits = AtomicUsize::new(0);
     let results: Vec<Result<(), String>> = std::thread::scope(|scope| {
         let workers: Vec<_> = (0..jobs().min(parts))
             .map(|_| {
@@ -260,10 +314,25 @@ pub(crate) fn compile_parts(
                         let copy = read_lazily(&context, &bitcode)
                             .map_err(|e| format!("part {part}: {e}"))?;
                         keep_part(&copy, part, owner);
+                        drop_unused_declarations(&copy);
                         copy.verify().map_err(|e| format!("part {part}: {e}"))?;
+                        // The part's own IR, with the machine it is compiled
+                        // for, decides its object entirely (ticket 118).
+                        let ir = copy.write_bitcode_to_memory();
+                        let name = format!(
+                            "{}.o",
+                            crate::cache::key(&[ir.as_slice(), machine_key.as_bytes()])
+                        );
+                        if let Some(cached) = crate::cache::get("objects", &name) {
+                            if std::fs::copy(&cached, &paths[part]).is_ok() {
+                                hits.fetch_add(1, Ordering::Relaxed);
+                                continue;
+                            }
+                        }
                         machine
                             .write_to_file(&copy, FileType::Object, &paths[part])
                             .map_err(|e| format!("part {part}: {e}"))?;
+                        crate::cache::put("objects", &name, &paths[part]);
                     }
                 })
             })
@@ -279,5 +348,10 @@ pub(crate) fn compile_parts(
     for result in results {
         result?;
     }
+    crate::timings::note(format!(
+        "parts: {parts}, {} from the cache",
+        hits.load(Ordering::Relaxed)
+    ));
+    crate::cache::trim();
     Ok(paths)
 }
