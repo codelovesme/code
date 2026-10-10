@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>code vs C vs Java vs Python vs Rust vs Go — a practical comparison</title>
-<meta name="description" content="An evidence-based comparison of code, C, Java, Python, Rust, and Go: performance, memory management, types, concurrency, tooling, and best-fit use cases." />
-<meta property="og:title" content="code vs C vs Java vs Python vs Rust vs Go" />
-<meta property="og:description" content="A practical comparison of the code language with C, Java, Python, Rust, and Go, based on their current runtime and language designs." />
+<title>code vs C vs Java vs Python vs JavaScript vs Rust vs Go — a practical comparison</title>
+<meta name="description" content="An evidence-based comparison of code, C, Java, Python, JavaScript, Rust, and Go: performance, memory management, types, concurrency, tooling, and best-fit use cases." />
+<meta property="og:title" content="code vs C vs Java vs Python vs JavaScript vs Rust vs Go" />
+<meta property="og:description" content="A practical comparison of the code language with C, Java, Python, JavaScript, Rust, and Go, based on their current runtime and language designs." />
 <meta property="og:type" content="website" />
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
 <style>
@@ -26,6 +26,7 @@
     --blue: #60a5fa;
     --rust: #fb923c;
     --go: #34d399;
+    --javascript: #facc15;
     --green: #86efac;
     --red: #f87171;
     --grad: linear-gradient(120deg, #5eead4 0%, #a78bfa 52%, #f472b6 100%);
@@ -90,7 +91,7 @@
   .card .tag { display: inline-block; margin-bottom: .8rem; padding: .17rem .58rem; border: 1px solid var(--border); border-radius: 999px; color: var(--teal); font-family: var(--mono); font-size: .72rem; }
   .table-shell { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.018); }
   table { width: 100%; min-width: 1080px; border-collapse: collapse; text-align: left; }
-  .comparison-matrix { min-width: 1400px; }
+  .comparison-matrix { min-width: 1640px; }
   .compact-table table { min-width: 620px; }
   th, td { padding: .9rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
   thead th { position: sticky; top: 62px; z-index: 1; background: #111522; color: var(--text); font-size: .88rem; }
@@ -114,6 +115,7 @@
   .bar.python { background: var(--blue); }
   .bar.rust { background: var(--rust); }
   .bar.go { background: var(--go); }
+  .bar.javascript { background: var(--javascript); }
   .bar-value { color: var(--text); font: .8rem var(--mono); text-align: right; white-space: nowrap; }
   .lang-code { color: var(--teal); }
   .lang-c { color: var(--amber); }
@@ -121,6 +123,7 @@
   .lang-python { color: var(--blue); }
   .lang-rust { color: var(--rust); }
   .lang-go { color: var(--go); }
+  .lang-javascript { color: var(--javascript); }
   .prose { max-width: 84ch; }
   .prose p, .prose li { color: var(--muted); }
   .prose strong { color: var(--text); }
@@ -134,6 +137,7 @@
   .runtime.python { border-top-color: var(--blue); }
   .runtime.rust { border-top-color: var(--rust); }
   .runtime.go { border-top-color: var(--go); }
+  .runtime.javascript { border-top-color: var(--javascript); }
   .runtime p { margin-bottom: 0; color: var(--muted); font-size: .91rem; }
   .good { color: var(--green); }
   .hard { color: var(--red); }
@@ -187,13 +191,14 @@
 <main class="wrap">
   <header>
     <div class="eyebrow">A practical language comparison · reviewed 10 October 2026</div>
-    <h1>Where does <span class="accent">code</span> fit next to C, Java, Python, Rust, and Go?</h1>
+    <h1>Where does <span class="accent">code</span> fit next to C, Java, Python, JavaScript, Rust, and Go?</h1>
     <p class="lede">
       These languages solve different problems. <code>code</code> is a small,
       data-oriented language built around JSON-shaped values and message handlers.
       C gives programmers direct control over memory and machine-facing details.
       Java is a statically typed, general-purpose language with a large runtime and ecosystem.
       Python is a dynamically typed, general-purpose language with an extensive standard library and package ecosystem.
+      JavaScript is a dynamically typed language used in browsers and server runtimes such as Node.js.
       Rust is a compiled systems language with ownership rules checked by its compiler.
       Go is a statically typed compiled language with garbage collection and built-in concurrency primitives.
       This guide compares the current designs so you can judge the trade-offs for your work.
@@ -213,7 +218,7 @@
   <section id="at-a-glance">
     <div class="section-head">
       <div class="kicker">Quick orientation</div>
-      <h2>Six different starting points</h2>
+      <h2>Seven different starting points</h2>
       <p>Choose by the kind of control, structure, and runtime your application needs.</p>
     </div>
     <div class="cards">
@@ -238,6 +243,11 @@
         <p>Useful for scripting, services, data work, and fast iteration, with dynamic typing, a large standard library, and a broad third-party package ecosystem.</p>
       </article>
       <article class="card">
+        <span class="tag" style="color:var(--javascript)">JavaScript</span>
+        <h3>One language across browser and server</h3>
+        <p>Useful for interactive web interfaces and server applications. JavaScript is dynamically typed; its runtime, host APIs, and package ecosystem depend on whether it runs in a browser or in Node.js.</p>
+      </article>
+      <article class="card">
         <span class="tag" style="color:var(--rust)">Rust</span>
         <h3>Native performance with checked ownership</h3>
         <p>Useful for systems, command-line tools, and services where native binaries, resource control, and compile-time memory-safety checks matter. Ownership and borrowing add rules developers must learn and work within.</p>
@@ -256,10 +266,10 @@
       <h2 id="matrix-title">The practical differences</h2>
       <p>On a narrow screen, swipe the table horizontally to see every column.</p>
     </div>
-    <div class="table-shell" role="region" aria-label="Comparison table for code, C, Java, Python, Rust, and Go" tabindex="0">
+    <div class="table-shell" role="region" aria-label="Comparison table for code, C, Java, Python, JavaScript, Rust, and Go" tabindex="0">
       <table class="comparison-matrix">
         <thead>
-          <tr><th scope="col">Topic</th><th scope="col" class="lang-code">code</th><th scope="col" class="lang-c">C</th><th scope="col" class="lang-java">Java</th><th scope="col" class="lang-python">Python</th><th scope="col" class="lang-rust">Rust</th><th scope="col" class="lang-go">Go</th></tr>
+          <tr><th scope="col">Topic</th><th scope="col" class="lang-code">code</th><th scope="col" class="lang-c">C</th><th scope="col" class="lang-java">Java</th><th scope="col" class="lang-python">Python</th><th scope="col" class="lang-javascript">JavaScript</th><th scope="col" class="lang-rust">Rust</th><th scope="col" class="lang-go">Go</th></tr>
         </thead>
         <tbody>
           <tr>
@@ -268,6 +278,7 @@
             <td>Procedural language with functions, structs, unions, pointers, and arrays.</td>
             <td>Class-based language with methods, interfaces, objects, arrays, and generics.</td>
             <td>General-purpose, dynamically typed language with functions, classes, modules, iterators, and several programming styles.</td>
+            <td>Dynamic, prototype-based language with first-class functions, objects, and event-loop-oriented browser and server use.</td>
             <td>Multi-paradigm systems language with functions, structs, enums, traits, generics, and pattern matching; no class inheritance.</td>
             <td>Statically typed compiled language with functions, methods, interfaces, packages, and generics; composition is preferred over class inheritance.</td>
           </tr>
@@ -277,6 +288,7 @@
             <td>Static types with integer, floating-point, pointer, aggregate, and other types; types and layouts are close to the implementation.</td>
             <td>Static types checked by the compiler, with primitive and reference types, classes, interfaces, and generic types.</td>
             <td>Types are determined at runtime. Optional annotations help external static type checkers, but Python does not enforce them at runtime.</td>
+            <td>Dynamic typing; values have runtime types. TypeScript and external tooling can add static checking, but plain JavaScript does not enforce annotations.</td>
             <td>Statically typed with type inference, algebraic enums, traits, and generics. The compiler checks ownership, borrowing, and lifetimes.</td>
             <td>Statically typed with local type inference, interfaces, and generics. The compiler checks assignments and method contracts; values are still mutable unless APIs or conventions prevent it.</td>
           </tr>
@@ -286,6 +298,7 @@
             <td>Functions, function pointers, macros, and aggregate types support many programming styles.</td>
             <td>Methods, classes, interfaces, lambdas, and generics support larger application structures.</td>
             <td>Functions, classes, modules, generators, and exceptions support reusable programs; the language is not restricted to one abstraction style.</td>
+            <td>Functions, closures, classes, modules, and prototypes support reuse; object composition and prototype delegation are central patterns.</td>
             <td>Functions, modules and crates, structs, enums, traits, generics, and macros support reusable programs; composition favors traits over class inheritance.</td>
             <td>Functions, methods, packages, interfaces, and type parameters support reuse; there is no class inheritance or user-defined operator overloading.</td>
           </tr>
@@ -295,6 +308,7 @@
             <td>Several integer and floating types; useful when width, representation, or bit-level behavior matters.</td>
             <td>Primitive integer widths and <code>float</code>/<code>double</code>, as well as reference types.</td>
             <td>Integers have arbitrary precision; <code>float</code> is typically a C double-precision value. The standard library also provides complex, decimal, and fraction types.</td>
+            <td>Most arithmetic uses <code>Number</code>, an IEEE 754 binary64 value; <code>BigInt</code> represents integers beyond the safe-integer range.</td>
             <td>Explicit signed and unsigned integer widths, plus <code>f32</code> and <code>f64</code>; numeric conversions are generally explicit.</td>
             <td>Fixed-width signed and unsigned integers, architecture-sized <code>int</code>/<code>uint</code>, <code>float32</code>/<code>float64</code>, and complex types; conversions between different numeric types are explicit.</td>
           </tr>
@@ -304,6 +318,7 @@
             <td>Programs can update arrays, structs, and pointed-to storage directly.</td>
             <td>Objects and collection implementations can be mutable or immutable, according to their APIs.</td>
             <td>Lists, dictionaries, and sets are mutable; tuples and frozensets are immutable. Mutability is part of each value type's behavior.</td>
+            <td>Objects, arrays, maps, and sets are mutable by default; <code>const</code> prevents rebinding a name, not mutation of the referenced object.</td>
             <td>Bindings are immutable by default; <code>mut</code> enables mutation. Ownership and borrowing control how mutable data can be shared.</td>
             <td>Variables and data structures are mutable. Slices and maps can share underlying storage, so aliasing and synchronization matter when data is shared.</td>
           </tr>
@@ -313,6 +328,7 @@
             <td>Programmers can choose storage duration and allocation strategy. Dynamic allocation is explicit through library APIs such as <code>malloc</code>/<code>free</code>.</td>
             <td>Objects are allocated on the managed heap and reclaimed by a garbage collector; the JVM provides collector and heap settings.</td>
             <td>Memory is managed by the implementation. In CPython, reference counting is supplemented by a collector for reference cycles; other Python implementations can differ.</td>
+            <td>In Node.js/V8, objects are garbage-collected from a managed heap. Developers do not free ordinary objects manually; heap size, allocation, and collection affect runtime behavior.</td>
             <td>Ownership and borrowing are checked at compile time; values are released when their owners leave scope. No tracing garbage collector is required.</td>
             <td>The standard Go toolchain uses a tracing garbage collector for managed heap values. Escape analysis can keep some values on goroutine stacks; external resources such as files still need explicit closing.</td>
           </tr>
@@ -322,6 +338,7 @@
             <td>Typical toolchains compile ahead of time to native machine code.</td>
             <td>Typical Java toolchains compile to JVM bytecode; the JVM interprets and JIT-compiles hot code.</td>
             <td>CPython typically compiles source to implementation-specific bytecode and interprets it. Bytecode is not a portable Python language contract, and other implementations may execute differently.</td>
+            <td>ECMAScript defines the language, not a single execution strategy. Node.js runs JavaScript on V8, which parses and JIT-compiles code during execution.</td>
             <td><code>rustc</code> compiles ahead of time to native code, usually through LLVM; optimized builds use the compiler's release optimization settings.</td>
             <td><code>go build</code> compiles ahead of time to a target-specific executable, normally including the Go runtime and garbage collector.</td>
           </tr>
@@ -331,6 +348,7 @@
             <td>Programs commonly use return codes, output parameters, or library conventions to report errors.</td>
             <td>Exceptions carry failures through method calls; Java also distinguishes checked exceptions in its type and compile-time rules.</td>
             <td>Exceptions propagate through calls until handled with <code>try</code>/<code>except</code>; functions do not declare checked exceptions.</td>
+            <td>Exceptions and rejected promises propagate until handled with <code>try</code>/<code>catch</code> or a rejection handler; unhandled failures can terminate a Node.js process.</td>
             <td><code>Result</code> and <code>Option</code> represent recoverable outcomes; <code>?</code> propagates errors. Panics handle unrecoverable failures.</td>
             <td>Functions commonly return an <code>error</code> value alongside results, and callers handle it explicitly. <code>panic</code>/<code>recover</code> are available for exceptional failures.</td>
           </tr>
@@ -340,6 +358,7 @@
             <td>Pointers and manual storage access give control, and invalid accesses can produce undefined behavior.</td>
             <td>Managed references and runtime checks avoid many manual pointer-lifetime errors; native interfaces can cross that boundary.</td>
             <td>Managed objects avoid direct pointer and lifetime work in ordinary Python code; native extensions can cross into lower-level code and its risks.</td>
+            <td>Managed references avoid manual pointer handling for ordinary JavaScript values; native Node.js addons and host interfaces form lower-level boundaries.</td>
             <td>Safe Rust checks references and lifetimes at compile time and prevents data races through its type system. <code>unsafe</code> code can cross that safety boundary.</td>
             <td>Go checks many invalid operations at runtime and manages ordinary pointers with its GC. <code>unsafe</code> and cgo cross the managed boundary; the type system does not prevent data races.</td>
           </tr>
@@ -349,6 +368,7 @@
             <td>Low-level platform APIs and implementation/library facilities give control over concurrency.</td>
             <td>Standard concurrency APIs include platform and virtual threads, executors, and higher-level coordination tools.</td>
             <td>Threads, <code>asyncio</code>, and processes cover different needs. In the usual GIL-enabled CPython build, threads help with I/O overlap but do not run Python bytecode in parallel for CPU-bound work; optional free-threaded builds are available.</td>
+            <td>Browser and Node.js programs commonly use an event loop and asynchronous APIs; workers can run work on other threads. Concurrency details depend on the host runtime.</td>
             <td>Standard threads plus ecosystem async runtimes; ownership and the <code>Send</code>/<code>Sync</code> traits catch many data races at compile time in safe code.</td>
             <td>Goroutines, channels, and standard synchronization packages are built in. Shared-memory data races remain possible; the race detector can find races in code paths it exercises.</td>
           </tr>
@@ -358,6 +378,7 @@
             <td>Standard library plus a broad platform and third-party ecosystem. Many platform capabilities are reachable through C interfaces.</td>
             <td>Large standard library and package ecosystem for server, desktop, data, and enterprise applications.</td>
             <td>Extensive standard library and a very large PyPI package ecosystem; many numeric and data packages use optimized native code for hot operations.</td>
+            <td>Browser APIs are built into web hosts; Node.js provides server-side APIs and npm packages. Available capabilities and packages vary by host.</td>
             <td>Cargo and <a href="https://crates.io/">crates.io</a> provide dependency management and a broad library ecosystem; native system and embedded libraries are common.</td>
             <td>The standard library includes networking, HTTP, cryptography, and tooling packages. Go modules manage third-party dependencies; <a href="https://pkg.go.dev/">pkg.go.dev</a> indexes package documentation, with a strong ecosystem for services and infrastructure.</td>
           </tr>
@@ -367,6 +388,7 @@
             <td>Native artifacts can target a wide range of operating systems, processors, and embedded environments when a suitable toolchain is available.</td>
             <td>JVM bytecode runs on compatible Java runtimes; deployment includes the JVM runtime and application dependencies.</td>
             <td>Applications commonly ship with a compatible Python interpreter and dependencies; native packages can require platform-specific wheels or builds.</td>
+            <td>Browser code is delivered to a web host; Node.js applications require a compatible Node runtime and dependencies, unless packaged with a runtime by a deployment tool.</td>
             <td>Builds target-specific native binaries; cross-compilation is supported, while target libraries and dynamic dependencies still shape deployment.</td>
             <td>Usually deploys as a single target-specific executable with the Go runtime included. Cross-compilation is built into the toolchain; cgo can add platform libraries.</td>
           </tr>
@@ -376,6 +398,7 @@
             <td>Systems software, embedded targets, native libraries, and performance- or memory-constrained components.</td>
             <td>Long-lived, general-purpose applications that benefit from static types, a large ecosystem, and managed concurrency.</td>
             <td>Automation, scripting, web services, scientific and data work, and applications that benefit from readable syntax and rapid iteration.</td>
+            <td>Interactive browser applications, web tooling, and server-side JavaScript where the language and runtime ecosystem match the deployment host.</td>
             <td>Systems software, command-line tools, embedded work, and performance-sensitive services that benefit from compile-time memory-safety checks.</td>
             <td>Network services, command-line tools, cloud infrastructure, and concurrent servers that benefit from straightforward builds and a strong standard library.</td>
           </tr>
@@ -397,7 +420,7 @@
       </article>
       <article class="runtime c">
         <h3 class="lang-c">C</h3>
-        <p>A native C compiler can optimize statically typed operations and data layouts ahead of execution. For tight numeric or low-level workloads, C offers fewer language-runtime abstractions and more control over representation. That makes it a strong fit for constrained code, though a particular C program is not automatically faster than every Java, Rust, or compiled-code program.</p>
+      <p>A native C compiler can optimize statically typed operations and data layouts ahead of execution. For tight numeric or low-level workloads, C offers fewer language-runtime abstractions and more control over representation. That makes it a strong fit for constrained code, though a particular C program is not automatically faster than every Java, Rust, Go, or native <code>code</code> program.</p>
       </article>
       <article class="runtime java">
         <h3 class="lang-java">Java</h3>
@@ -406,6 +429,10 @@
       <article class="runtime python">
         <h3 class="lang-python">Python</h3>
         <p>CPython's usual execution path includes dynamic dispatch and interpreter overhead, so tight numeric loops written in plain Python often run slower than optimized native code or a warmed-up JVM. Python is often used with libraries that move intensive work into compiled native kernels; benchmark the application and its actual dependencies to understand that effect.</p>
+      </article>
+      <article class="runtime javascript">
+        <h3 class="lang-javascript">JavaScript (Node.js/V8)</h3>
+        <p>Node.js starts the V8 engine, parses the JavaScript source, and may optimize hot functions with JIT compilation while the program runs. This benchmark includes all of that startup and runtime work. Browser engines, host APIs, and long-running server workloads can have different behavior.</p>
       </article>
       <article class="runtime rust">
         <h3 class="lang-rust">Rust</h3>
@@ -417,102 +444,113 @@
       </article>
     </div>
     <div class="prose">
-      <h3>Measured numeric-loop benchmark</h3>
-      <p>Each process sums <code>i * i</code> for <code>i = 0…99,999</code>, repeats that 100 times, and checks each subtotal. All implementations use double-precision numbers and execute 10 million inner iterations. Python is a CPython 3.13.5 plain-language loop with no native numerical package; Rust is a Rust 1.97.1 <code>f64</code> loop compiled with <code>rustc -C opt-level=3 -C target-cpu=native</code>; Go is a Go 1.27.1 <code>float64</code> loop using the toolchain's default optimization settings. Each timed run starts a fresh process; Python's source parsing and bytecode compilation happen during that run. Compiler/build times are separate medians over five invocations.</p>
+      <h3>Two runtime comparisons, with build time kept separate</h3>
+      <p>The first comparison runs prebuilt artifacts: <code>code build --release</code> against C, Java, Rust, and Go. The second starts from source: <code>code run</code> against CPython and JavaScript on Node.js/V8. Both tables are sorted by their measured median run time. Each process handles the same sum-of-squares loop for 10 million inner iterations, with the result checked after every repetition.</p>
+      <p>Every timed result includes a fresh process launch. The prebuilt group excludes build time from runtime; its separate artifact-build median is shown alongside each row and again in the build table. Source-run modes have no separate build command: source parsing is included, CPython creates bytecode during the run, and Node/V8 parsing and JIT work happen during the run. This JavaScript measurement uses Node.js, not a browser.</p>
     </div>
-    <div class="table-shell">
+    <h3>Prebuilt runtime: code build compared with compiled-language artifacts</h3>
+    <div class="table-shell compact-table" role="region" tabindex="0">
       <table>
-        <thead>
-          <tr>
-            <th scope="col">Implementation</th>
-            <th scope="col">Median run time</th>
-            <th scope="col">Range (7 runs)</th>
-            <th scope="col">Throughput</th>
-            <th scope="col">Separate build time</th>
-          </tr>
-        </thead>
+        <thead><tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median run time</th><th scope="col">Range (7 runs)</th><th scope="col">Throughput</th><th scope="col">Separate artifact build</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.00932 s</td><td>0.00919–0.00934 s</td><td>1,073.01 M iterations/s</td><td>0.07641 s</td></tr>
-          <tr><th scope="row">C, GCC <code>-O3</code></th><td>0.01460 s</td><td>0.01449–0.01474 s</td><td>684.95 M iterations/s</td><td>0.03302 s</td></tr>
-          <tr><th scope="row">C, GCC <code>-O2</code></th><td>0.01469 s</td><td>0.01450–0.01473 s</td><td>680.93 M iterations/s</td><td>0.03342 s</td></tr>
-          <tr><th scope="row">Go 1.27.1, <code>go build</code> (default optimizations)</th><td>0.01549 s</td><td>0.01536–0.01577 s</td><td>645.38 M iterations/s</td><td>0.21628 s</td></tr>
-          <tr><th scope="row">Java 26, HotSpot defaults</th><td>0.05249 s</td><td>0.04952–0.05756 s</td><td>190.50 M iterations/s</td><td>1.10767 s</td></tr>
-          <tr><th scope="row"><code>code build --release</code> (native)</th><td>0.8433 s</td><td>0.8257–0.8952 s</td><td>11.86 M iterations/s</td><td>0.25276 s</td></tr>
-          <tr><th scope="row">Python 3.13.5 (CPython)</th><td>1.3619 s</td><td>1.2830–1.7307 s</td><td>7.34 M iterations/s</td><td>No separate build; parsing/bytecode generation is in run time</td></tr>
-          <tr><th scope="row"><code>code run</code> (interpreter)</th><td>4.7690 s</td><td>4.7287–4.9424 s</td><td>2.10 M iterations/s</td><td>No separate build; parsing is in run time</td></tr>
+          <tr><td>1 · fastest</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.00940 s</td><td>0.00934–0.00970 s</td><td>1,063.68 M iterations/s</td><td>0.07287 s</td></tr>
+          <tr><td>2</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>0.01475 s</td><td>0.01455–0.01483 s</td><td>677.91 M iterations/s</td><td>0.03208 s</td></tr>
+          <tr><td>3</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>0.01480 s</td><td>0.01458–0.01501 s</td><td>675.53 M iterations/s</td><td>0.03197 s</td></tr>
+          <tr><td>4</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>0.01580 s</td><td>0.01538–0.01597 s</td><td>632.94 M iterations/s</td><td>0.19975 s</td></tr>
+          <tr><td>5</td><th scope="row">Java 26, HotSpot defaults</th><td>0.05221 s</td><td>0.05021–0.06227 s</td><td>191.53 M iterations/s</td><td>1.11122 s</td></tr>
+          <tr><td>6 · slowest</td><th scope="row"><code>code build --release</code></th><td>0.83286 s</td><td>0.82379–0.90115 s</td><td>12.01 M iterations/s</td><td>0.25420 s</td></tr>
         </tbody>
       </table>
     </div>
-    <figure class="benchmark-chart" aria-labelledby="benchmark-chart-title">
+    <figure class="benchmark-chart" aria-labelledby="compiled-runtime-chart-title">
       <figcaption>
-        <h3 id="benchmark-chart-title">Median runtime at a glance</h3>
-        <p>Linear scale from 0 to 5 seconds, shared with the compile/build chart. Each bar's length is proportional to its measured median run time.</p>
+        <h3 id="compiled-runtime-chart-title">Prebuilt program runtime · fastest to slowest</h3>
+        <p>Linear scale from 0 to 1 seconds; bar labels show measured medians.</p>
+      </figcaption>
+      <div class="benchmark-axis" aria-hidden="true">
+        <span class="axis-spacer"></span>
+        <div class="axis-ticks"><span>0 s</span><span>0.2 s</span><span>0.4 s</span><span>0.6 s</span><span>0.8 s</span><span>1 s</span></div>
+        <span class="axis-value"></span>
+      </div>
+      <div role="list" aria-label="Prebuilt program runtime · fastest to slowest, sorted fastest to slowest">
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:0.940129%" aria-hidden="true"></span></div><span class="bar-value">0.00940 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:1.475128%" aria-hidden="true"></span></div><span class="bar-value">0.01475 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:1.480309%" aria-hidden="true"></span></div><span class="bar-value">0.01480 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:1.579935%" aria-hidden="true"></span></div><span class="bar-value">0.01580 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, HotSpot defaults</span><div class="bar-track"><span class="bar java" style="width:5.221038%" aria-hidden="true"></span></div><span class="bar-value">0.05221 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:83.285542%" aria-hidden="true"></span></div><span class="bar-value">0.83286 s</span></div>
+      </div>
+    </figure>
+    <h3>Source-run runtime: code run compared with Python and JavaScript</h3>
+    <div class="table-shell compact-table" role="region" tabindex="0">
+      <table>
+        <thead><tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median run time</th><th scope="col">Range (7 runs)</th><th scope="col">Throughput</th><th scope="col">Source preparation</th></tr></thead>
+        <tbody>
+          <tr><td>1 · fastest</td><th scope="row">JavaScript, Node.js v22.23.3 / V8</th><td>0.04203 s</td><td>0.03977–0.04706 s</td><td>237.95 M iterations/s</td><td>Parsing and JIT compilation happen during run</td></tr>
+          <tr><td>2</td><th scope="row">Python 3.13.5 (CPython)</th><td>1.38736 s</td><td>1.28647–1.52049 s</td><td>7.21 M iterations/s</td><td>Parsing and bytecode generation happen during run</td></tr>
+          <tr><td>3 · slowest</td><th scope="row"><code>code run</code> (interpreter)</th><td>4.87503 s</td><td>4.75557–5.07539 s</td><td>2.05 M iterations/s</td><td>Source parsing happens during run</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <figure class="benchmark-chart" aria-labelledby="source-runtime-chart-title">
+      <figcaption>
+        <h3 id="source-runtime-chart-title">Source-run program runtime · fastest to slowest</h3>
+        <p>Linear scale from 0 to 5 seconds; bar labels show measured medians.</p>
       </figcaption>
       <div class="benchmark-axis" aria-hidden="true">
         <span class="axis-spacer"></span>
         <div class="axis-ticks"><span>0 s</span><span>1 s</span><span>2 s</span><span>3 s</span><span>4 s</span><span>5 s</span></div>
         <span class="axis-value"></span>
       </div>
-      <div role="list" aria-label="Median runtime by implementation, fastest to slowest">
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>-C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:0.186391%" aria-hidden="true"></span></div><span class="bar-value">0.00932 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3</code></span><div class="bar-track"><span class="bar c" style="width:0.291990%" aria-hidden="true"></span></div><span class="bar-value">0.01460 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2</code></span><div class="bar-track"><span class="bar c" style="width:0.293717%" aria-hidden="true"></span></div><span class="bar-value">0.01469 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:0.309894%" aria-hidden="true"></span></div><span class="bar-value">0.01549 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, HotSpot defaults</span><div class="bar-track"><span class="bar java" style="width:1.049856%" aria-hidden="true"></span></div><span class="bar-value">0.05249 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:16.865090%" aria-hidden="true"></span></div><span class="bar-value">0.8433 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Python 3.13.5 (CPython)</span><div class="bar-track"><span class="bar python" style="width:27.238021%" aria-hidden="true"></span></div><span class="bar-value">1.3619 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (interpreter)</span><div class="bar-track"><span class="bar code" style="width:95.380757%" aria-hidden="true"></span></div><span class="bar-value">4.7690 s</span></div>
+      <div role="list" aria-label="Source-run program runtime · fastest to slowest, sorted fastest to slowest">
+        <div class="benchmark-row" role="listitem"><span class="bar-label">JavaScript, Node.js v22.23.3 / V8</span><div class="bar-track"><span class="bar javascript" style="width:0.840512%" aria-hidden="true"></span></div><span class="bar-value">0.04203 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Python 3.13.5 (CPython)</span><div class="bar-track"><span class="bar python" style="width:27.747249%" aria-hidden="true"></span></div><span class="bar-value">1.38736 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (interpreter)</span><div class="bar-track"><span class="bar code" style="width:97.500538%" aria-hidden="true"></span></div><span class="bar-value">4.87503 s</span></div>
       </div>
     </figure>
     <div class="prose">
-      <h3>Compile/build times, fastest to slowest</h3>
-      <p>These are separate compiler/build-process medians over five invocations, sorted by measured time. Rust is compiled directly with <code>rustc</code>; Cargo startup is not part of its measurement. Go uses <code>GO111MODULE=off go build -trimpath</code> with default compiler optimizations; one untimed build warms the cache for this program's standard-library dependencies, and a comment change makes each timed build recompile the benchmark package. The interpreter and Python entries have no separate build invocation: <code>code run</code> parses source during its launch, and each <code>python3 sum_squares.py</code> launch parses and compiles the <code>.py</code> source to CPython bytecode. The benchmark passes the source file, not a precompiled <code>.pyc</code> file.</p>
+      <h3>Separate compile/build times · fastest to slowest</h3>
+      <p>These are medians over five compiler or build-process invocations, sorted by measured time. Java measures <code>javac</code> producing JVM bytecode; HotSpot JIT work remains in Java runtime. Rust is compiled directly with <code>rustc</code>, without Cargo startup. Go uses <code>GO111MODULE=off go build -trimpath</code>; an untimed build warms standard-library dependencies, and a source-comment change makes each timed build rebuild the benchmark program. Python, JavaScript, and <code>code run</code> have no separate build measurement because their source processing is part of the run.</p>
     </div>
     <div class="table-shell compact-table" role="region" aria-label="Compile and build times ordered from fastest to slowest" tabindex="0">
       <table>
-        <thead>
-          <tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median compile/build time</th></tr>
-        </thead>
+        <thead><tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median compile/build time</th></tr></thead>
         <tbody>
-          <tr><td>1 · fastest</td><th scope="row">C, GCC <code>-O3</code></th><td>0.03302 s</td></tr>
-          <tr><td>2</td><th scope="row">C, GCC <code>-O2</code></th><td>0.03342 s</td></tr>
-          <tr><td>3</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.07641 s</td></tr>
-          <tr><td>4</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>0.21628 s</td></tr>
-          <tr><td>5</td><th scope="row"><code>code build --release</code></th><td>0.25276 s</td></tr>
-          <tr><td>6 · slowest</td><th scope="row">Java 26, <code>javac --release 26</code></th><td>1.10767 s</td></tr>
+          <tr><td>1 · fastest</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>0.03197 s</td></tr>
+          <tr><td>2</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>0.03208 s</td></tr>
+          <tr><td>3</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.07287 s</td></tr>
+          <tr><td>4</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>0.19975 s</td></tr>
+          <tr><td>5</td><th scope="row"><code>code build --release</code></th><td>0.25420 s</td></tr>
+          <tr><td>6 · slowest</td><th scope="row">Java 26, <code>javac --release 26</code></th><td>1.11122 s</td></tr>
         </tbody>
       </table>
     </div>
     <figure class="benchmark-chart" aria-labelledby="compile-chart-title">
       <figcaption>
-        <h3 id="compile-chart-title">Compile/build time at a glance</h3>
-        <p>Linear scale from 0 to 5 seconds, the same axis as the runtime chart. Bar lengths are proportional to the median compile/build times.</p>
+        <h3 id="compile-chart-title">Compile/build time · fastest to slowest</h3>
+        <p>Linear scale from 0 to 1.5 seconds; bar labels show measured medians.</p>
       </figcaption>
-      <div class="benchmark-axis" aria-hidden="true">
-        <span class="axis-spacer"></span>
-        <div class="axis-ticks"><span>0 s</span><span>1 s</span><span>2 s</span><span>3 s</span><span>4 s</span><span>5 s</span></div>
-        <span class="axis-value"></span>
-      </div>
-      <div role="list" aria-label="Median compile and build times by implementation, fastest to slowest">
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3</code></span><div class="bar-track"><span class="bar c" style="width:0.660477%" aria-hidden="true"></span></div><span class="bar-value">0.03302 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2</code></span><div class="bar-track"><span class="bar c" style="width:0.668351%" aria-hidden="true"></span></div><span class="bar-value">0.03342 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:1.528122%" aria-hidden="true"></span></div><span class="bar-value">0.07641 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:4.325533%" aria-hidden="true"></span></div><span class="bar-value">0.21628 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:5.055283%" aria-hidden="true"></span></div><span class="bar-value">0.25276 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, <code>javac --release 26</code></span><div class="bar-track"><span class="bar java" style="width:22.153362%" aria-hidden="true"></span></div><span class="bar-value">1.10767 s</span></div>
+      <div class="benchmark-axis" aria-hidden="true"><span class="axis-spacer"></span><div class="axis-ticks"><span>0 s</span><span>0.3 s</span><span>0.6 s</span><span>0.9 s</span><span>1.2 s</span><span>1.5 s</span></div><span class="axis-value"></span></div>
+      <div role="list" aria-label="Median compile/build times, sorted fastest to slowest">
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.131055%" aria-hidden="true"></span></div><span class="bar-value">0.03197 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.138497%" aria-hidden="true"></span></div><span class="bar-value">0.03208 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:4.857769%" aria-hidden="true"></span></div><span class="bar-value">0.07287 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:13.316551%" aria-hidden="true"></span></div><span class="bar-value">0.19975 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:16.946474%" aria-hidden="true"></span></div><span class="bar-value">0.25420 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, <code>javac --release 26</code></span><div class="bar-track"><span class="bar java" style="width:74.081505%" aria-hidden="true"></span></div><span class="bar-value">1.11122 s</span></div>
       </div>
     </figure>
     <div class="prose">
-      <p><strong>Test machine and commands:</strong> Intel Core i7-5930K at 3.50 GHz, x86-64, Debian 13, Linux 6.12.107; runs pinned to logical CPU 0. <code>code</code> v2.14.4 (compiler source commit <code>1145de8</code>) used <code>code build --release</code> (LLVM <code>-O2</code>); C used GCC 14.2 with <code>-std=c17 -O2/-O3 -march=native</code>; Java used Temurin OpenJDK/Javac 26.0.2.1 with default HotSpot settings; Python used CPython 3.13.5 and IEEE 754 binary64 <code>float</code> values; Rust used <code>rustc 1.97.1</code>, edition 2024, <code>-C opt-level=3 -C target-cpu=native</code>, and <code>f64</code>; Go used Go 1.27.1, <code>GO111MODULE=off go build -trimpath</code>, and the default compiler optimizations.</p>
-      <p>Process startup is included in each runtime. Java includes JVM startup and JIT warm-up; <code>code run</code> and Python include source processing. For Python, the harness passes the <code>.py</code> source file to CPython on each launch, so source parsing and bytecode generation are timed along with the loop. The compiled Rust, C, Java, Go, and native <code>code</code> programs are built first; each compiler/build command is timed separately over five invocations. An untimed Go build warms this program's standard-library dependencies, and each sample changes a source comment so Go rebuilds the benchmark package. <code>-march=native</code> and <code>target-cpu=native</code> tune generated code for this particular CPU. This numeric loop does not measure memory, allocation, I/O, concurrency, or application-level work, and the runtimes are not directly comparable for every workload.</p>
+      <p><strong>Test machine and commands:</strong> Intel Core i7-5930K at 3.50 GHz, x86-64, Debian 13, Linux 6.12.107; runs pinned to logical CPU 0. <code>code</code> v2.14.4 (compiler source commit <code>1145de8</code>) used <code>code build --release</code> (LLVM <code>-O2</code>); C used GCC 14.2 with <code>-std=c17 -O2/-O3 -march=native</code>; Java used OpenJDK/Javac 26.0.2.1 with default HotSpot settings; Python used CPython 3.13.5; JavaScript used Node.js v22.23.3 with V8 12.4.254.21-node.57; Rust used <code>rustc 1.97.1</code>, edition 2024, <code>-C opt-level=3 -C target-cpu=native</code>; Go used Go 1.27.1 with default compiler optimizations.</p>
+      <p>Each runtime measurement includes a fresh process launch. Java includes JVM startup and HotSpot warm-up; JavaScript includes Node/V8 startup, source parsing, and JIT work during this short-lived run. Python includes CPython startup, parsing, and bytecode generation. Rust, C, Java, Go, and native <code>code</code> artifacts were built before runtime timing. This loop does not measure memory, allocation, I/O, concurrency, or application-level work.</p>
       <p>Reproduce the measurements with the <a href="https://github.com/codelovesme/code/tree/main/benchmarks/language-comparison">benchmark sources and runner</a>; inspect the <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.csv">raw run samples</a> and <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.json">full machine and compiler report</a>.</p>
     </div>
     <div class="prose">
-      <p><strong>The table is one measurement; these broader expectations come from the implementations.</strong> Rust, Go, and C emit native code ahead of time for this workload; Java's JIT can optimize hot code as it runs. Plain CPython loops pay dynamic dispatch and interpreter costs, while Python libraries can call compiled kernels for intensive operations. The compiled <code>code</code> backend avoids interpreter dispatch, but dynamic values, generic runtime operations, and allocation-heavy data updates remain part of its model. Compiler flags, workload shape, and target hardware can change the ordering.</p>
+      <p><strong>These tables are measurements; broader expectations come from the implementations.</strong> C, Rust, Go, and <code>code build</code> produce artifacts before execution. Java's HotSpot and JavaScript's V8 can optimize hot code as it runs. Plain CPython loops pay bytecode-interpreter costs, while Python libraries can call compiled kernels for intensive operations. The compiled <code>code</code> backend avoids interpreter dispatch, but dynamic values, generic runtime operations, and allocation-heavy data updates remain part of its model. Compiler flags, workload shape, and target hardware can change the ordering.</p>
       <ul>
         <li><strong>Match the workload.</strong> Compare equivalent algorithms and outputs. A task mostly waiting on a network or database may spend little time in language-level computation.</li>
-        <li><strong>Separate cold and warm behavior.</strong> Report startup and compilation separately from steady-state throughput; warm up the JVM before measuring hot code.</li>
-        <li><strong>Compare both code modes.</strong> A comparison with C, Java, Python, Rust, or Go should include <code>code run</code> and <code>code build --release</code>, rather than treating the interpreter as the only implementation.</li>
+        <li><strong>Separate cold and warm behavior.</strong> Report startup and compilation separately from steady-state throughput; JVM and V8 warm-up can affect hot-code timings.</li>
+        <li><strong>Compare like execution paths.</strong> Compare <code>code build --release</code> with prebuilt artifacts, and compare <code>code run</code> with source-run modes such as Python and JavaScript.</li>
         <li><strong>Measure more than elapsed time.</strong> Peak resident memory, allocation rate, and output correctness reveal trade-offs a single timing hides.</li>
       </ul>
     </div>
@@ -529,7 +567,7 @@
         <span class="tag">code values</span>
         <h3>Automatic reference counting</h3>
         <p>Strings, arrays, and objects are reference-counted internally. Values cannot be mutated in place, so the language cannot construct reference cycles; when the last reference goes away, the runtime releases the heap block. A program author does not call <code>malloc</code> or <code>free</code> for a <code>.code</code> value, and there is no tracing garbage collector.</p>
-        <p>That simplicity costs bookkeeping and a dynamic representation. Constructing a new array or object by combining values may allocate and copy references. Large repeated updates can therefore use more time and memory than mutating a purpose-built C, Java, Rust, or Go collection.</p>
+        <p>That simplicity costs bookkeeping and a dynamic representation. Constructing a new array or object by combining values may allocate and copy references. Large repeated updates can therefore use more time and memory than mutating a purpose-built C, Java, JavaScript, Rust, or Go collection.</p>
         <p><a href="https://github.com/codelovesme/code/blob/main/src/value.rs">Interpreter value model</a> · <a href="https://github.com/codelovesme/code/blob/main/src/runtime.c">Native runtime</a></p>
       </article>
       <article class="card">
@@ -552,6 +590,13 @@
         <p><a href="https://docs.python.org/3.15/c-api/memory.html">CPython memory management</a> · <a href="https://docs.python.org/3.15/library/gc.html">cyclic garbage collector</a></p>
       </article>
       <article class="card">
+        <span class="tag" style="color:var(--javascript)">JavaScript objects</span>
+        <h3>Managed heap in the host runtime</h3>
+        <p>In Node.js, V8 stores ordinary objects in a managed heap and reclaims objects that are no longer reachable. Developers do not explicitly free these values, but retained references, object layout, heap limits, and garbage-collection work affect memory use and pauses.</p>
+        <p>Other JavaScript hosts use their own engines and may have different memory limits and collection behavior. This describes the Node.js/V8 benchmark environment.</p>
+        <p><a href="https://v8.dev/blog/trash-talk">V8 garbage collection overview</a> · <a href="https://nodejs.org/api/v8.html">Node.js V8 API</a></p>
+      </article>
+      <article class="card">
         <span class="tag" style="color:var(--rust)">Rust values</span>
         <h3>Ownership and borrowing</h3>
         <p>Each value has an owner, and the compiler checks moves, references, and lifetimes. When an owner leaves scope, its value is dropped and its resources are released; ordinary safe Rust needs no tracing garbage collector.</p>
@@ -567,7 +612,7 @@
       </article>
     </div>
     <div class="prose">
-      <p><strong>A useful summary:</strong> C offers the most direct memory control and the most lifetime responsibility. Rust checks ownership and borrowing at compile time, then releases values deterministically without a tracing collector. Java, the standard Go toolchain, and CPython reclaim managed objects; collector behavior and object costs depend on each runtime. <code>code</code> uses reference counts for its small immutable value graph, with dynamic-value bookkeeping and allocation costs.</p>
+      <p><strong>A useful summary:</strong> C offers the most direct memory control and the most lifetime responsibility. Rust checks ownership and borrowing at compile time, then releases values deterministically without a tracing collector. Java, the standard Go toolchain, CPython, and Node.js/V8 reclaim managed objects; collector behavior and object costs depend on each runtime. <code>code</code> uses reference counts for its small immutable value graph, with dynamic-value bookkeeping and allocation costs.</p>
       <p>The current native module ABI reserves an 80-byte stride for each <code>CodeValue</code> slot. That is a concrete ABI layout detail, not a measurement of total memory per variable or a promise about future ABI versions. See the <a href="https://github.com/codelovesme/code/blob/main/src/code_abi.h">current ABI definition</a>.</p>
     </div>
   </section>
@@ -583,7 +628,8 @@
       <p>Rust is also statically typed, with type inference, enums, traits, and generics. Its ownership and borrowing rules are enforced by the compiler, which catches many invalid-reference and data-race mistakes before a program runs; unsafe blocks and logic errors still need review.</p>
       <p>Go is statically typed, with local type inference, interfaces, and generic functions and types. Its types catch many mismatches before execution, but do not track ownership or prevent data races; invalid indexes and nil dereferences can still fail at runtime.</p>
       <p>Python determines types at runtime, which supports concise and flexible code but moves many type errors to execution. Type annotations can document intent and feed external static checkers, but the Python runtime does not enforce them. Python's built-in <code>int</code> grows to hold arbitrary-precision integers; that convenience differs from fixed-width machine integer types.</p>
-      <p>For anyone sending or receiving JSON-shaped data, <code>code</code>'s six-kind model can keep data and messages direct. Python offers flexible built-in collections and optional annotation-based tooling. C is the choice for low-level representation control; Rust adds compiler-checked ownership and memory safety in safe code; Java and Go combine static types with managed memory.</p>
+      <p>JavaScript also determines types at runtime. TypeScript and static-analysis tools can catch some errors before execution, but their checks are an additional toolchain step rather than JavaScript runtime enforcement. JavaScript's <code>Number</code> uses binary64 floating point; <code>BigInt</code> supports larger integer arithmetic but does not mix implicitly with <code>Number</code>.</p>
+      <p>For anyone sending or receiving JSON-shaped data, <code>code</code>'s six-kind model can keep data and messages direct. Python and JavaScript offer flexible built-in collections and optional static-analysis tooling. C is the choice for low-level representation control; Rust adds compiler-checked ownership and memory safety in safe code; Java and Go combine static types with managed memory.</p>
     </div>
   </section>
 
@@ -596,6 +642,7 @@
       <p>In <code>code</code>, a handler is the unit of reuse: it accepts a particle and returns a particle, and <code>emit</code> dispatches it. The language has one loop form and intentionally has no functions, recursion, or in-place mutation. This keeps the surface area small and makes data exchange explicit, but it limits how freely a program can be decomposed as it grows.</p>
       <p>C and Java both support ordinary functions or methods, recursion, and richer control flow. Java also provides classes, interfaces, and generics; C provides structs, unions, pointers, and function pointers. Those facilities make them more flexible choices for algorithm-heavy code and large general-purpose systems. The extra surface area asks developers to learn and maintain more concepts.</p>
       <p>Python also provides functions, classes, modules, comprehensions, iterators, generators, and exceptions. It is a general-purpose language with a broad abstraction toolkit, while dynamic typing and concise syntax support quick iteration. Its extensive standard library and package ecosystem make it common in automation, services, scientific computing, and data applications.</p>
+      <p>JavaScript provides functions, closures, classes, modules, promises, and asynchronous syntax. In browsers it works with web-platform APIs; on servers Node.js provides a different host API surface and the npm ecosystem. Developers need to account for the target runtime and its version when choosing packages and deployment tools.</p>
       <p>Rust uses functions, modules and crates, structs, enums, traits, generics, and pattern matching. It supports low-level systems programming while checking ownership and many concurrency constraints during compilation. The borrow checker can require a different way to structure data and APIs, especially for newcomers.</p>
       <p>Go uses functions, packages, methods, interfaces, and generics, with a deliberately compact set of core abstractions. Composition and small interfaces are common; there is no class inheritance or user-defined operator overloading. The standard formatter and build tool provide a consistent workflow across projects.</p>
     </div>
@@ -611,6 +658,7 @@
       <p>C has no built-in exception model comparable to Java's. C libraries and applications use conventions such as return values, error codes, and output parameters. That keeps control explicit, but callers must consistently check the conventions they use. Invalid pointer or lifetime operations can be undefined behavior.</p>
       <p>Java exceptions propagate through method calls and can be caught at chosen boundaries; checked exceptions are also part of method declarations and compile-time checking. The JVM enforces many runtime checks, but exceptions still need thoughtful handling and native code can bypass managed-language guarantees.</p>
       <p>Python exceptions likewise propagate through calls until a matching <code>except</code> handler catches them. This keeps error handling in the control flow rather than checked method declarations; unhandled exceptions produce a traceback and end the current top-level operation.</p>
+      <p>JavaScript throws exceptions and uses rejected promises for asynchronous failures. Callers handle them with <code>try</code>/<code>catch</code> or promise rejection handlers; an unhandled exception or rejection can stop a Node.js process, depending on the failure and runtime settings.</p>
       <p>Rust commonly returns <code>Result</code> for recoverable errors and <code>Option</code> for values that may be absent. The <code>?</code> operator propagates errors through the call chain, while panics are generally reserved for unrecoverable failures.</p>
       <p>Go commonly returns an <code>error</code> value as an ordinary result, so callers decide where to handle or wrap each failure. This makes error paths visible but adds repeated checks. <code>panic</code>/<code>recover</code> exist, but are usually reserved for programming errors and exceptional boundaries rather than routine error flow.</p>
       <p><strong>One important limit for code:</strong> native modules use an in-process ABI. They can perform powerful system work, but they are not isolated from the process. The language's lack of raw pointers does not sandbox a linked C, Rust, or Go module.</p>
@@ -626,10 +674,12 @@
       <p>The <code>code</code> language itself does not expose thread creation or a general async/await system. Its runtime can receive particles from modules, and native modules may do work on their own threads. That makes the module and host design part of any concurrent application; it is not a general-purpose concurrency API inside the language.</p>
       <p>C applications typically use operating-system APIs and platform libraries where they need concurrency. Java includes a larger standard concurrency toolkit, including executors and virtual threads for high-throughput tasks that mostly wait for I/O. Virtual threads make blocking I/O tasks easier to scale; they do not make a CPU-bound thread run faster.</p>
       <p>Python offers threads, <code>asyncio</code>, and multiprocessing. In the usual GIL-enabled CPython build, threads are useful for overlapping I/O, while CPU-bound Python bytecode typically needs processes or native code for parallel execution. Optional free-threaded CPython builds have been available since Python 3.13, but are not the default and depend on compatible extension modules.</p>
+      <p>JavaScript commonly uses a single event loop per main thread with asynchronous APIs for I/O. Node.js worker threads and browser Web Workers can run work in other threads; shared memory and host-specific APIs add their own coordination requirements. A promise or <code>async</code> function expresses asynchronous control flow, not parallel CPU execution by itself.</p>
       <p>Rust provides standard threads and supports async programming through its ecosystem. The ownership system and <code>Send</code>/<code>Sync</code> traits prevent many data races in safe concurrent code at compile time; async applications usually select a separate executor/runtime library.</p>
       <p>Go has lightweight goroutines, channels, and synchronization packages in its standard library. The runtime schedules goroutines over operating-system threads, which makes concurrent I/O services straightforward to write. Shared memory can still race or deadlock; channels and locks need deliberate design, and the race detector helps find data races in exercised paths.</p>
-      <p><code>code</code> keeps I/O out of its core and requires a linked module to provide capabilities such as terminal, files, and network access. This makes those dependencies visible and swappable, but the first-party modules and community ecosystem are much smaller than those around C, Java, Rust, or Go.</p>
+      <p><code>code</code> keeps I/O out of its core and requires a linked module to provide capabilities such as terminal, files, and network access. This makes those dependencies visible and swappable, but the first-party modules and community ecosystem are much smaller than those around C, Java, JavaScript, Rust, or Go.</p>
       <p>Python includes a broad standard library for common file, network, data, and operating-system tasks, alongside a large third-party ecosystem. That breadth speeds up prototyping and integration, while package versions, dependency management, and native package compatibility become part of deployment.</p>
+      <p>JavaScript has browser APIs for user interfaces and web capabilities, while Node.js supplies server-side file, network, and process APIs. npm is a large package ecosystem, but packages and APIs are not automatically interchangeable between browser and server hosts.</p>
       <p>Rust's Cargo build tool manages packages and dependencies from crates.io. Its ecosystem covers command-line applications, servers, native libraries, and embedded targets; platform support and library availability still vary by target.</p>
       <p>Go includes a broad standard library for HTTP, networking, cryptography, testing, and system tools. The <code>go</code> command and module system simplify builds and dependency versions; the ecosystem is particularly strong in cloud services and infrastructure. Go programs usually deploy as a target-specific executable, though cgo can bring external library requirements.</p>
     </div>
@@ -678,6 +728,15 @@
         <p class="good"><strong>Strong fit</strong> for scripting, integration, and applications that benefit from its broad library ecosystem.</p>
       </article>
       <article class="card">
+        <h3 class="lang-javascript">Choose JavaScript when…</h3>
+        <ul>
+          <li>you are building interactive browser experiences or Node.js applications;</li>
+          <li>the browser or server host APIs and package ecosystem fit your deployment;</li>
+          <li>dynamic typing and asynchronous I/O suit the application.</li>
+        </ul>
+        <p class="good"><strong>Strong fit</strong> for web interfaces and applications that benefit from sharing JavaScript across web tooling and server code.</p>
+      </article>
+      <article class="card">
         <h3 class="lang-rust">Choose Rust when…</h3>
         <ul>
           <li>you need a native systems language with compile-time ownership checks;</li>
@@ -711,13 +770,15 @@
       <li>Oracle's <a href="https://docs.oracle.com/en/java/javase/26/gctuning/index.html">Java SE 26 garbage-collection guide</a> and <a href="https://docs.oracle.com/en/java/javase/26/core/virtual-threads.html">virtual threads documentation</a>.</li>
       <li>Python's official docs on <a href="https://docs.python.org/3.15/library/typing.html">type annotations</a>, <a href="https://docs.python.org/3.15/library/stdtypes.html#numeric-types-int-float-complex">built-in numeric types</a>, and <a href="https://docs.python.org/3.15/library/exceptions.html">exceptions</a>.</li>
       <li>Python's official docs on <a href="https://docs.python.org/3.15/library/gc.html">cyclic garbage collection</a>, <a href="https://docs.python.org/3.15/library/threading.html">threading and the GIL</a>, <a href="https://docs.python.org/3.15/library/dis.html">CPython bytecode</a>, and the <a href="https://docs.python.org/3.15/library/index.html">standard library</a>; the <a href="https://pypi.org/">Python Package Index</a>.</li>
+      <li>The <a href="https://tc39.es/ecma262/">ECMAScript language specification</a>, including <a href="https://tc39.es/ecma262/#sec-number-objects">Number</a> and <a href="https://tc39.es/ecma262/#sec-bigint-objects">BigInt</a>; the official <a href="https://nodejs.org/en/learn/getting-started/introduction-to-nodejs">Node.js introduction</a> describes Node.js as a JavaScript runtime built on V8.</li>
+      <li>V8's <a href="https://v8.dev/blog/maglev">JIT compilation overview</a> and <a href="https://v8.dev/blog/trash-talk">garbage-collection overview</a>; Node.js documentation for <a href="https://nodejs.org/api/worker_threads.html">worker threads</a> and <a href="https://nodejs.org/en/learn/asynchronous-work/dont-block-the-event-loop">the event loop</a>.</li>
       <li>The official <a href="https://doc.rust-lang.org/book/">Rust Book</a> chapters on <a href="https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html">ownership</a> and <a href="https://doc.rust-lang.org/book/ch16-00-concurrency.html">concurrency</a>, the <a href="https://doc.rust-lang.org/reference/">Rust Reference</a>, the <a href="https://doc.rust-lang.org/rustc/codegen-options/index.html">rustc code-generation options</a>, and the <a href="https://doc.rust-lang.org/cargo/">Cargo Book</a>.</li>
       <li>Go's <a href="https://go.dev/ref/spec">language specification</a> and <a href="https://go.dev/doc/go1.27">Go 1.27 release notes</a>, plus the <a href="https://go.dev/doc/gc-guide">garbage-collector guide</a> and <a href="https://go.dev/ref/mem">memory model</a>; the GC guide describes the standard Go toolchain, while the specification only requires managed storage.</li>
       <li>Go's <a href="https://go.dev/doc/effective_go#goroutines">goroutine guidance</a>, <a href="https://go.dev/doc/effective_go#errors">error handling guidance</a>, and <a href="https://go.dev/doc/articles/race_detector">race detector guide</a>, plus the <a href="https://go.dev/cmd/go/#hdr-Compile_packages_and_dependencies">build command and cache documentation</a> and <a href="https://go.dev/ref/mod">modules reference</a>.</li>
       <li>LLVM's <a href="https://llvm.org/docs/CodeGenerator.html">target-independent code generator documentation</a>.</li>
       <li>The current <a href="https://github.com/codelovesme/code/blob/main/README.md">code language guide</a>, <a href="https://github.com/codelovesme/code/blob/main/src/runtime.c">native runtime</a>, and <a href="https://github.com/codelovesme/code/blob/main/src/code_abi.h">native module ABI</a>.</li>
     </ul>
-    <div class="prose"><p>This page describes the current <code>code</code> implementation as of 10 October 2026. C is described using the C23 standard, Java using Java SE 26 documentation, Python using the official Python 3.15 documentation, Rust using the official Rust documentation, and Go using its official specification and Go 1.27 documentation. The benchmark used Go 1.27.1. CPython-specific details are labeled as such; Python implementations can differ. The benchmark was run on 10 October 2026 and is not a general language ranking. Compiler flags, runtime settings, hardware, and program design can change performance results.</p></div>
+    <div class="prose"><p>This page describes the current <code>code</code> implementation as of 10 October 2026. C is described using the C23 standard, Java using Java SE 26 documentation, Python using the official Python 3.15 documentation, JavaScript using ECMAScript plus Node.js/V8 documentation, Rust using the official Rust documentation, and Go using its official specification and Go 1.27 documentation. The benchmark used Node.js v22.23.3 with V8 12.4.254.21-node.57 and Go 1.27.1. CPython and Node/V8-specific details are labeled as such; other Python and JavaScript runtimes can differ. The benchmark was run on 10 October 2026 and is not a general language ranking. Compiler flags, runtime settings, hardware, and program design can change performance results.</p></div>
   </section>
 </main>
 

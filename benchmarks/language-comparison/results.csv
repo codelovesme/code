@@ -1,57 +1,64 @@
 mode,run,elapsed_seconds
-code run (interpreter),1,4.942387569
-code run (interpreter),2,4.769037857
-code run (interpreter),3,4.782534282
-code run (interpreter),4,4.728685345
-code run (interpreter),5,4.749605987
-code run (interpreter),6,4.733264422
-code run (interpreter),7,4.807429582
-code build --release (native),1,0.843254523
-code build --release (native),2,0.866794897
-code build --release (native),3,0.825729643
-code build --release (native),4,0.833070473
-code build --release (native),5,0.844704773
-code build --release (native),6,0.895237558
-code build --release (native),7,0.828676209
-C (GCC -O2 -march=native),1,0.014685861
-C (GCC -O2 -march=native),2,0.014699216
-C (GCC -O2 -march=native),3,0.014518914
-C (GCC -O2 -march=native),4,0.014700452
-C (GCC -O2 -march=native),5,0.014539418
-C (GCC -O2 -march=native),6,0.014499304
-C (GCC -O2 -march=native),7,0.014728529
-C (GCC -O3 -march=native),1,0.014510572
-C (GCC -O3 -march=native),2,0.014490995
-C (GCC -O3 -march=native),3,0.014680681
-C (GCC -O3 -march=native),4,0.014675593
-C (GCC -O3 -march=native),5,0.014599522
-C (GCC -O3 -march=native),6,0.014737715
-C (GCC -O3 -march=native),7,0.014595508
-Java 26 (HotSpot default),1,0.057556728
-Java 26 (HotSpot default),2,0.049522978
-Java 26 (HotSpot default),3,0.049756227
-Java 26 (HotSpot default),4,0.054421751
-Java 26 (HotSpot default),5,0.052492813
-Java 26 (HotSpot default),6,0.051919853
-Java 26 (HotSpot default),7,0.054360462
-Python (CPython),1,1.479875976
-Python (CPython),2,1.285039388
-Python (CPython),3,1.351473180
-Python (CPython),4,1.283005056
-Python (CPython),5,1.730724236
-Python (CPython),6,1.361901065
-Python (CPython),7,1.427017139
-Rust (rustc -C opt-level=3),1,0.009195151
-Rust (rustc -C opt-level=3),2,0.009331137
-Rust (rustc -C opt-level=3),3,0.009192161
-Rust (rustc -C opt-level=3),4,0.009315527
-Rust (rustc -C opt-level=3),5,0.009319542
-Rust (rustc -C opt-level=3),6,0.009340430
-Rust (rustc -C opt-level=3),7,0.009330810
-Go (go build; default optimizations),1,0.015502126
-Go (go build; default optimizations),2,0.015397935
-Go (go build; default optimizations),3,0.015388831
-Go (go build; default optimizations),4,0.015552001
-Go (go build; default optimizations),5,0.015771015
-Go (go build; default optimizations),6,0.015364941
-Go (go build; default optimizations),7,0.015494725
+code run (interpreter),1,4.755570363
+code run (interpreter),2,4.875026892
+code run (interpreter),3,4.874406981
+code run (interpreter),4,4.768214293
+code run (interpreter),5,4.921750038
+code run (interpreter),6,4.912569909
+code run (interpreter),7,5.075385187
+code build --release (native),1,0.830547979
+code build --release (native),2,0.823793800
+code build --release (native),3,0.901146209
+code build --release (native),4,0.832855417
+code build --release (native),5,0.859172833
+code build --release (native),6,0.866191934
+code build --release (native),7,0.831246846
+C (GCC -O2 -march=native),1,0.014736696
+C (GCC -O2 -march=native),2,0.014796245
+C (GCC -O2 -march=native),3,0.014821052
+C (GCC -O2 -march=native),4,0.014545230
+C (GCC -O2 -march=native),5,0.014828199
+C (GCC -O2 -march=native),6,0.014697893
+C (GCC -O2 -march=native),7,0.014751283
+C (GCC -O3 -march=native),1,0.014643671
+C (GCC -O3 -march=native),2,0.014803094
+C (GCC -O3 -march=native),3,0.014706774
+C (GCC -O3 -march=native),4,0.015005962
+C (GCC -O3 -march=native),5,0.014871271
+C (GCC -O3 -march=native),6,0.014582417
+C (GCC -O3 -march=native),7,0.014852850
+Java 26 (HotSpot default),1,0.055347799
+Java 26 (HotSpot default),2,0.052210380
+Java 26 (HotSpot default),3,0.051785275
+Java 26 (HotSpot default),4,0.056853169
+Java 26 (HotSpot default),5,0.062269491
+Java 26 (HotSpot default),6,0.051517568
+Java 26 (HotSpot default),7,0.050212260
+Python (CPython),1,1.286471226
+Python (CPython),2,1.520485540
+Python (CPython),3,1.357514115
+Python (CPython),4,1.387362446
+Python (CPython),5,1.380437306
+Python (CPython),6,1.430156161
+Python (CPython),7,1.405298697
+JavaScript (Node.js/V8),1,0.040921892
+JavaScript (Node.js/V8),2,0.042025598
+JavaScript (Node.js/V8),3,0.040556750
+JavaScript (Node.js/V8),4,0.044322017
+JavaScript (Node.js/V8),5,0.044698585
+JavaScript (Node.js/V8),6,0.039768943
+JavaScript (Node.js/V8),7,0.047056522
+Rust (rustc -C opt-level=3),1,0.009439939
+Rust (rustc -C opt-level=3),2,0.009350078
+Rust (rustc -C opt-level=3),3,0.009398555
+Rust (rustc -C opt-level=3),4,0.009410235
+Rust (rustc -C opt-level=3),5,0.009702462
+Rust (rustc -C opt-level=3),6,0.009344679
+Rust (rustc -C opt-level=3),7,0.009401295
+Go (go build; default optimizations),1,0.015973861
+Go (go build; default optimizations),2,0.015606950
+Go (go build; default optimizations),3,0.015799347
+Go (go build; default optimizations),4,0.015486479
+Go (go build; default optimizations),5,0.015837996
+Go (go build; default optimizations),6,0.015835812
+Go (go build; default optimizations),7,0.015377973

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the small Code/C/Java/Python/Rust/Go comparison benchmark on this machine."""
+"""Run the small Code/C/Java/Python/JavaScript/Rust/Go comparison benchmark."""
 
 from __future__ import annotations
 
@@ -92,6 +92,7 @@ def main() -> None:
     javac = command_from_env("JAVAC", "javac")
     java = command_from_env("JAVA", "java")
     python = command_from_env("PYTHON", "python3")
+    node = command_from_env("NODE", "node")
     rustc = command_from_env("RUSTC", "rustc")
     go = command_from_env("GO", "go")
 
@@ -185,6 +186,7 @@ def main() -> None:
             "C (GCC -O3 -march=native)": [str(c_out["-O3"])],
             "Java 26 (HotSpot default)": java + ["-cp", str(java_classes), "SumSquares"],
             "Python (CPython)": python + [str(HERE / "sum_squares.py")],
+            "JavaScript (Node.js/V8)": node + [str(HERE / "sum_squares.js")],
             "Rust (rustc -C opt-level=3)": [str(rust_out)],
             "Go (go build; default optimizations)": [str(go_out)],
         }
@@ -208,6 +210,7 @@ def main() -> None:
                 "max_seconds": max(values),
                 "million_iterations_per_second": TOTAL_ITERATIONS / med / 1_000_000,
             })
+        rows.sort(key=lambda row: row["median_seconds"])
 
         with (args.output_dir / "results.csv").open("w", newline="") as handle:
             writer = csv.DictWriter(
@@ -247,6 +250,13 @@ def main() -> None:
                     ],
                     REPO,
                 ).stdout.strip(),
+                "javascript_runtime": checked(
+                    node + [
+                        "-p",
+                        "process.version + ' (V8 ' + process.versions.v8 + ')'",
+                    ],
+                    REPO,
+                ).stdout.strip(),
                 "rust_compiler": version(rustc + ["--version"], REPO),
                 "go_toolchain": version(go + ["version"], REPO),
                 "code_compile_command": "code build --release (LLVM optimization level -O2)",
@@ -265,12 +275,13 @@ def main() -> None:
             "summary": rows,
             "notes": [
                 "Process startup is included in runtime measurements; separate ahead-of-time build time is excluded.",
-                "Python and code run execute source directly; source parsing is part of their runtime measurement, and CPython compiles the Python source to bytecode during each launch.",
-                "Go, Rust, C, Java, and code native run prebuilt binaries; their compilation is measured separately.",
+                "code run, Python, and JavaScript execute source directly; source processing is part of each runtime measurement. CPython generates bytecode during the run, and Node/V8 parses and may JIT-compile JavaScript during the run.",
+                "Go, Rust, C, Java, and code native run prebuilt artifacts; their ahead-of-time compile/build times are measured separately. Java runs prebuilt JVM bytecode, and HotSpot's runtime JIT work remains part of its run time.",
                 "Go runs a prebuilt binary. An untimed build warms the cache for this program's standard-library dependencies; each timed Go build changes only a source comment so the main package is rebuilt while those dependencies can be reused.",
                 "No separate memory measurement was made.",
                 "One workload is a useful data point, not a universal language ranking.",
                 "Python uses float (IEEE 754 binary64) values; its process startup, source parsing, and bytecode generation are included in run time.",
+                "JavaScript uses Number values (IEEE 754 binary64) in Node.js/V8; process startup, source parsing, and any JIT work are included in run time.",
                 "Rust uses f64 values and a rustc release optimization level of 3, targeting the local CPU.",
                 "Go uses float64 values and the Go toolchain's default compiler optimization settings; go build process startup is included in its separate build measurement.",
             ],
@@ -295,6 +306,8 @@ def main() -> None:
                 compile_value = f"{median(compile_samples[compile_label]):.3f}"
             elif row["mode"] == "Python (CPython)":
                 compile_value = "bytecode in run"
+            elif row["mode"] == "JavaScript (Node.js/V8)":
+                compile_value = "parse/JIT in run"
             else:
                 compile_value = "parse in run"
             print(
