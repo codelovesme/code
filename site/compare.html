@@ -93,6 +93,22 @@
   tbody th { width: 175px; color: var(--text); font-size: .86rem; }
   td { color: var(--muted); font-size: .88rem; }
   tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+  .benchmark-chart { margin: 1.25rem 0 1.8rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+  .benchmark-chart figcaption { margin-bottom: 1.2rem; }
+  .benchmark-chart h3 { margin-bottom: .25rem; }
+  .benchmark-chart figcaption p { margin: 0; color: var(--muted); font-size: .88rem; }
+  .benchmark-axis, .benchmark-row { display: grid; grid-template-columns: minmax(9.5rem, 13rem) minmax(0, 1fr) 5.8rem; align-items: center; gap: .8rem; }
+  .benchmark-axis { margin-bottom: .35rem; }
+  .axis-ticks { display: flex; justify-content: space-between; color: var(--muted-2); font: .7rem var(--mono); }
+  .benchmark-row { margin-top: .65rem; }
+  .bar-label { color: var(--text); font-size: .82rem; }
+  .bar-track { height: 16px; overflow: hidden; border-radius: 999px; background-color: rgba(255,255,255,.055); background-image: linear-gradient(to right, var(--border-2) 1px, transparent 1px); background-size: 33.3333% 100%; }
+  .bar { display: block; height: 100%; min-width: 2px; border-radius: inherit; }
+  .bar.code { background: var(--teal); }
+  .bar.c { background: var(--amber); }
+  .bar.java { background: var(--violet); }
+  .bar.python { background: var(--blue); }
+  .bar-value { color: var(--text); font: .8rem var(--mono); text-align: right; white-space: nowrap; }
   .lang-code { color: var(--teal); }
   .lang-c { color: var(--amber); }
   .lang-java { color: var(--violet); }
@@ -129,6 +145,13 @@
     header { padding-top: 3rem; }
     .lede { font-size: 1rem; }
     section { padding: 2rem 0; }
+    .benchmark-chart { padding: 1rem; }
+    .benchmark-axis, .benchmark-row { grid-template-columns: minmax(0, 1fr) auto; gap: .35rem .65rem; }
+    .benchmark-axis .axis-spacer, .benchmark-axis .axis-value { display: none; }
+    .benchmark-axis .axis-ticks { grid-column: 1 / -1; }
+    .benchmark-row .bar-label { grid-column: 1; }
+    .benchmark-row .bar-track { grid-column: 1 / -1; grid-row: 2; }
+    .benchmark-row .bar-value { grid-column: 2; grid-row: 1; }
   }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .button:hover { transform: none; } }
 </style>
@@ -398,6 +421,49 @@
         </tbody>
       </table>
     </div>
+    <figure class="benchmark-chart" aria-labelledby="benchmark-chart-title">
+      <figcaption>
+        <h3 id="benchmark-chart-title">Median runtime at a glance</h3>
+        <p>Logarithmic scale in seconds. Each equal step is a 10× increase; the chart shows run time, not separate build time.</p>
+      </figcaption>
+      <div class="benchmark-axis" aria-hidden="true">
+        <span class="axis-spacer"></span>
+        <div class="axis-ticks"><span>0.01 s</span><span>0.1 s</span><span>1 s</span><span>10 s</span></div>
+        <span class="axis-value"></span>
+      </div>
+      <div role="list" aria-label="Median runtime by implementation">
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label"><code>code run</code> (interpreter)</span>
+          <div class="bar-track"><span class="bar code" style="width:89.4%" aria-hidden="true"></span></div>
+          <span class="bar-value">4.8178 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label"><code>code build --release</code></span>
+          <div class="bar-track"><span class="bar code" style="width:64.2%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.8415 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label">C, GCC <code>-O2</code></span>
+          <div class="bar-track"><span class="bar c" style="width:5.6%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.0147 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label">C, GCC <code>-O3</code></span>
+          <div class="bar-track"><span class="bar c" style="width:5.6%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.0147 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label">Java 26, HotSpot defaults</span>
+          <div class="bar-track"><span class="bar java" style="width:24%" aria-hidden="true"></span></div>
+          <span class="bar-value">0.0526 s</span>
+        </div>
+        <div class="benchmark-row" role="listitem">
+          <span class="bar-label">Python 3.13.5 (CPython)</span>
+          <div class="bar-track"><span class="bar python" style="width:71.6%" aria-hidden="true"></span></div>
+          <span class="bar-value">1.4037 s</span>
+        </div>
+      </div>
+    </figure>
     <div class="prose">
       <p><strong>Test machine and commands:</strong> Intel Core i7-5930K at 3.50 GHz, x86-64, Debian 13, Linux 6.12.107; runs pinned to logical CPU 0. <code>code</code> v2.14.3 (compiler source commit <code>80d8961</code>) used <code>code build --release</code> (LLVM <code>-O2</code>); C used GCC 14.2 with <code>-std=c17 -O2/-O3 -march=native</code>; Java used Temurin OpenJDK/Javac 26.0.2.1 with default HotSpot settings; Python used CPython 3.13.5 and IEEE 754 binary64 <code>float</code> values.</p>
       <p>Process startup is included in each run. Java includes JVM startup and JIT warm-up; <code>code run</code> and Python include parsing and interpretation. Build times are measured separately over five invocations; interpreted entries have no separate build time. <code>-march=native</code> tunes C for this particular CPU. This numeric loop does not measure memory, allocation, I/O, concurrency, or application-level work, and the runtimes are not directly comparable for every workload.</p>
