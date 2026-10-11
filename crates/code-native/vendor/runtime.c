@@ -7,9 +7,10 @@
  *
  * Every constructor writes into a caller-owned `CodeValue*` (rather than
  * returning by value) specifically to sidestep C-struct-by-value calling-
- * convention/ABI matching between this file and the LLVM IR that calls it —
- * codegen.rs only ever passes opaque pointers, never inspects the struct's
- * layout itself. See codegen.rs's VALUE_SIZE comment for the size contract.
+ * convention/ABI matching between this file and the LLVM IR that calls it.
+ * codegen.rs passes pointers, and reads only three fields itself — `tag` at
+ * 0, `number` at 8 and `boolean` after `str` (ticket 113, see its
+ * `bool_offset`). See codegen.rs's VALUE_SIZE comment for the size contract.
  */
 #define _GNU_SOURCE
 #ifdef CODE_WASM
@@ -25,6 +26,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
 #endif
 
 #include "code_abi.h"
@@ -4132,6 +4136,146 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         return;
     }
     fail_binary("+", a, b);
+}
+
+/* ---- Growing a value nothing else holds (ticket 121) -----------------------
+ *
+ * `xs += x`, `s = s + "…"` and `counts = counts + { k = v }` used to build a
+ * whole new value and drop the old one, so growing anything one piece at a
+ * time was n² work: 1,000 appends copied half a million slots. Values never
+ * change in place — but when the variable being assigned is the only holder
+ * of its block (a count of 1), nobody can tell the difference, so the block
+ * is grown where it is, with room doubling the way every growable buffer's
+ * does. Anything else — a shared block, a literal, an operand that is the
+ * value itself, a merge that adds a field — takes `code_add`, exactly as
+ * before. The idea is Lean's and Koka's reuse of unique cells, done at run
+ * time like Swift's `isKnownUniquelyReferenced`.
+ *
+ * The room a block has is the allocator's own figure, so the header and the
+ * module ABI stay as they are. */
+#ifdef CODE_WASM
+static size_t block_room(void *block) {
+    return code_wasm_size_of(block);
+}
+#elif defined(__GLIBC__)
+static size_t block_room(void *block) {
+    return malloc_usable_size(block);
+}
+#else
+static size_t block_room(void *block) {
+    (void)block;
+    return 0; /* unknown: grow by exactly what is needed */
+}
+#endif
+
+/* Whether `v` owns a heap block nothing else holds. */
+static int held_alone(const CodeValue *v) {
+    return v->heap && header_of(heap_block(v))->rc == 1;
+}
+
+/* The block behind `payload`, able to hold `bytes`: unchanged when it has the
+ * room, otherwise reallocated at least twice as big. Only for a block held
+ * alone — it may move. */
+static void *room_for(void *payload, size_t bytes) {
+    CodeHeader *h = header_of(payload);
+    size_t want = sizeof(CodeHeader) + bytes;
+    size_t have = block_room(h);
+    if (have >= want) {
+        return payload;
+    }
+    size_t next = have * 2 > want ? have * 2 : want;
+    CodeHeader *bigger = realloc(h, next);
+    if (!bigger) {
+        code_runtime_error("out of memory");
+    }
+    return (char *)bigger + sizeof(CodeHeader);
+}
+
+/* `*dst = *dst + *b` for an array: `b`'s elements (or `b` itself) appended. */
+static int append_in_place(CodeValue *dst, const CodeValue *b) {
+    long long nb = (b->tag == CODE_ARRAY) ? b->len : 1;
+    if (nb == 0) {
+        return 1;
+    }
+    long long total = dst->len + nb;
+    void *items;
+    if (dst->heap) {
+        items = room_for(dst->items, (size_t)total * CODE_VALUE_SLOT_SIZE);
+    } else {
+        /* Empty, so there is nothing to copy — a fresh block with room. */
+        long long room = total < 4 ? 4 : total;
+        items = heap_alloc((size_t)room * CODE_VALUE_SLOT_SIZE);
+    }
+    for (long long i = 0; i < nb; i++) {
+        const CodeValue *src = (b->tag == CODE_ARRAY) ? slot_at(b->items, i) : b;
+        code_retain(src);
+        *slot_at(items, dst->len + i) = *src;
+    }
+    dst->items = items;
+    dst->heap = 1;
+    dst->len = total;
+    return 1;
+}
+
+/* `*dst = *dst + *b` for two strings, `dst` held alone or a literal. */
+static void join_in_place(CodeValue *dst, const CodeValue *b) {
+    size_t la = strlen(dst->str);
+    size_t lb = strlen(b->str);
+    char *buf;
+    if (dst->heap) {
+        buf = room_for((void *)dst->str, la + lb + 1);
+    } else {
+        /* A literal's characters are not ours to grow: copy them once into a
+         * block with room, and grow that from now on. */
+        size_t room = 2 * (la + lb) + 16;
+        buf = heap_alloc(room);
+        memcpy(buf, dst->str, la);
+    }
+    memcpy(buf + la, b->str, lb + 1);
+    dst->str = buf;
+    dst->heap = 1;
+}
+
+/* `*dst = *dst + *b` for two objects when every field of `b` is already in
+ * `dst`: the values replaced where they stand. Reports 0 (and changes
+ * nothing) when a field is new — a new key changes the block's layout, and
+ * that is still `code_add`'s. */
+static int update_in_place(CodeValue *dst, const CodeValue *b) {
+    for (long long j = 0; j < b->len; j++) {
+        if (!find_field(dst, b->keys[j])) {
+            return 0;
+        }
+    }
+    for (long long j = 0; j < b->len; j++) {
+        CodeValue *slot = (CodeValue *)find_field(dst, b->keys[j]);
+        const CodeValue *src = slot_at(b->items, j);
+        code_retain(src);
+        code_release(slot);
+        *slot = *src;
+    }
+    return 1;
+}
+
+/* What `name = name + value` and `name += value` compile to. Same answer as
+ * `code_add(dst, dst, b)`, which is what it falls back to. */
+void code_add_into(CodeValue *dst, const CodeValue *b) {
+    if (b != dst) {
+        if (dst->tag == CODE_ARRAY && (held_alone(dst) || !dst->heap)) {
+            if (append_in_place(dst, b)) {
+                return;
+            }
+        }
+        if (dst->tag == CODE_STR && b->tag == CODE_STR && (held_alone(dst) || !dst->heap)) {
+            join_in_place(dst, b);
+            return;
+        }
+        if (dst->tag == CODE_OBJECT && b->tag == CODE_OBJECT && held_alone(dst)) {
+            if (update_in_place(dst, b)) {
+                return;
+            }
+        }
+    }
+    code_add(dst, dst, b);
 }
 
 /* Every failing branch below leaves `out` exactly as it found it, rather than

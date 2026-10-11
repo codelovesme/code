@@ -391,6 +391,18 @@ Two traps:
   mentions stays boxed, and so does a handler name that is also a top-level
   one: a plain `double` in `main` cannot be reached from a handler.
 
+## Growing a value in place (ticket 121, 2026-10-11)
+
+`name += x` and `name = name + x` compile to `code_add_into(slot, x)`, which
+grows the slot's own array, string or object block where it stands when its
+count is 1 (`held_alone`), with room doubling (`room_for`, sized by
+`malloc_usable_size` / the wasm shim's block size, so the header and module
+ABI are unchanged). Anything shared, an operand that is the value itself, or
+an object merge that adds a field falls back to `code_add`. A value is never
+seen to change: whoever else holds it has a count, and a count above 1 means
+a copy. `tests/in_place_growth.code` holds the aliasing cases. It took
+`benchmarks/workloads/` binary_trees from 500× C to 8×.
+
 ## Wasm handler stack (root-caused 2026-09-07)
 
 Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`
