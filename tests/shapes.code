@@ -1,0 +1,53 @@
+| Objects built from one literal share a shape, and a `.field` read or a part
+| write that knows the shape goes straight to the slot (ticket 122 stage B).
+| Whatever happens to an object afterwards, the answers are the object's own.
+
+| One read meets the shape it expects, a field added since, another order,
+| fewer fields, something not an object at all.
+p = { x = 1, y = 2 }
+grown = { x = 1, y = 2 }
+grown.z = 3
+other = { y = 20, x = 10 }
+fewer = { x = 100 }
+merged = p + { y = 5 }
+added = p + { w = 9 }
+things = [p, grown, other, fewer, merged, added]
+xs = []
+loop t over things
+    xs += t.x
+assert xs = [1, 1, 10, 100, 1, 1]
+ys = []
+loop t over things
+    ys += t.y
+assert ys = [2, 2, 20, null, 5, 2]
+
+| Written through the known slot, and through the slow way, alike.
+loop i, t over things
+    things[i].x = t.x + 1000
+assert things[0] = { x = 1001, y = 2 }
+assert things[1] = { x = 1001, y = 2, z = 3 }
+assert things[2] = { y = 20, x = 1010 }
+assert things[3] = { x = 1100 }
+assert p = { x = 1, y = 2 }
+
+| A copy keeps the shape, and changing it leaves the original alone.
+q = p
+q.y = 7
+assert p.y = 2
+assert q.y = 7
+assert q.x = 1
+
+| Lists indexed by number in line: whole, past the end, fractions, negatives,
+| a string, an object.
+nums = [10, 20, 30]
+assert nums[0] + nums[2] = 40
+assert nums[3] = null
+assert nums[1.5] = null
+assert nums[0 - 1] = null
+word = "abc"
+assert word[1] = "b"
+named = { a = 1 }
+key = "a"
+assert named[key] = 1
+k = 2
+assert nums[k] = 30

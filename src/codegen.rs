@@ -408,6 +408,8 @@ pub(crate) fn compile_to_object_traced(
                 i8_ptr_ty.into(),
                 i8_ptr_ty.into(),
                 i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
             ],
             false,
         ),
@@ -927,6 +929,9 @@ pub(crate) fn compile_to_object_traced(
         failed_flag,
         bool_offset: if target == BuildTarget::Wasm { 20 } else { 24 },
         kinds: Default::default(),
+        layouts: Default::default(),
+        shapes: HashMap::new(),
+        str_constants: HashMap::new(),
         scalar_names: HashMap::new(),
         scalar_slots: HashMap::new(),
         location_slot,
@@ -953,6 +958,7 @@ pub(crate) fn compile_to_object_traced(
     // written in.
     gen.declare_handlers(&program.statements)?;
     gen.kinds = crate::kinds::of_program(program);
+    gen.layouts = crate::infer::field_layouts(program);
     gen.scalar_names = gen.kinds.top.clone();
     // Decided now that every handler is known, and only for an executable:
     // a library cannot know whether its host will want its steps (see
@@ -1357,6 +1363,14 @@ struct Gen<'a, 'm> {
     /// Which variables only ever hold a number or a boolean (`kinds.rs`),
     /// for the whole program, and for the function being generated.
     kinds: crate::kinds::Kinds,
+    /// Where each `.field` read finds its field in the shape the program
+    /// builds its object with (`infer::field_layouts`, ticket 122 stage B).
+    layouts: crate::infer::Layouts,
+    /// One constant key list per distinct object-literal key list — passed to
+    /// `code_object_literal`, and its address is the objects' shape.
+    shapes: HashMap<Vec<String>, PointerValue<'a>>,
+    /// One read-only value slot per string literal (`str_constant`).
+    str_constants: HashMap<String, PointerValue<'a>>,
     scalar_names: HashMap<String, crate::kinds::Kind>,
     /// The bindings that are a plain `double` or flag, not a slot, by the
     /// stack slot that holds them.
@@ -3644,10 +3658,15 @@ impl<'a, 'm> Gen<'a, 'm> {
                 }
             }
         }
-        if let Expr::SetAt { base, path, value } = value {
+        if let Expr::SetAt {
+            base,
+            path,
+            value: part,
+        } = value
+        {
             if let (Expr::Ident(read), Some(slot)) = (&**base, self.lookup(name)) {
                 if read == name && !self.scalar_slots.contains_key(&slot) {
-                    return self.gen_set_at(slot, path, value);
+                    return self.gen_set_at(value as *const Expr as usize, slot, path, part);
                 }
             }
         }
@@ -3728,6 +3747,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// (`code_set_at`): the keys into a slot buffer, then the value.
     fn gen_set_at(
         &mut self,
+        site: usize,
         target: PointerValue<'a>,
         path: &[Expr],
         value: &Expr,
@@ -3775,6 +3795,31 @@ impl<'a, 'm> Gen<'a, 'm> {
         let guesses = self.module.add_global(hash_ty, None, "setguesses");
         guesses.set_initializer(&hash_ty.const_zero());
         guesses.set_linkage(inkwell::module::Linkage::Private);
+        // The shape each named step's object is expected to have, and the
+        // field's slot in it, where the program shows it (`infer`).
+        let mut shape_words = Vec::new();
+        let mut slot_words = Vec::new();
+        for step in 0..path.len() {
+            match self.layouts.parts.get(&(site, step)).cloned() {
+                Some((order, at)) => {
+                    shape_words.push(self.shape_keys(&order));
+                    slot_words.push(self.i64_ty.const_int(at as u64, false));
+                }
+                None => {
+                    shape_words.push(self.i8_ptr_ty.const_null());
+                    slot_words.push(self.i64_ty.const_zero());
+                }
+            }
+        }
+        let shapes_ty = self.i8_ptr_ty.array_type(len as u32);
+        let shapes = self.module.add_global(shapes_ty, None, "setshapes");
+        shapes.set_initializer(&self.i8_ptr_ty.const_array(&shape_words));
+        shapes.set_constant(true);
+        shapes.set_linkage(inkwell::module::Linkage::Private);
+        let slots = self.module.add_global(hash_ty, None, "setslots");
+        slots.set_initializer(&self.i64_ty.const_array(&slot_words));
+        slots.set_constant(true);
+        slots.set_linkage(inkwell::module::Linkage::Private);
         let value = self.gen_expr(value)?;
         self.builder
             .build_call(
@@ -3786,6 +3831,8 @@ impl<'a, 'm> Gen<'a, 'm> {
                     value.into(),
                     hash_table.as_pointer_value().into(),
                     guesses.as_pointer_value().into(),
+                    shapes.as_pointer_value().into(),
+                    slots.as_pointer_value().into(),
                 ],
                 "",
             )
@@ -3823,6 +3870,192 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .const_gep(i8_ty, &[self.i64_ty.const_int(4, false)])
         };
         self.hashed_keys.insert(name.to_string(), ptr);
+        ptr
+    }
+
+    /// The guarded fast path of a `.field` read whose layout is known: if the
+    /// value at `base` is an object still marked with `order`'s shape, the
+    /// slot at `at`. Leaves the builder in the block that does the slow read
+    /// (`code_field_ref`) and answers the fast slot, the block it is in, and
+    /// the block both go on to.
+    fn shaped_slot(
+        &mut self,
+        base: PointerValue<'a>,
+        order: &[String],
+        at: usize,
+    ) -> Result<
+        (
+            PointerValue<'a>,
+            inkwell::basic_block::BasicBlock<'a>,
+            inkwell::basic_block::BasicBlock<'a>,
+        ),
+        String,
+    > {
+        let shape = self.shape_keys(order);
+        let function = self.current_function();
+        let check = self.context.append_basic_block(function, "shapecheck");
+        let marked = self.context.append_basic_block(function, "shapemark");
+        let fast = self.context.append_basic_block(function, "shaped");
+        let slow = self.context.append_basic_block(function, "unshaped");
+        let merge = self.context.append_basic_block(function, "fieldread");
+        let (items_offset, keys_offset) = if self.bool_offset == 20 {
+            (24, 28)
+        } else {
+            (32, 40)
+        };
+        let b = self.builder;
+        let is_object = self.has_tag(base, 5)?;
+        b.build_conditional_branch(is_object, check, slow)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(check);
+        let keys_at = self.value_field(base, keys_offset)?;
+        let keys = b
+            .build_load(self.i8_ptr_ty, keys_at, "keys")
+            .map_err(|e| e.to_string())?
+            .into_pointer_value();
+        let has_keys = b
+            .build_is_not_null(keys, "haskeys")
+            .map_err(|e| e.to_string())?;
+        b.build_conditional_branch(has_keys, marked, slow)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(marked);
+        // The block header's spare word, just before the keys: the shape.
+        let mark_at = unsafe {
+            b.build_gep(
+                self.i8_ty,
+                keys,
+                &[self.i64_ty.const_int((-8i64) as u64, true)],
+                "markat",
+            )
+            .map_err(|e| e.to_string())?
+        };
+        let mark = b
+            .build_load(self.i64_ty, mark_at, "mark")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let expected = b
+            .build_ptr_to_int(shape, self.i64_ty, "shape")
+            .map_err(|e| e.to_string())?;
+        let same = b
+            .build_int_compare(IntPredicate::EQ, mark, expected, "sameshape")
+            .map_err(|e| e.to_string())?;
+        b.build_conditional_branch(same, fast, slow)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(fast);
+        let items_at = self.value_field(base, items_offset)?;
+        let items = b
+            .build_load(self.i8_ptr_ty, items_at, "items")
+            .map_err(|e| e.to_string())?
+            .into_pointer_value();
+        let slot = self.slot_at(items, at as u64, "shapedslot")?;
+        b.build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        let fast_end = b.get_insert_block().expect("in a block");
+        b.position_at_end(slow);
+        Ok((slot, fast_end, merge))
+    }
+
+    /// A read-only `CodeValue` slot holding the literal `text` — tag String,
+    /// `heap` 0, `str` at the program's copy of the characters — laid out
+    /// field by field as `code_abi.h` lays out a `CodeValue` on this target,
+    /// padded to `VALUE_SIZE`. What a string literal evaluates to: no call,
+    /// no temporary, nothing to clear.
+    fn str_constant(&mut self, text: &str) -> PointerValue<'a> {
+        if let Some(ptr) = self.str_constants.get(text) {
+            return *ptr;
+        }
+        let chars = self
+            .builder
+            .build_global_string_ptr(text, "strlit")
+            .map(|g| g.as_pointer_value())
+            .expect("a global string");
+        let i32_ty = self.i32_ty;
+        let i8_ty = self.i8_ty;
+        let wasm = self.bool_offset == 20;
+        let null = self.i8_ptr_ty.const_null();
+        let zero32 = i32_ty.const_zero();
+        let (fields, values): (
+            Vec<inkwell::types::BasicTypeEnum>,
+            Vec<inkwell::values::BasicValueEnum>,
+        ) = if wasm {
+            (
+                vec![
+                    i32_ty.into(),
+                    i32_ty.into(),
+                    self.f64_ty.into(),
+                    self.i8_ptr_ty.into(),
+                    i32_ty.into(),
+                    self.i8_ptr_ty.into(),
+                    self.i8_ptr_ty.into(),
+                    self.i64_ty.into(),
+                    i8_ty.array_type(40).into(),
+                ],
+                vec![
+                    i32_ty.const_int(1, false).into(),
+                    zero32.into(),
+                    self.f64_ty.const_zero().into(),
+                    chars.into(),
+                    zero32.into(),
+                    null.into(),
+                    null.into(),
+                    self.i64_ty.const_zero().into(),
+                    i8_ty.array_type(40).const_zero().into(),
+                ],
+            )
+        } else {
+            (
+                vec![
+                    i32_ty.into(),
+                    i32_ty.into(),
+                    self.f64_ty.into(),
+                    self.i8_ptr_ty.into(),
+                    i32_ty.into(),
+                    i8_ty.array_type(4).into(),
+                    self.i8_ptr_ty.into(),
+                    self.i8_ptr_ty.into(),
+                    self.i64_ty.into(),
+                    i8_ty.array_type(24).into(),
+                ],
+                vec![
+                    i32_ty.const_int(1, false).into(),
+                    zero32.into(),
+                    self.f64_ty.const_zero().into(),
+                    chars.into(),
+                    zero32.into(),
+                    i8_ty.array_type(4).const_zero().into(),
+                    null.into(),
+                    null.into(),
+                    self.i64_ty.const_zero().into(),
+                    i8_ty.array_type(24).const_zero().into(),
+                ],
+            )
+        };
+        let ty = self.context.struct_type(&fields, true);
+        let global = self.module.add_global(ty, None, "strvalue");
+        global.set_initializer(&ty.const_named_struct(&values));
+        global.set_constant(true);
+        global.set_alignment(8);
+        global.set_linkage(inkwell::module::Linkage::Private);
+        let ptr = global.as_pointer_value();
+        self.str_constants.insert(text.to_string(), ptr);
+        ptr
+    }
+
+    /// The constant key list for objects built with exactly these keys, in
+    /// this order: an array of `hashed_key` pointers. Its address is the
+    /// shape `code_object_literal` marks such objects with.
+    fn shape_keys(&mut self, order: &[String]) -> PointerValue<'a> {
+        if let Some(ptr) = self.shapes.get(order) {
+            return *ptr;
+        }
+        let keys: Vec<PointerValue<'a>> = order.iter().map(|key| self.hashed_key(key)).collect();
+        let array_ty = self.i8_ptr_ty.array_type(keys.len() as u32);
+        let global = self.module.add_global(array_ty, None, "shape");
+        global.set_initializer(&self.i8_ptr_ty.const_array(&keys));
+        global.set_constant(true);
+        global.set_linkage(inkwell::module::Linkage::Private);
+        let ptr = global.as_pointer_value();
+        self.shapes.insert(order.to_vec(), ptr);
         ptr
     }
 
@@ -3970,6 +4203,18 @@ impl<'a, 'm> Gen<'a, 'm> {
         match expr {
             Expr::Field(obj, field) => {
                 let base = self.gen_peek(obj)?;
+                // An object built the way the program builds this one has the
+                // field at a known slot: check it still has that shape, and
+                // read the slot without a call (ticket 122 stage B).
+                let layout = self
+                    .layouts
+                    .fields
+                    .get(&(expr as *const Expr as usize))
+                    .cloned();
+                let fast = match layout {
+                    Some((order, at)) => Some(self.shaped_slot(base, &order, at)?),
+                    None => None,
+                };
                 let name = self.global_str(field, "fieldname")?;
                 let hash = self
                     .context
@@ -3997,11 +4242,30 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .expect("code_field_ref returns a pointer")
                     .into_pointer_value();
                 self.check_failed()?;
-                Ok(found)
+                match fast {
+                    Some((slot, fast_block, merge)) => {
+                        let slow_block = self.builder.get_insert_block().expect("in a block");
+                        self.builder
+                            .build_unconditional_branch(merge)
+                            .map_err(|e| e.to_string())?;
+                        self.builder.position_at_end(merge);
+                        let phi = self
+                            .builder
+                            .build_phi(self.i8_ptr_ty, "field")
+                            .map_err(|e| e.to_string())?;
+                        phi.add_incoming(&[(&slot, fast_block), (&found, slow_block)]);
+                        Ok(phi.as_basic_value().into_pointer_value())
+                    }
+                    None => Ok(found),
+                }
             }
             Expr::Index(arr, index) => {
                 let base = self.gen_peek(arr)?;
-                let key = self.gen_expr(index)?;
+                let key = self.gen_val(index)?;
+                if let Val::Num(n) = self.settle(key)? {
+                    return self.number_index(base, n);
+                }
+                let key = self.box_val(key)?;
                 let scratch = self.alloc_temp("indexref")?;
                 let found = self
                     .builder
@@ -4020,6 +4284,110 @@ impl<'a, 'm> Gen<'a, 'm> {
             }
             _ => self.gen_expr(expr),
         }
+    }
+
+    /// `xs[n]` with `n` a plain number: when `xs` is a list and `n` a whole
+    /// number below its length, the element's slot, found in line; anything
+    /// else — a string, an object, a fraction, past the end — is
+    /// `code_index_ref`'s, as before (ticket 122 stage B). The number is only
+    /// boxed on that slow side.
+    fn number_index(
+        &mut self,
+        base: PointerValue<'a>,
+        n: inkwell::values::FloatValue<'a>,
+    ) -> Result<PointerValue<'a>, String> {
+        let function = self.current_function();
+        let fast = self.context.append_basic_block(function, "element");
+        let slow = self.context.append_basic_block(function, "notelement");
+        let merge = self.context.append_basic_block(function, "indexread");
+        let (items_offset, len_offset) = if self.bool_offset == 20 {
+            (24, 32)
+        } else {
+            (32, 48)
+        };
+        let b = self.builder;
+        let is_array = self.has_tag(base, 4)?;
+        let len_at = self.value_field(base, len_offset)?;
+        let len = b
+            .build_load(self.i64_ty, len_at, "len")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let len_f = b
+            .build_signed_int_to_float(len, self.f64_ty, "lenf")
+            .map_err(|e| e.to_string())?;
+        let from_zero = b
+            .build_float_compare(FloatPredicate::OGE, n, self.f64_ty.const_zero(), "fromzero")
+            .map_err(|e| e.to_string())?;
+        let below = b
+            .build_float_compare(FloatPredicate::OLT, n, len_f, "below")
+            .map_err(|e| e.to_string())?;
+        let in_range = b
+            .build_and(from_zero, below, "inrange")
+            .map_err(|e| e.to_string())?;
+        // Converted only where it is in range; `select` keeps an out-of-range
+        // (poison) conversion from deciding anything.
+        let i = b
+            .build_float_to_signed_int(n, self.i64_ty, "i")
+            .map_err(|e| e.to_string())?;
+        let back = b
+            .build_signed_int_to_float(i, self.f64_ty, "back")
+            .map_err(|e| e.to_string())?;
+        let whole = b
+            .build_float_compare(FloatPredicate::OEQ, back, n, "whole")
+            .map_err(|e| e.to_string())?;
+        let false_ = self.context.bool_type().const_zero();
+        let number_ok = b
+            .build_select(in_range, whole, false_, "numberok")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let ok = b
+            .build_select(is_array, number_ok, false_, "elementok")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        b.build_conditional_branch(ok, fast, slow)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(fast);
+        let items_at = self.value_field(base, items_offset)?;
+        let items = b
+            .build_load(self.i8_ptr_ty, items_at, "items")
+            .map_err(|e| e.to_string())?
+            .into_pointer_value();
+        let offset = b
+            .build_int_mul(i, self.i64_ty.const_int(VALUE_SIZE, false), "offset")
+            .map_err(|e| e.to_string())?;
+        let slot = unsafe {
+            b.build_gep(self.i8_ty, items, &[offset], "elementslot")
+                .map_err(|e| e.to_string())?
+        };
+        b.build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(slow);
+        let key = self.box_val(Val::Num(n))?;
+        let scratch = self.alloc_temp("indexref")?;
+        let found = self
+            .builder
+            .build_call(
+                self.fn_index_ref,
+                &[scratch.into(), base.into(), key.into()],
+                "indexref",
+            )
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .left()
+            .expect("code_index_ref returns a pointer")
+            .into_pointer_value();
+        self.check_failed()?;
+        let slow_end = self.builder.get_insert_block().expect("in a block");
+        self.builder
+            .build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(merge);
+        let phi = self
+            .builder
+            .build_phi(self.i8_ptr_ty, "element")
+            .map_err(|e| e.to_string())?;
+        phi.add_incoming(&[(&slot, fast), (&found, slow_end)]);
+        Ok(phi.as_basic_value().into_pointer_value())
     }
 
     /// A slot holding `value`. A number or a boolean goes in a fresh plain
@@ -4433,14 +4801,10 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// comment.
     fn gen_boxed(&mut self, expr: &Expr) -> Result<PointerValue<'a>, String> {
         match expr {
-            Expr::Str(s) => {
-                let slot = self.alloc_temp("str")?;
-                let g = self.global_str(s, "strlit")?;
-                self.builder
-                    .build_call(self.fn_str, &[slot.into(), g.into()], "")
-                    .map_err(|e| e.to_string())?;
-                Ok(slot)
-            }
+            // A constant value, built once when the program is compiled: a
+            // literal's text is borrowed (`heap` 0), so nothing retains or
+            // releases it, and every use reads the same read-only slot.
+            Expr::Str(s) => Ok(self.str_constant(s)),
             // Folded left with `code_add` rather than a bespoke n-ary join:
             // string `+` already concatenates and already handles the case
             // where the destination is also an operand, which is exactly what
@@ -4490,7 +4854,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 self.builder
                     .build_call(self.fn_copy, &[out.into(), base.into()], "")
                     .map_err(|e| e.to_string())?;
-                self.gen_set_at(out, path, value)?;
+                self.gen_set_at(expr as *const Expr as usize, out, path, value)?;
                 Ok(out)
             }
             Expr::Array(items) => {
@@ -4519,6 +4883,20 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .all(|(key, _)| matches!(key, FieldKey::Literal(_)));
                 let len = fields.len() as u64;
                 let key_count = self.i64_ty.const_int(len, false);
+                // Keys all written down: one constant list for every object
+                // built with them, whose address is their shape.
+                let shape = if all_literal && len > 0 {
+                    let order: Vec<String> = fields
+                        .iter()
+                        .map(|(key, _)| match key {
+                            FieldKey::Literal(name) => name.clone(),
+                            FieldKey::Computed(_) => unreachable!("all literal"),
+                        })
+                        .collect();
+                    Some(self.shape_keys(&order))
+                } else {
+                    None
+                };
                 // Plain pointers to string literals, fully rewritten before
                 // every use, so this one needs no zero-init — but it still
                 // belongs in `entry` like every other alloca.
@@ -4553,19 +4931,21 @@ impl<'a, 'm> Gen<'a, 'm> {
                                 .into_pointer_value()
                         }
                     };
-                    let key_slot = unsafe {
+                    if shape.is_none() {
+                        let key_slot = unsafe {
+                            self.builder
+                                .build_gep(
+                                    self.i8_ptr_ty,
+                                    keys_buf,
+                                    &[self.i64_ty.const_int(i as u64, false)],
+                                    "keyslot",
+                                )
+                                .map_err(|e| e.to_string())?
+                        };
                         self.builder
-                            .build_gep(
-                                self.i8_ptr_ty,
-                                keys_buf,
-                                &[self.i64_ty.const_int(i as u64, false)],
-                                "keyslot",
-                            )
-                            .map_err(|e| e.to_string())?
-                    };
-                    self.builder
-                        .build_store(key_slot, key_ptr)
-                        .map_err(|e| e.to_string())?;
+                            .build_store(key_slot, key_ptr)
+                            .map_err(|e| e.to_string())?;
+                    }
 
                     // The destination keeps its own reference. Everything
                     // used to compute this field value can be cleared before
@@ -4593,7 +4973,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         },
                         &[
                             out.into(),
-                            keys_buf.into(),
+                            shape.unwrap_or(keys_buf).into(),
                             values_buf.into(),
                             len_val.into(),
                         ],
@@ -5309,10 +5689,11 @@ mod tests {
                 .windows(b"code_clear".len())
                 .any(|w| w == b"code_clear")
         };
-        // Strings are heap values: the literals' temporaries hold references
-        // the statement must drop.
+        // A joined string is a heap value: kept nowhere, its temporary holds
+        // a reference the statement must drop. (The literals themselves are
+        // read-only constants since ticket 122 stage B — nothing to drop.)
         assert!(
-            calls_clear("a = \"x\" + \"y\"\nassert a = \"xy\"\n", "strings.o"),
+            calls_clear("assert \"x\" + \"y\" = \"xy\"\n", "strings.o"),
             "the compiled object never calls code_clear — a statement's \
              intermediates are being held to program exit again"
         );
