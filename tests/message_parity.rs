@@ -71,6 +71,14 @@ const CASES: &[(&str, &str)] = &[
     ("index_non_container", "a = 1\nb = a[0]\n"),
     ("emit_non_particle", "emit 5 to core get r\n"),
     ("emit_missing_class", "emit { value = 1 } to core get r\n"),
+    ("set_part_of_number", "a = 1\na.x = 2\n"),
+    ("set_part_of_text", "a = \"abc\"\na[0] = \"x\"\n"),
+    ("set_past_the_end", "xs = [1, 2]\nxs[2] = 3\n"),
+    ("set_fraction_index", "xs = [1, 2]\nxs[0.5] = 3\n"),
+    ("set_array_by_text", "xs = [1, 2]\nxs.first = 3\n"),
+    ("set_object_by_number", "o = { a = 1 }\no[0] = 3\n"),
+    ("set_inside_missing", "o = { a = 1 }\no.b.c = 3\n"),
+    ("set_inside_null", "o = { a = null }\no.a.c = 3\n"),
     // `Length`'s operand message is not here for the same reason
     // `code_check_particle`'s is not: since core answers with an Exception
     // rather than unwinding its caller, it no longer fails at the top level.

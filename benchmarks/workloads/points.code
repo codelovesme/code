@@ -1,6 +1,7 @@
 | Points: 1,000 objects { x, y, vx, vy } moved 200 steps, bouncing off a
-| 1,000 × 1,000 box — the shape of a game or animation frame. Objects do not
-| change in place, so every step builds the next list.
+| 1,000 × 1,000 box — the shape of a game or animation frame. Each point is
+| changed where it stands (`pts[i].x = x`), the way the C and Rust versions
+| do it.
 count = 1000
 steps = 200
 pts = []
@@ -12,18 +13,18 @@ loop
 s = 0
 loop
     if s = steps, break
-    next = []
-    loop p over pts
-        x = p.x + p.vx
-        y = p.y + p.vy
-        vx = p.vx
-        vy = p.vy
+    i = 0
+    loop
+        if i = count, break
+        x = pts[i].x + pts[i].vx
+        y = pts[i].y + pts[i].vy
         if x < 0 or x > 1000
-            vx = 0 - vx
+            pts[i].vx = 0 - pts[i].vx
         if y < 0 or y > 1000
-            vy = 0 - vy
-        next += { x = x, y = y, vx = vx, vy = vy }
-    pts = next
+            pts[i].vy = 0 - pts[i].vy
+        pts[i].x = x
+        pts[i].y = y
+        i = i + 1
     s = s + 1
 sum = 0
 loop p over pts

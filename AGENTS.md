@@ -409,6 +409,28 @@ a copy. `tests/in_place_growth.code` holds the aliasing cases. It took
 `benchmarks/workloads/` binary_trees from 500× C to 8×; building an 8,000-field
 object went from 2.0 s to 0.22 s (what is left is `find_field`'s key search).
 
+## Setting a part (2026-10-11)
+
+`xs[i] = v`, `fish.x = v`, `fishes[i].x += 1` — the owner's call, on the same
+rule as ticket 121: one holder means change it where it stands, any other
+holder means it never sees a change. The parser turns `name<path> = v` into
+`name = Expr::SetAt { base: name, path: keys, value }` (a `.field` step is its
+name as a `Str` key), so every assignment rule — verify, kinds, handler
+scope — applies unchanged and nothing downstream needed a new statement.
+Both backends special-case `SetAt` whose base is the assigned name:
+the interpreter takes the binding out (`Environment::take`) and uses
+`Rc::make_mut` per level (`set_at`); codegen calls `code_set_at(slot, keys,
+n, value)`, which holds `value` first (so `xs[0] = xs` copies), then makes
+each level the slot's own (`own_level`: copy only if its count is above 1).
+A new last field goes through `code_add_into`. Messages are pinned in
+`tests/message_parity.rs`; the aliasing cases are `tests/set_parts.code`,
+also run on wasm.
+
+Neither `code_set_at` nor `code_add_into` is in `code_abi.h`: both can fail,
+and a fallible function a module can call is a silent hole
+(`tests/module_abi_cannot_fail.rs`). Codegen declares them itself, like
+`code_index`.
+
 ## Wasm handler stack (root-caused 2026-09-07)
 
 Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`

@@ -290,6 +290,11 @@ fn verify_expr(expr: &Expr, scopes: &[HashSet<String>]) -> Result<(), String> {
             verify_expr(arr, scopes)?;
             verify_expr(index, scopes)
         }
+        Expr::SetAt { base, path, value } => {
+            verify_expr(base, scopes)?;
+            path.iter().try_for_each(|key| verify_expr(key, scopes))?;
+            verify_expr(value, scopes)
+        }
         Expr::Unary(_, e) => verify_expr(e, scopes),
         Expr::Is(e, _) => verify_expr(e, scopes),
         Expr::Binary(lhs, _, rhs) => {

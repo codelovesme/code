@@ -507,10 +507,8 @@ pub enum Expr {
     /// literals, values are any expression (which may itself reference a
     /// variable, unlike strict JSON).
     Object(Vec<(FieldKey, Expr)>),
-    /// `expr.field` — reading a field, not writing one; there is no
-    /// `expr.field = ...` assignment form (yet — see memory
-    /// `new-code-memory-management` on why mutation is a separate, deferred
-    /// decision).
+    /// `expr.field` — reading a field. Writing one (`fish.x = 1`) is
+    /// `Expr::SetAt`.
     ///
     /// `.` **requires an object** and `[]` **requires an array or an
     /// object** (widened 2026-08-23 to admit `obj[key]` — a *computed*
@@ -557,6 +555,28 @@ pub enum Expr {
     /// are pure — there are no calls and `emit` is a statement — so naming
     /// the container twice cannot mean anything different the second time.
     LengthOf(Box<Expr>),
+    /// `base` with one part replaced: what `fishes[5].x = v`, `xs[i] = v`
+    /// and `fish.x += 1` mean (owner's call, 2026-10-11). Not spellable as an
+    /// expression — the parser builds it only as the value of an assignment
+    /// to the same name, so `fishes[5].x = v` is `fishes = SetAt(fishes,
+    /// [5, "x"], v)` and every rule about assignment applies unchanged.
+    ///
+    /// `path` holds each step's key: a `.field` step is its name as a
+    /// string, an `[i]` step is the index expression. Each step but the last
+    /// must find an array element or an object field that is there; the last
+    /// sets an element that exists or a field, adding it on the end when it
+    /// is new. An array's index must be a whole number below its length —
+    /// unlike a read, a write past the end is an error, since `+=` is how a
+    /// list grows.
+    ///
+    /// Values still never change under anyone: the result is a new value,
+    /// and only when nothing else holds a level is it changed where it
+    /// stands (`code_set_at`, ticket 121).
+    SetAt {
+        base: Box<Expr>,
+        path: Vec<Expr>,
+        value: Box<Expr>,
+    },
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),
     /// `expr is ClassName` — the type test. True exactly when `expr` is an

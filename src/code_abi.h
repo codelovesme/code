@@ -414,9 +414,6 @@ void code_array(CodeValue *out, void *items, long long len);
 void code_object(CodeValue *out, const char **keys, void *values, long long len);
 void code_copy(CodeValue *out, const CodeValue *src);
 void code_move(CodeValue *out, CodeValue *src);
-/* `*dst = *dst + *b`, growing `dst`'s block in place when nothing else
- * holds it (ticket 121). What `name += value` compiles to. */
-void code_add_into(CodeValue *dst, const CodeValue *b);
 void code_retain(const CodeValue *v);
 void code_release(CodeValue *v);
 int code_values_equal(const CodeValue *a, const CodeValue *b);

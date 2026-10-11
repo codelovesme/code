@@ -1,0 +1,89 @@
+| `xs[i] = v`, `obj.field = v` and any path of them set one part of a
+| variable's value. Nothing else that holds the old value sees a change:
+| whatever was shared is copied, one level at a time, and whatever was not
+| is changed where it stands.
+
+| A list element, and the list someone else holds stays as it was.
+xs = [1, 2, 3]
+xs[1] = 20
+assert xs = [1, 20, 3]
+ys = xs
+xs[0] = 10
+assert xs = [10, 20, 3]
+assert ys = [1, 20, 3]
+xs[length - 1] = 30
+assert xs = [10, 20, 30]
+xs[2] += 5
+assert xs[2] = 35
+
+| An object field: replaced where it stands, or added on the end.
+o = { a = 1 }
+o.a = 2
+o.b = 3
+assert o = { a = 2, b = 3 }
+key = "c"
+o[key] = 4
+o["a"] += 10
+assert o = { a = 12, b = 3, c = 4 }
+names = []
+loop name, value over o
+    names += name
+assert names = ["a", "b", "c"]
+empty = {}
+empty.first = true
+assert empty = { first = true }
+
+| A fish in a list of fish: only that fish changes, and a fish taken out
+| before keeps its old value.
+fishes = [{ x = 0, y = 0 }, { x = 1, y = 1 }, { x = 2, y = 2 }]
+taken = fishes[1]
+fishes[1].x = 10
+fishes[1].y += 5
+assert fishes[1] = { x = 10, y = 6 }
+assert taken = { x = 1, y = 1 }
+assert fishes[0] = { x = 0, y = 0 }
+school = fishes
+fishes[2].x = 20
+assert school[2].x = 2
+assert fishes[2].x = 20
+
+| Moving every fish while walking the list: the walk sees the list it
+| started with, the list ends up with every fish moved.
+loop i, fish over fishes
+    fishes[i].x = fish.x + 100
+assert fishes[0].x = 100
+assert fishes[1].x = 110
+assert fishes[2].x = 120
+
+| Deeper paths, and a shared inner value left alone.
+inner = { v = 1 }
+outer = { kept = inner, list = [[1, 2], [3, 4]] }
+outer.kept.v = 2
+outer.list[1][0] = 30
+assert inner = { v = 1 }
+assert outer.kept = { v = 2 }
+assert outer.list = [[1, 2], [30, 4]]
+
+| A value set into itself is the value it was before.
+zs = [1, 2]
+zs[0] = zs
+assert zs = [[1, 2], 2]
+me = { a = 1 }
+me.self = me
+assert me = { a = 1, self = { a = 1 } }
+
+| A particle keeps its class.
+p = Point { x = 1, y = 2 }
+p.x = 5
+assert p ∈ Point
+assert p.x = 5
+
+| Inside a handler, on a field it was given and on its own variable.
+Move { fish, by } =>
+    fish.x += by
+    trail = [fish.x]
+    trail[0] = trail[0] * 2
+    fish.trail = trail
+    return Moved { fish = fish }
+emit Move { fish = { x = 1 }, by = 2 } to this get moved
+assert moved.fish = { x = 3, trail = [6] }

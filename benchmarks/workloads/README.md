@@ -63,3 +63,17 @@ again on every append (`strlen`); `dictionary` ~64% and `points` ~26%
 finding a field by comparing key text (`strcmp` in `find_field` /
 `code_field`); `points` also building and copying its objects; the rest of
 `binary_trees` is spread thin over release, copy and building.
+
+## Setting a part (2026-10-11)
+
+`pts[i].x = x` now changes one point where it stands, so `points.code` does
+what the C and Rust versions do instead of building the next list every step
+(the old program is still a valid one, and still runs at its old speed):
+
+| Workload | C | code | code / C | was |
+|---|---|---|---|---|
+| points | 0.0009 s | 0.042 s | 50× | 77× (rebuilt every step) |
+
+What is left there is reading, not writing (callgrind): `strcmp` ~17%,
+`code_copy` 15%, `code_field` 10%, `code_index` 8% — every `pts[i].x` copies
+the point out and finds `x` by comparing key text.

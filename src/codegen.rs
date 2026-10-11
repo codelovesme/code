@@ -355,6 +355,19 @@ pub(crate) fn compile_to_object_traced(
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_set_at = module.add_function(
+        "code_set_at",
+        void_ty.fn_type(
+            &[
+                i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
+                i64_ty.into(),
+                i8_ptr_ty.into(),
+            ],
+            false,
+        ),
+        None,
+    );
     let fn_field = module.add_function(
         "code_field",
         void_ty.fn_type(
@@ -810,6 +823,7 @@ pub(crate) fn compile_to_object_traced(
         fn_copy,
         fn_move,
         fn_add_into,
+        fn_set_at,
         fn_field,
         fn_index,
         fn_length_of,
@@ -1142,6 +1156,8 @@ struct Gen<'a, 'm> {
     fn_move: FunctionValue<'a>,
     /// `runtime.c`'s `code_add_into` — `name += value` (ticket 121).
     fn_add_into: FunctionValue<'a>,
+    /// `runtime.c`'s `code_set_at` — `xs[i] = v`, `fish.x = v`.
+    fn_set_at: FunctionValue<'a>,
     fn_field: FunctionValue<'a>,
     fn_index: FunctionValue<'a>,
     fn_length_of: FunctionValue<'a>,
@@ -3546,6 +3562,15 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// nothing may shadow a visible name (`verify.rs` refuses that), so the
     /// two cases can never both apply.
     fn gen_assign(&mut self, name: &str, value: &Expr) -> Result<(), String> {
+        // `fishes[5].x = v` changes the variable's own value, level by level
+        // where nothing else holds it, instead of rebuilding it.
+        if let Expr::SetAt { base, path, value } = value {
+            if let (Expr::Ident(read), Some(slot)) = (&**base, self.lookup(name)) {
+                if read == name && !self.scalar_slots.contains_key(&slot) {
+                    return self.gen_set_at(slot, path, value);
+                }
+            }
+        }
         // `name = name + x` (and `name += x`, which is the same statement)
         // grows the variable's own value where it stands when nothing else
         // holds it, instead of building a new one and dropping the old —
@@ -3617,6 +3642,37 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.temps[at].2 = true;
         }
         Ok(())
+    }
+
+    /// Replaces the part of the value in `target` at `path` with `value`
+    /// (`code_set_at`): the keys into a slot buffer, then the value.
+    fn gen_set_at(
+        &mut self,
+        target: PointerValue<'a>,
+        path: &[Expr],
+        value: &Expr,
+    ) -> Result<(), String> {
+        let len = path.len() as u64;
+        let keys = self.alloc_temp_buffer(len, "setkeys")?;
+        for (i, key) in path.iter().enumerate() {
+            let mark = self.temps.len();
+            let key_ptr = self.gen_expr(key)?;
+            let dest = self.slot_at(keys, i as u64, "setkey")?;
+            self.builder
+                .build_call(self.fn_copy, &[dest.into(), key_ptr.into()], "")
+                .map_err(|e| e.to_string())?;
+            self.clear_temps_from(mark)?;
+        }
+        let value = self.gen_expr(value)?;
+        let count = self.i64_ty.const_int(len, false);
+        self.builder
+            .build_call(
+                self.fn_set_at,
+                &[target.into(), keys.into(), count.into(), value.into()],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
+        self.check_failed()
     }
 
     /// Searches the scope stack innermost-to-outermost, returning the
@@ -4155,6 +4211,18 @@ impl<'a, 'm> Gen<'a, 'm> {
             Expr::Ident(name) => self
                 .lookup(name)
                 .ok_or_else(|| format!("undefined variable '{name}'")),
+            // Only ever the value of an assignment to the same name, which
+            // `gen_assign` sets in place; this is the general reading, on a
+            // copy.
+            Expr::SetAt { base, path, value } => {
+                let base = self.gen_expr(base)?;
+                let out = self.alloc_temp("setat")?;
+                self.builder
+                    .build_call(self.fn_copy, &[out.into(), base.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.gen_set_at(out, path, value)?;
+                Ok(out)
+            }
             Expr::Array(items) => {
                 let len = items.len() as u64;
                 let buf = self.alloc_temp_buffer(len, "arrbuf")?;
