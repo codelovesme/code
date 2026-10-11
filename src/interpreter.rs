@@ -1779,6 +1779,7 @@ fn run_handler(
     let Some(handler) = handler else {
         return Ok(Value::Null);
     };
+    observe(particle);
     // Resolution succeeded, so the particle carried a real class — reading
     // it back is how the depth guard below knows what to key on.
     let class = class_of(particle);
@@ -2298,6 +2299,38 @@ fn set_at(target: &mut Value, keys: &[Value], new: Value) -> Result<(), String> 
     }
     *current = new;
     Ok(())
+}
+
+/// With `CODE_OBSERVE=<file>`, records the label of every field of every
+/// particle a handler receives, one line each: `Class<TAB>field<TAB>label`.
+/// What `code check --write-types --observed <file>` reads to label the
+/// handlers nothing in the program itself sends to (ticket 122, A.3). Off,
+/// it costs one environment lookup per handled particle.
+fn observe(particle: &Value) {
+    let Some(path) = std::env::var_os("CODE_OBSERVE") else {
+        return;
+    };
+    let Value::Object(fields) = particle else {
+        return;
+    };
+    let class = class_of(particle);
+    let mut lines = String::new();
+    for (field, value) in fields.iter() {
+        if field == "_class" {
+            continue;
+        }
+        if let Some(label) = crate::value::label_of_value(value) {
+            lines.push_str(&format!("{class}\t{field}\t{}\n", label.spelling()));
+        }
+    }
+    use std::io::Write;
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = file.write_all(lines.as_bytes());
+    }
 }
 
 fn a_type_name(v: &Value) -> String {

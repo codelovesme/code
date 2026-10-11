@@ -478,7 +478,7 @@ fn check_reports_utf8_safe_source_locations_as_json() {
     let dir = temp_dir("check-location");
     fs::write(
         dir.join("main.code"),
-        "Grade { é ∈ String, score ∈ Number } =>\n    return Ack {}\n\nemit Grade { é = \"ok\" } to this\n",
+        "Grade { é ∈ String, score ∈ Number } =>\n    return Ack {}\n\nemit Grade { é = \"ok\", score = \"high\" } to this\n",
     )
     .expect("write source with a multibyte identifier");
 
@@ -486,10 +486,10 @@ fn check_reports_utf8_safe_source_locations_as_json() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         !out.status.success(),
-        "a missing typed field should fail check"
+        "a typed field of the wrong kind should fail check"
     );
     assert!(
-        stdout.contains("\"code\": \"missing-field\""),
+        stdout.contains("\"code\": \"type-mismatch\""),
         "got: {stdout}"
     );
     assert!(

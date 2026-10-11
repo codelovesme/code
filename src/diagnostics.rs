@@ -370,31 +370,10 @@ fn check_emit(
         }
     }
 
-    for field in fields {
-        let Some(annotation) = &field.annotation else {
-            continue;
-        };
-        if !object_fields.iter().any(|(name, _)| *name == field.field) {
-            let expected = annotation.spelling();
-            context.diagnostics.push(Diagnostic {
-                code: "missing-field",
-                severity: Severity::Error,
-                message: format!(
-                    "handler '{class_name}' requires typed field '{}' of type {expected}",
-                    field.field
-                ),
-                handler: current_handler.map(str::to_owned),
-                particle: Some(class_name.to_owned()),
-                target: Some("this".to_string()),
-                field: Some(field.field.clone()),
-                expected: Some(expected),
-                actual: Some("missing".to_string()),
-                suggestion: Some(format!("include field '{}'", field.field)),
-                span: field.span,
-                origin: context.origin.cloned(),
-            });
-        }
-    }
+    // A field the emit leaves out arrives as null, and null fits every label
+    // (ticket 122) — so a labelled field is not a required one. With every
+    // field labelled to the leaf, requiring them would turn every optional
+    // field in the apps into an error.
 }
 
 fn check_return(
@@ -975,21 +954,9 @@ mod tests {
     }
 
     #[test]
-    fn reports_a_missing_typed_handler_field() {
+    fn a_field_left_out_is_null_and_null_fits_its_label() {
         let source = "Grade { score ∈ Number } =>\n    return Ack {}\n\nemit Grade {} to this\n";
-        let program = parse(source);
-        let diagnostics = check_handlers(&program);
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "missing-field");
-        assert_eq!(diagnostics[0].field.as_deref(), Some("score"));
-        let field_start = source.find("score").unwrap() as u32;
-        assert_eq!(
-            diagnostics[0].span,
-            Some(crate::ast::Span {
-                start: field_start,
-                end: field_start + "score ∈ Number".chars().count() as u32,
-            })
-        );
+        assert!(check_handlers(&parse(source)).is_empty());
     }
 
     #[test]
