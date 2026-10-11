@@ -361,6 +361,36 @@ instant its top level finished. Now it also checks `env.runtime_modules`.
 
 ---
 
+## Plain numbers in compiled code (ticket 113, 2026-10-11)
+
+`codegen.rs` evaluates an expression to a `Val`: a boxed `CodeValue` slot, or
+a plain `double` / `i1` where the operator can only answer one (`-`, `*`, `/`,
+unary `-`, comparisons, `=`, `and`, `or`, `not`, `∈`; `+` of two numbers).
+`src/kinds.rs` finds the variables that only ever hold a number (or a
+boolean); those are stack `double`s, and the one IR pass we run, `mem2reg`,
+puts them in registers. The benchmark loop is then C's five instructions.
+
+What was measured and rejected, so nobody tries it again blind:
+
+- **Tag checks with an in-line fast path on boxed operands.** Aquarium's wasm
+  grew 27% and its build took 4× longer; even a lean version (slow side
+  jumping straight to the unwind block) was +5% and a third slower to build,
+  for no frame-time gain — Aquarium's profile has no time in the arithmetic
+  calls. A boxed operand goes to the runtime function, as before.
+- **Inline `code_number` writes** (release check + stores) at every
+  assignment: +10% wasm for one call saved.
+
+Two traps:
+
+- **The wasm backend is slower than linear in a basic block's length.** A
+  literal of hundreds of numbers is one block once nothing in it can fail;
+  `StableShapes` went from 0.15 s to 0.68 s. `bound_block` ends a long block
+  between literal elements with a failure check (a plain `br` is folded back
+  by the backend and does nothing).
+- **`kinds.rs` works by name, per function.** A top-level name any handler
+  mentions stays boxed, and so does a handler name that is also a top-level
+  one: a plain `double` in `main` cannot be reached from a handler.
+
 ## Wasm handler stack (root-caused 2026-09-07)
 
 Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`

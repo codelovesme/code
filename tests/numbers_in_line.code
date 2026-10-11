@@ -1,0 +1,95 @@
+| The compiler works on numbers and booleans in line wherever it can
+| (ticket 113): `-`, `*`, `/`, unary `-`, the comparisons, `=`, `not`,
+| `and`, `or`, `∈` and `+` on two numbers. Every answer here must be the one
+| the runtime's own functions give — and the interpreter's.
+
+| Known numbers, held numbers, and a number read out of a list.
+a = 6
+b = 4
+xs = [6, 4]
+assert a - b = 2
+assert a * b = 24
+assert a / b = 1.5
+assert -a = 0 - 6
+assert xs[0] - xs[1] = 2
+assert xs[0] * b = 24
+assert a / xs[1] = 1.5
+assert -xs[0] = -6
+assert a + b = 10
+assert xs[0] + xs[1] = 10
+
+| `+` still joins text and lists, whichever side is held.
+t = "n"
+assert t + a = "n6"
+assert a + t = "6n"
+assert [1] + a = [1, 6]
+
+| Comparisons, held or known.
+assert a > b
+assert b < a
+assert a ≥ 6
+assert a ≤ 6
+assert xs[1] < xs[0]
+assert not (xs[0] < xs[1])
+
+| Equality never fails: a number is never another kind.
+assert a = 6
+assert a ≠ "6"
+assert xs[0] = a
+assert (a = true) = false
+assert (true = 1) = false
+assert (null = 0) = false
+assert "a" = "a"
+flag = a > b
+assert flag = true
+assert flag ≠ false
+assert [a] = [6]
+
+| A NaN: a number grown out of range, then subtracted from itself. It is
+| neither less, greater nor equal to anything — not even itself. (Compiled
+| code used to answer `≤` and `≥` true for it, the interpreter false.)
+big = 1
+loop
+    if big > big * 10, break
+    if big = big * 10, break
+    big = big * 10
+nan = big - big
+assert (nan = nan) = false
+assert nan ≠ nan
+assert (nan < 1) = false
+assert (nan > 1) = false
+assert (nan ≤ 1) = false
+assert (nan ≥ 1) = false
+
+| Booleans in line.
+yes = a > b
+no = a < b
+assert yes and not no
+assert no or yes
+assert (no and xs[5]) = false
+assert (yes or xs[5]) = true
+assert yes ∈ Boolean
+assert a ∈ Number
+assert xs[0] ∈ Number
+assert (xs[0] ∈ String) = false
+assert (a ∈ Boolean) = false
+
+| A variable that changes kind keeps working.
+v = 1
+v = v + 1
+v = "two"
+v = v + "!"
+assert v = "two!"
+v = v = "two!"
+assert v
+v = 3 * 3
+assert v = 9
+
+| Numbers built inside a loop.
+i = 0
+total = 0
+loop
+    if i = 10, break
+    total = total + i * i
+    i = i + 1
+assert total = 285
