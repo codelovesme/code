@@ -511,6 +511,24 @@ strings and numbers — the rest polymorphic helpers (`Folded.text` list or
 string) and a handful of real variables. Labels: `{ x ∈ Number }`,
 `Array of`, `Object of`, `Any` (`ast::Label`, parsed by `Parser::label`).
 
+**A.3, the migration tool** (`src/write_types.rs`): `code check
+--write-types [--observed <file>]` writes a label into every unlabelled
+handler field, in the project's own files only (never `.code/`). Source 1:
+`infer::suggested_labels` — the handler's input var, `UNKNOWN` (`_`) where the
+program decides nothing. Source 2: run the fixtures with `CODE_OBSERVE=<file>`
+(interpreter `observe` in `run_handler`, one `Class\tfield\tlabel` line per
+field, `value::label_of_value`), merged per field by `Label::merge`;
+`write_types::fill` completes the program's view with what was seen (unknown
+parts, and fields the program never reads). Long labels lay the header out one
+field per line, then `format::format`; a file that would not parse is not
+written. Field names that are not words are quoted (`ast::field_name`).
+`missing-field` is gone: a field an emit leaves out is null, which fits every
+label. On every app: ~1,760 fields labelled, ~610 left (handlers only the
+host/modules/other apps call and no fixture reaches), ~35% of new label parts
+`Any`; zero new `code check` errors; every fixture still passes. Observation
+cannot tell a map from a record (`house.temperature.bedroom` is user data) —
+a person reviews.
+
 ## Wasm handler stack (root-caused 2026-09-07)
 
 Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`

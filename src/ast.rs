@@ -365,7 +365,7 @@ impl Label {
             Label::Fields(fields) => {
                 let inner: Vec<String> = fields
                     .iter()
-                    .map(|(name, label)| format!("{name} ∈ {}", label.spelling()))
+                    .map(|(name, label)| format!("{} ∈ {}", field_name(name), label.spelling()))
                     .collect();
                 if inner.is_empty() {
                     "{}".to_string()
@@ -377,6 +377,68 @@ impl Label {
             Label::ObjectOf(inner) => format!("Object of {}", inner.spelling()),
         }
     }
+}
+
+impl Label {
+    /// One label that both `self` and `other` fit, as narrow as that can be:
+    /// the same kind stays itself, two objects take every field either has,
+    /// two lists merge their elements; anything else is `Any`.
+    pub fn merge(self, other: Label) -> Label {
+        let any = || Label::Named("Any".to_string());
+        match (self, other) {
+            (Label::Named(a), Label::Named(b)) if a == b => Label::Named(a),
+            (Label::Named(a), _) | (_, Label::Named(a)) if a == "Any" => any(),
+            (Label::ArrayOf(a), Label::ArrayOf(b)) => Label::ArrayOf(Box::new(a.merge(*b))),
+            (Label::ObjectOf(a), Label::ObjectOf(b)) => Label::ObjectOf(Box::new(a.merge(*b))),
+            (Label::Fields(mut a), Label::Fields(b)) => {
+                for (name, label) in b {
+                    match a.iter().position(|(existing, _)| *existing == name) {
+                        Some(at) => {
+                            let merged = a[at].1.clone().merge(label);
+                            a[at].1 = merged;
+                        }
+                        None => a.push((name, label)),
+                    }
+                }
+                Label::Fields(a)
+            }
+            (Label::Fields(fields), Label::ObjectOf(values))
+            | (Label::ObjectOf(values), Label::Fields(fields)) => Label::ObjectOf(Box::new(
+                fields
+                    .into_iter()
+                    .fold(*values, |acc, (_, label)| acc.merge(label)),
+            )),
+            _ => any(),
+        }
+    }
+}
+
+/// A field name as a label writes it: bare when it reads back as that one
+/// name, quoted otherwise (`"aria-label"`, `"$ref"`, a word like `to`) — the
+/// way an object literal writes such a key.
+pub fn field_name(name: &str) -> String {
+    let bare = crate::lexer::tokenize(name).is_ok_and(|lexed| {
+        matches!(lexed.tokens.first(), Some(crate::lexer::Token::Ident(word)) if word == name)
+            && lexed.tokens[1..]
+                .iter()
+                .all(|t| matches!(t, crate::lexer::Token::Newline | crate::lexer::Token::Eof))
+    });
+    if bare {
+        return name.to_string();
+    }
+    let mut quoted = String::from("\"");
+    for c in name.chars() {
+        match c {
+            '"' => quoted.push_str("\\\""),
+            '\\' => quoted.push_str("\\\\"),
+            '$' => quoted.push_str("\\$"),
+            '\n' => quoted.push_str("\\n"),
+            '\t' => quoted.push_str("\\t"),
+            other => quoted.push(other),
+        }
+    }
+    quoted.push('"');
+    quoted
 }
 
 impl std::fmt::Display for Label {

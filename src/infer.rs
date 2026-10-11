@@ -52,11 +52,51 @@ enum Shape {
 
 pub fn kind_warnings(program: &Program) -> Vec<Diagnostic> {
     let mut warnings = Vec::new();
-    check_file(&program.statements, program.origin.as_ref(), &mut warnings);
+    let mut suggestions = Vec::new();
+    check_file(
+        &program.statements,
+        program.origin.as_ref(),
+        &mut warnings,
+        &mut suggestions,
+    );
     warnings
 }
 
-fn check_file(statements: &[Stmt], origin: Option<&Origin>, warnings: &mut Vec<Diagnostic>) {
+/// The name `Suggestion::label` uses for a part nothing in the program
+/// decides. Lowercase, so it can never be a kind or a class.
+pub const UNKNOWN: &str = "_";
+
+/// A label for a handler field that has none, as the inference sees it —
+/// what `code check --write-types` writes (ticket 122, A.3).
+pub struct Suggestion {
+    /// The file the handler is in.
+    pub origin: Option<Origin>,
+    /// The field's declaration in that file.
+    pub span: Option<Span>,
+    pub handler: String,
+    pub field: String,
+    /// What the program shows, with `UNKNOWN` where it shows nothing.
+    pub label: Option<Label>,
+}
+
+pub fn suggested_labels(program: &Program) -> Vec<Suggestion> {
+    let mut warnings = Vec::new();
+    let mut suggestions = Vec::new();
+    check_file(
+        &program.statements,
+        program.origin.as_ref(),
+        &mut warnings,
+        &mut suggestions,
+    );
+    suggestions
+}
+
+fn check_file(
+    statements: &[Stmt],
+    origin: Option<&Origin>,
+    warnings: &mut Vec<Diagnostic>,
+    suggestions: &mut Vec<Suggestion>,
+) {
     let mut infer = Infer {
         parent: Vec::new(),
         shapes: Vec::new(),
@@ -69,6 +109,7 @@ fn check_file(statements: &[Stmt], origin: Option<&Origin>, warnings: &mut Vec<D
         handler: None,
         origin,
         warnings,
+        suggestions,
     };
     for statement in statements {
         if let Stmt::HandlerDef { class_name, .. } = statement {
@@ -90,6 +131,25 @@ fn check_file(statements: &[Stmt], origin: Option<&Origin>, warnings: &mut Vec<D
         } = statement
         {
             infer.handler(class_name, fields, body);
+        }
+    }
+    for statement in statements {
+        if let Stmt::HandlerDef {
+            class_name, fields, ..
+        } = statement
+        {
+            let input = infer.input(class_name);
+            for field in fields.iter().filter(|f| f.annotation.is_none()) {
+                let var = infer.field(input, &field.field);
+                let label = infer.label_of(var, &mut Vec::new());
+                infer.suggestions.push(Suggestion {
+                    origin: origin.cloned(),
+                    span: field.span,
+                    handler: class_name.clone(),
+                    field: field.field.clone(),
+                    label,
+                });
+            }
         }
     }
 }
@@ -127,6 +187,7 @@ struct Infer<'a> {
     handler: Option<String>,
     origin: Option<&'a Origin>,
     warnings: &'a mut Vec<Diagnostic>,
+    suggestions: &'a mut Vec<Suggestion>,
 }
 
 impl Infer<'_> {
@@ -388,6 +449,45 @@ impl Infer<'_> {
         }
     }
 
+    /// The label that says what `var` holds, to the last field. A part
+    /// nothing in the program decides (only ever null, or never reached) is
+    /// `UNKNOWN`, for `write_types` to fill from what the fixtures saw; a
+    /// shape that contains itself is `Any` where it repeats.
+    fn label_of(&mut self, var: Var, visiting: &mut Vec<Var>) -> Option<Label> {
+        let root = self.root(var);
+        if visiting.contains(&root) || visiting.len() > 12 {
+            return Some(Label::Named("Any".to_string()));
+        }
+        visiting.push(root);
+        let any = || Label::Named(UNKNOWN.to_string());
+        let label = match self.shape(root) {
+            Shape::Unknown => Some(any()),
+            Shape::Any => Some(Label::Named("Any".to_string())),
+            Shape::Scalar(kind) => Some(Label::Named(kind.name().to_string())),
+            Shape::Array(element) => Some(Label::ArrayOf(Box::new(
+                self.label_of(element, visiting).unwrap_or_else(any),
+            ))),
+            Shape::Object {
+                map: Some(values), ..
+            } => Some(Label::ObjectOf(Box::new(
+                self.label_of(values, visiting).unwrap_or_else(any),
+            ))),
+            Shape::Object { fields, map: None } => {
+                let mut labelled = Vec::new();
+                for (name, field) in fields {
+                    if name == "_class" {
+                        continue;
+                    }
+                    let label = self.label_of(field, visiting).unwrap_or_else(any);
+                    labelled.push((name, label));
+                }
+                Some(Label::Fields(labelled))
+            }
+        };
+        visiting.pop();
+        label
+    }
+
     fn lookup(&self, name: &str) -> Option<Var> {
         self.scopes
             .iter()
@@ -515,7 +615,9 @@ impl Infer<'_> {
                     self.unify(result, value, &format!("what {handler} answers"));
                 }
             }
-            Stmt::Import { body, origin, .. } => check_file(body, Some(origin), self.warnings),
+            Stmt::Import { body, origin, .. } => {
+                check_file(body, Some(origin), self.warnings, self.suggestions)
+            }
             Stmt::Link { alias, .. } => {
                 if let Some(alias) = alias {
                     let any = self.fresh(Shape::Any);

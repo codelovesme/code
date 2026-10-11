@@ -865,8 +865,8 @@ become an error that both `code run` and `code build` refuse, and what it
 knows is what lets compiled code keep a field at a fixed place (ticket 122).
 
 `code check` validates annotations when the value is statically knowable. It
-also checks statically known local emits for unknown fields, missing typed
-fields, and field type mismatches. Dynamic expressions remain valid and are
+also checks statically known local emits for unknown fields and field type
+mismatches. A field an emit leaves out arrives as null, which fits every label. Dynamic expressions remain valid and are
 checked at runtime. The interpreter and compiler do not change behavior based
 on an annotation, so existing dynamic programs remain compatible.
 

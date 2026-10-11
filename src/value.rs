@@ -207,3 +207,50 @@ fn write_json_string(f: &mut fmt::Formatter<'_>, s: &str) -> fmt::Result {
     }
     write!(f, "\"")
 }
+
+/// The label a value fits, to the last field — what `CODE_OBSERVE` records
+/// for each particle a handler receives (ticket 122, A.3). `None` for null:
+/// it fits every label and says nothing. An object with many keys, or keys
+/// that are not names, is taken for a map.
+pub fn label_of_value(value: &Value) -> Option<crate::ast::Label> {
+    use crate::ast::Label;
+    let any = || Label::Named("Any".to_string());
+    match value {
+        Value::Null => None,
+        Value::Number(_) => Some(Label::Named("Number".to_string())),
+        Value::Str(_) => Some(Label::Named("String".to_string())),
+        Value::Bool(_) => Some(Label::Named("Boolean".to_string())),
+        Value::Array(items) => Some(Label::ArrayOf(Box::new(
+            items
+                .iter()
+                .filter_map(label_of_value)
+                .reduce(Label::merge)
+                .unwrap_or_else(any),
+        ))),
+        Value::Object(fields) => {
+            let named = |key: &str| {
+                key.chars()
+                    .next()
+                    .is_some_and(|c| c.is_alphabetic() || c == '_')
+                    && key.chars().all(|c| c.is_alphanumeric() || c == '_')
+            };
+            let fields: Vec<&(String, Value)> =
+                fields.iter().filter(|(key, _)| key != "_class").collect();
+            if fields.len() > 24 || !fields.iter().all(|(key, _)| named(key)) {
+                return Some(Label::ObjectOf(Box::new(
+                    fields
+                        .iter()
+                        .filter_map(|(_, v)| label_of_value(v))
+                        .reduce(Label::merge)
+                        .unwrap_or_else(any),
+                )));
+            }
+            Some(Label::Fields(
+                fields
+                    .iter()
+                    .map(|(key, v)| (key.clone(), label_of_value(v).unwrap_or_else(any)))
+                    .collect(),
+            ))
+        }
+    }
+}

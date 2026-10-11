@@ -6,7 +6,7 @@ pub mod diagnostics;
 pub mod flows;
 pub mod format;
 pub mod handlers;
-mod infer;
+pub mod infer;
 pub mod interpreter;
 pub mod introspection;
 mod kinds;
@@ -24,6 +24,7 @@ pub mod timings;
 pub mod trace;
 pub mod value;
 pub mod verify;
+pub mod write_types;
 
 use std::path::Path;
 

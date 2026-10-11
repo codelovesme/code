@@ -1294,6 +1294,14 @@ fn reject_kind_as_class(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// A label written on its own, `Array of { x ∈ Number }` — what
+/// `code check --write-types --observed` reads back from `CODE_OBSERVE`.
+pub fn parse_label(text: &str) -> Result<Label, String> {
+    let lexed = crate::lexer::tokenize(text).map_err(|e| e.msg)?;
+    let mut parser = Parser::new(&lexed);
+    parser.label()
+}
+
 impl Parser<'_> {
     /// Reads an optional `∈ Label` annotation (see `ast::Label`).
     ///
@@ -1336,7 +1344,7 @@ impl Parser<'_> {
                 loop {
                     self.skip_newlines();
                     let name = match self.advance() {
-                        Token::Ident(name) => name,
+                        Token::Ident(name) | Token::Str(name) => name,
                         other => {
                             return Err(format!(
                                 "expected a field name in a label, found {other:?}"

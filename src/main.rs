@@ -340,11 +340,17 @@ source declarations. Native handler names, effects, configuration, timeouts,
 and contracts are included only when explicit module metadata provides them.";
 
 const CHECK_HELP: &str = "\
-usage: code check [path]
+usage: code check [path] [--write-types [--observed <file>]]
 
 Reports statically detectable local handler-call diagnostics as JSON. Defaults
 to `.`. Runtime dispatch remains permissive; a non-zero exit means the report
-contains an error.";
+contains an error.
+
+--write-types writes, into every handler field without a label, the label the
+program shows for it (what is sent to the handler, to the last field), in the
+project's own files only, and lists the fields nothing in the program decides.
+--observed adds what the fixtures saw arrive: run them first with
+CODE_OBSERVE=<file> set (`code test`, `euglena test`).";
 
 const TRACE_HELP: &str = "\
 usage: code trace [path] [--compiled] [-o <file>]
@@ -682,6 +688,18 @@ fn run_fixture(exe: &Path, file: &Path) -> Result<(), String> {
 /// runtime dispatch; the exit status is the convenient shell signal for
 /// whether the report contains an error.
 fn cmd_check(args: Vec<String>) -> ExitCode {
+    let write_types = args.iter().any(|arg| arg == "--write-types");
+    let mut observed_file = None;
+    let mut rest = Vec::new();
+    let mut words = args.into_iter();
+    while let Some(arg) = words.next() {
+        match arg.as_str() {
+            "--write-types" => {}
+            "--observed" => observed_file = words.next(),
+            _ => rest.push(arg),
+        }
+    }
+    let args = rest;
     if args.len() > 1 || args.first().is_some_and(|arg| arg.starts_with('-')) {
         eprintln!("{CHECK_HELP}");
         return ExitCode::FAILURE;
@@ -729,6 +747,54 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if write_types {
+        let project = std::path::Path::new(&entry)
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_default();
+        let project = if project.as_os_str().is_empty() {
+            std::path::PathBuf::from(".")
+        } else {
+            project
+        };
+        let observed = match &observed_file {
+            Some(file) => match std::fs::read_to_string(file) {
+                Ok(text) => code::write_types::read_observed(&text),
+                Err(e) => {
+                    eprintln!("error: cannot read {file}: {e}");
+                    return ExitCode::FAILURE;
+                }
+            },
+            None => Default::default(),
+        };
+        return match code::write_types::write_types(&program, &project, &observed) {
+            Ok(report) => {
+                let total: usize = report.written.values().sum();
+                for (file, count) in &report.written {
+                    println!("{file}: {count} label(s) written");
+                }
+                println!(
+                    "{total} label(s) written in {} file(s)",
+                    report.written.len()
+                );
+                if !report.undecided.is_empty() {
+                    println!(
+                        "{} field(s) left for a person to label — nothing in the program says \
+                         what arrives:",
+                        report.undecided.len()
+                    );
+                    for field in &report.undecided {
+                        println!("  {field}");
+                    }
+                }
+                ExitCode::SUCCESS
+            }
+            Err(message) => {
+                eprintln!("error: {message}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let diagnostics = code::diagnostics::check_handlers(&program);
     let failed = code::diagnostics::has_errors(&diagnostics);
     println!(
