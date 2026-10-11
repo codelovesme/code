@@ -4146,9 +4146,9 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
  * change in place — but when the variable being assigned is the only holder
  * of its block (a count of 1), nobody can tell the difference, so the block
  * is grown where it is, with room doubling the way every growable buffer's
- * does. Anything else — a shared block, a literal, an operand that is the
- * value itself, a merge that adds a field — takes `code_add`, exactly as
- * before. The idea is Lean's and Koka's reuse of unique cells, done at run
+ * does — a list's slots, a text's characters, an object's fields, new
+ * ones included. Anything else — a shared block, a literal list or object, an
+ * operand that is the value itself — takes `code_add`, exactly as before. The idea is Lean's and Koka's reuse of unique cells, done at run
  * time like Swift's `isKnownUniquelyReferenced`.
  *
  * The room a block has is the allocator's own figure, so the header and the
@@ -4236,23 +4236,79 @@ static void join_in_place(CodeValue *dst, const CodeValue *b) {
     dst->heap = 1;
 }
 
-/* `*dst = *dst + *b` for two objects when every field of `b` is already in
- * `dst`: the values replaced where they stand. Reports 0 (and changes
- * nothing) when a field is new — a new key changes the block's layout, and
- * that is still `code_add`'s. */
-static int update_in_place(CodeValue *dst, const CodeValue *b) {
+/* `*dst = *dst + *b` for two objects, `dst` held alone: fields `b` shares
+ * with `dst` get their new values where they stand, and fields that are new
+ * go on the end — the same answer and the same order `code_add` gives.
+ *
+ * An object is one block, `[key pointers][value slots][key characters]`, and
+ * its key pointers point into its own characters. A block that has grown has
+ * room in all three: `items - keys` says how many pointers and slots fit, and
+ * the characters run in key order, so the last key's end is where the next
+ * one goes. When the room runs out the object moves to a block twice the
+ * size, its values moved rather than copied. Reports 0 (changing nothing)
+ * only when `b` names a field twice, which `code_add` answers its own way. */
+static int grow_object_in_place(CodeValue *dst, const CodeValue *b) {
+    long long extra = 0;
+    size_t extra_chars = 0;
     for (long long j = 0; j < b->len; j++) {
+        for (long long k = 0; k < j; k++) {
+            if (strcmp(b->keys[k], b->keys[j]) == 0) {
+                return 0;
+            }
+        }
         if (!find_field(dst, b->keys[j])) {
-            return 0;
+            extra++;
+            extra_chars += strlen(b->keys[j]) + 1;
         }
     }
-    for (long long j = 0; j < b->len; j++) {
-        CodeValue *slot = (CodeValue *)find_field(dst, b->keys[j]);
-        const CodeValue *src = slot_at(b->items, j);
-        code_retain(src);
-        code_release(slot);
-        *slot = *src;
+    if (extra > 0) {
+        char *base = (char *)dst->keys;
+        long long fits = ((char *)dst->items - base) / (long long)sizeof(const char *);
+        const char *last = dst->keys[dst->len - 1];
+        char *used = (char *)last + strlen(last) + 1;
+        long long room = (long long)block_room(header_of(base)) - (long long)sizeof(CodeHeader)
+            - (used - base);
+        if (dst->len + extra > fits || room < (long long)extra_chars) {
+            /* Move to a bigger block: pointers, slots and characters all
+             * with room to spare. */
+            long long total = dst->len + extra;
+            long long cap = total < 4 ? 4 : 2 * total;
+            size_t chars = (size_t)(used - (char *)dst->items) - (size_t)fits * CODE_VALUE_SLOT_SIZE;
+            size_t char_room = 2 * (chars + extra_chars) + 16;
+            const char **keys = heap_alloc((size_t)cap * (sizeof(const char *) + CODE_VALUE_SLOT_SIZE)
+                + char_room);
+            void *items = (char *)keys + (size_t)cap * sizeof(const char *);
+            char *cursor = (char *)items + (size_t)cap * CODE_VALUE_SLOT_SIZE;
+            for (long long i = 0; i < dst->len; i++) {
+                keys[i] = copy_key(&cursor, dst->keys[i]);
+                *slot_at(items, i) = *slot_at(dst->items, i);
+            }
+            free(header_of(base));
+            code_blocks_add(-1);
+            dst->keys = keys;
+            dst->items = items;
+        }
     }
+    long long n = dst->len;
+    char *cursor = NULL;
+    if (extra > 0) {
+        const char *last = dst->keys[n - 1];
+        cursor = (char *)last + strlen(last) + 1;
+    }
+    for (long long j = 0; j < b->len; j++) {
+        const CodeValue *src = slot_at(b->items, j);
+        CodeValue *slot = (CodeValue *)find_field(dst, b->keys[j]);
+        code_retain(src);
+        if (slot) {
+            code_release(slot);
+            *slot = *src;
+        } else {
+            dst->keys[n] = copy_key(&cursor, b->keys[j]);
+            *slot_at(dst->items, n) = *src;
+            n++;
+        }
+    }
+    dst->len = n;
     return 1;
 }
 
@@ -4270,7 +4326,7 @@ void code_add_into(CodeValue *dst, const CodeValue *b) {
             return;
         }
         if (dst->tag == CODE_OBJECT && b->tag == CODE_OBJECT && held_alone(dst)) {
-            if (update_in_place(dst, b)) {
+            if (grow_object_in_place(dst, b)) {
                 return;
             }
         }
