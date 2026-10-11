@@ -6,14 +6,15 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
+use inkwell::passes::PassBuilderOptions;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
 use inkwell::types::{IntType, PointerType};
-use inkwell::values::{FunctionValue, IntValue, PointerValue};
+use inkwell::values::{FloatValue, FunctionValue, IntValue, PointerValue};
 use inkwell::AddressSpace;
-use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
+use inkwell::{FloatPredicate, IntPredicate};
 
 use crate::ast::{
     BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopOver, NativeFormat, Program,
@@ -570,11 +571,6 @@ pub(crate) fn compile_to_object_traced(
         None,
     );
     let fn_host_park = module.add_function("code_host_park", void_ty.fn_type(&[], false), None);
-    let fn_is_kind = module.add_function(
-        "code_is_kind",
-        i32_ty.fn_type(&[i8_ptr_ty.into(), i32_ty.into()], false),
-        None,
-    );
     let fn_str_text = module.add_function(
         "code_str_text",
         i8_ptr_ty.fn_type(&[i8_ptr_ty.into()], false),
@@ -863,11 +859,14 @@ pub(crate) fn compile_to_object_traced(
         fn_host_park,
         fn_native_reply,
         fn_str_text,
-        fn_is_kind,
         fn_abort_failure,
         fn_take_failure,
         fn_make_exception,
         failed_flag,
+        bool_offset: if target == BuildTarget::Wasm { 20 } else { 24 },
+        kinds: Default::default(),
+        scalar_names: HashMap::new(),
+        scalar_slots: HashMap::new(),
         location_slot,
         handler_fns: HashMap::new(),
         flows: false,
@@ -891,6 +890,8 @@ pub(crate) fn compile_to_object_traced(
     // a chain of handler calls resolve at all, whatever order they are
     // written in.
     gen.declare_handlers(&program.statements)?;
+    gen.kinds = crate::kinds::of_program(program);
+    gen.scalar_names = gen.kinds.top.clone();
     // Decided now that every handler is known, and only for an executable:
     // a library cannot know whether its host will want its steps (see
     // docs/todo/trace-handler.md), and the browser has no clock for it yet.
@@ -1035,6 +1036,18 @@ pub(crate) fn compile_to_object_traced(
             )
             .ok_or_else(|| "failed to create target machine".to_string())
     };
+
+    // The variables `kinds.rs` made plain numbers and booleans are stack
+    // slots as generated; `mem2reg` puts them in registers. It is the one
+    // IR pass run, on every build: it touches nothing else (every other
+    // stack slot is a `CodeValue` the runtime is handed a pointer to), and
+    // it costs a few milliseconds. Without it a loop's counter makes a round
+    // trip through memory on every turn — half the speed (ticket 113).
+    crate::timings::measure("IR passes", || {
+        module
+            .run_passes("mem2reg", &machine()?, PassBuilderOptions::create())
+            .map_err(|e| e.to_string())
+    })?;
 
     // A large program is compiled in parts, on every core (ticket 116,
     // `split.rs`). Not an archive: a `.a` module keeps its internals
@@ -1256,6 +1269,18 @@ struct Gen<'a, 'm> {
     fn_take_failure: FunctionValue<'a>,
     fn_make_exception: FunctionValue<'a>,
     failed_flag: PointerValue<'a>,
+    /// Where a `CodeValue`'s `boolean` sits: after `str`, so it moves with
+    /// the pointer size (24 on a 64-bit machine, 20 on wasm32). The fields
+    /// before it are at the same place on both — `tag` 0, `heap` 4,
+    /// `number` 8 — which is all the inline fast paths read (ticket 113).
+    bool_offset: u64,
+    /// Which variables only ever hold a number or a boolean (`kinds.rs`),
+    /// for the whole program, and for the function being generated.
+    kinds: crate::kinds::Kinds,
+    scalar_names: HashMap<String, crate::kinds::Kind>,
+    /// The bindings that are a plain `double` or flag, not a slot, by the
+    /// stack slot that holds them.
+    scalar_slots: HashMap<PointerValue<'a>, crate::kinds::Kind>,
     location_slot: PointerValue<'a>,
     fn_poll_inbound: FunctionValue<'a>,
     /// `runtime.c`'s `code_native_serving` — whether one linked module still
@@ -1265,8 +1290,6 @@ struct Gen<'a, 'm> {
     /// `runtime.c`'s `code_host_park` — sleep until a push arrives or it is
     /// time to re-ask who is serving.
     fn_host_park: FunctionValue<'a>,
-    /// `runtime.c`'s `code_is_kind` — `x is String` and its five siblings.
-    fn_is_kind: FunctionValue<'a>,
     /// `runtime.c`'s `code_str_text` — the characters of a Str, for a
     /// computed object key.
     fn_str_text: FunctionValue<'a>,
@@ -1334,6 +1357,25 @@ struct Gen<'a, 'm> {
     /// for `Exe`/`Wasm`, the private `_code_init` for a library build (see
     /// where it is created in `compile_to_object`).
     stream_fn: FunctionValue<'a>,
+}
+
+/// What an expression came to, before anything needs it in a slot.
+///
+/// Every value used to be a `CodeValue` in a slot, built and read through
+/// runtime calls, so `i * i` was a call, its failure check and a temporary.
+/// `-`, `*`, `/` and unary `-` can only ever answer a number, and the
+/// comparisons, `=`, `and`, `or`, `not` and `∈` only a boolean, so those
+/// answer a plain `double` or `i1` here and stay in registers until something
+/// needs a slot (`gen_expr`, `box_val`). See ticket 113.
+#[derive(Clone, Copy)]
+enum Val<'a> {
+    Boxed(PointerValue<'a>),
+    /// A slot the runtime just wrote a number into (`a.x - 1`): read as a
+    /// number where one is wanted, passed on as the slot where a slot is.
+    Held(PointerValue<'a>),
+    Num(FloatValue<'a>),
+    /// An `i1`.
+    Bool(IntValue<'a>),
 }
 
 /// What a handler body needs that `main` doesn't: somewhere to put a
@@ -1565,6 +1607,13 @@ impl<'a, 'm> Gen<'a, 'm> {
         // level the definition site sat at when its body is generated.
         let saved_depth =
             std::mem::replace(&mut self.dispatch_depth, self.handler_depths[class_name]);
+        let handler_names = self
+            .kinds
+            .handlers
+            .get(class_name)
+            .cloned()
+            .unwrap_or_default();
+        let saved_names = std::mem::replace(&mut self.scalar_names, handler_names);
         let saved_frame = self.handler_frame.replace(HandlerFrame {
             out,
             exit,
@@ -1733,6 +1782,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .map_err(|e| e.to_string())?;
 
         self.handler_frame = saved_frame;
+        self.scalar_names = saved_names;
         self.env = saved_env;
         self.temps = saved_temps;
         self.temp_pool = saved_pool;
@@ -2328,11 +2378,24 @@ impl<'a, 'm> Gen<'a, 'm> {
                 "hasfailed",
             )
             .map_err(|e| e.to_string())?;
+        let unwind = self.unwind_block()?;
+        let ok = self
+            .context
+            .append_basic_block(self.current_function(), "ok");
+        self.builder
+            .build_conditional_branch(bad, unwind, ok)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(ok);
+        Ok(())
+    }
+
+    /// Where a failed helper leaves the current function: one landing block
+    /// per function, shared by every check in it — each check used to make
+    /// its own, identical one, which was a good part of the code a program
+    /// compiled to (ticket 117). Made the first time it is asked for; the
+    /// builder is left where it was.
+    fn unwind_block(&self) -> Result<BasicBlock<'a>, String> {
         let function = self.current_function();
-        let ok = self.context.append_basic_block(function, "ok");
-        // One landing block per function, shared by every check in it: each
-        // check used to make its own, identical one, which was a good part of
-        // the code a program compiled to (ticket 117).
         let shared = match &self.handler_frame {
             Some(frame) => frame.unwind.get(),
             None => self
@@ -2342,21 +2405,14 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .map(|(_, block)| block),
         };
         if let Some(unwind) = shared {
-            self.builder
-                .build_conditional_branch(bad, unwind, ok)
-                .map_err(|e| e.to_string())?;
-            self.builder.position_at_end(ok);
-            return Ok(());
+            return Ok(unwind);
         }
         let unwind = self.context.append_basic_block(function, "unwind");
         match &self.handler_frame {
             Some(frame) => frame.unwind.set(Some(unwind)),
             None => self.top_unwind.set(Some((function, unwind))),
         }
-        self.builder
-            .build_conditional_branch(bad, unwind, ok)
-            .map_err(|e| e.to_string())?;
-
+        let resume = self.builder.get_insert_block().expect("in a block");
         self.builder.position_at_end(unwind);
         match self.handler_frame.as_ref().map(|f| (f.out, f.exit)) {
             // Inside a handler: the frame's result becomes an Exception and
@@ -2386,9 +2442,8 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .map_err(|e| e.to_string())?;
             }
         }
-
-        self.builder.position_at_end(ok);
-        Ok(())
+        self.builder.position_at_end(resume);
+        Ok(unwind)
     }
 
     fn current_function(&self) -> FunctionValue<'a> {
@@ -2421,6 +2476,23 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn alloc_slot(&mut self, hint: &str) -> Result<PointerValue<'a>, String> {
         let ptr = self.alloc_zeroed(VALUE_SIZE, hint)?;
         self.record_slot(ptr, 1);
+        Ok(ptr)
+    }
+
+    /// The stack home of a variable `kinds.rs` classed a plain number or
+    /// boolean, in the current function's entry block. Nothing to zero and
+    /// nothing to release: it is always written before it is read (the
+    /// language has no unassigned name), and holds no reference.
+    fn alloc_scalar(&mut self, kind: crate::kinds::Kind) -> Result<PointerValue<'a>, String> {
+        let ty: inkwell::types::BasicTypeEnum = match kind {
+            crate::kinds::Kind::Number => self.f64_ty.into(),
+            crate::kinds::Kind::Boolean => self.context.bool_type().into(),
+        };
+        let ptr = self
+            .entry_builder()
+            .build_alloca(ty, "plain")
+            .map_err(|e| e.to_string())?;
+        self.scalar_slots.insert(ptr, kind);
         Ok(ptr)
     }
 
@@ -3466,14 +3538,41 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// nothing may shadow a visible name (`verify.rs` refuses that), so the
     /// two cases can never both apply.
     fn gen_assign(&mut self, name: &str, value: &Expr) -> Result<(), String> {
-        let value_ptr = self.gen_expr(value)?;
+        let value = self.gen_val(value)?;
         let slot = match self.lookup(name) {
             Some(existing) => existing,
             None => {
-                let fresh = self.alloc_slot("var")?;
+                let fresh = match self.scalar_names.get(name) {
+                    Some(kind) => self.alloc_scalar(*kind)?,
+                    None => self.alloc_slot("var")?,
+                };
                 self.bind(name, fresh);
                 fresh
             }
+        };
+        // A variable that only ever holds a number or a boolean is a plain
+        // one on the stack (`kinds.rs` vouches for the value's kind).
+        if let Some(kind) = self.scalar_slots.get(&slot).copied() {
+            let plain: inkwell::values::BasicValueEnum = match kind {
+                crate::kinds::Kind::Number => self.number_of(value)?.into(),
+                crate::kinds::Kind::Boolean => match value {
+                    Val::Bool(b) => b,
+                    Val::Boxed(ptr) | Val::Held(ptr) => self.load_flag(ptr)?,
+                    Val::Num(_) => unreachable!("kinds.rs classed a number as a boolean"),
+                }
+                .into(),
+            };
+            self.builder
+                .build_store(slot, plain)
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        // A number or a boolean is written straight into the slot: no
+        // temporary to build it in, no call to move it.
+        let value_ptr = match value {
+            Val::Num(n) => return self.write_number(slot, n),
+            Val::Bool(b) => return self.write_bool(slot, b),
+            Val::Boxed(ptr) | Val::Held(ptr) => ptr,
         };
         // A value just computed into a temporary of this statement is moved,
         // not copied: the temporary would only be cleared at the statement's
@@ -3515,19 +3614,10 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// correctly, simply doesn't happen if the branch doesn't run, with no
     /// merge/phi logic needed (see `env`'s doc comment).
     fn gen_if(&mut self, condition: &Expr, body: &[Stmt]) -> Result<(), String> {
-        let cond_ptr = self.gen_expr(condition)?;
+        let value = self.gen_val(condition)?;
         // Not "'if' requires booleans": `if` is not an operator, and
         // interpreter.rs words this one differently for that reason.
-        let cond_bool = self.call_bool_value(cond_ptr, "if requires a boolean")?;
-        let cond = self
-            .builder
-            .build_int_compare(
-                IntPredicate::NE,
-                cond_bool,
-                self.i32_ty.const_int(0, false),
-                "if_cond",
-            )
-            .map_err(|e| e.to_string())?;
+        let cond = self.condition(value, "if requires a boolean")?;
 
         let then_bb = self
             .context
@@ -3553,6 +3643,435 @@ impl<'a, 'm> Gen<'a, 'm> {
         Ok(())
     }
 
+    /// Ends the current block once it is long, with a failure check (which
+    /// can never fire here — every failure is checked where it happens — but
+    /// is a branch the backend cannot fold away, as it does a plain jump).
+    /// Called between elements of a list or object literal, which is where
+    /// a block grows without end: a literal of a few hundred numbers is
+    /// otherwise one block, and the wasm backend is slower than linear in a
+    /// block's length — Aquarium's `StableShapes` took 0.68 s instead of
+    /// 0.15 s once its negative numbers no longer needed a check each
+    /// (ticket 113).
+    fn bound_block(&self) -> Result<(), String> {
+        const LONGEST: usize = 256;
+        let block = self.builder.get_insert_block().expect("in a block");
+        if block.get_instructions().nth(LONGEST).is_none() {
+            return Ok(());
+        }
+        self.check_failed()
+    }
+
+    /// `expr` in a `CodeValue` slot — what everything that stores, sends or
+    /// hands a value to the runtime needs. See `gen_boxed` for what the
+    /// pointer may be used for.
+    fn gen_expr(&mut self, expr: &Expr) -> Result<PointerValue<'a>, String> {
+        let value = self.gen_val(expr)?;
+        self.box_val(value)
+    }
+
+    /// `expr`, as a plain number or boolean where its operator can only
+    /// answer one (see `Val`), boxed otherwise.
+    fn gen_val(&mut self, expr: &Expr) -> Result<Val<'a>, String> {
+        match expr {
+            Expr::Number(n) => Ok(Val::Num(self.f64_ty.const_float(*n))),
+            Expr::Bool(b) => Ok(Val::Bool(
+                self.context.bool_type().const_int(*b as u64, false),
+            )),
+            Expr::Binary(lhs, BinOp::And, rhs) => self.gen_and_or(lhs, rhs, true).map(Val::Bool),
+            Expr::Binary(lhs, BinOp::Or, rhs) => self.gen_and_or(lhs, rhs, false).map(Val::Bool),
+            Expr::Binary(lhs, BinOp::Eq, rhs) => self.gen_equality(lhs, rhs, false).map(Val::Bool),
+            Expr::Binary(lhs, BinOp::Ne, rhs) => self.gen_equality(lhs, rhs, true).map(Val::Bool),
+            Expr::Binary(lhs, op @ (BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge), rhs) => {
+                self.gen_compare(lhs, *op, rhs).map(Val::Bool)
+            }
+            Expr::Binary(lhs, BinOp::Add, rhs) => self.gen_add(lhs, rhs),
+            Expr::Binary(lhs, op, rhs) => {
+                let lhs = self.gen_val(lhs)?;
+                let rhs = self.gen_val(rhs)?;
+                self.gen_arith(*op, &[lhs, rhs])
+            }
+            Expr::Unary(UnOp::Neg, operand) => {
+                let operand = self.gen_val(operand)?;
+                self.gen_arith(BinOp::Sub, &[operand])
+            }
+            Expr::Unary(UnOp::Not, operand) => self.gen_not(operand).map(Val::Bool),
+            Expr::Is(operand, test) => self.gen_is(operand, test).map(Val::Bool),
+            Expr::Ident(name) => {
+                let slot = self
+                    .lookup(name)
+                    .ok_or_else(|| format!("undefined variable '{name}'"))?;
+                match self.scalar_slots.get(&slot) {
+                    Some(crate::kinds::Kind::Number) => Ok(Val::Num(
+                        self.builder
+                            .build_load(self.f64_ty, slot, name)
+                            .map_err(|e| e.to_string())?
+                            .into_float_value(),
+                    )),
+                    Some(crate::kinds::Kind::Boolean) => Ok(Val::Bool(
+                        self.builder
+                            .build_load(self.context.bool_type(), slot, name)
+                            .map_err(|e| e.to_string())?
+                            .into_int_value(),
+                    )),
+                    None => Ok(Val::Boxed(slot)),
+                }
+            }
+            _ => self.gen_boxed(expr).map(Val::Boxed),
+        }
+    }
+
+    /// A slot holding `value`. A number or a boolean goes in a fresh plain
+    /// temporary, through the same constructor a literal always used.
+    fn box_val(&mut self, value: Val<'a>) -> Result<PointerValue<'a>, String> {
+        match value {
+            Val::Boxed(ptr) | Val::Held(ptr) => Ok(ptr),
+            Val::Num(n) => {
+                let slot = self.alloc_plain_temp("num")?;
+                self.builder
+                    .build_call(self.fn_number, &[slot.into(), n.into()], "")
+                    .map_err(|e| e.to_string())?;
+                Ok(slot)
+            }
+            Val::Bool(b) => {
+                let slot = self.alloc_plain_temp("bool")?;
+                let flag = self
+                    .builder
+                    .build_int_z_extend(b, self.i32_ty, "flag")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_call(self.fn_bool, &[slot.into(), flag.into()], "")
+                    .map_err(|e| e.to_string())?;
+                Ok(slot)
+            }
+        }
+    }
+
+    /// The byte at `offset` inside the value `ptr` points at.
+    fn value_field(&self, ptr: PointerValue<'a>, offset: u64) -> Result<PointerValue<'a>, String> {
+        let offset = self.i64_ty.const_int(offset, false);
+        unsafe {
+            self.builder
+                .build_gep(self.i8_ty, ptr, &[offset], "field")
+                .map_err(|e| e.to_string())
+        }
+    }
+
+    /// Whether the value `ptr` points at is of kind `tag` (`ast::ValueKind::tag`).
+    fn has_tag(&self, ptr: PointerValue<'a>, tag: u64) -> Result<IntValue<'a>, String> {
+        let found = self
+            .builder
+            .build_load(self.i32_ty, ptr, "tag")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        self.builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                found,
+                self.i32_ty.const_int(tag, false),
+                "is_tag",
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    /// The `number` of the value `ptr` points at. Every slot has those
+    /// bytes, so reading them is safe whatever the kind — only meaningful
+    /// for a number, and only used where `has_tag` said so.
+    fn load_number(&self, ptr: PointerValue<'a>) -> Result<FloatValue<'a>, String> {
+        let at = self.value_field(ptr, 8)?;
+        Ok(self
+            .builder
+            .build_load(self.f64_ty, at, "number")
+            .map_err(|e| e.to_string())?
+            .into_float_value())
+    }
+
+    /// The `boolean` of the value `ptr` points at, as an `i1` — the same
+    /// "any bytes, meaningful only for its kind" read as `load_number`.
+    fn load_flag(&self, ptr: PointerValue<'a>) -> Result<IntValue<'a>, String> {
+        let at = self.value_field(ptr, self.bool_offset)?;
+        let raw = self
+            .builder
+            .build_load(self.i32_ty, at, "boolean")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        self.builder
+            .build_int_compare(IntPredicate::NE, raw, self.i32_ty.const_zero(), "flag")
+            .map_err(|e| e.to_string())
+    }
+
+    /// A number written into a variable's slot. Through `code_number`, not
+    /// in line: the slot may hold text or a list to release first, and a
+    /// branch for that at every assignment made Aquarium's wasm a tenth
+    /// bigger for one call saved.
+    fn write_number(&self, slot: PointerValue<'a>, n: FloatValue<'a>) -> Result<(), String> {
+        self.builder
+            .build_call(self.fn_number, &[slot.into(), n.into()], "")
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn write_bool(&self, slot: PointerValue<'a>, b: IntValue<'a>) -> Result<(), String> {
+        let flag = self
+            .builder
+            .build_int_z_extend(b, self.i32_ty, "flag")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_call(self.fn_bool, &[slot.into(), flag.into()], "")
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// A number the runtime left in a slot, read out as one; anything else
+    /// as it is.
+    fn settle(&self, value: Val<'a>) -> Result<Val<'a>, String> {
+        match value {
+            Val::Held(ptr) => self.load_number(ptr).map(Val::Num),
+            _ => Ok(value),
+        }
+    }
+
+    /// An operand already known to be a number, as one.
+    fn number_of(&self, operand: Val<'a>) -> Result<FloatValue<'a>, String> {
+        match operand {
+            Val::Num(n) => Ok(n),
+            Val::Boxed(ptr) | Val::Held(ptr) => self.load_number(ptr),
+            Val::Bool(_) => unreachable!("a boolean is never known to be a number"),
+        }
+    }
+
+    /// Goes on only when `fine`; otherwise runs `fail` — the runtime
+    /// function that always did this operation — and leaves through the
+    /// function's unwind block.
+    ///
+    /// Only for an operation whose runtime function *always* fails when
+    /// `fine` is false — today `/` by a zero divisor. That is what makes the
+    /// slow side a dead end rather than a second path to merge, the same
+    /// shape a failure check always had, and it keeps the message the
+    /// runtime's own.
+    fn guard(
+        &mut self,
+        fine: IntValue<'a>,
+        fail: impl FnOnce(&mut Self) -> Result<(), String>,
+    ) -> Result<(), String> {
+        if fine.get_zero_extended_constant() == Some(1) {
+            return Ok(());
+        }
+        let function = self.current_function();
+        let slow = self.context.append_basic_block(function, "slow");
+        let fast = self.context.append_basic_block(function, "fast");
+        self.builder
+            .build_conditional_branch(fine, fast, slow)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(slow);
+        fail(self)?;
+        let unwind = self.unwind_block()?;
+        self.builder
+            .build_unconditional_branch(unwind)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(fast);
+        Ok(())
+    }
+
+    /// `-`, `*`, `/` on two operands, unary `-` (`op` is `Sub`) on one.
+    /// Plain floating point when every operand is a known number;
+    /// otherwise the runtime function that always did it, as it always did.
+    ///
+    /// Not a tag check and a fast path for a boxed operand: Aquarium's
+    /// profile shows no time in these calls, and that path made its wasm 5%
+    /// bigger and its build a third slower for nothing measurable (ticket
+    /// 113). A boxed operand is still known to come back a number, which is
+    /// what `Val::Num` from a `load_number` says.
+    fn gen_arith(&mut self, op: BinOp, operands: &[Val<'a>]) -> Result<Val<'a>, String> {
+        let operands = operands
+            .iter()
+            .map(|v| self.settle(*v))
+            .collect::<Result<Vec<_>, _>>()?;
+        let operands = operands.as_slice();
+        let known = operands.iter().all(|v| matches!(v, Val::Num(_)));
+        if !known {
+            let ptrs = operands
+                .iter()
+                .map(|v| self.box_val(*v))
+                .collect::<Result<Vec<_>, _>>()?;
+            let out = self.alloc_plain_temp("arith")?;
+            self.call_arith(op, out, &ptrs)?;
+            self.check_failed()?;
+            return Ok(Val::Held(out));
+        }
+        if op == BinOp::Div {
+            // `code_div` refuses a zero divisor (`-0` included); a divisor
+            // only known when the program runs is left to it.
+            let divisor = self.number_of(operands[1])?;
+            let nonzero = self
+                .builder
+                .build_float_compare(
+                    FloatPredicate::UNE,
+                    divisor,
+                    self.f64_ty.const_zero(),
+                    "nonzero",
+                )
+                .map_err(|e| e.to_string())?;
+            self.guard(nonzero, |gen| {
+                let ptrs = operands
+                    .iter()
+                    .map(|v| gen.box_val(*v))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let out = gen.alloc_plain_temp("arith")?;
+                gen.call_arith(op, out, &ptrs)
+            })?;
+        }
+        let values = operands
+            .iter()
+            .map(|v| self.number_of(*v))
+            .collect::<Result<Vec<_>, _>>()?;
+        let b = self.builder;
+        match (op, values.as_slice()) {
+            (BinOp::Sub, [a]) => b.build_float_neg(*a, "neg"),
+            (BinOp::Sub, [a, c]) => b.build_float_sub(*a, *c, "sub"),
+            (BinOp::Mul, [a, c]) => b.build_float_mul(*a, *c, "mul"),
+            (BinOp::Div, [a, c]) => b.build_float_div(*a, *c, "div"),
+            _ => unreachable!("gen_arith is only given -, *, / and unary -"),
+        }
+        .map(Val::Num)
+        .map_err(|e| e.to_string())
+    }
+
+    fn call_arith(
+        &self,
+        op: BinOp,
+        out: PointerValue<'a>,
+        operands: &[PointerValue<'a>],
+    ) -> Result<(), String> {
+        let (function, args): (FunctionValue<'a>, Vec<_>) = match (op, operands) {
+            (BinOp::Sub, [a]) => (self.fn_neg, vec![out.into(), (*a).into()]),
+            (BinOp::Sub, [a, b]) => (self.fn_sub, vec![out.into(), (*a).into(), (*b).into()]),
+            (BinOp::Mul, [a, b]) => (self.fn_mul, vec![out.into(), (*a).into(), (*b).into()]),
+            (BinOp::Div, [a, b]) => (self.fn_div, vec![out.into(), (*a).into(), (*b).into()]),
+            _ => unreachable!("gen_arith is only given -, *, / and unary -"),
+        };
+        self.builder
+            .build_call(function, &args, "")
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// `+` — added in line when both sides are known numbers. Anything else
+    /// is `code_add`'s, as it always was: it can join text and lists, so its
+    /// slow side is not a dead end, and an in-line number path merging back
+    /// cost more code than it saved.
+    fn gen_add(&mut self, lhs: &Expr, rhs: &Expr) -> Result<Val<'a>, String> {
+        let lhs = self.gen_val(lhs)?;
+        let lhs = self.settle(lhs)?;
+        let rhs = self.gen_val(rhs)?;
+        let rhs = self.settle(rhs)?;
+        if let (Val::Num(a), Val::Num(b)) = (lhs, rhs) {
+            return self
+                .builder
+                .build_float_add(a, b, "add")
+                .map(Val::Num)
+                .map_err(|e| e.to_string());
+        }
+        let a = self.box_val(lhs)?;
+        let b = self.box_val(rhs)?;
+        let out = self.alloc_temp("binop")?;
+        self.builder
+            .build_call(self.fn_add, &[out.into(), a.into(), b.into()], "")
+            .map_err(|e| e.to_string())?;
+        self.check_failed()?;
+        Ok(Val::Boxed(out))
+    }
+
+    /// The flag of a value that must be a boolean: a known one as it is;
+    /// anything else through `ask`, the runtime function that reads it (and
+    /// fails what is not one), as it always did.
+    fn flag_of(
+        &mut self,
+        value: Val<'a>,
+        ask: impl FnOnce(&mut Self, PointerValue<'a>) -> Result<IntValue<'a>, String>,
+    ) -> Result<IntValue<'a>, String> {
+        if let Val::Bool(b) = value {
+            return Ok(b);
+        }
+        let ptr = self.box_val(value)?;
+        let flag = ask(self, ptr)?;
+        self.check_failed()?;
+        self.builder
+            .build_int_compare(IntPredicate::NE, flag, self.i32_ty.const_zero(), "flag")
+            .map_err(|e| e.to_string())
+    }
+
+    /// `not` — a known boolean flipped in line; anything else through
+    /// `code_not`, which fails what is not a boolean.
+    fn gen_not(&mut self, operand: &Expr) -> Result<IntValue<'a>, String> {
+        let operand = self.gen_val(operand)?;
+        if let Val::Bool(b) = operand {
+            return self.builder.build_not(b, "not").map_err(|e| e.to_string());
+        }
+        // `code_not` answers the flipped boolean (or fails); its flag is
+        // the answer.
+        self.flag_of(operand, |gen, ptr| {
+            let out = gen.alloc_plain_temp("not")?;
+            gen.builder
+                .build_call(gen.fn_not, &[out.into(), ptr.into()], "")
+                .map_err(|e| e.to_string())?;
+            gen.check_failed()?;
+            let flag = gen.load_flag(out)?;
+            gen.builder
+                .build_int_z_extend(flag, gen.i32_ty, "flag")
+                .map_err(|e| e.to_string())
+        })
+    }
+
+    /// `x ∈ Number` and its siblings compare the tag in line; `x ∈ Class`
+    /// still asks `code_is_particle`.
+    fn gen_is(&mut self, operand: &Expr, test: &IsTest) -> Result<IntValue<'a>, String> {
+        let operand = self.gen_val(operand)?;
+        let operand = self.settle(operand)?;
+        let bool_ty = self.context.bool_type();
+        match (test, operand) {
+            (IsTest::Kind(kind), Val::Num(_)) => {
+                Ok(bool_ty.const_int((kind.tag() == 0) as u64, false))
+            }
+            (IsTest::Kind(kind), Val::Bool(_)) => {
+                Ok(bool_ty.const_int((kind.tag() == 2) as u64, false))
+            }
+            (IsTest::Kind(kind), Val::Boxed(ptr)) => self.has_tag(ptr, kind.tag()),
+            (IsTest::Kind(_), Val::Held(_)) => unreachable!("settled above"),
+            (IsTest::Class(class), _) => {
+                let ptr = self.box_val(operand)?;
+                let class_ptr = self.global_str(class, "isclass")?;
+                let flag = self
+                    .builder
+                    .build_call(self.fn_is_particle, &[ptr.into(), class_ptr.into()], "")
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .left()
+                    .expect("code_is_particle returns i32, not void")
+                    .into_int_value();
+                self.builder
+                    .build_int_compare(IntPredicate::NE, flag, self.i32_ty.const_zero(), "is")
+                    .map_err(|e| e.to_string())
+            }
+        }
+    }
+
+    /// A value an `if`, `and` or `or` branches on: a known boolean as it
+    /// is, anything else through `code_bool_value`, which fails what is not
+    /// a boolean with `requirement`.
+    fn condition(&mut self, value: Val<'a>, requirement: &str) -> Result<IntValue<'a>, String> {
+        let requirement_ptr = self.global_str(requirement, "opname")?;
+        self.flag_of(value, |gen, ptr| {
+            Ok(gen
+                .builder
+                .build_call(gen.fn_bool_value, &[ptr.into(), requirement_ptr.into()], "")
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .left()
+                .expect("code_bool_value returns i32, not void")
+                .into_int_value())
+        })
+    }
+
     /// Evaluates `expr` into a `CodeValue` and returns a pointer to it.
     ///
     /// The pointer is *borrowed*, not owned: for `Expr::Ident` it is the
@@ -3563,16 +4082,8 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// which is what takes the reference. `gen_loop` is the one place where
     /// forgetting that was an actual bug rather than a style point; see its
     /// comment.
-    fn gen_expr(&mut self, expr: &Expr) -> Result<PointerValue<'a>, String> {
+    fn gen_boxed(&mut self, expr: &Expr) -> Result<PointerValue<'a>, String> {
         match expr {
-            Expr::Number(n) => {
-                let slot = self.alloc_plain_temp("num")?;
-                let arg = self.f64_ty.const_float(*n);
-                self.builder
-                    .build_call(self.fn_number, &[slot.into(), arg.into()], "")
-                    .map_err(|e| e.to_string())?;
-                Ok(slot)
-            }
             Expr::Str(s) => {
                 let slot = self.alloc_temp("str")?;
                 let g = self.global_str(s, "strlit")?;
@@ -3611,14 +4122,6 @@ impl<'a, 'm> Gen<'a, 'm> {
                 }
                 Ok(acc)
             }
-            Expr::Bool(b) => {
-                let slot = self.alloc_plain_temp("bool")?;
-                let arg = self.i32_ty.const_int(*b as u64, false);
-                self.builder
-                    .build_call(self.fn_bool, &[slot.into(), arg.into()], "")
-                    .map_err(|e| e.to_string())?;
-                Ok(slot)
-            }
             Expr::Null => {
                 let slot = self.alloc_plain_temp("null")?;
                 self.builder
@@ -3640,6 +4143,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         .build_call(self.fn_copy, &[dest.into(), item_ptr.into()], "")
                         .map_err(|e| e.to_string())?;
                     self.clear_temps_from(item_mark)?;
+                    self.bound_block()?;
                 }
                 let out = self.alloc_temp("arr")?;
                 let len_val = self.i64_ty.const_int(len, false);
@@ -3709,6 +4213,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         .build_call(self.fn_copy, &[dest.into(), value_ptr.into()], "")
                         .map_err(|e| e.to_string())?;
                     self.clear_temps_from(value_mark)?;
+                    self.bound_block()?;
                 }
 
                 let out = self.alloc_temp("obj")?;
@@ -3779,102 +4284,17 @@ impl<'a, 'm> Gen<'a, 'm> {
                 self.check_failed()?;
                 Ok(out)
             }
-            Expr::Unary(op, e) => {
-                let ptr = self.gen_expr(e)?;
-                let fn_val = match op {
-                    UnOp::Neg => self.fn_neg,
-                    UnOp::Not => self.fn_not,
-                };
-                let out = self.alloc_temp("unary")?;
-                self.builder
-                    .build_call(fn_val, &[out.into(), ptr.into()], "")
-                    .map_err(|e| e.to_string())?;
-                self.check_failed()?;
-                Ok(out)
-            }
-            // `expr is ClassName` — a runtime call, like every other
-            // operator here: the value's kind is only known while running.
-            // `code_is_particle` returns 0/1, which becomes a bool via the
-            // same `code_bool` constructor every other bool-producing site
-            // uses.
-            Expr::Is(e, test) => {
-                let ptr = self.gen_expr(e)?;
-                let flag = match test {
-                    // One integer compare in the runtime — the six kinds are
-                    // the `CodeTag` an already-built value carries.
-                    IsTest::Kind(kind) => {
-                        let tag = self.i32_ty.const_int(kind.tag(), false);
-                        self.builder
-                            .build_call(self.fn_is_kind, &[ptr.into(), tag.into()], "")
-                            .map_err(|e| e.to_string())?
-                    }
-                    IsTest::Class(class) => {
-                        let class_ptr = self.global_str(class, "isclass")?;
-                        self.builder
-                            .build_call(self.fn_is_particle, &[ptr.into(), class_ptr.into()], "")
-                            .map_err(|e| e.to_string())?
-                    }
-                }
-                .try_as_basic_value()
-                .left()
-                .expect("the is-check returns i32, not void")
-                .into_int_value();
-                let out = self.alloc_temp("is")?;
-                self.builder
-                    .build_call(self.fn_bool, &[out.into(), flag.into()], "")
-                    .map_err(|e| e.to_string())?;
-                Ok(out)
-            }
-            // `and`/`or` need actual branches to short-circuit (the right
-            // side must not even be evaluated when the left side already
-            // decided the result) — every other operator here is a
-            // straight-line runtime call.
-            Expr::Binary(lhs, BinOp::And, rhs) => self.gen_and_or(lhs, rhs, true),
-            Expr::Binary(lhs, BinOp::Or, rhs) => self.gen_and_or(lhs, rhs, false),
-            Expr::Binary(lhs, BinOp::Eq, rhs) => self.gen_equality(lhs, rhs, false),
-            Expr::Binary(lhs, BinOp::Ne, rhs) => self.gen_equality(lhs, rhs, true),
-            Expr::Binary(lhs, op @ (BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge), rhs) => {
-                self.gen_compare(lhs, *op, rhs)
-            }
-            Expr::Binary(lhs, op, rhs) => {
-                let lhs_ptr = self.gen_expr(lhs)?;
-                let rhs_ptr = self.gen_expr(rhs)?;
-                let fn_val = match op {
-                    BinOp::Add => self.fn_add,
-                    BinOp::Sub => self.fn_sub,
-                    BinOp::Mul => self.fn_mul,
-                    BinOp::Div => self.fn_div,
-                    BinOp::Eq | BinOp::Ne | BinOp::And | BinOp::Or => unreachable!("handled above"),
-                    BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => unreachable!("handled above"),
-                };
-                // `+` may join strings or lists; `-`, `*` and `/` only make
-                // numbers (or fail, writing nothing).
-                let out = if matches!(op, BinOp::Add) {
-                    self.alloc_temp("binop")?
-                } else {
-                    self.alloc_plain_temp("binop")?
-                };
-                self.builder
-                    .build_call(fn_val, &[out.into(), lhs_ptr.into(), rhs_ptr.into()], "")
-                    .map_err(|e| e.to_string())?;
-                self.check_failed()?;
-                Ok(out)
+            Expr::Number(_) | Expr::Bool(_) | Expr::Unary(..) | Expr::Is(..) | Expr::Binary(..) => {
+                unreachable!("gen_val answers these itself")
             }
         }
     }
 
     /// `is_and`: `true` for `and` (short-circuits on `false`), `false` for
-    /// `or` (short-circuits on `true`). Both need a real branch — the right
-    /// side is only evaluated when the left side didn't already decide the
-    /// result — so this builds two new basic blocks in `main` and merges
-    /// through a stack slot rather than a PHI node (simpler to get right
-    /// than threading `BasicBlock` predecessors through inkwell's API).
-    fn gen_and_or(
-        &mut self,
-        lhs: &Expr,
-        rhs: &Expr,
-        is_and: bool,
-    ) -> Result<PointerValue<'a>, String> {
+    /// `or` (short-circuits on `true`). The right side is only evaluated
+    /// when the left side didn't already decide the result, so this is a
+    /// real branch, merged with a phi.
+    fn gen_and_or(&mut self, lhs: &Expr, rhs: &Expr, is_and: bool) -> Result<IntValue<'a>, String> {
         // The whole clause, not the operator name: `code_bool_value` prints
         // it verbatim and appends ", found <a type>", so this is what makes
         // the compiled message identical to the one `interpreter.rs`'s
@@ -3884,149 +4304,140 @@ impl<'a, 'm> Gen<'a, 'm> {
         } else {
             "'or' requires booleans"
         };
-        let result_slot = self
-            .entry_builder()
-            .build_alloca(self.i32_ty, "logic_result")
-            .map_err(|e| e.to_string())?;
-
-        let lhs_ptr = self.gen_expr(lhs)?;
-        let lhs_bool = self.call_bool_value(lhs_ptr, op_name)?;
-        let short_circuits = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                lhs_bool,
-                self.i32_ty.const_int(if is_and { 0 } else { 1 }, false),
-                "short_circuits",
-            )
-            .map_err(|e| e.to_string())?;
-
-        let short_bb = self
-            .context
-            .append_basic_block(self.current_function(), "logic_short");
+        let lhs = self.gen_val(lhs)?;
+        let lhs_bool = self.condition(lhs, op_name)?;
+        let decided_bb = self.builder.get_insert_block().expect("in a block");
         let rhs_bb = self
             .context
             .append_basic_block(self.current_function(), "logic_rhs");
         let merge_bb = self
             .context
             .append_basic_block(self.current_function(), "logic_merge");
+        let (on_true, on_false) = if is_and {
+            (rhs_bb, merge_bb)
+        } else {
+            (merge_bb, rhs_bb)
+        };
         self.builder
-            .build_conditional_branch(short_circuits, short_bb, rhs_bb)
-            .map_err(|e| e.to_string())?;
-
-        self.builder.position_at_end(short_bb);
-        self.builder
-            .build_store(result_slot, lhs_bool)
-            .map_err(|e| e.to_string())?;
-        self.builder
-            .build_unconditional_branch(merge_bb)
+            .build_conditional_branch(lhs_bool, on_true, on_false)
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(rhs_bb);
-        let rhs_ptr = self.gen_expr(rhs)?;
-        let rhs_bool = self.call_bool_value(rhs_ptr, op_name)?;
-        self.builder
-            .build_store(result_slot, rhs_bool)
-            .map_err(|e| e.to_string())?;
+        let rhs = self.gen_val(rhs)?;
+        let rhs_bool = self.condition(rhs, op_name)?;
+        let rhs_end = self.builder.get_insert_block().expect("in a block");
         self.builder
             .build_unconditional_branch(merge_bb)
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(merge_bb);
-        let final_bool = self
+        let phi = self
             .builder
-            .build_load(self.i32_ty, result_slot, "logic_final")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let out = self.alloc_temp("logic")?;
-        self.builder
-            .build_call(self.fn_bool, &[out.into(), final_bool.into()], "")
+            .build_phi(self.context.bool_type(), "logic")
             .map_err(|e| e.to_string())?;
-        Ok(out)
+        phi.add_incoming(&[(&lhs_bool, decided_bb), (&rhs_bool, rhs_end)]);
+        Ok(phi.as_basic_value().into_int_value())
     }
 
-    fn call_bool_value(
-        &self,
-        ptr: PointerValue<'a>,
-        op_name: &str,
-    ) -> Result<IntValue<'a>, String> {
-        let op_name_ptr = self.global_str(op_name, "opname")?;
-        let value = self
-            .builder
-            .build_call(self.fn_bool_value, &[ptr.into(), op_name_ptr.into()], "")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .left()
-            .expect("code_bool_value returns i32, not void")
-            .into_int_value();
-        // Before branching on it: a failed `code_bool_value` answers 0, which
-        // is a perfectly good `false` and would quietly pick a branch.
-        self.check_failed()?;
-        Ok(value)
-    }
-
-    /// `negate`: `false` for `==`, `true` for `!=` — both go through
-    /// `code_values_equal` (well-defined for any two values, including
-    /// mismatched kinds) and just flip the bit for `!=`.
+    /// `negate`: `false` for `=`, `true` for `≠`. Equality is defined for
+    /// any two values and never fails, so the in-line answers are exact:
+    /// two numbers are equal as doubles are (`code_values_equal`'s `!=`), a
+    /// number never equals another kind. Two boxed values go to
+    /// `code_values_equal`.
     fn gen_equality(
         &mut self,
         lhs: &Expr,
         rhs: &Expr,
         negate: bool,
-    ) -> Result<PointerValue<'a>, String> {
-        let lhs_ptr = self.gen_expr(lhs)?;
-        let rhs_ptr = self.gen_expr(rhs)?;
-        let equal = self
-            .builder
-            .build_call(self.fn_values_equal, &[lhs_ptr.into(), rhs_ptr.into()], "")
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .left()
-            .expect("code_values_equal returns i32, not void")
-            .into_int_value();
-        let result = if negate {
-            self.builder
-                .build_int_compare(
-                    IntPredicate::EQ,
-                    equal,
-                    self.i32_ty.const_int(0, false),
-                    "ne_result",
-                )
-                .map_err(|e| e.to_string())?
-        } else {
-            self.builder
-                .build_int_compare(
-                    IntPredicate::NE,
-                    equal,
-                    self.i32_ty.const_int(0, false),
-                    "eq_result",
-                )
-                .map_err(|e| e.to_string())?
+    ) -> Result<IntValue<'a>, String> {
+        let lhs = self.gen_val(lhs)?;
+        let lhs = self.settle(lhs)?;
+        let rhs = self.gen_val(rhs)?;
+        let rhs = self.settle(rhs)?;
+        let bool_ty = self.context.bool_type();
+        let equal = match (lhs, rhs) {
+            (Val::Num(a), Val::Num(b)) => self
+                .builder
+                .build_float_compare(FloatPredicate::OEQ, a, b, "eq")
+                .map_err(|e| e.to_string())?,
+            (Val::Bool(a), Val::Bool(b)) => self
+                .builder
+                .build_int_compare(IntPredicate::EQ, a, b, "eq")
+                .map_err(|e| e.to_string())?,
+            (Val::Num(_), Val::Bool(_)) | (Val::Bool(_), Val::Num(_)) => bool_ty.const_zero(),
+            (Val::Boxed(ptr), Val::Num(n)) | (Val::Num(n), Val::Boxed(ptr)) => {
+                let is_number = self.has_tag(ptr, 0)?;
+                let found = self.load_number(ptr)?;
+                let same = self
+                    .builder
+                    .build_float_compare(FloatPredicate::OEQ, found, n, "same")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_and(is_number, same, "eq")
+                    .map_err(|e| e.to_string())?
+            }
+            (Val::Boxed(ptr), Val::Bool(b)) | (Val::Bool(b), Val::Boxed(ptr)) => {
+                let is_bool = self.has_tag(ptr, 2)?;
+                let found = self.load_flag(ptr)?;
+                let same = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, found, b, "same")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_and(is_bool, same, "eq")
+                    .map_err(|e| e.to_string())?
+            }
+            (Val::Boxed(a), Val::Boxed(b)) => {
+                let equal = self
+                    .builder
+                    .build_call(self.fn_values_equal, &[a.into(), b.into()], "")
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .left()
+                    .expect("code_values_equal returns i32, not void")
+                    .into_int_value();
+                self.builder
+                    .build_int_compare(IntPredicate::NE, equal, self.i32_ty.const_zero(), "eq")
+                    .map_err(|e| e.to_string())?
+            }
+            (Val::Held(_), _) | (_, Val::Held(_)) => unreachable!("settled above"),
         };
-        let as_i32 = self
-            .builder
-            .build_int_z_extend(result, self.i32_ty, "eq_as_i32")
-            .map_err(|e| e.to_string())?;
-        let out = self.alloc_plain_temp("eq")?;
-        self.builder
-            .build_call(self.fn_bool, &[out.into(), as_i32.into()], "")
-            .map_err(|e| e.to_string())?;
-        Ok(out)
+        if negate {
+            self.builder
+                .build_not(equal, "ne")
+                .map_err(|e| e.to_string())
+        } else {
+            Ok(equal)
+        }
     }
 
-    /// `<`/`>`/`<=`/`>=` all go through one `code_compare` runtime call
-    /// (returns -1/0/1, or fails for unorderable operands) and then just
-    /// `icmp` the result against 0 — see `runtime.c`'s `code_compare`. The
-    /// operator is passed only so the failure message can name it, which is
-    /// what the interpreter's has always done.
-    fn gen_compare(
-        &mut self,
-        lhs: &Expr,
-        op: BinOp,
-        rhs: &Expr,
-    ) -> Result<PointerValue<'a>, String> {
-        let lhs_ptr = self.gen_expr(lhs)?;
-        let rhs_ptr = self.gen_expr(rhs)?;
+    /// `<`/`>`/`≤`/`≥`. Two numbers are compared in line, as the
+    /// interpreter compares them: a NaN is neither less, greater nor equal,
+    /// so every ordering with one is false. (`code_compare`'s -1/0/1 reads
+    /// a NaN as "equal", which made `≤` and `≥` true here and false in
+    /// `code run`; two numbers no longer reach it.) Anything else goes to
+    /// `code_compare`, which fails it; the operator is passed only so the
+    /// failure message can name it, as the interpreter's does.
+    fn gen_compare(&mut self, lhs: &Expr, op: BinOp, rhs: &Expr) -> Result<IntValue<'a>, String> {
+        let lhs = self.gen_val(lhs)?;
+        let lhs = self.settle(lhs)?;
+        let rhs = self.gen_val(rhs)?;
+        let rhs = self.settle(rhs)?;
+        if let (Val::Num(a), Val::Num(b)) = (lhs, rhs) {
+            let predicate = match op {
+                BinOp::Lt => FloatPredicate::OLT,
+                BinOp::Gt => FloatPredicate::OGT,
+                BinOp::Le => FloatPredicate::OLE,
+                BinOp::Ge => FloatPredicate::OGE,
+                _ => unreachable!("gen_compare only called for ordering operators"),
+            };
+            return self
+                .builder
+                .build_float_compare(predicate, a, b, "cmp")
+                .map_err(|e| e.to_string());
+        }
+        let lhs_ptr = self.box_val(lhs)?;
+        let rhs_ptr = self.box_val(rhs)?;
         let op_ptr = self.global_str(op.symbol(), "cmpop")?;
         let cmp = self
             .builder
@@ -4043,7 +4454,6 @@ impl<'a, 'm> Gen<'a, 'm> {
         // Before the icmp: a failed `code_compare` answers 0, which reads as
         // "equal" and would make `1 < "a"` quietly false.
         self.check_failed()?;
-        let zero = self.i64_ty.const_int(0, true);
         let predicate = match op {
             BinOp::Lt => IntPredicate::SLT,
             BinOp::Gt => IntPredicate::SGT,
@@ -4051,19 +4461,9 @@ impl<'a, 'm> Gen<'a, 'm> {
             BinOp::Ge => IntPredicate::SGE,
             _ => unreachable!("gen_compare only called for ordering operators"),
         };
-        let result = self
-            .builder
-            .build_int_compare(predicate, cmp, zero, "cmp_result")
-            .map_err(|e| e.to_string())?;
-        let as_i32 = self
-            .builder
-            .build_int_z_extend(result, self.i32_ty, "cmp_as_i32")
-            .map_err(|e| e.to_string())?;
-        let out = self.alloc_plain_temp("cmp")?;
         self.builder
-            .build_call(self.fn_bool, &[out.into(), as_i32.into()], "")
-            .map_err(|e| e.to_string())?;
-        Ok(out)
+            .build_int_compare(predicate, cmp, self.i64_ty.const_zero(), "cmp")
+            .map_err(|e| e.to_string())
     }
 
     /// Releases every slot in the program, then checks nothing is left.

@@ -44,6 +44,17 @@ const CASES: &[(&str, &str)] = &[
     ("and", "x = true and 1\n"),
     ("or", "x = false or 1\n"),
     ("if_condition", "if 1\n    a = 1\n"),
+    // The same failures where an operand is held in a variable, or both are
+    // literals: these take the compiler's in-line paths (ticket 113), which
+    // must leave every failure to the runtime function that words it.
+    ("div_zero_literal", "x = 1 / 0\n"),
+    ("mul_held_text", "a = \"a\"\nb = 2\nx = b * a\n"),
+    ("sub_held_bool", "a = 1\nx = a - (a = 1)\n"),
+    ("compare_held", "a = \"a\"\nb = 1\nx = b ≤ a\n"),
+    ("negate_held_null", "a = null\nx = -a\n"),
+    ("not_held_number", "a = 1\nx = not a\n"),
+    ("if_held_text", "a = \"yes\"\nif a\n    b = 1\n"),
+    ("and_held_number", "a = 1\nx = (a = 1) and a\n"),
     ("assert_type", "assert 1\n"),
     ("assert_failed", "assert 1 = 2\n"),
     ("loop_operand", "loop x over 5\n    assert true\n"),
