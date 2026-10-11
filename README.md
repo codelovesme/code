@@ -860,7 +860,9 @@ object, every element of a list; null aside, since a value not set yet is
 null whatever it will hold. `code check` works these kinds out over the whole
 file, following values wherever they flow (`b = a`, a list, a particle sent to
 a handler and what the handler answers), and warns where one is later given
-another kind. It is a warning while existing programs are labelled; it will
+another kind. A list written with mixed kinds in it — `["Hi ", { tag = "b" }]`,
+the shape of a page's children — is born that way, not changed: its elements
+are `Any`. It is a warning while existing programs are labelled; it will
 become an error that both `code run` and `code build` refuse, and what it
 knows is what lets compiled code keep a field at a fixed place (ticket 122).
 

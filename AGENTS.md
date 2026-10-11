@@ -505,6 +505,16 @@ A computed key makes a map; a module/core answer and a record walked by
 `diagnostics.rs` (an error), and a kind-change on a statement that already has
 a type-mismatch is dropped.
 
+A.4 (2026-10-11): three false alarms gone — a list literal with mixed
+kinds unifies its elements quietly to `Any` (`Infer::mixed`; it is no value
+changing kind, and 123's union will name it); `s[0]` on an unknown value no
+longer makes it a list (texts are indexed by number too); handler labels are
+applied before any body runs, so a send written above a `∈ Any` field is not
+reported. 185 warnings → 66; `∈ Array of Any` on the UI-tree list variables
+and two real fixes took the apps to 13, all UI trees whose element objects
+meet with `children` of different kinds (text in one, elements in another)
+— those wait for 123's `Element`, and so does making the rule an error.
+
 Measured on every app: ~215 warnings, ~75% from UI trees — `children` mixing
 text and elements, canvas `fill` string-or-gradient, path arrays mixing
 strings and numbers — the rest polymorphic helpers (`Folded.text` list or
@@ -581,7 +591,12 @@ number into a slot holding nothing on the heap is in line
 (`likely_number_assign`) — **both only inside a loop**: at every operand they
 cost code, and Aquarium's straight-line handlers made the wasm +10% for no
 gain. points 19× → ~10× C, spectral_norm 0.31 → 0.27 s (1.6× C); Aquarium
-wasm 978K → 1043K. `tests/shapes.code` holds the cases (shape kept, cleared,
+wasm 978K → 1043K. Later the same day every in-line read went loop-only
+(`Gen::hot`: shaped field slots, numeric indexes, likely numbers): Aquarium
+1,052K → 936K, the five workloads no slower. Counting the handlers a loop
+emits to as hot too was tried and made it 1,102K — nearly every handler of a
+frame-driven page is one. Running instcombine/simplifycfg/early-cse after
+mem2reg saved only 3% for +2 s of build, so it is not done. `tests/shapes.code` holds the cases (shape kept, cleared,
 other orders, fewer fields, non-objects), also on wasm.
 
 ## Wasm handler stack (root-caused 2026-09-07)
