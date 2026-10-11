@@ -331,6 +331,25 @@ fn wasm_finds_fields_with_the_same_answers() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Shapes live in the block header and the compiler's key lists; a read that
+/// knows the shape reads the slot in line. The same cases on wasm, where a
+/// pointer is 32 bits.
+#[test]
+fn wasm_reads_shaped_objects_with_the_same_answers() {
+    let dir = temp_dir("wasm-shapes");
+    let out = dir.join("shapes.wasm");
+    code::compile_file(
+        &fixture("shapes.code"),
+        code::BuildTarget::Wasm,
+        &out,
+        false,
+    )
+    .expect("build shapes.code --target wasm");
+
+    run_wasm_under_node(&dir, &out);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// The search for a fraction's shortest spelling starts at the length the
 /// page says can first succeed (`code_host_number_shortest`) rather than at
 /// one. That may only skip candidates, never change the answer: so a few

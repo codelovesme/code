@@ -79,6 +79,33 @@ pub struct Suggestion {
     pub label: Option<Label>,
 }
 
+/// Where a `.field` read finds its field when the object is built the way
+/// the program builds it (ticket 122, stage B): for the read at `expr` (by
+/// address), the key list of an object literal that flows to it and the
+/// field's position in that list. Codegen checks the object still has that
+/// shape and reads the slot without a call.
+#[derive(Default)]
+pub struct Layouts {
+    /// `.field` reads, by the read's address.
+    pub fields: HashMap<usize, (Vec<String>, usize)>,
+    /// `xs[i].x = v` writes: by the `SetAt`'s address and the step.
+    pub parts: HashMap<(usize, usize), (Vec<String>, usize)>,
+}
+
+pub fn field_layouts(program: &Program) -> Layouts {
+    let mut warnings = Vec::new();
+    let mut suggestions = Vec::new();
+    let mut layouts = Layouts::default();
+    check_file_into(
+        &program.statements,
+        program.origin.as_ref(),
+        &mut warnings,
+        &mut suggestions,
+        &mut layouts,
+    );
+    layouts
+}
+
 pub fn suggested_labels(program: &Program) -> Vec<Suggestion> {
     let mut warnings = Vec::new();
     let mut suggestions = Vec::new();
@@ -97,6 +124,17 @@ fn check_file(
     warnings: &mut Vec<Diagnostic>,
     suggestions: &mut Vec<Suggestion>,
 ) {
+    let mut layouts = Layouts::default();
+    check_file_into(statements, origin, warnings, suggestions, &mut layouts);
+}
+
+fn check_file_into(
+    statements: &[Stmt],
+    origin: Option<&Origin>,
+    warnings: &mut Vec<Diagnostic>,
+    suggestions: &mut Vec<Suggestion>,
+    layouts: &mut Layouts,
+) {
     let mut infer = Infer {
         parent: Vec::new(),
         shapes: Vec::new(),
@@ -110,6 +148,10 @@ fn check_file(
         origin,
         warnings,
         suggestions,
+        layouts,
+        literal_shapes: Vec::new(),
+        field_sites: Vec::new(),
+        part_sites: Vec::new(),
     };
     for statement in statements {
         if let Stmt::HandlerDef { class_name, .. } = statement {
@@ -152,6 +194,37 @@ fn check_file(
             }
         }
     }
+    // Each read's layout: the first shape built into its object's kind that
+    // has the field. Another shape at run time just takes the slow path.
+    let mut shapes: HashMap<Var, Vec<Vec<String>>> = HashMap::new();
+    for (var, order) in std::mem::take(&mut infer.literal_shapes) {
+        let root = infer.root(var);
+        let known = shapes.entry(root).or_default();
+        if !known.contains(&order) {
+            known.push(order);
+        }
+    }
+    let layout_of = |infer: &mut Infer, object: Var, field: &str| {
+        let root = infer.root(object);
+        shapes.get(&root).and_then(|candidates| {
+            candidates.iter().find_map(|order| {
+                order
+                    .iter()
+                    .position(|k| k == field)
+                    .map(|at| (order.clone(), at))
+            })
+        })
+    };
+    for (site, object, field) in std::mem::take(&mut infer.field_sites) {
+        if let Some(layout) = layout_of(&mut infer, object, &field) {
+            infer.layouts.fields.insert(site, layout);
+        }
+    }
+    for (site, object, field) in std::mem::take(&mut infer.part_sites) {
+        if let Some(layout) = layout_of(&mut infer, object, &field) {
+            infer.layouts.parts.insert(site, layout);
+        }
+    }
 }
 
 /// `Point { … }` — an object literal whose `_class` is written down.
@@ -188,6 +261,14 @@ struct Infer<'a> {
     origin: Option<&'a Origin>,
     warnings: &'a mut Vec<Diagnostic>,
     suggestions: &'a mut Vec<Suggestion>,
+    layouts: &'a mut Layouts,
+    /// Every object literal whose keys are all written down: its variable and
+    /// its keys in order — the shapes the program builds.
+    literal_shapes: Vec<(Var, Vec<String>)>,
+    /// Every `.field` read: its address, the object's variable, the field.
+    field_sites: Vec<(usize, Var, String)>,
+    /// Every named step of a part write: (address, step), object, field.
+    part_sites: Vec<((usize, usize), Var, String)>,
 }
 
 impl Infer<'_> {
@@ -615,9 +696,13 @@ impl Infer<'_> {
                     self.unify(result, value, &format!("what {handler} answers"));
                 }
             }
-            Stmt::Import { body, origin, .. } => {
-                check_file(body, Some(origin), self.warnings, self.suggestions)
-            }
+            Stmt::Import { body, origin, .. } => check_file_into(
+                body,
+                Some(origin),
+                self.warnings,
+                self.suggestions,
+                self.layouts,
+            ),
             Stmt::Link { alias, .. } => {
                 if let Some(alias) = alias {
                     let any = self.fresh(Shape::Any);
@@ -684,6 +769,8 @@ impl Infer<'_> {
             Expr::Object(fields) => self.object(fields),
             Expr::Field(object, name) => {
                 let object = self.expr(object);
+                self.field_sites
+                    .push((expr as *const Expr as usize, object, name.clone()));
                 self.field(object, name)
             }
             Expr::Index(container, index) => {
@@ -717,12 +804,17 @@ impl Infer<'_> {
                 let base = self.expr(base);
                 let mut at = base;
                 let mut spelled = String::new();
-                for key in path {
+                for (step, key) in path.iter().enumerate() {
                     let key_var = self.expr(key);
                     at = match key {
                         Expr::Str(name) => {
                             spelled.push('.');
                             spelled.push_str(name);
+                            self.part_sites.push((
+                                (expr as *const Expr as usize, step),
+                                at,
+                                name.clone(),
+                            ));
                             self.field(at, name)
                         }
                         _ => match self.shape(key_var) {
@@ -760,6 +852,13 @@ impl Infer<'_> {
     fn object(&mut self, fields: &[(FieldKey, Expr)]) -> Var {
         let mut known = BTreeMap::new();
         let mut map = None;
+        let order: Option<Vec<String>> = fields
+            .iter()
+            .map(|(key, _)| match key {
+                FieldKey::Literal(name) => Some(name.clone()),
+                FieldKey::Computed(_) => None,
+            })
+            .collect();
         for (key, value) in fields {
             let value = self.expr(value);
             match key {
@@ -773,7 +872,11 @@ impl Infer<'_> {
                 }
             }
         }
-        self.fresh(Shape::Object { fields: known, map })
+        let var = self.fresh(Shape::Object { fields: known, map });
+        if let Some(order) = order.filter(|order| !order.is_empty()) {
+            self.literal_shapes.push((var, order));
+        }
+        var
     }
 
     fn binary(&mut self, left: &Expr, op: BinOp, right: &Expr) -> Var {

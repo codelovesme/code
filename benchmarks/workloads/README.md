@@ -125,3 +125,17 @@ binary_trees 234M → ~165M instructions, **9× → 6× C**.
 | string_build | 0.0014 s | 0.005 s | 3–4× |
 | dictionary | 0.0038 s | 0.021 s | 6× |
 | points | 0.0007 s | 0.028 s | 40× |
+
+## Shapes, in-line reads, literal constants (2026-10-11, ticket 122 stage B)
+
+Objects built from one literal share a shape; a `.field` read or part write
+that knows it reads the slot directly; `xs[n]` is found in line; string
+literals are constants.
+
+| Workload | C | code | code / C |
+|---|---|---|---|
+| spectral_norm | 0.161 s | 0.420 s | 3× |
+| binary_trees | 0.0034 s | 0.019–0.021 s | 6× |
+| string_build | 0.0015 s | 0.005 s | 3–4× |
+| dictionary | 0.0034 s | 0.020 s | 6× |
+| points | 0.0007 s | 0.015 s | ~20× |

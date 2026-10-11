@@ -196,10 +196,15 @@ void code_take_failure(CodeValue *out) {
 typedef struct {
     long long rc;
     /* A string block's length plus one once something has measured it, 0
-     * until then (`text_length`); unused by other blocks. Also what keeps
-     * the payload 16-byte aligned, like malloc's. */
+     * until then (`text_length`). An object block's *shape*: the address of
+     * the compiler's key list the object was built from, while its keys are
+     * still exactly those (`code_object_literal`, ticket 122 stage B), 0
+     * otherwise. Also what keeps the payload 16-byte aligned, like malloc's. */
     long long text_length;
 } CodeHeader;
+
+/* An object's shape, or 0 (see `CodeHeader`). */
+#define SHAPE_OF(v) (header_of((v)->keys)->text_length)
 
 /* Blocks currently allocated. Exists only so `code_check_leaks` can turn
  * "the refcounting is correct" into something a test can actually observe —
@@ -531,9 +536,15 @@ void code_object(CodeValue *out, const char **keys, void *values, long long len)
 
 /* `code_object` for an object literal whose every key the compiler wrote
  * down with its hash in front (`[hash][characters\0]`, `keys[i]` at the
- * characters), so building one does not hash its keys again. */
+ * characters), so building one does not hash its keys again. `keys` is one
+ * constant per distinct key list in the program, so its address is the
+ * object's shape: a `.field` read the compiler knows the shape of checks the
+ * object still has it and reads the slot directly (codegen's `gen_peek`). */
 void code_object_literal(CodeValue *out, const char **keys, void *values, long long len) {
     build_object(out, keys, values, len, 1);
+    if (len > 0) {
+        SHAPE_OF(out) = (long long)(size_t)keys;
+    }
 }
 
 static void build_object(CodeValue *out, const char **keys, void *values, long long len,
@@ -4238,12 +4249,18 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         /* Same ordering point as the two cases above: every value is
          * retained already, so releasing `out` here cannot free anything the
          * new block refers to, even when `out` is `a` or `b` (`x = x + x`). */
+        /* No field added: the keys are `a`'s, in `a`'s order — so is the
+         * shape. Read before `out` (which may be `a`) is released. */
+        long long shape = (total == a->len && a->heap) ? SHAPE_OF(a) : 0;
         code_release(out);
         out->tag = CODE_OBJECT;
         out->heap = total > 0;
         out->keys = key_buf;
         out->items = value_buf;
         out->len = total;
+        if (total > 0) {
+            SHAPE_OF(out) = shape;
+        }
         return;
     }
     /* A string on either side makes `+` string concatenation: the other
@@ -4466,6 +4483,9 @@ static int grow_object_in_place(CodeValue *dst, const CodeValue *b) {
             n++;
         }
     }
+    if (extra > 0) {
+        SHAPE_OF(dst) = 0; /* a key list of its own now */
+    }
     dst->len = n;
     return 1;
 }
@@ -4555,6 +4575,7 @@ static void own_level(CodeValue *v) {
         code_array(&copy, v->items, v->len);
     } else {
         build_object(&copy, v->keys, v->items, v->len, 1);
+        SHAPE_OF(&copy) = SHAPE_OF(v); /* the same keys, in the same order */
     }
     code_release(v);
     *v = copy;
@@ -4563,9 +4584,12 @@ static void own_level(CodeValue *v) {
 /* `keys` points at each step's key where it already is. `hashes[step]` is
  * a literal field name's hash with bit 32 set, or 0 for a key known only
  * when the program runs; `guesses` is this assignment's own memory of where
- * each field was last (see `code_field_ref`). */
+ * each field was last (see `code_field_ref`). `shapes[step]`, when not 0, is
+ * the shape the compiler expects the object at that step to have, and
+ * `slots[step]` the field's slot in it (ticket 122 stage B). */
 void code_set_at(CodeValue *target, const CodeValue *const *keys, long long count,
-                 const CodeValue *value, const long long *hashes, long long *guesses) {
+                 const CodeValue *value, const long long *hashes, long long *guesses,
+                 const void *const *shapes, const long long *slots) {
     char msg[320];
     CodeValue v = *value;
     code_retain(&v);
@@ -4596,12 +4620,19 @@ void code_set_at(CodeValue *target, const CodeValue *const *keys, long long coun
                          article_for(key), type_name(key));
                 goto failed;
             }
-            unsigned int hash = (hashes[step] >> 32) ? (unsigned int)hashes[step]
-                                                      : key_hash(key->str);
-            long long at = guesses[step];
-            if (!(at < current->len && stored_hash(current->keys[at]) == hash
-                  && strcmp(current->keys[at], key->str) == 0)) {
-                at = field_position(current, key->str, hash);
+            long long at;
+            if (shapes[step] && current->heap
+                && SHAPE_OF(current) == (long long)(size_t)shapes[step]) {
+                /* Built the way the program builds it: the slot is known. */
+                at = slots[step];
+            } else {
+                unsigned int hash = (hashes[step] >> 32) ? (unsigned int)hashes[step]
+                                                          : key_hash(key->str);
+                at = guesses[step];
+                if (!(at < current->len && stored_hash(current->keys[at]) == hash
+                      && strcmp(current->keys[at], key->str) == 0)) {
+                    at = field_position(current, key->str, hash);
+                }
             }
             if (at < 0) {
                 if (step + 1 < count) {

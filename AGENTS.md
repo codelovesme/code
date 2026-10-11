@@ -530,6 +530,32 @@ host/modules/other apps call and no fixture reaches), ~35% of new label parts
 cannot tell a map from a record (`house.temperature.bedroom` is user data) —
 a person reviews.
 
+## Shapes and in-line reads (ticket 122 stage B, 2026-10-11)
+
+An object literal whose keys are all written down is built from one constant
+key list per distinct ordered list (`Gen::shape_keys`, an array of
+`hashed_key` pointers) via `code_object_literal`, which marks the block
+header's spare word with that list's address: the object's **shape**
+(`SHAPE_OF` in runtime.c; the same word holds a string's length). A copy
+(`own_level`) keeps it; a merge adding no field keeps the left side's; adding
+a field clears it. `infer::field_layouts` maps each `.field` read and each
+named step of a part write to the first literal shape flowing into its
+object's kind and the field's index (`Layouts::fields`, `Layouts::parts`,
+keyed by expression address — codegen walks the same `Program`). Codegen then
+emits `shaped_slot`: tag is Object, keys non-null, header word == shape →
+the slot; else `code_field_ref` as before. `code_set_at` takes per-step
+`shapes` (a pointer table — a `ptrtoint` in a static initializer does not
+link on wasm) and `slots`. `number_index`: `xs[n]` with a plain number checks
+Array, range and wholeness in line (`select`, so a poison `fptosi` decides
+nothing) and boxes `n` only on the slow side. String literals are read-only
+constant `CodeValue` slots (`str_constant`, laid out per target, padded to
+80) — no `code_str`, no temporary; anything writing into a literal's slot
+would now fault, which is the point.
+
+points 30× → ~20× C, spectral_norm 0.48 → 0.42 s; Aquarium wasm +4%, build
+time unchanged. `tests/shapes.code` holds the cases (shape kept, cleared,
+other orders, fewer fields, non-objects), also on wasm.
+
 ## Wasm handler stack (root-caused 2026-09-07)
 
 Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`
