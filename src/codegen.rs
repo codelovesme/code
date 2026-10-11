@@ -934,6 +934,11 @@ pub(crate) fn compile_to_object_traced(
         str_constants: HashMap::new(),
         likely_numbers: std::collections::HashSet::new(),
         mostly_empty: std::collections::HashSet::new(),
+        version: None,
+        bail: None,
+        generic_entries: HashMap::new(),
+        fast_temps_mark: 0,
+        binding_slots: HashMap::new(),
         scalar_names: HashMap::new(),
         scalar_slots: HashMap::new(),
         location_slot,
@@ -1113,9 +1118,19 @@ pub(crate) fn compile_to_object_traced(
     // stack slot is a `CodeValue` the runtime is handed a pointer to), and
     // it costs a few milliseconds. Without it a loop's counter makes a round
     // trip through memory on every turn — half the speed (ticket 113).
+    //
+    // `--release` runs LLVM's whole -O2 pipeline as well, after telling it
+    // which memory each load and store touches (`alias.rs`): with a loop's
+    // fast version (`gen_loop`) that is what turns the checks of every read
+    // into one per iteration — points 7.3 → 3.7 ms, spectral_norm 0.27 →
+    // 0.22 s, for Aquarium's release build 1.5 → 2.9 s.
+    if release {
+        crate::alias::tag(&context, &module, target == BuildTarget::Wasm);
+    }
+    let passes = if release { "default<O2>" } else { "mem2reg" };
     crate::timings::measure("IR passes", || {
         module
-            .run_passes("mem2reg", &machine()?, PassBuilderOptions::create())
+            .run_passes(passes, &machine()?, PassBuilderOptions::create())
             .map_err(|e| e.to_string())
     })?;
 
@@ -1379,6 +1394,22 @@ struct Gen<'a, 'm> {
     /// Temporaries that usually end a statement holding no heap value; their
     /// clear checks `heap` before calling (`clear_temps_from`).
     mostly_empty: std::collections::HashSet<usize>,
+    /// Which version of an innermost loop's body is being generated (see
+    /// `gen_loop`), or `None` outside one.
+    version: Option<Version>,
+    /// While generating a loop's fast version: where the current statement
+    /// goes when an in-line check fails — its generic version — as long as
+    /// it has changed nothing yet. Made when first asked for (`bail`).
+    bail: Option<Bail<'a>>,
+    /// The generic version's first block of each statement in the loop
+    /// being versioned, by the statement's address.
+    generic_entries: HashMap<usize, BasicBlock<'a>>,
+    /// The temporaries live when the fast body began: a failed check clears
+    /// the ones made after it before leaving for the generic version.
+    fast_temps_mark: usize,
+    /// The slot a binding got the first time its statement was generated,
+    /// by the statement's address: a loop's two versions are one variable.
+    binding_slots: HashMap<(usize, usize), PointerValue<'a>>,
     scalar_names: HashMap<String, crate::kinds::Kind>,
     /// The bindings that are a plain `double` or flag, not a slot, by the
     /// stack slot that holds them.
@@ -1529,6 +1560,35 @@ enum NativeLink<'a> {
 struct LoopBlocks<'a> {
     exit: BasicBlock<'a>,
     cont: BasicBlock<'a>,
+}
+
+/// What `shaped_write` left to do.
+enum Written<'a> {
+    /// The write is done: a loop's fast version, where the slow half is the
+    /// generic version's.
+    Done,
+    /// The builder is at the slow half, which goes on to this block.
+    Slow(BasicBlock<'a>),
+}
+
+/// A statement's way out of a loop's fast version (`Gen::bail`).
+#[derive(Clone, Copy)]
+struct Bail<'a> {
+    /// Made when a check first asks for it; filled in when the statement
+    /// is done: clear the temporaries, go to the generic version.
+    block: Option<BasicBlock<'a>>,
+    /// The statement's address, which names its generic version.
+    statement: usize,
+}
+
+/// The two versions of an innermost loop's body (`gen_loop`).
+#[derive(Clone, Copy, PartialEq)]
+enum Version {
+    /// Every check in line, and a failed one leaves for `Generic`.
+    Fast,
+    /// Nothing in line: the runtime's own functions, which answer every
+    /// case. Runs only after a check failed, to the loop's end.
+    Generic,
 }
 
 /// Which of a `LoopBlocks`' two targets `gen_jump` should branch to.
@@ -2815,7 +2875,45 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// no-op: it is zeroed, which reads as a payload-less number.
     fn gen_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
         let mark = self.temps.len();
+        let address = stmt as *const Stmt as usize;
+        // Every statement of a loop's generic version can be arrived at from
+        // the fast one, so each starts a block of its own.
+        if self.version == Some(Version::Generic) {
+            let entry = self.generic_entry(address);
+            self.builder
+                .build_unconditional_branch(entry)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(entry);
+        }
+        // In the fast version, an assignment and an `if` can be redone from
+        // the start by the generic one: what they change, they change last.
+        // Anything else (an emit, a return) is generated as it always is.
+        let redoable = matches!(stmt, Stmt::Assign { .. } | Stmt::If { .. });
+        let outer = std::mem::replace(
+            &mut self.bail,
+            (self.version == Some(Version::Fast) && redoable).then_some(Bail {
+                block: None,
+                statement: address,
+            }),
+        );
         let result = self.gen_stmt_inner(stmt);
+        if result.is_ok() {
+            if let Some(Bail {
+                block: Some(block),
+                statement,
+            }) = self.bail
+            {
+                let here = self.builder.get_insert_block().expect("in a block");
+                self.builder.position_at_end(block);
+                self.emit_clears_from(self.fast_temps_mark)?;
+                let entry = self.generic_entry(statement);
+                self.builder
+                    .build_unconditional_branch(entry)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(here);
+            }
+        }
+        self.bail = outer;
         if result.is_ok() {
             self.clear_temps_from(mark)?;
         }
@@ -2823,6 +2921,63 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.temps.truncate(mark);
         }
         result
+    }
+
+    /// Where the current statement goes when an in-line check fails, in a
+    /// loop's fast version — `None` anywhere else, and the check makes its
+    /// own slow path as it always did.
+    fn bail(&mut self) -> Option<BasicBlock<'a>> {
+        let function = self.current_function();
+        let bail = self.bail.as_mut()?;
+        Some(
+            *bail
+                .block
+                .get_or_insert_with(|| self.context.append_basic_block(function, "bail")),
+        )
+    }
+
+    /// The first block of a statement's generic version.
+    fn generic_entry(&mut self, statement: usize) -> BasicBlock<'a> {
+        let function = self.current_function();
+        *self
+            .generic_entries
+            .entry(statement)
+            .or_insert_with(|| self.context.append_basic_block(function, "generic"))
+    }
+
+    /// Clears the temporaries made since `mark`, keeping them made: on the
+    /// way from a failed check to the generic version, which redoes the
+    /// statement in temporaries of its own.
+    fn emit_clears_from(&mut self, mark: usize) -> Result<(), String> {
+        for i in mark..self.temps.len() {
+            let (buf, count, plain) = self.temps[i];
+            if plain {
+                continue;
+            }
+            for j in 0..count {
+                let slot = self.slot_at(buf, j, "temp")?;
+                self.builder
+                    .build_call(self.fn_clear, &[slot.into()], "")
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The slot a new binding lives in: the one this statement's binding
+    /// got before, when it is generated a second time (a loop's two
+    /// versions), else a new one.
+    fn binding_slot(
+        &mut self,
+        key: (usize, usize),
+        make: impl FnOnce(&mut Self) -> Result<PointerValue<'a>, String>,
+    ) -> Result<PointerValue<'a>, String> {
+        if let Some(slot) = self.binding_slots.get(&key) {
+            return Ok(*slot);
+        }
+        let slot = make(self)?;
+        self.binding_slots.insert(key, slot);
+        Ok(slot)
     }
 
     fn gen_stmt_inner(&mut self, stmt: &Stmt) -> Result<(), String> {
@@ -2916,6 +3071,17 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// iteration count, because nothing it emits allocates: all the allocas
     /// live in `entry` (see `alloc_slot`) and every heap block a body
     /// produces is released when its slot is rewritten next time round.
+    ///
+    /// **Two versions.** A loop with no loop inside it is generated twice
+    /// (ticket 122 stage C). The fast version has every in-line check —
+    /// a field at its known slot, a list element, a number — and none of
+    /// their slow paths: a check that fails leaves for the same statement in
+    /// the generic version, which has nothing in line and finishes the loop
+    /// the way every loop used to run. A statement changes what it changes
+    /// last, so redoing it from the start is the same as finishing it. With
+    /// no slow path joining back in, nothing a check found out is lost to a
+    /// call that might have changed it: LLVM keeps it for the rest of the
+    /// body — `pts[i]` is found once, not at every read.
     fn gen_loop(&mut self, over: Option<&LoopOver>, body: &[Stmt]) -> Result<(), String> {
         // `loop { }` has no iterable, no counter and no bound — `head_bb`
         // just falls into the body every time, and only a `break` leaves.
@@ -2923,7 +3089,48 @@ impl<'a, 'm> Gen<'a, 'm> {
             Some(over) => Some(self.gen_loop_cursor(over)?),
             None => None,
         };
+        let after_bb = self
+            .context
+            .append_basic_block(self.current_function(), "loop_after");
+        let before = self.builder.get_insert_block().expect("in a block");
+        let head_bb = if self.version.is_none() && !contains_loop(body) {
+            self.version = Some(Version::Fast);
+            self.fast_temps_mark = self.temps.len();
+            let fast = self.gen_loop_version(over, iteration.as_ref(), body, after_bb, None);
+            self.version = Some(Version::Generic);
+            // The generic version finishes the iteration a check failed in;
+            // the next one is the fast version's again.
+            let generic = match &fast {
+                Ok(head) => {
+                    self.gen_loop_version(over, iteration.as_ref(), body, after_bb, Some(*head))
+                }
+                Err(e) => Err(e.clone()),
+            };
+            self.version = None;
+            self.generic_entries.clear();
+            generic?;
+            fast?
+        } else {
+            self.gen_loop_version(over, iteration.as_ref(), body, after_bb, None)?
+        };
+        self.builder.position_at_end(before);
+        self.builder
+            .build_unconditional_branch(head_bb)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(after_bb);
+        Ok(())
+    }
 
+    /// One version of a loop (`gen_loop`): its head, body and back edge,
+    /// leaving for `after_bb`. Answers the head, for the loop's entry.
+    fn gen_loop_version(
+        &mut self,
+        over: Option<&LoopOver>,
+        iteration: Option<&LoopCursor<'a>>,
+        body: &[Stmt],
+        after_bb: BasicBlock<'a>,
+        back_to: Option<BasicBlock<'a>>,
+    ) -> Result<BasicBlock<'a>, String> {
         let head_bb = self
             .context
             .append_basic_block(self.current_function(), "loop_head");
@@ -2936,15 +3143,9 @@ impl<'a, 'm> Gen<'a, 'm> {
         let cont_bb = self
             .context
             .append_basic_block(self.current_function(), "loop_cont");
-        let after_bb = self
-            .context
-            .append_basic_block(self.current_function(), "loop_after");
-        self.builder
-            .build_unconditional_branch(head_bb)
-            .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(head_bb);
-        let i = match &iteration {
+        let i = match iteration {
             Some(cursor) => {
                 let i = self
                     .builder
@@ -2970,7 +3171,7 @@ impl<'a, 'm> Gen<'a, 'm> {
 
         self.builder.position_at_end(body_bb);
         let mut scope = HashMap::new();
-        if let (Some(over), Some(cursor), Some(i)) = (over, &iteration, i) {
+        if let (Some(over), Some(cursor), Some(i)) = (over, iteration, i) {
             self.builder
                 .build_call(
                     self.fn_iter_at,
@@ -3034,7 +3235,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         if self.handler_frame.is_none() {
             self.gen_drain_call()?;
         }
-        if let Some(cursor) = &iteration {
+        if let Some(cursor) = iteration {
             let current = self
                 .builder
                 .build_load(self.i64_ty, cursor.counter, "i_cur")
@@ -3049,11 +3250,9 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .map_err(|e| e.to_string())?;
         }
         self.builder
-            .build_unconditional_branch(head_bb)
+            .build_unconditional_branch(back_to.unwrap_or(head_bb))
             .map_err(|e| e.to_string())?;
-
-        self.builder.position_at_end(after_bb);
-        Ok(())
+        Ok(head_bb)
     }
 
     /// Sets up everything `loop ... over` iterates *with*: the snapshot of
@@ -3580,15 +3779,17 @@ impl<'a, 'm> Gen<'a, 'm> {
     ) -> Result<(), String> {
         match result {
             Some(EmitResult::Whole(name)) => {
-                let permanent = self.alloc_slot("var")?;
+                let key = (result.map_or(0, |r| r as *const EmitResult as usize), 0);
+                let permanent = self.binding_slot(key, |gen| gen.alloc_slot("var"))?;
                 self.builder
                     .build_call(self.fn_copy, &[permanent.into(), temp.into()], "")
                     .map_err(|e| e.to_string())?;
                 self.bind(name, permanent);
             }
             Some(EmitResult::Fields(fields)) => {
-                for entry in fields {
-                    let permanent = self.alloc_slot("var")?;
+                for (at, entry) in fields.iter().enumerate() {
+                    let key = (result.map_or(0, |r| r as *const EmitResult as usize), at);
+                    let permanent = self.binding_slot(key, |gen| gen.alloc_slot("var"))?;
                     let key = self.global_str(&entry.field, "fieldname")?;
                     self.builder
                         .build_call(
@@ -3725,14 +3926,16 @@ impl<'a, 'm> Gen<'a, 'm> {
                 }
             }
         }
+        let site = value as *const Expr as usize;
         let value = self.gen_operand(value)?;
         let slot = match self.lookup(name) {
             Some(existing) => existing,
             None => {
-                let fresh = match self.scalar_names.get(name) {
-                    Some(kind) => self.alloc_scalar(*kind)?,
-                    None => self.alloc_slot("var")?,
-                };
+                let kind = self.scalar_names.get(name).copied();
+                let fresh = self.binding_slot((site, 0), |gen| match kind {
+                    Some(kind) => gen.alloc_scalar(kind),
+                    None => gen.alloc_slot("var"),
+                })?;
                 self.bind(name, fresh);
                 fresh
             }
@@ -3756,6 +3959,9 @@ impl<'a, 'm> Gen<'a, 'm> {
         }
         // A number or a boolean is written straight into the slot: no
         // temporary to build it in, no call to move it.
+        if let (Val::Num(n), Some(bail)) = (value, self.bail()) {
+            return self.write_number_or(slot, n, bail);
+        }
         let value_ptr = match value {
             Val::Num(n) => return self.write_number(slot, n),
             Val::Bool(b) => return self.write_bool(slot, b),
@@ -3768,6 +3974,11 @@ impl<'a, 'm> Gen<'a, 'm> {
         // A sum of numbers, say, written into a variable that holds nothing
         // on the heap: the tag and the number, in line.
         if self.likely_numbers.contains(&slot_key(value_ptr)) && self.hot() {
+            if self.bail.is_some() {
+                let n = self.likely_number_of(Val::Boxed(value_ptr))?;
+                let bail = self.bail().expect("in a fast version");
+                return self.write_number_or(slot, n, bail);
+            }
             return self.likely_number_assign(slot, value_ptr);
         }
         let temp = self
@@ -3810,7 +4021,11 @@ impl<'a, 'm> Gen<'a, 'm> {
         // A number written where every step is a list index or a field whose
         // slot is known: straight in, when each level is held alone and the
         // slot holds nothing on the heap; `code_set_at` otherwise.
-        let merge = self.shaped_write(site, target, path, &key_vals, value_val)?;
+        let merge = match self.shaped_write(site, target, path, &key_vals, value_val)? {
+            Some(Written::Done) => return Ok(()),
+            Some(Written::Slow(merge)) => Some(merge),
+            None => None,
+        };
         // Pointers to each key where it already is — kept alive by this
         // statement's temporaries until the call.
         let keys = self
@@ -3914,7 +4129,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         path: &[Expr],
         keys: &[Val<'a>],
         value: Val<'a>,
-    ) -> Result<Option<inkwell::basic_block::BasicBlock<'a>>, String> {
+    ) -> Result<Option<Written<'a>>, String> {
         // A number, or a value that is one when the write runs.
         let boxed_number = match value {
             Val::Num(_) => None,
@@ -3933,7 +4148,13 @@ impl<'a, 'm> Gen<'a, 'm> {
             }
         }
         let function = self.current_function();
-        let slow = self.context.append_basic_block(function, "writeslow");
+        // In a loop's fast version a write it cannot do in line is the
+        // generic version's, and nothing is left for the caller to generate.
+        let bail = self.bail();
+        let slow = match bail {
+            Some(bail) => bail,
+            None => self.context.append_basic_block(function, "writeslow"),
+        };
         let merge = self.context.append_basic_block(function, "written");
         let (items_offset, keys_offset, len_offset) = if self.bool_offset == 20 {
             (24, 28, 32)
@@ -4071,14 +4292,20 @@ impl<'a, 'm> Gen<'a, 'm> {
         // The slot itself: nothing on the heap to let go of, so a number is
         // its tag and its bytes.
         let b = self.builder;
-        let heap_at = self.value_field(current, 4)?;
-        let heap = b
-            .build_load(self.i32_ty, heap_at, "oldheap")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
-        let mut empty = b
-            .build_int_compare(IntPredicate::EQ, heap, self.i32_ty.const_zero(), "noheap")
-            .map_err(|e| e.to_string())?;
+        // In a fast version the old value must be a number too, so only the
+        // number is written: a tag written would be a tag every later read
+        // of a tag has to look at again (`alias.rs`).
+        let mut empty = if bail.is_some() {
+            self.has_tag(current, 0)?
+        } else {
+            let heap_at = self.value_field(current, 4)?;
+            let heap = b
+                .build_load(self.i32_ty, heap_at, "oldheap")
+                .map_err(|e| e.to_string())?
+                .into_int_value();
+            b.build_int_compare(IntPredicate::EQ, heap, self.i32_ty.const_zero(), "noheap")
+                .map_err(|e| e.to_string())?
+        };
         if let Some(ptr) = boxed_number {
             let is_number = self.has_tag(ptr, 0)?;
             empty = self
@@ -4097,15 +4324,21 @@ impl<'a, 'm> Gen<'a, 'm> {
             _ => unreachable!("a number or a boxed value"),
         };
         let b = self.builder;
-        b.build_store(current, self.i32_ty.const_zero())
-            .map_err(|e| e.to_string())?;
+        if bail.is_none() {
+            b.build_store(current, self.i32_ty.const_zero())
+                .map_err(|e| e.to_string())?;
+        }
         let number_at = self.value_field(current, 8)?;
         b.build_store(number_at, number)
             .map_err(|e| e.to_string())?;
         b.build_unconditional_branch(merge)
             .map_err(|e| e.to_string())?;
+        if bail.is_some() {
+            b.position_at_end(merge);
+            return Ok(Some(Written::Done));
+        }
         b.position_at_end(slow);
-        Ok(Some(merge))
+        Ok(Some(Written::Slow(merge)))
     }
 
     /// `name` the way an object stores a key: its hash (`key_hash`, four
@@ -4221,6 +4454,71 @@ impl<'a, 'm> Gen<'a, 'm> {
         let fast_end = b.get_insert_block().expect("in a block");
         b.position_at_end(slow);
         Ok((slot, fast_end, merge))
+    }
+
+    /// `shaped_slot` in a loop's fast version: the slot when `base` has the
+    /// shape, `bail` when it does not.
+    fn shaped_slot_or(
+        &mut self,
+        base: PointerValue<'a>,
+        order: &[String],
+        at: usize,
+        bail: BasicBlock<'a>,
+    ) -> Result<PointerValue<'a>, String> {
+        let shape = self.shape_keys(order);
+        let function = self.current_function();
+        let check = self.context.append_basic_block(function, "shapecheck");
+        let marked = self.context.append_basic_block(function, "shapemark");
+        let fast = self.context.append_basic_block(function, "shaped");
+        let (items_offset, keys_offset) = if self.bool_offset == 20 {
+            (24, 28)
+        } else {
+            (32, 40)
+        };
+        let b = self.builder;
+        let is_object = self.has_tag(base, 5)?;
+        b.build_conditional_branch(is_object, check, bail)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(check);
+        let keys_at = self.value_field(base, keys_offset)?;
+        let keys = b
+            .build_load(self.i8_ptr_ty, keys_at, "keys")
+            .map_err(|e| e.to_string())?
+            .into_pointer_value();
+        let has_keys = b
+            .build_is_not_null(keys, "haskeys")
+            .map_err(|e| e.to_string())?;
+        b.build_conditional_branch(has_keys, marked, bail)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(marked);
+        let mark_at = unsafe {
+            b.build_gep(
+                self.i8_ty,
+                keys,
+                &[self.i64_ty.const_int((-8i64) as u64, true)],
+                "markat",
+            )
+            .map_err(|e| e.to_string())?
+        };
+        let mark = b
+            .build_load(self.i64_ty, mark_at, "mark")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let expected = b
+            .build_ptr_to_int(shape, self.i64_ty, "shape")
+            .map_err(|e| e.to_string())?;
+        let same = b
+            .build_int_compare(IntPredicate::EQ, mark, expected, "sameshape")
+            .map_err(|e| e.to_string())?;
+        b.build_conditional_branch(same, fast, bail)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(fast);
+        let items_at = self.value_field(base, items_offset)?;
+        let items = b
+            .build_load(self.i8_ptr_ty, items_at, "items")
+            .map_err(|e| e.to_string())?
+            .into_pointer_value();
+        self.slot_at(items, at as u64, "shapedslot")
     }
 
     /// A read-only `CodeValue` slot holding the literal `text` — tag String,
@@ -4550,7 +4848,10 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// counting the handlers a loop sends to made it 1,102K: nearly every
     /// handler of a frame-driven page is one.)
     fn hot(&self) -> bool {
-        !self.loop_blocks.is_empty()
+        match self.version {
+            Some(version) => version == Version::Fast,
+            None => !self.loop_blocks.is_empty(),
+        }
     }
 
     /// The number in `ptr`'s slot, read in line when the tag says it is
@@ -4565,9 +4866,16 @@ impl<'a, 'm> Gen<'a, 'm> {
     ) -> Result<inkwell::values::FloatValue<'a>, String> {
         let function = self.current_function();
         let fast = self.context.append_basic_block(function, "isnumber");
+        let is_number = self.has_tag(ptr, 0)?;
+        if let Some(bail) = self.bail() {
+            self.builder
+                .build_conditional_branch(is_number, fast, bail)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(fast);
+            return self.load_number(ptr);
+        }
         let slow = self.context.append_basic_block(function, "notnumber");
         let merge = self.context.append_basic_block(function, "number");
-        let is_number = self.has_tag(ptr, 0)?;
         self.builder
             .build_conditional_branch(is_number, fast, slow)
             .map_err(|e| e.to_string())?;
@@ -4617,7 +4925,11 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .fields
                     .get(&(expr as *const Expr as usize))
                     .cloned();
-                let fast = match layout.filter(|_| self.hot()) {
+                let layout = layout.filter(|_| self.hot());
+                if let (Some((order, at)), Some(bail)) = (&layout, self.bail()) {
+                    return self.shaped_slot_or(base, order, *at, bail);
+                }
+                let fast = match layout {
                     Some((order, at)) => Some(self.shaped_slot(base, &order, at)?),
                     None => None,
                 };
@@ -4705,9 +5017,12 @@ impl<'a, 'm> Gen<'a, 'm> {
         n: inkwell::values::FloatValue<'a>,
     ) -> Result<PointerValue<'a>, String> {
         let function = self.current_function();
+        let bail = self.bail();
         let fast = self.context.append_basic_block(function, "element");
-        let slow = self.context.append_basic_block(function, "notelement");
-        let merge = self.context.append_basic_block(function, "indexread");
+        let slow = match bail {
+            Some(bail) => bail,
+            None => self.context.append_basic_block(function, "notelement"),
+        };
         let (items_offset, len_offset) = if self.bool_offset == 20 {
             (24, 32)
         } else {
@@ -4767,6 +5082,10 @@ impl<'a, 'm> Gen<'a, 'm> {
             b.build_gep(self.i8_ty, items, &[offset], "elementslot")
                 .map_err(|e| e.to_string())?
         };
+        if bail.is_some() {
+            return Ok(slot);
+        }
+        let merge = self.context.append_basic_block(function, "indexread");
         b.build_unconditional_branch(merge)
             .map_err(|e| e.to_string())?;
         b.position_at_end(slow);
@@ -4886,6 +5205,39 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.builder
             .build_call(self.fn_number, &[slot.into(), n.into()], "")
             .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// `write_number` in a loop's fast version: in line when the slot holds
+    /// nothing on the heap, `bail` when it does.
+    fn write_number_or(
+        &mut self,
+        slot: PointerValue<'a>,
+        n: FloatValue<'a>,
+        bail: BasicBlock<'a>,
+    ) -> Result<(), String> {
+        let heap_at = self.value_field(slot, 4)?;
+        let heap = self
+            .builder
+            .build_load(self.i32_ty, heap_at, "heap")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let empty = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, heap, self.i32_ty.const_zero(), "empty")
+            .map_err(|e| e.to_string())?;
+        let store = self
+            .context
+            .append_basic_block(self.current_function(), "storenumber");
+        self.builder
+            .build_conditional_branch(empty, store, bail)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(store);
+        self.builder
+            .build_store(slot, self.i32_ty.const_zero())
+            .map_err(|e| e.to_string())?;
+        let at = self.value_field(slot, 8)?;
+        self.builder.build_store(at, n).map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -5037,6 +5389,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .collect::<Result<Vec<_>, _>>()?;
         let op_name = self.global_str(op.symbol(), "opname")?;
         let mut numbers = Vec::with_capacity(operands.len());
+        let mut called = false;
         for (side, value) in operands.iter().enumerate() {
             let Some(ptr) = boxed[side] else {
                 numbers.push(*value);
@@ -5044,10 +5397,13 @@ impl<'a, 'm> Gen<'a, 'm> {
             };
             let other = boxed[1 - side].unwrap_or(self.i8_ptr_ty.const_null());
             if self.likely_numbers.contains(&slot_key(ptr)) && self.hot() {
+                // Its slow side calls, unless a failed check leaves instead.
+                called |= self.bail.is_none();
                 let number = self.likely_number(ptr, other, side == 0, op_name)?;
                 numbers.push(Val::Num(number));
                 continue;
             }
+            called = true;
             let on_left = self.context.i32_type().const_int((side == 0) as u64, false);
             let number = self
                 .builder
@@ -5063,7 +5419,9 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .into_float_value();
             numbers.push(Val::Num(number));
         }
-        self.check_failed()?;
+        if called {
+            self.check_failed()?;
+        }
         Ok(numbers)
     }
 
@@ -5125,6 +5483,16 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// slot; `code_add` otherwise — a string on either side still joins, a
     /// wrong kind still fails the way it always did.
     fn likely_add(&mut self, lhs: Val<'a>, rhs: Val<'a>) -> Result<Val<'a>, String> {
+        // In a loop's fast version: both numbers, or the generic version.
+        if self.bail.is_some() {
+            let a = self.likely_number_of(lhs)?;
+            let b = self.likely_number_of(rhs)?;
+            return self
+                .builder
+                .build_float_add(a, b, "sum")
+                .map(Val::Num)
+                .map_err(|e| e.to_string());
+        }
         let out = self.alloc_temp("binop")?;
         self.mostly_empty.insert(slot_key(out));
         let function = self.current_function();
@@ -5176,6 +5544,23 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.builder.position_at_end(merge);
         self.likely_numbers.insert(slot_key(out));
         Ok(Val::Boxed(out))
+    }
+
+    /// A likely number as a number, in a loop's fast version: its tag
+    /// checked, the generic version when it is not one.
+    fn likely_number_of(&mut self, value: Val<'a>) -> Result<FloatValue<'a>, String> {
+        let Val::Boxed(ptr) = value else {
+            return self.number_of(value);
+        };
+        let bail = self.bail().expect("only asked for in a fast version");
+        let function = self.current_function();
+        let fast = self.context.append_basic_block(function, "isnumber");
+        let is_number = self.has_tag(ptr, 0)?;
+        self.builder
+            .build_conditional_branch(is_number, fast, bail)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(fast);
+        self.load_number(ptr)
     }
 
     /// The flag of a value that must be a boolean: a known one as it is;
@@ -6117,6 +6502,15 @@ fn slot_key(ptr: PointerValue<'_>) -> usize {
 fn key_hash(key: &str) -> u32 {
     key.bytes().fold(2_166_136_261u32, |hash, byte| {
         (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
+    })
+}
+
+/// Whether `body` has a loop in it, at any depth (`gen_loop`).
+fn contains_loop(body: &[Stmt]) -> bool {
+    body.iter().any(|stmt| match stmt {
+        Stmt::Loop { .. } => true,
+        Stmt::If { body, .. } => contains_loop(body),
+        _ => false,
     })
 }
 

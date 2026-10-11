@@ -1,3 +1,5 @@
+#[cfg(feature = "llvm")]
+mod alias;
 pub mod ast;
 pub mod cache;
 #[cfg(feature = "llvm")]

@@ -132,7 +132,11 @@ fn code_fixtures_run_as_expected() {
                         // module files live in a subdirectory and so are
                         // never picked up as fixtures in their own right.
                         check_interpret(name, path, *expect, &mut mine);
-                        check_compile(name, path, *expect, tmp_dir, &mut mine);
+                        check_compile(name, path, *expect, tmp_dir, false, &mut mine);
+                        // A release build is what runs LLVM's optimizer over
+                        // the code — with what `alias.rs` tells it — so each
+                        // fixture is held to the same answers there too.
+                        check_compile(name, path, *expect, tmp_dir, true, &mut mine);
                     }
                     mine
                 })
@@ -346,23 +350,33 @@ fn check_compile(
     path: &Path,
     expect: Expect,
     tmp_dir: &Path,
+    release: bool,
     failures: &mut Vec<String>,
 ) {
     let stem = name.trim_end_matches(".code");
-    let exe_path: PathBuf = tmp_dir.join(stem);
+    let exe_path: PathBuf = tmp_dir.join(if release {
+        format!("{stem}-release")
+    } else {
+        stem.to_string()
+    });
+    let label = if release {
+        "compile --release"
+    } else {
+        "compile"
+    };
     let should_fail = expect == Expect::Fail;
 
     // This harness checks behaviour, not container shape — every fixture
     // compiles to the default `Exe` target (`--target shared|static|wasm`
     // is covered separately in `tests/build_targets.rs`).
-    match code::compile_file(path, code::BuildTarget::Exe, &exe_path, false) {
+    match code::compile_file(path, code::BuildTarget::Exe, &exe_path, release) {
         Err(e) => {
             // A compile-time failure (parse error, undefined variable) is a
             // valid way for a fail_*.code fixture to fail — nothing further
             // to check either way.
             if !should_fail {
                 failures.push(format!(
-                    "{name}: compile: expected to compile, but errored: {e}"
+                    "{name}: {label}: expected to compile, but errored: {e}"
                 ));
             }
         }
@@ -391,7 +405,7 @@ fn check_compile(
             if should_fail {
                 if output.status.success() {
                     failures.push(format!(
-                        "{name}: compile: expected an error (compile-time or at runtime), but the binary ran successfully"
+                        "{name}: {label}: expected an error (compile-time or at runtime), but the binary ran successfully"
                     ));
                 }
                 // A non-zero exit is exactly what a fail_*.code fixture
@@ -400,7 +414,7 @@ fn check_compile(
                 // further to check.
             } else if !output.status.success() {
                 failures.push(format!(
-                    "{name}: compile: expected the binary to run cleanly, but it exited with {}; stderr: {}",
+                    "{name}: {label}: expected the binary to run cleanly, but it exited with {}; stderr: {}",
                     output.status,
                     String::from_utf8_lossy(&output.stderr)
                 ));
