@@ -6,6 +6,7 @@ pub mod diagnostics;
 pub mod flows;
 pub mod format;
 pub mod handlers;
+mod infer;
 pub mod interpreter;
 pub mod introspection;
 mod kinds;

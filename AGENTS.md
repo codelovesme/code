@@ -489,6 +489,28 @@ read four bytes of whatever precedes a key and miss.
 dictionary 22× → 5× C, points −30% instructions; Aquarium's wasm +2.5%,
 frame rate unchanged.
 
+## Kinds fixed by first assignment (ticket 122, 2026-10-11)
+
+The owner's model: no named schemas; a variable, every object field and every
+list element keeps the kind of its first non-null assignment. `src/infer.rs`
+works it out per file with a union-find over type variables (shapes: Unknown,
+Any, Scalar, Array(elem), Object{fields, map}) unified along every flow —
+assignment, list literal and `+`, object merge, part writes, a literal
+particle emitted `to this` (into that handler's *input* var), a handler's
+`return`s (into its *result* var, which `get` reads). **A class name groups
+nothing**: two `Result { … }` literals that never meet are two values — the
+first version grouped by class and drowned in false alarms (`Store.value`).
+A computed key makes a map; a module/core answer and a record walked by
+`loop` are `Any`, never reported. Conflicts on label-derived vars are left to
+`diagnostics.rs` (an error), and a kind-change on a statement that already has
+a type-mismatch is dropped.
+
+Measured on every app: ~215 warnings, ~75% from UI trees — `children` mixing
+text and elements, canvas `fill` string-or-gradient, path arrays mixing
+strings and numbers — the rest polymorphic helpers (`Folded.text` list or
+string) and a handful of real variables. Labels: `{ x ∈ Number }`,
+`Array of`, `Object of`, `Any` (`ast::Label`, parsed by `Parser::label`).
+
 ## Wasm handler stack (root-caused 2026-09-07)
 
 Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`

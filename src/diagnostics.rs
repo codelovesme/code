@@ -109,6 +109,19 @@ pub fn check_handlers(program: &Program) -> Vec<Diagnostic> {
         program.origin.as_ref(),
         &mut diagnostics,
     );
+    // Kinds fixed by first assignment (ticket 122): warnings until every app
+    // is labelled. A statement whose value already breaks a label says so as
+    // an error; the same conflict is not said twice.
+    let broken: Vec<Option<Span>> = diagnostics
+        .iter()
+        .filter(|d| d.code == "type-mismatch")
+        .map(|d| d.span)
+        .collect();
+    diagnostics.extend(
+        crate::infer::kind_warnings(program)
+            .into_iter()
+            .filter(|warning| warning.span.is_none() || !broken.contains(&warning.span)),
+    );
     diagnostics
 }
 
