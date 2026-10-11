@@ -414,6 +414,13 @@ the old padding word; 0 = not measured yet), filled by `text_length` and by
 12× → 3× C. Nothing else may change a string's bytes in place, or the kept
 length goes stale.
 
+`name = name[from, to)` compiles to `code_slice_into(slot, from, to)`: a list
+held alone is cut where it stands (elements outside released, the rest
+memmoved to the front; an empty result owns no block), anything else goes to
+`code_slice` and is moved in — and on its failure `dst` is left alone.
+`x = null` / `x ≠ null` compile to a tag read (`∈ Null`), never
+`code_values_equal`. binary_trees 9× → 6× C.
+
 ## Setting a part (2026-10-11)
 
 `xs[i] = v`, `fish.x = v`, `fishes[i].x += 1` — the owner's call, on the same

@@ -390,6 +390,14 @@ pub(crate) fn compile_to_object_traced(
         ),
         None,
     );
+    let fn_slice_into = module.add_function(
+        "code_slice_into",
+        void_ty.fn_type(
+            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+            false,
+        ),
+        None,
+    );
     let fn_set_at = module.add_function(
         "code_set_at",
         void_ty.fn_type(
@@ -854,6 +862,7 @@ pub(crate) fn compile_to_object_traced(
         fn_move,
         fn_add_into,
         fn_set_at,
+        fn_slice_into,
         fn_field_ref,
         fn_index_ref,
         fn_operand_number,
@@ -1194,6 +1203,8 @@ struct Gen<'a, 'm> {
     fn_add_into: FunctionValue<'a>,
     /// `runtime.c`'s `code_set_at` — `xs[i] = v`, `fish.x = v`.
     fn_set_at: FunctionValue<'a>,
+    /// `runtime.c`'s `code_slice_into` — `name = name[from, to)`.
+    fn_slice_into: FunctionValue<'a>,
     /// `runtime.c`'s `code_field_ref` / `code_index_ref` — reading without
     /// copying (ticket 120).
     fn_field_ref: FunctionValue<'a>,
@@ -3609,6 +3620,30 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn gen_assign(&mut self, name: &str, value: &Expr) -> Result<(), String> {
         // `fishes[5].x = v` changes the variable's own value, level by level
         // where nothing else holds it, instead of rebuilding it.
+        // `stack = stack[0, length - 1)` cuts the variable's own list where
+        // it stands when nothing else holds it, rather than copying the part
+        // that is kept.
+        if let Expr::Slice {
+            value: whole,
+            from,
+            to,
+        } = value
+        {
+            if let (Expr::Ident(read), Some(slot)) = (&**whole, self.lookup(name)) {
+                if read == name && !self.scalar_slots.contains_key(&slot) {
+                    let from = self.gen_expr(from)?;
+                    let to = self.gen_expr(to)?;
+                    self.builder
+                        .build_call(
+                            self.fn_slice_into,
+                            &[slot.into(), from.into(), to.into()],
+                            "",
+                        )
+                        .map_err(|e| e.to_string())?;
+                    return self.check_failed();
+                }
+            }
+        }
         if let Expr::SetAt { base, path, value } = value {
             if let (Expr::Ident(read), Some(slot)) = (&**base, self.lookup(name)) {
                 if read == name && !self.scalar_slots.contains_key(&slot) {
@@ -4682,11 +4717,27 @@ impl<'a, 'm> Gen<'a, 'm> {
         rhs: &Expr,
         negate: bool,
     ) -> Result<IntValue<'a>, String> {
+        let bool_ty = self.context.bool_type();
+        // `x = null` asks only what kind `x` is — `x ∈ Null`, a tag read in
+        // line — so it never needs `code_values_equal`.
+        if let (Expr::Null, other) | (other, Expr::Null) = (lhs, rhs) {
+            let value = self.gen_operand(other)?;
+            let equal = match self.settle(value)? {
+                Val::Boxed(ptr) | Val::Held(ptr) => self.has_tag(ptr, 3)?,
+                Val::Num(_) | Val::Bool(_) => bool_ty.const_zero(),
+            };
+            return if negate {
+                self.builder
+                    .build_not(equal, "ne")
+                    .map_err(|e| e.to_string())
+            } else {
+                Ok(equal)
+            };
+        }
         let lhs = self.gen_operand(lhs)?;
         let lhs = self.settle(lhs)?;
         let rhs = self.gen_operand(rhs)?;
         let rhs = self.settle(rhs)?;
-        let bool_ty = self.context.bool_type();
         let equal = match (lhs, rhs) {
             (Val::Num(a), Val::Num(b)) => self
                 .builder
