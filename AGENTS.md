@@ -453,6 +453,30 @@ in line, instead of boxing the plain side for `code_mul`. That retired
 compared `≤`/`≥` true). spectral_norm 5× → 3× C; Aquarium's wasm +2%, build
 time unchanged, frame rate unchanged (reads were ~4% of its busy time).
 
+## Finding a field by hash (2026-10-11)
+
+Every key an object holds is stored as `[u32 FNV-1a hash][chars\0]`, with
+`keys[i]` still pointing at the characters (modules and `code-native` read
+keys as C strings and see nothing new). The program's own lookups
+(`field_position`, `own_field`, `own_field_of_key`) compare hashes first;
+`.field` reads (`code_field_ref`) and part writes (`code_set_at`) get the
+literal's hash from the compiler (`codegen.rs`'s `key_hash`, pinned to the
+FNV vectors) and a private per-site global remembering the position found
+last. Object literals with only literal keys use `code_object_literal` with
+pre-hashed key constants (`hashed_key`); copying keys between objects
+(`copy_own_key`) carries the hash along.
+
+**`find_field` stays a plain `strcmp` scan, on purpose**: functions a module
+can call reach it, and a module carries its own, possibly older, runtime copy
+whose objects have no hashes (or an older host could hand a newer module
+unhashed objects). The hashed paths are only ever given objects this
+program's runtime built — module results and pushes are rebuilt by
+`code_object` on the way in. If that ever stops being true, those lookups
+read four bytes of whatever precedes a key and miss.
+
+dictionary 22× → 5× C, points −30% instructions; Aquarium's wasm +2.5%,
+frame rate unchanged.
+
 ## Wasm handler stack (root-caused 2026-09-07)
 
 Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`

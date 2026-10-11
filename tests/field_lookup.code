@@ -1,0 +1,56 @@
+| A field is found by the hash stored with each key, and every `.field` read
+| and `x.field = v` write remembers where it found the field last. Neither may
+| change an answer: objects built every way, the same read meeting the field
+| in a different place each time, names that share a beginning.
+
+| One read, many shapes: `x` is first, second, last, missing.
+shapes = [{ x = 1 }, { a = 0, x = 2 }, { a = 0, b = 0, x = 3 }, { b = 0 }, { x = 5, a = 0 }]
+total = 0
+missing = 0
+loop s over shapes
+    if s.x = null
+        missing = missing + 1
+    if s.x ≠ null
+        total = total + s.x
+assert total = 11
+assert missing = 1
+
+| Built by a literal, a merge, a field added in place, a computed name, a
+| particle — all found the same way.
+key = "computed"
+built = { first = 1 }
+built = built + { second = 2 }
+built.third = 3
+built["$key"] = 4
+other = { "$key" = 5, plain = 6 }
+p = Point { x = 7, y = 8 }
+assert built.first + built.second + built.third + built.computed = 10
+assert built[key] = 4
+assert other.computed + other.plain = 11
+assert p.x + p.y = 15
+assert p._class = "Point"
+
+| Names that share a beginning, an empty name, and one beyond ASCII.
+close = { a = 1, ab = 2, abc = 3, "" = 4, "çay" = 5 }
+assert close.a = 1
+assert close.ab = 2
+assert close.abc = 3
+assert close[""] = 4
+assert close["çay"] = 5
+assert close.abcd = null
+
+| A write that meets the field in a different place each time.
+loop i, s over shapes
+    shapes[i].x = i * 10
+assert shapes[0] = { x = 0 }
+assert shapes[1] = { a = 0, x = 10 }
+assert shapes[3] = { b = 0, x = 30 }
+assert shapes[4] = { x = 40, a = 0 }
+
+| A copy of an object, made when a shared one is written, keeps every name
+| findable.
+kept = built
+built.first = 100
+assert kept.first = 1
+assert built.first = 100
+assert built.computed = 4

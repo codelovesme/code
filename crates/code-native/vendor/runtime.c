@@ -420,18 +420,83 @@ void code_array(CodeValue *out, void *items, long long len) {
     out->len = len;
 }
 
+/* ---- Finding a field by its fingerprint (2026-10-11) ----------------------
+ *
+ * Every key an object holds is stored with a 32-bit hash of its characters
+ * just before them — `[hash][characters\0]`, `keys[i]` still pointing at the
+ * characters, so anything reading keys as C strings (a module, `code-native`)
+ * sees nothing different. Finding a field then compares hashes and calls
+ * `strcmp` only on a match, instead of once per key; a literal field name's
+ * hash is worked out by the compiler (`codegen.rs`'s `key_hash`, the same
+ * FNV-1a), and each `.field` read in the program also remembers the position
+ * it found the field at last (`code_field_ref`).
+ *
+ * Only for objects this program's own runtime built — which is every object
+ * the compiled code meets: a module's results and pushes are rebuilt here by
+ * `code_object` on the way in. `find_field` itself stays a plain scan,
+ * because the functions a module can call reach it, and a module carries its
+ * own copy of this runtime, possibly older, whose objects have no hashes. */
+#define KEY_HASH_BYTES 4
+
+static unsigned int key_hash(const char *key) {
+    unsigned int hash = 2166136261u;
+    for (const unsigned char *c = (const unsigned char *)key; *c; c++) {
+        hash = (hash ^ *c) * 16777619u;
+    }
+    return hash;
+}
+
+static unsigned int stored_hash(const char *key) {
+    unsigned int hash;
+    memcpy(&hash, key - KEY_HASH_BYTES, sizeof hash);
+    return hash;
+}
+
+/* Where `key` (whose hash is `hash`) is in `obj`, or -1. */
+static long long field_position(const CodeValue *obj, const char *key, unsigned int hash) {
+    for (long long i = 0; i < obj->len; i++) {
+        if (stored_hash(obj->keys[i]) == hash && strcmp(obj->keys[i], key) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* `find_field` for an object this runtime built. */
+static const CodeValue *own_field(const CodeValue *obj, const char *key) {
+    long long at = field_position(obj, key, key_hash(key));
+    return at < 0 ? NULL : slot_at(obj->items, at);
+}
+
+/* `own_field` for a key that is itself one of an object's own keys, so its
+ * hash is already stored. */
+static const CodeValue *own_field_of_key(const CodeValue *obj, const char *key) {
+    long long at = field_position(obj, key, stored_hash(key));
+    return at < 0 ? NULL : slot_at(obj->items, at);
+}
+
 /* Appends `key`'s characters (a NULL key reads as empty, the same answer
  * `code_object` has always given it) to the block's own character run and
  * answers where they landed, advancing the cursor past them. Shared by the
  * two places that build an object: the constructor and `+`'s merge. */
 static const char *copy_key(char **chars, const char *key) {
-    size_t n = (key ? strlen(key) : 0) + 1;
-    if (key) {
-        memcpy(*chars, key, n);
-    } else {
-        (*chars)[0] = '\0';
-    }
-    const char *placed = *chars;
+    const char *text = key ? key : "";
+    size_t n = strlen(text) + 1;
+    unsigned int hash = key_hash(text);
+    memcpy(*chars, &hash, KEY_HASH_BYTES);
+    memcpy(*chars + KEY_HASH_BYTES, text, n);
+    const char *placed = *chars + KEY_HASH_BYTES;
+    *chars += KEY_HASH_BYTES + n;
+    return placed;
+}
+
+/* `copy_key` for a key that already has its hash in front — another
+ * object's, or a literal the compiler wrote that way: hash and characters
+ * copied as they are. */
+static const char *copy_own_key(char **chars, const char *key) {
+    size_t n = KEY_HASH_BYTES + strlen(key) + 1;
+    memcpy(*chars, key - KEY_HASH_BYTES, n);
+    const char *placed = *chars + KEY_HASH_BYTES;
     *chars += n;
     return placed;
 }
@@ -453,7 +518,22 @@ static const char *copy_key(char **chars, const char *key) {
  * The bytes live in the same allocation as the key pointers and the value
  * slots — [pointers][slots][characters] — so an object is still one block,
  * one refcount, one free. */
+static void build_object(CodeValue *out, const char **keys, void *values, long long len,
+                         int keys_hashed);
+
 void code_object(CodeValue *out, const char **keys, void *values, long long len) {
+    build_object(out, keys, values, len, 0);
+}
+
+/* `code_object` for an object literal whose every key the compiler wrote
+ * down with its hash in front (`[hash][characters\0]`, `keys[i]` at the
+ * characters), so building one does not hash its keys again. */
+void code_object_literal(CodeValue *out, const char **keys, void *values, long long len) {
+    build_object(out, keys, values, len, 1);
+}
+
+static void build_object(CodeValue *out, const char **keys, void *values, long long len,
+                         int keys_hashed) {
     const char **key_buf = NULL;
     void *value_buf = NULL;
     if (len > 0) {
@@ -461,13 +541,13 @@ void code_object(CodeValue *out, const char **keys, void *values, long long len)
         size_t slots_bytes = (size_t)len * CODE_VALUE_SLOT_SIZE;
         size_t chars_bytes = 0;
         for (long long i = 0; i < len; i++) {
-            chars_bytes += (keys[i] ? strlen(keys[i]) : 0) + 1;
+            chars_bytes += KEY_HASH_BYTES + (keys[i] ? strlen(keys[i]) : 0) + 1;
         }
         key_buf = heap_alloc(keys_bytes + slots_bytes + chars_bytes);
         value_buf = (char *)key_buf + keys_bytes;
         char *chars = (char *)value_buf + slots_bytes;
         for (long long i = 0; i < len; i++) {
-            key_buf[i] = copy_key(&chars, keys[i]);
+            key_buf[i] = keys_hashed ? copy_own_key(&chars, keys[i]) : copy_key(&chars, keys[i]);
             const CodeValue *src = slot_at(values, i);
             code_retain(src);
             *slot_at(value_buf, i) = *src;
@@ -726,13 +806,10 @@ void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
         return;
     }
     if (arr->tag == CODE_OBJECT) {
-        if (index->tag == CODE_STR) {
-            for (long long i = 0; i < arr->len; i++) {
-                if (strcmp(arr->keys[i], index->str) == 0) {
-                    code_copy(out, slot_at(arr->items, i));
-                    return;
-                }
-            }
+        const CodeValue *found = index->tag == CODE_STR ? own_field(arr, index->str) : NULL;
+        if (found) {
+            code_copy(out, found);
+            return;
         }
         code_null(out);
         return;
@@ -798,15 +875,27 @@ static const CodeValue *find_field(const CodeValue *obj, const char *key) {
  * messages as `code_field` and `code_index`, which they fall back on. */
 static const CodeValue no_value = { CODE_NULL, 0, 0, NULL, 0, NULL, NULL, 0 };
 
-const CodeValue *code_field_ref(const CodeValue *obj, const char *field) {
+/* `hash` is `field`'s, worked out by the compiler; `*guess` is this read's
+ * own memory of where it found the field last, tried first — the objects one
+ * `.x` in a program meets are almost always built the same way. */
+const CodeValue *code_field_ref(const CodeValue *obj, const char *field, unsigned int hash,
+                                long long *guess) {
     if (obj->tag != CODE_OBJECT) {
         CodeValue unused;
         memset(&unused, 0, sizeof unused);
         code_field(&unused, obj, field); /* the error */
         return &no_value;
     }
-    const CodeValue *found = find_field(obj, field);
-    return found ? found : &no_value;
+    long long at = *guess;
+    if (at < obj->len && stored_hash(obj->keys[at]) == hash && strcmp(obj->keys[at], field) == 0) {
+        return slot_at(obj->items, at);
+    }
+    at = field_position(obj, field, hash);
+    if (at < 0) {
+        return &no_value;
+    }
+    *guess = at;
+    return slot_at(obj->items, at);
 }
 
 /* `scratch` is a temporary of the statement, for the one read that has to
@@ -823,7 +912,7 @@ const CodeValue *code_index_ref(CodeValue *scratch, const CodeValue *arr, const 
         return &no_value;
     }
     if (arr->tag == CODE_OBJECT) {
-        const CodeValue *found = index->tag == CODE_STR ? find_field(arr, index->str) : NULL;
+        const CodeValue *found = index->tag == CODE_STR ? own_field(arr, index->str) : NULL;
         return found ? found : &no_value;
     }
     code_index(scratch, arr, index); /* a character, or the error */
@@ -4101,7 +4190,7 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
     if (a->tag == CODE_OBJECT && b->tag == CODE_OBJECT) {
         long long total = a->len;
         for (long long j = 0; j < b->len; j++) {
-            if (find_field(a, b->keys[j]) == NULL) {
+            if (own_field_of_key(a, b->keys[j]) == NULL) {
                 total++;
             }
         }
@@ -4112,11 +4201,11 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
             size_t slots_bytes = (size_t)total * CODE_VALUE_SLOT_SIZE;
             size_t chars_bytes = 0;
             for (long long i = 0; i < a->len; i++) {
-                chars_bytes += (a->keys[i] ? strlen(a->keys[i]) : 0) + 1;
+                chars_bytes += KEY_HASH_BYTES + (a->keys[i] ? strlen(a->keys[i]) : 0) + 1;
             }
             for (long long j = 0; j < b->len; j++) {
-                if (find_field(a, b->keys[j]) == NULL) {
-                    chars_bytes += (b->keys[j] ? strlen(b->keys[j]) : 0) + 1;
+                if (own_field_of_key(a, b->keys[j]) == NULL) {
+                    chars_bytes += KEY_HASH_BYTES + (b->keys[j] ? strlen(b->keys[j]) : 0) + 1;
                 }
             }
             key_buf = heap_alloc(keys_bytes + slots_bytes + chars_bytes);
@@ -4124,18 +4213,18 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
             char *chars = (char *)value_buf + slots_bytes;
             long long n = 0;
             for (long long i = 0; i < a->len; i++) {
-                const CodeValue *override_val = find_field(b, a->keys[i]);
+                const CodeValue *override_val = own_field_of_key(b, a->keys[i]);
                 const CodeValue *src = override_val ? override_val : slot_at(a->items, i);
-                key_buf[n] = copy_key(&chars, a->keys[i]);
+                key_buf[n] = copy_own_key(&chars, a->keys[i]);
                 code_retain(src);
                 *slot_at(value_buf, n) = *src;
                 n++;
             }
             for (long long j = 0; j < b->len; j++) {
-                if (find_field(a, b->keys[j]) != NULL) {
+                if (own_field_of_key(a, b->keys[j]) != NULL) {
                     continue;
                 }
-                key_buf[n] = copy_key(&chars, b->keys[j]);
+                key_buf[n] = copy_own_key(&chars, b->keys[j]);
                 const CodeValue *src = slot_at(b->items, j);
                 code_retain(src);
                 *slot_at(value_buf, n) = *src;
@@ -4304,9 +4393,9 @@ static int grow_object_in_place(CodeValue *dst, const CodeValue *b) {
                 return 0;
             }
         }
-        if (!find_field(dst, b->keys[j])) {
+        if (!own_field_of_key(dst, b->keys[j])) {
             extra++;
-            extra_chars += strlen(b->keys[j]) + 1;
+            extra_chars += KEY_HASH_BYTES + strlen(b->keys[j]) + 1;
         }
     }
     if (extra > 0) {
@@ -4328,7 +4417,7 @@ static int grow_object_in_place(CodeValue *dst, const CodeValue *b) {
             void *items = (char *)keys + (size_t)cap * sizeof(const char *);
             char *cursor = (char *)items + (size_t)cap * CODE_VALUE_SLOT_SIZE;
             for (long long i = 0; i < dst->len; i++) {
-                keys[i] = copy_key(&cursor, dst->keys[i]);
+                keys[i] = copy_own_key(&cursor, dst->keys[i]);
                 *slot_at(items, i) = *slot_at(dst->items, i);
             }
             free(header_of(base));
@@ -4345,13 +4434,13 @@ static int grow_object_in_place(CodeValue *dst, const CodeValue *b) {
     }
     for (long long j = 0; j < b->len; j++) {
         const CodeValue *src = slot_at(b->items, j);
-        CodeValue *slot = (CodeValue *)find_field(dst, b->keys[j]);
+        CodeValue *slot = (CodeValue *)own_field_of_key(dst, b->keys[j]);
         code_retain(src);
         if (slot) {
             code_release(slot);
             *slot = *src;
         } else {
-            dst->keys[n] = copy_key(&cursor, b->keys[j]);
+            dst->keys[n] = copy_own_key(&cursor, b->keys[j]);
             *slot_at(dst->items, n) = *src;
             n++;
         }
@@ -4401,19 +4490,24 @@ static void own_level(CodeValue *v) {
     if (v->tag == CODE_ARRAY) {
         code_array(&copy, v->items, v->len);
     } else {
-        code_object(&copy, v->keys, v->items, v->len);
+        build_object(&copy, v->keys, v->items, v->len, 1);
     }
     code_release(v);
     *v = copy;
 }
 
-void code_set_at(CodeValue *target, void *keys, long long count, const CodeValue *value) {
+/* `keys` points at each step's key where it already is. `hashes[step]` is
+ * a literal field name's hash with bit 32 set, or 0 for a key known only
+ * when the program runs; `guesses` is this assignment's own memory of where
+ * each field was last (see `code_field_ref`). */
+void code_set_at(CodeValue *target, const CodeValue *const *keys, long long count,
+                 const CodeValue *value, const long long *hashes, long long *guesses) {
     char msg[320];
     CodeValue v = *value;
     code_retain(&v);
     CodeValue *current = target;
     for (long long step = 0; step < count; step++) {
-        const CodeValue *key = slot_at(keys, step);
+        const CodeValue *key = keys[step];
         if (current->tag == CODE_ARRAY) {
             if (key->tag != CODE_NUMBER) {
                 snprintf(msg, sizeof msg,
@@ -4438,7 +4532,14 @@ void code_set_at(CodeValue *target, void *keys, long long count, const CodeValue
                          article_for(key), type_name(key));
                 goto failed;
             }
-            if (!find_field(current, key->str)) {
+            unsigned int hash = (hashes[step] >> 32) ? (unsigned int)hashes[step]
+                                                      : key_hash(key->str);
+            long long at = guesses[step];
+            if (!(at < current->len && stored_hash(current->keys[at]) == hash
+                  && strcmp(current->keys[at], key->str) == 0)) {
+                at = field_position(current, key->str, hash);
+            }
+            if (at < 0) {
                 if (step + 1 < count) {
                     snprintf(msg, sizeof msg,
                              "cannot set inside field '%s' — the object has no such field",
@@ -4456,8 +4557,9 @@ void code_set_at(CodeValue *target, void *keys, long long count, const CodeValue
                 code_release(&v);
                 return;
             }
+            guesses[step] = at;
             own_level(current);
-            current = (CodeValue *)find_field(current, key->str);
+            current = slot_at(current->items, at);
         } else {
             snprintf(msg, sizeof msg,
                      "cannot set a part of %s %s — only an array's elements and an object's "

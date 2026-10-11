@@ -312,6 +312,25 @@ fn wasm_reads_in_place_with_the_same_answers() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Every key is stored with its hash, and every `.field` remembers where it
+/// found the field last; wasm builds the same objects, so it runs the same
+/// lookups.
+#[test]
+fn wasm_finds_fields_with_the_same_answers() {
+    let dir = temp_dir("wasm-field-lookup");
+    let out = dir.join("field_lookup.wasm");
+    code::compile_file(
+        &fixture("field_lookup.code"),
+        code::BuildTarget::Wasm,
+        &out,
+        false,
+    )
+    .expect("build field_lookup.code --target wasm");
+
+    run_wasm_under_node(&dir, &out);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// The search for a fraction's shortest spelling starts at the length the
 /// page says can first succeed (`code_host_number_shortest`) rather than at
 /// one. That may only skip candidates, never change the answer: so a few
