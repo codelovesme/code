@@ -84,6 +84,18 @@ const CASES: &[(&str, &str)] = &[
     ("field_chain_on_null", "o = { a = null }\nb = o.a.b = 1\n"),
     ("slice_self_bad_bound", "xs = [1, 2]\nxs = xs[\"a\", 1)\n"),
     ("slice_self_of_number", "n = 5\nn = n[0, 1)\n"),
+    (
+        "likely_number_is_null_times",
+        "o = { x = 1 }\no.x = null\nb = o.x * 2\n",
+    ),
+    (
+        "likely_number_is_null_plus",
+        "o = { x = 1 }\no.x = null\nb = o.x + o.x\n",
+    ),
+    (
+        "likely_element_is_null",
+        "xs = [1, 2]\nxs[0] = null\nb = xs[0] < 3\n",
+    ),
     // `Length`'s operand message is not here for the same reason
     // `code_check_particle`'s is not: since core answers with an Exception
     // rather than unwinding its caller, it no longer fails at the top level.

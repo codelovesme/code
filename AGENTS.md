@@ -553,7 +553,21 @@ constant `CodeValue` slots (`str_constant`, laid out per target, padded to
 would now fault, which is the point.
 
 points 30× → ~20× C, spectral_norm 0.48 → 0.42 s; Aquarium wasm +4%, build
-time unchanged. `tests/shapes.code` holds the cases (shape kept, cleared,
+time unchanged.
+
+**Numbers read in line where the program only makes numbers.**
+`Layouts::numbers` holds the `.field`/`[index]` reads whose kind is Number
+(`read_sites` after unification). `gen_operand` marks their slots in
+`likely_numbers`; `numbers_of` then checks the tag and loads the number in
+line, calling `code_operand_number` only when it is not one (null, data from
+outside), and `likely_add` adds two such operands in line, writing the sum
+into a fresh temp, with `code_add` on the slow side so `+` still joins
+strings. The earlier rejection of in-line tag checks was about doing it for
+*every* boxed operand; here only reads the inference vouches for get it.
+`clear_temps_from` looks at `heap` before calling `code_clear` — but only for
+temps in `mostly_empty` (a slow path's scratch, a likely sum): doing it for
+every temp made Aquarium's wasm +5% for nothing. spectral_norm 0.42 →
+0.31 s (1.9× C); Aquarium wasm 947K → 978K, build time unchanged. `tests/shapes.code` holds the cases (shape kept, cleared,
 other orders, fewer fields, non-objects), also on wasm.
 
 ## Wasm handler stack (root-caused 2026-09-07)

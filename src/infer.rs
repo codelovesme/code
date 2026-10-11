@@ -90,6 +90,10 @@ pub struct Layouts {
     pub fields: HashMap<usize, (Vec<String>, usize)>,
     /// `xs[i].x = v` writes: by the `SetAt`'s address and the step.
     pub parts: HashMap<(usize, usize), (Vec<String>, usize)>,
+    /// The `.field` and `[index]` reads whose value the program only ever
+    /// makes a number (or null): their address. Codegen reads the number in
+    /// line when the tag says so, and calls the runtime when it does not.
+    pub numbers: std::collections::HashSet<usize>,
 }
 
 pub fn field_layouts(program: &Program) -> Layouts {
@@ -152,6 +156,7 @@ fn check_file_into(
         literal_shapes: Vec::new(),
         field_sites: Vec::new(),
         part_sites: Vec::new(),
+        read_sites: Vec::new(),
     };
     for statement in statements {
         if let Stmt::HandlerDef { class_name, .. } = statement {
@@ -225,6 +230,11 @@ fn check_file_into(
             infer.layouts.parts.insert(site, layout);
         }
     }
+    for (site, read) in std::mem::take(&mut infer.read_sites) {
+        if matches!(infer.shape(read), Shape::Scalar(ValueKind::Number)) {
+            infer.layouts.numbers.insert(site);
+        }
+    }
 }
 
 /// `Point { … }` — an object literal whose `_class` is written down.
@@ -269,6 +279,8 @@ struct Infer<'a> {
     field_sites: Vec<(usize, Var, String)>,
     /// Every named step of a part write: (address, step), object, field.
     part_sites: Vec<((usize, usize), Var, String)>,
+    /// Every `.field` and `[index]` read: its address and what it reads.
+    read_sites: Vec<(usize, Var)>,
 }
 
 impl Infer<'_> {
@@ -771,72 +783,21 @@ impl Infer<'_> {
                 let object = self.expr(object);
                 self.field_sites
                     .push((expr as *const Expr as usize, object, name.clone()));
-                self.field(object, name)
+                let read = self.field(object, name);
+                self.read_sites.push((expr as *const Expr as usize, read));
+                read
             }
             Expr::Index(container, index) => {
-                let container = self.expr(container);
-                let index_var = self.expr(index);
-                match (self.shape(container), &**index) {
-                    (Shape::Array(element), _) => element,
-                    (Shape::Scalar(ValueKind::String), _) => self.scalar(ValueKind::String),
-                    (
-                        Shape::Object {
-                            map: Some(values), ..
-                        },
-                        _,
-                    ) => values,
-                    (Shape::Object { .. } | Shape::Unknown, Expr::Str(name)) => {
-                        self.field(container, name)
-                    }
-                    (Shape::Unknown, _) => match self.shape(index_var) {
-                        Shape::Scalar(ValueKind::Number) => self.element(container),
-                        _ => self.fresh(Shape::Any),
-                    },
-                    _ => self.fresh(Shape::Any),
-                }
+                let read = self.index(container, index);
+                self.read_sites.push((expr as *const Expr as usize, read));
+                read
             }
             Expr::Slice { value, from, to } => {
                 self.expr(from);
                 self.expr(to);
                 self.expr(value)
             }
-            Expr::SetAt { base, path, value } => {
-                let base = self.expr(base);
-                let mut at = base;
-                let mut spelled = String::new();
-                for (step, key) in path.iter().enumerate() {
-                    let key_var = self.expr(key);
-                    at = match key {
-                        Expr::Str(name) => {
-                            spelled.push('.');
-                            spelled.push_str(name);
-                            self.part_sites.push((
-                                (expr as *const Expr as usize, step),
-                                at,
-                                name.clone(),
-                            ));
-                            self.field(at, name)
-                        }
-                        _ => match self.shape(key_var) {
-                            Shape::Scalar(ValueKind::Number) => {
-                                spelled.push_str("[…]");
-                                self.element(at)
-                            }
-                            _ => {
-                                spelled.push_str("[…]");
-                                self.map_values(at, "an object")
-                            }
-                        },
-                    };
-                }
-                let value = self.expr(value);
-                let what = match base_name(expr) {
-                    Some(name) => format!("'{name}{spelled}'"),
-                    None => format!("'{spelled}'"),
-                };
-                self.unify(at, value, &what);
-                base
-            }
+            Expr::SetAt { .. } => self.set_at(expr),
             Expr::Unary(UnOp::Neg, inner) => {
                 self.expr(inner);
                 self.scalar(ValueKind::Number)
@@ -847,6 +808,65 @@ impl Infer<'_> {
             }
             Expr::Binary(left, op, right) => self.binary(left, *op, right),
         }
+    }
+
+    fn index(&mut self, container_expr: &Expr, index: &Expr) -> Var {
+        let container = self.expr(container_expr);
+        let index_var = self.expr(index);
+        match (self.shape(container), index) {
+            (Shape::Array(element), _) => element,
+            (Shape::Scalar(ValueKind::String), _) => self.scalar(ValueKind::String),
+            (
+                Shape::Object {
+                    map: Some(values), ..
+                },
+                _,
+            ) => values,
+            (Shape::Object { .. } | Shape::Unknown, Expr::Str(name)) => self.field(container, name),
+            (Shape::Unknown, _) => match self.shape(index_var) {
+                Shape::Scalar(ValueKind::Number) => self.element(container),
+                _ => self.fresh(Shape::Any),
+            },
+            _ => self.fresh(Shape::Any),
+        }
+    }
+
+    fn set_at(&mut self, expr: &Expr) -> Var {
+        let Expr::SetAt { base, path, value } = expr else {
+            unreachable!("set_at is given a SetAt");
+        };
+        let base = self.expr(base);
+        let mut at = base;
+        let mut spelled = String::new();
+        for (step, key) in path.iter().enumerate() {
+            let key_var = self.expr(key);
+            at = match key {
+                Expr::Str(name) => {
+                    spelled.push('.');
+                    spelled.push_str(name);
+                    self.part_sites
+                        .push(((expr as *const Expr as usize, step), at, name.clone()));
+                    self.field(at, name)
+                }
+                _ => match self.shape(key_var) {
+                    Shape::Scalar(ValueKind::Number) => {
+                        spelled.push_str("[…]");
+                        self.element(at)
+                    }
+                    _ => {
+                        spelled.push_str("[…]");
+                        self.map_values(at, "an object")
+                    }
+                },
+            };
+        }
+        let value = self.expr(value);
+        let what = match base_name(expr) {
+            Some(name) => format!("'{name}{spelled}'"),
+            None => format!("'{spelled}'"),
+        };
+        self.unify(at, value, &what);
+        base
     }
 
     fn object(&mut self, fields: &[(FieldKey, Expr)]) -> Var {
