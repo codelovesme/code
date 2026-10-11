@@ -520,8 +520,9 @@ program decides nothing. Source 2: run the fixtures with `CODE_OBSERVE=<file>`
 field, `value::label_of_value`), merged per field by `Label::merge`;
 `write_types::fill` completes the program's view with what was seen (unknown
 parts, and fields the program never reads). Long labels lay the header out one
-field per line, then `format::format`; a file that would not parse is not
-written. Field names that are not words are quoted (`ast::field_name`).
+field per line; nothing else in the file is touched (no reformat — the
+first run reformatted whole files and buried the labels in noise), and a file
+that would not parse after is not written. Field names that are not words are quoted (`ast::field_name`).
 `missing-field` is gone: a field an emit leaves out is null, which fits every
 label. On every app: ~1,760 fields labelled, ~610 left (handlers only the
 host/modules/other apps call and no fixture reaches), ~35% of new label parts
