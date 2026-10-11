@@ -599,6 +599,48 @@ frame-driven page is one. Running instcombine/simplifycfg/early-cse after
 mem2reg saved only 3% for +2 s of build, so it is not done. `tests/shapes.code` holds the cases (shape kept, cleared,
 other orders, fewer fields, non-objects), also on wasm.
 
+## Loop versions and the release optimizer (ticket 122 stage C.1, 2026-10-11)
+
+Points ran 300 instructions per iteration after stage B: every in-line check
+had a slow path that **joined back** after a runtime call, so nothing a check
+found survived to the next read — `pts[i]` was checked from scratch six
+times. And release builds ran only `mem2reg`; the TargetMachine's `-O2` is
+the backend alone.
+
+- **Two versions of an innermost loop** (`gen_loop`, `contains_loop`): Fast
+  (`Version::Fast`, `hot()` true) and Generic (`hot()` false: no fast paths,
+  only calls). In Fast, a statement that is an assignment or an `if`
+  (`redoable` in `gen_stmt`) gets a `Bail`: `bail()` makes its block on
+  first ask; each fast path (`number_index`, `shaped_slot_or`,
+  `likely_number`, `likely_number_of`/`likely_add` — which now answers a
+  plain `Val::Num` —, `write_number_or`, `shaped_write` → `Written::Done`)
+  branches there instead of building a slow path. At the statement's end the
+  bail block clears the temporaries made since the fast body began
+  (`emit_clears_from(fast_temps_mark)`) and jumps to the statement's
+  `generic_entry`. Safe because a statement changes what it changes **last**
+  (the write); nothing in an expression has an effect. The generic version's
+  back edge goes to the *fast* head: one odd value costs one iteration.
+- **One variable in both versions**: a binding's slot is kept by its
+  statement's address (`binding_slots`, `binding_slot`), for assignments and
+  `emit … get`; a loop's cursor is made once and shared.
+- **`alias.rs`**: TBAA on every load/store it can place — `local.<field>`
+  (a `_code_slot_*` global or an alloca), `heap.<field>` (through an
+  `items`/`keys` pointer read from a slot; whole-slot `i * 80` offsets
+  reduce to the field), `header.-16/-8`. Untagged when unsure (call
+  results, phis). Fields only at their own offset *and* width, so an `i64`
+  over tag+heap is never tagged as one of them.
+- **Release = `default<O2>`** after tagging. A fast field write checks the
+  old value is a number and writes only the number — a tag store would be
+  one every tag load has to look past.
+
+Fast/generic doubles innermost loop bodies: Aquarium dev wasm 936K → 975K,
+build time unchanged; release build 1.5 → 2.9 s, 944K. Points 7.3 → 3.7 ms
+(60M → 17.7M instructions), spectral_norm 0.27 → 0.22 s. What is left is
+memory: a point is ~500 bytes of 80-byte slots (a C model with the same
+checks and layout: 4.7 ms; with 16-byte values: 2.65 ms) — stage C.2.
+`tests/loop_versions.code` fails a check partway through loops; the language
+harness now also runs every fixture as a `--release` build.
+
 ## Wasm handler stack (root-caused 2026-09-07)
 
 Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`

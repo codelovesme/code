@@ -152,3 +152,23 @@ line; a number written along a known path is stored in line.
 | string_build | 0.0014 s | 0.0046 s | 3× |
 | dictionary | 0.0035 s | 0.018 s | 5× |
 | points | 0.0008 s | 0.0084 s | ~10× |
+
+## A fast version of each loop, and the optimizer on `--release` (2026-10-11)
+
+A loop with no loop inside it compiles twice. In the fast version a check
+that fails leaves for the same statement in a version that only calls the
+runtime, instead of a slow path joining back in. `--release` now runs LLVM's
+-O2 pipeline, after telling it which memory each access touches. `pts[i]`
+is now checked once per iteration rather than at every read: points goes
+from 60M to 17.7M instructions.
+
+| Workload | C | code | code / C |
+|---|---|---|---|
+| spectral_norm | 0.166 s | 0.224 s | 1.35× |
+| binary_trees | 0.0039 s | 0.020 s | 5× |
+| string_build | 0.0014 s | 0.0046 s | 3× |
+| dictionary | 0.0034 s | 0.0185 s | 5× |
+| points | 0.0007 s | 0.0036 s | ~5× |
+
+The rest of `points`' gap is memory. A point takes about 500 bytes of
+80-byte value slots, where C's takes 32 bytes.

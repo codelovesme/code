@@ -1,0 +1,108 @@
+| A loop with no loop inside it compiles twice (ticket 122 stage C): a fast
+| version with every check in line, and a generic one a failed check leaves
+| for, which finishes that iteration. Each case here makes a check fail
+| partway through a loop and checks the loop still did what it says.
+
+| A field that is null for one point: that point's iteration is the
+| generic version's (null + 3 fails, so it is skipped by the if), the rest
+| fast.
+pts = []
+i = 0
+loop
+    if i = 6, break
+    pts += { x = i, y = 10 * i }
+    i = i + 1
+pts[3].x = null
+i = 0
+loop
+    if i = 6, break
+    if pts[i].x ≠ null
+        pts[i].x = pts[i].x + 100
+    i = i + 1
+assert pts[0].x = 100
+assert pts[2].x = 102
+assert pts[3].x = null
+assert pts[5].x = 105
+assert pts[5].y = 50
+
+| A text where numbers were: `+` joins it, in the generic version, and the
+| loop goes on from there.
+xs = [1, 2, "3", 4]
+total = 0
+loop x over xs
+    total = total + x
+assert total = "334"
+
+| A point someone else holds is copied before it changes, fast or not.
+held = pts[1]
+i = 0
+loop
+    if i = 6, break
+    pts[i].y = pts[i].y + 1
+    i = i + 1
+assert held.y = 10
+assert pts[1].y = 11
+
+| An object of another shape in the list: its reads are the generic
+| version's.
+mixed = [{ x = 1, y = 2 }, { y = 5, x = 4 }, { x = 7 }]
+sum = 0
+loop p over mixed
+    sum = sum + p.x
+assert sum = 12
+
+| A name first given inside the loop, read after the statement whose check
+| failed — the two versions are one variable.
+seen = []
+values = [1, 2, null, 4]
+loop v over values
+    step = 0
+    if v ≠ null, step = v * 2
+    later = step + 1
+    seen += [later]
+assert seen = [3, 5, 1, 9]
+
+| A variable that held text before the loop and a number in it.
+label = "none"
+loop n over [5, 6, 7]
+    label = n
+assert label = 7
+
+| break and continue, in both versions.
+found = -1
+k = 0
+loop
+    k = k + 1
+    if k = 2, continue
+    if k > 100, break
+    if pts[k].x = null
+        found = k
+        break
+assert found = 3
+
+| An element past the end in one iteration only.
+short = [1, 2, 3]
+got = []
+j = 0
+loop
+    if j = 5, break
+    if j < 3, got += [short[j] + 0]
+    j = j + 1
+assert got = [1, 2, 3]
+
+| `get` inside the loop: the answer's name is one variable in both.
+Double { n } =>
+    return Doubled { value = n * 2 }
+
+answers = 0
+loop n over [1, 2, null, 4]
+    emit Double { n = 1 } to this get d
+    if n ≠ null, answers = answers + d.value + n
+assert answers = 13
+
+| A loop over an object's fields.
+counts = { a = 1, b = 2, c = 3 }
+total = 0
+loop key, count over counts
+    total = total + count
+assert total = 6
