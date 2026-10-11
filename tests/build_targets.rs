@@ -293,6 +293,25 @@ fn wasm_sets_parts_with_the_same_answers() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Reading a field or element without copying it (ticket 120) points into
+/// wasm's linear memory the same way; the cases where that could dangle,
+/// run there too.
+#[test]
+fn wasm_reads_in_place_with_the_same_answers() {
+    let dir = temp_dir("wasm-reads-in-place");
+    let out = dir.join("reads_in_place.wasm");
+    code::compile_file(
+        &fixture("reads_in_place.code"),
+        code::BuildTarget::Wasm,
+        &out,
+        false,
+    )
+    .expect("build reads_in_place.code --target wasm");
+
+    run_wasm_under_node(&dir, &out);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// The search for a fraction's shortest spelling starts at the length the
 /// page says can first succeed (`code_host_number_shortest`) rather than at
 /// one. That may only skip candidates, never change the answer: so a few

@@ -1,0 +1,58 @@
+| A field or element read that is only looked at — an operand, a condition,
+| the right side of an assignment — points at the value where it is instead
+| of copying it out (ticket 120). These are the cases where the place it
+| points into could go away under it.
+
+| A variable given a part of its own value: the old value is let go only
+| after the part has been taken.
+o = { inner = { v = [1, 2] }, other = 1 }
+o = o.inner
+assert o = { v = [1, 2] }
+o = o.v
+assert o = [1, 2]
+xs = [[[7]], 1]
+xs = xs[0]
+xs = xs[0]
+assert xs = [7]
+key = "inner"
+p = { inner = { w = 3 } }
+p = p[key]
+assert p = { w = 3 }
+
+| Operands, conditions and comparisons straight out of a list of objects.
+fishes = [{ x = 1, y = 2, name = "nemo", fast = true }, { x = 10, y = 20, name = "dory", fast = false }]
+assert fishes[0].x + fishes[1].x = 11
+assert fishes[1].y - fishes[0].y = 18
+assert fishes[0].x < fishes[1].x
+assert fishes[0].name + "!" = "nemo!"
+assert fishes[0].fast and not fishes[1].fast
+assert fishes[0] = { x = 1, y = 2, name = "nemo", fast = true }
+assert fishes[0] ≠ fishes[1]
+assert fishes[0].x ∈ Number
+assert fishes[0].nope = null
+assert fishes[5] = null
+assert fishes[5] ∈ Null
+if fishes[1].fast or fishes[1].x > 5
+    fishes[1].fast = true
+assert fishes[1].fast
+
+| A string's character is built, not pointed at, and still answers.
+s = "héllo"
+assert s[1] = "é"
+assert s[1] + s[0] = "éh"
+first = s[0]
+assert first = "h"
+
+| A read kept in a variable keeps its value when the container changes.
+x = fishes[0].x
+name = fishes[0].name
+fishes[0] = { x = 99 }
+assert x = 1
+assert name = "nemo"
+
+| Inside a handler, reading the particle it was given.
+Sum { a, b } =>
+    total = a.n + b.n
+    return Summed { value = total }
+emit Sum { a = { n = 2 }, b = { n = 3 } } to this get got
+assert got.value = 5

@@ -77,3 +77,17 @@ what the C and Rust versions do instead of building the next list every step
 What is left there is reading, not writing (callgrind): `strcmp` ~17%,
 `code_copy` 15%, `code_field` 10%, `code_index` 8% — every `pts[i].x` copies
 the point out and finds `x` by comparing key text.
+
+## Reading without copying (2026-10-11, ticket 120)
+
+A field or element read that is only looked at points at the value instead of
+copying it out, and `-`, `*`, `/` and ordering take a boxed operand's number
+with one call and compute in line.
+
+| Workload | C | code | code / C | was |
+|---|---|---|---|---|
+| spectral_norm | 0.167 s | 0.493 s | 3× | 5× |
+| points | 0.0007 s | 0.034 s | 48× | 50× |
+| binary_trees | 0.0034 s | 0.027 s | 8× | 8× |
+| string_build | 0.0014 s | 0.017 s | 12× | 12× |
+| dictionary | 0.0035 s | 0.075 s | 22× | 22× |

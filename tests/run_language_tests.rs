@@ -372,8 +372,19 @@ fn check_compile(
             // with this set, aborts at exit if any survive codegen's cleanup
             // (see `code_check_leaks` in runtime.c). Without it a lost
             // reference would produce byte-identical output to a correct run.
+            //
+            // The glibc settings make a read of freed memory visible too:
+            // freed blocks are filled with junk (`MALLOC_PERTURB_`), and the
+            // per-thread cache that would skip that fill is off. A value
+            // read after its block was released then answers wrongly
+            // instead of happening to still look right — which is how
+            // `code_copy` reading a part of the value it was replacing
+            // (`o = o.inner`, ticket 120) shows up. Ignored off glibc.
             let output = Command::new(&exe_path)
                 .env("CODE_CHECK_LEAKS", "1")
+                .env("MALLOC_PERTURB_", "165")
+                .env("MALLOC_CHECK_", "3")
+                .env("GLIBC_TUNABLES", "glibc.malloc.tcache_count=0")
                 .output()
                 .unwrap_or_else(|e| panic!("{name}: run compiled binary: {e}"));
 

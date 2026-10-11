@@ -60,6 +60,13 @@ assert (nan < 1) = false
 assert (nan > 1) = false
 assert (nan ≤ 1) = false
 assert (nan ≥ 1) = false
+| The same NaN held in a list, where it is a boxed value rather than a
+| plain number: still neither.
+held = [nan]
+assert (held[0] ≤ 1) = false
+assert (held[0] ≥ 1) = false
+assert (1 ≤ held[0]) = false
+assert (held[0] ≤ held[0]) = false
 
 | Booleans in line.
 yes = a > b
