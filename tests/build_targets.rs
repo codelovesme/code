@@ -274,6 +274,25 @@ fn wasm_grows_values_in_place_with_the_same_answers() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Setting one part of a value (`fishes[1].x = 10`) copies a level only when
+/// something else holds it — the same allocator question, so the same check
+/// on wasm.
+#[test]
+fn wasm_sets_parts_with_the_same_answers() {
+    let dir = temp_dir("wasm-set-parts");
+    let out = dir.join("set_parts.wasm");
+    code::compile_file(
+        &fixture("set_parts.code"),
+        code::BuildTarget::Wasm,
+        &out,
+        false,
+    )
+    .expect("build set_parts.code --target wasm");
+
+    run_wasm_under_node(&dir, &out);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// The search for a fraction's shortest spelling starts at the length the
 /// page says can first succeed (`code_host_number_shortest`) rather than at
 /// one. That may only skip candidates, never change the answer: so a few

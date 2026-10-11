@@ -460,7 +460,11 @@ fn static_non_particle_type(expr: &Expr, types: &HashMap<String, StaticType>) ->
     }
     if matches!(
         expr,
-        Expr::Ident(_) | Expr::Field(_, _) | Expr::Index(_, _) | Expr::Slice { .. }
+        Expr::Ident(_)
+            | Expr::Field(_, _)
+            | Expr::Index(_, _)
+            | Expr::Slice { .. }
+            | Expr::SetAt { .. }
     ) {
         return None;
     }
@@ -490,7 +494,11 @@ fn static_non_particle_type(expr: &Expr, types: &HashMap<String, StaticType>) ->
 
 fn expr_contains_dynamic_value(expr: &Expr) -> bool {
     match expr {
-        Expr::Ident(_) | Expr::Field(_, _) | Expr::Index(_, _) | Expr::Slice { .. } => true,
+        Expr::Ident(_)
+        | Expr::Field(_, _)
+        | Expr::Index(_, _)
+        | Expr::Slice { .. }
+        | Expr::SetAt { .. } => true,
         Expr::Array(_) | Expr::Object(_) => false,
         Expr::Number(_) | Expr::Str(_) | Expr::Interpolated(_) | Expr::Bool(_) | Expr::Null => {
             false
@@ -519,6 +527,18 @@ fn static_type(expr: &Expr, types: &HashMap<String, StaticType>) -> Option<Stati
             }
         },
         Expr::Field(_, _) | Expr::Index(_, _) | Expr::Slice { .. } => None,
+        // Setting a part keeps the kind — an array stays an array — and the
+        // class, unless the part set is the class itself.
+        Expr::SetAt { base, path, .. } => match static_type(base, types)? {
+            StaticType::Class(_)
+                if path
+                    .iter()
+                    .any(|key| !matches!(key, Expr::Str(k) if k != "_class")) =>
+            {
+                Some(StaticType::Kind(ValueKind::Object))
+            }
+            known => Some(known),
+        },
         Expr::LengthOf(_) => Some(StaticType::Kind(ValueKind::Number)),
         Expr::Binary(left, op, right) => static_binary_type(left, *op, right, types),
         Expr::Unary(op, value) => static_unary_type(*op, value, types),

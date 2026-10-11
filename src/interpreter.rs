@@ -516,6 +516,18 @@ impl Environment {
         self.declare(name.to_string(), value);
     }
 
+    /// The value bound to `name`, leaving null in its place — so whatever
+    /// the caller does to it next, it is the only holder.
+    fn take(&self, name: &str) -> Value {
+        let mut st = self.st_mut();
+        for scope in st.scopes.iter_mut().rev() {
+            if let Some(slot) = scope.get_mut(name) {
+                return std::mem::replace(slot, Value::Null);
+            }
+        }
+        Value::Null
+    }
+
     fn push_scope(&self) {
         self.st_mut().scopes.push(HashMap::new());
     }
@@ -1269,6 +1281,25 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
             }
             Ok(Flow::Normal)
         }
+        // `fishes[5].x = v` sets the part on the variable's own value, taken
+        // out while it is changed, so a level nothing else holds is changed
+        // where it stands (`Rc::make_mut`) — `code_set_at` is the compiled
+        // half.
+        Stmt::Assign {
+            name,
+            value: Expr::SetAt { base, path, value },
+            ..
+        } if matches!(&**base, Expr::Ident(read) if read == name) => {
+            let keys = path
+                .iter()
+                .map(|key| eval(key, env))
+                .collect::<Result<Vec<_>, _>>()?;
+            let new = eval(value, env)?;
+            let mut whole = env.take(name);
+            let answer = set_at(&mut whole, &keys, new);
+            env.set(name, whole);
+            answer.map(|()| Flow::Normal)
+        }
         Stmt::Assign { name, value, .. } => {
             let v = eval(value, env)?;
             env.set(name, v);
@@ -1847,6 +1878,15 @@ fn run_handler(
 
 fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
     match expr {
+        Expr::SetAt { base, path, value } => {
+            let mut whole = eval(base, env)?;
+            let keys = path
+                .iter()
+                .map(|key| eval(key, env))
+                .collect::<Result<Vec<_>, _>>()?;
+            set_at(&mut whole, &keys, eval(value, env)?)?;
+            Ok(whole)
+        }
         Expr::Number(n) => Ok(Value::Number(*n)),
         Expr::Str(s) => Ok(Value::Str(Rc::from(s.as_str()))),
         Expr::Interpolated(parts) => {
@@ -2196,6 +2236,70 @@ fn require_bool(v: Value, op: &str) -> Result<Value, String> {
 /// `type_name` with the right indefinite article — "a number", "an array".
 /// Every message below reads "found {a_type_name(v)}" rather than hardcoding
 /// "a {type_name(v)}", which used to produce "a array" / "a object".
+/// Replaces the part of `target` at `keys` with `new` — the meaning of
+/// `Expr::SetAt`. A level something else also holds is copied first and
+/// only that level (`Rc::make_mut`), so no other holder sees a change. Must
+/// match `runtime.c`'s `code_set_at`, messages included.
+fn set_at(target: &mut Value, keys: &[Value], new: Value) -> Result<(), String> {
+    let mut current = target;
+    for (step, key) in keys.iter().enumerate() {
+        let last = step + 1 == keys.len();
+        current = match current {
+            Value::Array(items) => {
+                let len = items.len();
+                let index = match key {
+                    Value::Number(n) if n.fract() == 0.0 && *n >= 0.0 && (*n as usize) < len => {
+                        *n as usize
+                    }
+                    Value::Number(_) => {
+                        return Err(format!(
+                            "cannot set that element — an index to set is a whole number \
+                             below the array's length, {len}"
+                        ))
+                    }
+                    other => {
+                        return Err(format!(
+                            "cannot set an array element by {} — an array's index is a number",
+                            a_type_name(other)
+                        ))
+                    }
+                };
+                &mut Rc::make_mut(items)[index]
+            }
+            Value::Object(fields) => {
+                let Value::Str(name) = key else {
+                    return Err(format!(
+                        "cannot set an object field by {} — a field is named by a string",
+                        a_type_name(key)
+                    ));
+                };
+                let fields = Rc::make_mut(fields);
+                match fields.iter().position(|(k, _)| **k == **name) {
+                    Some(at) => &mut fields[at].1,
+                    None if last => {
+                        fields.push((name.to_string(), Value::Null));
+                        &mut fields.last_mut().unwrap().1
+                    }
+                    None => {
+                        return Err(format!(
+                            "cannot set inside field '{name}' — the object has no such field"
+                        ))
+                    }
+                }
+            }
+            other => {
+                return Err(format!(
+                    "cannot set a part of {} — only an array's elements and an object's \
+                     fields can be set",
+                    a_type_name(other)
+                ))
+            }
+        };
+    }
+    *current = new;
+    Ok(())
+}
+
 fn a_type_name(v: &Value) -> String {
     let name = type_name(v);
     let article = match name.chars().next() {

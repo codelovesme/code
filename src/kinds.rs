@@ -202,6 +202,13 @@ impl<'p> Function<'p> {
                 self.expr(from);
                 self.expr(to);
             }
+            Expr::SetAt { base, path, value } => {
+                self.expr(base);
+                for key in path {
+                    self.expr(key);
+                }
+                self.expr(value);
+            }
             Expr::Binary(lhs, _, rhs) => {
                 self.expr(lhs);
                 self.expr(rhs);

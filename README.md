@@ -35,7 +35,7 @@ emit Print { value = "$name won $rounds rounds" } to term
 - [The language](#the-language)
   - [Comments](#comments) · [Values](#values) · [Bindings and scope](#bindings-and-scope)
   - [Strings and interpolation](#strings-and-interpolation) · [Operators](#operators)
-  - [Equality](#equality) · [Reading members](#reading-members) · [assert](#assert)
+  - [Equality](#equality) · [Reading members](#reading-members) · [Setting a part](#setting-a-part) · [assert](#assert)
   - [if and blocks](#if-and-blocks) · [loop](#loop)
   - [Particles](#particles) · [emit](#emit) · [∈](#-1)
 - [Handlers](#handlers)
@@ -379,8 +379,8 @@ and an otherwise correct `assert v = { a, b }` failed on nothing at all.
 
 ### Reading members
 
-`.field` and `[index]` read; there is no write-through — `obj.f = v` does not
-exist.
+`.field` and `[index]` read. Written on the left of `=` they set one part of
+a variable's value instead — see [Setting a part](#setting-a-part).
 
 ```
 point = { x = 1 }
@@ -454,6 +454,50 @@ kind, and there are only six. Out of range is null, an empty range is `""`.
 
 Between them these are pop, shift, take and drop, which is why none of those
 is a core handler.
+
+### Setting a part
+
+The same `.field` and `[index]` on the left of `=` (or `+=`) set one part of
+a variable's value, as deep as the path goes:
+
+```code
+fishes = [{ x = 0, y = 0 }, { x = 1, y = 1 }]
+fishes[1].x = 10
+fishes[1].y += 5
+assert fishes[1] = { x = 10, y = 6 }
+```
+
+**It is still the variable that changes, never a value someone else holds.**
+`fishes[1].x = 10` means `fishes` = the old value with that one part
+replaced. Whatever else held the old list, or the old fish, keeps it:
+
+```code
+taken = fishes[0]
+school = fishes
+fishes[0].x = 7
+assert taken.x = 0
+assert school[0].x = 0
+```
+
+That is the same rule as `xs += x`: a value held by this variable alone is
+changed where it stands, and a value held anywhere else too is copied first —
+one level at a time, so setting one fish in a list of a thousand copies at
+most the list and that fish, and nothing when nothing else holds them. A
+`loop ... over fishes` holds the list it walks, so writing `fishes[i]` inside
+it changes `fishes` and leaves the walk on the list it started with.
+
+The rules for each step:
+
+- Every step but the last must find something: an array element that is
+  there, or an object field that is there. `o.a.b = 1` with no `a` is an
+  error rather than a quietly built `{ a = { b = 1 } }`.
+- **An object's last step may name a new field**; it goes on the end, the
+  place `+` would put it. `o["$name"] = v` sets a field named at run time.
+- **An array's index must be a whole number below its length.** Unlike a
+  read, a write past the end is an error: `xs += x` is how a list grows.
+- A string, a number, a boolean or null has no parts to set.
+- A type is given to the variable (`fish ∈ Fish = …`), not to one of its
+  parts.
 
 ### assert
 
@@ -1710,8 +1754,9 @@ Each of these is a decision, not an omission waiting to be filled:
 - **No bare block.** A scope comes with a header — `if`, `loop`, or a
   handler. `{ }` is an object and never a scope, which is what makes every
   brace in a file mean one thing.
-- **No mutation of a constructed value.** `.field`/`[index]` read only;
-  rebuild the value instead.
+- **No shared mutation.** `fish.x = 1` changes the variable `fish`, never a
+  value anything else holds: there are no references, so nothing can change
+  under you.
 - **No type checking.** There are no type keywords, and a declaration that
   names a kind (`let port ∈ Number = 8080`) is read and dropped — it is there
   for whoever reads the line, and it can be wrong the way a comment can be

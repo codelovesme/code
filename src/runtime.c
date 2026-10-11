@@ -4334,6 +4334,98 @@ void code_add_into(CodeValue *dst, const CodeValue *b) {
     code_add(dst, dst, b);
 }
 
+/* `fishes[5].x = v`: the part of `*target` at `keys` (a slot buffer, one key
+ * per step) replaced by `*value`. What `Expr::SetAt` compiles to, and the
+ * same rules as interpreter.rs's `set_at`, messages included.
+ *
+ * Each level on the way down is made the target's own first (`own_level`):
+ * held alone, it is changed where it stands; held by anything else too, that
+ * one level is copied and the other holder keeps the old one. `value` is
+ * held before any of that, so `xs[0] = xs` copies `xs` rather than putting it
+ * inside itself. On a failure nothing has visibly changed: a level copied on
+ * the way down has the same contents as the one it replaced. */
+static void own_level(CodeValue *v) {
+    if (!v->heap || header_of(heap_block(v))->rc == 1) {
+        return;
+    }
+    CodeValue copy;
+    memset(&copy, 0, sizeof copy);
+    if (v->tag == CODE_ARRAY) {
+        code_array(&copy, v->items, v->len);
+    } else {
+        code_object(&copy, v->keys, v->items, v->len);
+    }
+    code_release(v);
+    *v = copy;
+}
+
+void code_set_at(CodeValue *target, void *keys, long long count, const CodeValue *value) {
+    char msg[320];
+    CodeValue v = *value;
+    code_retain(&v);
+    CodeValue *current = target;
+    for (long long step = 0; step < count; step++) {
+        const CodeValue *key = slot_at(keys, step);
+        if (current->tag == CODE_ARRAY) {
+            if (key->tag != CODE_NUMBER) {
+                snprintf(msg, sizeof msg,
+                         "cannot set an array element by %s %s — an array's index is a number",
+                         article_for(key), type_name(key));
+                goto failed;
+            }
+            long long at = (long long)key->number;
+            if (!((double)at == key->number && at >= 0 && at < current->len)) {
+                snprintf(msg, sizeof msg,
+                         "cannot set that element — an index to set is a whole number below the "
+                         "array's length, %lld",
+                         current->len);
+                goto failed;
+            }
+            own_level(current);
+            current = slot_at(current->items, at);
+        } else if (current->tag == CODE_OBJECT) {
+            if (key->tag != CODE_STR) {
+                snprintf(msg, sizeof msg,
+                         "cannot set an object field by %s %s — a field is named by a string",
+                         article_for(key), type_name(key));
+                goto failed;
+            }
+            if (!find_field(current, key->str)) {
+                if (step + 1 < count) {
+                    snprintf(msg, sizeof msg,
+                             "cannot set inside field '%s' — the object has no such field",
+                             key->str);
+                    goto failed;
+                }
+                /* A new field goes on the end, the way a merge adds one. */
+                own_level(current);
+                CodeValue one;
+                memset(&one, 0, sizeof one);
+                const char *name = key->str;
+                code_object(&one, &name, &v, 1);
+                code_add_into(current, &one);
+                code_release(&one);
+                code_release(&v);
+                return;
+            }
+            own_level(current);
+            current = (CodeValue *)find_field(current, key->str);
+        } else {
+            snprintf(msg, sizeof msg,
+                     "cannot set a part of %s %s — only an array's elements and an object's "
+                     "fields can be set",
+                     article_for(current), type_name(current));
+            goto failed;
+        }
+    }
+    code_release(current);
+    *current = v;
+    return;
+failed:
+    code_release(&v);
+    fail(msg);
+}
+
 /* Every failing branch below leaves `out` exactly as it found it, rather than
  * writing a placeholder. That is safe and deliberate: `out` is either a
  * zero-initialized slot or still holds its previous value, so it is a valid

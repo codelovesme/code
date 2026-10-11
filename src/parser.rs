@@ -431,6 +431,44 @@ impl<'a> Parser<'a> {
         let name_pos = self.err_pos;
         reject_uppercase_binding(&name, "a variable")?;
         reject_length_binding(&name, "a variable")?;
+        // `fishes[5].x = v`: the steps after the name, each kept twice — as
+        // the key it writes, and as the read it continues from, which is
+        // what a `length` inside the next index and a `+=` both mean.
+        let mut path = Vec::new();
+        let mut part = Expr::Ident(name.clone());
+        loop {
+            match self.peek() {
+                Token::Dot => {
+                    self.advance();
+                    let field = match self.advance() {
+                        Token::Ident(field) => field,
+                        other => {
+                            return Err(format!("expected a field name after '.', found {other:?}"))
+                        }
+                    };
+                    path.push(Expr::Str(field.clone()));
+                    part = Expr::Field(Box::new(part), field);
+                }
+                Token::LBracket => {
+                    self.advance();
+                    self.skip_newlines();
+                    let index = bind_length(self.expr()?, &part);
+                    self.skip_newlines();
+                    match self.advance() {
+                        Token::RBracket => {}
+                        Token::Comma => {
+                            return Err("a range cannot be assigned to — set one element at a \
+                                        time, `xs[i] = value`"
+                                .to_string())
+                        }
+                        other => return Err(format!("expected ']', found {other:?}")),
+                    }
+                    path.push(index.clone());
+                    part = Expr::Index(Box::new(part), Box::new(index));
+                }
+                _ => break,
+            }
+        }
         // `+=` is the one compound form. It is pure sugar, rewritten here
         // into `name = name + expr` so that neither backend — nor anything
         // else downstream — learns it exists. Whatever `+` means for the two
@@ -438,7 +476,16 @@ impl<'a> Parser<'a> {
         // to an array (see `ast::BinOp`).
         // Preserve the existing annotation syntax in the AST. Runtime
         // assignment stays dynamic; `code check` is its strict consumer.
-        let annotation = self.parse_annotation()?;
+        let annotation = if path.is_empty() {
+            self.parse_annotation()?
+        } else if matches!(self.peek(), Token::In) {
+            return Err(format!(
+                "'∈' gives a variable its type, not one of its parts — write it on \
+                 '{name}' itself"
+            ));
+        } else {
+            None
+        };
         let compound = match self.advance() {
             Token::Equals => false,
             Token::PlusEq => true,
@@ -463,13 +510,18 @@ impl<'a> Parser<'a> {
         let value = self.expr()?;
         self.expect_end_of_statement()?;
         let value = if compound {
-            Expr::Binary(
-                Box::new(Expr::Ident(name.clone())),
-                BinOp::Add,
-                Box::new(value),
-            )
+            Expr::Binary(Box::new(part), BinOp::Add, Box::new(value))
         } else {
             value
+        };
+        let value = if path.is_empty() {
+            value
+        } else {
+            Expr::SetAt {
+                base: Box::new(Expr::Ident(name.clone())),
+                path,
+                value: Box::new(value),
+            }
         };
         Ok(Stmt::Assign {
             name,
