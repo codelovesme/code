@@ -408,6 +408,11 @@ seen to change: whoever else holds it has a count, and a count above 1 means
 a copy. `tests/in_place_growth.code` holds the aliasing cases. It took
 `benchmarks/workloads/` binary_trees from 500× C to 8×; building an 8,000-field
 object went from 2.0 s to 0.22 s (what is left is `find_field`'s key search).
+A string block's header keeps its byte length + 1 (`CodeHeader.text_length`,
+the old padding word; 0 = not measured yet), filled by `text_length` and by
+`join_in_place`, so an append no longer `strlen`s the whole text: string_build
+12× → 3× C. Nothing else may change a string's bytes in place, or the kept
+length goes stale.
 
 ## Setting a part (2026-10-11)
 

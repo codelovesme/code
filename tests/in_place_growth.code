@@ -137,3 +137,28 @@ self = self + { me = self }
 assert self.me = { a = 1 }
 self += { b = 2 }
 assert self = { a = 1, me = { a = 1 }, b = 2 }
+
+| A text's length is measured once and kept with it: growing it many times,
+| from a shared copy, and with characters wider than a byte, the answers stay
+| the text's own.
+long = ""
+step = 0
+loop
+    if step = 300, break
+    long += "ab"
+    step = step + 1
+emit Length { value = long } to core get { value as long_size }
+assert long_size = 600
+twin = long
+long += "çé"
+twin += "x"
+emit Length { value = long } to core get { value as grown_size }
+emit Length { value = twin } to core get { value as twin_size }
+assert grown_size = 602
+assert twin_size = 601
+assert long[600, length) = "çé"
+assert twin[598, length) = "abx"
+long += long
+emit Length { value = long } to core get { value as doubled }
+assert doubled = 1204
+assert long[length - 2, length) = "çé"

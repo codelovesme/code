@@ -195,7 +195,10 @@ void code_take_failure(CodeValue *out) {
 
 typedef struct {
     long long rc;
-    long long padding; /* keeps the payload 16-byte aligned, like malloc's */
+    /* A string block's length plus one once something has measured it, 0
+     * until then (`text_length`); unused by other blocks. Also what keeps
+     * the payload 16-byte aligned, like malloc's. */
+    long long text_length;
 } CodeHeader;
 
 /* Blocks currently allocated. Exists only so `code_check_leaks` can turn
@@ -222,6 +225,7 @@ static void *heap_alloc(size_t bytes) {
         code_runtime_error("out of memory");
     }
     h->rc = 1;
+    h->text_length = 0;
     code_blocks_add(1);
     return (char *)h + sizeof(CodeHeader);
 }
@@ -4355,9 +4359,25 @@ static int append_in_place(CodeValue *dst, const CodeValue *b) {
 }
 
 /* `*dst = *dst + *b` for two strings, `dst` held alone or a literal. */
+/* How many bytes `v`'s text is. A heap string's is measured once and kept
+ * in its header, so appending to a long text one piece at a time does not
+ * walk all of it again each time (string_build: ~70% `strlen`). Written
+ * only from the program's own thread, like everything else that reads a
+ * value the program holds. */
+static size_t text_length(const CodeValue *v) {
+    if (!v->heap) {
+        return strlen(v->str);
+    }
+    CodeHeader *h = header_of(v->str);
+    if (h->text_length == 0) {
+        h->text_length = (long long)strlen(v->str) + 1;
+    }
+    return (size_t)(h->text_length - 1);
+}
+
 static void join_in_place(CodeValue *dst, const CodeValue *b) {
-    size_t la = strlen(dst->str);
-    size_t lb = strlen(b->str);
+    size_t la = text_length(dst);
+    size_t lb = text_length(b);
     char *buf;
     if (dst->heap) {
         buf = room_for((void *)dst->str, la + lb + 1);
@@ -4369,6 +4389,7 @@ static void join_in_place(CodeValue *dst, const CodeValue *b) {
         memcpy(buf, dst->str, la);
     }
     memcpy(buf + la, b->str, lb + 1);
+    header_of(buf)->text_length = (long long)(la + lb) + 1;
     dst->str = buf;
     dst->heap = 1;
 }
