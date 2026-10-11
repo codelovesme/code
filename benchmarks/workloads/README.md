@@ -105,3 +105,9 @@ before → after:
 | spectral_norm | 5,246M | 4,926M | 3× |
 | binary_trees | 232M | 234M | 8× |
 | string_build | 120M | 120M | 12× |
+
+## Text length kept (2026-10-11)
+
+A text's byte length is kept in its block header, so appending no longer
+measures the whole text again: string_build 120M → 39M instructions,
+0.017 s → 0.0046 s, **12× → 3× C**.
