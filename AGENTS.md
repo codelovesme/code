@@ -397,11 +397,17 @@ Two traps:
 grows the slot's own array, string or object block where it stands when its
 count is 1 (`held_alone`), with room doubling (`room_for`, sized by
 `malloc_usable_size` / the wasm shim's block size, so the header and module
-ABI are unchanged). Anything shared, an operand that is the value itself, or
-an object merge that adds a field falls back to `code_add`. A value is never
+ABI are unchanged). An object merge adds new fields on the end too
+(`grow_object_in_place`): the block is `[key pointers][slots][characters]`,
+`items - keys` is how many fields fit, and characters run in key order, so the
+last key's end is where the next goes; out of room, the object moves to a
+block twice the size, its values moved, not retained. Anything shared, an
+operand that is the value itself, or a merge naming one field twice falls
+back to `code_add`. A value is never
 seen to change: whoever else holds it has a count, and a count above 1 means
 a copy. `tests/in_place_growth.code` holds the aliasing cases. It took
-`benchmarks/workloads/` binary_trees from 500× C to 8×.
+`benchmarks/workloads/` binary_trees from 500× C to 8×; building an 8,000-field
+object went from 2.0 s to 0.22 s (what is left is `find_field`'s key search).
 
 ## Wasm handler stack (root-caused 2026-09-07)
 

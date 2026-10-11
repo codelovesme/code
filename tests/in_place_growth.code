@@ -60,7 +60,7 @@ lit += "y"
 assert copy = "x"
 
 | Objects: a field replaced where it stands, a shared one left alone, a new
-| field merged the old way.
+| field added on the end.
 counts = { a = 0, b = 0 }
 counts = counts + { a = counts.a + 1 }
 assert counts = { a = 1, b = 0 }
@@ -89,3 +89,51 @@ items += { k = 5 }
 assert items[5].k = 5
 emit Collect { count = 5 } to this get again
 assert again.value[4] = { k = 4 }
+
+| An object grown one field at a time, past several moves to a bigger block,
+| with keys long and short: every field keeps its name, value and place.
+table = { first = "one" }
+i = 0
+loop
+    if i = 40, break
+    table = table + { "key-number-$i-with-a-long-name" = i, "k$i" = [i] }
+    i = i + 1
+fields = 0
+names = []
+loop name, value over table
+    fields = fields + 1
+    names += name
+assert fields = 81
+assert table.first = "one"
+assert table["key-number-0-with-a-long-name"] = 0
+assert table["key-number-39-with-a-long-name"] = 39
+assert table.k17 = [17]
+assert names[0] = "first"
+assert names[1] = "key-number-0-with-a-long-name"
+assert names[2] = "k0"
+assert names[80] = "k39"
+
+| Shared, then grown: the other holder sees neither the new field nor the new
+| value; replaced and added in one step.
+kept = table
+table = table + { first = "uno", last = "end" }
+assert kept.first = "one"
+assert kept.last = null
+assert table.first = "uno"
+assert table.last = "end"
+after = []
+loop name, value over table
+    after += name
+assert after[81] = "last"
+assert after[82] = null
+kept_fields = 0
+loop name, value over kept
+    kept_fields = kept_fields + 1
+assert kept_fields = 81
+
+| An object holding itself, and a field naming itself twice the old way.
+self = { a = 1 }
+self = self + { me = self }
+assert self.me = { a = 1 }
+self += { b = 2 }
+assert self = { a = 1, me = { a = 1 }, b = 2 }
