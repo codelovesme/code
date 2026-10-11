@@ -176,7 +176,7 @@ fn direct_handlers(statements: &[Stmt]) -> Vec<HandlerDescription> {
                     .map(|field| FieldDescription {
                         wire_name: field.field.clone(),
                         binding_name: Some(field.name.clone()),
-                        type_name: field.annotation.clone(),
+                        type_name: field.annotation.as_ref().map(|label| label.spelling()),
                     })
                     .collect(),
                 result_class: result_class(body),
@@ -200,7 +200,7 @@ fn collect_handlers(statements: &[Stmt], handlers: &mut Vec<HandlerDescription>)
                     .map(|field| FieldDescription {
                         wire_name: field.field.clone(),
                         binding_name: Some(field.name.clone()),
-                        type_name: field.annotation.clone(),
+                        type_name: field.annotation.as_ref().map(|label| label.spelling()),
                     })
                     .collect(),
                 result_class: result_class(body),

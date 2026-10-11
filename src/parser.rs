@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, LoopOver, Program, Span, Stmt,
-    UnOp, ValueKind,
+    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, Label, LoopOver, Program, Span,
+    Stmt, UnOp, ValueKind,
 };
 use crate::lexer::{Lexed, StringPart, Token};
 use crate::span::Located;
@@ -1295,20 +1295,73 @@ fn reject_kind_as_class(name: &str) -> Result<(), String> {
 }
 
 impl Parser<'_> {
-    /// Reads an optional `∈ Name` annotation and preserves its spelling.
+    /// Reads an optional `∈ Label` annotation (see `ast::Label`).
     ///
     /// Runtime values remain dynamic. `code check` consumes the annotation to
     /// validate statically knowable assignments and handler boundaries.
-    fn parse_annotation(&mut self) -> Result<Option<String>, String> {
+    fn parse_annotation(&mut self) -> Result<Option<Label>, String> {
         if !matches!(self.peek(), Token::In) {
             return Ok(None);
         }
         self.advance();
+        self.label().map(Some)
+    }
+
+    /// `Number`, `Point`, `Any`, `null`; `{ x ∈ Label, … }` with every field
+    /// labelled; `Array of Label`, `Object of Label`. `of` is a word only
+    /// here — it stays an ordinary name everywhere else.
+    fn label(&mut self) -> Result<Label, String> {
         match self.advance() {
-            Token::Ident(name) => Ok(Some(name)),
-            Token::Null => Ok(Some("Null".to_string())),
+            Token::Ident(name) => {
+                let container = name == "Array" || name == "Object";
+                if container && matches!(self.peek(), Token::Ident(word) if word == "of") {
+                    self.advance();
+                    let inner = Box::new(self.label()?);
+                    return Ok(if name == "Array" {
+                        Label::ArrayOf(inner)
+                    } else {
+                        Label::ObjectOf(inner)
+                    });
+                }
+                Ok(Label::Named(name))
+            }
+            Token::Null => Ok(Label::Named("Null".to_string())),
+            Token::LBrace => {
+                let mut fields: Vec<(String, Label)> = Vec::new();
+                self.skip_newlines();
+                if matches!(self.peek(), Token::RBrace) {
+                    self.advance();
+                    return Ok(Label::Fields(fields));
+                }
+                loop {
+                    self.skip_newlines();
+                    let name = match self.advance() {
+                        Token::Ident(name) => name,
+                        other => {
+                            return Err(format!(
+                                "expected a field name in a label, found {other:?}"
+                            ))
+                        }
+                    };
+                    if !matches!(self.advance(), Token::In) {
+                        return Err(format!(
+                            "field '{name}' in a label needs one too — `{name} ∈ Number`; a \
+                             label says what is inside, to the last field"
+                        ));
+                    }
+                    let label = self.label()?;
+                    if fields.iter().any(|(existing, _)| *existing == name) {
+                        return Err(format!("field '{name}' is listed twice in a label"));
+                    }
+                    fields.push((name, label));
+                    if self.list_separator(&Token::RBrace, "}")? {
+                        break;
+                    }
+                }
+                Ok(Label::Fields(fields))
+            }
             other => Err(format!(
-                "expected a kind or a class name after '∈', found {other:?}"
+                "expected a kind, a class name, `{{` or `Array of` after '∈', found {other:?}"
             )),
         }
     }
