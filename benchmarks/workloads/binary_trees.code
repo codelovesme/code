@@ -1,0 +1,42 @@
+| Binary trees: a complete tree of depth 12 built bottom-up out of nested
+| objects, walked with an explicit stack to count its nodes, ten times.
+| There is no recursion in the language, so C and Rust build and walk it
+| the same way.
+depth = 12
+reps = 10
+leaves = 1
+d = 0
+loop
+    if d = depth, break
+    leaves = leaves * 2
+    d = d + 1
+total = 0
+rep = 0
+loop
+    if rep = reps, break
+    level = []
+    i = 0
+    loop
+        if i = leaves, break
+        level += { l = null, r = null }
+        i = i + 1
+    loop
+        if level[1] = null, break
+        up = []
+        j = 0
+        loop
+            if level[j] = null, break
+            up += { l = level[j], r = level[j + 1] }
+            j = j + 2
+        level = up
+    stack = [level[0]]
+    loop
+        if stack = [], break
+        node = stack[length - 1]
+        stack = stack[0, length - 1)
+        total = total + 1
+        if node.l ≠ null
+            stack += node.l
+            stack += node.r
+    rep = rep + 1
+assert total = reps * (leaves * 2 - 1)
