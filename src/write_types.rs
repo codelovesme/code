@@ -100,14 +100,19 @@ pub fn write_types(
         }
         let count = edits.len();
         let relabelled = relabel(&source, edits);
-        let formatted = crate::format::format(&relabelled).map_err(|e| {
-            format!(
+        // Only the headers it labels change: the rest of the file stays as
+        // its author laid it out, so the diff is the labels and nothing else.
+        // It must still read, or nothing is written.
+        let reads = crate::lexer::tokenize(&relabelled)
+            .and_then(|lexed| crate::parser::parse(&lexed).map(|_| ()));
+        if let Err(e) = reads {
+            return Err(format!(
                 "{}: the labelled file would not parse ({}) — nothing written",
                 path.display(),
                 e.msg
-            )
-        })?;
-        std::fs::write(&path, formatted)
+            ));
+        }
+        std::fs::write(&path, relabelled)
             .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
         report.written.insert(path.display().to_string(), count);
     }
