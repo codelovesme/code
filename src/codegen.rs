@@ -350,6 +350,11 @@ pub(crate) fn compile_to_object_traced(
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_add_into = module.add_function(
+        "code_add_into",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_field = module.add_function(
         "code_field",
         void_ty.fn_type(
@@ -804,6 +809,7 @@ pub(crate) fn compile_to_object_traced(
         fn_object,
         fn_copy,
         fn_move,
+        fn_add_into,
         fn_field,
         fn_index,
         fn_length_of,
@@ -1134,6 +1140,8 @@ struct Gen<'a, 'm> {
     fn_object: FunctionValue<'a>,
     fn_copy: FunctionValue<'a>,
     fn_move: FunctionValue<'a>,
+    /// `runtime.c`'s `code_add_into` — `name += value` (ticket 121).
+    fn_add_into: FunctionValue<'a>,
     fn_field: FunctionValue<'a>,
     fn_index: FunctionValue<'a>,
     fn_length_of: FunctionValue<'a>,
@@ -3538,6 +3546,21 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// nothing may shadow a visible name (`verify.rs` refuses that), so the
     /// two cases can never both apply.
     fn gen_assign(&mut self, name: &str, value: &Expr) -> Result<(), String> {
+        // `name = name + x` (and `name += x`, which is the same statement)
+        // grows the variable's own value where it stands when nothing else
+        // holds it, instead of building a new one and dropping the old —
+        // one piece at a time was n² work (ticket 121).
+        if let Expr::Binary(lhs, BinOp::Add, rhs) = value {
+            if let (Expr::Ident(read), Some(slot)) = (&**lhs, self.lookup(name)) {
+                if read == name && !self.scalar_slots.contains_key(&slot) {
+                    let piece = self.gen_expr(rhs)?;
+                    self.builder
+                        .build_call(self.fn_add_into, &[slot.into(), piece.into()], "")
+                        .map_err(|e| e.to_string())?;
+                    return self.check_failed();
+                }
+            }
+        }
         let value = self.gen_val(value)?;
         let slot = match self.lookup(name) {
             Some(existing) => existing,

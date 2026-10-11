@@ -1,0 +1,91 @@
+| `name += value` and `name = name + value` grow the variable's own value
+| where it stands when nothing else holds it (ticket 121). Nothing about the
+| answers may change: whatever else holds the old value still sees the old
+| value.
+
+| A list grown alone, then shared and grown: the other holder keeps its own.
+xs = []
+i = 0
+loop
+    if i = 100, break
+    xs += i
+    i = i + 1
+emit Length { value = xs } to core get { value as n }
+assert n = 100
+assert xs[99] = 99
+ys = xs
+xs += 100
+assert xs[100] = 100
+assert ys[100] = null
+emit Length { value = ys } to core get { value as m }
+assert m = 100
+
+| Appending a list to itself, and a list as one element.
+zs = [1, 2]
+zs = zs + zs
+assert zs = [1, 2, 1, 2]
+zs += [[3]]
+assert zs = [1, 2, 1, 2, [3]]
+zs = zs + [4, 5]
+assert zs[6] = 5
+
+| Growing a list while walking it: the walk sees the list it started with.
+ws = [1, 2, 3]
+seen = 0
+loop w over ws
+    ws += w
+    seen = seen + 1
+assert seen = 3
+assert ws = [1, 2, 3, 1, 2, 3]
+
+| An element taken out keeps its value when the list grows past it.
+first = ws[0]
+ws += 9
+assert first = 1
+
+| Text: from a literal, then grown alone, then shared.
+s = "a"
+s = s + "b"
+s += "c"
+assert s = "abc"
+t = s
+s += "d"
+assert t = "abc"
+assert s = "abcd"
+s = s + 1
+assert s = "abcd1"
+lit = "x"
+copy = lit
+lit += "y"
+assert copy = "x"
+
+| Objects: a field replaced where it stands, a shared one left alone, a new
+| field merged the old way.
+counts = { a = 0, b = 0 }
+counts = counts + { a = counts.a + 1 }
+assert counts = { a = 1, b = 0 }
+before = counts
+counts = counts + { b = 5 }
+assert before = { a = 1, b = 0 }
+assert counts = { a = 1, b = 5 }
+counts = counts + { c = 7 }
+assert counts = { a = 1, b = 5, c = 7 }
+key = "a"
+counts = counts + { "$key" = counts[key] + 10 }
+assert counts.a = 11
+
+| Lists of objects grown inside a handler, returned, and grown again.
+Collect { count } =>
+    out = []
+    k = 0
+    loop
+        if k = count, break
+        out += { k = k }
+        k = k + 1
+    return Collected { value = out }
+emit Collect { count = 5 } to this get got
+items = got.value
+items += { k = 5 }
+assert items[5].k = 5
+emit Collect { count = 5 } to this get again
+assert again.value[4] = { k = 4 }
