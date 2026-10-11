@@ -932,6 +932,8 @@ pub(crate) fn compile_to_object_traced(
         layouts: Default::default(),
         shapes: HashMap::new(),
         str_constants: HashMap::new(),
+        likely_numbers: std::collections::HashSet::new(),
+        mostly_empty: std::collections::HashSet::new(),
         scalar_names: HashMap::new(),
         scalar_slots: HashMap::new(),
         location_slot,
@@ -1371,6 +1373,12 @@ struct Gen<'a, 'm> {
     shapes: HashMap<Vec<String>, PointerValue<'a>>,
     /// One read-only value slot per string literal (`str_constant`).
     str_constants: HashMap<String, PointerValue<'a>>,
+    /// Slots read where the program only ever puts a number (or null):
+    /// arithmetic on them checks the tag and reads the number in line.
+    likely_numbers: std::collections::HashSet<usize>,
+    /// Temporaries that usually end a statement holding no heap value; their
+    /// clear checks `heap` before calling (`clear_temps_from`).
+    mostly_empty: std::collections::HashSet<usize>,
     scalar_names: HashMap<String, crate::kinds::Kind>,
     /// The bindings that are a plain `double` or flag, not a slot, by the
     /// stack slot that holds them.
@@ -2658,9 +2666,41 @@ impl<'a, 'm> Gen<'a, 'm> {
             }
             for j in 0..count {
                 let slot = self.slot_at(buf, j, "temp")?;
+                if count > 1 || !self.mostly_empty.contains(&slot_key(buf)) {
+                    self.builder
+                        .build_call(self.fn_clear, &[slot.into()], "")
+                        .map_err(|e| e.to_string())?;
+                    continue;
+                }
+                // A temporary that usually ends holding nothing on the heap —
+                // a slow path's scratch that did not run, a sum of numbers —
+                // is looked at first, so clearing it is not a call for
+                // nothing. Only those: the look costs code at every
+                // statement, which a wasm module pays for in size.
+                let heap_at = self.value_field(slot, 4)?;
+                let heap = self
+                    .builder
+                    .build_load(self.i32_ty, heap_at, "heap")
+                    .map_err(|e| e.to_string())?
+                    .into_int_value();
+                let holds = self
+                    .builder
+                    .build_int_compare(IntPredicate::NE, heap, self.i32_ty.const_zero(), "holds")
+                    .map_err(|e| e.to_string())?;
+                let function = self.current_function();
+                let clear = self.context.append_basic_block(function, "clear");
+                let next = self.context.append_basic_block(function, "cleared");
+                self.builder
+                    .build_conditional_branch(holds, clear, next)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(clear);
                 self.builder
                     .build_call(self.fn_clear, &[slot.into()], "")
                     .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(next)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(next);
             }
         }
         // Cleared now, so free for whatever is generated next (`temp_pool`).
@@ -4191,9 +4231,68 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// container alone while the pointer is used.
     fn gen_operand(&mut self, expr: &Expr) -> Result<Val<'a>, String> {
         match expr {
-            Expr::Field(..) | Expr::Index(..) => self.gen_peek(expr).map(Val::Boxed),
+            Expr::Field(..) | Expr::Index(..) => {
+                let slot = self.gen_peek(expr)?;
+                if self
+                    .layouts
+                    .numbers
+                    .contains(&(expr as *const Expr as usize))
+                {
+                    self.likely_numbers.insert(slot_key(slot));
+                }
+                Ok(Val::Boxed(slot))
+            }
             _ => self.gen_val(expr),
         }
+    }
+
+    /// The number in `ptr`'s slot, read in line when the tag says it is
+    /// one; otherwise `code_operand_number` — which answers the same number
+    /// or words the failure — as before.
+    fn likely_number(
+        &mut self,
+        ptr: PointerValue<'a>,
+        other: PointerValue<'a>,
+        on_left: bool,
+        op_name: PointerValue<'a>,
+    ) -> Result<inkwell::values::FloatValue<'a>, String> {
+        let function = self.current_function();
+        let fast = self.context.append_basic_block(function, "isnumber");
+        let slow = self.context.append_basic_block(function, "notnumber");
+        let merge = self.context.append_basic_block(function, "number");
+        let is_number = self.has_tag(ptr, 0)?;
+        self.builder
+            .build_conditional_branch(is_number, fast, slow)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(fast);
+        let read = self.load_number(ptr)?;
+        self.builder
+            .build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(slow);
+        let side = self.context.i32_type().const_int(on_left as u64, false);
+        let called = self
+            .builder
+            .build_call(
+                self.fn_operand_number,
+                &[ptr.into(), other.into(), side.into(), op_name.into()],
+                "operand",
+            )
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .left()
+            .expect("code_operand_number returns a double")
+            .into_float_value();
+        self.builder
+            .build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(merge);
+        let phi = self
+            .builder
+            .build_phi(self.f64_ty, "number")
+            .map_err(|e| e.to_string())?;
+        phi.add_incoming(&[(&read, fast), (&called, slow)]);
+        Ok(phi.as_basic_value().into_float_value())
     }
 
     /// The slot `expr` reads, pointing into its container for a field or an
@@ -4364,6 +4463,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         b.position_at_end(slow);
         let key = self.box_val(Val::Num(n))?;
         let scratch = self.alloc_temp("indexref")?;
+        self.mostly_empty.insert(slot_key(scratch));
         let found = self
             .builder
             .build_call(
@@ -4634,6 +4734,11 @@ impl<'a, 'm> Gen<'a, 'm> {
                 continue;
             };
             let other = boxed[1 - side].unwrap_or(self.i8_ptr_ty.const_null());
+            if self.likely_numbers.contains(&slot_key(ptr)) {
+                let number = self.likely_number(ptr, other, side == 0, op_name)?;
+                numbers.push(Val::Num(number));
+                continue;
+            }
             let on_left = self.context.i32_type().const_int((side == 0) as u64, false);
             let number = self
                 .builder
@@ -4688,6 +4793,14 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .map(Val::Num)
                 .map_err(|e| e.to_string());
         }
+        let likely = |gen: &Self, v: &Val<'a>| match v {
+            Val::Num(_) => true,
+            Val::Boxed(ptr) => gen.likely_numbers.contains(&slot_key(*ptr)),
+            _ => false,
+        };
+        if likely(self, &lhs) && likely(self, &rhs) {
+            return self.likely_add(lhs, rhs);
+        }
         let a = self.box_val(lhs)?;
         let b = self.box_val(rhs)?;
         let out = self.alloc_temp("binop")?;
@@ -4695,6 +4808,64 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_call(self.fn_add, &[out.into(), a.into(), b.into()], "")
             .map_err(|e| e.to_string())?;
         self.check_failed()?;
+        Ok(Val::Boxed(out))
+    }
+
+    /// `a + b` where both sides are numbers wherever the program puts them:
+    /// added in line when both tags say Number, written into the result's
+    /// slot; `code_add` otherwise — a string on either side still joins, a
+    /// wrong kind still fails the way it always did.
+    fn likely_add(&mut self, lhs: Val<'a>, rhs: Val<'a>) -> Result<Val<'a>, String> {
+        let out = self.alloc_temp("binop")?;
+        self.mostly_empty.insert(slot_key(out));
+        let function = self.current_function();
+        let fast = self.context.append_basic_block(function, "addnumbers");
+        let slow = self.context.append_basic_block(function, "addvalues");
+        let merge = self.context.append_basic_block(function, "added");
+        let mut checks = Vec::new();
+        for v in [lhs, rhs] {
+            if let Val::Boxed(ptr) = v {
+                checks.push(self.has_tag(ptr, 0)?);
+            }
+        }
+        let both = checks
+            .into_iter()
+            .reduce(|a, b| self.builder.build_and(a, b, "both").expect("and"))
+            .unwrap_or_else(|| self.context.bool_type().const_int(1, false));
+        self.builder
+            .build_conditional_branch(both, fast, slow)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(fast);
+        let a = self.number_of(lhs)?;
+        let b = self.number_of(rhs)?;
+        let sum = self
+            .builder
+            .build_float_add(a, b, "sum")
+            .map_err(|e| e.to_string())?;
+        // `out` is a fresh temporary — zeroed, heap 0 — so a number is its
+        // tag and its bytes.
+        self.builder
+            .build_store(out, self.i32_ty.const_zero())
+            .map_err(|e| e.to_string())?;
+        let at = self.value_field(out, 8)?;
+        self.builder
+            .build_store(at, sum)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(slow);
+        let a = self.box_val(lhs)?;
+        let b = self.box_val(rhs)?;
+        self.builder
+            .build_call(self.fn_add, &[out.into(), a.into(), b.into()], "")
+            .map_err(|e| e.to_string())?;
+        self.check_failed()?;
+        self.builder
+            .build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(merge);
+        self.likely_numbers.insert(slot_key(out));
         Ok(Val::Boxed(out))
     }
 
@@ -5622,6 +5793,12 @@ fn trace_target_name(target: &EmitTarget) -> String {
         EmitTarget::Core => "core".to_string(),
         EmitTarget::Module(alias) => format!("module:{alias}"),
     }
+}
+
+/// A slot pointer as a key for `likely_numbers`.
+fn slot_key(ptr: PointerValue<'_>) -> usize {
+    use inkwell::values::AsValueRef;
+    ptr.as_value_ref() as usize
 }
 
 /// FNV-1a over a field name's bytes — `runtime.c`'s `key_hash`, which
