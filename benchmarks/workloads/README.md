@@ -91,3 +91,17 @@ with one call and compute in line.
 | binary_trees | 0.0034 s | 0.027 s | 8× | 8× |
 | string_build | 0.0014 s | 0.017 s | 12× | 12× |
 | dictionary | 0.0035 s | 0.075 s | 22× | 22× |
+
+## Finding a field by hash (2026-10-11)
+
+Every key is stored with its hash, and every `.field` read and part write
+remembers where it found the field last. Instructions executed (callgrind),
+before → after:
+
+| Workload | before | after | code / C (time) |
+|---|---|---|---|
+| dictionary | 674M | 204M | 22× → 5× |
+| points | 339M | 239M | 48× → ~40× |
+| spectral_norm | 5,246M | 4,926M | 3× |
+| binary_trees | 232M | 234M | 8× |
+| string_build | 120M | 120M | 12× |

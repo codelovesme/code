@@ -340,6 +340,7 @@ pub(crate) fn compile_to_object_traced(
         ),
         None,
     );
+    let fn_object_literal = module.add_function("code_object_literal", fn_object.get_type(), None);
     let fn_copy = module.add_function(
         "code_copy",
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
@@ -370,7 +371,15 @@ pub(crate) fn compile_to_object_traced(
     );
     let fn_field_ref = module.add_function(
         "code_field_ref",
-        i8_ptr_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        i8_ptr_ty.fn_type(
+            &[
+                i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
+                context.i32_type().into(),
+                i8_ptr_ty.into(),
+            ],
+            false,
+        ),
         None,
     );
     let fn_index_ref = module.add_function(
@@ -388,6 +397,8 @@ pub(crate) fn compile_to_object_traced(
                 i8_ptr_ty.into(),
                 i8_ptr_ty.into(),
                 i64_ty.into(),
+                i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
                 i8_ptr_ty.into(),
             ],
             false,
@@ -838,6 +849,7 @@ pub(crate) fn compile_to_object_traced(
         fn_null,
         fn_array,
         fn_object,
+        fn_object_literal,
         fn_copy,
         fn_move,
         fn_add_into,
@@ -889,6 +901,7 @@ pub(crate) fn compile_to_object_traced(
         slots: Vec::new(),
         temps: Vec::new(),
         temp_pool: Vec::new(),
+        hashed_keys: HashMap::new(),
         native_links: BTreeMap::new(),
         web_instance,
         static_native_fns,
@@ -1172,6 +1185,9 @@ struct Gen<'a, 'm> {
     fn_null: FunctionValue<'a>,
     fn_array: FunctionValue<'a>,
     fn_object: FunctionValue<'a>,
+    /// `runtime.c`'s `code_object_literal` — an object literal whose keys
+    /// all come with their hash in front (`hashed_key`).
+    fn_object_literal: FunctionValue<'a>,
     fn_copy: FunctionValue<'a>,
     fn_move: FunctionValue<'a>,
     /// `runtime.c`'s `code_add_into` — `name += value` (ticket 121).
@@ -1297,6 +1313,9 @@ struct Gen<'a, 'm> {
     /// `break` or `continue` that skips a clear leaves a value behind, as it
     /// always did; every write releases what a slot held first.)
     temp_pool: Vec<(PointerValue<'a>, u64)>,
+    /// One constant per field name an object literal writes, laid out the
+    /// way an object stores a key (`hashed_key`).
+    hashed_keys: HashMap<String, PointerValue<'a>>,
     /// What `link "x" as x` bound `x` to for `emit ... to x` dispatch, by
     /// alias. A raw SSA value either way, not a `CodeValue` slot (see
     /// `alloc_slot`'s doc comment; this never needs to survive a
@@ -3679,26 +3698,97 @@ impl<'a, 'm> Gen<'a, 'm> {
         value: &Expr,
     ) -> Result<(), String> {
         let len = path.len() as u64;
-        let keys = self.alloc_temp_buffer(len, "setkeys")?;
-        for (i, key) in path.iter().enumerate() {
-            let mark = self.temps.len();
-            let key_ptr = self.gen_expr(key)?;
-            let dest = self.slot_at(keys, i as u64, "setkey")?;
-            self.builder
-                .build_call(self.fn_copy, &[dest.into(), key_ptr.into()], "")
-                .map_err(|e| e.to_string())?;
-            self.clear_temps_from(mark)?;
-        }
-        let value = self.gen_expr(value)?;
         let count = self.i64_ty.const_int(len, false);
+        // Pointers to each key where it already is — kept alive by this
+        // statement's temporaries until the call.
+        let keys = self
+            .entry_builder()
+            .build_array_alloca(self.i8_ptr_ty, count, "setkeys")
+            .map_err(|e| e.to_string())?;
+        for (i, key) in path.iter().enumerate() {
+            let key_ptr = self.gen_expr(key)?;
+            let at = unsafe {
+                self.builder
+                    .build_gep(
+                        self.i8_ptr_ty,
+                        keys,
+                        &[self.i64_ty.const_int(i as u64, false)],
+                        "setkey",
+                    )
+                    .map_err(|e| e.to_string())?
+            };
+            self.builder
+                .build_store(at, key_ptr)
+                .map_err(|e| e.to_string())?;
+        }
+        // A literal field name's hash, worked out here (bit 32 says it is
+        // one), and this assignment's memory of where each field was last.
+        let hashes: Vec<_> = path
+            .iter()
+            .map(|key| match key {
+                Expr::Str(name) => self
+                    .i64_ty
+                    .const_int((1u64 << 32) | u64::from(key_hash(name)), false),
+                _ => self.i64_ty.const_zero(),
+            })
+            .collect();
+        let hash_ty = self.i64_ty.array_type(len as u32);
+        let hash_table = self.module.add_global(hash_ty, None, "sethashes");
+        hash_table.set_initializer(&self.i64_ty.const_array(&hashes));
+        hash_table.set_constant(true);
+        hash_table.set_linkage(inkwell::module::Linkage::Private);
+        let guesses = self.module.add_global(hash_ty, None, "setguesses");
+        guesses.set_initializer(&hash_ty.const_zero());
+        guesses.set_linkage(inkwell::module::Linkage::Private);
+        let value = self.gen_expr(value)?;
         self.builder
             .build_call(
                 self.fn_set_at,
-                &[target.into(), keys.into(), count.into(), value.into()],
+                &[
+                    target.into(),
+                    keys.into(),
+                    count.into(),
+                    value.into(),
+                    hash_table.as_pointer_value().into(),
+                    guesses.as_pointer_value().into(),
+                ],
                 "",
             )
             .map_err(|e| e.to_string())?;
         self.check_failed()
+    }
+
+    /// `name` the way an object stores a key: its hash (`key_hash`, four
+    /// bytes, little-endian as both targets are), then its characters and a
+    /// NUL — and a pointer to the characters. Lets `code_object_literal`
+    /// copy a literal's keys without hashing them each time it runs.
+    fn hashed_key(&mut self, name: &str) -> PointerValue<'a> {
+        if let Some(ptr) = self.hashed_keys.get(name) {
+            return *ptr;
+        }
+        let mut bytes = key_hash(name).to_le_bytes().to_vec();
+        bytes.extend_from_slice(name.as_bytes());
+        bytes.push(0);
+        let i8_ty = self.context.i8_type();
+        let data = i8_ty.const_array(
+            &bytes
+                .iter()
+                .map(|b| i8_ty.const_int(u64::from(*b), false))
+                .collect::<Vec<_>>(),
+        );
+        let global =
+            self.module
+                .add_global(i8_ty.array_type(bytes.len() as u32), None, "hashedkey");
+        global.set_initializer(&data);
+        global.set_constant(true);
+        global.set_linkage(inkwell::module::Linkage::Private);
+        let ptr = unsafe {
+            global
+                .as_pointer_value()
+                .const_gep(i8_ty, &[self.i64_ty.const_int(4, false)])
+        };
+        self.hashed_keys.insert(name.to_string(), ptr);
+        ptr
     }
 
     /// Searches the scope stack innermost-to-outermost, returning the
@@ -3846,9 +3936,26 @@ impl<'a, 'm> Gen<'a, 'm> {
             Expr::Field(obj, field) => {
                 let base = self.gen_peek(obj)?;
                 let name = self.global_str(field, "fieldname")?;
+                let hash = self
+                    .context
+                    .i32_type()
+                    .const_int(u64::from(key_hash(field)), false);
+                // This read's own memory of where the field was last time.
+                let guess = self.module.add_global(self.i64_ty, None, "fieldguess");
+                guess.set_initializer(&self.i64_ty.const_zero());
+                guess.set_linkage(inkwell::module::Linkage::Private);
                 let found = self
                     .builder
-                    .build_call(self.fn_field_ref, &[base.into(), name.into()], "fieldref")
+                    .build_call(
+                        self.fn_field_ref,
+                        &[
+                            base.into(),
+                            name.into(),
+                            hash.into(),
+                            guess.as_pointer_value().into(),
+                        ],
+                        "fieldref",
+                    )
                     .map_err(|e| e.to_string())?
                     .try_as_basic_value()
                     .left()
@@ -4372,6 +4479,9 @@ impl<'a, 'm> Gen<'a, 'm> {
                 Ok(out)
             }
             Expr::Object(fields) => {
+                let all_literal = fields
+                    .iter()
+                    .all(|(key, _)| matches!(key, FieldKey::Literal(_)));
                 let len = fields.len() as u64;
                 let key_count = self.i64_ty.const_int(len, false);
                 // Plain pointers to string literals, fully rewritten before
@@ -4386,7 +4496,9 @@ impl<'a, 'm> Gen<'a, 'm> {
                 for (i, (key, value)) in fields.iter().enumerate() {
                     let key_ptr = match key {
                         // Written down: a pointer to a program literal, the
-                        // same as every other constant here.
+                        // same as every other constant here — with its hash
+                        // in front when every key is one (`hashed_key`).
+                        FieldKey::Literal(name) if all_literal => self.hashed_key(name),
                         FieldKey::Literal(name) => self.global_str(name, "keylit")?,
                         // Built while the program runs (`{ "$name" = v }`).
                         // Always a Str — it is an interpolation, and
@@ -4439,7 +4551,11 @@ impl<'a, 'm> Gen<'a, 'm> {
                 let len_val = self.i64_ty.const_int(len, false);
                 self.builder
                     .build_call(
-                        self.fn_object,
+                        if all_literal {
+                            self.fn_object_literal
+                        } else {
+                            self.fn_object
+                        },
                         &[
                             out.into(),
                             keys_buf.into(),
@@ -4451,18 +4567,15 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .map_err(|e| e.to_string())?;
                 Ok(out)
             }
-            Expr::Field(obj, field) => {
-                let obj_ptr = self.gen_expr(obj)?;
-                let field_ptr = self.global_str(field, "fieldname")?;
+            // Found the way an operand is (`gen_peek`: the field's hash, this
+            // read's remembered position), then copied, since this value is
+            // kept or handed on.
+            Expr::Field(..) => {
+                let found = self.gen_peek(expr)?;
                 let out = self.alloc_temp("field")?;
                 self.builder
-                    .build_call(
-                        self.fn_field,
-                        &[out.into(), obj_ptr.into(), field_ptr.into()],
-                        "",
-                    )
+                    .build_call(self.fn_copy, &[out.into(), found.into()], "")
                     .map_err(|e| e.to_string())?;
-                self.check_failed()?;
                 Ok(out)
             }
             Expr::LengthOf(value) => {
@@ -5080,8 +5193,27 @@ fn trace_target_name(target: &EmitTarget) -> String {
     }
 }
 
+/// FNV-1a over a field name's bytes — `runtime.c`'s `key_hash`, which
+/// stores the same number in front of every key an object holds, so a
+/// literal `.field` read is compared by hash first without hashing it each
+/// time the program runs.
+fn key_hash(key: &str) -> u32 {
+    key.bytes().fold(2_166_136_261u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    /// The FNV-1a published vectors, so the compiler's hash of a field name
+    /// is the one `runtime.c` stores in front of the key.
+    #[test]
+    fn key_hash_is_fnv_1a() {
+        assert_eq!(super::key_hash(""), 0x811c_9dc5);
+        assert_eq!(super::key_hash("a"), 0xe40c_292c);
+        assert_eq!(super::key_hash("foobar"), 0xbf9c_f968);
+    }
+
     use super::*;
     use std::fs;
 
