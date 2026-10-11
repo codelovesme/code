@@ -4492,6 +4492,49 @@ void code_add_into(CodeValue *dst, const CodeValue *b) {
     code_add(dst, dst, b);
 }
 
+/* What `name = name[from, to)` compiles to — popping a stack, dropping a
+ * queue's head: the list cut where it stands when nothing else holds it,
+ * the elements outside the range let go, the rest moved to the front. The
+ * same answer as `code_slice`, which everything else (a shared list, a
+ * string, a wrong kind) still goes to. */
+void code_slice_into(CodeValue *dst, const CodeValue *from, const CodeValue *to) {
+    if (dst->tag == CODE_ARRAY && held_alone(dst) && from->tag == CODE_NUMBER
+        && to->tag == CODE_NUMBER) {
+        double len = (double)dst->len;
+        double lo = from->number < 0 ? 0 : (from->number > len ? len : from->number);
+        double hi = to->number < 0 ? 0 : (to->number > len ? len : to->number);
+        long long start = (long long)lo;
+        long long stop = (long long)hi;
+        if (start < stop) {
+            for (long long i = 0; i < start; i++) {
+                code_release(slot_at(dst->items, i));
+            }
+            for (long long i = stop; i < dst->len; i++) {
+                code_release(slot_at(dst->items, i));
+            }
+            if (start > 0) {
+                memmove(dst->items, slot_at(dst->items, start),
+                        (size_t)(stop - start) * CODE_VALUE_SLOT_SIZE);
+            }
+            dst->len = stop - start;
+            return;
+        }
+        /* Empty: an empty list owns no block. */
+        CodeValue empty;
+        memset(&empty, 0, sizeof empty);
+        code_array(&empty, NULL, 0);
+        code_move(dst, &empty);
+        return;
+    }
+    CodeValue cut;
+    memset(&cut, 0, sizeof cut);
+    code_slice(&cut, dst, from, to);
+    if (code_failed) {
+        return; /* `cut` was never written, and `dst` keeps its value */
+    }
+    code_move(dst, &cut);
+}
+
 /* `fishes[5].x = v`: the part of `*target` at `keys` (a slot buffer, one key
  * per step) replaced by `*value`. What `Expr::SetAt` compiles to, and the
  * same rules as interpreter.rs's `set_at`, messages included.

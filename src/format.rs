@@ -177,6 +177,10 @@ impl Formatter<'_> {
             // (`data.items[2]`), told apart by whether anything that could
             // end an operand precedes it. Only the literal takes a space.
             (_, Token::LBracket) if ends_operand(prev) => false,
+            // A `(` right after an operand opens a range that leaves its
+            // start out (`xs(0, length)`) — there are no calls, so it can be
+            // nothing else — and closes up the same way.
+            (_, Token::LParen) if ends_operand(prev) => false,
             // Empty braces close up: `Ping {}`, not `Ping { }`. The inner
             // space exists to hold content off the braces, and there is none.
             (Token::LBrace, Token::RBrace) => false,

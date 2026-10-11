@@ -111,3 +111,17 @@ before → after:
 A text's byte length is kept in its block header, so appending no longer
 measures the whole text again: string_build 120M → 39M instructions,
 0.017 s → 0.0046 s, **12× → 3× C**.
+
+## Slicing in place, null checks in line (2026-10-11)
+
+`stack = stack[0, length - 1)` cuts the list where it stands when nothing
+else holds it, and `x = null` is a kind check rather than a call:
+binary_trees 234M → ~165M instructions, **9× → 6× C**.
+
+| Workload | C | code | code / C |
+|---|---|---|---|
+| spectral_norm | 0.167 s | 0.475 s | 3× |
+| binary_trees | 0.0033 s | 0.021 s | 6× |
+| string_build | 0.0014 s | 0.005 s | 3–4× |
+| dictionary | 0.0038 s | 0.021 s | 6× |
+| points | 0.0007 s | 0.028 s | 40× |

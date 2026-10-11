@@ -19,7 +19,7 @@ assert s[0, length) = "héllo"
 assert s[0, 2) = "hé"
 assert s[1, length) = "éllo"
 assert s[0, length - 1) = "héll"
-assert s (0, length) = "éllo"
+assert s(0, length) = "éllo"
 assert s[0, length - 1] = "héllo"
 
 | Bounds clamp, and an empty range is the empty string rather than null.

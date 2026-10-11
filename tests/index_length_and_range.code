@@ -15,9 +15,9 @@ assert xs[0, length - 1] = [1, 2, 3]
 assert xs[0, length - 1) = [1, 2]
 assert xs[1, 2] = [2, 3]
 assert xs[1, 2) = [2]
-assert xs (0, 2] = [2, 3]
-assert xs (0, 2) = [2]
-assert xs (0, length) = [2, 3]
+assert xs(0, 2] = [2, 3]
+assert xs(0, 2) = [2]
+assert xs(0, length) = [2, 3]
 
 | Both bounds clamp rather than fail: a single index past the end already
 | answers null, so a range past the end answers the part that is there.
