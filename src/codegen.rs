@@ -3767,7 +3767,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         // calls for nothing. Moved, it is empty, so its clear is skipped too.
         // A sum of numbers, say, written into a variable that holds nothing
         // on the heap: the tag and the number, in line.
-        if self.likely_numbers.contains(&slot_key(value_ptr)) && !self.loop_blocks.is_empty() {
+        if self.likely_numbers.contains(&slot_key(value_ptr)) && self.hot() {
             return self.likely_number_assign(slot, value_ptr);
         }
         let temp = self
@@ -4524,10 +4524,8 @@ impl<'a, 'm> Gen<'a, 'm> {
                 }
                 Ok(Val::Boxed(slot))
             }
-            // A variable, only inside a loop: the check is code at every
-            // operand, which pays for itself where it runs many times and is
-            // only size where it runs once (Aquarium's handlers: +10% wasm).
-            Expr::Ident(_) if !self.loop_blocks.is_empty() => {
+            // A variable, only where code runs many times (`hot`).
+            Expr::Ident(_) if self.hot() => {
                 let value = self.gen_val(expr)?;
                 if let Val::Boxed(slot) = value {
                     if self
@@ -4542,6 +4540,17 @@ impl<'a, 'm> Gen<'a, 'm> {
             }
             _ => self.gen_val(expr),
         }
+    }
+
+    /// Whether the code being generated runs many times: inside a loop. The
+    /// in-line reads — a field's known slot, a list element, a number — are
+    /// code at every site; they pay for themselves where they run many times
+    /// and are only size where they run once. Aquarium's wasm: 1,052K with
+    /// them everywhere, 936K in loops only, the benchmarks no slower. (Also
+    /// counting the handlers a loop sends to made it 1,102K: nearly every
+    /// handler of a frame-driven page is one.)
+    fn hot(&self) -> bool {
+        !self.loop_blocks.is_empty()
     }
 
     /// The number in `ptr`'s slot, read in line when the tag says it is
@@ -4608,7 +4617,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .fields
                     .get(&(expr as *const Expr as usize))
                     .cloned();
-                let fast = match layout {
+                let fast = match layout.filter(|_| self.hot()) {
                     Some((order, at)) => Some(self.shaped_slot(base, &order, at)?),
                     None => None,
                 };
@@ -4660,7 +4669,9 @@ impl<'a, 'm> Gen<'a, 'm> {
                 let base = self.gen_peek(arr)?;
                 let key = self.gen_val(index)?;
                 if let Val::Num(n) = self.settle(key)? {
-                    return self.number_index(base, n);
+                    if self.hot() {
+                        return self.number_index(base, n);
+                    }
                 }
                 let key = self.box_val(key)?;
                 let scratch = self.alloc_temp("indexref")?;
@@ -5032,7 +5043,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 continue;
             };
             let other = boxed[1 - side].unwrap_or(self.i8_ptr_ty.const_null());
-            if self.likely_numbers.contains(&slot_key(ptr)) {
+            if self.likely_numbers.contains(&slot_key(ptr)) && self.hot() {
                 let number = self.likely_number(ptr, other, side == 0, op_name)?;
                 numbers.push(Val::Num(number));
                 continue;
@@ -5096,7 +5107,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             Val::Boxed(ptr) => gen.likely_numbers.contains(&slot_key(*ptr)),
             _ => false,
         };
-        if likely(self, &lhs) && likely(self, &rhs) {
+        if likely(self, &lhs) && likely(self, &rhs) && self.hot() {
             return self.likely_add(lhs, rhs);
         }
         let a = self.box_val(lhs)?;

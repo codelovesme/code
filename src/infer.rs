@@ -143,6 +143,7 @@ fn check_file_into(
         parent: Vec::new(),
         shapes: Vec::new(),
         labelled: Vec::new(),
+        mixed: false,
         inputs: HashMap::new(),
         results: HashMap::new(),
         local: std::collections::HashSet::new(),
@@ -161,6 +162,23 @@ fn check_file_into(
     for statement in statements {
         if let Stmt::HandlerDef { class_name, .. } = statement {
             infer.local.insert(class_name.clone());
+        }
+    }
+    // A handler's labels say what it receives before any body sends it
+    // something, wherever in the file the handler is written.
+    for statement in statements {
+        if let Stmt::HandlerDef {
+            class_name, fields, ..
+        } = statement
+        {
+            let input = infer.input(class_name);
+            for field in fields {
+                if let Some(label) = &field.annotation {
+                    let var = infer.field(input, &field.field);
+                    let labelled = infer.label(label);
+                    infer.unify(var, labelled, &format!("field '{}'", field.field));
+                }
+            }
         }
     }
     // The top level first, handlers after: a handler sees its file's top
@@ -255,6 +273,11 @@ struct Infer<'a> {
     /// label is the label check's to report (`diagnostics.rs`), as an error;
     /// this reports only kinds no label spoke for.
     labelled: Vec<bool>,
+    /// Set while the elements of one list literal meet: a list written with
+    /// a text and an element in it is born of mixed kinds, which is no
+    /// value changing kind — its elements are `Any` (until ticket 123 gives
+    /// it a union).
+    mixed: bool,
     /// What each of this file's handlers receives: the particles emitted to
     /// it flow in here. A class name groups nothing by itself — two
     /// `Result { … }` literals that never meet are two values.
@@ -363,7 +386,7 @@ impl Infer<'_> {
                 Shape::Object { fields: fa, map }
             }
             (sa, sb) => {
-                if !labelled {
+                if !labelled && !self.mixed {
                     self.report(what, &sa, &sb);
                 }
                 Shape::Any
@@ -775,10 +798,12 @@ impl Infer<'_> {
             },
             Expr::Array(items) => {
                 let element = self.fresh(Shape::Unknown);
+                let items: Vec<Var> = items.iter().map(|item| self.expr(item)).collect();
+                let mixed = std::mem::replace(&mut self.mixed, true);
                 for item in items {
-                    let item = self.expr(item);
                     self.unify(element, item, "an element of a list");
                 }
+                self.mixed = mixed;
                 self.fresh(Shape::Array(element))
             }
             Expr::Object(fields) => self.object(fields),
@@ -815,7 +840,7 @@ impl Infer<'_> {
 
     fn index(&mut self, container_expr: &Expr, index: &Expr) -> Var {
         let container = self.expr(container_expr);
-        let index_var = self.expr(index);
+        self.expr(index);
         match (self.shape(container), index) {
             (Shape::Array(element), _) => element,
             (Shape::Scalar(ValueKind::String), _) => self.scalar(ValueKind::String),
@@ -826,10 +851,9 @@ impl Infer<'_> {
                 _,
             ) => values,
             (Shape::Object { .. } | Shape::Unknown, Expr::Str(name)) => self.field(container, name),
-            (Shape::Unknown, _) => match self.shape(index_var) {
-                Shape::Scalar(ValueKind::Number) => self.element(container),
-                _ => self.fresh(Shape::Any),
-            },
+            // A text is indexed by number too (`s[0]`), so an index alone does
+            // not make an unknown value a list.
+            (Shape::Unknown, _) => self.fresh(Shape::Any),
             _ => self.fresh(Shape::Any),
         }
     }
@@ -1026,6 +1050,35 @@ mod tests {
         assert_eq!(found.len(), 2, "{found:?}");
         assert!(found[0].contains("'b.x'"), "{}", found[0]);
         assert!(found[1].contains("an element of 'xs'"), "{}", found[1]);
+    }
+
+    #[test]
+    fn a_list_written_with_mixed_kinds_is_born_that_way() {
+        // A text and an element side by side is what a UI tree is; until
+        // ticket 123 gives it a union, its elements are `Any`.
+        assert!(warnings(
+            "page = { tag = \"p\", children = [\"Hi \", { tag = \"b\", children = [\"you\"] }] }\n"
+        )
+        .is_empty());
+        // A list that was one kind still keeps it.
+        let found = warnings("xs = [1, 2]\nxs += [\"three\"]\n");
+        assert_eq!(found.len(), 1, "{found:?}");
+    }
+
+    #[test]
+    fn a_text_is_indexed_by_number_too() {
+        assert!(warnings(
+            "S { s ∈ String } =>\n    t = s\n    if t[0] = \"T\", t = \"Add time\"\n    return Ok {}\n"
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn a_label_speaks_before_the_bodies_that_send_to_it() {
+        assert!(warnings(
+            "A =>\n    emit Read { fallback = {} } to this\n    emit Read { fallback = [] } to this\n    return Ok {}\n\nRead { fallback ∈ Any } =>\n    return Ok {}\n"
+        )
+        .is_empty());
     }
 
     #[test]
