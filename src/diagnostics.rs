@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::ast::{BinOp, EmitTarget, Expr, Field, FieldKey, Program, Span, Stmt, UnOp, ValueKind};
+use crate::ast::{
+    BinOp, EmitTarget, Expr, Field, FieldKey, Label, Program, Span, Stmt, UnOp, ValueKind,
+};
 use crate::span::Origin;
 
 /// Severity used by the machine-readable checker report.
@@ -147,9 +149,12 @@ fn check_statements(
             } => {
                 let mut handler_types = HashMap::new();
                 for field in fields {
-                    if let Some(annotation) = &field.annotation {
-                        handler_types
-                            .insert(field.name.clone(), static_type_from_annotation(annotation));
+                    if let Some(known) = field
+                        .annotation
+                        .as_ref()
+                        .and_then(static_type_from_annotation)
+                    {
+                        handler_types.insert(field.name.clone(), known);
                     }
                 }
                 check_statements(
@@ -197,7 +202,10 @@ fn check_statements(
                         Some(name),
                         *span,
                     );
-                    types.insert(name.clone(), static_type_from_annotation(annotation));
+                    match static_type_from_annotation(annotation) {
+                        Some(known) => types.insert(name.clone(), known),
+                        None => types.remove(name),
+                    };
                 } else if let Some(value_type) = static_type(value, types) {
                     types.insert(name.clone(), value_type);
                 } else {
@@ -354,7 +362,7 @@ fn check_emit(
             continue;
         };
         if !object_fields.iter().any(|(name, _)| *name == field.field) {
-            let expected = annotation.clone();
+            let expected = annotation.spelling();
             context.diagnostics.push(Diagnostic {
                 code: "missing-field",
                 severity: Severity::Error,
@@ -405,7 +413,7 @@ fn check_return(
 }
 
 fn check_value_against_annotation(
-    annotation: &str,
+    annotation: &Label,
     value: &Expr,
     types: &HashMap<String, StaticType>,
     current_handler: Option<&str>,
@@ -413,30 +421,32 @@ fn check_value_against_annotation(
     field: Option<&str>,
     span: Option<Span>,
 ) {
-    let Some(actual) = static_type(value, types) else {
+    let Some(mismatch) = label_mismatch(annotation, value, types) else {
         return;
     };
-    let expected = ExpectedType::from_name(annotation);
-    if expected.accepts(&actual) {
-        return;
-    }
-    let actual_name = actual.name();
+    // Where inside the value it went wrong, as a path from the field or
+    // binding the label is on: `fish.x`, `shapes[2].op`.
+    let at = match (field, mismatch.path.is_empty()) {
+        (Some(field), _) => format!("field '{field}{}'", mismatch.path),
+        (None, true) => "value for the annotated binding".to_string(),
+        (None, false) => format!("'{}' of the annotated binding", &mismatch.path[1..]),
+    };
+    let expected = mismatch.expected;
+    let actual_name = mismatch.actual;
+    let message = if mismatch.unnamed {
+        format!("{at} is not in its label {expected} — a label names every field, to the last one")
+    } else {
+        format!("{at} expects {expected}, but the statically known value is {actual_name}")
+    };
     context.diagnostics.push(Diagnostic {
         code: "type-mismatch",
         severity: Severity::Error,
-        message: match field {
-            Some(field) => format!(
-                "field '{field}' expects {annotation}, but the statically known value is {actual_name}"
-            ),
-            None => format!(
-                "value for the annotated binding expects {annotation}, but the statically known value is {actual_name}"
-            ),
-        },
+        message,
         handler: current_handler.map(str::to_owned),
         particle: None,
         target: None,
         field: field.map(str::to_owned),
-        expected: Some(annotation.to_string()),
+        expected: Some(expected),
         actual: Some(actual_name),
         suggestion: None,
         span,
@@ -444,10 +454,121 @@ fn check_value_against_annotation(
     });
 }
 
-fn static_type_from_annotation(annotation: &str) -> StaticType {
-    match ValueKind::parse(annotation) {
-        Some(kind) => StaticType::Kind(kind),
-        None => StaticType::Class(annotation.to_string()),
+/// Where a statically known value does not fit a label, and how.
+struct Mismatch {
+    path: String,
+    expected: String,
+    actual: String,
+    /// A field the label does not name at all, rather than one of the wrong
+    /// kind; `expected` is then the label it is missing from.
+    unnamed: bool,
+}
+
+/// Checks `value` against `label` as far as it is known here: a literal is
+/// walked into — every field of an object literal, every element of a list
+/// literal — anything else only by its kind. null fits every label (ticket
+/// 122), and `Any` fits everything.
+fn label_mismatch(
+    label: &Label,
+    value: &Expr,
+    types: &HashMap<String, StaticType>,
+) -> Option<Mismatch> {
+    let actual = static_type(value, types)?;
+    if matches!(actual, StaticType::Kind(ValueKind::Null)) {
+        return None;
+    }
+    let wrong = |expected: String| {
+        Some(Mismatch {
+            path: String::new(),
+            expected,
+            actual: actual.name(),
+            unnamed: false,
+        })
+    };
+    let inside = |path: String, found: Mismatch| Mismatch {
+        path: format!("{path}{}", found.path),
+        ..found
+    };
+    match label {
+        Label::Named(name) if name == "Any" => None,
+        Label::Named(name) => {
+            if ExpectedType::from_name(name).accepts(&actual) {
+                None
+            } else {
+                wrong(name.clone())
+            }
+        }
+        Label::Fields(fields) => {
+            if !ExpectedType::Kind(ValueKind::Object).accepts(&actual) {
+                return wrong(label.spelling());
+            }
+            let Expr::Object(literal) = value else {
+                return None;
+            };
+            for (key, field_value) in literal {
+                let FieldKey::Literal(name) = key else {
+                    continue;
+                };
+                if name == "_class" {
+                    continue;
+                }
+                match fields.iter().find(|(field, _)| field == name) {
+                    Some((_, field_label)) => {
+                        if let Some(found) = label_mismatch(field_label, field_value, types) {
+                            return Some(inside(format!(".{name}"), found));
+                        }
+                    }
+                    None => {
+                        return Some(Mismatch {
+                            path: format!(".{name}"),
+                            expected: label.spelling(),
+                            actual: "a field".to_string(),
+                            unnamed: true,
+                        })
+                    }
+                }
+            }
+            None
+        }
+        Label::ArrayOf(element) => {
+            if !ExpectedType::Kind(ValueKind::Array).accepts(&actual) {
+                return wrong(label.spelling());
+            }
+            let Expr::Array(items) = value else {
+                return None;
+            };
+            items.iter().enumerate().find_map(|(i, item)| {
+                label_mismatch(element, item, types).map(|found| inside(format!("[{i}]"), found))
+            })
+        }
+        Label::ObjectOf(element) => {
+            if !ExpectedType::Kind(ValueKind::Object).accepts(&actual) {
+                return wrong(label.spelling());
+            }
+            let Expr::Object(literal) = value else {
+                return None;
+            };
+            literal.iter().find_map(|(key, item)| {
+                let name = match key {
+                    FieldKey::Literal(name) => format!(".{name}"),
+                    FieldKey::Computed(_) => "[…]".to_string(),
+                };
+                label_mismatch(element, item, types).map(|found| inside(name, found))
+            })
+        }
+    }
+}
+
+/// What a label lets the checker assume about a value — nothing for `Any`.
+fn static_type_from_annotation(annotation: &Label) -> Option<StaticType> {
+    match annotation {
+        Label::Named(name) if name == "Any" => None,
+        Label::Named(name) => Some(match ValueKind::parse(name) {
+            Some(kind) => StaticType::Kind(kind),
+            None => StaticType::Class(name.clone()),
+        }),
+        Label::Fields(_) | Label::ObjectOf(_) => Some(StaticType::Kind(ValueKind::Object)),
+        Label::ArrayOf(_) => Some(StaticType::Kind(ValueKind::Array)),
     }
 }
 
@@ -701,6 +822,93 @@ mod tests {
         let program =
             parse("Known {} =>\n    return Ack {}\n\nparticle = Known {}\nemit particle to this\n");
         assert!(check_handlers(&program).is_empty());
+    }
+
+    /// Labels say what is inside, to the last field (ticket 122): a wrong
+    /// leaf is found and named by its path.
+    #[test]
+    fn checks_nested_labels_to_the_leaf() {
+        let source = "Move { fish ∈ { x ∈ Number, y ∈ Number }, by ∈ Number } =>\n    return Ack {}\n\nemit Move { fish = { x = 1, y = \"two\" }, by = 3 } to this\n";
+        let diagnostics = check_handlers(&parse(source));
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0].code, "type-mismatch");
+        assert_eq!(diagnostics[0].expected.as_deref(), Some("Number"));
+        assert_eq!(diagnostics[0].actual.as_deref(), Some("String"));
+        assert!(
+            diagnostics[0].message.contains("field 'fish.y'"),
+            "{}",
+            diagnostics[0].message
+        );
+    }
+
+    #[test]
+    fn checks_list_elements_and_map_values() {
+        let source = "shapes ∈ Array of { op ∈ String, x ∈ Number } = [{ op = \"dot\", x = 1 }, { op = 2, x = 3 }]\ncounts ∈ Object of Number = { a = 1, b = \"x\" }\ngrid ∈ Array of Array of Number = [[1, 2], [3, true]]\n";
+        let diagnostics = check_handlers(&parse(source));
+        let messages: Vec<&str> = diagnostics.iter().map(|d| d.message.as_str()).collect();
+        assert_eq!(diagnostics.len(), 3, "{messages:?}");
+        assert!(messages[0].contains("'shapes[1].op'"), "{}", messages[0]);
+        assert!(messages[1].contains("'counts.b'"), "{}", messages[1]);
+        assert!(messages[2].contains("'grid[1][1]'"), "{}", messages[2]);
+    }
+
+    #[test]
+    fn null_fits_every_label_and_any_fits_everything() {
+        let source = "count ∈ Number = null\nfish ∈ { x ∈ Number, y ∈ Number } = { x = null, y = 2 }\nreading ∈ Any = \"on\"\nreading = 5\nboxes ∈ Array of { w ∈ Number } = [null, { w = 1 }]\n";
+        let diagnostics = check_handlers(&parse(source));
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
+    #[test]
+    fn a_field_the_label_does_not_name_is_reported() {
+        let source = "point ∈ { x ∈ Number, y ∈ Number } = { x = 1, y = 2, z = 3 }\n";
+        let diagnostics = check_handlers(&parse(source));
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert!(
+            diagnostics[0]
+                .message
+                .contains("'point.z' is not in its label"),
+            "{}",
+            diagnostics[0].message
+        );
+    }
+
+    #[test]
+    fn labels_read_back_the_way_they_are_written() {
+        let source = "Draw { shapes ∈ Array of { op ∈ String, at ∈ { x ∈ Number } }, counts ∈ Object of Number, tag ∈ Any } =>\n    return Ack {}\n";
+        let program = parse(source);
+        let Stmt::HandlerDef { fields, .. } = &program.statements[0] else {
+            panic!("expected a handler");
+        };
+        let spelled: Vec<String> = fields
+            .iter()
+            .map(|f| f.annotation.as_ref().unwrap().spelling())
+            .collect();
+        assert_eq!(
+            spelled,
+            [
+                "Array of { op ∈ String, at ∈ { x ∈ Number } }",
+                "Object of Number",
+                "Any"
+            ]
+        );
+    }
+
+    #[test]
+    fn of_stays_an_ordinary_name_outside_a_label() {
+        let source = "parts = { of = 1, array = 2 }\nassert parts.of = 1\nlist ∈ Array = [1]\n";
+        assert!(check_handlers(&parse(source)).is_empty());
+    }
+
+    #[test]
+    fn a_label_field_without_its_own_label_is_refused() {
+        let lexed = lexer::tokenize("Move { fish ∈ { x, y } } =>\n    return Ack {}\n").unwrap();
+        let error = parser::parse(&lexed).unwrap_err();
+        assert!(
+            error.msg.contains("field 'x' in a label needs one too"),
+            "{}",
+            error.msg
+        );
     }
 
     #[test]

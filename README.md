@@ -836,6 +836,25 @@ Greet { who ∈ String } =>
     return Greeting { text = "hi $who" }
 ```
 
+A label says what is inside, to the last field. An object is labelled by its
+fields, each labelled in turn; a list by what every element is; a map — an
+object whose names are not known in advance — by what every value is:
+
+```code
+Draw {
+    shapes ∈ Array of { op ∈ String, x ∈ Number, y ∈ Number }
+    grid ∈ Array of Array of Number
+    counts ∈ Object of Number
+    reading ∈ Any
+} =>
+    return Drawn { count = 1 }
+```
+
+**null fits every label** — a field not set yet is null, whatever it will
+hold. `Any` fits everything: a value that is any kind on purpose, like a
+sensor reading. `of` means this only after `Array` or `Object` in a label; it
+is an ordinary name everywhere else.
+
 `code check` validates annotations when the value is statically knowable. It
 also checks statically known local emits for unknown fields, missing typed
 fields, and field type mismatches. Dynamic expressions remain valid and are

@@ -59,10 +59,9 @@ pub enum Stmt {
     /// outright, and takes the keyword with it.
     Assign {
         name: String,
-        /// Optional development-time type annotation from `name ∈ Type`.
-        /// Runtime assignment remains dynamic; `code check` is the strict
-        /// consumer of this contract.
-        annotation: Option<String>,
+        /// Optional label from `name ∈ Label`. Runtime assignment remains
+        /// dynamic; `code check` is the strict consumer of this contract.
+        annotation: Option<Label>,
         value: Expr,
         /// Source extent of the assignment boundary, when parsed from source.
         span: Option<Span>,
@@ -334,13 +333,56 @@ pub struct Field {
     pub field: String,
     /// What this scope calls it.
     pub name: String,
-    /// Optional development-time type annotation from `field ∈ Type`.
-    /// `code check` reports a missing typed field at a statically known handler
-    /// boundary.
-    pub annotation: Option<String>,
+    /// Optional label from `field ∈ Label`. `code check` reports a missing
+    /// typed field at a statically known handler boundary.
+    pub annotation: Option<Label>,
     /// Source range of the field declaration or `get` field, when parsed from
     /// source.
     pub span: Option<Span>,
+}
+
+/// What a `∈` label says a value is (ticket 122): what a handler's field
+/// list promises about what arrives, to the last leaf, and what a variable's
+/// label promises about what it holds. null fits every label.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Label {
+    /// One of the six kinds, `Any`, or a particle class: `Number`, `Point`.
+    Named(String),
+    /// `{ x ∈ Number, y ∈ Number }` — an object with these fields, each
+    /// labelled in turn. A field the label does not name is not part of it.
+    Fields(Vec<(String, Label)>),
+    /// `Array of Label` — a list whose every element fits.
+    ArrayOf(Box<Label>),
+    /// `Object of Label` — a map: any names, every value fits.
+    ObjectOf(Box<Label>),
+}
+
+impl Label {
+    /// The label as it is written, one canonical way.
+    pub fn spelling(&self) -> String {
+        match self {
+            Label::Named(name) => name.clone(),
+            Label::Fields(fields) => {
+                let inner: Vec<String> = fields
+                    .iter()
+                    .map(|(name, label)| format!("{name} ∈ {}", label.spelling()))
+                    .collect();
+                if inner.is_empty() {
+                    "{}".to_string()
+                } else {
+                    format!("{{ {} }}", inner.join(", "))
+                }
+            }
+            Label::ArrayOf(inner) => format!("Array of {}", inner.spelling()),
+            Label::ObjectOf(inner) => format!("Object of {}", inner.spelling()),
+        }
+    }
+}
+
+impl std::fmt::Display for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.spelling())
+    }
 }
 
 /// What an `emit`'s `get` clause binds.
