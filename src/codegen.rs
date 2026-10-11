@@ -3765,6 +3765,11 @@ impl<'a, 'm> Gen<'a, 'm> {
         // not copied: the temporary would only be cleared at the statement's
         // end, so copying (a retain) and clearing it (a release) was two
         // calls for nothing. Moved, it is empty, so its clear is skipped too.
+        // A sum of numbers, say, written into a variable that holds nothing
+        // on the heap: the tag and the number, in line.
+        if self.likely_numbers.contains(&slot_key(value_ptr)) && !self.loop_blocks.is_empty() {
+            return self.likely_number_assign(slot, value_ptr);
+        }
         let temp = self
             .temps
             .iter()
@@ -3794,14 +3799,26 @@ impl<'a, 'm> Gen<'a, 'm> {
     ) -> Result<(), String> {
         let len = path.len() as u64;
         let count = self.i64_ty.const_int(len, false);
+        // The keys, then the value — the order the program wrote them.
+        let mut key_vals = Vec::with_capacity(path.len());
+        for key in path {
+            let key = self.gen_val(key)?;
+            key_vals.push(self.settle(key)?);
+        }
+        let value_val = self.gen_val(value)?;
+        let value_val = self.settle(value_val)?;
+        // A number written where every step is a list index or a field whose
+        // slot is known: straight in, when each level is held alone and the
+        // slot holds nothing on the heap; `code_set_at` otherwise.
+        let merge = self.shaped_write(site, target, path, &key_vals, value_val)?;
         // Pointers to each key where it already is — kept alive by this
         // statement's temporaries until the call.
         let keys = self
             .entry_builder()
             .build_array_alloca(self.i8_ptr_ty, count, "setkeys")
             .map_err(|e| e.to_string())?;
-        for (i, key) in path.iter().enumerate() {
-            let key_ptr = self.gen_expr(key)?;
+        for (i, key) in key_vals.iter().enumerate() {
+            let key_ptr = self.box_val(*key)?;
             let at = unsafe {
                 self.builder
                     .build_gep(
@@ -3860,7 +3877,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         slots.set_initializer(&self.i64_ty.const_array(&slot_words));
         slots.set_constant(true);
         slots.set_linkage(inkwell::module::Linkage::Private);
-        let value = self.gen_expr(value)?;
+        let value = self.box_val(value_val)?;
         self.builder
             .build_call(
                 self.fn_set_at,
@@ -3877,7 +3894,218 @@ impl<'a, 'm> Gen<'a, 'm> {
                 "",
             )
             .map_err(|e| e.to_string())?;
-        self.check_failed()
+        self.check_failed()?;
+        if let Some(merge) = merge {
+            self.builder
+                .build_unconditional_branch(merge)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(merge);
+        }
+        Ok(())
+    }
+
+    /// The in-line half of a part write (see `gen_set_at`): returns the block
+    /// both halves meet in, leaving the builder at the slow half's start, or
+    /// `None` — and nothing emitted — when this write is not one it can do.
+    fn shaped_write(
+        &mut self,
+        site: usize,
+        target: PointerValue<'a>,
+        path: &[Expr],
+        keys: &[Val<'a>],
+        value: Val<'a>,
+    ) -> Result<Option<inkwell::basic_block::BasicBlock<'a>>, String> {
+        // A number, or a value that is one when the write runs.
+        let boxed_number = match value {
+            Val::Num(_) => None,
+            Val::Boxed(ptr) | Val::Held(ptr) => Some(ptr),
+            Val::Bool(_) => return Ok(None),
+        };
+        let mut steps = Vec::with_capacity(path.len());
+        for (step, (key, val)) in path.iter().zip(keys).enumerate() {
+            match (key, val) {
+                (Expr::Str(_), _) => match self.layouts.parts.get(&(site, step)).cloned() {
+                    Some((order, at)) => steps.push((Some((order, at)), None)),
+                    None => return Ok(None),
+                },
+                (_, Val::Num(n)) => steps.push((None, Some(*n))),
+                _ => return Ok(None),
+            }
+        }
+        let function = self.current_function();
+        let slow = self.context.append_basic_block(function, "writeslow");
+        let merge = self.context.append_basic_block(function, "written");
+        let (items_offset, keys_offset, len_offset) = if self.bool_offset == 20 {
+            (24, 28, 32)
+        } else {
+            (32, 40, 48)
+        };
+        let mut current = target;
+        for (field, index) in steps {
+            let b = self.builder;
+            // Held alone: a heap value whose block's count is 1. The block is
+            // the items for a list, the keys for an object.
+            let (tag, block_offset) = if field.is_some() {
+                (5, keys_offset)
+            } else {
+                (4, items_offset)
+            };
+            let right_kind = self.has_tag(current, tag)?;
+            let heap_at = self.value_field(current, 4)?;
+            let heap = b
+                .build_load(self.i32_ty, heap_at, "heap")
+                .map_err(|e| e.to_string())?
+                .into_int_value();
+            let on_heap = b
+                .build_int_compare(IntPredicate::NE, heap, self.i32_ty.const_zero(), "onheap")
+                .map_err(|e| e.to_string())?;
+            let ok = b
+                .build_and(right_kind, on_heap, "level")
+                .map_err(|e| e.to_string())?;
+            let alone_check = self.context.append_basic_block(function, "alone");
+            b.build_conditional_branch(ok, alone_check, slow)
+                .map_err(|e| e.to_string())?;
+            b.position_at_end(alone_check);
+            let block_at = self.value_field(current, block_offset)?;
+            let block = b
+                .build_load(self.i8_ptr_ty, block_at, "block")
+                .map_err(|e| e.to_string())?
+                .into_pointer_value();
+            let (i8_ty, i64_ty) = (self.i8_ty, self.i64_ty);
+            let header_word = |offset: i64, name: &str| -> Result<IntValue<'a>, String> {
+                let at = unsafe {
+                    b.build_gep(i8_ty, block, &[i64_ty.const_int(offset as u64, true)], name)
+                        .map_err(|e| e.to_string())?
+                };
+                Ok(b.build_load(i64_ty, at, name)
+                    .map_err(|e| e.to_string())?
+                    .into_int_value())
+            };
+            let count = header_word(-16, "count")?;
+            let mut ok = b
+                .build_int_compare(
+                    IntPredicate::EQ,
+                    count,
+                    self.i64_ty.const_int(1, false),
+                    "alone",
+                )
+                .map_err(|e| e.to_string())?;
+            let slot_index = match (field, index) {
+                (Some((order, at)), _) => {
+                    let shape = self.shape_keys(&order);
+                    let mark = header_word(-8, "mark")?;
+                    let expected = b
+                        .build_ptr_to_int(shape, self.i64_ty, "shape")
+                        .map_err(|e| e.to_string())?;
+                    let same = b
+                        .build_int_compare(IntPredicate::EQ, mark, expected, "sameshape")
+                        .map_err(|e| e.to_string())?;
+                    ok = b.build_and(ok, same, "shaped").map_err(|e| e.to_string())?;
+                    self.i64_ty.const_int(at as u64, false)
+                }
+                (None, Some(n)) => {
+                    let len_at = self.value_field(current, len_offset)?;
+                    let len = b
+                        .build_load(self.i64_ty, len_at, "len")
+                        .map_err(|e| e.to_string())?
+                        .into_int_value();
+                    let len_f = b
+                        .build_signed_int_to_float(len, self.f64_ty, "lenf")
+                        .map_err(|e| e.to_string())?;
+                    let from_zero = b
+                        .build_float_compare(
+                            FloatPredicate::OGE,
+                            n,
+                            self.f64_ty.const_zero(),
+                            "fromzero",
+                        )
+                        .map_err(|e| e.to_string())?;
+                    let below = b
+                        .build_float_compare(FloatPredicate::OLT, n, len_f, "below")
+                        .map_err(|e| e.to_string())?;
+                    let in_range = b
+                        .build_and(from_zero, below, "inrange")
+                        .map_err(|e| e.to_string())?;
+                    let i = b
+                        .build_float_to_signed_int(n, self.i64_ty, "i")
+                        .map_err(|e| e.to_string())?;
+                    let back = b
+                        .build_signed_int_to_float(i, self.f64_ty, "back")
+                        .map_err(|e| e.to_string())?;
+                    let whole = b
+                        .build_float_compare(FloatPredicate::OEQ, back, n, "whole")
+                        .map_err(|e| e.to_string())?;
+                    let false_ = self.context.bool_type().const_zero();
+                    let number_ok = b
+                        .build_select(in_range, whole, false_, "numberok")
+                        .map_err(|e| e.to_string())?
+                        .into_int_value();
+                    ok = b
+                        .build_and(ok, number_ok, "element")
+                        .map_err(|e| e.to_string())?;
+                    i
+                }
+                _ => unreachable!("a step is a field or an index"),
+            };
+            let next = self.context.append_basic_block(function, "writestep");
+            b.build_conditional_branch(ok, next, slow)
+                .map_err(|e| e.to_string())?;
+            b.position_at_end(next);
+            let items_at = self.value_field(current, items_offset)?;
+            let items = b
+                .build_load(self.i8_ptr_ty, items_at, "items")
+                .map_err(|e| e.to_string())?
+                .into_pointer_value();
+            let offset = b
+                .build_int_mul(
+                    slot_index,
+                    self.i64_ty.const_int(VALUE_SIZE, false),
+                    "offset",
+                )
+                .map_err(|e| e.to_string())?;
+            current = unsafe {
+                b.build_gep(self.i8_ty, items, &[offset], "partslot")
+                    .map_err(|e| e.to_string())?
+            };
+        }
+        // The slot itself: nothing on the heap to let go of, so a number is
+        // its tag and its bytes.
+        let b = self.builder;
+        let heap_at = self.value_field(current, 4)?;
+        let heap = b
+            .build_load(self.i32_ty, heap_at, "oldheap")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let mut empty = b
+            .build_int_compare(IntPredicate::EQ, heap, self.i32_ty.const_zero(), "noheap")
+            .map_err(|e| e.to_string())?;
+        if let Some(ptr) = boxed_number {
+            let is_number = self.has_tag(ptr, 0)?;
+            empty = self
+                .builder
+                .build_and(empty, is_number, "numbervalue")
+                .map_err(|e| e.to_string())?;
+        }
+        let b = self.builder;
+        let store = self.context.append_basic_block(function, "storenumber");
+        b.build_conditional_branch(empty, store, slow)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(store);
+        let number = match (value, boxed_number) {
+            (Val::Num(n), _) => n,
+            (_, Some(ptr)) => self.load_number(ptr)?,
+            _ => unreachable!("a number or a boxed value"),
+        };
+        let b = self.builder;
+        b.build_store(current, self.i32_ty.const_zero())
+            .map_err(|e| e.to_string())?;
+        let number_at = self.value_field(current, 8)?;
+        b.build_store(number_at, number)
+            .map_err(|e| e.to_string())?;
+        b.build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(slow);
+        Ok(Some(merge))
     }
 
     /// `name` the way an object stores a key: its hash (`key_hash`, four
@@ -4099,6 +4327,60 @@ impl<'a, 'm> Gen<'a, 'm> {
         ptr
     }
 
+    /// `slot = value` where `value` is usually a number: when it is one and
+    /// `slot` holds nothing on the heap, its tag and number are written in
+    /// line; otherwise `code_copy`, as any assignment. (`value` stays as it
+    /// is: a temporary is cleared at the statement's end either way.)
+    fn likely_number_assign(
+        &mut self,
+        slot: PointerValue<'a>,
+        value: PointerValue<'a>,
+    ) -> Result<(), String> {
+        let function = self.current_function();
+        let fast = self.context.append_basic_block(function, "assignnumber");
+        let slow = self.context.append_basic_block(function, "assignvalue");
+        let merge = self.context.append_basic_block(function, "assigned");
+        let is_number = self.has_tag(value, 0)?;
+        let heap_at = self.value_field(slot, 4)?;
+        let heap = self
+            .builder
+            .build_load(self.i32_ty, heap_at, "heap")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let empty = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, heap, self.i32_ty.const_zero(), "empty")
+            .map_err(|e| e.to_string())?;
+        let both = self
+            .builder
+            .build_and(is_number, empty, "inline")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(both, fast, slow)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(fast);
+        let number = self.load_number(value)?;
+        self.builder
+            .build_store(slot, self.i32_ty.const_zero())
+            .map_err(|e| e.to_string())?;
+        let at = self.value_field(slot, 8)?;
+        self.builder
+            .build_store(at, number)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(slow);
+        self.builder
+            .build_call(self.fn_copy, &[slot.into(), value.into()], "")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(merge);
+        Ok(())
+    }
+
     /// Searches the scope stack innermost-to-outermost, returning the
     /// first match — the permanent slot for `name`, wherever it lives.
     fn lookup(&self, name: &str) -> Option<PointerValue<'a>> {
@@ -4241,6 +4523,22 @@ impl<'a, 'm> Gen<'a, 'm> {
                     self.likely_numbers.insert(slot_key(slot));
                 }
                 Ok(Val::Boxed(slot))
+            }
+            // A variable, only inside a loop: the check is code at every
+            // operand, which pays for itself where it runs many times and is
+            // only size where it runs once (Aquarium's handlers: +10% wasm).
+            Expr::Ident(_) if !self.loop_blocks.is_empty() => {
+                let value = self.gen_val(expr)?;
+                if let Val::Boxed(slot) = value {
+                    if self
+                        .layouts
+                        .numbers
+                        .contains(&(expr as *const Expr as usize))
+                    {
+                        self.likely_numbers.insert(slot_key(slot));
+                    }
+                }
+                Ok(value)
             }
             _ => self.gen_val(expr),
         }

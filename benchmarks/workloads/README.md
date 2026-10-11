@@ -139,3 +139,16 @@ literals are constants.
 | string_build | 0.0015 s | 0.005 s | 3–4× |
 | dictionary | 0.0034 s | 0.020 s | 6× |
 | points | 0.0007 s | 0.015 s | ~20× |
+
+## Numbers in line where the program only makes numbers (2026-10-11)
+
+Reads and variables the inference vouches are numbers are checked and read in
+line; a number written along a known path is stored in line.
+
+| Workload | C | code | code / C |
+|---|---|---|---|
+| spectral_norm | 0.167 s | 0.275 s | 1.6× |
+| binary_trees | 0.0034 s | 0.020 s | 6× |
+| string_build | 0.0014 s | 0.0046 s | 3× |
+| dictionary | 0.0035 s | 0.018 s | 5× |
+| points | 0.0008 s | 0.0084 s | ~10× |
