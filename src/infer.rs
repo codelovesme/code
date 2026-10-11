@@ -1,0 +1,867 @@
+//! Kinds fixed by their first assignment (ticket 122, stage A.2).
+//!
+//! A variable keeps the kind it first held, and so does every field of an
+//! object and every element of a list: `person.age = 24` makes `age` a Number
+//! for good. null is not a kind here — a value not set yet is null, whatever
+//! it will hold. This works out every one of those kinds over the whole file
+//! and reports a later assignment of another kind — for now as a warning in
+//! `code check`; it becomes an error once the apps are labelled (A.3, A.4).
+//!
+//! **Values flow, so kinds follow the flow.** `b = a`, two objects put in one
+//! list, a particle emitted to a handler: whatever one value can reach has
+//! one kind, so the analysis keeps a union-find of type variables and unifies
+//! them along every flow, the way Hindley–Milner inference does. An object is
+//! open — a field first written later is simply added — and two objects that
+//! meet merge their fields. A field written under a name known only when the
+//! program runs (`counts["$name"] = 1`) makes the object a map: one kind for
+//! every value.
+//!
+//! What it cannot see is not guessed at: a module's answer, a field read by a
+//! computed name, iterating a record's fields — those are `Any`, and `Any`
+//! is never reported. A handler's field list is what arrives; its labels
+//! (`fish ∈ { x ∈ Number }`) seed the kinds of what it receives.
+
+use std::collections::{BTreeMap, HashMap};
+
+use crate::ast::{
+    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, Label, LoopOver, Program, Span, Stmt,
+    UnOp, ValueKind,
+};
+use crate::diagnostics::{Diagnostic, Severity};
+use crate::span::Origin;
+
+type Var = usize;
+
+#[derive(Debug, Clone)]
+enum Shape {
+    /// Nothing known yet — only ever null so far, or not reached.
+    Unknown,
+    /// Any kind on purpose (`∈ Any`), or not knowable here. Never reported.
+    Any,
+    /// Number, String or Boolean.
+    Scalar(ValueKind),
+    /// A list whose every element is the one variable.
+    Array(Var),
+    /// An object: its fields so far, or — once a field is named at run time —
+    /// a map whose every value is `map`.
+    Object {
+        fields: BTreeMap<String, Var>,
+        map: Option<Var>,
+    },
+}
+
+pub fn kind_warnings(program: &Program) -> Vec<Diagnostic> {
+    let mut warnings = Vec::new();
+    check_file(&program.statements, program.origin.as_ref(), &mut warnings);
+    warnings
+}
+
+fn check_file(statements: &[Stmt], origin: Option<&Origin>, warnings: &mut Vec<Diagnostic>) {
+    let mut infer = Infer {
+        parent: Vec::new(),
+        shapes: Vec::new(),
+        labelled: Vec::new(),
+        inputs: HashMap::new(),
+        results: HashMap::new(),
+        local: std::collections::HashSet::new(),
+        scopes: vec![HashMap::new()],
+        span: None,
+        handler: None,
+        origin,
+        warnings,
+    };
+    for statement in statements {
+        if let Stmt::HandlerDef { class_name, .. } = statement {
+            infer.local.insert(class_name.clone());
+        }
+    }
+    // The top level first, handlers after: a handler sees its file's top
+    // level whole, wherever in the file it is written.
+    for statement in statements {
+        if !matches!(statement, Stmt::HandlerDef { .. }) {
+            infer.statement(statement);
+        }
+    }
+    for statement in statements {
+        if let Stmt::HandlerDef {
+            class_name,
+            fields,
+            body,
+        } = statement
+        {
+            infer.handler(class_name, fields, body);
+        }
+    }
+}
+
+/// `Point { … }` — an object literal whose `_class` is written down.
+fn literal_class(expr: &Expr) -> Option<&str> {
+    let Expr::Object(fields) = expr else {
+        return None;
+    };
+    fields.iter().find_map(|(key, value)| match (key, value) {
+        (FieldKey::Literal(name), Expr::Str(class)) if name == "_class" => Some(class.as_str()),
+        _ => None,
+    })
+}
+
+struct Infer<'a> {
+    parent: Vec<Var>,
+    shapes: Vec<Shape>,
+    /// Whether a variable's kind comes from a label. A value that breaks a
+    /// label is the label check's to report (`diagnostics.rs`), as an error;
+    /// this reports only kinds no label spoke for.
+    labelled: Vec<bool>,
+    /// What each of this file's handlers receives: the particles emitted to
+    /// it flow in here. A class name groups nothing by itself — two
+    /// `Result { … }` literals that never meet are two values.
+    inputs: HashMap<String, Var>,
+    /// What each handler answers: its `return`s flow in here, and `get`
+    /// reads it out.
+    results: HashMap<String, Var>,
+    /// The classes this file has a handler for.
+    local: std::collections::HashSet<String>,
+    scopes: Vec<HashMap<String, Var>>,
+    /// The statement being looked at, for the warning's location.
+    span: Option<Span>,
+    handler: Option<String>,
+    origin: Option<&'a Origin>,
+    warnings: &'a mut Vec<Diagnostic>,
+}
+
+impl Infer<'_> {
+    fn fresh(&mut self, shape: Shape) -> Var {
+        let var = self.parent.len();
+        self.parent.push(var);
+        self.shapes.push(shape);
+        self.labelled.push(false);
+        var
+    }
+
+    fn root(&mut self, var: Var) -> Var {
+        let mut at = var;
+        while self.parent[at] != at {
+            self.parent[at] = self.parent[self.parent[at]];
+            at = self.parent[at];
+        }
+        at
+    }
+
+    fn shape(&mut self, var: Var) -> Shape {
+        let root = self.root(var);
+        self.shapes[root].clone()
+    }
+
+    fn scalar(&mut self, kind: ValueKind) -> Var {
+        self.fresh(Shape::Scalar(kind))
+    }
+
+    /// Makes `a` and `b` one kind. `what` names the thing whose kind is
+    /// being fixed, for the warning: `'count'`, `field 'pos.x'`.
+    fn unify(&mut self, a: Var, b: Var, what: &str) {
+        let (ra, rb) = (self.root(a), self.root(b));
+        if ra == rb {
+            return;
+        }
+        let (sa, sb) = (self.shapes[ra].clone(), self.shapes[rb].clone());
+        // `b` is folded into `a`; the merged shape is written to `a`.
+        self.parent[rb] = ra;
+        let labelled = self.labelled[ra] || self.labelled[rb];
+        self.labelled[ra] = labelled;
+        let merged = match (sa, sb) {
+            (Shape::Unknown, other) | (other, Shape::Unknown) => other,
+            (Shape::Any, _) | (_, Shape::Any) => Shape::Any,
+            (Shape::Scalar(x), Shape::Scalar(y)) if x == y => Shape::Scalar(x),
+            (Shape::Array(x), Shape::Array(y)) => {
+                self.unify(x, y, &format!("an element of {what}"));
+                Shape::Array(x)
+            }
+            (
+                Shape::Object {
+                    fields: mut fa,
+                    map: ma,
+                },
+                Shape::Object {
+                    fields: fb,
+                    map: mb,
+                },
+            ) => {
+                for (name, vb) in fb {
+                    match fa.get(&name) {
+                        Some(&va) => self.unify(va, vb, &field_of(what, &name)),
+                        None => {
+                            fa.insert(name, vb);
+                        }
+                    }
+                }
+                let map = match (ma, mb) {
+                    (Some(x), Some(y)) => {
+                        self.unify(x, y, &format!("a value of {what}"));
+                        Some(x)
+                    }
+                    (x, y) => x.or(y),
+                };
+                if let Some(values) = map {
+                    for var in fa.values().copied().collect::<Vec<_>>() {
+                        self.unify(values, var, &format!("a value of {what}"));
+                    }
+                }
+                Shape::Object { fields: fa, map }
+            }
+            (sa, sb) => {
+                if !labelled {
+                    self.report(what, &sa, &sb);
+                }
+                Shape::Any
+            }
+        };
+        self.shapes[ra] = merged;
+    }
+
+    fn report(&mut self, what: &str, was: &Shape, now: &Shape) {
+        let name = |shape: &Shape| match shape {
+            Shape::Scalar(kind) => kind.name().to_string(),
+            Shape::Array(_) => "Array".to_string(),
+            Shape::Object { .. } => "Object".to_string(),
+            Shape::Any | Shape::Unknown => "Any".to_string(),
+        };
+        let (was, now) = (name(was), name(now));
+        self.warnings.push(Diagnostic {
+            code: "kind-change",
+            severity: Severity::Warning,
+            message: format!(
+                "{what} holds {} and is given {} here — a value keeps the kind it first \
+                 held (null aside); use another name, or `∈ Any` for one that is any kind \
+                 on purpose",
+                article(&was),
+                article(&now)
+            ),
+            handler: self.handler.clone(),
+            particle: None,
+            target: None,
+            field: None,
+            expected: Some(was),
+            actual: Some(now),
+            suggestion: None,
+            span: self.span,
+            origin: self.origin.cloned(),
+        });
+    }
+
+    fn input(&mut self, class: &str) -> Var {
+        if let Some(&var) = self.inputs.get(class) {
+            return var;
+        }
+        let var = self.fresh(Shape::Unknown);
+        self.inputs.insert(class.to_string(), var);
+        var
+    }
+
+    fn result(&mut self, class: &str) -> Var {
+        if let Some(&var) = self.results.get(class) {
+            return var;
+        }
+        let var = self.fresh(Shape::Unknown);
+        self.results.insert(class.to_string(), var);
+        var
+    }
+
+    /// The variable for field `name` of `object`, made if it is not there.
+    fn field(&mut self, object: Var, name: &str) -> Var {
+        let root = self.root(object);
+        match self.shapes[root].clone() {
+            Shape::Unknown => {
+                let field = self.fresh(Shape::Unknown);
+                self.shapes[root] = Shape::Object {
+                    fields: BTreeMap::from([(name.to_string(), field)]),
+                    map: None,
+                };
+                field
+            }
+            Shape::Object { mut fields, map } => {
+                if let Some(&field) = fields.get(name) {
+                    return field;
+                }
+                let field = match map {
+                    Some(values) => values,
+                    None => self.fresh(Shape::Unknown),
+                };
+                fields.insert(name.to_string(), field);
+                self.shapes[root] = Shape::Object { fields, map };
+                field
+            }
+            _ => self.fresh(Shape::Any),
+        }
+    }
+
+    /// The one variable every value of a map shares; `object` becomes a map.
+    fn map_values(&mut self, object: Var, what: &str) -> Var {
+        let root = self.root(object);
+        match self.shapes[root].clone() {
+            Shape::Unknown => {
+                let values = self.fresh(Shape::Unknown);
+                self.shapes[root] = Shape::Object {
+                    fields: BTreeMap::new(),
+                    map: Some(values),
+                };
+                values
+            }
+            Shape::Object { fields, map } => {
+                let values = match map {
+                    Some(values) => values,
+                    None => self.fresh(Shape::Unknown),
+                };
+                self.shapes[root] = Shape::Object {
+                    fields: fields.clone(),
+                    map: Some(values),
+                };
+                for var in fields.values() {
+                    self.unify(values, *var, &format!("a value of {what}"));
+                }
+                values
+            }
+            _ => self.fresh(Shape::Any),
+        }
+    }
+
+    fn element(&mut self, list: Var) -> Var {
+        let root = self.root(list);
+        match self.shapes[root].clone() {
+            Shape::Unknown => {
+                let element = self.fresh(Shape::Unknown);
+                self.shapes[root] = Shape::Array(element);
+                element
+            }
+            Shape::Array(element) => element,
+            Shape::Scalar(ValueKind::String) => self.scalar(ValueKind::String),
+            _ => self.fresh(Shape::Any),
+        }
+    }
+
+    fn label(&mut self, label: &Label) -> Var {
+        let var = self.label_shape(label);
+        let root = self.root(var);
+        self.labelled[root] = true;
+        var
+    }
+
+    fn label_shape(&mut self, label: &Label) -> Var {
+        match label {
+            Label::Named(name) => match name.as_str() {
+                "Any" => self.fresh(Shape::Any),
+                "Null" => self.fresh(Shape::Unknown),
+                "Array" => {
+                    let element = self.fresh(Shape::Unknown);
+                    self.fresh(Shape::Array(element))
+                }
+                "Object" => self.fresh(Shape::Unknown),
+                other => match ValueKind::parse(other) {
+                    Some(kind) => self.scalar(kind),
+                    // A particle this file handles is what that handler
+                    // receives; any other is an object, fields unknown.
+                    None if self.local.contains(other) => self.input(other),
+                    None => self.fresh(Shape::Unknown),
+                },
+            },
+            Label::Fields(fields) => {
+                let mut vars = BTreeMap::new();
+                for (name, field) in fields {
+                    let var = self.label(field);
+                    vars.insert(name.clone(), var);
+                }
+                self.fresh(Shape::Object {
+                    fields: vars,
+                    map: None,
+                })
+            }
+            Label::ArrayOf(element) => {
+                let element = self.label(element);
+                self.fresh(Shape::Array(element))
+            }
+            Label::ObjectOf(values) => {
+                let values = self.label(values);
+                self.fresh(Shape::Object {
+                    fields: BTreeMap::new(),
+                    map: Some(values),
+                })
+            }
+        }
+    }
+
+    fn lookup(&self, name: &str) -> Option<Var> {
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).copied())
+    }
+
+    fn bind(&mut self, name: &str, var: Var) {
+        self.scopes
+            .last_mut()
+            .expect("a scope")
+            .insert(name.to_string(), var);
+    }
+
+    /// `name` takes `value`: the binding's kind if it has one, its first
+    /// otherwise.
+    fn assign(&mut self, name: &str, value: Var) {
+        match self.lookup(name) {
+            Some(var) => self.unify(var, value, &format!("'{name}'")),
+            None => self.bind(name, value),
+        }
+    }
+
+    fn handler(&mut self, class_name: &str, fields: &[Field], body: &[Stmt]) {
+        self.handler = Some(class_name.to_string());
+        let class = self.input(class_name);
+        self.scopes.push(HashMap::new());
+        for field in fields {
+            let var = self.field(class, &field.field);
+            if let Some(label) = &field.annotation {
+                let labelled = self.label(label);
+                self.unify(var, labelled, &format!("field '{}'", field.field));
+            }
+            self.bind(&field.name, var);
+        }
+        self.statements(body);
+        self.scopes.pop();
+        self.handler = None;
+    }
+
+    fn statements(&mut self, statements: &[Stmt]) {
+        for statement in statements {
+            self.statement(statement);
+        }
+    }
+
+    fn statement(&mut self, statement: &Stmt) {
+        match statement {
+            Stmt::Assign {
+                name,
+                annotation,
+                value,
+                span,
+            } => {
+                self.span = *span;
+                let value = self.expr(value);
+                if let Some(label) = annotation {
+                    let labelled = self.label(label);
+                    self.unify(labelled, value, &format!("'{name}'"));
+                    self.assign(name, labelled);
+                } else {
+                    self.assign(name, value);
+                }
+            }
+            Stmt::Assert(expr) => {
+                self.expr(expr);
+            }
+            Stmt::If { condition, body } => {
+                self.expr(condition);
+                self.scopes.push(HashMap::new());
+                self.statements(body);
+                self.scopes.pop();
+            }
+            Stmt::Loop { over, body } => {
+                self.scopes.push(HashMap::new());
+                if let Some(over) = over {
+                    self.loop_over(over);
+                }
+                self.statements(body);
+                self.scopes.pop();
+            }
+            Stmt::Emit {
+                particle,
+                target,
+                result,
+                span,
+            } => {
+                self.span = *span;
+                let sent = self.expr(particle);
+                let local = match target {
+                    EmitTarget::This => literal_class(particle)
+                        .filter(|class| self.local.contains(*class))
+                        .map(str::to_string),
+                    _ => None,
+                };
+                let answer = match (&local, target) {
+                    (Some(class), _) => {
+                        let input = self.input(class);
+                        self.unify(input, sent, &format!("a {class} sent"));
+                        self.result(class)
+                    }
+                    (None, EmitTarget::This | EmitTarget::Base) => self.fresh(Shape::Unknown),
+                    (None, EmitTarget::Core | EmitTarget::Module(_)) => self.fresh(Shape::Any),
+                };
+                match result {
+                    Some(EmitResult::Whole(name)) => self.assign(name, answer),
+                    Some(EmitResult::Fields(fields)) => {
+                        for field in fields {
+                            let var = self.field(answer, &field.field);
+                            if let Some(label) = &field.annotation {
+                                let labelled = self.label(label);
+                                self.unify(var, labelled, &format!("field '{}'", field.field));
+                            }
+                            self.assign(&field.name, var);
+                        }
+                    }
+                    None => {}
+                }
+            }
+            Stmt::Return { value, span } => {
+                self.span = *span;
+                let value = self.expr(value);
+                if let Some(handler) = self.handler.clone() {
+                    let result = self.result(&handler);
+                    self.unify(result, value, &format!("what {handler} answers"));
+                }
+            }
+            Stmt::Import { body, origin, .. } => check_file(body, Some(origin), self.warnings),
+            Stmt::Link { alias, .. } => {
+                if let Some(alias) = alias {
+                    let any = self.fresh(Shape::Any);
+                    self.bind(alias, any);
+                }
+            }
+            Stmt::ImportNative { alias, .. } | Stmt::LinkRuntime { alias, .. } => {
+                let any = self.fresh(Shape::Any);
+                self.bind(alias, any);
+            }
+            Stmt::Unlink(expr) => {
+                self.expr(expr);
+            }
+            Stmt::HandlerDef { .. } | Stmt::Continue | Stmt::Break => {}
+        }
+    }
+
+    fn loop_over(&mut self, over: &LoopOver) {
+        let iterable = self.expr(&over.iterable);
+        let (key, value) = match self.shape(iterable) {
+            Shape::Array(element) => (self.scalar(ValueKind::Number), element),
+            Shape::Object {
+                map: Some(values), ..
+            } => (self.scalar(ValueKind::String), values),
+            // A record's fields are of many kinds; walking them is dynamic.
+            Shape::Object { .. } => (self.scalar(ValueKind::String), self.fresh(Shape::Any)),
+            _ => (self.fresh(Shape::Unknown), self.fresh(Shape::Unknown)),
+        };
+        if let Some(name) = &over.key {
+            self.bind(name, key);
+        }
+        self.bind(&over.value, value);
+    }
+
+    fn expr(&mut self, expr: &Expr) -> Var {
+        match expr {
+            Expr::Number(_) | Expr::LengthOf(_) => {
+                if let Expr::LengthOf(inner) = expr {
+                    self.expr(inner);
+                }
+                self.scalar(ValueKind::Number)
+            }
+            Expr::Str(_) => self.scalar(ValueKind::String),
+            Expr::Interpolated(parts) => {
+                for part in parts {
+                    self.expr(part);
+                }
+                self.scalar(ValueKind::String)
+            }
+            Expr::Bool(_) => self.scalar(ValueKind::Boolean),
+            Expr::Null => self.fresh(Shape::Unknown),
+            Expr::Ident(name) => match self.lookup(name) {
+                Some(var) => var,
+                None => self.fresh(Shape::Any),
+            },
+            Expr::Array(items) => {
+                let element = self.fresh(Shape::Unknown);
+                for item in items {
+                    let item = self.expr(item);
+                    self.unify(element, item, "an element of a list");
+                }
+                self.fresh(Shape::Array(element))
+            }
+            Expr::Object(fields) => self.object(fields),
+            Expr::Field(object, name) => {
+                let object = self.expr(object);
+                self.field(object, name)
+            }
+            Expr::Index(container, index) => {
+                let container = self.expr(container);
+                let index_var = self.expr(index);
+                match (self.shape(container), &**index) {
+                    (Shape::Array(element), _) => element,
+                    (Shape::Scalar(ValueKind::String), _) => self.scalar(ValueKind::String),
+                    (
+                        Shape::Object {
+                            map: Some(values), ..
+                        },
+                        _,
+                    ) => values,
+                    (Shape::Object { .. } | Shape::Unknown, Expr::Str(name)) => {
+                        self.field(container, name)
+                    }
+                    (Shape::Unknown, _) => match self.shape(index_var) {
+                        Shape::Scalar(ValueKind::Number) => self.element(container),
+                        _ => self.fresh(Shape::Any),
+                    },
+                    _ => self.fresh(Shape::Any),
+                }
+            }
+            Expr::Slice { value, from, to } => {
+                self.expr(from);
+                self.expr(to);
+                self.expr(value)
+            }
+            Expr::SetAt { base, path, value } => {
+                let base = self.expr(base);
+                let mut at = base;
+                let mut spelled = String::new();
+                for key in path {
+                    let key_var = self.expr(key);
+                    at = match key {
+                        Expr::Str(name) => {
+                            spelled.push('.');
+                            spelled.push_str(name);
+                            self.field(at, name)
+                        }
+                        _ => match self.shape(key_var) {
+                            Shape::Scalar(ValueKind::Number) => {
+                                spelled.push_str("[…]");
+                                self.element(at)
+                            }
+                            _ => {
+                                spelled.push_str("[…]");
+                                self.map_values(at, "an object")
+                            }
+                        },
+                    };
+                }
+                let value = self.expr(value);
+                let what = match base_name(expr) {
+                    Some(name) => format!("'{name}{spelled}'"),
+                    None => format!("'{spelled}'"),
+                };
+                self.unify(at, value, &what);
+                base
+            }
+            Expr::Unary(UnOp::Neg, inner) => {
+                self.expr(inner);
+                self.scalar(ValueKind::Number)
+            }
+            Expr::Unary(UnOp::Not, inner) | Expr::Is(inner, _) => {
+                self.expr(inner);
+                self.scalar(ValueKind::Boolean)
+            }
+            Expr::Binary(left, op, right) => self.binary(left, *op, right),
+        }
+    }
+
+    fn object(&mut self, fields: &[(FieldKey, Expr)]) -> Var {
+        let mut known = BTreeMap::new();
+        let mut map = None;
+        for (key, value) in fields {
+            let value = self.expr(value);
+            match key {
+                FieldKey::Literal(name) => {
+                    known.insert(name.clone(), value);
+                }
+                FieldKey::Computed(name) => {
+                    self.expr(name);
+                    let values = *map.get_or_insert_with(|| self.fresh(Shape::Unknown));
+                    self.unify(values, value, "a value of an object");
+                }
+            }
+        }
+        self.fresh(Shape::Object { fields: known, map })
+    }
+
+    fn binary(&mut self, left: &Expr, op: BinOp, right: &Expr) -> Var {
+        let l = self.expr(left);
+        let r = self.expr(right);
+        match op {
+            BinOp::Add => match (self.shape(l), self.shape(r)) {
+                (Shape::Scalar(ValueKind::String), _) | (_, Shape::Scalar(ValueKind::String)) => {
+                    self.scalar(ValueKind::String)
+                }
+                // `xs + ys` joins; `xs + x` appends; `x + xs` prepends. A side
+                // not known yet next to a list is taken to be a list when it
+                // is on the left (`stones += [ … ]`), and left alone on the
+                // right, where it could be either.
+                (Shape::Array(_), Shape::Array(_)) | (Shape::Unknown, Shape::Array(_)) => {
+                    self.unify(l, r, &list_named(left));
+                    l
+                }
+                (Shape::Array(_), Shape::Unknown) => l,
+                (Shape::Array(element), _) => {
+                    self.unify(element, r, &list_named(left));
+                    l
+                }
+                (_, Shape::Array(element)) => {
+                    self.unify(element, l, &list_named(right));
+                    r
+                }
+                (Shape::Object { .. }, Shape::Object { .. }) => {
+                    let what = match left {
+                        Expr::Ident(name) => format!("'{name}'"),
+                        _ => "an object".to_string(),
+                    };
+                    self.unify(l, r, &what);
+                    l
+                }
+                (Shape::Scalar(ValueKind::Number), Shape::Scalar(ValueKind::Number)) => {
+                    self.scalar(ValueKind::Number)
+                }
+                _ => self.fresh(Shape::Unknown),
+            },
+            BinOp::Sub | BinOp::Mul | BinOp::Div => self.scalar(ValueKind::Number),
+            BinOp::Eq
+            | BinOp::Ne
+            | BinOp::Lt
+            | BinOp::Gt
+            | BinOp::Le
+            | BinOp::Ge
+            | BinOp::And
+            | BinOp::Or => self.scalar(ValueKind::Boolean),
+        }
+    }
+}
+
+fn field_of(what: &str, name: &str) -> String {
+    match what.strip_prefix('\'').and_then(|w| w.strip_suffix('\'')) {
+        Some(inner) => format!("'{inner}.{name}'"),
+        None => format!("field '{name}' of {what}"),
+    }
+}
+
+fn list_named(list: &Expr) -> String {
+    match list {
+        Expr::Ident(name) => format!("an element of '{name}'"),
+        _ => "an element of a list".to_string(),
+    }
+}
+
+fn base_name(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::SetAt { base, .. } => match &**base {
+            Expr::Ident(name) => Some(name),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn article(kind: &str) -> String {
+    match kind {
+        "Array" | "Object" | "Any" => format!("an {kind}"),
+        _ => format!("a {kind}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{lexer, parser};
+
+    fn warnings(source: &str) -> Vec<String> {
+        let lexed = lexer::tokenize(source).expect("tokenize");
+        let program = parser::parse(&lexed).expect("parse");
+        kind_warnings(&program)
+            .into_iter()
+            .map(|d| d.message)
+            .collect()
+    }
+
+    #[test]
+    fn a_variable_keeps_its_first_kind() {
+        let found = warnings("count = 1\ncount = 2\ncount = \"three\"\n");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].starts_with("'count' holds a Number and is given a String"));
+    }
+
+    #[test]
+    fn null_is_not_a_kind() {
+        assert!(warnings("id = null\nid = 5\nid = null\nname = \"\"\n").is_empty());
+    }
+
+    #[test]
+    fn a_field_keeps_its_first_kind_however_it_is_written() {
+        let found = warnings(
+            "person = { name = \"Ali\" }\nperson.age = 24\nperson = person + { age = 25 }\nperson.age = \"old\"\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].starts_with("'person.age' holds a Number and is given a String"));
+    }
+
+    #[test]
+    fn values_that_meet_share_kinds() {
+        let found =
+            warnings("a = { x = 1 }\nb = a\nb.x = \"one\"\nxs = [{ y = 1 }]\nxs += { y = true }\n");
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found[0].contains("'b.x'"), "{}", found[0]);
+        assert!(found[1].contains("an element of 'xs'"), "{}", found[1]);
+    }
+
+    #[test]
+    fn a_list_of_objects_may_differ_in_which_fields_they_have() {
+        assert!(
+            warnings("xs = [{ x = 1 }, { x = 2, z = \"a\" }]\nxs += { z = \"b\" }\n").is_empty()
+        );
+    }
+
+    #[test]
+    fn what_is_sent_to_one_handler_is_one_record() {
+        let found = warnings(
+            "Show { x } =>\n    return Ack {}\n\nemit Show { x = 1 } to this\nemit Show { x = \"far\" } to this\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        // Literals of one class that never meet are two values.
+        assert!(warnings("a = Store { value = [1] }\nb = Store { value = \"s\" }\n").is_empty());
+    }
+
+    #[test]
+    fn what_a_handler_receives_follows_its_emits() {
+        let found = warnings(
+            "Move { fish, by } =>\n    fish.x = fish.x + by\n    return Moved { fish = fish }\n\nemit Move { fish = { x = 1 }, by = 1 } to this\nemit Move { fish = { x = \"left\" }, by = 1 } to this\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        // Breaking a label is the label check's to say, as an error.
+        assert!(warnings(
+            "Move { fish ∈ { x ∈ Number } } =>\n    return Moved {}\n\nemit Move { fish = { x = \"left\" } } to this\n"
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn what_a_handler_answers_is_what_get_reads() {
+        let found = warnings(
+            "Count {} =>\n    return Counted { value = 3 }\n\nemit Count {} to this get c\nn = c.value\nn = \"many\"\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("Count answers"), "{}", found[0]);
+    }
+
+    #[test]
+    fn a_computed_name_makes_a_map() {
+        let found = warnings(
+            "counts = {}\nname = \"a\"\ncounts[name] = 1\ncounts = counts + { \"$name\" = 2 }\ncounts.b = \"x\"\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+    }
+
+    #[test]
+    fn any_is_never_reported() {
+        assert!(warnings("reading ∈ Any = true\nreading = 5\nreading = \"on\"\n").is_empty());
+    }
+
+    #[test]
+    fn a_module_answer_is_not_guessed_at() {
+        assert!(warnings(
+            "emit Read { key = \"a\" } to core get r\nemit Read { key = \"b\" } to core get r\nx = r.value\nx = 5\nx = \"s\"\n"
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn separate_blocks_bind_separate_names() {
+        assert!(warnings("if true\n    t = 1\nif true\n    t = \"x\"\n").is_empty());
+    }
+}
