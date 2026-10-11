@@ -1,0 +1,10 @@
+| String building: 20,000 numbers joined with commas, one at a time.
+n = 20000
+s = ""
+i = 0
+loop
+    if i = n, break
+    s = s + "$i,"
+    i = i + 1
+emit Length { value = s } to core get { value as size }
+assert size = 108890

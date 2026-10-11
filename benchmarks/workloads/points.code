@@ -1,0 +1,31 @@
+| Points: 1,000 objects { x, y, vx, vy } moved 200 steps, bouncing off a
+| 1,000 × 1,000 box — the shape of a game or animation frame. Objects do not
+| change in place, so every step builds the next list.
+count = 1000
+steps = 200
+pts = []
+i = 0
+loop
+    if i = count, break
+    pts += { x = i, y = 1000 - i, vx = 3, vy = -2 }
+    i = i + 1
+s = 0
+loop
+    if s = steps, break
+    next = []
+    loop p over pts
+        x = p.x + p.vx
+        y = p.y + p.vy
+        vx = p.vx
+        vy = p.vy
+        if x < 0 or x > 1000
+            vx = 0 - vx
+        if y < 0 or y > 1000
+            vy = 0 - vy
+        next += { x = x, y = y, vx = vx, vy = vy }
+    pts = next
+    s = s + 1
+sum = 0
+loop p over pts
+    sum = sum + p.x + p.y
+assert sum = 1001398

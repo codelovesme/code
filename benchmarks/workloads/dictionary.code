@@ -1,0 +1,24 @@
+| Dictionary: 500 counters under computed names ("k0" … "k499"), each
+| incremented 50 times.
+keys = 500
+passes = 50
+counts = {}
+k = 0
+loop
+    if k = keys, break
+    counts = counts + { "k$k" = 0 }
+    k = k + 1
+p = 0
+loop
+    if p = passes, break
+    k = 0
+    loop
+        if k = keys, break
+        name = "k$k"
+        counts = counts + { "$name" = counts[name] + 1 }
+        k = k + 1
+    p = p + 1
+total = 0
+loop c over counts
+    total = total + c
+assert total = keys * passes
