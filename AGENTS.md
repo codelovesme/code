@@ -431,6 +431,28 @@ and a fallible function a module can call is a silent hole
 (`tests/module_abi_cannot_fail.rs`). Codegen declares them itself, like
 `code_index`.
 
+## Reading without copying (ticket 120, 2026-10-11)
+
+`gen_operand` is `gen_val` for a use that only looks at the value — every
+operand of `-`, `*`, `/`, `+`, `=`, ordering, `not`, `and`/`or`, `∈`, an `if`
+condition, and the right side of an assignment. For a `Field`/`Index` chain it
+calls `gen_peek`, which answers a pointer to the value where it is
+(`code_field_ref`, `code_index_ref`; a string's character goes in a scratch
+temp, a miss is a static null). **Never use it where the value is stored or
+handed on** (`gen_expr`): only within one expression is nothing able to
+release the container — `code_add_into` reallocs, a loop or an emitted
+handler can reassign. The assignment case is safe because `code_copy` now
+reads `src` before releasing `out` (`o = o.inner`); the fixture harness runs
+compiled programs with `MALLOC_PERTURB_` and glibc's tcache off so a read of
+freed memory fails a test (`tests/reads_in_place.code`).
+
+`-`, `*`, `/` and ordering with any boxed operand take its number with
+`code_operand_number` (one call, `code_mul`'s message) and do the arithmetic
+in line, instead of boxing the plain side for `code_mul`. That retired
+`code_compare` — and with it the last NaN difference (a NaN held in a slot
+compared `≤`/`≥` true). spectral_norm 5× → 3× C; Aquarium's wasm +2%, build
+time unchanged, frame rate unchanged (reads were ~4% of its busy time).
+
 ## Wasm handler stack (root-caused 2026-09-07)
 
 Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`

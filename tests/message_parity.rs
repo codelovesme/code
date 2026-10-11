@@ -79,6 +79,9 @@ const CASES: &[(&str, &str)] = &[
     ("set_object_by_number", "o = { a = 1 }\no[0] = 3\n"),
     ("set_inside_missing", "o = { a = 1 }\no.b.c = 3\n"),
     ("set_inside_null", "o = { a = null }\no.a.c = 3\n"),
+    ("field_operand_on_number", "a = 1\nb = a.x + 1\n"),
+    ("index_operand_on_number", "a = 1\nb = a[0] < 2\n"),
+    ("field_chain_on_null", "o = { a = null }\nb = o.a.b = 1\n"),
     // `Length`'s operand message is not here for the same reason
     // `code_check_particle`'s is not: since core answers with an Exception
     // rather than unwinding its caller, it no longer fails at the top level.

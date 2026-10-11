@@ -355,6 +355,32 @@ pub(crate) fn compile_to_object_traced(
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_operand_number = module.add_function(
+        "code_operand_number",
+        f64_ty.fn_type(
+            &[
+                i8_ptr_ty.into(),
+                i8_ptr_ty.into(),
+                context.i32_type().into(),
+                i8_ptr_ty.into(),
+            ],
+            false,
+        ),
+        None,
+    );
+    let fn_field_ref = module.add_function(
+        "code_field_ref",
+        i8_ptr_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_index_ref = module.add_function(
+        "code_index_ref",
+        i8_ptr_ty.fn_type(
+            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+            false,
+        ),
+        None,
+    );
     let fn_set_at = module.add_function(
         "code_set_at",
         void_ty.fn_type(
@@ -550,14 +576,6 @@ pub(crate) fn compile_to_object_traced(
     let fn_sub = module.add_function("code_sub", arith_ty, None);
     let fn_mul = module.add_function("code_mul", arith_ty, None);
     let fn_div = module.add_function("code_div", arith_ty, None);
-    let fn_compare = module.add_function(
-        "code_compare",
-        i64_ty.fn_type(
-            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
-            false,
-        ),
-        None,
-    );
     let fn_neg = module.add_function(
         "code_neg",
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
@@ -824,6 +842,9 @@ pub(crate) fn compile_to_object_traced(
         fn_move,
         fn_add_into,
         fn_set_at,
+        fn_field_ref,
+        fn_index_ref,
+        fn_operand_number,
         fn_field,
         fn_index,
         fn_length_of,
@@ -832,7 +853,6 @@ pub(crate) fn compile_to_object_traced(
         fn_sub,
         fn_mul,
         fn_div,
-        fn_compare,
         fn_neg,
         fn_to_text,
         fn_not,
@@ -1158,6 +1178,13 @@ struct Gen<'a, 'm> {
     fn_add_into: FunctionValue<'a>,
     /// `runtime.c`'s `code_set_at` — `xs[i] = v`, `fish.x = v`.
     fn_set_at: FunctionValue<'a>,
+    /// `runtime.c`'s `code_field_ref` / `code_index_ref` — reading without
+    /// copying (ticket 120).
+    fn_field_ref: FunctionValue<'a>,
+    fn_index_ref: FunctionValue<'a>,
+    /// `runtime.c`'s `code_operand_number` — a boxed operand of `-`, `*`,
+    /// `/` or ordering, as a plain number.
+    fn_operand_number: FunctionValue<'a>,
     fn_field: FunctionValue<'a>,
     fn_index: FunctionValue<'a>,
     fn_length_of: FunctionValue<'a>,
@@ -1166,7 +1193,6 @@ struct Gen<'a, 'm> {
     fn_sub: FunctionValue<'a>,
     fn_mul: FunctionValue<'a>,
     fn_div: FunctionValue<'a>,
-    fn_compare: FunctionValue<'a>,
     fn_neg: FunctionValue<'a>,
     fn_to_text: FunctionValue<'a>,
     fn_not: FunctionValue<'a>,
@@ -3586,7 +3612,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                 }
             }
         }
-        let value = self.gen_val(value)?;
+        let value = self.gen_operand(value)?;
         let slot = match self.lookup(name) {
             Some(existing) => existing,
             None => {
@@ -3693,7 +3719,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// correctly, simply doesn't happen if the branch doesn't run, with no
     /// merge/phi logic needed (see `env`'s doc comment).
     fn gen_if(&mut self, condition: &Expr, body: &[Stmt]) -> Result<(), String> {
-        let value = self.gen_val(condition)?;
+        let value = self.gen_operand(condition)?;
         // Not "'if' requires booleans": `if` is not an operator, and
         // interpreter.rs words this one differently for that reason.
         let cond = self.condition(value, "if requires a boolean")?;
@@ -3765,12 +3791,12 @@ impl<'a, 'm> Gen<'a, 'm> {
             }
             Expr::Binary(lhs, BinOp::Add, rhs) => self.gen_add(lhs, rhs),
             Expr::Binary(lhs, op, rhs) => {
-                let lhs = self.gen_val(lhs)?;
-                let rhs = self.gen_val(rhs)?;
+                let lhs = self.gen_operand(lhs)?;
+                let rhs = self.gen_operand(rhs)?;
                 self.gen_arith(*op, &[lhs, rhs])
             }
             Expr::Unary(UnOp::Neg, operand) => {
-                let operand = self.gen_val(operand)?;
+                let operand = self.gen_operand(operand)?;
                 self.gen_arith(BinOp::Sub, &[operand])
             }
             Expr::Unary(UnOp::Not, operand) => self.gen_not(operand).map(Val::Bool),
@@ -3796,6 +3822,61 @@ impl<'a, 'm> Gen<'a, 'm> {
                 }
             }
             _ => self.gen_boxed(expr).map(Val::Boxed),
+        }
+    }
+
+    /// `expr` for a use that only looks at it — an operand, a condition, the
+    /// right side of an assignment: like `gen_val`, except that a field or
+    /// element read points at the value where it is rather than copying it
+    /// out (ticket 120). Never for a value that is stored or handed on
+    /// (`gen_expr`): only this statement's expression is sure to leave the
+    /// container alone while the pointer is used.
+    fn gen_operand(&mut self, expr: &Expr) -> Result<Val<'a>, String> {
+        match expr {
+            Expr::Field(..) | Expr::Index(..) => self.gen_peek(expr).map(Val::Boxed),
+            _ => self.gen_val(expr),
+        }
+    }
+
+    /// The slot `expr` reads, pointing into its container for a field or an
+    /// element read (`code_field_ref`, `code_index_ref`), all the way down a
+    /// chain like `pts[i].x`.
+    fn gen_peek(&mut self, expr: &Expr) -> Result<PointerValue<'a>, String> {
+        match expr {
+            Expr::Field(obj, field) => {
+                let base = self.gen_peek(obj)?;
+                let name = self.global_str(field, "fieldname")?;
+                let found = self
+                    .builder
+                    .build_call(self.fn_field_ref, &[base.into(), name.into()], "fieldref")
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .left()
+                    .expect("code_field_ref returns a pointer")
+                    .into_pointer_value();
+                self.check_failed()?;
+                Ok(found)
+            }
+            Expr::Index(arr, index) => {
+                let base = self.gen_peek(arr)?;
+                let key = self.gen_expr(index)?;
+                let scratch = self.alloc_temp("indexref")?;
+                let found = self
+                    .builder
+                    .build_call(
+                        self.fn_index_ref,
+                        &[scratch.into(), base.into(), key.into()],
+                        "indexref",
+                    )
+                    .map_err(|e| e.to_string())?
+                    .try_as_basic_value()
+                    .left()
+                    .expect("code_index_ref returns a pointer")
+                    .into_pointer_value();
+                self.check_failed()?;
+                Ok(found)
+            }
+            _ => self.gen_expr(expr),
         }
     }
 
@@ -3967,6 +4048,14 @@ impl<'a, 'm> Gen<'a, 'm> {
             .collect::<Result<Vec<_>, _>>()?;
         let operands = operands.as_slice();
         let known = operands.iter().all(|v| matches!(v, Val::Num(_)));
+        let numbers;
+        let operands = if !known && operands.len() == 2 {
+            numbers = self.numbers_of(op, operands)?;
+            numbers.as_slice()
+        } else {
+            operands
+        };
+        let known = operands.iter().all(|v| matches!(v, Val::Num(_)));
         if !known {
             let ptrs = operands
                 .iter()
@@ -4015,6 +4104,45 @@ impl<'a, 'm> Gen<'a, 'm> {
         .map_err(|e| e.to_string())
     }
 
+    /// Two operands of an operator that takes only numbers (`-`, `*`, `/`,
+    /// ordering), each as a plain number: one `code_operand_number` call for
+    /// each side that is not one already, then one failure check. What lets
+    /// `a * vec[i]` multiply in line rather than box `a` for `code_mul`.
+    fn numbers_of(&mut self, op: BinOp, operands: &[Val<'a>]) -> Result<Vec<Val<'a>>, String> {
+        let boxed = operands
+            .iter()
+            .map(|v| match v {
+                Val::Num(_) => Ok(None),
+                other => self.box_val(*other).map(Some),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let op_name = self.global_str(op.symbol(), "opname")?;
+        let mut numbers = Vec::with_capacity(operands.len());
+        for (side, value) in operands.iter().enumerate() {
+            let Some(ptr) = boxed[side] else {
+                numbers.push(*value);
+                continue;
+            };
+            let other = boxed[1 - side].unwrap_or(self.i8_ptr_ty.const_null());
+            let on_left = self.context.i32_type().const_int((side == 0) as u64, false);
+            let number = self
+                .builder
+                .build_call(
+                    self.fn_operand_number,
+                    &[ptr.into(), other.into(), on_left.into(), op_name.into()],
+                    "operand",
+                )
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .left()
+                .expect("code_operand_number returns a double")
+                .into_float_value();
+            numbers.push(Val::Num(number));
+        }
+        self.check_failed()?;
+        Ok(numbers)
+    }
+
     fn call_arith(
         &self,
         op: BinOp,
@@ -4039,9 +4167,9 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// slow side is not a dead end, and an in-line number path merging back
     /// cost more code than it saved.
     fn gen_add(&mut self, lhs: &Expr, rhs: &Expr) -> Result<Val<'a>, String> {
-        let lhs = self.gen_val(lhs)?;
+        let lhs = self.gen_operand(lhs)?;
         let lhs = self.settle(lhs)?;
-        let rhs = self.gen_val(rhs)?;
+        let rhs = self.gen_operand(rhs)?;
         let rhs = self.settle(rhs)?;
         if let (Val::Num(a), Val::Num(b)) = (lhs, rhs) {
             return self
@@ -4082,7 +4210,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// `not` — a known boolean flipped in line; anything else through
     /// `code_not`, which fails what is not a boolean.
     fn gen_not(&mut self, operand: &Expr) -> Result<IntValue<'a>, String> {
-        let operand = self.gen_val(operand)?;
+        let operand = self.gen_operand(operand)?;
         if let Val::Bool(b) = operand {
             return self.builder.build_not(b, "not").map_err(|e| e.to_string());
         }
@@ -4104,7 +4232,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// `x ∈ Number` and its siblings compare the tag in line; `x ∈ Class`
     /// still asks `code_is_particle`.
     fn gen_is(&mut self, operand: &Expr, test: &IsTest) -> Result<IntValue<'a>, String> {
-        let operand = self.gen_val(operand)?;
+        let operand = self.gen_operand(operand)?;
         let operand = self.settle(operand)?;
         let bool_ty = self.context.bool_type();
         match (test, operand) {
@@ -4395,7 +4523,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         } else {
             "'or' requires booleans"
         };
-        let lhs = self.gen_val(lhs)?;
+        let lhs = self.gen_operand(lhs)?;
         let lhs_bool = self.condition(lhs, op_name)?;
         let decided_bb = self.builder.get_insert_block().expect("in a block");
         let rhs_bb = self
@@ -4414,7 +4542,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .map_err(|e| e.to_string())?;
 
         self.builder.position_at_end(rhs_bb);
-        let rhs = self.gen_val(rhs)?;
+        let rhs = self.gen_operand(rhs)?;
         let rhs_bool = self.condition(rhs, op_name)?;
         let rhs_end = self.builder.get_insert_block().expect("in a block");
         self.builder
@@ -4441,9 +4569,9 @@ impl<'a, 'm> Gen<'a, 'm> {
         rhs: &Expr,
         negate: bool,
     ) -> Result<IntValue<'a>, String> {
-        let lhs = self.gen_val(lhs)?;
+        let lhs = self.gen_operand(lhs)?;
         let lhs = self.settle(lhs)?;
-        let rhs = self.gen_val(rhs)?;
+        let rhs = self.gen_operand(rhs)?;
         let rhs = self.settle(rhs)?;
         let bool_ty = self.context.bool_type();
         let equal = match (lhs, rhs) {
@@ -4502,58 +4630,37 @@ impl<'a, 'm> Gen<'a, 'm> {
         }
     }
 
-    /// `<`/`>`/`≤`/`≥`. Two numbers are compared in line, as the
-    /// interpreter compares them: a NaN is neither less, greater nor equal,
-    /// so every ordering with one is false. (`code_compare`'s -1/0/1 reads
-    /// a NaN as "equal", which made `≤` and `≥` true here and false in
-    /// `code run`; two numbers no longer reach it.) Anything else goes to
-    /// `code_compare`, which fails it; the operator is passed only so the
-    /// failure message can name it, as the interpreter's does.
+    /// `<`/`>`/`≤`/`≥`, always compared in line, as the interpreter
+    /// compares: a NaN is neither less, greater nor equal, so every
+    /// ordering with one is false. (The old `code_compare`'s -1/0/1 read a
+    /// NaN as "equal", which made `≤` and `≥` true here and false in `code
+    /// run` — for a number held in a slot until ticket 120 retired it.)
     fn gen_compare(&mut self, lhs: &Expr, op: BinOp, rhs: &Expr) -> Result<IntValue<'a>, String> {
-        let lhs = self.gen_val(lhs)?;
+        let lhs = self.gen_operand(lhs)?;
         let lhs = self.settle(lhs)?;
-        let rhs = self.gen_val(rhs)?;
+        let rhs = self.gen_operand(rhs)?;
         let rhs = self.settle(rhs)?;
-        if let (Val::Num(a), Val::Num(b)) = (lhs, rhs) {
-            let predicate = match op {
-                BinOp::Lt => FloatPredicate::OLT,
-                BinOp::Gt => FloatPredicate::OGT,
-                BinOp::Le => FloatPredicate::OLE,
-                BinOp::Ge => FloatPredicate::OGE,
-                _ => unreachable!("gen_compare only called for ordering operators"),
-            };
-            return self
-                .builder
-                .build_float_compare(predicate, a, b, "cmp")
-                .map_err(|e| e.to_string());
-        }
-        let lhs_ptr = self.box_val(lhs)?;
-        let rhs_ptr = self.box_val(rhs)?;
-        let op_ptr = self.global_str(op.symbol(), "cmpop")?;
-        let cmp = self
-            .builder
-            .build_call(
-                self.fn_compare,
-                &[lhs_ptr.into(), rhs_ptr.into(), op_ptr.into()],
-                "",
-            )
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .left()
-            .expect("code_compare returns i64, not void")
-            .into_int_value();
-        // Before the icmp: a failed `code_compare` answers 0, which reads as
-        // "equal" and would make `1 < "a"` quietly false.
-        self.check_failed()?;
+        // Ordering is numbers only, so whatever is not one already becomes
+        // one (`code_operand_number`, which words the failure) and the
+        // comparison itself is always in line — IEEE, like the interpreter.
+        let operands = if matches!((lhs, rhs), (Val::Num(_), Val::Num(_))) {
+            vec![lhs, rhs]
+        } else {
+            self.numbers_of(op, &[lhs, rhs])?
+        };
+        let (a, b) = match operands[..] {
+            [Val::Num(a), Val::Num(b)] => (a, b),
+            _ => unreachable!("numbers_of answers numbers"),
+        };
         let predicate = match op {
-            BinOp::Lt => IntPredicate::SLT,
-            BinOp::Gt => IntPredicate::SGT,
-            BinOp::Le => IntPredicate::SLE,
-            BinOp::Ge => IntPredicate::SGE,
+            BinOp::Lt => FloatPredicate::OLT,
+            BinOp::Gt => FloatPredicate::OGT,
+            BinOp::Le => FloatPredicate::OLE,
+            BinOp::Ge => FloatPredicate::OGE,
             _ => unreachable!("gen_compare only called for ordering operators"),
         };
         self.builder
-            .build_int_compare(predicate, cmp, self.i64_ty.const_zero(), "cmp")
+            .build_float_compare(predicate, a, b, "cmp")
             .map_err(|e| e.to_string())
     }
 

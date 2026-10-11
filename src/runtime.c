@@ -497,9 +497,13 @@ const char *code_str_text(const CodeValue *v) {
  * of the very array the previous element came from — and releasing first
  * would drop the last reference and free the block this is about to read. */
 void code_copy(CodeValue *out, const CodeValue *src) {
-    code_retain(src);
+    /* Read before `out` is released: `src` may live inside `out`'s own
+     * block (`o = o.inner`, read without a copy since ticket 120), and
+     * releasing `out` can free that block. */
+    CodeValue value = *src;
+    code_retain(&value);
     code_release(out);
-    *out = *src;
+    *out = value;
 }
 
 /* `out` takes over `src`'s value, reference and all, and `src` is left
@@ -780,6 +784,50 @@ static const CodeValue *find_field(const CodeValue *obj, const char *key) {
         }
     }
     return NULL;
+}
+
+/* ---- Reading without copying (ticket 120) ---------------------------------
+ *
+ * `fish.x + 1` used to copy `fish.x` into a temporary (a retain), use it once
+ * and release it at the end of the statement. These answer a pointer to the
+ * value where it already is instead. Codegen uses them only where the value
+ * is looked at and let go within the expression — arithmetic, comparison, a
+ * condition, the right side of an assignment (`code_copy` reads before it
+ * releases) — never where it is stored or handed on, because nothing
+ * guarantees the container outlives a later statement. Same rules and
+ * messages as `code_field` and `code_index`, which they fall back on. */
+static const CodeValue no_value = { CODE_NULL, 0, 0, NULL, 0, NULL, NULL, 0 };
+
+const CodeValue *code_field_ref(const CodeValue *obj, const char *field) {
+    if (obj->tag != CODE_OBJECT) {
+        CodeValue unused;
+        memset(&unused, 0, sizeof unused);
+        code_field(&unused, obj, field); /* the error */
+        return &no_value;
+    }
+    const CodeValue *found = find_field(obj, field);
+    return found ? found : &no_value;
+}
+
+/* `scratch` is a temporary of the statement, for the one read that has to
+ * build its answer: a string's character. */
+const CodeValue *code_index_ref(CodeValue *scratch, const CodeValue *arr, const CodeValue *index) {
+    if (arr->tag == CODE_ARRAY) {
+        if (index->tag == CODE_NUMBER) {
+            double n = index->number;
+            long long i = (long long)n;
+            if ((double)i == n && i >= 0 && i < arr->len) {
+                return slot_at(arr->items, i);
+            }
+        }
+        return &no_value;
+    }
+    if (arr->tag == CODE_OBJECT) {
+        const CodeValue *found = index->tag == CODE_STR ? find_field(arr, index->str) : NULL;
+        return found ? found : &no_value;
+    }
+    code_index(scratch, arr, index); /* a character, or the error */
+    return scratch;
 }
 
 /* Builds `{ "_class": class_name, "value": *value }` — the shape every core
@@ -4463,29 +4511,24 @@ void code_div(CodeValue *out, const CodeValue *a, const CodeValue *b) {
     fail_binary("/", a, b);
 }
 
-/* -1/0/1 for two Numbers; fails for anything else, strings included —
- * ordering is Number-only (see ast.rs's BinOp doc comment). codegen.rs turns
- * the result into `<`/`>`/`≤`/`≥` with a plain LLVM icmp against 0 — one
- * runtime function instead of four.
- *
- * The 0 on the failing path is not an answer, it is a value to return with:
- * the caller checks `code_failed` before it looks at this at all. Same for
- * `code_bool_value` and `code_iter_len` below — the three helpers whose
- * result is a plain integer rather than a `CodeValue*` out-parameter, which
- * is exactly why the channel is a flag and not a status return. */
-long long code_compare(const CodeValue *a, const CodeValue *b, const char *op) {
-    if (a->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
-        if (a->number < b->number) {
-            return -1;
-        }
-        return a->number > b->number ? 1 : 0;
+/* The number in `v`, for an operator whose operands must both be numbers
+ * (`-`, `*`, `/`, `<` and the rest of ordering): what lets codegen do the
+ * arithmetic itself when it already holds the other side as a plain number,
+ * instead of boxing that number to call `code_mul` (ticket 120). `other` is
+ * the operand on the other side, or NULL for one codegen knows is a number;
+ * `v_on_left` says which side `v` is, so the message is `code_mul`'s,
+ * operands in the order written. The 0 on failure is not an answer: the
+ * caller checks `code_failed` first. */
+double code_operand_number(const CodeValue *v, const CodeValue *other, int v_on_left,
+                           const char *op) {
+    if (v->tag == CODE_NUMBER) {
+        return v->number;
     }
-    /* `op` exists only for this message. Ordering still goes through one
-     * runtime call rather than four (codegen turns the result into
-     * `<`/`>`/`≤`/`≥` with an icmp), but "cannot order these values" could
-     * not say which operator the program actually wrote, and
-     * interpreter.rs's version always could. */
-    fail_binary(op, a, b);
+    CodeValue number;
+    memset(&number, 0, sizeof number);
+    number.tag = CODE_NUMBER;
+    const CodeValue *rest = other ? other : &number;
+    fail_binary(op, v_on_left ? v : rest, v_on_left ? rest : v);
     return 0;
 }
 
