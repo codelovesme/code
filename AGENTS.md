@@ -567,7 +567,21 @@ strings. The earlier rejection of in-line tag checks was about doing it for
 `clear_temps_from` looks at `heap` before calling `code_clear` — but only for
 temps in `mostly_empty` (a slow path's scratch, a likely sum): doing it for
 every temp made Aquarium's wasm +5% for nothing. spectral_norm 0.42 →
-0.31 s (1.9× C); Aquarium wasm 947K → 978K, build time unchanged. `tests/shapes.code` holds the cases (shape kept, cleared,
+0.31 s (1.9× C); Aquarium wasm 947K → 978K, build time unchanged.
+
+**Part writes in line** (`shaped_write`, called from `gen_set_at` before the
+`code_set_at` call it falls back to): a number (or a boxed value whose tag is
+Number) written along a path whose every step is a numeric list index or a
+field with a known slot (`Layouts::parts`) — each level checked held alone
+(heap, header count == 1, shape for objects, range and wholeness for
+indexes) and the old value holding nothing on the heap — is stored as tag +
+number. Variables the inference vouches are numbers get the same in-line tag
+check as reads (`gen_operand`'s `Expr::Ident` arm), and assigning a likely
+number into a slot holding nothing on the heap is in line
+(`likely_number_assign`) — **both only inside a loop**: at every operand they
+cost code, and Aquarium's straight-line handlers made the wasm +10% for no
+gain. points 19× → ~10× C, spectral_norm 0.31 → 0.27 s (1.6× C); Aquarium
+wasm 978K → 1043K. `tests/shapes.code` holds the cases (shape kept, cleared,
 other orders, fewer fields, non-objects), also on wasm.
 
 ## Wasm handler stack (root-caused 2026-09-07)

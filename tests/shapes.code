@@ -51,3 +51,28 @@ key = "a"
 assert named[key] = 1
 k = 2
 assert nums[k] = 30
+
+| A number written straight into a slot only when that is all it takes: the
+| list and the point held alone, the old value nothing on the heap.
+grid = [{ x = 1, y = 2 }, { x = 3, y = 4 }]
+grid[0].x = 10
+assert grid[0] = { x = 10, y = 2 }
+shared = grid
+grid[1].y = 40
+assert shared[1].y = 4
+assert grid[1].y = 40
+held = grid[0]
+grid[0].y = 20
+assert held.y = 2
+assert grid[0].y = 20
+grid[0].x = "ten"
+assert grid[0].x = "ten"
+grid[0].x = 11
+assert grid[0].x = 11
+total = grid[0].x + grid[1].x
+grid[1].x = total
+assert grid[1].x = 14
+grid[0].y = null
+assert grid[0].y = null
+grid[0].y = 2
+assert grid = [{ x = 11, y = 2 }, { x = 14, y = 40 }]

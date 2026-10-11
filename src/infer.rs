@@ -90,8 +90,8 @@ pub struct Layouts {
     pub fields: HashMap<usize, (Vec<String>, usize)>,
     /// `xs[i].x = v` writes: by the `SetAt`'s address and the step.
     pub parts: HashMap<(usize, usize), (Vec<String>, usize)>,
-    /// The `.field` and `[index]` reads whose value the program only ever
-    /// makes a number (or null): their address. Codegen reads the number in
+    /// The variable, `.field` and `[index]` reads whose value the program
+    /// only ever makes a number (or null): their address. Codegen reads the number in
     /// line when the tag says so, and calls the runtime when it does not.
     pub numbers: std::collections::HashSet<usize>,
 }
@@ -767,7 +767,10 @@ impl Infer<'_> {
             Expr::Bool(_) => self.scalar(ValueKind::Boolean),
             Expr::Null => self.fresh(Shape::Unknown),
             Expr::Ident(name) => match self.lookup(name) {
-                Some(var) => var,
+                Some(var) => {
+                    self.read_sites.push((expr as *const Expr as usize, var));
+                    var
+                }
                 None => self.fresh(Shape::Any),
             },
             Expr::Array(items) => {
