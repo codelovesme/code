@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    BinOp, EmitTarget, Expr, Field, FieldKey, Label, Program, Span, Stmt, UnOp, ValueKind,
+    BinOp, EmitTarget, Expr, Field, FieldKey, Label, LabelValue, Program, Span, Stmt, UnOp,
+    ValueKind,
 };
 use crate::span::Origin;
+use crate::types::Types;
 
 /// Severity used by the machine-readable checker report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +66,7 @@ impl StaticType {
 struct CheckContext<'a> {
     origin: Option<&'a Origin>,
     diagnostics: &'a mut Vec<Diagnostic>,
+    defs: &'a Types,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,10 +107,28 @@ impl ExpectedType {
 /// is not knowable here.
 pub fn check_handlers(program: &Program) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
+    let defs = Types::of(program);
+    if let Some(message) = Types::problem(program) {
+        diagnostics.push(Diagnostic {
+            code: "type-definition",
+            severity: Severity::Error,
+            message,
+            handler: None,
+            particle: None,
+            target: None,
+            field: None,
+            expected: None,
+            actual: None,
+            suggestion: None,
+            span: None,
+            origin: program.origin.clone(),
+        });
+    }
     check_file(
         &program.statements,
         program.origin.as_ref(),
         &mut diagnostics,
+        &defs,
     );
     // Kinds fixed by first assignment (ticket 122): warnings until every app
     // is labelled. A statement whose value already breaks a label says so as
@@ -131,7 +152,12 @@ pub fn has_errors(diagnostics: &[Diagnostic]) -> bool {
         .any(|diagnostic| diagnostic.severity == Severity::Error)
 }
 
-fn check_file(statements: &[Stmt], origin: Option<&Origin>, diagnostics: &mut Vec<Diagnostic>) {
+fn check_file(
+    statements: &[Stmt],
+    origin: Option<&Origin>,
+    diagnostics: &mut Vec<Diagnostic>,
+    defs: &Types,
+) {
     let handlers: HashMap<String, Vec<Field>> = statements
         .iter()
         .filter_map(|statement| match statement {
@@ -142,7 +168,15 @@ fn check_file(statements: &[Stmt], origin: Option<&Origin>, diagnostics: &mut Ve
         })
         .collect();
     let mut types = HashMap::new();
-    check_statements(statements, &handlers, None, &mut types, origin, diagnostics);
+    check_statements(
+        statements,
+        &handlers,
+        None,
+        &mut types,
+        origin,
+        diagnostics,
+        defs,
+    );
 }
 
 fn check_statements(
@@ -152,6 +186,7 @@ fn check_statements(
     types: &mut HashMap<String, StaticType>,
     origin: Option<&Origin>,
     diagnostics: &mut Vec<Diagnostic>,
+    defs: &Types,
 ) {
     for statement in statements {
         match statement {
@@ -165,7 +200,7 @@ fn check_statements(
                     if let Some(known) = field
                         .annotation
                         .as_ref()
-                        .and_then(static_type_from_annotation)
+                        .and_then(|label| static_type_from_annotation(label, defs))
                     {
                         handler_types.insert(field.name.clone(), known);
                     }
@@ -177,13 +212,14 @@ fn check_statements(
                     &mut handler_types,
                     origin,
                     diagnostics,
+                    defs,
                 );
             }
             Stmt::Import {
                 body,
                 origin: imported_origin,
                 ..
-            } => check_file(body, Some(imported_origin), diagnostics),
+            } => check_file(body, Some(imported_origin), diagnostics, defs),
             Stmt::If { body, .. } | Stmt::Loop { body, .. } => {
                 let mut nested_types = types.clone();
                 check_statements(
@@ -193,6 +229,7 @@ fn check_statements(
                     &mut nested_types,
                     origin,
                     diagnostics,
+                    defs,
                 );
             }
             Stmt::Assign {
@@ -205,6 +242,7 @@ fn check_statements(
                     let mut context = CheckContext {
                         origin,
                         diagnostics,
+                        defs,
                     };
                     check_value_against_annotation(
                         annotation,
@@ -215,7 +253,7 @@ fn check_statements(
                         Some(name),
                         *span,
                     );
-                    match static_type_from_annotation(annotation) {
+                    match static_type_from_annotation(annotation, defs) {
                         Some(known) => types.insert(name.clone(), known),
                         None => types.remove(name),
                     };
@@ -234,6 +272,7 @@ fn check_statements(
                 let mut context = CheckContext {
                     origin,
                     diagnostics,
+                    defs,
                 };
                 check_emit(
                     particle,
@@ -249,6 +288,7 @@ fn check_statements(
                 let mut context = CheckContext {
                     origin,
                     diagnostics,
+                    defs,
                 };
                 check_return(value, current_handler, types, &mut context, *span)
             }
@@ -413,7 +453,7 @@ fn check_value_against_annotation(
     field: Option<&str>,
     span: Option<Span>,
 ) {
-    let Some(mismatch) = label_mismatch(annotation, value, types) else {
+    let Some(mismatch) = label_mismatch(annotation, value, types, context.defs, 0) else {
         return;
     };
     // Where inside the value it went wrong, as a path from the field or
@@ -458,13 +498,20 @@ struct Mismatch {
 
 /// Checks `value` against `label` as far as it is known here: a literal is
 /// walked into — every field of an object literal, every element of a list
-/// literal — anything else only by its kind. null fits every label (ticket
-/// 122), and `Any` fits everything.
+/// literal — anything else only by its type. null fits every label (ticket
+/// 122), and `Any` fits everything. A `type`'s name stands for its label
+/// (`defs`); `depth` stops a type that is only itself (`type A = B`,
+/// `type B = A`) from being followed for ever.
 fn label_mismatch(
     label: &Label,
     value: &Expr,
     types: &HashMap<String, StaticType>,
+    defs: &Types,
+    depth: usize,
 ) -> Option<Mismatch> {
+    if depth > 64 {
+        return None;
+    }
     let actual = static_type(value, types)?;
     if matches!(actual, StaticType::Kind(ValueKind::Null)) {
         return None;
@@ -481,35 +528,72 @@ fn label_mismatch(
         path: format!("{path}{}", found.path),
         ..found
     };
+    let fits = |label: &Label, value: &Expr| label_mismatch(label, value, types, defs, depth + 1);
+    // Against a set of written values, the value itself says more than its
+    // type: `"purple"`, not String.
+    let written = || {
+        match value {
+            Expr::Str(text) => Some(LabelValue::Str(text.clone())),
+            Expr::Number(n) => Some(LabelValue::Number(*n)),
+            Expr::Bool(b) => Some(LabelValue::Bool(*b)),
+            _ => None,
+        }
+        .map(|v| Label::Value(v).spelling())
+    };
     match label {
         Label::Named(name) if name == "Any" => None,
         Label::Named(name) => {
+            if let Some(def) = defs.get(name) {
+                return fits(def, value).map(|found| Mismatch {
+                    // Said in the type's own name when the whole value is
+                    // the wrong one; the inner label when a part is.
+                    expected: if found.path.is_empty() && !found.unnamed {
+                        name.clone()
+                    } else {
+                        found.expected
+                    },
+                    ..found
+                });
+            }
             if ExpectedType::from_name(name).accepts(&actual) {
                 None
             } else {
                 wrong(name.clone())
             }
         }
-        Label::Fields(fields) => {
+        Label::Fields(fields) | Label::Open(fields) => {
             if !ExpectedType::Kind(ValueKind::Object).accepts(&actual) {
                 return wrong(label.spelling());
             }
             let Expr::Object(literal) = value else {
                 return None;
             };
+            // A label naming `_class` is about particles; an object literal
+            // without one is not one.
+            let has_class = literal
+                .iter()
+                .any(|(key, _)| matches!(key, FieldKey::Literal(name) if name == "_class"));
+            if !has_class && fields.iter().any(|(field, _)| field == "_class") {
+                return Some(Mismatch {
+                    path: String::new(),
+                    expected: label.spelling(),
+                    actual: "an object with no `_class`".to_string(),
+                    unnamed: false,
+                });
+            }
             for (key, field_value) in literal {
                 let FieldKey::Literal(name) = key else {
                     continue;
                 };
-                if name == "_class" {
-                    continue;
-                }
                 match fields.iter().find(|(field, _)| field == name) {
                     Some((_, field_label)) => {
-                        if let Some(found) = label_mismatch(field_label, field_value, types) {
+                        if let Some(found) = fits(field_label, field_value) {
                             return Some(inside(format!(".{name}"), found));
                         }
                     }
+                    // A particle's class is not one of the fields a closed
+                    // label lists, and an open label allows any other.
+                    None if name == "_class" || matches!(label, Label::Open(_)) => {}
                     None => {
                         return Some(Mismatch {
                             path: format!(".{name}"),
@@ -530,7 +614,7 @@ fn label_mismatch(
                 return None;
             };
             items.iter().enumerate().find_map(|(i, item)| {
-                label_mismatch(element, item, types).map(|found| inside(format!("[{i}]"), found))
+                fits(element, item).map(|found| inside(format!("[{i}]"), found))
             })
         }
         Label::ObjectOf(element) => {
@@ -545,23 +629,59 @@ fn label_mismatch(
                     FieldKey::Literal(name) => format!(".{name}"),
                     FieldKey::Computed(_) => "[…]".to_string(),
                 };
-                label_mismatch(element, item, types).map(|found| inside(name, found))
+                fits(element, item).map(|found| inside(name, found))
             })
+        }
+        Label::Union(members) => {
+            let mut misses = Vec::new();
+            for member in members {
+                match fits(member, value) {
+                    None => return None,
+                    Some(found) => misses.push(found),
+                }
+            }
+            // A member the value's type matched and a part of it did not is
+            // the one to point into; otherwise the whole union is missed.
+            misses
+                .into_iter()
+                .find(|found| !found.path.is_empty())
+                .or_else(|| {
+                    Some(Mismatch {
+                        actual: written().unwrap_or_else(|| actual.name()),
+                        ..wrong(label.spelling())?
+                    })
+                })
+        }
+        Label::Value(expected) => {
+            let matches_kind = ExpectedType::Kind(expected.kind()).accepts(&actual);
+            let same = match (expected, value) {
+                (LabelValue::Str(a), Expr::Str(b)) => a == b,
+                (LabelValue::Number(a), Expr::Number(b)) => a == b,
+                (LabelValue::Bool(a), Expr::Bool(b)) => a == b,
+                // Not written down here: its type is all that is known.
+                _ => matches_kind,
+            };
+            if same {
+                None
+            } else {
+                Some(Mismatch {
+                    actual: written().unwrap_or_else(|| actual.name()),
+                    ..wrong(label.spelling())?
+                })
+            }
         }
     }
 }
 
-/// What a label lets the checker assume about a value — nothing for `Any`.
-fn static_type_from_annotation(annotation: &Label) -> Option<StaticType> {
-    match annotation {
-        Label::Named(name) if name == "Any" => None,
-        Label::Named(name) => Some(match ValueKind::parse(name) {
-            Some(kind) => StaticType::Kind(kind),
-            None => StaticType::Class(name.clone()),
-        }),
-        Label::Fields(_) | Label::ObjectOf(_) => Some(StaticType::Kind(ValueKind::Object)),
-        Label::ArrayOf(_) => Some(StaticType::Kind(ValueKind::Array)),
+/// What a label lets the checker assume about a value — nothing for `Any`,
+/// or for a union of several types.
+fn static_type_from_annotation(annotation: &Label, defs: &Types) -> Option<StaticType> {
+    if let Label::Named(name) = annotation {
+        if name != "Any" && ValueKind::parse(name).is_none() && defs.get(name).is_none() {
+            return Some(StaticType::Class(name.clone()));
+        }
     }
+    defs.kind_of(annotation).map(StaticType::Kind)
 }
 
 fn static_non_particle_type(expr: &Expr, types: &HashMap<String, StaticType>) -> Option<String> {

@@ -89,7 +89,7 @@
       "patterns": [
         { "name": "keyword.operator.arrow.code", "match": "=>" },
         { "name": "keyword.operator.assignment.code", "match": "\\+=" },
-        { "name": "keyword.operator.membership.code", "match": "[∈∉]" },
+        { "name": "keyword.operator.membership.code", "match": "[∈∉∪…]" },
         { "name": "keyword.operator.comparison.code", "match": "[=≠<>≤≥]" },
         { "name": "keyword.operator.arithmetic.code", "match": "[+\\-*/]" }
       ]

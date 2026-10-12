@@ -89,7 +89,11 @@ fn print_import_and_type_declarations_are_answered_too() {
     assert!(err.contains("link"), "should name `link`; got:\n{err}");
 
     let err = error_from("class Point {\n}\n");
-    assert!(err.contains("there are no type declarations"), "{err}");
+    assert!(err.contains("there are no class declarations"), "{err}");
+    assert!(
+        err.contains("type Name ="),
+        "should name `type`; got:\n{err}"
+    );
 }
 
 /// The message points at the word that was typed, not at whatever followed

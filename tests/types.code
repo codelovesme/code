@@ -1,0 +1,51 @@
+| Data types are sets of values (ticket 123): `type` names one, `∪` joins
+| two, a written value is the set of just that value, `…` lets an object have
+| fields its label does not name. `∈` asks whether a value is in one, the
+| same way in both backends.
+type Color = "red" ∪ "green" ∪ "blue"
+type Element = { tag ∈ String, children ∈ Array of (String ∪ Element) }
+type PointParticle = { _class ∈ "Point", x ∈ Number, y ∈ Number }
+type Size = 1 ∪ 2 ∪ 3
+type Switch = true
+
+assert "red" ∈ Color
+assert "purple" ∉ Color
+assert 3 ∉ Color
+assert 2 ∈ Size
+assert 2.5 ∉ Size
+assert true ∈ Switch
+assert false ∉ Switch
+
+| A type that contains itself: an element's children are elements.
+page = { tag = "p", children = ["Hi ", { tag = "b", children = ["you"] }] }
+assert page ∈ Element
+broken = { tag = "p", children = ["Hi ", { tag = "b", children = [3] }] }
+assert broken ∉ Element
+assert { tag = "p", children = [], id = "x" } ∉ Element
+
+| A particle is an object with a `_class`; one class of them is a type too.
+assert Point { x = 1, y = 2 } ∈ PointParticle
+assert Line { x = 1, y = 2 } ∉ PointParticle
+assert Point { x = 1, y = 2 } ∈ Particle
+assert { x = 1 } ∉ Particle
+assert Point { x = 1 } ∈ Point
+assert 5 ∉ Particle
+
+| A field left out is null, which fits; null itself is in no type but Null
+| and Any.
+assert Point { x = 1 } ∈ PointParticle
+assert null ∉ Color
+assert null ∈ Null
+
+| A label right after `∈`.
+assert "green" ∈ "red" ∪ "green"
+assert [1, 2] ∈ Array of Number
+assert [1, "2"] ∉ Array of Number
+assert { a = 1, b = "x" } ∈ { a ∈ Number, … }
+assert { a = 1, b = "x" } ∉ { a ∈ Number }
+assert { k1 = 1, k2 = 2 } ∈ Object of Number
+
+| `type` is an ordinary name everywhere else.
+type = "button"
+attrs = { type = type }
+assert attrs.type = "button"

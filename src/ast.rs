@@ -311,6 +311,9 @@ pub enum Stmt {
         /// source.
         span: Option<Span>,
     },
+    /// `type Color = "red" ∪ "green" ∪ "blue"` — a name for a set of values,
+    /// for labels and `∈` (ticket 123). Top level only; it runs nothing.
+    TypeDef { name: String, label: Label },
 }
 
 /// One entry in a field list — a handler's `Class { a, b as c }` and an
@@ -346,15 +349,65 @@ pub struct Field {
 /// label promises about what it holds. null fits every label.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Label {
-    /// One of the six kinds, `Any`, or a particle class: `Number`, `Point`.
+    /// One of the six types, `Any`, `Particle`, a `type`'s name, or a
+    /// particle class: `Number`, `Color`, `Point`. A capitalised name no
+    /// `type` declares is the particles of that class (ticket 123).
     Named(String),
     /// `{ x ∈ Number, y ∈ Number }` — an object with these fields, each
     /// labelled in turn. A field the label does not name is not part of it.
     Fields(Vec<(String, Label)>),
+    /// `{ _class ∈ String, … }` — an object with at least these fields; it
+    /// may have others.
+    Open(Vec<(String, Label)>),
     /// `Array of Label` — a list whose every element fits.
     ArrayOf(Box<Label>),
     /// `Object of Label` — a map: any names, every value fits.
     ObjectOf(Box<Label>),
+    /// `String ∪ Element` — a value that fits any one of these.
+    Union(Vec<Label>),
+    /// `"red"`, `3`, `true` — the set of just that value.
+    Value(LabelValue),
+}
+
+/// A value written in a label (`Label::Value`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum LabelValue {
+    Str(String),
+    Number(f64),
+    Bool(bool),
+}
+
+impl LabelValue {
+    /// The type the value is one of.
+    pub fn kind(&self) -> ValueKind {
+        match self {
+            LabelValue::Str(_) => ValueKind::String,
+            LabelValue::Number(_) => ValueKind::Number,
+            LabelValue::Bool(_) => ValueKind::Boolean,
+        }
+    }
+
+    fn spelling(&self) -> String {
+        match self {
+            LabelValue::Str(text) => {
+                let mut quoted = String::from("\"");
+                for c in text.chars() {
+                    match c {
+                        '"' => quoted.push_str("\\\""),
+                        '\\' => quoted.push_str("\\\\"),
+                        '$' => quoted.push_str("\\$"),
+                        '\n' => quoted.push_str("\\n"),
+                        '\t' => quoted.push_str("\\t"),
+                        other => quoted.push(other),
+                    }
+                }
+                quoted.push('"');
+                quoted
+            }
+            LabelValue::Number(n) => crate::value::Value::Number(*n).to_string(),
+            LabelValue::Bool(b) => b.to_string(),
+        }
+    }
 }
 
 impl Label {
@@ -362,19 +415,37 @@ impl Label {
     pub fn spelling(&self) -> String {
         match self {
             Label::Named(name) => name.clone(),
-            Label::Fields(fields) => {
-                let inner: Vec<String> = fields
+            Label::Fields(fields) | Label::Open(fields) => {
+                let mut inner: Vec<String> = fields
                     .iter()
                     .map(|(name, label)| format!("{} ∈ {}", field_name(name), label.spelling()))
                     .collect();
+                if matches!(self, Label::Open(_)) {
+                    inner.push("…".to_string());
+                }
                 if inner.is_empty() {
                     "{}".to_string()
                 } else {
                     format!("{{ {} }}", inner.join(", "))
                 }
             }
-            Label::ArrayOf(inner) => format!("Array of {}", inner.spelling()),
-            Label::ObjectOf(inner) => format!("Object of {}", inner.spelling()),
+            Label::ArrayOf(inner) => format!("Array of {}", inner.spelling_as_part()),
+            Label::ObjectOf(inner) => format!("Object of {}", inner.spelling_as_part()),
+            Label::Union(members) => members
+                .iter()
+                .map(|member| member.spelling())
+                .collect::<Vec<_>>()
+                .join(" ∪ "),
+            Label::Value(value) => value.spelling(),
+        }
+    }
+
+    /// The spelling where a union must be bracketed to stay one part:
+    /// `Array of (String ∪ Element)`.
+    fn spelling_as_part(&self) -> String {
+        match self {
+            Label::Union(_) => format!("({})", self.spelling()),
+            _ => self.spelling(),
         }
     }
 }
@@ -386,7 +457,7 @@ impl Label {
     pub fn merge(self, other: Label) -> Label {
         let any = || Label::Named("Any".to_string());
         match (self, other) {
-            (Label::Named(a), Label::Named(b)) if a == b => Label::Named(a),
+            (a, b) if a == b => a,
             (Label::Named(a), _) | (_, Label::Named(a)) if a == "Any" => any(),
             (Label::ArrayOf(a), Label::ArrayOf(b)) => Label::ArrayOf(Box::new(a.merge(*b))),
             (Label::ObjectOf(a), Label::ObjectOf(b)) => Label::ObjectOf(Box::new(a.merge(*b))),
@@ -401,6 +472,9 @@ impl Label {
                     }
                 }
                 Label::Fields(a)
+            }
+            (Label::Value(a), Label::Value(b)) if a.kind() == b.kind() => {
+                Label::Named(a.kind().name().to_string())
             }
             (Label::Fields(fields), Label::ObjectOf(values))
             | (Label::ObjectOf(values), Label::Fields(fields)) => Label::ObjectOf(Box::new(
@@ -720,8 +794,13 @@ pub enum Expr {
 pub enum IsTest {
     /// One of the six value kinds: `x is String`.
     Kind(ValueKind),
-    /// A particle's `_class`: `r is Exception`.
+    /// A name that is not one of the six: a `type` the program declares
+    /// (`c ∈ Color`), or else a particle's `_class` (`r ∈ Exception`) —
+    /// which one is the whole program's to say, so it is decided when it
+    /// runs (ticket 123).
     Class(String),
+    /// Any other label: `c ∈ "red" ∪ "green"`, `p ∈ { x ∈ Number, … }`.
+    Label(Label),
 }
 
 /// The six kinds a value can be — exactly JSON's, which is a commitment

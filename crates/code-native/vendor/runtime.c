@@ -4794,6 +4794,117 @@ int code_is_particle(const CodeValue *a, const char *name) {
     return strcmp(class_val->str, name) == 0 ? 1 : 0;
 }
 
+/* ---- `∈` a data type (ticket 123) ---------------------------------------
+ *
+ * A type is a set of values, described by the compiler as a graph of these
+ * nodes (`codegen.rs`'s `type_node`): a type that contains itself — an
+ * element whose children are elements — points back at its own node. Not in
+ * `code_abi.h`: only generated code asks. Must answer as `types.rs`'s
+ * `Types::contains` does: null is in `Null` and `Any` only, but a part that
+ * is null (a field left out) fits whatever its label is. */
+enum {
+    CODE_TYPE_ANY,
+    CODE_TYPE_KIND,   /* `number` is the tag */
+    CODE_TYPE_STR,    /* `text` is the value */
+    CODE_TYPE_NUMBER, /* `number` is the value */
+    CODE_TYPE_BOOL,   /* `number` is 0 or 1 */
+    CODE_TYPE_UNION,  /* `count` members in `children` */
+    CODE_TYPE_ARRAY_OF,
+    CODE_TYPE_OBJECT_OF, /* `children[0]` is the element's type */
+    CODE_TYPE_FIELDS, /* `count` fields: `names`, `children`; no others */
+    CODE_TYPE_OPEN,   /* the same, and others allowed */
+    CODE_TYPE_CLASS   /* a particle whose `_class` is `text` */
+};
+
+typedef struct CodeTypeNode {
+    int op;
+    int count;
+    const struct CodeTypeNode *const *children;
+    const char *const *names;
+    const char *text;
+    double number;
+} CodeTypeNode;
+
+static int type_holds(const CodeValue *v, const CodeTypeNode *t, int part) {
+    if (part && v->tag == CODE_NULL) {
+        return 1;
+    }
+    switch (t->op) {
+    case CODE_TYPE_ANY:
+        return 1;
+    case CODE_TYPE_KIND:
+        return v->tag == (CodeTag)(int)t->number;
+    case CODE_TYPE_STR:
+        return v->tag == CODE_STR && strcmp(v->str, t->text) == 0;
+    case CODE_TYPE_NUMBER:
+        return v->tag == CODE_NUMBER && v->number == t->number;
+    case CODE_TYPE_BOOL:
+        return v->tag == CODE_BOOL && (v->boolean != 0) == (t->number != 0);
+    case CODE_TYPE_UNION:
+        for (int i = 0; i < t->count; i++) {
+            if (type_holds(v, t->children[i], part)) {
+                return 1;
+            }
+        }
+        return 0;
+    case CODE_TYPE_ARRAY_OF:
+    case CODE_TYPE_OBJECT_OF: {
+        CodeTag tag = t->op == CODE_TYPE_ARRAY_OF ? CODE_ARRAY : CODE_OBJECT;
+        if (v->tag != tag) {
+            return 0;
+        }
+        for (long long i = 0; i < LEN(v); i++) {
+            if (!type_holds(slot_at(ITEMS(v), i), t->children[0], 1)) {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    case CODE_TYPE_FIELDS:
+    case CODE_TYPE_OPEN:
+        if (v->tag != CODE_OBJECT) {
+            return 0;
+        }
+        /* A label that names `_class` is about particles: an object
+         * without one is not one (a field left out is otherwise null, which
+         * fits). */
+        for (int f = 0; f < t->count; f++) {
+            if (strcmp(t->names[f], "_class") == 0) {
+                const CodeValue *class_val = find_field(v, "_class");
+                if (!class_val || class_val->tag == CODE_NULL) {
+                    return 0;
+                }
+            }
+        }
+        for (long long i = 0; i < LEN(v); i++) {
+            const char *key = KEYS(v)[i];
+            int found = -1;
+            for (int f = 0; f < t->count; f++) {
+                if (strcmp(t->names[f], key) == 0) {
+                    found = f;
+                    break;
+                }
+            }
+            if (found >= 0) {
+                if (!type_holds(slot_at(ITEMS(v), i), t->children[found], 1)) {
+                    return 0;
+                }
+            } else if (t->op == CODE_TYPE_FIELDS && strcmp(key, "_class") != 0) {
+                return 0;
+            }
+        }
+        return 1;
+    case CODE_TYPE_CLASS:
+        return code_is_particle(v, t->text);
+    default:
+        return 0;
+    }
+}
+
+int code_is_type(const CodeValue *v, const CodeTypeNode *t) {
+    return type_holds(v, t, 0);
+}
+
 /* Used by `and`/`or`/`if` codegen to check an operand is actually a bool
  * before branching on it. `requirement` is the whole clause, not just the
  * operator name — `if` is not an operator and wants "if requires a boolean",

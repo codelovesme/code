@@ -74,7 +74,7 @@ fn classify(tok: &Token, prev_dot: bool) -> Option<Kind> {
         Number(_) => Kind::Number,
         True | False | Null | And | Or | Not | Assert | If | Loop | Over | Break | Continue | Link | Unlink | As
         | Emit | To | Core | Get | Is | This | Base | Return => Kind::Keyword,
-        Equals | Plus | PlusEq | Minus | Star | Slash | NotEq | Lt | Gt | Le | Ge | Arrow | In | NotIn => {
+        Equals | Plus | PlusEq | Minus | Star | Slash | NotEq | Lt | Gt | Le | Ge | Arrow | In | NotIn | Union | Ellipsis => {
             Kind::Operator
         }
         Ident(_) if prev_dot => Kind::Property,
@@ -213,7 +213,7 @@ fn scanned_spans(line: &str) -> Vec<Span> {
                 Kind::Variable
             };
             spans.push(Span { col: start, len: i - start, kind });
-        } else if "=+-*/<>≠≤≥∈∉".contains(c) {
+        } else if "=+-*/<>≠≤≥∈∉∪…".contains(c) {
             i += 1;
             if c == '=' && chars.get(i) == Some(&'>') || c == '+' && chars.get(i) == Some(&'=') {
                 i += 1;

@@ -195,6 +195,8 @@ pub struct State {
     /// The interaction running now, recorded for the program's own `Trace`
     /// handler. `None` unless the program defines one — see `crate::flows`.
     flows: Option<crate::flows::Flows>,
+    /// The program's `type`s, for `∈` (ticket 123).
+    types: crate::types::Types,
 }
 
 /// A running program's whole world, reached through a shared reference.
@@ -270,6 +272,7 @@ impl Default for Environment {
 impl Default for State {
     fn default() -> Self {
         State {
+            types: crate::types::Types::predefined(),
             scopes: vec![HashMap::new()],
             file_scopes: vec![HashMap::new()],
             current_file: 0,
@@ -926,6 +929,7 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 /// that keeps one itself must keep it where it is.
 pub fn prepare(program: &Program, env: &Environment) -> Result<(), String> {
     register_handlers(&program.statements, env, 0, 0)?;
+    env.st_mut().types = crate::types::Types::of(program);
     crate::handlers::check_cycles(program)?;
     // A program that answers `Trace` is given one after each interaction;
     // one that does not records nothing. Decided once, here, because the
@@ -1481,6 +1485,8 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
         }
         Stmt::Break => Ok(Flow::Break),
         Stmt::Continue => Ok(Flow::Continue),
+        // A name for a set of values: `code check`'s, nothing to run.
+        Stmt::TypeDef { .. } => Ok(Flow::Normal),
         // Already collected by `register_handlers` before execution began —
         // reaching the definition in statement order does nothing.
         Stmt::HandlerDef { .. } => Ok(Flow::Normal),
@@ -2083,9 +2089,15 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                 // A particle is an object whose `_class` is that name. An
                 // object without one, a wrong class, or any non-object value
                 // is false rather than an error.
-                IsTest::Class(class) => matches!(&v, Value::Object(fields)
-                    if fields.iter().any(|(k, val)| k == "_class"
-                        && matches!(val, Value::Str(s) if **s == *class))),
+                // A declared `type`'s name, or a particle's class: the
+                // particles whose `_class` is that name — an object without
+                // one, another class, or any non-object is false rather than
+                // an error.
+                IsTest::Class(class) => {
+                    let label = crate::ast::Label::Named(class.clone());
+                    env.st().types.contains(&label, &v)
+                }
+                IsTest::Label(label) => env.st().types.contains(label, &v),
             };
             Ok(Value::Bool(answer))
         }

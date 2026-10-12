@@ -110,7 +110,7 @@ impl<'p> Function<'p> {
                     }
                     self.collect(body, handlers);
                 }
-                Stmt::Continue | Stmt::Break => {}
+                Stmt::Continue | Stmt::Break | Stmt::TypeDef { .. } => {}
                 Stmt::Link { alias, .. } => {
                     if let Some(alias) = alias {
                         self.bind(alias);

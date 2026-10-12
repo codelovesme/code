@@ -66,6 +66,12 @@ pub enum Token {
     /// so the eye has to work out that the whole membership is what is being
     /// negated rather than `x`.
     NotIn,
+    /// `∪` — a label that is one of two (`String ∪ Element`): the union of
+    /// two sets of values, in the notation `∈` and `∉` already are.
+    Union,
+    /// `…` — an object label that allows fields it does not name:
+    /// `{ _class ∈ String, … }`.
+    Ellipsis,
     /// `≠`
     NotEq,
     Lt,
@@ -357,6 +363,8 @@ pub fn tokenize(src: &str) -> Result<Lexed, Located> {
             // operator in the language.
             '∈' => Some(Token::In),
             '∉' => Some(Token::NotIn),
+            '∪' => Some(Token::Union),
+            '…' => Some(Token::Ellipsis),
             '≤' => Some(Token::Le),
             '≥' => Some(Token::Ge),
             _ => None,
