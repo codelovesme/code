@@ -33,6 +33,11 @@
 
 #include "code_abi.h"
 
+/* A list's or object's count, slots and keys (`code_abi.h`). */
+#define LEN(v) code_list_len(v)
+#define ITEMS(v) code_list_items(v)
+#define KEYS(v) code_list_keys(v)
+
 /* See `code_most_live`. */
 #define CODE_MOST_LIVE 64
 
@@ -204,7 +209,7 @@ typedef struct {
 } CodeHeader;
 
 /* An object's shape, or 0 (see `CodeHeader`). */
-#define SHAPE_OF(v) (header_of((v)->keys)->text_length)
+#define SHAPE_OF(v) (header_of((v)->list)->text_length)
 
 /* Blocks currently allocated. Exists only so `code_check_leaks` can turn
  * "the refcounting is correct" into something a test can actually observe —
@@ -239,20 +244,28 @@ static CodeHeader *header_of(const void *payload) {
     return (CodeHeader *)((char *)payload - sizeof(CodeHeader));
 }
 
-/* The single block a heap-owning value refers to. An object packs its keys
- * array and its value slots into one allocation — `keys` is the base, and
- * `items` points partway into it — so one refcount covers both. */
+/* The single block a heap-owning value refers to. A list's or an object's
+ * is its `CodeList`: the count, then the slots, then (an object's) its keys
+ * — one allocation, so one refcount covers it all. */
 static void *heap_block(const CodeValue *v) {
     switch (v->tag) {
     case CODE_STR:
         return (void *)v->str;
     case CODE_ARRAY:
-        return v->items;
     case CODE_OBJECT:
-        return (void *)v->keys;
+        return v->list;
     default:
         return NULL;
     }
+}
+
+/* A list block for `len` elements (left for the caller to fill), with
+ * `extra` bytes after the slots: an object's key pointers and characters. */
+static CodeList *list_alloc(long long len, size_t extra) {
+    CodeList *list = heap_alloc(sizeof(CodeList) + (size_t)len * CODE_VALUE_SLOT_SIZE + extra);
+    list->len = len;
+    list->keys = NULL;
+    return list;
 }
 
 void code_retain(const CodeValue *v) {
@@ -329,8 +342,8 @@ void code_release(CodeValue *v) {
         /* Children are read out *before* the block is freed, and only the
          * ones whose own count reaches zero are queued. */
         if (current.tag == CODE_ARRAY || current.tag == CODE_OBJECT) {
-            for (long long i = 0; i < current.len; i++) {
-                const CodeValue *child = slot_at(current.items, i);
+            for (long long i = 0; i < LEN(&current); i++) {
+                const CodeValue *child = slot_at(ITEMS(&current), i);
                 if (child->heap && --header_of(heap_block(child))->rc == 0) {
                     dead = grow(dead, &dead_cap, len + 1, sizeof(CodeValue));
                     dead[len++] = *child;
@@ -413,9 +426,10 @@ void code_null(CodeValue *out) {
  * slots are free to be rewritten by the next iteration. An empty array owns
  * no block at all. */
 void code_array(CodeValue *out, void *items, long long len) {
-    void *buf = NULL;
+    CodeList *list = NULL;
     if (len > 0) {
-        buf = heap_alloc((size_t)len * CODE_VALUE_SLOT_SIZE);
+        list = list_alloc(len, 0);
+        void *buf = list + 1;
         for (long long i = 0; i < len; i++) {
             const CodeValue *src = slot_at(items, i);
             code_retain(src);
@@ -425,8 +439,7 @@ void code_array(CodeValue *out, void *items, long long len) {
     code_release(out);
     out->tag = CODE_ARRAY;
     out->heap = len > 0;
-    out->items = buf;
-    out->len = len;
+    out->list = list;
 }
 
 /* ---- Finding a field by its fingerprint (2026-10-11) ----------------------
@@ -463,8 +476,12 @@ static unsigned int stored_hash(const char *key) {
 
 /* Where `key` (whose hash is `hash`) is in `obj`, or -1. */
 static long long field_position(const CodeValue *obj, const char *key, unsigned int hash) {
-    for (long long i = 0; i < obj->len; i++) {
-        if (stored_hash(obj->keys[i]) == hash && strcmp(obj->keys[i], key) == 0) {
+    /* Read once: `strcmp` is a call, and the count and keys sit behind the
+     * value's block pointer. */
+    long long len = LEN(obj);
+    const char **keys = KEYS(obj);
+    for (long long i = 0; i < len; i++) {
+        if (stored_hash(keys[i]) == hash && strcmp(keys[i], key) == 0) {
             return i;
         }
     }
@@ -474,14 +491,14 @@ static long long field_position(const CodeValue *obj, const char *key, unsigned 
 /* `find_field` for an object this runtime built. */
 static const CodeValue *own_field(const CodeValue *obj, const char *key) {
     long long at = field_position(obj, key, key_hash(key));
-    return at < 0 ? NULL : slot_at(obj->items, at);
+    return at < 0 ? NULL : slot_at(ITEMS(obj), at);
 }
 
 /* `own_field` for a key that is itself one of an object's own keys, so its
  * hash is already stored. */
 static const CodeValue *own_field_of_key(const CodeValue *obj, const char *key) {
     long long at = field_position(obj, key, stored_hash(key));
-    return at < 0 ? NULL : slot_at(obj->items, at);
+    return at < 0 ? NULL : slot_at(ITEMS(obj), at);
 }
 
 /* Appends `key`'s characters (a NULL key reads as empty, the same answer
@@ -549,18 +566,18 @@ void code_object_literal(CodeValue *out, const char **keys, void *values, long l
 
 static void build_object(CodeValue *out, const char **keys, void *values, long long len,
                          int keys_hashed) {
-    const char **key_buf = NULL;
-    void *value_buf = NULL;
+    CodeList *list = NULL;
     if (len > 0) {
         size_t keys_bytes = (size_t)len * sizeof(const char *);
-        size_t slots_bytes = (size_t)len * CODE_VALUE_SLOT_SIZE;
         size_t chars_bytes = 0;
         for (long long i = 0; i < len; i++) {
             chars_bytes += KEY_HASH_BYTES + (keys[i] ? strlen(keys[i]) : 0) + 1;
         }
-        key_buf = heap_alloc(keys_bytes + slots_bytes + chars_bytes);
-        value_buf = (char *)key_buf + keys_bytes;
-        char *chars = (char *)value_buf + slots_bytes;
+        list = list_alloc(len, keys_bytes + chars_bytes);
+        void *value_buf = list + 1;
+        const char **key_buf = (const char **)((char *)value_buf + (size_t)len * CODE_VALUE_SLOT_SIZE);
+        list->keys = key_buf;
+        char *chars = (char *)key_buf + keys_bytes;
         for (long long i = 0; i < len; i++) {
             key_buf[i] = keys_hashed ? copy_own_key(&chars, keys[i]) : copy_key(&chars, keys[i]);
             const CodeValue *src = slot_at(values, i);
@@ -571,9 +588,7 @@ static void build_object(CodeValue *out, const char **keys, void *values, long l
     code_release(out);
     out->tag = CODE_OBJECT;
     out->heap = len > 0;
-    out->keys = key_buf;
-    out->items = value_buf;
-    out->len = len;
+    out->list = list;
 }
 
 /* The characters of a Str, for use as an object key by generated code.
@@ -668,13 +683,13 @@ void code_field(CodeValue *out, const CodeValue *obj, const char *field) {
         fail(msg);
         return;
     }
-    for (long long i = 0; i < obj->len; i++) {
-        if (strcmp(obj->keys[i], field) == 0) {
+    for (long long i = 0; i < LEN(obj); i++) {
+        if (strcmp(KEYS(obj)[i], field) == 0) {
             /* `code_copy`, not a bare struct assignment: the extracted
              * value now lives in a second slot and so needs its own
              * reference — otherwise `let inner = obj.k` would dangle the
              * moment `obj` was overwritten. */
-            code_copy(out, slot_at(obj->items, i));
+            code_copy(out, slot_at(ITEMS(obj), i));
             return;
         }
     }
@@ -722,7 +737,7 @@ static void str_owned_n(CodeValue *out, const char *s, size_t n) {
  * interpreter.rs's `Expr::LengthOf` arm, kinds and message alike. */
 void code_length_of(CodeValue *out, const CodeValue *value) {
     if (value->tag == CODE_ARRAY || value->tag == CODE_OBJECT) {
-        code_number(out, (double)value->len);
+        code_number(out, (double)LEN(value));
         return;
     }
     if (value->tag == CODE_STR) {
@@ -791,7 +806,7 @@ void code_slice(CodeValue *out, const CodeValue *value, const CodeValue *from,
         fail(msg);
         return;
     }
-    double len = (double)value->len;
+    double len = (double)LEN(value);
     double lo = from->number < 0 ? 0 : (from->number > len ? len : from->number);
     double hi = to->number < 0 ? 0 : (to->number > len ? len : to->number);
     long long start = (long long)lo;
@@ -802,7 +817,7 @@ void code_slice(CodeValue *out, const CodeValue *value, const CodeValue *from,
     }
     /* `code_array` copies out of a strided buffer, and the array's own
      * `items` is one, so the run starts at `start` with nothing to build. */
-    code_array(out, (char *)value->items + (size_t)start * CODE_VALUE_SLOT_SIZE, stop - start);
+    code_array(out, (char *)ITEMS(value) + (size_t)start * CODE_VALUE_SLOT_SIZE, stop - start);
 }
 
 void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
@@ -810,8 +825,8 @@ void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
         if (index->tag == CODE_NUMBER) {
             double n = index->number;
             long long i = (long long)n;
-            if ((double)i == n && i >= 0 && i < arr->len) {
-                code_copy(out, slot_at(arr->items, i));
+            if ((double)i == n && i >= 0 && i < LEN(arr)) {
+                code_copy(out, slot_at(ITEMS(arr), i));
                 return;
             }
         }
@@ -870,9 +885,11 @@ void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
  * here does that today, so this is a note for whoever adds the next one,
  * not a currently-exercised path. */
 static const CodeValue *find_field(const CodeValue *obj, const char *key) {
-    for (long long i = 0; i < obj->len; i++) {
-        if (strcmp(obj->keys[i], key) == 0) {
-            return slot_at(obj->items, i);
+    long long len = LEN(obj);
+    const char **keys = KEYS(obj);
+    for (long long i = 0; i < len; i++) {
+        if (strcmp(keys[i], key) == 0) {
+            return slot_at(ITEMS(obj), i);
         }
     }
     return NULL;
@@ -888,7 +905,7 @@ static const CodeValue *find_field(const CodeValue *obj, const char *key) {
  * releases) — never where it is stored or handed on, because nothing
  * guarantees the container outlives a later statement. Same rules and
  * messages as `code_field` and `code_index`, which they fall back on. */
-static const CodeValue no_value = { CODE_NULL, 0, 0, NULL, 0, NULL, NULL, 0 };
+static const CodeValue no_value = { CODE_NULL, 0, { 0 } };
 
 /* `hash` is `field`'s, worked out by the compiler; `*guess` is this read's
  * own memory of where it found the field last, tried first — the objects one
@@ -902,15 +919,15 @@ const CodeValue *code_field_ref(const CodeValue *obj, const char *field, unsigne
         return &no_value;
     }
     long long at = *guess;
-    if (at < obj->len && stored_hash(obj->keys[at]) == hash && strcmp(obj->keys[at], field) == 0) {
-        return slot_at(obj->items, at);
+    if (at < LEN(obj) && stored_hash(KEYS(obj)[at]) == hash && strcmp(KEYS(obj)[at], field) == 0) {
+        return slot_at(ITEMS(obj), at);
     }
     at = field_position(obj, field, hash);
     if (at < 0) {
         return &no_value;
     }
     *guess = at;
-    return slot_at(obj->items, at);
+    return slot_at(ITEMS(obj), at);
 }
 
 /* `scratch` is a temporary of the statement, for the one read that has to
@@ -920,8 +937,8 @@ const CodeValue *code_index_ref(CodeValue *scratch, const CodeValue *arr, const 
         if (index->tag == CODE_NUMBER) {
             double n = index->number;
             long long i = (long long)n;
-            if ((double)i == n && i >= 0 && i < arr->len) {
-                return slot_at(arr->items, i);
+            if ((double)i == n && i >= 0 && i < LEN(arr)) {
+                return slot_at(ITEMS(arr), i);
             }
         }
         return &no_value;
@@ -1106,7 +1123,7 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
          * is: `code_number` releases `out` before setting it. */
         CodeValue count = {0};
         if (value->tag == CODE_ARRAY) {
-            code_number(&count, (double)value->len);
+            code_number(&count, (double)LEN(value));
             code_make_result(out, "LengthResult", &count);
             return;
         }
@@ -1598,27 +1615,27 @@ static void code_native_copy_in(CodeValue *out, const CodeValue *from) {
         // *first* (see code_str_owned) — that reads out->heap, which has to
         // start real rather than garbage, same hazard code_make_result's
         // doc comment already flags.
-        void *slots = from->len > 0 ? calloc((size_t)from->len, CODE_VALUE_SLOT_SIZE) : NULL;
-        for (long long i = 0; i < from->len; i++) {
-            code_native_copy_in(slot_at(slots, i), slot_at(from->items, i));
+        void *slots = LEN(from) > 0 ? calloc((size_t)LEN(from), CODE_VALUE_SLOT_SIZE) : NULL;
+        for (long long i = 0; i < LEN(from); i++) {
+            code_native_copy_in(slot_at(slots, i), slot_at(ITEMS(from), i));
         }
-        code_array(out, slots, from->len);
-        for (long long i = 0; i < from->len; i++) {
+        code_array(out, slots, LEN(from));
+        for (long long i = 0; i < LEN(from); i++) {
             code_release(slot_at(slots, i));
         }
         free(slots);
         return;
     }
     case CODE_OBJECT: {
-        const char **keys = from->len > 0 ? malloc((size_t)from->len * sizeof(const char *)) : NULL;
+        const char **keys = LEN(from) > 0 ? malloc((size_t)LEN(from) * sizeof(const char *)) : NULL;
         // Zero-initialized for the same reason the CODE_ARRAY case above is.
-        void *slots = from->len > 0 ? calloc((size_t)from->len, CODE_VALUE_SLOT_SIZE) : NULL;
-        for (long long i = 0; i < from->len; i++) {
-            keys[i] = from->keys[i];
-            code_native_copy_in(slot_at(slots, i), slot_at(from->items, i));
+        void *slots = LEN(from) > 0 ? calloc((size_t)LEN(from), CODE_VALUE_SLOT_SIZE) : NULL;
+        for (long long i = 0; i < LEN(from); i++) {
+            keys[i] = KEYS(from)[i];
+            code_native_copy_in(slot_at(slots, i), slot_at(ITEMS(from), i));
         }
-        code_object(out, keys, slots, from->len);
-        for (long long i = 0; i < from->len; i++) {
+        code_object(out, keys, slots, LEN(from));
+        for (long long i = 0; i < LEN(from); i++) {
             code_release(slot_at(slots, i));
         }
         free(keys);
@@ -2204,17 +2221,17 @@ static void flow_stamped(CodeValue *out, const CodeValue *obj, const char *progr
         code_copy(out, obj);
         return;
     }
-    char *values = calloc((size_t)(obj->len ? obj->len : 1), CODE_VALUE_SLOT_SIZE);
+    char *values = calloc((size_t)(LEN(obj) ? LEN(obj) : 1), CODE_VALUE_SLOT_SIZE);
     if (!values) code_runtime_error("out of memory");
-    for (long long i = 0; i < obj->len; i++) {
-        const CodeValue *v = slot_at(obj->items, i);
-        if (strcmp(obj->keys[i], "program") == 0 && v->tag == CODE_NULL)
+    for (long long i = 0; i < LEN(obj); i++) {
+        const CodeValue *v = slot_at(ITEMS(obj), i);
+        if (strcmp(KEYS(obj)[i], "program") == 0 && v->tag == CODE_NULL)
             code_str_owned(slot_at(values, i), program);
         else
             code_copy(slot_at(values, i), v);
     }
-    code_object(out, obj->keys, values, obj->len);
-    for (long long i = 0; i < obj->len; i++) code_release(slot_at(values, i));
+    code_object(out, KEYS(obj), values, LEN(obj));
+    for (long long i = 0; i < LEN(obj); i++) code_release(slot_at(values, i));
     free(values);
 }
 
@@ -2226,8 +2243,8 @@ static void flow_splice(long long parent, const CodeValue *trace, const char *pr
     const CodeValue *steps = flow_field(trace, "steps");
     double offset = flow_steps[parent].at;
     long long base = flow_len;
-    for (long long i = 0; steps && steps->tag == CODE_ARRAY && i < steps->len; i++) {
-        const CodeValue *step = slot_at(steps->items, i);
+    for (long long i = 0; steps && steps->tag == CODE_ARRAY && i < LEN(steps); i++) {
+        const CodeValue *step = slot_at(ITEMS(steps), i);
         if (flow_len >= FLOW_MOST_STEPS) {
             flow_dropped++;
             continue;
@@ -2254,8 +2271,8 @@ static void flow_splice(long long parent, const CodeValue *trace, const char *pr
  * Anything else it did on its own, and waits in `flow_pending`. Must match
  * `flows.rs`'s `absorb`. */
 static void flow_absorb(const CodeValue *traces, const char *program, int called) {
-    for (long long i = 0; traces->tag == CODE_ARRAY && i < traces->len; i++) {
-        const CodeValue *trace = slot_at(traces->items, i);
+    for (long long i = 0; traces->tag == CODE_ARRAY && i < LEN(traces); i++) {
+        const CodeValue *trace = slot_at(ITEMS(traces), i);
         int from_host = strcmp(flow_text(flow_field(flow_field(trace, "root"), "from")), "host") == 0;
         if (from_host && called && flow_running && flow_depth > 0) {
             flow_splice(flow_open[flow_depth - 1], trace, program);
@@ -2268,27 +2285,27 @@ static void flow_absorb(const CodeValue *traces, const char *program, int called
         if (from_host) continue;
         /* Stamped: the root, and every step that does not already say. */
         const char *keys[7];
-        char *fields = calloc((size_t)(trace->len ? trace->len : 1), CODE_VALUE_SLOT_SIZE);
+        char *fields = calloc((size_t)(LEN(trace) ? LEN(trace) : 1), CODE_VALUE_SLOT_SIZE);
         if (!fields) code_runtime_error("out of memory");
-        for (long long f = 0; f < trace->len && f < 7; f++) {
-            const CodeValue *v = slot_at(trace->items, f);
-            keys[f] = trace->keys[f];
-            if (strcmp(trace->keys[f], "root") == 0) {
+        for (long long f = 0; f < LEN(trace) && f < 7; f++) {
+            const CodeValue *v = slot_at(ITEMS(trace), f);
+            keys[f] = KEYS(trace)[f];
+            if (strcmp(KEYS(trace)[f], "root") == 0) {
                 flow_stamped(slot_at(fields, f), v, program);
-            } else if (strcmp(trace->keys[f], "steps") == 0 && v->tag == CODE_ARRAY) {
-                char *items = calloc((size_t)(v->len ? v->len : 1), CODE_VALUE_SLOT_SIZE);
+            } else if (strcmp(KEYS(trace)[f], "steps") == 0 && v->tag == CODE_ARRAY) {
+                char *items = calloc((size_t)(LEN(v) ? LEN(v) : 1), CODE_VALUE_SLOT_SIZE);
                 if (!items) code_runtime_error("out of memory");
-                for (long long s = 0; s < v->len; s++)
-                    flow_stamped(slot_at(items, s), slot_at(v->items, s), program);
-                code_array(slot_at(fields, f), items, v->len);
-                for (long long s = 0; s < v->len; s++) code_release(slot_at(items, s));
+                for (long long s = 0; s < LEN(v); s++)
+                    flow_stamped(slot_at(items, s), slot_at(ITEMS(v), s), program);
+                code_array(slot_at(fields, f), items, LEN(v));
+                for (long long s = 0; s < LEN(v); s++) code_release(slot_at(items, s));
                 free(items);
             } else {
                 code_copy(slot_at(fields, f), v);
             }
         }
         CodeValue stamped = {0};
-        long long n = trace->len < 7 ? trace->len : 7;
+        long long n = LEN(trace) < 7 ? LEN(trace) : 7;
         code_object(&stamped, keys, fields, n);
         for (long long f = 0; f < n; f++) code_release(slot_at(fields, f));
         free(fields);
@@ -2307,7 +2324,7 @@ static void flow_collect(void (*take)(CodeValue *), void (*release)(CodeValue *)
     CodeValue ours = {0};
     code_native_copy_in(&ours, &theirs);
     release(&theirs);
-    if (ours.tag == CODE_ARRAY && ours.len > 0) flow_absorb(&ours, program, called);
+    if (ours.tag == CODE_ARRAY && LEN(&ours) > 0) flow_absorb(&ours, program, called);
     code_release(&ours);
 }
 
@@ -2878,9 +2895,9 @@ static int code_event_read(long long len, CodeValue *out) {
         code_release(&particle);
         return 0;
     }
-    for (long long i = 0; i < particle.len; i++) {
-        if (strcmp(particle.keys[i], "_class") == 0 &&
-            slot_at(particle.items, i)->tag == CODE_STR) {
+    for (long long i = 0; i < LEN(&particle); i++) {
+        if (strcmp(KEYS(&particle)[i], "_class") == 0 &&
+            slot_at(ITEMS(&particle), i)->tag == CODE_STR) {
             *out = particle;
             return 1;
         }
@@ -3707,13 +3724,13 @@ long long code_iter_len(const CodeValue *v) {
         fail_operand("loop requires an array or object", v);
         return 0;
     }
-    return v->len;
+    return LEN(v);
 }
 
 /* `i` is always in range: the only caller is the loop header codegen emits,
  * which already compared it against `code_iter_len`'s result. */
 void code_iter_at(CodeValue *out, const CodeValue *arr, long long i) {
-    code_copy(out, slot_at(arr->items, i));
+    code_copy(out, slot_at(ITEMS(arr), i));
 }
 
 /* The `key` half of `loop k, v over <expr>` — see `Stmt::Loop`'s doc comment
@@ -3724,7 +3741,7 @@ void code_iter_at(CodeValue *out, const CodeValue *arr, long long i) {
  * pointer into. `i` is always in range, same as `code_iter_at`. */
 void code_iter_key(CodeValue *out, const CodeValue *v, long long i) {
     if (v->tag == CODE_OBJECT) {
-        code_str_owned(out, v->keys[i]);
+        code_str_owned(out, KEYS(v)[i]);
         return;
     }
     code_number(out, (double)i);
@@ -3751,8 +3768,8 @@ void code_iter_key(CodeValue *out, const CodeValue *v, long long i) {
  * don't handle". Must match interpreter.rs's `check_emittable` exactly. */
 void code_check_emittable(const CodeValue *v) {
     if (v->tag == CODE_OBJECT) {
-        for (long long i = 0; i < v->len; i++) {
-            if (strcmp(v->keys[i], "_class") == 0) {
+        for (long long i = 0; i < LEN(v); i++) {
+            if (strcmp(KEYS(v)[i], "_class") == 0) {
                 return;
             }
         }
@@ -3766,8 +3783,8 @@ void code_check_emittable(const CodeValue *v) {
 
 void code_check_particle(const CodeValue *v) {
     if (v->tag == CODE_OBJECT) {
-        for (long long i = 0; i < v->len; i++) {
-            if (strcmp(v->keys[i], "_class") == 0) {
+        for (long long i = 0; i < LEN(v); i++) {
+            if (strcmp(KEYS(v)[i], "_class") == 0) {
                 return;
             }
         }
@@ -4076,9 +4093,9 @@ void code_to_text(CodeValue *out, const CodeValue *v) {
             text_push(&t, "[", 1);
             steps = grow(steps, &steps_cap, len + 1, sizeof(TextStep));
             steps[len++] = (TextStep){NULL, "]", 0};
-            for (long long i = current->len - 1; i >= 0; i--) {
+            for (long long i = LEN(current) - 1; i >= 0; i--) {
                 steps = grow(steps, &steps_cap, len + 2, sizeof(TextStep));
-                steps[len++] = (TextStep){slot_at(current->items, i), NULL, 0};
+                steps[len++] = (TextStep){slot_at(ITEMS(current), i), NULL, 0};
                 if (i > 0) {
                     steps[len++] = (TextStep){NULL, ",", 0};
                 }
@@ -4088,10 +4105,10 @@ void code_to_text(CodeValue *out, const CodeValue *v) {
             text_push(&t, "{", 1);
             steps = grow(steps, &steps_cap, len + 1, sizeof(TextStep));
             steps[len++] = (TextStep){NULL, "}", 0};
-            for (long long i = current->len - 1; i >= 0; i--) {
+            for (long long i = LEN(current) - 1; i >= 0; i--) {
                 steps = grow(steps, &steps_cap, len + 3, sizeof(TextStep));
-                steps[len++] = (TextStep){slot_at(current->items, i), NULL, 0};
-                steps[len++] = (TextStep){NULL, current->keys[i], 1};
+                steps[len++] = (TextStep){slot_at(ITEMS(current), i), NULL, 0};
+                steps[len++] = (TextStep){NULL, KEYS(current)[i], 1};
                 if (i > 0) {
                     steps[len++] = (TextStep){NULL, ",", 0};
                 }
@@ -4151,19 +4168,20 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
      * contribute, and where do they come from" is the only difference —
      * see interpreter.rs's matching arms. */
     if (a->tag == CODE_ARRAY || b->tag == CODE_ARRAY) {
-        long long na = (a->tag == CODE_ARRAY) ? a->len : 1;
-        long long nb = (b->tag == CODE_ARRAY) ? b->len : 1;
+        long long na = (a->tag == CODE_ARRAY) ? LEN(a) : 1;
+        long long nb = (b->tag == CODE_ARRAY) ? LEN(b) : 1;
         long long total = na + nb;
-        void *buf = NULL;
+        CodeList *list = NULL;
         if (total > 0) {
-            buf = heap_alloc((size_t)total * CODE_VALUE_SLOT_SIZE);
+            list = list_alloc(total, 0);
+            void *buf = list + 1;
             for (long long i = 0; i < na; i++) {
-                const CodeValue *src = (a->tag == CODE_ARRAY) ? slot_at(a->items, i) : a;
+                const CodeValue *src = (a->tag == CODE_ARRAY) ? slot_at(ITEMS(a), i) : a;
                 code_retain(src);
                 *slot_at(buf, i) = *src;
             }
             for (long long i = 0; i < nb; i++) {
-                const CodeValue *src = (b->tag == CODE_ARRAY) ? slot_at(b->items, i) : b;
+                const CodeValue *src = (b->tag == CODE_ARRAY) ? slot_at(ITEMS(b), i) : b;
                 code_retain(src);
                 *slot_at(buf, na + i) = *src;
             }
@@ -4174,8 +4192,7 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         code_release(out);
         out->tag = CODE_ARRAY;
         out->heap = total > 0;
-        out->items = buf;
-        out->len = total;
+        out->list = list;
         return;
     }
     /* Two objects merge, the way two arrays concatenate — see
@@ -4203,44 +4220,45 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
      * out of freed memory. It survived on borrowed time, reading bytes that
      * happened not to have been handed out again yet. */
     if (a->tag == CODE_OBJECT && b->tag == CODE_OBJECT) {
-        long long total = a->len;
-        for (long long j = 0; j < b->len; j++) {
-            if (own_field_of_key(a, b->keys[j]) == NULL) {
+        long long total = LEN(a);
+        for (long long j = 0; j < LEN(b); j++) {
+            if (own_field_of_key(a, KEYS(b)[j]) == NULL) {
                 total++;
             }
         }
-        const char **key_buf = NULL;
-        void *value_buf = NULL;
+        CodeList *list = NULL;
         if (total > 0) {
             size_t keys_bytes = (size_t)total * sizeof(const char *);
-            size_t slots_bytes = (size_t)total * CODE_VALUE_SLOT_SIZE;
             size_t chars_bytes = 0;
-            for (long long i = 0; i < a->len; i++) {
-                chars_bytes += KEY_HASH_BYTES + (a->keys[i] ? strlen(a->keys[i]) : 0) + 1;
+            for (long long i = 0; i < LEN(a); i++) {
+                chars_bytes += KEY_HASH_BYTES + (KEYS(a)[i] ? strlen(KEYS(a)[i]) : 0) + 1;
             }
-            for (long long j = 0; j < b->len; j++) {
-                if (own_field_of_key(a, b->keys[j]) == NULL) {
-                    chars_bytes += KEY_HASH_BYTES + (b->keys[j] ? strlen(b->keys[j]) : 0) + 1;
+            for (long long j = 0; j < LEN(b); j++) {
+                if (own_field_of_key(a, KEYS(b)[j]) == NULL) {
+                    chars_bytes += KEY_HASH_BYTES + (KEYS(b)[j] ? strlen(KEYS(b)[j]) : 0) + 1;
                 }
             }
-            key_buf = heap_alloc(keys_bytes + slots_bytes + chars_bytes);
-            value_buf = (char *)key_buf + keys_bytes;
-            char *chars = (char *)value_buf + slots_bytes;
+            list = list_alloc(total, keys_bytes + chars_bytes);
+            void *value_buf = list + 1;
+            const char **key_buf =
+                (const char **)((char *)value_buf + (size_t)total * CODE_VALUE_SLOT_SIZE);
+            list->keys = key_buf;
+            char *chars = (char *)key_buf + keys_bytes;
             long long n = 0;
-            for (long long i = 0; i < a->len; i++) {
-                const CodeValue *override_val = own_field_of_key(b, a->keys[i]);
-                const CodeValue *src = override_val ? override_val : slot_at(a->items, i);
-                key_buf[n] = copy_own_key(&chars, a->keys[i]);
+            for (long long i = 0; i < LEN(a); i++) {
+                const CodeValue *override_val = own_field_of_key(b, KEYS(a)[i]);
+                const CodeValue *src = override_val ? override_val : slot_at(ITEMS(a), i);
+                key_buf[n] = copy_own_key(&chars, KEYS(a)[i]);
                 code_retain(src);
                 *slot_at(value_buf, n) = *src;
                 n++;
             }
-            for (long long j = 0; j < b->len; j++) {
-                if (own_field_of_key(a, b->keys[j]) != NULL) {
+            for (long long j = 0; j < LEN(b); j++) {
+                if (own_field_of_key(a, KEYS(b)[j]) != NULL) {
                     continue;
                 }
-                key_buf[n] = copy_own_key(&chars, b->keys[j]);
-                const CodeValue *src = slot_at(b->items, j);
+                key_buf[n] = copy_own_key(&chars, KEYS(b)[j]);
+                const CodeValue *src = slot_at(ITEMS(b), j);
                 code_retain(src);
                 *slot_at(value_buf, n) = *src;
                 n++;
@@ -4251,13 +4269,11 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
          * new block refers to, even when `out` is `a` or `b` (`x = x + x`). */
         /* No field added: the keys are `a`'s, in `a`'s order — so is the
          * shape. Read before `out` (which may be `a`) is released. */
-        long long shape = (total == a->len && a->heap) ? SHAPE_OF(a) : 0;
+        long long shape = (total == LEN(a) && a->heap) ? SHAPE_OF(a) : 0;
         code_release(out);
         out->tag = CODE_OBJECT;
         out->heap = total > 0;
-        out->keys = key_buf;
-        out->items = value_buf;
-        out->len = total;
+        out->list = list;
         if (total > 0) {
             SHAPE_OF(out) = shape;
         }
@@ -4351,27 +4367,28 @@ static void *room_for(void *payload, size_t bytes) {
 
 /* `*dst = *dst + *b` for an array: `b`'s elements (or `b` itself) appended. */
 static int append_in_place(CodeValue *dst, const CodeValue *b) {
-    long long nb = (b->tag == CODE_ARRAY) ? b->len : 1;
+    long long nb = (b->tag == CODE_ARRAY) ? LEN(b) : 1;
     if (nb == 0) {
         return 1;
     }
-    long long total = dst->len + nb;
-    void *items;
+    long long had = LEN(dst);
+    long long total = had + nb;
+    CodeList *list;
     if (dst->heap) {
-        items = room_for(dst->items, (size_t)total * CODE_VALUE_SLOT_SIZE);
+        list = room_for(dst->list, sizeof(CodeList) + (size_t)total * CODE_VALUE_SLOT_SIZE);
     } else {
         /* Empty, so there is nothing to copy — a fresh block with room. */
         long long room = total < 4 ? 4 : total;
-        items = heap_alloc((size_t)room * CODE_VALUE_SLOT_SIZE);
+        list = list_alloc(room, 0);
     }
     for (long long i = 0; i < nb; i++) {
-        const CodeValue *src = (b->tag == CODE_ARRAY) ? slot_at(b->items, i) : b;
+        const CodeValue *src = (b->tag == CODE_ARRAY) ? slot_at(ITEMS(b), i) : b;
         code_retain(src);
-        *slot_at(items, dst->len + i) = *src;
+        *slot_at(list + 1, had + i) = *src;
     }
-    dst->items = items;
+    list->len = total;
+    dst->list = list;
     dst->heap = 1;
-    dst->len = total;
     return 1;
 }
 
@@ -4415,9 +4432,10 @@ static void join_in_place(CodeValue *dst, const CodeValue *b) {
  * with `dst` get their new values where they stand, and fields that are new
  * go on the end — the same answer and the same order `code_add` gives.
  *
- * An object is one block, `[key pointers][value slots][key characters]`, and
- * its key pointers point into its own characters. A block that has grown has
- * room in all three: `items - keys` says how many pointers and slots fit, and
+ * An object is one block, `[count][value slots][key pointers][key
+ * characters]`, and its key pointers point into its own characters. A block
+ * that has grown has room in all three: `keys - items` says how many slots
+ * and pointers fit, and
  * the characters run in key order, so the last key's end is where the next
  * one goes. When the room runs out the object moves to a block twice the
  * size, its values moved rather than copied. Reports 0 (changing nothing)
@@ -4425,68 +4443,70 @@ static void join_in_place(CodeValue *dst, const CodeValue *b) {
 static int grow_object_in_place(CodeValue *dst, const CodeValue *b) {
     long long extra = 0;
     size_t extra_chars = 0;
-    for (long long j = 0; j < b->len; j++) {
+    for (long long j = 0; j < LEN(b); j++) {
         for (long long k = 0; k < j; k++) {
-            if (strcmp(b->keys[k], b->keys[j]) == 0) {
+            if (strcmp(KEYS(b)[k], KEYS(b)[j]) == 0) {
                 return 0;
             }
         }
-        if (!own_field_of_key(dst, b->keys[j])) {
+        if (!own_field_of_key(dst, KEYS(b)[j])) {
             extra++;
-            extra_chars += KEY_HASH_BYTES + strlen(b->keys[j]) + 1;
+            extra_chars += KEY_HASH_BYTES + strlen(KEYS(b)[j]) + 1;
         }
     }
     if (extra > 0) {
-        char *base = (char *)dst->keys;
-        long long fits = ((char *)dst->items - base) / (long long)sizeof(const char *);
-        const char *last = dst->keys[dst->len - 1];
+        CodeList *base = dst->list;
+        long long fits = ((char *)base->keys - (char *)(base + 1)) / CODE_VALUE_SLOT_SIZE;
+        const char *last = base->keys[base->len - 1];
         char *used = (char *)last + strlen(last) + 1;
         long long room = (long long)block_room(header_of(base)) - (long long)sizeof(CodeHeader)
-            - (used - base);
-        if (dst->len + extra > fits || room < (long long)extra_chars) {
-            /* Move to a bigger block: pointers, slots and characters all
+            - (used - (char *)base);
+        if (base->len + extra > fits || room < (long long)extra_chars) {
+            /* Move to a bigger block: slots, pointers and characters all
              * with room to spare. */
-            long long total = dst->len + extra;
+            long long total = base->len + extra;
             long long cap = total < 4 ? 4 : 2 * total;
-            size_t chars = (size_t)(used - (char *)dst->items) - (size_t)fits * CODE_VALUE_SLOT_SIZE;
+            size_t chars = (size_t)(used - (char *)(base->keys + fits));
             size_t char_room = 2 * (chars + extra_chars) + 16;
-            const char **keys = heap_alloc((size_t)cap * (sizeof(const char *) + CODE_VALUE_SLOT_SIZE)
-                + char_room);
-            void *items = (char *)keys + (size_t)cap * sizeof(const char *);
-            char *cursor = (char *)items + (size_t)cap * CODE_VALUE_SLOT_SIZE;
-            for (long long i = 0; i < dst->len; i++) {
-                keys[i] = copy_own_key(&cursor, dst->keys[i]);
-                *slot_at(items, i) = *slot_at(dst->items, i);
+            CodeList *moved = heap_alloc(sizeof(CodeList)
+                + (size_t)cap * (CODE_VALUE_SLOT_SIZE + sizeof(const char *)) + char_room);
+            void *items = moved + 1;
+            const char **keys = (const char **)((char *)items + (size_t)cap * CODE_VALUE_SLOT_SIZE);
+            char *cursor = (char *)(keys + cap);
+            for (long long i = 0; i < base->len; i++) {
+                keys[i] = copy_own_key(&cursor, base->keys[i]);
+                *slot_at(items, i) = *slot_at(base + 1, i);
             }
+            moved->len = base->len;
+            moved->keys = keys;
             free(header_of(base));
             code_blocks_add(-1);
-            dst->keys = keys;
-            dst->items = items;
+            dst->list = moved;
         }
     }
-    long long n = dst->len;
+    long long n = LEN(dst);
     char *cursor = NULL;
     if (extra > 0) {
-        const char *last = dst->keys[n - 1];
+        const char *last = KEYS(dst)[n - 1];
         cursor = (char *)last + strlen(last) + 1;
     }
-    for (long long j = 0; j < b->len; j++) {
-        const CodeValue *src = slot_at(b->items, j);
-        CodeValue *slot = (CodeValue *)own_field_of_key(dst, b->keys[j]);
+    for (long long j = 0; j < LEN(b); j++) {
+        const CodeValue *src = slot_at(ITEMS(b), j);
+        CodeValue *slot = (CodeValue *)own_field_of_key(dst, KEYS(b)[j]);
         code_retain(src);
         if (slot) {
             code_release(slot);
             *slot = *src;
         } else {
-            dst->keys[n] = copy_own_key(&cursor, b->keys[j]);
-            *slot_at(dst->items, n) = *src;
+            dst->list->keys[n] = copy_own_key(&cursor, KEYS(b)[j]);
+            *slot_at(ITEMS(dst), n) = *src;
             n++;
         }
     }
     if (extra > 0) {
         SHAPE_OF(dst) = 0; /* a key list of its own now */
     }
-    dst->len = n;
+    dst->list->len = n;
     return 1;
 }
 
@@ -4520,23 +4540,23 @@ void code_add_into(CodeValue *dst, const CodeValue *b) {
 void code_slice_into(CodeValue *dst, const CodeValue *from, const CodeValue *to) {
     if (dst->tag == CODE_ARRAY && held_alone(dst) && from->tag == CODE_NUMBER
         && to->tag == CODE_NUMBER) {
-        double len = (double)dst->len;
+        double len = (double)LEN(dst);
         double lo = from->number < 0 ? 0 : (from->number > len ? len : from->number);
         double hi = to->number < 0 ? 0 : (to->number > len ? len : to->number);
         long long start = (long long)lo;
         long long stop = (long long)hi;
         if (start < stop) {
             for (long long i = 0; i < start; i++) {
-                code_release(slot_at(dst->items, i));
+                code_release(slot_at(ITEMS(dst), i));
             }
-            for (long long i = stop; i < dst->len; i++) {
-                code_release(slot_at(dst->items, i));
+            for (long long i = stop; i < LEN(dst); i++) {
+                code_release(slot_at(ITEMS(dst), i));
             }
             if (start > 0) {
-                memmove(dst->items, slot_at(dst->items, start),
+                memmove(ITEMS(dst), slot_at(ITEMS(dst), start),
                         (size_t)(stop - start) * CODE_VALUE_SLOT_SIZE);
             }
-            dst->len = stop - start;
+            dst->list->len = stop - start;
             return;
         }
         /* Empty: an empty list owns no block. */
@@ -4566,15 +4586,16 @@ void code_slice_into(CodeValue *dst, const CodeValue *from, const CodeValue *to)
  * inside itself. On a failure nothing has visibly changed: a level copied on
  * the way down has the same contents as the one it replaced. */
 static void own_level(CodeValue *v) {
-    if (!v->heap || header_of(heap_block(v))->rc == 1) {
+    void *block = v->heap ? heap_block(v) : NULL;
+    if (!block || header_of(block)->rc == 1) {
         return;
     }
     CodeValue copy;
     memset(&copy, 0, sizeof copy);
     if (v->tag == CODE_ARRAY) {
-        code_array(&copy, v->items, v->len);
+        code_array(&copy, ITEMS(v), LEN(v));
     } else {
-        build_object(&copy, v->keys, v->items, v->len, 1);
+        build_object(&copy, KEYS(v), ITEMS(v), LEN(v), 1);
         SHAPE_OF(&copy) = SHAPE_OF(v); /* the same keys, in the same order */
     }
     code_release(v);
@@ -4604,15 +4625,15 @@ void code_set_at(CodeValue *target, const CodeValue *const *keys, long long coun
                 goto failed;
             }
             long long at = (long long)key->number;
-            if (!((double)at == key->number && at >= 0 && at < current->len)) {
+            if (!((double)at == key->number && at >= 0 && at < LEN(current))) {
                 snprintf(msg, sizeof msg,
                          "cannot set that element — an index to set is a whole number below the "
                          "array's length, %lld",
-                         current->len);
+                         LEN(current));
                 goto failed;
             }
             own_level(current);
-            current = slot_at(current->items, at);
+            current = slot_at(ITEMS(current), at);
         } else if (current->tag == CODE_OBJECT) {
             if (key->tag != CODE_STR) {
                 snprintf(msg, sizeof msg,
@@ -4629,8 +4650,8 @@ void code_set_at(CodeValue *target, const CodeValue *const *keys, long long coun
                 unsigned int hash = (hashes[step] >> 32) ? (unsigned int)hashes[step]
                                                           : key_hash(key->str);
                 at = guesses[step];
-                if (!(at < current->len && stored_hash(current->keys[at]) == hash
-                      && strcmp(current->keys[at], key->str) == 0)) {
+                if (!(at < LEN(current) && stored_hash(KEYS(current)[at]) == hash
+                      && strcmp(KEYS(current)[at], key->str) == 0)) {
                     at = field_position(current, key->str, hash);
                 }
             }
@@ -4654,7 +4675,7 @@ void code_set_at(CodeValue *target, const CodeValue *const *keys, long long coun
             }
             guesses[step] = at;
             own_level(current);
-            current = slot_at(current->items, at);
+            current = slot_at(ITEMS(current), at);
         } else {
             snprintf(msg, sizeof msg,
                      "cannot set a part of %s %s — only an array's elements and an object's "
@@ -4832,35 +4853,35 @@ int code_values_equal(const CodeValue *a, const CodeValue *b) {
         case CODE_NULL:
             break;
         case CODE_ARRAY:
-            if (x->len != y->len) {
+            if (LEN(x) != LEN(y)) {
                 return 0;
             }
-            pending = grow(pending, &pending_cap, len + (size_t)x->len, sizeof(Pair));
-            for (long long i = 0; i < x->len; i++) {
-                pending[len].a = slot_at(x->items, i);
-                pending[len].b = slot_at(y->items, i);
+            pending = grow(pending, &pending_cap, len + (size_t)LEN(x), sizeof(Pair));
+            for (long long i = 0; i < LEN(x); i++) {
+                pending[len].a = slot_at(ITEMS(x), i);
+                pending[len].b = slot_at(ITEMS(y), i);
                 len++;
             }
             break;
         case CODE_OBJECT:
-            if (x->len != y->len) {
+            if (LEN(x) != LEN(y)) {
                 return 0;
             }
-            pending = grow(pending, &pending_cap, len + (size_t)x->len, sizeof(Pair));
-            for (long long i = 0; i < x->len; i++) {
+            pending = grow(pending, &pending_cap, len + (size_t)LEN(x), sizeof(Pair));
+            for (long long i = 0; i < LEN(x); i++) {
                 /* By name, not by position — matching value.rs's `PartialEq`
                  * exactly (see its comment for why). A name may appear more
                  * than once, so the nth occurrence on the left is matched
                  * with the nth on the right. */
                 long long seen = 0;
                 for (long long p = 0; p < i; p++) {
-                    if (strcmp(x->keys[p], x->keys[i]) == 0) {
+                    if (strcmp(KEYS(x)[p], KEYS(x)[i]) == 0) {
                         seen++;
                     }
                 }
                 long long found = -1;
-                for (long long q = 0; q < y->len; q++) {
-                    if (strcmp(y->keys[q], x->keys[i]) == 0) {
+                for (long long q = 0; q < LEN(y); q++) {
+                    if (strcmp(KEYS(y)[q], KEYS(x)[i]) == 0) {
                         if (seen == 0) {
                             found = q;
                             break;
@@ -4871,8 +4892,8 @@ int code_values_equal(const CodeValue *a, const CodeValue *b) {
                 if (found < 0) {
                     return 0;
                 }
-                pending[len].a = slot_at(x->items, i);
-                pending[len].b = slot_at(y->items, found);
+                pending[len].a = slot_at(ITEMS(x), i);
+                pending[len].b = slot_at(ITEMS(y), found);
                 len++;
             }
             break;

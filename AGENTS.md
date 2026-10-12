@@ -398,8 +398,9 @@ grows the slot's own array, string or object block where it stands when its
 count is 1 (`held_alone`), with room doubling (`room_for`, sized by
 `malloc_usable_size` / the wasm shim's block size, so the header and module
 ABI are unchanged). An object merge adds new fields on the end too
-(`grow_object_in_place`): the block is `[key pointers][slots][characters]`,
-`items - keys` is how many fields fit, and characters run in key order, so the
+(`grow_object_in_place`): the block is `[count, keys][slots][key
+pointers][characters]` (since C.2), `keys - items` is how many fields fit, and
+characters run in key order, so the
 last key's end is where the next goes; out of room, the object moves to a
 block twice the size, its values moved, not retained. Anything shared, an
 operand that is the value itself, or a merge naming one field twice falls
@@ -625,8 +626,8 @@ the backend alone.
   `emit … get`; a loop's cursor is made once and shared.
 - **`alias.rs`**: TBAA on every load/store it can place — `local.<field>`
   (a `_code_slot_*` global or an alloca), `heap.<field>` (through an
-  `items`/`keys` pointer read from a slot; whole-slot `i * 80` offsets
-  reduce to the field), `header.-16/-8`. Untagged when unsure (call
+  list pointer read from a slot's payload; whole-slot `i * 16` offsets
+  reduce to the field), `list.len`/`list.keys`, `header.-16/-8`. Untagged when unsure (call
   results, phis). Fields only at their own offset *and* width, so an `i64`
   over tag+heap is never tagged as one of them.
 - **Release = `default<O2>`** after tagging. A fast field write checks the
@@ -640,6 +641,35 @@ memory: a point is ~500 bytes of 80-byte slots (a C model with the same
 checks and layout: 4.7 ms; with 16-byte values: 2.65 ms) — stage C.2.
 `tests/loop_versions.code` fails a check partway through loops; the language
 harness now also runs every fixture as a `--release` build.
+
+## 16-byte values (ticket 122 stage C.2, 2026-10-12)
+
+A `CodeValue` was 80 bytes: tag, heap, and a field for every kind — number,
+str, boolean, items, keys, len — side by side. A point `{ x, y, vx, vy }` cost
+~500 bytes, and the C model said memory was what was left of points' gap.
+Now (`code_abi.h`, **`CODE_ABI_VERSION` 2**, owner's go-ahead) it is `tag`,
+`heap` and one 8-byte payload union (`number` / `str` / `boolean` / `list`),
+`CODE_VALUE_SLOT_SIZE` 16 on both targets. A list's or object's count and
+keys moved into its block: `CodeList { len, keys }`, then the slots, then (an
+object's) the key pointers and characters — one block, one count. An empty
+list or object has no block (`list` NULL).
+
+- Runtime: `LEN`/`ITEMS`/`KEYS` (`code_list_len`/`_items`/`_keys` in
+  `code_abi.h`, which answer 0/NULL for any other kind — code that read
+  `v->len` of a number used to get 0, and still does); `list_alloc`. Hot
+  loops read the count and keys once before calling `strcmp`.
+- Codegen: `VALUE_SIZE` 16, `LIST_HEAD` 16, `load_list`/`list_items`; every
+  in-line path checks the block pointer is non-null before reading through it
+  (`number_index`'s `haslist`/`measured`). String constants are `{tag, heap,
+  ptr}` (+4 bytes on wasm).
+- `code-native`: `CodeValue`'s payload is private; modules read `number()`,
+  `str_ptr()`, `boolean()`, `len()`, `items()`, `keys()`. `native.rs` builds
+  the interpreter's marshaled lists with a header and a `CodeList` head.
+- Every module, every `.so`/`.a` app and the euglena host must be rebuilt
+  with this compiler; an old module is refused by its ABI version.
+
+points 3.86 → 2.66 ms, binary_trees 20.3 → 15.7 ms, dictionary unchanged
+(its time is the key search).
 
 ## Wasm handler stack (root-caused 2026-09-07)
 

@@ -136,8 +136,8 @@ mod machine {
         }
         match v.tag {
             CodeTag::Null => "null".to_string(),
-            CodeTag::Array => format!("[{} items]", v.len),
-            CodeTag::Object => format!("{{{} fields}}", v.len),
+            CodeTag::Array => format!("[{} items]", v.len()),
+            CodeTag::Object => format!("{{{} fields}}", v.len()),
             // Unreachable: every tag is handled above. Rendered rather than
             // panicked on, because this module must not be the thing that ends
             // a program.

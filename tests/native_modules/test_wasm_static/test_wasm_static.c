@@ -25,16 +25,16 @@
 
 int wasmmath_code_module_abi_version(void) { return CODE_ABI_VERSION; }
 
-/* `keys`/`items` are right there in the value — see `code_abi.h`, "Four
- * functions were removed": a module reads fields by walking them. */
+/* An object's keys and slots are in its block (`code_list_keys`,
+ * `code_list_items` in `code_abi.h`): a module reads fields by walking them. */
 static const CodeValue *field(const CodeValue *v, const char *name) {
     if (!v || v->tag != CODE_OBJECT) return NULL;
-    for (long long i = 0; i < v->len; i++) {
-        const char *k = v->keys[i];
+    for (long long i = 0; i < code_list_len(v); i++) {
+        const char *k = code_list_keys(v)[i];
         const char *n = name;
         while (*k && *k == *n) { k++; n++; }
         if (*k == 0 && *n == 0) {
-            return (const CodeValue *)((char *)v->items + (size_t)i * CODE_VALUE_SLOT_SIZE);
+            return (const CodeValue *)((char *)code_list_items(v) + (size_t)i * CODE_VALUE_SLOT_SIZE);
         }
     }
     return NULL;

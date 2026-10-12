@@ -179,26 +179,55 @@
 
 #include <stdint.h>
 
-#define CODE_ABI_VERSION 1
+#define CODE_ABI_VERSION 2
 
 
 typedef enum { CODE_NUMBER, CODE_STR, CODE_BOOL, CODE_NULL, CODE_ARRAY, CODE_OBJECT } CodeTag;
 
+/* The head of a list's or an object's block: how many elements it has, and
+ * (an object's) where its keys are. The elements follow it, one
+ * `CODE_VALUE_SLOT_SIZE` slot each — `code_list_items`. An object's key
+ * pointers and their characters come after its slots, in the same block.
+ * The block's refcount and spare word are just before this head, like every
+ * block's (ticket 122 stage C.2: a value is 16 bytes; it was 80 while each
+ * one carried its list's fields itself). */
+typedef struct CodeList {
+    long long len;
+    const char **keys; /* CODE_OBJECT only, `len` key pointers */
+} CodeList;
+
+/* A value: its kind, whether it holds a counted block, and one payload — the
+ * kind says which. An empty list or object has no block (`list` NULL). */
 typedef struct CodeValue {
     CodeTag tag;
     int heap;
-    double number;
-    const char *str;
-    int boolean;
-    /* CODE_ARRAY: element buffer; CODE_OBJECT: value buffer — both strided
-     * at CODE_VALUE_SLOT_SIZE bytes, never sizeof(CodeValue). Always address
-     * through a `slot_at`-style helper, never `[]`. */
-    void *items;
-    const char **keys; /* CODE_OBJECT only, parallel to `items`, sizeof(char*) stride */
-    long long len;      /* CODE_ARRAY/CODE_OBJECT element count */
+    union {
+        double number;      /* CODE_NUMBER */
+        const char *str;    /* CODE_STR */
+        int boolean;        /* CODE_BOOL */
+        CodeList *list;     /* CODE_ARRAY, CODE_OBJECT */
+    };
 } CodeValue;
 
-#define CODE_VALUE_SLOT_SIZE 80
+#define CODE_VALUE_SLOT_SIZE 16
+
+/* A list's or an object's element count, slots and keys — 0/NULL for an
+ * empty one, and for a value of any other kind. */
+static inline CodeList *code_list_of(const CodeValue *v) {
+    return (v->tag == CODE_ARRAY || v->tag == CODE_OBJECT) ? v->list : (CodeList *)0;
+}
+static inline long long code_list_len(const CodeValue *v) {
+    CodeList *list = code_list_of(v);
+    return list ? list->len : 0;
+}
+static inline void *code_list_items(const CodeValue *v) {
+    CodeList *list = code_list_of(v);
+    return list ? (void *)(list + 1) : (void *)0;
+}
+static inline const char **code_list_keys(const CodeValue *v) {
+    CodeList *list = code_list_of(v);
+    return list ? list->keys : (const char **)0;
+}
 
 /* What `code_module_set_inbound` hands a module: the host's own pusher.
  * `queue` is opaque to the module — it only ever passes it straight back. */

@@ -273,7 +273,7 @@ fn span_of(v: &CodeValue) -> screen::Span {
 
 /// `[r, g, b]`, each 0–255, as a colour; anything else is no colour.
 fn rgb(v: &CodeValue) -> Option<(u8, u8, u8)> {
-    if v.tag != CodeTag::Array || v.len != 3 {
+    if v.tag != CodeTag::Array || v.len() != 3 {
         return None;
     }
     let parts: Vec<u8> = array_elems(v)

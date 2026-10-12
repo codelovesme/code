@@ -105,9 +105,9 @@ void code_release(CodeValue *value) { (void)value; }
 unsigned int code_module_abi_version(void) { return CODE_ABI_VERSION; }
 void code_module_dispatch(CodeValue *out, const CodeValue *particle) {
     *out = *particle;
-    for (long long i = 0; i < particle->len; i++) {
-        if (!strcmp(particle->keys[i], "reply"))
-            *out = *(CodeValue *)((char *)particle->items + i * CODE_VALUE_SLOT_SIZE);
+    for (long long i = 0; i < code_list_len(particle); i++) {
+        if (!strcmp(code_list_keys(particle)[i], "reply"))
+            *out = *(CodeValue *)((char *)code_list_items(particle) + i * CODE_VALUE_SLOT_SIZE);
     }
     out->heap = 0;
 }

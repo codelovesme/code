@@ -172,3 +172,22 @@ from 60M to 17.7M instructions.
 
 The rest of `points`' gap is memory. A point takes about 500 bytes of
 80-byte value slots, where C's takes 32 bytes.
+
+## 16-byte values (2026-10-12)
+
+A value is now its kind, a flag and one 8-byte payload, 16 bytes in all. It
+used to be 80, with a field for every kind side by side. A list's count and
+an object's keys moved into the list's block. Points no longer spills out of
+the cache.
+
+| Workload | C | code | code / C |
+|---|---|---|---|
+| spectral_norm | 0.167 s | 0.223 s | 1.3× |
+| binary_trees | 0.0036 s | 0.014 s | 4× |
+| string_build | 0.0014 s | 0.0045 s | 3× |
+| dictionary | 0.0047 s | 0.021 s | 4–6× |
+| points | 0.0010 s | 0.0029 s | ~3× |
+
+Side by side with the 80-byte build, as the same binaries: points 3.86 → 2.66
+ms and binary_trees 20.3 → 15.7 ms. dictionary is unchanged; its time is the
+key search.

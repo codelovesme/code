@@ -30,14 +30,17 @@ use crate::interpreter::MOST_LIVE;
 /// constructors write through an out-pointer instead of returning by value
 /// (C-struct-by-value ABI matching is the thing this sidesteps), and its
 /// `_Static_assert` for the check that catches the two numbers drifting.
-const VALUE_SIZE: u64 = 80;
+const VALUE_SIZE: u64 = 16;
+/// The bytes of a list block's head (`code_abi.h`'s `CodeList`: its count
+/// and its keys) before its first slot.
+const LIST_HEAD: u64 = 16;
 const VALUE_ALIGN: u32 = 8;
 
 /// The module-ABI generation a library build reports from
 /// `code_module_abi_version`. `code_abi.h`'s `CODE_ABI_VERSION` is the
 /// source of truth; a host refuses a module whose answer differs from its
 /// own, so the end-to-end library tests are what would catch this drifting.
-const MODULE_ABI_VERSION: u64 = 1;
+const MODULE_ABI_VERSION: u64 = 2;
 
 /// What `code build` wraps the generated object in (the CLI flag is
 /// `--target`; see `docs/todo/build-targets.md`).
@@ -927,7 +930,8 @@ pub(crate) fn compile_to_object_traced(
         fn_take_failure,
         fn_make_exception,
         failed_flag,
-        bool_offset: if target == BuildTarget::Wasm { 20 } else { 24 },
+        bool_offset: 8,
+        wasm: target == BuildTarget::Wasm,
         kinds: Default::default(),
         layouts: Default::default(),
         shapes: HashMap::new(),
@@ -1372,11 +1376,12 @@ struct Gen<'a, 'm> {
     fn_take_failure: FunctionValue<'a>,
     fn_make_exception: FunctionValue<'a>,
     failed_flag: PointerValue<'a>,
-    /// Where a `CodeValue`'s `boolean` sits: after `str`, so it moves with
-    /// the pointer size (24 on a 64-bit machine, 20 on wasm32). The fields
-    /// before it are at the same place on both — `tag` 0, `heap` 4,
-    /// `number` 8 — which is all the inline fast paths read (ticket 113).
+    /// Where a `CodeValue`'s `boolean` sits: in its payload, at 8 like
+    /// `number`, `str` and `list` — the same place on every target.
     bool_offset: u64,
+    /// Whether this is a wasm32 build: a pointer is 4 bytes there, so a
+    /// constant value slot (`str_constant`) is padded to its 16.
+    wasm: bool,
     /// Which variables only ever hold a number or a boolean (`kinds.rs`),
     /// for the whole program, and for the function being generated.
     kinds: crate::kinds::Kinds,
@@ -4156,21 +4161,11 @@ impl<'a, 'm> Gen<'a, 'm> {
             None => self.context.append_basic_block(function, "writeslow"),
         };
         let merge = self.context.append_basic_block(function, "written");
-        let (items_offset, keys_offset, len_offset) = if self.bool_offset == 20 {
-            (24, 28, 32)
-        } else {
-            (32, 40, 48)
-        };
         let mut current = target;
         for (field, index) in steps {
             let b = self.builder;
-            // Held alone: a heap value whose block's count is 1. The block is
-            // the items for a list, the keys for an object.
-            let (tag, block_offset) = if field.is_some() {
-                (5, keys_offset)
-            } else {
-                (4, items_offset)
-            };
+            // Held alone: a heap value whose block's count is 1.
+            let tag = if field.is_some() { 5 } else { 4 };
             let right_kind = self.has_tag(current, tag)?;
             let heap_at = self.value_field(current, 4)?;
             let heap = b
@@ -4187,11 +4182,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             b.build_conditional_branch(ok, alone_check, slow)
                 .map_err(|e| e.to_string())?;
             b.position_at_end(alone_check);
-            let block_at = self.value_field(current, block_offset)?;
-            let block = b
-                .build_load(self.i8_ptr_ty, block_at, "block")
-                .map_err(|e| e.to_string())?
-                .into_pointer_value();
+            let block = self.load_list(current)?;
             let (i8_ty, i64_ty) = (self.i8_ty, self.i64_ty);
             let header_word = |offset: i64, name: &str| -> Result<IntValue<'a>, String> {
                 let at = unsafe {
@@ -4225,9 +4216,8 @@ impl<'a, 'm> Gen<'a, 'm> {
                     self.i64_ty.const_int(at as u64, false)
                 }
                 (None, Some(n)) => {
-                    let len_at = self.value_field(current, len_offset)?;
                     let len = b
-                        .build_load(self.i64_ty, len_at, "len")
+                        .build_load(self.i64_ty, block, "len")
                         .map_err(|e| e.to_string())?
                         .into_int_value();
                     let len_f = b
@@ -4272,11 +4262,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             b.build_conditional_branch(ok, next, slow)
                 .map_err(|e| e.to_string())?;
             b.position_at_end(next);
-            let items_at = self.value_field(current, items_offset)?;
-            let items = b
-                .build_load(self.i8_ptr_ty, items_at, "items")
-                .map_err(|e| e.to_string())?
-                .into_pointer_value();
+            let items = self.list_items(block)?;
             let offset = b
                 .build_int_mul(
                     slot_index,
@@ -4399,21 +4385,12 @@ impl<'a, 'm> Gen<'a, 'm> {
         let fast = self.context.append_basic_block(function, "shaped");
         let slow = self.context.append_basic_block(function, "unshaped");
         let merge = self.context.append_basic_block(function, "fieldread");
-        let (items_offset, keys_offset) = if self.bool_offset == 20 {
-            (24, 28)
-        } else {
-            (32, 40)
-        };
         let b = self.builder;
         let is_object = self.has_tag(base, 5)?;
         b.build_conditional_branch(is_object, check, slow)
             .map_err(|e| e.to_string())?;
         b.position_at_end(check);
-        let keys_at = self.value_field(base, keys_offset)?;
-        let keys = b
-            .build_load(self.i8_ptr_ty, keys_at, "keys")
-            .map_err(|e| e.to_string())?
-            .into_pointer_value();
+        let keys = self.load_list(base)?;
         let has_keys = b
             .build_is_not_null(keys, "haskeys")
             .map_err(|e| e.to_string())?;
@@ -4443,11 +4420,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         b.build_conditional_branch(same, fast, slow)
             .map_err(|e| e.to_string())?;
         b.position_at_end(fast);
-        let items_at = self.value_field(base, items_offset)?;
-        let items = b
-            .build_load(self.i8_ptr_ty, items_at, "items")
-            .map_err(|e| e.to_string())?
-            .into_pointer_value();
+        let items = self.list_items(keys)?;
         let slot = self.slot_at(items, at as u64, "shapedslot")?;
         b.build_unconditional_branch(merge)
             .map_err(|e| e.to_string())?;
@@ -4470,21 +4443,12 @@ impl<'a, 'm> Gen<'a, 'm> {
         let check = self.context.append_basic_block(function, "shapecheck");
         let marked = self.context.append_basic_block(function, "shapemark");
         let fast = self.context.append_basic_block(function, "shaped");
-        let (items_offset, keys_offset) = if self.bool_offset == 20 {
-            (24, 28)
-        } else {
-            (32, 40)
-        };
         let b = self.builder;
         let is_object = self.has_tag(base, 5)?;
         b.build_conditional_branch(is_object, check, bail)
             .map_err(|e| e.to_string())?;
         b.position_at_end(check);
-        let keys_at = self.value_field(base, keys_offset)?;
-        let keys = b
-            .build_load(self.i8_ptr_ty, keys_at, "keys")
-            .map_err(|e| e.to_string())?
-            .into_pointer_value();
+        let keys = self.load_list(base)?;
         let has_keys = b
             .build_is_not_null(keys, "haskeys")
             .map_err(|e| e.to_string())?;
@@ -4513,11 +4477,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         b.build_conditional_branch(same, fast, bail)
             .map_err(|e| e.to_string())?;
         b.position_at_end(fast);
-        let items_at = self.value_field(base, items_offset)?;
-        let items = b
-            .build_load(self.i8_ptr_ty, items_at, "items")
-            .map_err(|e| e.to_string())?
-            .into_pointer_value();
+        let items = self.list_items(keys)?;
         self.slot_at(items, at as u64, "shapedslot")
     }
 
@@ -4536,66 +4496,17 @@ impl<'a, 'm> Gen<'a, 'm> {
             .map(|g| g.as_pointer_value())
             .expect("a global string");
         let i32_ty = self.i32_ty;
-        let i8_ty = self.i8_ty;
-        let wasm = self.bool_offset == 20;
-        let null = self.i8_ptr_ty.const_null();
-        let zero32 = i32_ty.const_zero();
-        let (fields, values): (
-            Vec<inkwell::types::BasicTypeEnum>,
-            Vec<inkwell::values::BasicValueEnum>,
-        ) = if wasm {
-            (
-                vec![
-                    i32_ty.into(),
-                    i32_ty.into(),
-                    self.f64_ty.into(),
-                    self.i8_ptr_ty.into(),
-                    i32_ty.into(),
-                    self.i8_ptr_ty.into(),
-                    self.i8_ptr_ty.into(),
-                    self.i64_ty.into(),
-                    i8_ty.array_type(40).into(),
-                ],
-                vec![
-                    i32_ty.const_int(1, false).into(),
-                    zero32.into(),
-                    self.f64_ty.const_zero().into(),
-                    chars.into(),
-                    zero32.into(),
-                    null.into(),
-                    null.into(),
-                    self.i64_ty.const_zero().into(),
-                    i8_ty.array_type(40).const_zero().into(),
-                ],
-            )
-        } else {
-            (
-                vec![
-                    i32_ty.into(),
-                    i32_ty.into(),
-                    self.f64_ty.into(),
-                    self.i8_ptr_ty.into(),
-                    i32_ty.into(),
-                    i8_ty.array_type(4).into(),
-                    self.i8_ptr_ty.into(),
-                    self.i8_ptr_ty.into(),
-                    self.i64_ty.into(),
-                    i8_ty.array_type(24).into(),
-                ],
-                vec![
-                    i32_ty.const_int(1, false).into(),
-                    zero32.into(),
-                    self.f64_ty.const_zero().into(),
-                    chars.into(),
-                    zero32.into(),
-                    i8_ty.array_type(4).const_zero().into(),
-                    null.into(),
-                    null.into(),
-                    self.i64_ty.const_zero().into(),
-                    i8_ty.array_type(24).const_zero().into(),
-                ],
-            )
-        };
+        let mut fields: Vec<inkwell::types::BasicTypeEnum> =
+            vec![i32_ty.into(), i32_ty.into(), self.i8_ptr_ty.into()];
+        let mut values: Vec<inkwell::values::BasicValueEnum> = vec![
+            i32_ty.const_int(1, false).into(),
+            i32_ty.const_zero().into(),
+            chars.into(),
+        ];
+        if self.wasm {
+            fields.push(i32_ty.into());
+            values.push(i32_ty.const_zero().into());
+        }
         let ty = self.context.struct_type(&fields, true);
         let global = self.module.add_global(ty, None, "strvalue");
         global.set_initializer(&ty.const_named_struct(&values));
@@ -5023,16 +4934,23 @@ impl<'a, 'm> Gen<'a, 'm> {
             Some(bail) => bail,
             None => self.context.append_basic_block(function, "notelement"),
         };
-        let (items_offset, len_offset) = if self.bool_offset == 20 {
-            (24, 32)
-        } else {
-            (32, 48)
-        };
         let b = self.builder;
+        // A list, with a block (an empty one has none), then its length.
         let is_array = self.has_tag(base, 4)?;
-        let len_at = self.value_field(base, len_offset)?;
+        let has_list = self.context.append_basic_block(function, "haslist");
+        b.build_conditional_branch(is_array, has_list, slow)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(has_list);
+        let list = self.load_list(base)?;
+        let measured = self.context.append_basic_block(function, "measured");
+        let non_empty = b
+            .build_is_not_null(list, "nonempty")
+            .map_err(|e| e.to_string())?;
+        b.build_conditional_branch(non_empty, measured, slow)
+            .map_err(|e| e.to_string())?;
+        b.position_at_end(measured);
         let len = b
-            .build_load(self.i64_ty, len_at, "len")
+            .build_load(self.i64_ty, list, "len")
             .map_err(|e| e.to_string())?
             .into_int_value();
         let len_f = b
@@ -5059,22 +4977,14 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_float_compare(FloatPredicate::OEQ, back, n, "whole")
             .map_err(|e| e.to_string())?;
         let false_ = self.context.bool_type().const_zero();
-        let number_ok = b
-            .build_select(in_range, whole, false_, "numberok")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
         let ok = b
-            .build_select(is_array, number_ok, false_, "elementok")
+            .build_select(in_range, whole, false_, "elementok")
             .map_err(|e| e.to_string())?
             .into_int_value();
         b.build_conditional_branch(ok, fast, slow)
             .map_err(|e| e.to_string())?;
         b.position_at_end(fast);
-        let items_at = self.value_field(base, items_offset)?;
-        let items = b
-            .build_load(self.i8_ptr_ty, items_at, "items")
-            .map_err(|e| e.to_string())?
-            .into_pointer_value();
+        let items = self.list_items(list)?;
         let offset = b
             .build_int_mul(i, self.i64_ty.const_int(VALUE_SIZE, false), "offset")
             .map_err(|e| e.to_string())?;
@@ -5152,6 +5062,22 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .build_gep(self.i8_ty, ptr, &[offset], "field")
                 .map_err(|e| e.to_string())
         }
+    }
+
+    /// The block (`CodeList`) of the list or object `value` holds — null for
+    /// an empty one. Only for a value whose tag says it is one.
+    fn load_list(&self, value: PointerValue<'a>) -> Result<PointerValue<'a>, String> {
+        let at = self.value_field(value, 8)?;
+        Ok(self
+            .builder
+            .build_load(self.i8_ptr_ty, at, "list")
+            .map_err(|e| e.to_string())?
+            .into_pointer_value())
+    }
+
+    /// A list block's first slot: just past its count and keys.
+    fn list_items(&self, list: PointerValue<'a>) -> Result<PointerValue<'a>, String> {
+        self.value_field(list, LIST_HEAD)
     }
 
     /// Whether the value `ptr` points at is of kind `tag` (`ast::ValueKind::tag`).
