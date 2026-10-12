@@ -12,7 +12,9 @@
 link "native_modules/math.so" as math
 
 Bad {} =>
-    return 42
+    | Not a particle, on purpose: the label says the answer may be anything.
+    answer ∈ Any = 42
+    return answer
 
 Viacore {} =>
     emit Length {} to core get r

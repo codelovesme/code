@@ -1,0 +1,5 @@
+| A variable labelled with more than one type may hold any of them, in turn.
+x ∈ Number ∪ String = 42
+x = "now a string"
+
+assert x = "now a string"

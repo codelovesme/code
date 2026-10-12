@@ -26,7 +26,7 @@ big += big
 big += big
 big += big
 
-deep = [0]
+deep ∈ Array of Any = [0]
 loop x over big
     deep = [[[[[[[[deep]]]]]]]]
 assert deep = deep

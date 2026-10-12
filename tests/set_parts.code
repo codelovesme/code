@@ -65,7 +65,7 @@ assert outer.kept = { v = 2 }
 assert outer.list = [[1, 2], [30, 4]]
 
 | A value set into itself is the value it was before.
-zs = [1, 2]
+zs ∈ Array of Any = [1, 2]
 zs[0] = zs
 assert zs = [[1, 2], 2]
 me = { a = 1 }

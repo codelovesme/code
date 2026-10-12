@@ -5,7 +5,7 @@
 
 | A variable given a part of its own value: the old value is let go only
 | after the part has been taken.
-o = { inner = { v = [1, 2] }, other = 1 }
+o ∈ Any = { inner = { v = [1, 2] }, other = 1 }
 o = o.inner
 assert o = { v = [1, 2] }
 o = o.v
