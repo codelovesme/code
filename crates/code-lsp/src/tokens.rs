@@ -69,7 +69,7 @@ fn classify(tok: &Token, prev_dot: bool) -> Option<Kind> {
         True | False | Null | And | Or | Not | Assert | If | Loop | Over | Break | Continue
         | Link | Unlink | As | Emit | To | Core | Get | Is | This | Base | Return => Kind::Keyword,
         Equals | Plus | PlusEq | Minus | Star | Slash | NotEq | Lt | Gt | Le | Ge | Arrow | In
-        | NotIn => Kind::Operator,
+        | NotIn | Union | Ellipsis => Kind::Operator,
         Ident(name) if prev_dot => {
             let _ = name;
             Kind::Property

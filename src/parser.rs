@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, Label, LoopOver, Program, Span,
-    Stmt, UnOp, ValueKind,
+    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, Label, LabelValue, LoopOver,
+    Program, Span, Stmt, UnOp, ValueKind,
 };
 use crate::lexer::{Lexed, StringPart, Token};
 use crate::span::Located;
@@ -93,6 +93,13 @@ impl<'a> Parser<'a> {
 
     fn peek(&self) -> &Token {
         &self.tokens[self.pos]
+    }
+
+    /// Whether the next tokens are `type Name =` — see `statement`.
+    fn at_type_definition(&self) -> bool {
+        matches!(self.tokens.get(self.pos), Some(Token::Ident(word)) if word == "type")
+            && matches!(self.tokens.get(self.pos + 1), Some(Token::Ident(name)) if starts_uppercase(name))
+            && matches!(self.tokens.get(self.pos + 2), Some(Token::Equals))
     }
 
     fn advance(&mut self) -> Token {
@@ -194,6 +201,29 @@ impl<'a> Parser<'a> {
 
     fn statement(&mut self) -> Result<Stmt, String> {
         let statement_start = self.pos;
+        // `type Name = <label>`. `type` is a word only here — followed by a
+        // capitalised name and `=` — because it is a field and variable name
+        // in hundreds of places (`type = "button"`).
+        if self.at_type_definition() {
+            self.advance();
+            let Token::Ident(name) = self.advance() else {
+                unreachable!("at_type_definition saw a name");
+            };
+            if self.block_depth > 0 {
+                return Err(format!(
+                    "type '{name}' is defined inside a block — a type is the whole program's, \
+                     so it is defined at the top level"
+                ));
+            }
+            if ValueKind::parse(&name).is_some() || name == "Any" {
+                return Err(format!("'{name}' is one of the built-in types already"));
+            }
+            self.advance(); // `=`
+            self.skip_newlines();
+            let label = self.label()?;
+            self.expect_end_of_statement()?;
+            return Ok(Stmt::TypeDef { name, label });
+        }
         if matches!(self.peek(), Token::Assert) {
             self.advance();
             let value = self.expr()?;
@@ -857,17 +887,18 @@ impl<'a> Parser<'a> {
         };
         self.advance();
         let spelling = if negated { '∉' } else { '∈' };
-        let test = match self.advance() {
-            Token::Ident(name) => match ValueKind::parse(&name) {
+        // What follows is a label — the set the value is asked to be in.
+        let test = match self
+            .label()
+            .map_err(|e| e.replace("after '∈'", &format!("after '{spelling}'")))?
+        {
+            Label::Named(name) if name == "Null" => IsTest::Kind(ValueKind::Null),
+            Label::Named(name) => match ValueKind::parse(&name) {
                 Some(kind) => IsTest::Kind(kind),
+                None if name == "Any" => IsTest::Label(Label::Named(name)),
                 None => IsTest::Class(name),
             },
-            Token::Null => IsTest::Kind(ValueKind::Null),
-            other => {
-                return Err(format!(
-                    "expected a kind or a class name after '{spelling}', found {other:?}"
-                ))
-            }
+            label => IsTest::Label(label),
         };
         // `∉` is `not (… ∈ …)` and nothing more, built here so both backends
         // inherit `∈`'s answer instead of carrying a second rule that could
@@ -1206,10 +1237,10 @@ fn absent_construct(name: &str) -> Option<&'static str> {
         "for" | "foreach" => {
             Some("there is no `for` — `loop item over container` iterates an Array or an Object")
         }
-        "class" | "struct" | "type" | "interface" | "enum" => Some(
-            "there are no type declarations — a particle is an Object with a `_class` \
-             field, written `Name { field = value }`, and the six value kinds are all \
-             there are",
+        "class" | "struct" | "interface" | "enum" => Some(
+            "there are no class declarations — a particle is an Object with a `_class` \
+             field, written `Name { field = value }`; a data type is named with \
+             `type Name = <label>`",
         ),
         "import" | "require" | "use" | "include" => {
             Some("there is no `import` — `link \"module.so\" as name` is how a module is reached")
@@ -1318,13 +1349,35 @@ impl Parser<'_> {
     /// `Number`, `Point`, `Any`, `null`; `{ x ∈ Label, … }` with every field
     /// labelled; `Array of Label`, `Object of Label`. `of` is a word only
     /// here — it stays an ordinary name everywhere else.
+    /// A label: one part, or several joined by `∪` (`String ∪ Element`).
     fn label(&mut self) -> Result<Label, String> {
+        let first = self.label_part()?;
+        if !matches!(self.peek(), Token::Union) {
+            return Ok(first);
+        }
+        let mut members = vec![first];
+        while matches!(self.peek(), Token::Union) {
+            self.advance();
+            self.skip_newlines();
+            match self.label_part()? {
+                // `(A ∪ B) ∪ C` is one union of three.
+                Label::Union(more) => members.extend(more),
+                part => members.push(part),
+            }
+        }
+        Ok(Label::Union(members))
+    }
+
+    /// One part of a label: a name, `Array of`/`Object of` a part, an object
+    /// label, a written value, or a label in brackets. `Array of` takes one
+    /// part, so `Array of (String ∪ Element)` needs its brackets.
+    fn label_part(&mut self) -> Result<Label, String> {
         match self.advance() {
             Token::Ident(name) => {
                 let container = name == "Array" || name == "Object";
                 if container && matches!(self.peek(), Token::Ident(word) if word == "of") {
                     self.advance();
-                    let inner = Box::new(self.label()?);
+                    let inner = Box::new(self.label_part()?);
                     return Ok(if name == "Array" {
                         Label::ArrayOf(inner)
                     } else {
@@ -1334,8 +1387,28 @@ impl Parser<'_> {
                 Ok(Label::Named(name))
             }
             Token::Null => Ok(Label::Named("Null".to_string())),
+            Token::Str(text) => Ok(Label::Value(LabelValue::Str(text))),
+            Token::Number(n) => Ok(Label::Value(LabelValue::Number(n))),
+            Token::Minus => match self.advance() {
+                Token::Number(n) => Ok(Label::Value(LabelValue::Number(-n))),
+                other => Err(format!(
+                    "expected a number after '-' in a label, found {other:?}"
+                )),
+            },
+            Token::True => Ok(Label::Value(LabelValue::Bool(true))),
+            Token::False => Ok(Label::Value(LabelValue::Bool(false))),
+            Token::LParen => {
+                self.skip_newlines();
+                let inner = self.label()?;
+                self.skip_newlines();
+                match self.advance() {
+                    Token::RParen => Ok(inner),
+                    other => Err(format!("expected ')' to close a label, found {other:?}")),
+                }
+            }
             Token::LBrace => {
                 let mut fields: Vec<(String, Label)> = Vec::new();
+                let mut open = false;
                 self.skip_newlines();
                 if matches!(self.peek(), Token::RBrace) {
                     self.advance();
@@ -1343,6 +1416,22 @@ impl Parser<'_> {
                 }
                 loop {
                     self.skip_newlines();
+                    // `…` — and other fields too. Last, so it reads as the
+                    // rest of the object.
+                    if matches!(self.peek(), Token::Ellipsis) {
+                        self.advance();
+                        open = true;
+                        self.skip_newlines();
+                        match self.advance() {
+                            Token::RBrace => break,
+                            other => {
+                                return Err(format!(
+                                    "'…' is the last thing in a label — expected '}}', found \
+                                     {other:?}"
+                                ))
+                            }
+                        }
+                    }
                     let name = match self.advance() {
                         Token::Ident(name) | Token::Str(name) => name,
                         other => {
@@ -1366,10 +1455,14 @@ impl Parser<'_> {
                         break;
                     }
                 }
-                Ok(Label::Fields(fields))
+                Ok(if open {
+                    Label::Open(fields)
+                } else {
+                    Label::Fields(fields)
+                })
             }
             other => Err(format!(
-                "expected a kind, a class name, `{{` or `Array of` after '∈', found {other:?}"
+                "expected a type, `{{`, `Array of`, a value or `(` after '∈', found {other:?}"
             )),
         }
     }

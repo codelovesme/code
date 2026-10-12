@@ -693,6 +693,11 @@ pub(crate) fn compile_to_object_traced(
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_is_type = module.add_function(
+        "code_is_type",
+        i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_bool_value = module.add_function(
         "code_bool_value",
         i32_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
@@ -883,6 +888,9 @@ pub(crate) fn compile_to_object_traced(
         fn_to_text,
         fn_not,
         fn_is_particle,
+        fn_is_type,
+        types: Default::default(),
+        type_nodes: HashMap::new(),
         fn_bool_value,
         fn_values_equal,
         fn_assert,
@@ -970,6 +978,7 @@ pub(crate) fn compile_to_object_traced(
     gen.declare_handlers(&program.statements)?;
     gen.kinds = crate::kinds::of_program(program);
     gen.layouts = crate::infer::field_layouts(program);
+    gen.types = crate::types::Types::of(program);
     gen.scalar_names = gen.kinds.top.clone();
     // Decided now that every handler is known, and only for an executable:
     // a library cannot know whether its host will want its steps (see
@@ -1251,6 +1260,13 @@ struct Gen<'a, 'm> {
     fn_to_text: FunctionValue<'a>,
     fn_not: FunctionValue<'a>,
     fn_is_particle: FunctionValue<'a>,
+    /// `code_is_type`: `∈` a declared type or a label (ticket 123).
+    fn_is_type: FunctionValue<'a>,
+    /// The program's `type`s.
+    types: crate::types::Types,
+    /// Each declared type's node (`type_node`), so a type that contains
+    /// itself points back at itself.
+    type_nodes: HashMap<String, PointerValue<'a>>,
     fn_bool_value: FunctionValue<'a>,
     fn_values_equal: FunctionValue<'a>,
     fn_assert: FunctionValue<'a>,
@@ -3037,6 +3053,8 @@ impl<'a, 'm> Gen<'a, 'm> {
             } => self.gen_emit(particle, target, result.as_ref()),
             Stmt::Break => self.gen_jump(JumpTarget::Break),
             Stmt::Continue => self.gen_jump(JumpTarget::Continue),
+            // A name for a set of values: `code check`'s, nothing to run.
+            Stmt::TypeDef { .. } => Ok(()),
         }
     }
 
@@ -5545,6 +5563,11 @@ impl<'a, 'm> Gen<'a, 'm> {
             }
             (IsTest::Kind(kind), Val::Boxed(ptr)) => self.has_tag(ptr, kind.tag()),
             (IsTest::Kind(_), Val::Held(_)) => unreachable!("settled above"),
+            (IsTest::Label(label), _) => self.is_type(operand, label),
+            (IsTest::Class(class), _) if self.types.get(class).is_some() => {
+                let label = crate::ast::Label::Named(class.clone());
+                self.is_type(operand, &label)
+            }
             (IsTest::Class(class), _) => {
                 let ptr = self.box_val(operand)?;
                 let class_ptr = self.global_str(class, "isclass")?;
@@ -5561,6 +5584,156 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .map_err(|e| e.to_string())
             }
         }
+    }
+
+    /// `operand ∈ label` for a declared type or a label: `code_is_type`
+    /// walks the type's nodes (`type_node`).
+    fn is_type(
+        &mut self,
+        operand: Val<'a>,
+        label: &crate::ast::Label,
+    ) -> Result<IntValue<'a>, String> {
+        let ptr = self.box_val(operand)?;
+        let node = self.type_node(label);
+        let flag = self
+            .builder
+            .build_call(self.fn_is_type, &[ptr.into(), node.into()], "")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .left()
+            .expect("code_is_type returns i32, not void")
+            .into_int_value();
+        self.builder
+            .build_int_compare(IntPredicate::NE, flag, self.i32_ty.const_zero(), "is")
+            .map_err(|e| e.to_string())
+    }
+
+    /// The constant `CodeTypeNode` (`runtime.c`) that describes `label`: an
+    /// operation, its members or fields, a value. A declared type's name is
+    /// its own node, made once — made before its parts, so a part that is
+    /// the type itself points back at it.
+    fn type_node(&mut self, label: &crate::ast::Label) -> PointerValue<'a> {
+        use crate::ast::{Label, LabelValue};
+        const ANY: u64 = 0;
+        const KIND: u64 = 1;
+        const STR: u64 = 2;
+        const NUMBER: u64 = 3;
+        const BOOL: u64 = 4;
+        const UNION: u64 = 5;
+        const ARRAY_OF: u64 = 6;
+        const OBJECT_OF: u64 = 7;
+        const FIELDS: u64 = 8;
+        const OPEN: u64 = 9;
+        const CLASS: u64 = 10;
+        let node_ty = self.context.struct_type(
+            &[
+                self.i32_ty.into(),
+                self.i32_ty.into(),
+                self.i8_ptr_ty.into(),
+                self.i8_ptr_ty.into(),
+                self.i8_ptr_ty.into(),
+                self.f64_ty.into(),
+            ],
+            false,
+        );
+        let null = self.i8_ptr_ty.const_null();
+        if let Label::Named(name) = label {
+            if let Some(node) = self.type_nodes.get(name) {
+                return *node;
+            }
+            if let Some(def) = self.types.get(name).cloned() {
+                let global = self.module.add_global(node_ty, None, "typenode");
+                global.set_constant(true);
+                global.set_linkage(inkwell::module::Linkage::Private);
+                let node = global.as_pointer_value();
+                self.type_nodes.insert(name.clone(), node);
+                // A type named for another (`type A = B`) is the union of
+                // that one alone; any other label is its own node's content.
+                let inner = self.type_node(&def);
+                let children = self.pointer_table(&[inner]);
+                global.set_initializer(&node_ty.const_named_struct(&[
+                    self.i32_ty.const_int(UNION, false).into(),
+                    self.i32_ty.const_int(1, false).into(),
+                    children.into(),
+                    null.into(),
+                    null.into(),
+                    self.f64_ty.const_zero().into(),
+                ]));
+                return node;
+            }
+        }
+        let text = |gen: &mut Self, t: &str| -> inkwell::values::BasicValueEnum<'a> {
+            gen.builder
+                .build_global_string_ptr(t, "typetext")
+                .map(|g| g.as_pointer_value().into())
+                .expect("a global string")
+        };
+        let (op, count, children, names, text_value, number) = match label {
+            Label::Named(name) => match name.as_str() {
+                "Any" => (ANY, 0, null, null, null.into(), 0.0),
+                _ => match crate::ast::ValueKind::parse(name) {
+                    Some(kind) => (KIND, 0, null, null, null.into(), kind.tag() as f64),
+                    None => (CLASS, 0, null, null, text(self, name), 0.0),
+                },
+            },
+            Label::Value(LabelValue::Str(s)) => (STR, 0, null, null, text(self, s), 0.0),
+            Label::Value(LabelValue::Number(n)) => (NUMBER, 0, null, null, null.into(), *n),
+            Label::Value(LabelValue::Bool(b)) => {
+                (BOOL, 0, null, null, null.into(), if *b { 1.0 } else { 0.0 })
+            }
+            Label::Union(members) => {
+                let nodes: Vec<_> = members.iter().map(|m| self.type_node(m)).collect();
+                let table = self.pointer_table(&nodes);
+                (UNION, nodes.len() as u64, table, null, null.into(), 0.0)
+            }
+            Label::ArrayOf(element) | Label::ObjectOf(element) => {
+                let node = self.type_node(element);
+                let table = self.pointer_table(&[node]);
+                let op = if matches!(label, Label::ArrayOf(_)) {
+                    ARRAY_OF
+                } else {
+                    OBJECT_OF
+                };
+                (op, 1, table, null, null.into(), 0.0)
+            }
+            Label::Fields(fields) | Label::Open(fields) => {
+                let nodes: Vec<_> = fields.iter().map(|(_, l)| self.type_node(l)).collect();
+                let name_ptrs: Vec<_> = fields
+                    .iter()
+                    .map(|(n, _)| text(self, n).into_pointer_value())
+                    .collect();
+                let table = self.pointer_table(&nodes);
+                let names = self.pointer_table(&name_ptrs);
+                let op = if matches!(label, Label::Open(_)) {
+                    OPEN
+                } else {
+                    FIELDS
+                };
+                (op, nodes.len() as u64, table, names, null.into(), 0.0)
+            }
+        };
+        let global = self.module.add_global(node_ty, None, "typenode");
+        global.set_constant(true);
+        global.set_linkage(inkwell::module::Linkage::Private);
+        global.set_initializer(&node_ty.const_named_struct(&[
+            self.i32_ty.const_int(op, false).into(),
+            self.i32_ty.const_int(count, false).into(),
+            children.into(),
+            names.into(),
+            text_value,
+            self.f64_ty.const_float(number).into(),
+        ]));
+        global.as_pointer_value()
+    }
+
+    /// A constant array of these pointers, and where it is.
+    fn pointer_table(&mut self, pointers: &[PointerValue<'a>]) -> PointerValue<'a> {
+        let ty = self.i8_ptr_ty.array_type(pointers.len() as u32);
+        let global = self.module.add_global(ty, None, "typetable");
+        global.set_constant(true);
+        global.set_linkage(inkwell::module::Linkage::Private);
+        global.set_initializer(&self.i8_ptr_ty.const_array(pointers));
+        global.as_pointer_value()
     }
 
     /// A value an `if`, `and` or `or` branches on: a known boolean as it

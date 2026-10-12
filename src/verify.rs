@@ -35,6 +35,9 @@ use crate::ast::{EmitResult, EmitTarget, Expr, FieldKey, Program, Stmt};
 /// tree is the earliest place the question is answerable, and this is the
 /// one check both backends share — see this file's header.
 pub fn verify_defined(program: &Program) -> Result<(), String> {
+    if let Some(problem) = crate::types::Types::problem(program) {
+        return Err(problem);
+    }
     let mut scopes = vec![HashSet::new()];
     let mut natives = HashSet::new();
     verify_stmts(&program.statements, &mut scopes, &mut natives, 0)
@@ -227,7 +230,7 @@ fn verify_stmts(
             Stmt::Unlink(address) => verify_expr(address, scopes)?,
             // Nothing to check — the parser already rejected any `break`
             // or `continue` that isn't inside a loop.
-            Stmt::Break | Stmt::Continue => {}
+            Stmt::Break | Stmt::Continue | Stmt::TypeDef { .. } => {}
         }
     }
     Ok(())

@@ -671,6 +671,44 @@ list or object has no block (`list` NULL).
 points 3.86 → 2.66 ms, binary_trees 20.3 → 15.7 ms, dictionary unchanged
 (its time is the key search).
 
+## Data types (ticket 123, 2026-10-12)
+
+Owner's model: a type is a set of values; the language says **type**, not
+"kind" (`kind-change` is now `type-change`). `type Name = <label>` is a
+`Stmt::TypeDef`, recognised only as `type` + capitalised name + `=` at a
+statement start (`Parser::at_type_definition`), top level only — `type` is a
+field name in hundreds of places. Labels (`ast::Label`) gained `Union`
+(`∪`, `Token::Union`), `Value` (`LabelValue`: a written string, number,
+boolean — a set of one) and `Open` (`…`, `Token::Ellipsis`); `Fields` stays
+closed. `label()` is parts joined by `∪`; `label_part()` is a name, `Array
+of`/`Object of` *one part*, an object label, a value, or `( label )`.
+
+`src/types.rs` (`Types`) is the program-wide table (linked files included):
+`Particle = { _class ∈ String, … }` predefined; a capitalised name no `type`
+declares is the particles of that class (`IsTest::Class`, so `r ∈
+Exception` is unchanged). `Types::problem` — a name defined twice, or a type
+reaching itself by names and unions alone (`type A = A ∪ String`, which no
+check could ever finish) — is refused by `verify_defined`, so both backends
+refuse it. `kind_of` gives the one basic type a label admits (a union of
+several: none), which is what `diagnostics::static_type_from_annotation` and
+`infer` use; `infer` gives each declared type one variable (`type_vars`) so
+a recursive type terminates, and a union of several types is `Any`.
+
+**A label that names `_class` needs the value to have one** — otherwise a
+field left out is null, and null fits, so `{ x = 1 }` would have been a
+`Particle`. That one exception is in all three: `label_mismatch`,
+`Types::holds`, and `runtime.c`'s `type_holds`.
+
+**`∈` takes a label at run time** (`IsTest::Label`, or `Class` naming a
+declared type). The interpreter asks `Types::contains`; codegen emits the
+type as a graph of constant `CodeTypeNode`s (`type_node`; a declared type is
+its own node, made before its parts, so `Element`'s children point back at
+it) and calls `code_is_type`. **Null at run time** is in `Null` and `Any`
+only (as `x ∈ String` always answered); a *part* that is null fits. The node
+struct is laid out by both LLVM and C (`{i32, i32, ptr, ptr, ptr, double}`),
+which `wasm_asks_types_with_the_same_answers` checks where pointers are 4
+bytes. `tests/types.code` holds the cases.
+
 ## Wasm handler stack (root-caused 2026-09-07)
 
 Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`

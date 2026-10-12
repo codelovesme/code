@@ -348,7 +348,7 @@ fn pretty(label: &Label, depth: usize) -> String {
         }
         Label::ArrayOf(inner) => format!("Array of {}", pretty(inner, depth)),
         Label::ObjectOf(inner) => format!("Object of {}", pretty(inner, depth)),
-        Label::Named(name) => name.clone(),
+        Label::Named(_) | Label::Open(_) | Label::Union(_) | Label::Value(_) => spelled,
     }
 }
 

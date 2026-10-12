@@ -29,6 +29,7 @@ use crate::ast::{
 };
 use crate::diagnostics::{Diagnostic, Severity};
 use crate::span::Origin;
+use crate::types::Types;
 
 type Var = usize;
 
@@ -58,6 +59,7 @@ pub fn kind_warnings(program: &Program) -> Vec<Diagnostic> {
         program.origin.as_ref(),
         &mut warnings,
         &mut suggestions,
+        &Types::of(program),
     );
     warnings
 }
@@ -106,6 +108,7 @@ pub fn field_layouts(program: &Program) -> Layouts {
         &mut warnings,
         &mut suggestions,
         &mut layouts,
+        &Types::of(program),
     );
     layouts
 }
@@ -118,6 +121,7 @@ pub fn suggested_labels(program: &Program) -> Vec<Suggestion> {
         program.origin.as_ref(),
         &mut warnings,
         &mut suggestions,
+        &Types::of(program),
     );
     suggestions
 }
@@ -127,9 +131,17 @@ fn check_file(
     origin: Option<&Origin>,
     warnings: &mut Vec<Diagnostic>,
     suggestions: &mut Vec<Suggestion>,
+    defs: &Types,
 ) {
     let mut layouts = Layouts::default();
-    check_file_into(statements, origin, warnings, suggestions, &mut layouts);
+    check_file_into(
+        statements,
+        origin,
+        warnings,
+        suggestions,
+        &mut layouts,
+        defs,
+    );
 }
 
 fn check_file_into(
@@ -138,8 +150,11 @@ fn check_file_into(
     warnings: &mut Vec<Diagnostic>,
     suggestions: &mut Vec<Suggestion>,
     layouts: &mut Layouts,
+    defs: &Types,
 ) {
     let mut infer = Infer {
+        defs,
+        type_vars: HashMap::new(),
         parent: Vec::new(),
         shapes: Vec::new(),
         labelled: Vec::new(),
@@ -267,6 +282,11 @@ fn literal_class(expr: &Expr) -> Option<&str> {
 }
 
 struct Infer<'a> {
+    /// The program's `type`s (ticket 123).
+    defs: &'a Types,
+    /// The variable each `type` name stands for once reached, so a type
+    /// that contains itself (`Element`) is one variable, not an endless one.
+    type_vars: HashMap<String, Var>,
     parent: Vec<Var>,
     shapes: Vec<Shape>,
     /// Whether a variable's kind comes from a label. A value that breaks a
@@ -404,12 +424,12 @@ impl Infer<'_> {
         };
         let (was, now) = (name(was), name(now));
         self.warnings.push(Diagnostic {
-            code: "kind-change",
+            code: "type-change",
             severity: Severity::Warning,
             message: format!(
-                "{what} holds {} and is given {} here — a value keeps the kind it first \
-                 held (null aside); use another name, or `∈ Any` for one that is any kind \
-                 on purpose",
+                "{what} holds {} and is given {} here — a value keeps the type it first \
+                 held (null aside); use another name, or a label (`∈ Any`, `∈ String ∪ \
+                 Element`) for one that is several types on purpose",
                 article(&was),
                 article(&now)
             ),
@@ -532,6 +552,17 @@ impl Infer<'_> {
                     self.fresh(Shape::Array(element))
                 }
                 "Object" => self.fresh(Shape::Unknown),
+                other if self.defs.get(other).is_some() => {
+                    if let Some(&var) = self.type_vars.get(other) {
+                        return var;
+                    }
+                    let var = self.fresh(Shape::Unknown);
+                    self.type_vars.insert(other.to_string(), var);
+                    let def = self.defs.get(other).cloned().expect("checked above");
+                    let shape = self.label(&def);
+                    self.unify(var, shape, &format!("type '{other}'"));
+                    var
+                }
                 other => match ValueKind::parse(other) {
                     Some(kind) => self.scalar(kind),
                     // A particle this file handles is what that handler
@@ -540,7 +571,7 @@ impl Infer<'_> {
                     None => self.fresh(Shape::Unknown),
                 },
             },
-            Label::Fields(fields) => {
+            Label::Fields(fields) | Label::Open(fields) => {
                 let mut vars = BTreeMap::new();
                 for (name, field) in fields {
                     let var = self.label(field);
@@ -562,6 +593,21 @@ impl Infer<'_> {
                     map: Some(values),
                 })
             }
+            Label::Value(value) => self.scalar(value.kind()),
+            // One type throughout (`"red" ∪ "green"`, two object labels):
+            // the members as one; several types: `Any`, until a value's
+            // type is something the compiler keeps per value.
+            Label::Union(members) => match self.defs.kind_of(label) {
+                Some(_) => {
+                    let var = self.label(&members[0]);
+                    for member in &members[1..] {
+                        let other = self.label(member);
+                        self.unify(var, other, "a member of a union");
+                    }
+                    var
+                }
+                None => self.fresh(Shape::Any),
+            },
         }
     }
 
@@ -737,6 +783,7 @@ impl Infer<'_> {
                 self.warnings,
                 self.suggestions,
                 self.layouts,
+                self.defs,
             ),
             Stmt::Link { alias, .. } => {
                 if let Some(alias) = alias {
@@ -751,7 +798,7 @@ impl Infer<'_> {
             Stmt::Unlink(expr) => {
                 self.expr(expr);
             }
-            Stmt::HandlerDef { .. } | Stmt::Continue | Stmt::Break => {}
+            Stmt::HandlerDef { .. } | Stmt::Continue | Stmt::Break | Stmt::TypeDef { .. } => {}
         }
     }
 

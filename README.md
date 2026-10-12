@@ -1,6 +1,6 @@
 # code
 
-A small language with six JSON-shaped value kinds, one loop, no functions,
+A small language with six JSON-shaped value types, one loop, no functions,
 and two output modes that are required to behave identically: `code run`
 interprets, `code build` compiles through LLVM to a native binary.
 
@@ -119,18 +119,18 @@ x = 1 - 2
 
 ### Values
 
-Six kinds, exactly JSON's: **Number** (an f64), **String**, **Boolean**,
-**Null**, **Array**, **Object**. There are no type keywords, and nothing a
-declaration says about a kind is checked; a binding holds whatever it was
-last assigned. Those six names are the language's whole vocabulary for a
-kind — they are what `∈` tests, what a type mismatch reports, and the only
-names a particle may not be given.
+Six types, exactly JSON's: **Number** (an f64), **String**, **Boolean**,
+**Null**, **Array**, **Object**. Every value is one of them. A `type` names a
+set of such values (see *Data types*) and adds no seventh, and nothing a label
+says changes what a binding holds — it holds whatever it was last assigned.
+Those six names are what `∈` tests at bottom, what a type mismatch reports,
+and the only names a particle may not be given.
 
 That correspondence is a commitment, not a coincidence: **the set is closed,
 and it stays JSON's.** New capability is expressed *with* these six rather
 than beside them — a particle is an Object carrying a `_class` field, a
 linked native module's alias is an Object of its constants, a core handler's answer is
-an Object. There is no seventh kind coming, and the two containers stay two:
+an Object. There is no seventh type coming, and the two containers stay two:
 folding Array and Object into a single ordered map was considered and
 rejected (`docs/todo/README.md`), because `+`, serialization and the native
 layout all still have to ask which one they are holding.
@@ -187,7 +187,7 @@ enough — the two readings are never both available, so no keyword has to
 choose between them and no reader has to work out which happened. There was a
 `let` until 2026-09-09, and forbidding the shadow is what retired it.
 
-A declaration may carry a kind, and so may an object field or a handler's
+A declaration may carry a type, and so may an object field or a handler's
 field list:
 
 ```
@@ -200,7 +200,7 @@ Greet { who ∈ String } =>
 
 **Nothing checks it.** `port ∈ Number = "8080"` runs, and `port` is a
 String — the annotation is read, required to be a name, and dropped, and the
-value's own kind is the only one that decides anything (owner's call,
+value's own type is the only one that decides anything (owner's call,
 2026-08-29). It is there for whoever reads the line, which means it can be
 wrong the way a comment can be wrong, and nothing will ever say so. Use `∈`
 as an *expression* when you want an answer:
@@ -260,7 +260,7 @@ A dot that does not begin a name is still text, so a sentence can end:
 `"$total."` is `"3."`. What is read is a *path*, never a whole expression —
 there is no `"$a + b"` and no `"$items[0]"`.
 
-A **String** splices in bare; every other kind renders as compact JSON, which
+A **String** splices in bare; every other type renders as compact JSON, which
 means a string *nested* inside an interpolated array or object keeps its
 quotes. Interpolation is total — no value is uninterpolable.
 
@@ -301,7 +301,7 @@ rather than quietly grouping as `(1 < 2) < 3`.
 
 **Operand rules.** Ordering (`< > ≤ ≥`) is Number-only — strings included,
 comparing them is an error. Equality (`= ≠`) is the opposite: defined for any
-two values, so mismatched kinds are simply unequal — see
+two values, so mismatched types are simply unequal — see
 [Equality](#equality) for how it reads a container. `- * /` require Numbers;
 `and`/`or`/`not` require Bools; a type mismatch is an error, in both modes.
 `+` is the exception — see below. Division by zero is an error too — the
@@ -311,7 +311,7 @@ value model is JSON, which has no way to spell infinity.
 ends and answers with an `Exception`, rather than the program stopping. See
 [Errors](#errors).
 
-`+` is overloaded by operand kind:
+`+` is overloaded by operand type:
 
 ```
 assert 1 + 2 = 3
@@ -354,7 +354,7 @@ assignment it needs an existing binding.
 
 ### Equality
 
-`=` and `≠` are defined for any two values and never fail; mismatched kinds
+`=` and `≠` are defined for any two values and never fail; mismatched types
 are simply unequal. Containers compare all the way down, and the two of them
 do not follow the same rule:
 
@@ -392,13 +392,13 @@ assert nums[1 - 1] = 10          | the index is an expression
 
 Two different rules, deliberately:
 
-- **Wrong operand kind is an error.** `.` requires an Object; `[]` requires
+- **Wrong operand type is an error.** `.` requires an Object; `[]` requires
   an Array or an Object. `"abc"[0]` and `"abc".length` both fail loudly
   rather than quietly answering null — loudly meaning the frame ends with an
   `Exception` (see [Errors](#errors)), not that the program stops.
 - **An absent member is null.** `obj.nope`, `obj["nope"]`, `nums[99]`, a
   non-Number index into an array, a non-Str key into an object — all null.
-  The operand kind was right; the lookup just found nothing.
+  The operand type was right; the lookup just found nothing.
 
 That second half is load-bearing: a linked module's alias is an object with
 nothing in it, so reading any name through it is a missing field, and answers
@@ -450,7 +450,7 @@ assert s[1, length) = "éllo"
 ```
 
 One character comes back as a one-character String; there is no character
-kind, and there are only six. Out of range is null, an empty range is `""`.
+type, and there are only six. Out of range is null, an empty range is `""`.
 
 Between them these are pop, shift, take and drop, which is why none of those
 is a core handler.
@@ -698,7 +698,7 @@ error.
 ### Particles
 
 `ClassName { fields }` — any uppercase-first name — is **pure parser sugar**
-for an object literal with a `"_class"` field prepended. No new value kind,
+for an object literal with a `"_class"` field prepended. No new value type,
 no schema, no validation.
 
 ```code
@@ -795,7 +795,7 @@ same reason `≠` is one to `=`'s one, and it exists because the spelled-out
 form read badly: `not` binds looser than `∈`, so `not r ∈ Exception` makes
 the eye work out that the membership is what is negated rather than `r`.
 
-**Which kind** — the six runtime kinds, also available in optional declaration
+**Which type** — the six runtime types, also available in optional declaration
 annotations checked by `code check`:
 
 ```
@@ -817,12 +817,21 @@ assert t ∈ TimestampResult
 
 A particle is an Object, so both are true of the same value: `t ∈ Object`
 and `t ∈ TimestampResult`. And because that would make a particle *named*
-after a kind unanswerable, **the six names cannot name a particle** — a
+after a type unanswerable, **the six names cannot name a particle** — a
 handler or literal called `Number` is refused before the program runs.
 
+**Whether it is in a type** — a `type` the program declares, or a label
+written right there (see *Data types* below):
+
+```
+assert "red" ∈ Color
+assert "green" ∈ "red" ∪ "green"
+assert [1, 2] ∈ Array of Number
+```
+
 `∈` is never an error. A wrong class, a missing `_class`, a non-object, the
-wrong kind — all simply answer false, the same spirit as `=` being
-well-defined across mismatched kinds. The right side is a bare name, not an
+wrong type — all simply answer false, the same spirit as `=` being
+well-defined across mismatched types. The right side is a label, not an
 expression: which question is being asked is a lexical fact.
 
 ### Optional type contracts
@@ -851,16 +860,56 @@ Draw {
 ```
 
 **null fits every label** — a field not set yet is null, whatever it will
-hold. `Any` fits everything: a value that is any kind on purpose, like a
+hold. `Any` fits everything: a value that is any type on purpose, like a
 sensor reading. `of` means this only after `Array` or `Object` in a label; it
 is an ordinary name everywhere else.
 
-**A value keeps the kind it first held** — a variable, every field of an
+### Data types
+
+A type is a set of values, and a label names one. Beyond the six types and
+`Any`:
+
+```code
+type Color = "red" ∪ "green" ∪ "blue"
+type Element = { tag ∈ String, children ∈ Array of (String ∪ Element) }
+type PointParticle = { _class ∈ "Point", x ∈ Number, y ∈ Number }
+type Size = 1 ∪ 2 ∪ 3
+```
+
+- **`type Name = <label>`** gives a label a name, for labels and `∈` alike.
+  It is the whole program's: a linked file's types are its program's too,
+  and a name may be defined once. `type` is a word only at the start of a
+  line, followed by a capitalised name and `=` — everywhere else it is the
+  ordinary name it has always been (`attrs = { type = "button" }`).
+- **`∪`** is one of several: `String ∪ Element`. `Array of` takes one part,
+  so a union inside one is bracketed: `Array of (String ∪ Element)`.
+- **A written value** is the set of just that value: `"red"`, `3`, `true`.
+  `"red" ∪ "green" ∪ "blue"` is a subset of String, with no "enum" to learn.
+- **A type may contain itself** inside a list or an object — an element's
+  children are elements. One that is only itself (`type A = A ∪ String`) is
+  refused before the program runs: no value could be checked against it.
+- **An object label is closed**: a field it does not name is an error, which
+  is what catches a misspelt field. **`…` opens one** — `{ a ∈ Number, … }`
+  is any object whose `a`, if it has one, is a Number.
+- **A particle is an object with a `_class`**, so the particles are a type:
+  `Particle`, predefined as `{ _class ∈ String, … }`. One class of them is a
+  type like any other, `_class ∈ "Point"` being the set of one name. A label
+  that names `_class` needs the value to have one; any other field left out
+  is null, which fits. A capitalised name no `type` declares is the
+  particles of that class — what `r ∈ Exception` has always meant.
+
+Building a particle is not checked against a type: `Point { x = 1 }` is the
+object it spells, and the label of the handler it is sent to checks it where
+it is used. At run time `∈ Type` asks the same question as `code check`,
+with one difference: null itself is in no type but `Null` and `Any`, as
+`x ∈ String` has always answered.
+
+**A value keeps the type it first held** — a variable, every field of an
 object, every element of a list; null aside, since a value not set yet is
-null whatever it will hold. `code check` works these kinds out over the whole
+null whatever it will hold. `code check` works these types out over the whole
 file, following values wherever they flow (`b = a`, a list, a particle sent to
 a handler and what the handler answers), and warns where one is later given
-another kind. A list written with mixed kinds in it — `["Hi ", { tag = "b" }]`,
+another type. A list written with mixed types in it — `["Hi ", { tag = "b" }]`,
 the shape of a page's children — is born that way, not changed: its elements
 are `Any`. It is a warning while existing programs are labelled; it will
 become an error that both `code run` and `code build` refuse, and what it
@@ -1398,7 +1447,7 @@ Four things are worth knowing before reaching for it:
   door at runtime became the point.
 
 Everything that can go wrong here is a value, not the end of the program — a
-missing file, a stale address, the wrong kind of value. A program that opens
+missing file, a stale address, the wrong type of value. A program that opens
 modules it worked out at runtime has to survive the ones it cannot open.
 
 **A guest owns its modules, unless the host says otherwise.** By default a
@@ -1788,7 +1837,7 @@ Each of these is a decision, not an omission waiting to be filled:
   value anything else holds: there are no references, so nothing can change
   under you.
 - **No type checking.** There are no type keywords, and a declaration that
-  names a kind (`let port ∈ Number = 8080`) is read and dropped — it is there
+  names a type (`let port ∈ Number = 8080`) is read and dropped — it is there
   for whoever reads the line, and it can be wrong the way a comment can be
   wrong.
 - **No core I/O.** Reaching the outside world goes through a module, which

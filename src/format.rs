@@ -180,6 +180,9 @@ impl Formatter<'_> {
             // A `(` right after an operand opens a range that leaves its
             // start out (`xs(0, length)`) — there are no calls, so it can be
             // nothing else — and closes up the same way.
+            // `Array of (String ∪ Element)`: `of` is a word there, not an
+            // operand a range could follow.
+            (Token::Ident(word), Token::LParen) if word == "of" => true,
             (_, Token::LParen) if ends_operand(prev) => false,
             // Empty braces close up: `Ping {}`, not `Ping { }`. The inner
             // space exists to hold content off the braces, and there is none.

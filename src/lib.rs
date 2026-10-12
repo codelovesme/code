@@ -24,6 +24,7 @@ pub mod span;
 mod split;
 pub mod timings;
 pub mod trace;
+pub mod types;
 pub mod value;
 pub mod verify;
 pub mod write_types;

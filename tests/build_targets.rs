@@ -350,6 +350,20 @@ fn wasm_reads_shaped_objects_with_the_same_answers() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// `∈` a declared type walks the compiler's description of it in the
+/// runtime (`code_is_type`); on wasm a node's pointers are 32 bits, so its
+/// number sits at another offset.
+#[test]
+fn wasm_asks_types_with_the_same_answers() {
+    let dir = temp_dir("wasm-types");
+    let out = dir.join("types.wasm");
+    code::compile_file(&fixture("types.code"), code::BuildTarget::Wasm, &out, false)
+        .expect("build types.code --target wasm");
+
+    run_wasm_under_node(&dir, &out);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// The search for a fraction's shortest spelling starts at the length the
 /// page says can first succeed (`code_host_number_shortest`) rather than at
 /// one. That may only skip candidates, never change the answer: so a few
