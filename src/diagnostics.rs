@@ -635,10 +635,8 @@ fn label_mismatch(
         Label::Union(members) => {
             let mut misses = Vec::new();
             for member in members {
-                match fits(member, value) {
-                    None => return None,
-                    Some(found) => misses.push(found),
-                }
+                // A member the value fits ends the search: it is in the union.
+                misses.push(fits(member, value)?);
             }
             // A member the value's type matched and a part of it did not is
             // the one to point into; otherwise the whole union is missed.
