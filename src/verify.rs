@@ -38,6 +38,19 @@ pub fn verify_defined(program: &Program) -> Result<(), String> {
     if let Some(problem) = crate::types::Types::problem(program) {
         return Err(problem);
     }
+    // A value keeps the type it first held (ticket 122): one given another
+    // type, with no label saying it may be, is refused before it runs.
+    if let Some(change) = crate::infer::kind_warnings(program).into_iter().next() {
+        return Err(match &change.origin {
+            Some(origin) => crate::span::render(
+                &origin.source,
+                &origin.file,
+                change.span.map(|span| span.start),
+                &change.message,
+            ),
+            None => change.message,
+        });
+    }
     let mut scopes = vec![HashSet::new()];
     let mut natives = HashSet::new();
     verify_stmts(&program.statements, &mut scopes, &mut natives, 0)

@@ -3,9 +3,13 @@
 //! A variable keeps the kind it first held, and so does every field of an
 //! object and every element of a list: `person.age = 24` makes `age` a Number
 //! for good. null is not a kind here — a value not set yet is null, whatever
-//! it will hold. This works out every one of those kinds over the whole file
-//! and reports a later assignment of another kind — for now as a warning in
-//! `code check`; it becomes an error once the apps are labelled (A.3, A.4).
+//! it will hold — and an empty list's elements are what first joins it. A
+//! list written with several types in it (`[name, icon]`) holds all of them
+//! from the start. This works out every one of those kinds over the whole
+//! file and reports a later assignment of another kind as an error: in
+//! `code check`, and `verify.rs` refuses to run or build the program (A.4).
+//! A value that is several types on purpose says so where it starts, with a
+//! label: `controls ∈ Array of Element = []`.
 //!
 //! **Values flow, so kinds follow the flow.** `b = a`, two objects put in one
 //! list, a particle emitted to a handler: whatever one value can reach has
@@ -41,6 +45,10 @@ enum Shape {
     Any,
     /// Number, String or Boolean.
     Scalar(ValueKind),
+    /// One of several types, born that way: a list written with a text and
+    /// an element in it (`[name, icon]`) holds `String ∪ Object`. More of
+    /// those types may join it later; another type is a change.
+    Mixed(Vec<ValueKind>),
     /// A list whose every element is the one variable.
     Array(Var),
     /// An object: its fields so far, or — once a field is named at run time —
@@ -271,6 +279,17 @@ fn check_file_into(
 }
 
 /// `Point { … }` — an object literal whose `_class` is written down.
+/// The types a shape's values are of: none for `Unknown` and `Any`.
+fn kinds_of(shape: &Shape) -> Vec<ValueKind> {
+    match shape {
+        Shape::Unknown | Shape::Any => Vec::new(),
+        Shape::Scalar(kind) => vec![*kind],
+        Shape::Mixed(kinds) => kinds.clone(),
+        Shape::Array(_) => vec![ValueKind::Array],
+        Shape::Object { .. } => vec![ValueKind::Object],
+    }
+}
+
 fn literal_class(expr: &Expr) -> Option<&str> {
     let Expr::Object(fields) = expr else {
         return None;
@@ -294,9 +313,8 @@ struct Infer<'a> {
     /// this reports only kinds no label spoke for.
     labelled: Vec<bool>,
     /// Set while the elements of one list literal meet: a list written with
-    /// a text and an element in it is born of mixed kinds, which is no
-    /// value changing kind — its elements are `Any` (until ticket 123 gives
-    /// it a union).
+    /// a text and an element in it is born of several types, which is no
+    /// value changing type — its elements are `Shape::Mixed`.
     mixed: bool,
     /// What each of this file's handlers receives: the particles emitted to
     /// it flow in here. A class name groups nothing by itself — two
@@ -406,10 +424,28 @@ impl Infer<'_> {
                 Shape::Object { fields: fa, map }
             }
             (sa, sb) => {
-                if !labelled && !self.mixed {
-                    self.report(what, &sa, &sb);
+                let (ka, kb) = (kinds_of(&sa), kinds_of(&sb));
+                let joined = {
+                    let mut all = ka.clone();
+                    for kind in &kb {
+                        if !all.contains(kind) {
+                            all.push(*kind);
+                        }
+                    }
+                    all
+                };
+                if self.mixed {
+                    Shape::Mixed(joined)
+                } else if joined.len() == ka.len() && matches!(sa, Shape::Mixed(_)) {
+                    sa
+                } else if joined.len() == kb.len() && matches!(sb, Shape::Mixed(_)) {
+                    sb
+                } else {
+                    if !labelled {
+                        self.report(what, &sa, &sb);
+                    }
+                    Shape::Any
                 }
-                Shape::Any
             }
         };
         self.shapes[ra] = merged;
@@ -420,12 +456,17 @@ impl Infer<'_> {
             Shape::Scalar(kind) => kind.name().to_string(),
             Shape::Array(_) => "Array".to_string(),
             Shape::Object { .. } => "Object".to_string(),
+            Shape::Mixed(kinds) => kinds
+                .iter()
+                .map(|kind| kind.name())
+                .collect::<Vec<_>>()
+                .join(" ∪ "),
             Shape::Any | Shape::Unknown => "Any".to_string(),
         };
         let (was, now) = (name(was), name(now));
         self.warnings.push(Diagnostic {
             code: "type-change",
-            severity: Severity::Warning,
+            severity: Severity::Error,
             message: format!(
                 "{what} holds {} and is given {} here — a value keeps the type it first \
                  held (null aside); use another name, or a label (`∈ Any`, `∈ String ∪ \
@@ -626,6 +667,12 @@ impl Infer<'_> {
             Shape::Unknown => Some(any()),
             Shape::Any => Some(Label::Named("Any".to_string())),
             Shape::Scalar(kind) => Some(Label::Named(kind.name().to_string())),
+            Shape::Mixed(kinds) => Some(Label::Union(
+                kinds
+                    .iter()
+                    .map(|kind| Label::Named(kind.name().to_string()))
+                    .collect(),
+            )),
             Shape::Array(element) => Some(Label::ArrayOf(Box::new(
                 self.label_of(element, visiting).unwrap_or_else(any),
             ))),
@@ -697,6 +744,9 @@ impl Infer<'_> {
     }
 
     fn statement(&mut self, statement: &Stmt) {
+        // A statement with no span of its own (an `assert`) is not said to
+        // be where the one before it was.
+        self.span = None;
         match statement {
             Stmt::Assign {
                 name,
@@ -962,7 +1012,11 @@ impl Infer<'_> {
                 FieldKey::Computed(name) => {
                     self.expr(name);
                     let values = *map.get_or_insert_with(|| self.fresh(Shape::Unknown));
+                    // Written together, its values are born of whatever
+                    // they hold — as a list written with several types is.
+                    let mixed = std::mem::replace(&mut self.mixed, true);
                     self.unify(values, value, "a value of an object");
+                    self.mixed = mixed;
                 }
             }
         }
@@ -976,11 +1030,22 @@ impl Infer<'_> {
     fn binary(&mut self, left: &Expr, op: BinOp, right: &Expr) -> Var {
         let l = self.expr(left);
         let r = self.expr(right);
+        // A list written right here and joined (`[name] + controls`, `[1] +
+        // true`, `"x" + [1, 2]`) is a new list, born of whatever both sides
+        // hold — as a list written with several types is. `xs + [x]` is
+        // `xs` growing, and keeps its type.
+        let written = matches!(left, Expr::Array(_))
+            || (matches!(right, Expr::Array(_)) && !matches!(self.shape(l), Shape::Array(_)));
+        let mixed = self.mixed;
+        self.mixed = mixed || written;
+        let var = self.binary_of(left, op, right, l, r);
+        self.mixed = mixed;
+        var
+    }
+
+    fn binary_of(&mut self, left: &Expr, op: BinOp, right: &Expr, l: Var, r: Var) -> Var {
         match op {
             BinOp::Add => match (self.shape(l), self.shape(r)) {
-                (Shape::Scalar(ValueKind::String), _) | (_, Shape::Scalar(ValueKind::String)) => {
-                    self.scalar(ValueKind::String)
-                }
                 // `xs + ys` joins; `xs + x` appends; `x + xs` prepends. A side
                 // not known yet next to a list is taken to be a list when it
                 // is on the left (`stones += [ … ]`), and left alone on the
@@ -997,6 +1062,12 @@ impl Infer<'_> {
                 (_, Shape::Array(element)) => {
                     self.unify(element, l, &list_named(right));
                     r
+                }
+                // A text and anything but a list is a text, as the
+                // interpreter adds them; a list with a text appends it
+                // (above).
+                (Shape::Scalar(ValueKind::String), _) | (_, Shape::Scalar(ValueKind::String)) => {
+                    self.scalar(ValueKind::String)
                 }
                 (Shape::Object { .. }, Shape::Object { .. }) => {
                     let what = match left {
@@ -1050,6 +1121,7 @@ fn base_name(expr: &Expr) -> Option<&str> {
 
 fn article(kind: &str) -> String {
     match kind {
+        _ if kind.contains('∪') => kind.to_string(),
         "Array" | "Object" | "Any" => format!("an {kind}"),
         _ => format!("a {kind}"),
     }
@@ -1074,6 +1146,35 @@ mod tests {
         let found = warnings("count = 1\ncount = 2\ncount = \"three\"\n");
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(found[0].starts_with("'count' holds a Number and is given a String"));
+    }
+
+    #[test]
+    fn a_list_born_mixed_holds_its_types() {
+        assert!(warnings("x = [1, \"two\"]\nx += [3]\nx += [\"four\"]\n").is_empty());
+        let late = warnings("x = [1, \"two\"]\nx += [true]\n");
+        assert_eq!(late.len(), 1, "{late:?}");
+        assert!(late[0].contains("Number ∪ String"), "{late:?}");
+    }
+
+    #[test]
+    fn an_empty_list_takes_its_type_from_what_joins_it() {
+        assert!(warnings("x = []\nx += [1]\nx += [2]\n").is_empty());
+        assert_eq!(warnings("x = []\nx += [1]\nx += [\"two\"]\n").len(), 1);
+        assert!(
+            warnings("x ∈ Array of (Number ∪ String) = []\nx += [1]\nx += [\"two\"]\n").is_empty()
+        );
+    }
+
+    #[test]
+    fn a_text_added_to_a_list_is_an_element() {
+        assert!(warnings("wrong = []\nwrong += \"bad key\"\nwrong += \"bad value\"\n").is_empty());
+        assert!(warnings("names = [\"a\"]\nnames = \"b\" + names\n").is_empty());
+    }
+
+    #[test]
+    fn a_list_written_and_joined_is_born_mixed() {
+        assert!(warnings("x = [1] + true\ny = \"a\" + [1, 2]\n").is_empty());
+        assert_eq!(warnings("xs = [1]\nxs += true\n").len(), 1);
     }
 
     #[test]

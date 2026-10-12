@@ -63,7 +63,7 @@ loop v over values
 assert seen = [3, 5, 1, 9]
 
 | A variable that held text before the loop and a number in it.
-label = "none"
+label ∈ String ∪ Number = "none"
 loop n over [5, 6, 7]
     label = n
 assert label = 7

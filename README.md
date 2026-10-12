@@ -908,12 +908,27 @@ with one difference: null itself is in no type but `Null` and `Any`, as
 object, every element of a list; null aside, since a value not set yet is
 null whatever it will hold. `code check` works these types out over the whole
 file, following values wherever they flow (`b = a`, a list, a particle sent to
-a handler and what the handler answers), and warns where one is later given
-another type. A list written with mixed types in it — `["Hi ", { tag = "b" }]`,
-the shape of a page's children — is born that way, not changed: its elements
-are `Any`. It is a warning while existing programs are labelled; it will
-become an error that both `code run` and `code build` refuse, and what it
-knows is what lets compiled code keep a field at a fixed place (ticket 122).
+a handler and what the handler answers), and reports where one is later
+given another type — an error `code check` reports and both `code run` and
+`code build` refuse. What it knows is what lets compiled code keep a field at
+a fixed place (ticket 122).
+
+The type comes from the first value. A list written with several types in it
+— `["Hi ", { tag = "b" }]`, the shape of a page's children — holds all of
+them from the start, and so does a list written and joined in one go
+(`[name] + controls`). An empty list (`[]`) takes the type of what first
+joins it, as `null` takes the type of what is first assigned. A value that
+will hold another type later says so where it starts:
+
+```
+| refused: xs holds Numbers
+xs = [1, 2]
+xs += ["three"]
+
+| fine: ys says so where it starts
+ys ∈ Array of (Number ∪ String) = [1, 2]
+ys += ["three"]
+```
 
 `code check` validates annotations when the value is statically knowable. It
 also checks statically known local emits for unknown fields and field type

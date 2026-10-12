@@ -130,9 +130,9 @@ pub fn check_handlers(program: &Program) -> Vec<Diagnostic> {
         &mut diagnostics,
         &defs,
     );
-    // Kinds fixed by first assignment (ticket 122): warnings until every app
-    // is labelled. A statement whose value already breaks a label says so as
-    // an error; the same conflict is not said twice.
+    // Kinds fixed by first assignment (ticket 122). A statement whose value
+    // already breaks a label says so as a type mismatch; the same conflict
+    // is not said twice.
     let broken: Vec<Option<Span>> = diagnostics
         .iter()
         .filter(|d| d.code == "type-mismatch")

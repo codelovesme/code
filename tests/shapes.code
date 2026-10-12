@@ -54,7 +54,7 @@ assert nums[k] = 30
 
 | A number written straight into a slot only when that is all it takes: the
 | list and the point held alone, the old value nothing on the heap.
-grid = [{ x = 1, y = 2 }, { x = 3, y = 4 }]
+grid ∈ Array of { x ∈ Number ∪ String, y ∈ Number } = [{ x = 1, y = 2 }, { x = 3, y = 4 }]
 grid[0].x = 10
 assert grid[0] = { x = 10, y = 2 }
 shared = grid

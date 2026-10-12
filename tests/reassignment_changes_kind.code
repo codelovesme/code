@@ -1,4 +1,0 @@
-x = 42
-x = "now a string"
-
-assert x = "now a string"

@@ -7,7 +7,9 @@
 | Was `fail_handler_return_non_particle.code`, which pinned the old rule that
 | this aborted.
 Ping {} =>
-    return 42
+    | Not a particle, on purpose: the label says the answer may be anything.
+    answer ∈ Any = 42
+    return answer
 
 emit Ping {} to this get r
 assert r ∈ Exception

@@ -9,7 +9,7 @@ s += "b"
 assert s = "ab"
 
 | Arrays: concatenating and appending both work, same as `+`.
-xs = [1]
+xs ∈ Array of Any = [1]
 xs += [2]
 assert xs = [1, 2]
 xs += 3

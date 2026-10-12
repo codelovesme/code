@@ -82,7 +82,7 @@ assert (xs[0] ∈ String) = false
 assert (a ∈ Boolean) = false
 
 | A variable that changes kind keeps working.
-v = 1
+v ∈ Number ∪ String = 1
 v = v + 1
 v = "two"
 v = v + "!"

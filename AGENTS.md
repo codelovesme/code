@@ -709,6 +709,35 @@ struct is laid out by both LLVM and C (`{i32, i32, ptr, ptr, ptr, double}`),
 which `wasm_asks_types_with_the_same_answers` checks where pointers are 4
 bytes. `tests/types.code` holds the cases.
 
+## A type change is an error (ticket 122 A.4, 2026-10-12)
+
+Owner's rule: a value's type comes from its first value; one that will
+hold another type later says so where it starts, with a label. `[]` and
+`null` decide nothing — what first joins or is assigned does. So
+`infer.rs` gained `Shape::Mixed(kinds)`: a list literal with several types
+(`Infer::mixed` while its elements meet), a list written and joined in one
+expression (`[name] + controls`, `"x" + [1, 2]` — `binary` sets `mixed`
+when the left side is a list literal, or the right is and the left is not
+a list), and an object literal's computed-key values. A later value of a
+type in the set joins quietly; another type is a change. `xs + [x]` with
+`xs` a list is `xs` growing, never mixed.
+
+Also fixed: `list + "text"` appends at run time (`apply_binop`), but the
+string rule came first in `binary`, so the result was a String — 13 false
+alarms in console and ide. And a statement with no span (`assert`) no
+longer borrows the previous statement's location.
+
+`type-change` is `Severity::Error`, and `verify_defined` refuses the first
+one (rendered with `span::render`), so `run` and `build` both refuse. Tests
+that change type on purpose are labelled (`∈ Any`, `∈ Number ∪ String`);
+`fail_reassignment_changes_type.code` pins the refusal and
+`reassignment_labelled.code` the label. Apps: `type Element = { tag ∈
+String, on ∈ Object of (String ∪ Particle), children ∈ Array of (String ∪
+Element), … }` in each web app on my-euglena-apps `typed-labels`; console
+and ide on `typed-labels`; euglena's diagram gene on `typed-diagram`. All of
+those need this compiler, so they merge with its release — and the diagram
+gene's tag after it (gems-web pins 0.4.3 until then).
+
 ## Wasm handler stack (root-caused 2026-09-07)
 
 Lane A: `src/lib.rs::link_wasm`, with regressions in `tests/build_targets.rs`

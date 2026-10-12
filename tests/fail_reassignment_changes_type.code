@@ -1,0 +1,7 @@
+| A variable keeps the type it first held (ticket 122): a number given text
+| later is refused before the program runs, in both modes. A variable meant
+| to hold either says so where it starts — see reassignment_labelled.code.
+x = 42
+x = "now a string"
+
+assert x = "now a string"

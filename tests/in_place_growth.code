@@ -21,7 +21,7 @@ emit Length { value = ys } to core get { value as m }
 assert m = 100
 
 | Appending a list to itself, and a list as one element.
-zs = [1, 2]
+zs ∈ Array of Any = [1, 2]
 zs = zs + zs
 assert zs = [1, 2, 1, 2]
 zs += [[3]]
@@ -92,7 +92,7 @@ assert again.value[4] = { k = 4 }
 
 | An object grown one field at a time, past several moves to a bigger block,
 | with keys long and short: every field keeps its name, value and place.
-table = { first = "one" }
+table ∈ Object of Any = { first = "one" }
 i = 0
 loop
     if i = 40, break
