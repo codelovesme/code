@@ -175,7 +175,7 @@ fn num(n: usize) -> Val {
 }
 
 fn rgb(v: &CodeValue) -> Option<(u8, u8, u8)> {
-    if v.tag != CodeTag::Array || v.len != 3 {
+    if v.tag != CodeTag::Array || v.len() != 3 {
         return None;
     }
     let parts: Vec<u8> = array_elems(v).filter_map(read_number).filter(|n| (0.0..=255.0).contains(n)).map(|n| n as u8).collect();

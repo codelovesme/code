@@ -66,6 +66,16 @@ Run it with `code run my_script.code`, or `code build my_script.code` to
 compile a native binary that dlopen's the module at startup — both output
 modes accept a `.so` the same way.
 
+## Reading a value
+
+A `CodeValue` is its `tag`, `heap` and one payload the tag decides (ABI
+version 2, 16 bytes). Read it through the helpers — `read_str`,
+`read_number`, `find_field`, `array_elems`, `object_entries` — or the
+methods: `number()`, `str_ptr()`, `boolean()`, and for an array or object
+`len()`, `items()` (for `slot_at`) and `keys()`. Each answers 0 or null for
+a value of another kind. An array's or object's count and keys live in its
+block, not in the value.
+
 ## Why only two required exports
 
 `code_module_abi_version` and `code_module_dispatch` are it. There's no

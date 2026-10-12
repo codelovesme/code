@@ -201,9 +201,9 @@ fn own(v: &CodeValue) -> CodeValue {
         CodeTag::Number => number(&mut out, read_number(v).unwrap_or(0.0)),
         CodeTag::Bool => boolean(&mut out, read_bool(v).unwrap_or(false)),
         CodeTag::Array => {
-            let mut buf = SlotBuffer::new(v.len as usize);
-            for i in 0..v.len {
-                let item = unsafe { &*slot_at(v.items, i) };
+            let mut buf = SlotBuffer::new(v.len() as usize);
+            for i in 0..v.len() {
+                let item = unsafe { &*slot_at(v.items(), i) };
                 let mut owned = own(item);
                 copy(buf.slot_mut(i), &owned);
                 release(&mut owned);

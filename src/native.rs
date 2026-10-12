@@ -21,14 +21,18 @@ use libloading::Library;
 
 use crate::value::Value;
 
-const CODE_ABI_VERSION: u32 = 1;
+const CODE_ABI_VERSION: u32 = 2;
 
 /// Must equal `code_abi.h`'s `CODE_INBOUND_CAPACITY`. The two runtimes have
 /// to drop the *same* particles under overload or a fixture would assert
 /// differently per output mode — the same lockstep rule `VALUE_SIZE` and
 /// `CODE_VALUE_SLOT_SIZE` already live under.
 const CODE_INBOUND_CAPACITY: usize = 256;
-const CODE_VALUE_SLOT_SIZE: usize = 80; // must match code_abi.h / codegen.rs
+const CODE_VALUE_SLOT_SIZE: usize = 16; // must match code_abi.h / codegen.rs
+/// `code_abi.h`'s `CodeList` head (count, keys) before a list's first slot,
+/// and the block header (count, spare word) before that.
+const LIST_HEAD_WORDS: usize = 2;
+const BLOCK_HEADER_WORDS: usize = 2;
 
 const TAG_NUMBER: i32 = 0;
 const TAG_STR: i32 = 1;
@@ -44,28 +48,47 @@ const TAG_OBJECT: i32 = 5;
 /// arrays/objects are strided at the latter, never at the former — see
 /// `write_slot`.
 #[repr(C)]
+#[derive(Clone, Copy)]
 struct CodeValueFfi {
     tag: i32,
     heap: i32,
+    payload: Payload,
+}
+
+/// A value's one payload; its tag says which.
+#[repr(C)]
+#[derive(Clone, Copy)]
+union Payload {
     number: f64,
     str_: *const c_char,
     boolean: i32,
-    items: *mut c_void,
-    keys: *mut *const c_char,
+    /// A list's or object's `CodeList` block, null when empty.
+    list: *mut ListHead,
+}
+
+/// `code_abi.h`'s `CodeList`: the count and an object's keys, followed by
+/// the slots.
+#[repr(C)]
+struct ListHead {
     len: i64,
+    keys: *mut *const c_char,
 }
 
 impl CodeValueFfi {
     const NULL: CodeValueFfi = CodeValueFfi {
         tag: TAG_NULL,
         heap: 0,
-        number: 0.0,
-        str_: std::ptr::null(),
-        boolean: 0,
-        items: std::ptr::null_mut(),
-        keys: std::ptr::null_mut(),
-        len: 0,
+        payload: Payload { number: 0.0 },
     };
+
+    /// A list's or object's count, slots and keys (0/null when empty).
+    unsafe fn list(&self) -> (i64, *const c_void, *mut *const c_char) {
+        let list = self.payload.list;
+        if list.is_null() {
+            return (0, std::ptr::null(), std::ptr::null_mut());
+        }
+        ((*list).len, list.add(1) as *const c_void, (*list).keys)
+    }
 }
 
 /// Bit-for-bit the same layout as `code_abi.h`'s `CodeVarList` — what a
@@ -121,61 +144,82 @@ impl Arena {
         self.strings.last().unwrap().as_ptr()
     }
 
+    /// A list or object value whose block (`code_abi.h`'s `CodeList`, a
+    /// header word pair in front like any block's) lives in this arena.
+    /// Empty, it has none, as the runtime's own empty values do not.
+    fn list(
+        &mut self,
+        tag: i32,
+        values: &[CodeValueFfi],
+        keys: *mut *const c_char,
+    ) -> CodeValueFfi {
+        if values.is_empty() {
+            return CodeValueFfi {
+                tag,
+                heap: 0,
+                payload: Payload {
+                    list: std::ptr::null_mut(),
+                },
+            };
+        }
+        let words_per_slot = CODE_VALUE_SLOT_SIZE / std::mem::size_of::<u64>();
+        let start = BLOCK_HEADER_WORDS + LIST_HEAD_WORDS;
+        let mut buf = vec![0u64; start + values.len() * words_per_slot].into_boxed_slice();
+        // A count of 1, which nothing here ever drops: `heap` is 0.
+        buf[0] = 1;
+        for (i, v) in values.iter().enumerate() {
+            write_slot(&mut buf[start..], i, *v);
+        }
+        let head = unsafe { buf.as_mut_ptr().add(BLOCK_HEADER_WORDS) } as *mut ListHead;
+        unsafe {
+            head.write(ListHead {
+                len: values.len() as i64,
+                keys,
+            })
+        };
+        self.buffers.push(buf);
+        CodeValueFfi {
+            tag,
+            heap: 0,
+            payload: Payload { list: head },
+        }
+    }
+
     fn build(&mut self, value: &Value) -> CodeValueFfi {
         match value {
             Value::Number(n) => CodeValueFfi {
                 tag: TAG_NUMBER,
-                number: *n,
-                ..CodeValueFfi::NULL
+                heap: 0,
+                payload: Payload { number: *n },
             },
             Value::Str(s) => CodeValueFfi {
                 tag: TAG_STR,
-                str_: self.cstr(s),
-                ..CodeValueFfi::NULL
+                heap: 0,
+                payload: Payload { str_: self.cstr(s) },
             },
             Value::Bool(b) => CodeValueFfi {
                 tag: TAG_BOOL,
-                boolean: if *b { 1 } else { 0 },
-                ..CodeValueFfi::NULL
+                heap: 0,
+                payload: Payload {
+                    boolean: i32::from(*b),
+                },
             },
             Value::Null => CodeValueFfi::NULL,
             Value::Array(items) => {
-                let words_per_slot = CODE_VALUE_SLOT_SIZE / std::mem::size_of::<u64>();
-                let mut buf = vec![0u64; items.len() * words_per_slot].into_boxed_slice();
-                for (i, item) in items.iter().enumerate() {
-                    let v = self.build(item);
-                    write_slot(&mut buf, i, v);
-                }
-                let items_ptr = buf.as_mut_ptr() as *mut c_void;
-                self.buffers.push(buf);
-                CodeValueFfi {
-                    tag: TAG_ARRAY,
-                    items: items_ptr,
-                    len: items.len() as i64,
-                    ..CodeValueFfi::NULL
-                }
+                let values: Vec<CodeValueFfi> = items.iter().map(|item| self.build(item)).collect();
+                self.list(TAG_ARRAY, &values, std::ptr::null_mut())
             }
             Value::Object(fields) => {
-                let words_per_slot = CODE_VALUE_SLOT_SIZE / std::mem::size_of::<u64>();
-                let mut buf = vec![0u64; fields.len() * words_per_slot].into_boxed_slice();
                 let mut keys: Vec<*const c_char> = Vec::with_capacity(fields.len());
-                for (i, (key, val)) in fields.iter().enumerate() {
+                let mut values = Vec::with_capacity(fields.len());
+                for (key, val) in fields.iter() {
                     keys.push(self.cstr(key));
-                    let v = self.build(val);
-                    write_slot(&mut buf, i, v);
+                    values.push(self.build(val));
                 }
-                let items_ptr = buf.as_mut_ptr() as *mut c_void;
-                self.buffers.push(buf);
                 let mut keys = keys.into_boxed_slice();
                 let keys_ptr = keys.as_mut_ptr();
                 self.keys.push(keys);
-                CodeValueFfi {
-                    tag: TAG_OBJECT,
-                    items: items_ptr,
-                    keys: keys_ptr,
-                    len: fields.len() as i64,
-                    ..CodeValueFfi::NULL
-                }
+                self.list(TAG_OBJECT, &values, keys_ptr)
             }
         }
     }
@@ -194,29 +238,33 @@ impl Arena {
 unsafe fn ffi_to_value(v: *const CodeValueFfi) -> Value {
     let v = &*v;
     match v.tag {
-        TAG_NUMBER => Value::Number(v.number),
+        TAG_NUMBER => Value::Number(v.payload.number),
         TAG_STR => {
-            if v.str_.is_null() {
+            if v.payload.str_.is_null() {
                 Value::Str(Rc::from(""))
             } else {
-                let s = CStr::from_ptr(v.str_).to_string_lossy().into_owned();
+                let s = CStr::from_ptr(v.payload.str_)
+                    .to_string_lossy()
+                    .into_owned();
                 Value::Str(Rc::from(s.as_str()))
             }
         }
-        TAG_BOOL => Value::Bool(v.boolean != 0),
+        TAG_BOOL => Value::Bool(v.payload.boolean != 0),
         TAG_ARRAY => {
-            let mut items = Vec::with_capacity(v.len as usize);
-            for i in 0..v.len {
-                items.push(ffi_to_value(slot_at(v.items, i)));
+            let (len, items, _) = v.list();
+            let mut out = Vec::with_capacity(len as usize);
+            for i in 0..len {
+                out.push(ffi_to_value(slot_at(items, i)));
             }
-            Value::Array(Rc::new(items))
+            Value::Array(Rc::new(out))
         }
         TAG_OBJECT => {
-            let mut fields = Vec::with_capacity(v.len as usize);
-            for i in 0..v.len {
-                let key_ptr = *v.keys.add(i as usize);
+            let (len, items, keys) = v.list();
+            let mut fields = Vec::with_capacity(len as usize);
+            for i in 0..len {
+                let key_ptr = *keys.add(i as usize);
                 let key = CStr::from_ptr(key_ptr).to_string_lossy().into_owned();
-                fields.push((key, ffi_to_value(slot_at(v.items, i))));
+                fields.push((key, ffi_to_value(slot_at(items, i))));
             }
             Value::Object(Rc::new(fields))
         }

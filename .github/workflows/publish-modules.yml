@@ -742,7 +742,7 @@ jobs:
           {
             "name": "${m}",
             "version": "${v}",
-            "abi_version": 1,
+            "abi_version": 2,
             "handlers": ${handlers},
             "vars": [],
             ${setup}

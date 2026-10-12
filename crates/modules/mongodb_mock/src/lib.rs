@@ -420,7 +420,7 @@ fn ensure_id(doc: &mut Map<String, Json>) -> String {
 fn to_json(v: &CodeValue) -> Json {
     match v.tag {
         CodeTag::Number => {
-            let n = v.number;
+            let n = v.number();
             if n.fract() == 0.0 && n.abs() < 9e15 {
                 Json::from(n as i64)
             } else {

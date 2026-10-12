@@ -344,7 +344,7 @@ fn drop_collection(out: &mut CodeValue, particle: &CodeValue) -> Result<(), Stri
 fn code_to_bson(v: &CodeValue) -> Bson {
     match v.tag {
         CodeTag::Number => {
-            let n = v.number;
+            let n = v.number();
             if n.fract() == 0.0 && n.abs() < i64::MAX as f64 {
                 Bson::Int64(n as i64)
             } else {

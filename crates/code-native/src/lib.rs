@@ -77,13 +77,11 @@ use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 /// Current ABI version. A module's `code_module_abi_version` must return
 /// this.
-pub const CODE_ABI_VERSION: u32 = 1;
+pub const CODE_ABI_VERSION: u32 = 2;
 
-/// Byte stride of an array/object element buffer — **not** `size_of::<CodeValue>()`.
-/// This is a frozen ABI constant with headroom for `CodeValue` to grow
-/// without breaking already-compiled modules; always address a buffer
-/// through [`slot_at`], never by casting to `*mut CodeValue` and indexing.
-pub const CODE_VALUE_SLOT_SIZE: usize = 80;
+/// Byte stride of an array/object element buffer: one [`CodeValue`]. Address
+/// a buffer through [`slot_at`] all the same.
+pub const CODE_VALUE_SLOT_SIZE: usize = 16;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,22 +94,106 @@ pub enum CodeTag {
     Object,
 }
 
+/// A value: its kind, whether it holds a counted block, and one payload the
+/// kind decides — read it through the methods (`number()`, `len()`, …),
+/// which answer 0/null for a value of another kind. ABI version 2: 16 bytes,
+/// a list's count and keys in its block (`code_abi.h`'s `CodeList`).
 #[repr(C)]
 pub struct CodeValue {
     pub tag: CodeTag,
     pub heap: c_int,
-    pub number: f64,
-    pub str: *const c_char,
-    pub boolean: c_int,
-    /// `CODE_ARRAY`: element buffer; `CODE_OBJECT`: value buffer — both
-    /// strided at [`CODE_VALUE_SLOT_SIZE`], addressed via [`slot_at`].
-    pub items: *mut c_void,
-    /// `CODE_OBJECT` only, parallel to `items`.
-    pub keys: *mut *const c_char,
+    payload: Payload,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+union Payload {
+    number: f64,
+    str: *const c_char,
+    boolean: c_int,
+    list: *mut CodeList,
+}
+
+/// The head of a list's or object's block: its count and (an object's) its
+/// keys, followed by its [`CODE_VALUE_SLOT_SIZE`]-strided slots.
+#[repr(C)]
+pub struct CodeList {
     pub len: i64,
+    pub keys: *mut *const c_char,
 }
 
 impl CodeValue {
+    /// A Number's value; 0 for anything else.
+    pub fn number(&self) -> f64 {
+        if self.tag == CodeTag::Number {
+            unsafe { self.payload.number }
+        } else {
+            0.0
+        }
+    }
+
+    /// A Str's characters; null for anything else.
+    pub fn str_ptr(&self) -> *const c_char {
+        if self.tag == CodeTag::Str {
+            unsafe { self.payload.str }
+        } else {
+            std::ptr::null()
+        }
+    }
+
+    /// A Bool's flag; 0 for anything else.
+    pub fn boolean(&self) -> c_int {
+        if self.tag == CodeTag::Bool {
+            unsafe { self.payload.boolean }
+        } else {
+            0
+        }
+    }
+
+    fn list(&self) -> *mut CodeList {
+        if matches!(self.tag, CodeTag::Array | CodeTag::Object) {
+            unsafe { self.payload.list }
+        } else {
+            std::ptr::null_mut()
+        }
+    }
+
+    /// An Array's or Object's element count; 0 for anything else.
+    pub fn len(&self) -> i64 {
+        let list = self.list();
+        if list.is_null() {
+            0
+        } else {
+            unsafe { (*list).len }
+        }
+    }
+
+    /// Whether [`len`](Self::len) is 0.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// An Array's or Object's slots, for [`slot_at`]; null when it has none.
+    pub fn items(&self) -> *mut c_void {
+        let list = self.list();
+        if list.is_null() {
+            std::ptr::null_mut()
+        } else {
+            unsafe { list.add(1) as *mut c_void }
+        }
+    }
+
+    /// An Object's key pointers, parallel to [`items`](Self::items); null
+    /// for anything else.
+    pub fn keys(&self) -> *mut *const c_char {
+        let list = self.list();
+        if list.is_null() {
+            std::ptr::null_mut()
+        } else {
+            unsafe { (*list).keys }
+        }
+    }
+
     /// An all-zero value — tag `Number`, `0.0`, not heap-owned. Bit-for-bit
     /// what `CodeValue x = {0};` produces in C, and the required starting
     /// state before passing `&mut` to any constructor below (each one calls
@@ -324,13 +406,13 @@ pub fn index(out: &mut CodeValue, arr: &CodeValue, i: &CodeValue) {
             // that is a whole one in range — `xs[1.5]` and `xs[99]` are both
             // null, not errors.
             let n = if i.tag == CodeTag::Number {
-                i.number
+                i.number()
             } else {
                 f64::NAN
             };
             let whole = n as i64;
-            if whole as f64 == n && whole >= 0 && whole < arr.len {
-                copy(out, unsafe { &*slot_at(arr.items, whole) });
+            if whole as f64 == n && whole >= 0 && whole < arr.len() {
+                copy(out, unsafe { &*slot_at(arr.items(), whole) });
             } else {
                 null(out);
             }
@@ -481,17 +563,17 @@ pub fn object_dyn(out: &mut CodeValue, keys: &[&str], values: &mut SlotBuffer) {
 /// Object or the field doesn't exist — mirrors `code_field`'s own
 /// permissive-null behavior, but as an `Option` instead of writing Null.
 pub fn find_field<'a>(v: &'a CodeValue, name: &str) -> Option<&'a CodeValue> {
-    if v.tag != CodeTag::Object || v.keys.is_null() {
+    if v.tag != CodeTag::Object || v.keys().is_null() {
         return None;
     }
-    for i in 0..v.len {
-        let key = unsafe { *v.keys.offset(i as isize) };
+    for i in 0..v.len() {
+        let key = unsafe { *v.keys().offset(i as isize) };
         if key.is_null() {
             continue;
         }
         let key_str = unsafe { CStr::from_ptr(key) };
         if key_str.to_bytes() == name.as_bytes() {
-            return Some(unsafe { &*slot_at(v.items, i) });
+            return Some(unsafe { &*slot_at(v.items(), i) });
         }
     }
     None
@@ -499,20 +581,20 @@ pub fn find_field<'a>(v: &'a CodeValue, name: &str) -> Option<&'a CodeValue> {
 
 /// Read `v` as a `&str`, if it's a Str with a valid UTF-8 payload.
 pub fn read_str(v: &CodeValue) -> Option<&str> {
-    if v.tag != CodeTag::Str || v.str.is_null() {
+    if v.tag != CodeTag::Str || v.str_ptr().is_null() {
         return None;
     }
-    unsafe { CStr::from_ptr(v.str) }.to_str().ok()
+    unsafe { CStr::from_ptr(v.str_ptr()) }.to_str().ok()
 }
 
 /// Read `v` as an `f64`, if it's a Number.
 pub fn read_number(v: &CodeValue) -> Option<f64> {
-    (v.tag == CodeTag::Number).then_some(v.number)
+    (v.tag == CodeTag::Number).then_some(v.number())
 }
 
 /// Read `v` as a `bool`, if it's a Bool.
 pub fn read_bool(v: &CodeValue) -> Option<bool> {
-    (v.tag == CodeTag::Bool).then_some(v.boolean != 0)
+    (v.tag == CodeTag::Bool).then_some(v.boolean() != 0)
 }
 
 /// Convenience: [`find_field`] + [`read_str`].
@@ -533,7 +615,7 @@ pub fn read_field_bool(v: &CodeValue, name: &str) -> Option<bool> {
 /// Iterate an Array's elements.
 pub fn array_elems(v: &CodeValue) -> impl Iterator<Item = &CodeValue> {
     let (items, len) = if v.tag == CodeTag::Array {
-        (v.items, v.len)
+        (v.items(), v.len())
     } else {
         (std::ptr::null_mut(), 0)
     };
@@ -545,8 +627,8 @@ pub fn array_elems(v: &CodeValue) -> impl Iterator<Item = &CodeValue> {
 /// to walk every field rather than name one ([`find_field`]). A field whose
 /// key is not valid UTF-8 is skipped. Not an Object: an empty iterator.
 pub fn object_entries(v: &CodeValue) -> impl Iterator<Item = (&str, &CodeValue)> {
-    let (keys, items, len) = if v.tag == CodeTag::Object && !v.keys.is_null() {
-        (v.keys, v.items, v.len)
+    let (keys, items, len) = if v.tag == CodeTag::Object && !v.keys().is_null() {
+        (v.keys(), v.items(), v.len())
     } else {
         (std::ptr::null_mut(), std::ptr::null_mut(), 0)
     };

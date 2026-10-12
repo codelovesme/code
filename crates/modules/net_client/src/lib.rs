@@ -295,7 +295,7 @@ mod machine {
     /// language's bookkeeping.)
     fn to_json(v: &CodeValue) -> Json {
         match v.tag {
-            CodeTag::Number => number_to_json(v.number),
+            CodeTag::Number => number_to_json(v.number()),
             CodeTag::Str => Json::String(read_str(v).unwrap_or_default().to_owned()),
             CodeTag::Bool => Json::Bool(read_bool(v).unwrap_or(false)),
             CodeTag::Null => Json::Null,

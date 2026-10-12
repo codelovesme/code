@@ -24,21 +24,17 @@
 // `Get` actually *means* — is written once, in the only language that can
 // reach a page, instead of half in Rust and half in JavaScript.
 
-use core::ffi::{c_char, c_void};
-
-/// `CODE_VALUE_SLOT_SIZE`.
+/// `CodeTag`'s `CODE_NULL`.
 const NULL_TAG: i32 = 3;
 
+/// `code_abi.h`'s `CodeValue` (ABI version 2): a tag, `heap`, and one
+/// 8-byte payload. Only ever written whole here (`null`), and handed to the
+/// runtime by pointer.
 #[repr(C)]
 pub struct CodeValue {
     pub tag: i32,
     pub heap: i32,
-    pub number: f64,
-    pub str_: *const c_char,
-    pub boolean: i32,
-    pub items: *mut c_void,
-    pub keys: *const *const c_char,
-    pub len: i64,
+    pub payload: u64,
 }
 
 extern "C" {
@@ -79,12 +75,7 @@ pub unsafe fn null(out: *mut CodeValue) {
     let mut value = CodeValue {
         tag: NULL_TAG,
         heap: 0,
-        number: 0.0,
-        str_: core::ptr::null(),
-        boolean: 0,
-        items: core::ptr::null_mut(),
-        keys: core::ptr::null(),
-        len: 0,
+        payload: 0,
     };
     core::ptr::copy_nonoverlapping(&mut value as *mut CodeValue, out, 1);
 }
@@ -141,7 +132,7 @@ macro_rules! browser_half {
     ($name:literal, $abi_version:ident, $dispatch:ident) => {
         #[no_mangle]
         pub extern "C" fn $abi_version() -> u32 {
-            1
+            2
         }
 
         /// # Safety

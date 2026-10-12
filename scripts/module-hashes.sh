@@ -9,7 +9,9 @@
 # the fingerprint has to cover everything the artifact is built from:
 #
 #   - every file of the module, except target/;
-#   - every file of crates/code-native, which every module links;
+#   - every file of crates/code-native, which every module links, and the
+#     files directly in crates/modules (browser_half.rs, which every
+#     module's wasm half includes);
 #   - src/ and the root Cargo.toml, for the modules that depend on the
 #     compiler itself (`path = "../../.."` — interpreter, syntax).
 #
@@ -59,7 +61,7 @@ fingerprint() {
   done | sha256sum | cut -d' ' -f1
 }
 
-native="$(files crates/code-native | fingerprint)"
+native="$( (files crates/code-native; git ls-files --cached --others --exclude-standard -- ':(glob)crates/modules/*.rs' | sort) | fingerprint)"
 compiler="$(files src Cargo.toml | fingerprint)"
 
 for dir in crates/modules/*/; do

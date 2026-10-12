@@ -409,12 +409,12 @@ fn headers(
     };
     // Not an object: no headers. Nothing to refuse — a caller that meant to
     // send some and did not will see that in the request that arrives.
-    if field.tag != CodeTag::Object || field.keys.is_null() {
+    if field.tag != CodeTag::Object || field.keys().is_null() {
         return Ok(Vec::new());
     }
     let mut out = Vec::new();
-    for i in 0..field.len {
-        let key = unsafe { *field.keys.offset(i as isize) };
+    for i in 0..field.len() {
+        let key = unsafe { *field.keys().offset(i as isize) };
         if key.is_null() {
             continue;
         }
@@ -436,7 +436,7 @@ fn headers(
         // Rendered rather than required to be a String, for the same reason
         // the url is: `"X-Count" = 3` sends `3`, which is what the caller
         // plainly meant.
-        let value = value_text(unsafe { &*slot_at(field.items, i) });
+        let value = value_text(unsafe { &*slot_at(field.items(), i) });
         if !value.is_empty() {
             out.push((name.to_string(), value));
         }
