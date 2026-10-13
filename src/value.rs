@@ -43,9 +43,26 @@ pub enum Value {
 /// contents are about to be dropped anyway, so emptying the container first
 /// leaves nothing for the automatic drop to recurse into.
 impl Drop for Value {
+    #[inline]
     fn drop(&mut self) {
+        // A number, a text, a flag or null has no children to unroll, and
+        // neither does a container someone else still holds.
+        let sole = match self {
+            Value::Array(items) => Rc::strong_count(items) == 1,
+            Value::Object(fields) => Rc::strong_count(fields) == 1,
+            _ => false,
+        };
+        if sole {
+            drop_children(self);
+        }
+    }
+}
+
+#[inline(never)]
+fn drop_children(value: &mut Value) {
+    {
         let mut stack = Vec::new();
-        take_children(self, &mut stack);
+        take_children(value, &mut stack);
         while let Some(mut value) = stack.pop() {
             take_children(&mut value, &mut stack);
             // `value` is dropped here, re-entering this impl — but it has

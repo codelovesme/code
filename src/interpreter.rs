@@ -100,6 +100,56 @@ fn address_row(value: &Value) -> Result<usize, String> {
     }
 }
 
+/// One level of names. Hashed with FxHash rather than std's SipHash: the
+/// keys are the program's own variable names, which no outsider chooses,
+/// and SipHash's resistance to chosen keys cost a third of the
+/// interpreter's time (ticket 125).
+type Scope = HashMap<String, Value, std::hash::BuildHasherDefault<FxHasher>>;
+
+/// rustc's FxHash: one multiply and rotate per word.
+#[derive(Default, Clone, Copy)]
+struct FxHasher {
+    hash: u64,
+}
+
+impl FxHasher {
+    #[inline]
+    fn add(&mut self, word: u64) {
+        self.hash = (self.hash.rotate_left(5) ^ word).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+    }
+}
+
+impl std::hash::Hasher for FxHasher {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        let mut chunks = bytes.chunks_exact(8);
+        for chunk in &mut chunks {
+            self.add(u64::from_le_bytes(chunk.try_into().unwrap()));
+        }
+        let rest = chunks.remainder();
+        if !rest.is_empty() {
+            let mut last = [0u8; 8];
+            last[..rest.len()].copy_from_slice(rest);
+            self.add(u64::from_le_bytes(last));
+        }
+    }
+
+    #[inline]
+    fn write_u8(&mut self, byte: u8) {
+        self.add(u64::from(byte));
+    }
+
+    #[inline]
+    fn write_usize(&mut self, word: usize) {
+        self.add(word as u64);
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.hash
+    }
+}
+
 /// A name -> Value binding table, scoped for `if`/`let` (see memory
 /// `new-code-if-scoping` and `new-code-let-keyword`): a stack of maps,
 /// innermost last. `declare` (`let`) always writes to the current
@@ -110,7 +160,7 @@ fn address_row(value: &Value) -> Result<usize, String> {
 /// an error — variables are untyped, only Values are.
 /// The environment's state, behind one cell — see [`Environment`].
 pub struct State {
-    scopes: Vec<HashMap<String, Value>>,
+    scopes: Vec<Scope>,
     /// Every linked file's top level, kept for as long as the program runs.
     ///
     /// A handler belongs to the file it was written in, and that file's names
@@ -122,7 +172,7 @@ pub struct State {
     /// behind. `current_file` says which one that is. Moved rather than
     /// shared because a handler writing to `count` has to be writing to the
     /// same map its file's top level declared.
-    file_scopes: Vec<HashMap<String, Value>>,
+    file_scopes: Vec<Scope>,
     /// Which file's statements are running — the index whose `file_scopes`
     /// entry is currently empty because `scopes[0]` holds it.
     current_file: usize,
@@ -221,7 +271,7 @@ pub struct Environment {
 
 /// What `enter_file` put aside, for `leave_file` to restore.
 struct EnteredFile {
-    saved: Vec<HashMap<String, Value>>,
+    saved: Vec<Scope>,
     caller_file: usize,
     saved_depth: usize,
     file: usize,
@@ -273,8 +323,8 @@ impl Default for State {
     fn default() -> Self {
         State {
             types: crate::types::Types::predefined(),
-            scopes: vec![HashMap::new()],
-            file_scopes: vec![HashMap::new()],
+            scopes: vec![Scope::default()],
+            file_scopes: vec![Scope::default()],
             current_file: 0,
             modules: HashMap::new(),
             available_modules: HashMap::new(),
@@ -325,6 +375,9 @@ impl Environment {
             .scopes
             .iter()
             .rev()
+            // Most of the levels a read passes through are an `if` or a
+            // loop body that bound nothing: no need to hash for those.
+            .filter(|scope| !scope.is_empty())
             .find_map(|scope| scope.get(name))
             .cloned()
     }
@@ -509,7 +562,7 @@ impl Environment {
     fn set(&self, name: &str, value: Value) {
         {
             let mut st = self.st_mut();
-            for scope in st.scopes.iter_mut().rev() {
+            for scope in st.scopes.iter_mut().rev().filter(|scope| !scope.is_empty()) {
                 if let Some(slot) = scope.get_mut(name) {
                     *slot = value;
                     return;
@@ -532,7 +585,7 @@ impl Environment {
     }
 
     fn push_scope(&self) {
-        self.st_mut().scopes.push(HashMap::new());
+        self.st_mut().scopes.push(Scope::default());
     }
 
     /// Step into `file`'s world: the caller's whole scope stack goes home
@@ -608,7 +661,14 @@ impl Environment {
 /// the loop would quietly fill with `Exception`s. `codegen.rs`'s `gen_loop`
 /// makes the same test with `handler_frame`.
 fn drain_between_iterations(env: &Environment) -> Result<(), String> {
-    if env.st().active.is_empty() {
+    let quiet = {
+        let st = env.st();
+        // Nothing linked that could have queued anything, and no traces
+        // being kept: a loop with nobody to hear from goes straight on.
+        !st.active.is_empty()
+            || (st.inbound.is_empty() && st.runtime_modules.is_empty() && st.flows.is_none())
+    };
+    if !quiet {
         drain_inbound(env)?;
     }
     Ok(())
@@ -897,7 +957,7 @@ fn register_handlers(
                 {
                     let mut st = env.st_mut();
                     if st.file_scopes.len() <= *file {
-                        st.file_scopes.resize_with(file + 1, HashMap::new);
+                        st.file_scopes.resize_with(file + 1, Scope::default);
                     }
                 }
                 register_handlers(body, env, depth + 1, *file)?
@@ -1825,7 +1885,7 @@ fn run_handler(
 
     // A listed field the particle doesn't carry is null — the same answer
     // `.field` gives for an absent member.
-    let mut seeded = HashMap::new();
+    let mut seeded = Scope::default();
     for entry in &handler.fields {
         let supplied = match particle {
             Value::Object(fields) => fields
