@@ -416,7 +416,7 @@
     <div class="runtime-grid">
       <article class="runtime code">
         <h3 class="lang-code">code</h3>
-        <p><code>code run</code> walks the program through the interpreter, so it pays interpretation and dynamic-value costs. <code>code build</code> generates LLVM code and removes interpreter dispatch, but its values remain dynamically tagged and operations still use runtime helpers. Native release builds use LLVM optimization (the CLI's <code>--release</code> option). This gives code a compiled path, but it does not make the language equivalent to a statically typed C program.</p>
+        <p><code>code run</code> walks the program through the interpreter, so it pays interpretation and dynamic-value costs. <code>code build</code> generates LLVM code and removes interpreter dispatch. A value keeps the type it first held, so the compiler knows which numbers stay numbers: an innermost loop gets a fast version working on plain machine numbers, with a generic version to fall back to if a check fails. Native release builds use LLVM optimization (the CLI's <code>--release</code> option). In this numeric loop that puts <code>code build --release</code> level with Rust and C; record-, text- and allocation-heavy programs still go through tagged values and runtime helpers, and take roughly 1.3–6 times C's time on the project's own workloads.</p>
       </article>
       <article class="runtime c">
         <h3 class="lang-c">C</h3>
@@ -436,7 +436,7 @@
       </article>
       <article class="runtime rust">
         <h3 class="lang-rust">Rust</h3>
-        <p><code>rustc</code> compiles Rust ahead of time to optimized native code. Ownership checks happen during compilation, so ordinary safe Rust does not need a tracing garbage collector to reclaim owned values. The benchmark's optimized Rust binary led this particular numeric loop; that result depends on this workload, compiler, and CPU.</p>
+        <p><code>rustc</code> compiles Rust ahead of time to optimized native code. Ownership checks happen during compilation, so ordinary safe Rust does not need a tracing garbage collector to reclaim owned values. The optimized Rust binary and the native <code>code</code> build led this particular numeric loop together; that result depends on this workload, compiler, and CPU.</p>
       </article>
       <article class="runtime go">
         <h3 class="lang-go">Go</h3>
@@ -453,32 +453,32 @@
       <table>
         <thead><tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median run time</th><th scope="col">Range (7 runs)</th><th scope="col">Throughput</th><th scope="col">Separate artifact build</th></tr></thead>
         <tbody>
-          <tr><td>1 · fastest</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.00940 s</td><td>0.00934–0.00970 s</td><td>1,063.68 M iterations/s</td><td>0.07287 s</td></tr>
-          <tr><td>2</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>0.01475 s</td><td>0.01455–0.01483 s</td><td>677.91 M iterations/s</td><td>0.03208 s</td></tr>
-          <tr><td>3</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>0.01480 s</td><td>0.01458–0.01501 s</td><td>675.53 M iterations/s</td><td>0.03197 s</td></tr>
-          <tr><td>4</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>0.01580 s</td><td>0.01538–0.01597 s</td><td>632.94 M iterations/s</td><td>0.19975 s</td></tr>
-          <tr><td>5</td><th scope="row">Java 26, HotSpot defaults</th><td>0.05221 s</td><td>0.05021–0.06227 s</td><td>191.53 M iterations/s</td><td>1.11122 s</td></tr>
-          <tr><td>6 · slowest</td><th scope="row"><code>code build --release</code></th><td>0.83286 s</td><td>0.82379–0.90115 s</td><td>12.01 M iterations/s</td><td>0.25420 s</td></tr>
+          <tr><td>1 · fastest</td><th scope="row"><code>code build --release</code></th><td>0.00912 s</td><td>0.00897–0.00916 s</td><td>1,096.48 M iterations/s</td><td>0.03449 s</td></tr>
+          <tr><td>2</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.00929 s</td><td>0.00911–0.01001 s</td><td>1,076.84 M iterations/s</td><td>0.07338 s</td></tr>
+          <tr><td>3</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>0.01468 s</td><td>0.01451–0.01475 s</td><td>681.15 M iterations/s</td><td>0.03160 s</td></tr>
+          <tr><td>4</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>0.01470 s</td><td>0.01449–0.01559 s</td><td>680.06 M iterations/s</td><td>0.03178 s</td></tr>
+          <tr><td>5</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>0.01579 s</td><td>0.01540–0.01633 s</td><td>633.12 M iterations/s</td><td>0.20620 s</td></tr>
+          <tr><td>6 · slowest</td><th scope="row">Java 26, HotSpot defaults</th><td>0.05158 s</td><td>0.04870–0.05264 s</td><td>193.87 M iterations/s</td><td>1.12302 s</td></tr>
         </tbody>
       </table>
     </div>
     <figure class="benchmark-chart" aria-labelledby="compiled-runtime-chart-title">
       <figcaption>
         <h3 id="compiled-runtime-chart-title">Prebuilt program runtime · fastest to slowest</h3>
-        <p>Linear scale from 0 to 1 seconds; bar labels show measured medians.</p>
+        <p>Linear scale from 0 to 0.06 seconds; bar labels show measured medians.</p>
       </figcaption>
       <div class="benchmark-axis" aria-hidden="true">
         <span class="axis-spacer"></span>
-        <div class="axis-ticks"><span>0 s</span><span>0.2 s</span><span>0.4 s</span><span>0.6 s</span><span>0.8 s</span><span>1 s</span></div>
+        <div class="axis-ticks"><span>0 s</span><span>0.012 s</span><span>0.024 s</span><span>0.036 s</span><span>0.048 s</span><span>0.06 s</span></div>
         <span class="axis-value"></span>
       </div>
       <div role="list" aria-label="Prebuilt program runtime · fastest to slowest, sorted fastest to slowest">
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:0.940129%" aria-hidden="true"></span></div><span class="bar-value">0.00940 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:1.475128%" aria-hidden="true"></span></div><span class="bar-value">0.01475 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:1.480309%" aria-hidden="true"></span></div><span class="bar-value">0.01480 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:1.579935%" aria-hidden="true"></span></div><span class="bar-value">0.01580 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, HotSpot defaults</span><div class="bar-track"><span class="bar java" style="width:5.221038%" aria-hidden="true"></span></div><span class="bar-value">0.05221 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:83.285542%" aria-hidden="true"></span></div><span class="bar-value">0.83286 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:15.200120%" aria-hidden="true"></span></div><span class="bar-value">0.00912 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:15.477335%" aria-hidden="true"></span></div><span class="bar-value">0.00929 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:24.468545%" aria-hidden="true"></span></div><span class="bar-value">0.01468 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:24.507492%" aria-hidden="true"></span></div><span class="bar-value">0.01470 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:26.324673%" aria-hidden="true"></span></div><span class="bar-value">0.01579 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, HotSpot defaults</span><div class="bar-track"><span class="bar java" style="width:85.970105%" aria-hidden="true"></span></div><span class="bar-value">0.05158 s</span></div>
       </div>
     </figure>
     <h3>Source-run runtime: code run compared with Python and JavaScript</h3>
@@ -486,9 +486,9 @@
       <table>
         <thead><tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median run time</th><th scope="col">Range (7 runs)</th><th scope="col">Throughput</th><th scope="col">Source preparation</th></tr></thead>
         <tbody>
-          <tr><td>1 · fastest</td><th scope="row">JavaScript, Node.js v22.23.3 / V8</th><td>0.04203 s</td><td>0.03977–0.04706 s</td><td>237.95 M iterations/s</td><td>Parsing and JIT compilation happen during run</td></tr>
-          <tr><td>2</td><th scope="row">Python 3.13.5 (CPython)</th><td>1.38736 s</td><td>1.28647–1.52049 s</td><td>7.21 M iterations/s</td><td>Parsing and bytecode generation happen during run</td></tr>
-          <tr><td>3 · slowest</td><th scope="row"><code>code run</code> (interpreter)</th><td>4.87503 s</td><td>4.75557–5.07539 s</td><td>2.05 M iterations/s</td><td>Source parsing happens during run</td></tr>
+          <tr><td>1 · fastest</td><th scope="row">JavaScript, Node.js v22.23.3 / V8</th><td>0.04186 s</td><td>0.04037–0.05893 s</td><td>238.88 M iterations/s</td><td>Parsing and JIT compilation happen during run</td></tr>
+          <tr><td>2</td><th scope="row">Python 3.13.5 (CPython)</th><td>1.37754 s</td><td>1.28394–1.51590 s</td><td>7.26 M iterations/s</td><td>Parsing and bytecode generation happen during run</td></tr>
+          <tr><td>3 · slowest</td><th scope="row"><code>code run</code> (interpreter)</th><td>4.57875 s</td><td>4.54689–4.68429 s</td><td>2.18 M iterations/s</td><td>Source parsing happens during run</td></tr>
         </tbody>
       </table>
     </div>
@@ -503,9 +503,9 @@
         <span class="axis-value"></span>
       </div>
       <div role="list" aria-label="Source-run program runtime · fastest to slowest, sorted fastest to slowest">
-        <div class="benchmark-row" role="listitem"><span class="bar-label">JavaScript, Node.js v22.23.3 / V8</span><div class="bar-track"><span class="bar javascript" style="width:0.840512%" aria-hidden="true"></span></div><span class="bar-value">0.04203 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Python 3.13.5 (CPython)</span><div class="bar-track"><span class="bar python" style="width:27.747249%" aria-hidden="true"></span></div><span class="bar-value">1.38736 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (interpreter)</span><div class="bar-track"><span class="bar code" style="width:97.500538%" aria-hidden="true"></span></div><span class="bar-value">4.87503 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">JavaScript, Node.js v22.23.3 / V8</span><div class="bar-track"><span class="bar javascript" style="width:0.837225%" aria-hidden="true"></span></div><span class="bar-value">0.04186 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Python 3.13.5 (CPython)</span><div class="bar-track"><span class="bar python" style="width:27.550717%" aria-hidden="true"></span></div><span class="bar-value">1.37754 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (interpreter)</span><div class="bar-track"><span class="bar code" style="width:91.575032%" aria-hidden="true"></span></div><span class="bar-value">4.57875 s</span></div>
       </div>
     </figure>
     <div class="prose">
@@ -516,12 +516,12 @@
       <table>
         <thead><tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median compile/build time</th></tr></thead>
         <tbody>
-          <tr><td>1 · fastest</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>0.03197 s</td></tr>
-          <tr><td>2</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>0.03208 s</td></tr>
-          <tr><td>3</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.07287 s</td></tr>
-          <tr><td>4</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>0.19975 s</td></tr>
-          <tr><td>5</td><th scope="row"><code>code build --release</code></th><td>0.25420 s</td></tr>
-          <tr><td>6 · slowest</td><th scope="row">Java 26, <code>javac --release 26</code></th><td>1.11122 s</td></tr>
+          <tr><td>1 · fastest</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>0.03160 s</td></tr>
+          <tr><td>2</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>0.03178 s</td></tr>
+          <tr><td>3</td><th scope="row"><code>code build --release</code></th><td>0.03449 s</td></tr>
+          <tr><td>4</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.07338 s</td></tr>
+          <tr><td>5</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>0.20620 s</td></tr>
+          <tr><td>6 · slowest</td><th scope="row">Java 26, <code>javac --release 26</code></th><td>1.12302 s</td></tr>
         </tbody>
       </table>
     </div>
@@ -532,21 +532,21 @@
       </figcaption>
       <div class="benchmark-axis" aria-hidden="true"><span class="axis-spacer"></span><div class="axis-ticks"><span>0 s</span><span>0.3 s</span><span>0.6 s</span><span>0.9 s</span><span>1.2 s</span><span>1.5 s</span></div><span class="axis-value"></span></div>
       <div role="list" aria-label="Median compile/build times, sorted fastest to slowest">
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.131055%" aria-hidden="true"></span></div><span class="bar-value">0.03197 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.138497%" aria-hidden="true"></span></div><span class="bar-value">0.03208 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:4.857769%" aria-hidden="true"></span></div><span class="bar-value">0.07287 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:13.316551%" aria-hidden="true"></span></div><span class="bar-value">0.19975 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:16.946474%" aria-hidden="true"></span></div><span class="bar-value">0.25420 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, <code>javac --release 26</code></span><div class="bar-track"><span class="bar java" style="width:74.081505%" aria-hidden="true"></span></div><span class="bar-value">1.11122 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.106805%" aria-hidden="true"></span></div><span class="bar-value">0.03160 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.118791%" aria-hidden="true"></span></div><span class="bar-value">0.03178 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:2.299492%" aria-hidden="true"></span></div><span class="bar-value">0.03449 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:4.892079%" aria-hidden="true"></span></div><span class="bar-value">0.07338 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:13.746614%" aria-hidden="true"></span></div><span class="bar-value">0.20620 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, <code>javac --release 26</code></span><div class="bar-track"><span class="bar java" style="width:74.867696%" aria-hidden="true"></span></div><span class="bar-value">1.12302 s</span></div>
       </div>
     </figure>
     <div class="prose">
-      <p><strong>Test machine and commands:</strong> Intel Core i7-5930K at 3.50 GHz, x86-64, Debian 13, Linux 6.12.107; runs pinned to logical CPU 0. <code>code</code> v2.14.4 (compiler source commit <code>1145de8</code>) used <code>code build --release</code> (LLVM <code>-O2</code>); C used GCC 14.2 with <code>-std=c17 -O2/-O3 -march=native</code>; Java used OpenJDK/Javac 26.0.2.1 with default HotSpot settings; Python used CPython 3.13.5; JavaScript used Node.js v22.23.3 with V8 12.4.254.21-node.57; Rust used <code>rustc 1.97.1</code>, edition 2024, <code>-C opt-level=3 -C target-cpu=native</code>; Go used Go 1.27.1 with default compiler optimizations.</p>
+      <p><strong>Test machine and commands:</strong> Intel Core i7-5930K at 3.50 GHz, x86-64, Debian 13, Linux 6.12.107; runs pinned to logical CPU 0. <code>code</code> v2.15.0 (compiler source commit <code>867fa46</code>) used <code>code build --release</code> (LLVM <code>-O2</code>); C used GCC 14.2 with <code>-std=c17 -O2/-O3 -march=native</code>; Java used OpenJDK/Javac 26.0.2.1 with default HotSpot settings; Python used CPython 3.13.5; JavaScript used Node.js v22.23.3 with V8 12.4.254.21-node.57; Rust used <code>rustc 1.97.1</code>, edition 2024, <code>-C opt-level=3 -C target-cpu=native</code>; Go used Go 1.27.1 with default compiler optimizations.</p>
       <p>Each runtime measurement includes a fresh process launch. Java includes JVM startup and HotSpot warm-up; JavaScript includes Node/V8 startup, source parsing, and JIT work during this short-lived run. Python includes CPython startup, parsing, and bytecode generation. Rust, C, Java, Go, and native <code>code</code> artifacts were built before runtime timing. This loop does not measure memory, allocation, I/O, concurrency, or application-level work.</p>
       <p>Reproduce the measurements with the <a href="https://github.com/codelovesme/code/tree/main/benchmarks/language-comparison">benchmark sources and runner</a>; inspect the <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.csv">raw run samples</a> and <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.json">full machine and compiler report</a>.</p>
     </div>
     <div class="prose">
-      <p><strong>These tables are measurements; broader expectations come from the implementations.</strong> C, Rust, Go, and <code>code build</code> produce artifacts before execution. Java's HotSpot and JavaScript's V8 can optimize hot code as it runs. Plain CPython loops pay bytecode-interpreter costs, while Python libraries can call compiled kernels for intensive operations. The compiled <code>code</code> backend avoids interpreter dispatch, but dynamic values, generic runtime operations, and allocation-heavy data updates remain part of its model. Compiler flags, workload shape, and target hardware can change the ordering.</p>
+      <p><strong>These tables are measurements; broader expectations come from the implementations.</strong> C, Rust, Go, and <code>code build</code> produce artifacts before execution. Java's HotSpot and JavaScript's V8 can optimize hot code as it runs. Plain CPython loops pay bytecode-interpreter costs, while Python libraries can call compiled kernels for intensive operations. The compiled <code>code</code> backend avoids interpreter dispatch and runs numbers whose type it knows as plain machine arithmetic; elsewhere dynamic values, generic runtime operations, and allocation-heavy data updates remain part of its model. Compiler flags, workload shape, and target hardware can change the ordering.</p>
       <ul>
         <li><strong>Match the workload.</strong> Compare equivalent algorithms and outputs. A task mostly waiting on a network or database may spend little time in language-level computation.</li>
         <li><strong>Separate cold and warm behavior.</strong> Report startup and compilation separately from steady-state throughput; JVM and V8 warm-up can affect hot-code timings.</li>
