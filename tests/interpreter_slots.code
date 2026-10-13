@@ -1,0 +1,55 @@
+| Distinct lexical bindings keep distinct slots, even with the same name.
+total = 0
+loop outer over [1, 2, 3]
+    bucket = [outer]
+    loop inner over [10, 20]
+        if inner = 10
+            temporary = bucket + inner
+            assert temporary = [outer, 10]
+            continue
+        temporary = bucket + inner
+        total += temporary[0] + temporary[1]
+        break
+assert total = 66
+
+if true
+    scratch = 7
+    assert scratch = 7
+if true
+    scratch = 42
+    assert scratch = 42
+
+| A handler's local is still local when a later global has the same name.
+SlotsInner { input as item } =>
+    scratch = item + 1
+    total += scratch
+    if true
+        temporary = [scratch]
+        return SlotsAnswer { value = temporary[0] }
+
+scratch = 1000
+SlotsOuter { input } =>
+    loop item over [input, input + 1]
+        emit SlotsInner { input = item } to this get { value as answer }
+        assert answer = item + 1
+    return SlotsAnswer { value = scratch }
+
+loop item over [4, 8]
+    emit SlotsOuter { input = item } to this get result
+    assert result.value = 1000
+assert scratch = 1000
+assert total = 96
+
+| An error drops the callee frame; later calls and the suspended caller survive.
+SlotsFail { input } =>
+    local = [input]
+    if true
+        temporary = local + 2
+        assert temporary[0] ≠ input
+
+loop item over [1, 2]
+    emit SlotsFail { input = item } to this get failed
+    assert failed ∈ Exception
+    emit SlotsInner { input = item } to this get good
+    assert good.value = item + 1
+assert total = 101
