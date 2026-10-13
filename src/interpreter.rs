@@ -5,13 +5,13 @@ use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use crate::ast::{
-    BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, IsTest, NativeFormat, Program, Stmt,
-    UnOp, ValueKind,
-};
+use crate::ast::{BinOp, IsTest, NativeFormat, Program, UnOp, ValueKind};
+#[path = "interpreter_tree.rs"]
+mod tree;
 #[cfg(feature = "native-modules")]
 use crate::native::NativeModule;
 use crate::value::Value;
+use tree::{Binding, Block, EmitResult, EmitTarget, Expr, Field, FieldKey, Layout, Stmt};
 
 /// A linked module's live dispatch entry point — what `emit ... to <alias>`
 /// calls. Closure-based rather than a trait `Environment` is generic over:
@@ -100,64 +100,32 @@ fn address_row(value: &Value) -> Result<usize, String> {
     }
 }
 
-/// One level of names. Hashed with FxHash rather than std's SipHash: the
-/// keys are the program's own variable names, which no outsider chooses,
-/// and SipHash's resistance to chosen keys cost a third of the
-/// interpreter's time (ticket 125).
-type Scope = HashMap<String, Value, std::hash::BuildHasherDefault<FxHasher>>;
-
-/// rustc's FxHash: one multiply and rotate per word.
-#[derive(Default, Clone, Copy)]
-struct FxHasher {
-    hash: u64,
+/// One function frame. Name metadata serves the public inspection API only;
+/// execution reaches values by the resolved index directly.
+#[derive(Debug, Default)]
+struct Scope {
+    values: Vec<Option<Value>>,
+    names: tree::Names,
+    blocks: Vec<tree::Names>,
 }
-
-impl FxHasher {
-    #[inline]
-    fn add(&mut self, word: u64) {
-        self.hash = (self.hash.rotate_left(5) ^ word).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
-    }
-}
-
-impl std::hash::Hasher for FxHasher {
-    #[inline]
-    fn write(&mut self, bytes: &[u8]) {
-        let (words, rest) = bytes.as_chunks::<8>();
-        for word in words {
-            self.add(u64::from_le_bytes(*word));
-        }
-        if !rest.is_empty() {
-            let mut last = [0u8; 8];
-            last[..rest.len()].copy_from_slice(rest);
-            self.add(u64::from_le_bytes(last));
+impl Scope {
+    fn new(layout: &Layout) -> Self {
+        Self {
+            values: vec![None; layout.size],
+            names: Rc::clone(&layout.names),
+            blocks: Vec::new(),
         }
     }
-
-    #[inline]
-    fn write_u8(&mut self, byte: u8) {
-        self.add(u64::from(byte));
-    }
-
-    #[inline]
-    fn write_usize(&mut self, word: usize) {
-        self.add(word as u64);
-    }
-
-    #[inline]
-    fn finish(&self) -> u64 {
-        self.hash
+    fn get(&self, name: &str) -> Option<&Value> {
+        self.blocks
+            .iter()
+            .rev()
+            .chain(std::iter::once(&self.names))
+            .find_map(|names| names.get(name))
+            .and_then(|i| self.values[*i].as_ref())
     }
 }
 
-/// A name -> Value binding table, scoped for `if`/`let` (see memory
-/// `new-code-if-scoping` and `new-code-let-keyword`): a stack of maps,
-/// innermost last. `declare` (`let`) always writes to the current
-/// (innermost) scope, shadowing any outer same-named binding. `assign`
-/// (bare `name = expr`) searches from innermost to outermost for an
-/// *existing* binding and updates it in place — an error if there isn't
-/// one anywhere. Rebinding a name to a Value of a different variant is not
-/// an error — variables are untyped, only Values are.
-/// The environment's state, behind one cell — see [`Environment`].
 pub struct State {
     scopes: Vec<Scope>,
     /// Every linked file's top level, kept for as long as the program runs.
@@ -170,7 +138,7 @@ pub struct State {
     /// of here and sits at the bottom of `scopes`, leaving an empty entry
     /// behind. `current_file` says which one that is. Moved rather than
     /// shared because a handler writing to `count` has to be writing to the
-    /// same map its file's top level declared.
+    /// same frame its file's top level declared.
     file_scopes: Vec<Scope>,
     /// Which file's statements are running — the index whose `file_scopes`
     /// entry is currently empty because `scopes[0]` holds it.
@@ -283,7 +251,7 @@ struct EnteredFile {
 #[derive(Debug)]
 struct HandlerBody {
     fields: Vec<Field>,
-    body: Vec<Stmt>,
+    body: Block,
     defining_depth: usize,
     /// The file this handler was written in — `Environment::file_scopes`'
     /// index, and the only world the body can see. A handler in a linked
@@ -374,9 +342,6 @@ impl Environment {
             .scopes
             .iter()
             .rev()
-            // Most of the levels a read passes through are an `if` or a
-            // loop body that bound nothing: no need to hash for those.
-            .filter(|scope| !scope.is_empty())
             .find_map(|scope| scope.get(name))
             .cloned()
     }
@@ -389,8 +354,25 @@ impl Environment {
     /// `JsBridge` via `available_modules`, below) — the one place an alias
     /// actually becomes usable.
     pub fn link_module(&self, alias: &str, vars: Value, dispatch: ModuleDispatch) {
-        self.declare(alias.to_string(), vars);
+        let mut st = self.st_mut();
+        let scope = st.scopes.last_mut().unwrap();
+        let slot = match scope.names.get(alias) {
+            Some(slot) => *slot,
+            None => {
+                let slot = scope.values.len();
+                Rc::make_mut(&mut scope.names).insert(alias.into(), slot);
+                scope.values.push(None);
+                slot
+            }
+        };
+        scope.values[slot] = Some(vars);
+        drop(st);
         self.st_mut().modules.insert(alias.to_string(), dispatch);
+    }
+
+    fn link_resolved(&self, alias: &Binding, vars: Value, dispatch: ModuleDispatch) {
+        self.set(alias, vars);
+        self.st_mut().modules.insert(alias.name.clone(), dispatch);
     }
 
     #[cfg(feature = "native-modules")]
@@ -542,49 +524,42 @@ impl Environment {
             .insert(name.to_string(), (vars, dispatch));
     }
 
-    /// `let name = value` — always a new binding in the current scope,
-    /// even if `name` already exists further out (shadowing) or even in
-    /// this exact scope (re-`let`, just rebinds).
-    fn declare(&self, name: String, value: Value) {
-        self.st_mut().scopes.last_mut().unwrap().insert(name, value);
+    fn read(&self, binding: &Binding) -> Option<Value> {
+        self.st().scopes[binding.frame].values[binding.slot]
+            .as_ref()
+            .cloned()
     }
 
-    /// `name = value` — the whole of assignment and declaration both.
-    ///
-    /// Searches outward for a visible binding and updates it; finding none,
-    /// introduces one here. It cannot be ambiguous: nothing may shadow a
-    /// visible name (`verify.rs` refuses that before the program runs), so
-    /// a name that is not visible is a name nothing else owns.
-    ///
-    /// Must match `codegen.rs`'s `gen_assign`, which reaches the same two
-    /// cases through its slot table.
-    fn set(&self, name: &str, value: Value) {
-        {
-            let mut st = self.st_mut();
-            for scope in st.scopes.iter_mut().rev().filter(|scope| !scope.is_empty()) {
-                if let Some(slot) = scope.get_mut(name) {
-                    *slot = value;
-                    return;
-                }
-            }
+    fn set(&self, binding: &Binding, value: Value) {
+        self.st_mut().scopes[binding.frame].values[binding.slot] = Some(value);
+    }
+
+    fn take(&self, binding: &Binding) -> Value {
+        self.st_mut().scopes[binding.frame].values[binding.slot]
+            .take()
+            .unwrap_or(Value::Null)
+    }
+
+    fn enter_block(&self, body: &Block) {
+        if !body.layout.names.is_empty() {
+            self.st_mut().scopes[body.frame]
+                .blocks
+                .push(Rc::clone(&body.layout.names));
         }
-        self.declare(name.to_string(), value);
     }
 
-    /// The value bound to `name`, leaving null in its place — so whatever
-    /// the caller does to it next, it is the only holder.
-    fn take(&self, name: &str) -> Value {
+    fn clear_block(&self, body: &Block) {
+        if body.locals.is_empty() {
+            return;
+        }
         let mut st = self.st_mut();
-        for scope in st.scopes.iter_mut().rev() {
-            if let Some(slot) = scope.get_mut(name) {
-                return std::mem::replace(slot, Value::Null);
-            }
+        let scope = &mut st.scopes[body.frame];
+        if !body.layout.names.is_empty() {
+            scope.blocks.pop();
         }
-        Value::Null
-    }
-
-    fn push_scope(&self) {
-        self.st_mut().scopes.push(Scope::default());
+        for value in &mut scope.values[body.locals.clone()] {
+            *value = None;
+        }
     }
 
     /// Step into `file`'s world: the caller's whole scope stack goes home
@@ -987,15 +962,8 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 /// question. `run_with` boxes the environment for that reason; a caller
 /// that keeps one itself must keep it where it is.
 pub fn prepare(program: &Program, env: &Environment) -> Result<(), String> {
-    register_handlers(&program.statements, env, 0, 0)?;
     env.st_mut().types = crate::types::Types::of(program);
     crate::handlers::check_cycles(program)?;
-    // A program that answers `Trace` is given one after each interaction;
-    // one that does not records nothing. Decided once, here, because the
-    // handlers are all known by now and never change while it runs.
-    if env.st().handlers.contains_key(crate::flows::HANDLER) {
-        env.st_mut().flows = Some(crate::flows::Flows::new());
-    }
     // The same pre-run check `code build` has always run (`verify.rs`, which
     // is where it moved out of `codegen.rs` on 2026-08-28 so both backends
     // could share it). Interpreting used to find an undefined name only on
@@ -1006,7 +974,35 @@ pub fn prepare(program: &Program, env: &Environment) -> Result<(), String> {
     // outright — the two modes disagreeing about which programs fail, which is
     // the one thing they may not do.
     crate::verify::verify_defined(program)?;
-    for (i, stmt) in program.statements.iter().enumerate() {
+    let resolved = tree::resolve(program);
+    {
+        let mut st = env.st_mut();
+        let old = std::mem::take(&mut st.scopes[0]);
+        let mut root = Scope::new(&resolved.files[0]);
+        for (name, slot) in old.names.iter() {
+            let new_slot = match root.names.get(name) {
+                Some(slot) => *slot,
+                None => {
+                    let slot = root.values.len();
+                    Rc::make_mut(&mut root.names).insert(name.clone(), slot);
+                    root.values.push(None);
+                    slot
+                }
+            };
+            root.values[new_slot] = old.values[*slot].clone();
+        }
+        st.scopes[0] = root;
+        st.file_scopes = resolved.files.iter().map(Scope::new).collect();
+    }
+    register_handlers(&resolved.body, env, 0, 0)?;
+    // A program that answers `Trace` is given one after each interaction;
+    // one that does not records nothing. Decided once, here, because the
+    // handlers are all known by now and never change while it runs.
+    if env.st().handlers.contains_key(crate::flows::HANDLER) {
+        env.st_mut().flows = Some(crate::flows::Flows::new());
+    }
+
+    for (i, stmt) in resolved.body.iter().enumerate() {
         // Can only ever be `Flow::Normal` out here: the parser rejects a
         // `break` that isn't inside a loop, so nothing can propagate one up
         // to the top level.
@@ -1114,13 +1110,13 @@ impl LoopIter {
     }
 }
 
-/// Runs `body` in a *new scope*, stopping early on a `break`. Pops the scope
-/// on every path, error included — hence the explicit `result` binding
+/// Runs a lexical block and clears its local slots on every exit, errors
+/// included — hence the explicit `result` binding
 /// rather than `?` mid-function.
-fn exec_scoped_body(body: &[Stmt], env: &Environment) -> Result<Flow, String> {
-    env.push_scope();
+fn exec_scoped_body(body: &Block, env: &Environment) -> Result<Flow, String> {
+    env.enter_block(body);
     let result = exec_body(body, env);
-    env.pop_scope();
+    env.clear_block(body);
     result
 }
 
@@ -1138,9 +1134,6 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
     match stmt {
         // `exported` is a module-boundary marker consumed by `loader.rs`; a
         // declaration behaves identically either way.
-        Stmt::Link { path, .. } => Err(format!(
-            "internal error: link \"{path}\" reached the interpreter unresolved"
-        )),
         Stmt::ImportNative {
             alias,
             path,
@@ -1166,7 +1159,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                             "link \"{path}\": no module named '{path}' was provided before running"
                         )
                         })?;
-                env.link_module(alias, vars, dispatch);
+                env.link_resolved(alias, vars, dispatch);
                 Ok(Flow::Normal)
             }
             NativeFormat::Dynamic => {
@@ -1191,7 +1184,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                     let dispatching = Rc::clone(&module);
                     let dispatch: ModuleDispatch = Rc::new(move |v| dispatching.dispatch(v));
                     let asking = Rc::clone(&module);
-                    env.link_module(alias, Value::Object(Rc::new(vars)), dispatch);
+                    env.link_resolved(alias, Value::Object(Rc::new(vars)), dispatch);
                     env.link_inbound(
                         alias,
                         Rc::new(move || inbound.take()),
@@ -1301,7 +1294,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                     program: Value::Str(Rc::from(path)),
                 };
                 let address = env.open_module(module);
-                env.declare(alias.clone(), address);
+                env.set(alias, address);
                 Ok(Flow::Normal)
             }
             #[cfg(not(feature = "native-modules"))]
@@ -1340,7 +1333,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
             // it answers null, which is exactly what a name the module had
             // not exported already answered.
             if let Some(alias) = alias {
-                env.declare(alias.clone(), Value::Object(Rc::new(Vec::new())));
+                env.set(alias, Value::Object(Rc::new(Vec::new())));
             }
             Ok(Flow::Normal)
         }
@@ -1407,13 +1400,13 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                     };
                     for i in 0..container.len() {
                         let (key, value) = container.at(i);
-                        env.push_scope();
+                        env.enter_block(body);
                         if let Some(key_name) = &over.key {
-                            env.declare(key_name.clone(), key);
+                            env.set(key_name, key);
                         }
-                        env.declare(over.value.clone(), value);
+                        env.set(&over.value, value);
                         let flow = exec_body(body, env);
-                        env.pop_scope();
+                        env.clear_block(body);
                         drain_between_iterations(env)?;
                         // `Continue` needs no action beyond ending this
                         // iteration, which returning from the body already
@@ -1430,9 +1423,9 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                 // `loop { }` — nothing bounds this but `break`. See
                 // `Stmt::Loop`'s doc comment on the guarantee that gives up.
                 None => loop {
-                    env.push_scope();
+                    env.enter_block(body);
                     let flow = exec_body(body, env);
-                    env.pop_scope();
+                    env.clear_block(body);
                     drain_between_iterations(env)?;
                     match flow? {
                         Flow::Break => break,
@@ -1498,9 +1491,9 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
             // handler's own work): a held library records every call from
             // its host, and one left behind would be spliced under whatever
             // call came next.
-            if let EmitTarget::Module(alias) = target {
+            if let EmitTarget::Module(alias, binding) = target {
                 if !env.st().modules.contains_key(alias) {
-                    if let Some(address) = env.get(alias) {
+                    if let Some(address) = binding.as_ref().and_then(|b| env.read(b)) {
                         absorb_guests(env, Some(&address), flow);
                     }
                 }
@@ -1514,7 +1507,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                 recorder.finish(sequence, &output);
             }
             match result {
-                Some(EmitResult::Whole(name)) => env.declare(name.clone(), output),
+                Some(EmitResult::Whole(name)) => env.set(name, output),
                 // Each field read exactly as `.field` reads it — an absent
                 // one is null, and an answer that is not an object is this
                 // frame's error. `codegen.rs` reaches the same two rules by
@@ -1535,7 +1528,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                                 ))
                             }
                         };
-                        env.declare(entry.name.clone(), bound);
+                        env.set(&entry.name, bound);
                     }
                 }
                 None => {}
@@ -1545,7 +1538,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
         Stmt::Break => Ok(Flow::Break),
         Stmt::Continue => Ok(Flow::Continue),
         // A name for a set of values: `code check`'s, nothing to run.
-        Stmt::TypeDef { .. } => Ok(Flow::Normal),
+        Stmt::TypeDef => Ok(Flow::Normal),
         // Already collected by `register_handlers` before execution began —
         // reaching the definition in statement order does nothing.
         Stmt::HandlerDef { .. } => Ok(Flow::Normal),
@@ -1623,7 +1616,7 @@ fn trace_target(target: &EmitTarget) -> String {
         EmitTarget::Core => "core".to_string(),
         EmitTarget::This => "this".to_string(),
         EmitTarget::Base => "base".to_string(),
-        EmitTarget::Module(alias) => format!("module:{alias}"),
+        EmitTarget::Module(alias, _) => format!("module:{alias}"),
     }
 }
 
@@ -1695,7 +1688,7 @@ fn emit_to(target: &EmitTarget, value: &Value, env: &Environment) -> Result<Valu
             };
             run_handler(&value, env, handler)?
         }
-        EmitTarget::Module(alias) => {
+        EmitTarget::Module(alias, binding) => {
             // A statically linked alias first — every program that
             // ran before this existed takes exactly this path. Only
             // when the name is not one does it become an ordinary
@@ -1709,8 +1702,9 @@ fn emit_to(target: &EmitTarget, value: &Value, env: &Environment) -> Result<Valu
             match linked {
                 Some(dispatch) => dispatch(&value)?,
                 None => {
-                    let address = env
-                        .get(alias)
+                    let address = binding
+                        .as_ref()
+                        .and_then(|b| env.read(b))
                         .ok_or_else(|| format!("no linked module named '{alias}'"))?;
                     let dispatch = env.module_at(&address)?;
                     dispatch(&value)?
@@ -1884,7 +1878,7 @@ fn run_handler(
 
     // A listed field the particle doesn't carry is null — the same answer
     // `.field` gives for an absent member.
-    let mut seeded = Scope::default();
+    let mut seeded = Scope::new(&handler.body.layout);
     for entry in &handler.fields {
         let supplied = match particle {
             Value::Object(fields) => fields
@@ -1893,7 +1887,7 @@ fn run_handler(
                 .map(|(_, v)| v.clone()),
             _ => None,
         };
-        seeded.insert(entry.name.clone(), supplied.unwrap_or(Value::Null));
+        seeded.values[entry.name.slot] = Some(supplied.unwrap_or(Value::Null));
     }
 
     env.st_mut().scopes.push(seeded);
@@ -1971,7 +1965,7 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
         // Cheap regardless of size: `Value::clone` on Str/Array/Object is
         // just an Rc refcount bump, not a deep copy (see value.rs).
         Expr::Ident(name) => env
-            .get(name)
+            .read(name)
             .ok_or_else(|| format!("undefined variable '{name}'")),
         Expr::Array(items) => {
             let mut values = Vec::with_capacity(items.len());

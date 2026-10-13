@@ -160,3 +160,30 @@ fn emit_to_an_unlinked_alias_is_a_clear_error() {
         "error should name the alias, got: {err}"
     );
 }
+
+#[test]
+fn callbacks_inspect_only_live_lexical_bindings() {
+    let env = Rc::new(Environment::default());
+    let weak = Rc::downgrade(&env);
+    env.provide_module(
+        "probe",
+        Value::Null,
+        Rc::new(move |_| {
+            let env = weak.upgrade().unwrap();
+            assert_eq!(env.get("future"), None);
+            assert_eq!(env.get("local"), Some(Value::Number(3.0)));
+            assert_eq!(env.get("item"), Some(Value::Number(2.0)));
+            Ok(Value::Null)
+        }),
+    );
+    let lexed = code::lexer::tokenize(
+        "link \"probe\" as probe\nloop item over [2]\n    if true\n        local = item + 1\n        emit Inspect to probe\nfuture = 4\n",
+    )
+    .unwrap();
+    let mut program = code::parser::parse(&lexed).unwrap();
+    program.statements[0] = link_stmt("probe", "probe");
+    interpreter::prepare(&program, &env).unwrap();
+    assert_eq!(env.get("local"), None);
+    assert_eq!(env.get("item"), None);
+    assert_eq!(env.get("future"), Some(Value::Number(4.0)));
+}
