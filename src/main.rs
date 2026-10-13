@@ -28,14 +28,25 @@ fn main() -> ExitCode {
     }
     let mut args = rest.into_iter();
     match command.as_str() {
+        // What `code run` starts in the background to build a large program
+        // optimised for its next run (ticket 124). Not a command for people.
+        #[cfg(feature = "llvm")]
+        "--build-optimised-run" => {
+            if let Some(path) = args.next() {
+                code::build_optimised_run(Path::new(&path));
+            }
+            ExitCode::SUCCESS
+        }
         "run" => {
             // No path means the directory you are standing in, which is a
             // project — the same default `build` takes.
             let mut path = None;
             let mut strict = false;
+            let mut interpret = std::env::var("CODE_RUN").is_ok_and(|v| v == "interpret");
             for arg in args {
                 match arg.as_str() {
                     "--strict" => strict = true,
+                    "--interpret" => interpret = true,
                     unknown if unknown.starts_with('-') => {
                         eprintln!("unknown argument '{unknown}'");
                         return ExitCode::FAILURE;
@@ -56,7 +67,11 @@ fn main() -> ExitCode {
                             return ExitCode::FAILURE;
                         }
                     }
-                    run_file(&entry)
+                    if interpret {
+                        run_file(&entry)
+                    } else {
+                        run_built(&entry)
+                    }
                 }
                 Err(message) => {
                     eprintln!("{message}");
@@ -180,9 +195,12 @@ fn main() -> ExitCode {
 /// gains a flag and a command that gains a line of help are the same edit.
 fn help_for(command: &str) -> &'static str {
     match command {
-        "run" => "usage: code run [path] [--strict]\n\nInterprets a file, or a project's main.code. Defaults to `.`. `link` \
-resolves relative to the file doing the linking. --strict refuses errors that
-`code check` can prove before the program runs.",
+        "run" => "usage: code run [path] [--strict] [--interpret]\n\nRuns a file, or a project's main.code. Defaults to `.`. `link` \
+resolves relative to the file doing the linking. The program is built first and
+the build kept in the shared cache (`code cache`), so running it again starts
+at once; where it cannot be built (no LLVM, no linker) it is interpreted.
+--interpret (or CODE_RUN=interpret) always interprets. --strict refuses errors
+that `code check` can prove before the program runs.",
         "build" => BUILD_HELP,
         "install" | "uninstall" | "list" | "module" => MODULE_HELP,
         // Reachable as `code help init` too: someone who knows the command
@@ -1527,6 +1545,28 @@ fn artifact_name(stem: &str, target: BuildTarget) -> String {
         BuildTarget::Static => format!("lib{stem}.a"),
         BuildTarget::Wasm => format!("{stem}.wasm"),
     }
+}
+
+/// `code run` (ticket 124): the program built, from the shared cache when
+/// it was built before, and started — the same arguments, environment,
+/// standard streams and exit status as the interpreter's. A program that
+/// cannot be built here (no LLVM in this build, no linker, a program the
+/// compiler refuses) is interpreted instead, so its errors read exactly as
+/// they always have.
+fn run_built(path: &str) -> ExitCode {
+    #[cfg(feature = "llvm")]
+    if let Some(exe) = code::run_executable(Path::new(path)) {
+        match std::process::Command::new(&exe).status() {
+            Ok(status) => {
+                return match status.code() {
+                    Some(code) => ExitCode::from(code as u8),
+                    None => ExitCode::FAILURE,
+                };
+            }
+            Err(e) => eprintln!("note: could not start the built program ({e}); interpreting it"),
+        }
+    }
+    run_file(path)
 }
 
 fn run_file(path: &str) -> ExitCode {

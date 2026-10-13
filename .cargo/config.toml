@@ -1,0 +1,6 @@
+# The tests compare the interpreter with compiled code, and `code run` builds
+# the program first since ticket 124 — so under the tests, `code run` means the
+# interpreter, as it did. `tests/run_builds_first.rs` clears this to test the
+# built path.
+[env]
+CODE_RUN = "interpret"

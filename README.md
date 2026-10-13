@@ -1,8 +1,10 @@
 # code
 
 A small language with six JSON-shaped value types, one loop, no functions,
-and two output modes that are required to behave identically: `code run`
-interprets, `code build` compiles through LLVM to a native binary.
+and two output modes that are required to behave identically: the
+interpreter, and `code build`, which compiles through LLVM to a native binary.
+`code run` builds the program and keeps the build, so a run starts at native
+speed; it interprets where it cannot build.
 
 ```
 user = { name = "ada", wins = [1, 2, 3] }
@@ -59,8 +61,9 @@ cargo test --workspace       # runs every tests/*.code fixture in both modes
 
 ```sh
 code init                                  # scaffold here; `code init demo` in ./demo
-code run program.code                      # interpret a file
+code run program.code                      # run a file (built and cached first)
 code run                                   # ...or a project: ./main.code
+code run --interpret                       # interpret instead (CODE_RUN=interpret)
 code run --strict                          # refuse errors `code check` can prove first
 code build program.code                    # -> ./build/program
 code build                                 # -> ./build/<this directory>
@@ -1863,9 +1866,20 @@ per task, in [`docs/todo/`](docs/todo).
 
 ## The two output modes
 
-`code run` interprets; `code build` compiles through LLVM and links a native
-binary with the system `cc`. The rule binding them: **every feature must
-behave identically in both.**
+The interpreter (`code run --interpret`) walks the program; `code build`
+compiles through LLVM and links a native binary with the system `cc`. The
+rule binding them: **every feature must behave identically in both.**
+
+`code run` uses both (ticket 124). It builds the program into the shared
+cache (`code cache`) and starts the build; a program run again starts at
+once. A small program is built optimised before its first run, in tens of
+milliseconds. A large one (more than about 500 lines with what it links)
+starts on a quick `-O0` build while the optimised one is made in the
+background for the runs after. Where nothing can be built — no LLVM in this
+`code`, no linker, a program the compiler refuses — `code run` interprets,
+so what it says about a broken program is what the interpreter says. Under
+the tests `CODE_RUN=interpret` (`.cargo/config.toml`), so `code run` there is
+the interpreter the fixtures compare with compiled code.
 
 That is enforced, not aspirational. [`tests/run_language_tests.rs`](tests/run_language_tests.rs)
 discovers every `tests/*.code` file and runs it through both paths:

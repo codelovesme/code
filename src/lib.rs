@@ -330,7 +330,176 @@ mod compile {
         let program: Program = crate::timings::measure("load and parse", || {
             loader::load(&source_path.display().to_string(), &FilesystemResolver)
         })?;
+        compile_program(&program, target, out_path, release, tracing)
+    }
 
+    /// The program `code run` starts (ticket 124): `source_path` built into
+    /// a native executable, from the shared cache when this program was
+    /// built before. `None` when it cannot be built here — it does not load,
+    /// or the compiler refuses it, or there is no linker — and the caller
+    /// interprets it instead, so whatever the interpreter says about it is
+    /// what the person sees.
+    ///
+    /// A small program is built optimised at once: that costs tens of
+    /// milliseconds. A large one (an app with its genes: one to two seconds
+    /// optimised) is built quickly (`-O0`, a quarter of that) and started,
+    /// and its optimised build is made in the background by `code` itself
+    /// (`build_optimised_run`) for the runs after.
+    pub fn run_executable(source_path: &Path) -> Option<PathBuf> {
+        let run = RunBuild::load(source_path)?;
+        if let Some(hit) = crate::cache::get("run", &run.name(true)) {
+            return Some(hit);
+        }
+        if run.source_len <= SMALL_PROGRAM {
+            return run.build(true);
+        }
+        let quick = crate::cache::get("run", &run.name(false)).or_else(|| run.build(false))?;
+        spawn_optimised_build(source_path, &run.name(true));
+        Some(quick)
+    }
+
+    /// The optimised build of `source_path` for `code run`, into the cache
+    /// — what the background process `run_executable` starts does.
+    pub fn build_optimised_run(source_path: &Path) {
+        if let Some(run) = RunBuild::load(source_path) {
+            let _ = run.build(true);
+            let _ = fs::remove_file(building_marker(&run.name(true)));
+        }
+    }
+
+    /// Sources up to this many bytes are built optimised before the first
+    /// run: about 500 lines, a quarter of a second at most.
+    const SMALL_PROGRAM: usize = 20_000;
+
+    struct RunBuild {
+        program: Program,
+        shape: String,
+        stamp: String,
+        source_len: usize,
+    }
+
+    impl RunBuild {
+        /// The key is everything the executable is made of: this compiler,
+        /// the whole loaded program (every linked file's source, as the
+        /// loader resolved it), and each linked module file's size and time,
+        /// since a static module is linked in and a reinstalled one can sit
+        /// at the same path.
+        fn load(source_path: &Path) -> Option<RunBuild> {
+            let program =
+                loader::load(&source_path.display().to_string(), &FilesystemResolver).ok()?;
+            let mut modules = Vec::new();
+            let mut source_len = program.origin.as_ref().map_or(0, |o| o.source.len());
+            walk(&program.statements, &mut modules, &mut source_len);
+            let mut stamp = String::new();
+            for path in &modules {
+                let meta = fs::metadata(path).ok();
+                let len = meta.as_ref().map_or(0, |m| m.len());
+                let modified = meta
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_nanos());
+                stamp.push_str(&format!("{path}\0{len}\0{modified}\n"));
+            }
+            let shape = format!("{program:?}");
+            Some(RunBuild {
+                program,
+                shape,
+                stamp,
+                source_len,
+            })
+        }
+
+        fn name(&self, optimised: bool) -> String {
+            let tier: &[u8] = if optimised {
+                b"run exe -O2"
+            } else {
+                b"run exe -O0"
+            };
+            crate::cache::key(&[
+                env!("CARGO_PKG_VERSION").as_bytes(),
+                tier,
+                self.shape.as_bytes(),
+                self.stamp.as_bytes(),
+            ])
+        }
+
+        fn build(&self, optimised: bool) -> Option<PathBuf> {
+            let name = self.name(optimised);
+            let scratch = scratch_dir().ok()?;
+            let built = scratch.join("program");
+            let made = compile_program(&self.program, BuildTarget::Exe, &built, optimised, false);
+            let kept = made.ok().and_then(|()| {
+                crate::cache::put("run", &name, &built);
+                crate::cache::trim();
+                crate::cache::get("run", &name)
+            });
+            let _ = fs::remove_dir_all(&scratch);
+            kept
+        }
+    }
+
+    /// Where a background optimised build says it is under way, so a second
+    /// run does not start another.
+    fn building_marker(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("code-run-{name}.building"))
+    }
+
+    /// Starts `code --build-optimised-run <path>` on its own, unless one for
+    /// this build is under way already. It outlives this run, in a process
+    /// group of its own so that the run's Ctrl+C does not stop it.
+    fn spawn_optimised_build(source_path: &Path, name: &str) {
+        let marker = building_marker(name);
+        if fs::File::options()
+            .write(true)
+            .create_new(true)
+            .open(&marker)
+            .is_err()
+        {
+            return;
+        }
+        let Ok(me) = std::env::current_exe() else {
+            let _ = fs::remove_file(&marker);
+            return;
+        };
+        let mut command = Command::new(me);
+        command
+            .arg("--build-optimised-run")
+            .arg(source_path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        if command.spawn().is_err() {
+            let _ = fs::remove_file(&marker);
+        }
+    }
+
+    /// Every native module path `statements` link, and the length of every
+    /// linked file's source, linked files included.
+    fn walk(statements: &[Stmt], modules: &mut Vec<String>, source_len: &mut usize) {
+        for statement in statements {
+            match statement {
+                Stmt::ImportNative { path, .. } => modules.push(path.clone()),
+                Stmt::Import { body, origin, .. } => {
+                    *source_len += origin.source.len();
+                    walk(body, modules, source_len);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn compile_program(
+        program: &Program,
+        target: BuildTarget,
+        out_path: &Path,
+        release: bool,
+        tracing: bool,
+    ) -> Result<(), String> {
         let scratch = scratch_dir()?;
         let obj_path = scratch.join("program.o");
 
@@ -340,7 +509,7 @@ mod compile {
             // One object, or one per part of a large program (ticket 116),
             // in the order they link.
             let objects =
-                codegen::compile_to_object_traced(&program, target, &obj_path, release, tracing)?;
+                codegen::compile_to_object_traced(program, target, &obj_path, release, tracing)?;
             let mut inputs: Vec<&Path> = objects.iter().map(PathBuf::as_path).collect();
 
             // `Static` never links against the C runtime — there is no link
@@ -910,3 +1079,5 @@ pub use codegen::BuildTarget;
 pub use compile::compile_file;
 #[cfg(feature = "llvm")]
 pub use compile::web_host_source;
+#[cfg(feature = "llvm")]
+pub use compile::{build_optimised_run, run_executable};
