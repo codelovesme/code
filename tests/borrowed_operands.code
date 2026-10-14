@@ -1,0 +1,38 @@
+| Parts read inside an expression borrow their container; values kept by an
+| assignment or an emitted particle must still survive later part writes.
+source = { nested = { items = [10, 20], text = "héllo" } }
+held = source.nested.items
+assert source.nested.items[1] = 20
+assert source.nested.text[1] = "é"
+assert source.nested.items[length - 1] + 1 = 21
+assert source.nested.absent = null
+assert source.nested.items[99] = null
+assert ({ nested = { items = [3, 4] } }).nested.items[1] = 4
+source.nested.items[0] = 99
+assert held = [10, 20]
+
+| Release the expression's state borrow before entering a handler, even
+| when the condition, address or particle came from a nested part.
+BorrowRead { payload } =>
+    answer = payload.nested.items[0] + payload.nested.items[1]
+    return BorrowAnswer { value = answer, kept = payload.nested.items }
+
+emit BorrowRead { payload = source } to this get result
+source.nested.items[1] = 88
+assert result.kept = [99, 20]
+assert result.value = 119
+
+counter = 0
+loop
+    if counter ≥ 5
+        break
+    counter = counter + 1
+assert counter = 5
+text = "first"
+text += " second"
+assert text = "first second"
+assert "first" = "first"
+
+| Short-circuited expressions never touch the invalid right operand.
+assert (false and source.nested.items.bad = 1) = false
+assert true or source.nested.items.bad = 1

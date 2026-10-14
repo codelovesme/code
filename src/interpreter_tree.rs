@@ -6,6 +6,7 @@ use std::ops::{Deref, Range};
 use std::rc::Rc;
 
 use crate::ast::{self, BinOp, IsTest, NativeFormat, UnOp};
+use crate::value::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Binding {
@@ -55,10 +56,7 @@ pub(super) enum FieldKey {
 }
 #[derive(Debug, Clone)]
 pub(super) enum Expr {
-    Number(f64),
-    Str(String),
-    Bool(bool),
-    Null,
+    Literal(Value),
     Ident(Binding),
     Interpolated(Vec<Expr>),
     Array(Vec<Expr>),
@@ -189,10 +187,10 @@ impl Resolver {
     fn expr(&self, e: &ast::Expr) -> Expr {
         let boxed = |e| Box::new(self.expr(e));
         match e {
-            ast::Expr::Number(n) => Expr::Number(*n),
-            ast::Expr::Str(s) => Expr::Str(s.clone()),
-            ast::Expr::Bool(b) => Expr::Bool(*b),
-            ast::Expr::Null => Expr::Null,
+            ast::Expr::Number(n) => Expr::Literal(Value::Number(*n)),
+            ast::Expr::Str(s) => Expr::Literal(Value::Str(Rc::from(s.as_str()))),
+            ast::Expr::Bool(b) => Expr::Literal(Value::Bool(*b)),
+            ast::Expr::Null => Expr::Literal(Value::Null),
             ast::Expr::Ident(n) => Expr::Ident(self.lookup(n).expect("verified name")),
             ast::Expr::Interpolated(v) => {
                 Expr::Interpolated(v.iter().map(|e| self.expr(e)).collect())
