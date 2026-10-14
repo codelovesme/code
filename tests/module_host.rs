@@ -212,3 +212,30 @@ fn a_host_replacing_a_numeric_binding_takes_the_checked_path() {
     assert_eq!(error, "cannot apply '+' to a null and a number");
     assert_eq!(env.get("counter"), Some(Value::Null));
 }
+
+#[test]
+fn compact_numeric_code_resumes_after_a_callback_changes_a_slot() {
+    let env = Rc::new(Environment::default());
+    let weak = Rc::downgrade(&env);
+    env.provide_module(
+        "probe",
+        Value::Null,
+        Rc::new(move |_| {
+            let env = weak.upgrade().unwrap();
+            assert_eq!(env.get("counter"), Some(Value::Number(1.0)));
+            assert_eq!(env.get("local"), Some(Value::Number(2.0)));
+            env.link_module("counter", Value::Null, Rc::new(|_| Ok(Value::Null)));
+            Ok(Value::Null)
+        }),
+    );
+    let lexed = code::lexer::tokenize(
+        "link \"probe\" as probe\ncounter = 1\nloop\n    local = counter + 1\n    emit Replace to probe\n    if counter = 1\n        assert false\n    local = counter + 1\n    break\n",
+    )
+    .unwrap();
+    let mut program = code::parser::parse(&lexed).unwrap();
+    program.statements[0] = link_stmt("probe", "probe");
+    let error = interpreter::prepare(&program, &env).unwrap_err();
+    assert_eq!(error, "cannot apply '+' to a null and a number");
+    assert_eq!(env.get("counter"), Some(Value::Null));
+    assert_eq!(env.get("local"), None);
+}

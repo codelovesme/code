@@ -1,0 +1,49 @@
+| Nested branch exits clear their locals and continue the correct loop.
+outer = 0
+total = 0
+loop
+    if outer ≥ 4
+        break
+    outer += 1
+    inner = 0
+    loop
+        inner += 1
+        if inner = 2
+            skipped = inner * 10
+            assert skipped = 20
+            continue
+        if inner ≥ 4
+            break
+        total += inner
+assert total = 16
+
+| Return and failure unwind loop scopes, and later calls get fresh registers.
+CompactReturn { count ∈ Number } =>
+    index = 0
+    loop
+        index += 1
+        if index ≥ count
+            local = index * 2
+            return CompactAnswer { value = local }
+
+CompactFailure { divisor ∈ Number } =>
+    loop
+        scoped = 12 / divisor
+        return CompactAnswer { value = scoped }
+
+loop limit over [1, 3, 5]
+    emit CompactReturn { count = limit } to this get returned
+    assert returned.value = limit * 2
+emit CompactFailure { divisor = 0 } to this get failed
+assert failed ∈ Exception
+assert failed.message = "division by zero"
+emit CompactFailure { divisor = 3 } to this get recovered
+assert recovered.value = 4
+
+| Register storage spills beyond the small inline buffer; borrowed parts of
+| owned temporaries survive until their containing expression is finished.
+values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+assert values[0] + values[11] = 13
+assert { nested = { items = [2, 4, 6] } }.nested.items[1] = 4
+assert (false and (1 / 0 = 0)) = false
+assert true or (1 / 0 = 0)
