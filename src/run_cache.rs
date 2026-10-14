@@ -137,7 +137,9 @@ fn unhex(text: &str) -> Option<String> {
     };
     let bytes: Option<Vec<u8>> = text
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|c| Some(digit(c[0])? * 16 + digit(c[1])?))
         .collect();
     String::from_utf8(bytes?).ok()
