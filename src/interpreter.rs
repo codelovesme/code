@@ -12,7 +12,10 @@ mod tree;
 #[cfg(feature = "native-modules")]
 use crate::native::NativeModule;
 use crate::value::Value;
-use tree::{Binding, Block, EmitResult, EmitTarget, Expr, Field, FieldKey, Layout, Stmt};
+use tree::{
+    Binding, Block, EmitResult, EmitTarget, Expr, Field, FieldKey, Layout, NumberExpr, NumberOp,
+    Stmt,
+};
 
 /// A linked module's live dispatch entry point — what `emit ... to <alias>`
 /// calls. Closure-based rather than a trait `Environment` is generic over:
@@ -106,6 +109,8 @@ fn address_row(value: &Value) -> Result<usize, String> {
 #[derive(Debug, Default)]
 struct Scope {
     values: Vec<Option<Value>>,
+    numbers: Vec<Option<f64>>,
+    number_slots: Rc<HashMap<usize, usize>>,
     names: tree::Names,
     blocks: Vec<tree::Names>,
 }
@@ -113,17 +118,46 @@ impl Scope {
     fn new(layout: &Layout) -> Self {
         Self {
             values: vec![None; layout.size],
+            numbers: vec![None; layout.numbers.len()],
+            number_slots: Rc::clone(&layout.numbers),
             names: Rc::clone(&layout.names),
             blocks: Vec::new(),
         }
     }
-    fn get(&self, name: &str) -> Option<&Value> {
+    fn get(&self, name: &str) -> Option<Value> {
         self.blocks
             .iter()
             .rev()
             .chain(std::iter::once(&self.names))
             .find_map(|names| names.get(name))
-            .and_then(|i| self.values[*i].as_ref())
+            .and_then(|i| self.read(*i))
+    }
+    fn read(&self, slot: usize) -> Option<Value> {
+        self.values[slot].clone().or_else(|| {
+            self.number_slots
+                .get(&slot)
+                .and_then(|i| self.numbers[*i])
+                .map(Value::Number)
+        })
+    }
+
+    fn set(&mut self, slot: usize, number: Option<usize>, value: Value) {
+        if let Some(number) = number {
+            if let Value::Number(value) = &value {
+                self.numbers[number] = Some(*value);
+                self.values[slot] = None;
+                return;
+            }
+            // A host may replace a binding through the public API. Invalidate
+            // its plain slot so numeric expressions take their original path.
+            self.numbers[number] = None;
+        }
+        let old = &mut self.values[slot];
+        match (old.as_mut(), &value) {
+            (Some(Value::Number(old)), Value::Number(new)) => *old = *new,
+            (Some(Value::Bool(old)), Value::Bool(new)) => *old = *new,
+            _ => *old = Some(value),
+        }
     }
 }
 
@@ -344,7 +378,6 @@ impl Environment {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name))
-            .cloned()
     }
 
     /// Links a module under `alias`: binds `alias` to `vars` (an ordinary
@@ -366,7 +399,8 @@ impl Environment {
                 slot
             }
         };
-        scope.values[slot] = Some(vars);
+        let number = scope.number_slots.get(&slot).copied();
+        scope.set(slot, number, vars);
         drop(st);
         self.st_mut().modules.insert(alias.to_string(), dispatch);
     }
@@ -526,24 +560,24 @@ impl Environment {
     }
 
     fn read(&self, binding: &Binding) -> Option<Value> {
-        self.st().scopes[binding.frame].values[binding.slot]
-            .as_ref()
-            .cloned()
+        self.st().scopes[binding.frame].read(binding.slot)
     }
 
     fn set(&self, binding: &Binding, value: Value) {
-        let mut state = self.st_mut();
-        let slot = &mut state.scopes[binding.frame].values[binding.slot];
-        match (slot.as_mut(), &value) {
-            (Some(Value::Number(old)), Value::Number(new)) => *old = *new,
-            (Some(Value::Bool(old)), Value::Bool(new)) => *old = *new,
-            _ => *slot = Some(value),
-        }
+        self.st_mut().scopes[binding.frame].set(binding.slot, binding.number, value);
     }
 
     fn take(&self, binding: &Binding) -> Value {
-        self.st_mut().scopes[binding.frame].values[binding.slot]
+        let mut state = self.st_mut();
+        let scope = &mut state.scopes[binding.frame];
+        scope.values[binding.slot]
             .take()
+            .or_else(|| {
+                binding
+                    .number
+                    .and_then(|i| scope.numbers[i].take())
+                    .map(Value::Number)
+            })
             .unwrap_or(Value::Null)
     }
 
@@ -564,8 +598,11 @@ impl Environment {
         if !body.layout.names.is_empty() {
             scope.blocks.pop();
         }
-        for value in &mut scope.values[body.locals.clone()] {
-            *value = None;
+        for slot in body.locals.clone() {
+            scope.values[slot] = None;
+            if let Some(number) = scope.number_slots.get(&slot) {
+                scope.numbers[*number] = None;
+            }
         }
     }
 
@@ -996,7 +1033,10 @@ pub fn prepare(program: &Program, env: &Environment) -> Result<(), String> {
                     slot
                 }
             };
-            root.values[new_slot] = old.values[*slot].clone();
+            if let Some(value) = old.read(*slot) {
+                let number = root.number_slots.get(&new_slot).copied();
+                root.set(new_slot, number, value);
+            }
         }
         st.scopes[0] = root;
         st.file_scopes = resolved.files.iter().map(Scope::new).collect();
@@ -1362,6 +1402,28 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
             let answer = set_at(&mut whole, &keys, new);
             env.set(name, whole);
             answer.map(|()| Flow::Normal)
+        }
+        Stmt::Assign {
+            name,
+            value: Expr::Number { fast, fallback },
+        } => {
+            let mut state = env.st_mut();
+            match number(fast, &state)? {
+                Some(value) => {
+                    let scope = &mut state.scopes[name.frame];
+                    if let Some(number) = name.number {
+                        scope.numbers[number] = Some(value);
+                        scope.values[name.slot] = None;
+                    } else {
+                        scope.set(name.slot, None, Value::Number(value));
+                    }
+                }
+                None => {
+                    let value = eval_value(fallback, &state)?;
+                    state.scopes[name.frame].set(name.slot, name.number, value);
+                }
+            }
+            Ok(Flow::Normal)
         }
         Stmt::Assign { name, value, .. } => {
             let v = eval(value, env)?;
@@ -1944,16 +2006,82 @@ fn run_handler(
     result
 }
 
+/// The compiler's all-assignment proof gives these variables a plain slot;
+/// inference chooses the numeric expression. Presence is checked for scope
+/// initialization and host changes, but there is no Value tag or overload
+/// dispatch in this path. A missing plain slot retries the original expression.
+fn number(expr: &NumberExpr, state: &State) -> Result<Option<f64>, String> {
+    Ok(Some(match expr {
+        NumberExpr::Literal(value) => *value,
+        NumberExpr::Slot { frame, number } => return Ok(state.scopes[*frame].numbers[*number]),
+        NumberExpr::Neg(value) => {
+            let Some(value) = number(value, state)? else {
+                return Ok(None);
+            };
+            -value
+        }
+        NumberExpr::Binary(lhs, op, rhs) => {
+            let Some(lhs) = number(lhs, state)? else {
+                return Ok(None);
+            };
+            let Some(rhs) = number(rhs, state)? else {
+                return Ok(None);
+            };
+            match op {
+                NumberOp::Add => lhs + rhs,
+                NumberOp::Sub => lhs - rhs,
+                NumberOp::Mul => lhs * rhs,
+                NumberOp::Div => {
+                    if rhs == 0.0 {
+                        return Err("division by zero".into());
+                    }
+                    lhs / rhs
+                }
+            }
+        }
+    }))
+}
+
+fn number_compare(
+    lhs: &NumberExpr,
+    op: BinOp,
+    rhs: &NumberExpr,
+    state: &State,
+) -> Result<Option<bool>, String> {
+    let Some(lhs) = number(lhs, state)? else {
+        return Ok(None);
+    };
+    let Some(rhs) = number(rhs, state)? else {
+        return Ok(None);
+    };
+    Ok(Some(match op {
+        BinOp::Eq => lhs == rhs,
+        BinOp::Ne => lhs != rhs,
+        BinOp::Lt => lhs < rhs,
+        BinOp::Gt => lhs > rhs,
+        BinOp::Le => lhs <= rhs,
+        BinOp::Ge => lhs >= rhs,
+        _ => unreachable!("resolved numeric comparison"),
+    }))
+}
+
 /// A read may borrow a slot (or one of its parts) for this expression only.
 /// An expression that constructs a value owns its temporary. Only storing or
 /// handing on an operand calls `into_owned`, and therefore retains it.
 fn operand<'a>(expr: &'a Expr, state: &'a State) -> Result<Cow<'a, Value>, String> {
     match expr {
         Expr::Literal(value) => Ok(Cow::Borrowed(value)),
-        Expr::Ident(binding) => state.scopes[binding.frame].values[binding.slot]
-            .as_ref()
-            .map(Cow::Borrowed)
-            .ok_or_else(|| format!("undefined variable '{binding}'")),
+        Expr::Ident(binding) => {
+            let scope = &state.scopes[binding.frame];
+            if let Some(value) = scope.values[binding.slot].as_ref() {
+                return Ok(Cow::Borrowed(value));
+            }
+            binding
+                .number
+                .and_then(|i| scope.numbers[i])
+                .map(|n| Cow::Owned(Value::Number(n)))
+                .ok_or_else(|| format!("undefined variable '{binding}'"))
+        }
         Expr::Field(object, field) => match operand(object, state)? {
             Cow::Borrowed(value) => field_operand(value, field),
             Cow::Owned(value) => field_operand(&value, field).map(|v| Cow::Owned(v.into_owned())),
@@ -2010,6 +2138,24 @@ fn index_operand<'a>(value: &'a Value, index: &Value) -> Result<Cow<'a, Value>, 
 
 fn boolean(expr: &Expr, env: &Environment, role: &str) -> Result<bool, String> {
     let state = env.st();
+    if let Expr::NumberCompare {
+        lhs,
+        op,
+        rhs,
+        fallback,
+    } = expr
+    {
+        if let Some(answer) = number_compare(lhs, *op, rhs, &state)? {
+            return Ok(answer);
+        }
+        return match eval_value(fallback, &state)? {
+            Value::Bool(value) => Ok(value),
+            value => Err(format!(
+                "{role} requires a boolean, found {}",
+                a_type_name(&value)
+            )),
+        };
+    }
     match operand(expr, &state)?.as_ref() {
         Value::Bool(value) => Ok(*value),
         value => Err(format!(
@@ -2027,6 +2173,19 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
 
 fn eval_value(expr: &Expr, state: &State) -> Result<Value, String> {
     match expr {
+        Expr::Number { fast, fallback } => match number(fast, state)? {
+            Some(value) => Ok(Value::Number(value)),
+            None => eval_value(fallback, state),
+        },
+        Expr::NumberCompare {
+            lhs,
+            op,
+            rhs,
+            fallback,
+        } => match number_compare(lhs, *op, rhs, state)? {
+            Some(value) => Ok(Value::Bool(value)),
+            None => eval_value(fallback, state),
+        },
         Expr::SetAt { base, path, value } => {
             let mut whole = eval_value(base, state)?;
             let keys = path
@@ -2625,6 +2784,7 @@ mod borrowed_tests {
                 name: "source".into(),
                 frame: 0,
                 slot: 0,
+                number: None,
             })),
             "items".into(),
         );

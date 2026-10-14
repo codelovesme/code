@@ -13,6 +13,7 @@ pub(super) struct Binding {
     pub name: String,
     pub frame: usize,
     pub slot: usize,
+    pub number: Option<usize>,
 }
 impl Deref for Binding {
     type Target = str;
@@ -55,7 +56,31 @@ pub(super) enum FieldKey {
     Computed(Expr),
 }
 #[derive(Debug, Clone)]
+pub(super) enum NumberExpr {
+    Literal(f64),
+    Slot { frame: usize, number: usize },
+    Neg(Box<NumberExpr>),
+    Binary(Box<NumberExpr>, NumberOp, Box<NumberExpr>),
+}
+#[derive(Debug, Clone, Copy)]
+pub(super) enum NumberOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+#[derive(Debug, Clone)]
 pub(super) enum Expr {
+    Number {
+        fast: NumberExpr,
+        fallback: Box<Expr>,
+    },
+    NumberCompare {
+        lhs: Box<NumberExpr>,
+        op: BinOp,
+        rhs: Box<NumberExpr>,
+        fallback: Box<Expr>,
+    },
     Literal(Value),
     Ident(Binding),
     Interpolated(Vec<Expr>),
@@ -131,6 +156,7 @@ pub(super) type Names = Rc<HashMap<String, usize>>;
 pub(super) struct Layout {
     pub names: Names,
     pub size: usize,
+    pub numbers: Rc<HashMap<usize, usize>>,
 }
 #[derive(Debug, Clone)]
 pub(super) struct Block {
@@ -157,16 +183,26 @@ struct Resolver {
     next: usize,
     frame: usize,
     files: Vec<Layout>,
+    kinds: crate::kinds::Kinds,
+    scalar: HashMap<String, crate::kinds::Kind>,
+    numbers: HashMap<usize, usize>,
+    inferred: crate::infer::Layouts,
 }
 impl Resolver {
     fn lookup(&self, name: &str) -> Option<Binding> {
         self.scopes.iter().rev().find_map(|s| s.get(name)).cloned()
     }
     fn bind(&mut self, name: &str) -> Binding {
+        let number = (self.scalar.get(name) == Some(&crate::kinds::Kind::Number)).then(|| {
+            let index = self.numbers.len();
+            self.numbers.insert(self.next, index);
+            index
+        });
         let binding = Binding {
             name: name.into(),
             frame: self.frame,
             slot: self.next,
+            number,
         };
         self.next += 1;
         self.scopes
@@ -184,27 +220,90 @@ impl Resolver {
             })
             .collect()
     }
+    fn number(&self, e: &ast::Expr) -> Option<NumberExpr> {
+        Some(match e {
+            ast::Expr::Number(n) => NumberExpr::Literal(*n),
+            ast::Expr::Ident(name)
+                if self
+                    .inferred
+                    .numbers
+                    .contains(&(e as *const ast::Expr as usize)) =>
+            {
+                let binding = self.lookup(name)?;
+                NumberExpr::Slot {
+                    frame: binding.frame,
+                    number: binding.number?,
+                }
+            }
+            ast::Expr::Unary(UnOp::Neg, value) => NumberExpr::Neg(Box::new(self.number(value)?)),
+            ast::Expr::Binary(lhs, op, rhs) => {
+                let op = match op {
+                    BinOp::Add => NumberOp::Add,
+                    BinOp::Sub => NumberOp::Sub,
+                    BinOp::Mul => NumberOp::Mul,
+                    BinOp::Div => NumberOp::Div,
+                    _ => return None,
+                };
+                NumberExpr::Binary(Box::new(self.number(lhs)?), op, Box::new(self.number(rhs)?))
+            }
+            _ => return None,
+        })
+    }
     fn expr(&self, e: &ast::Expr) -> Expr {
-        let boxed = |e| Box::new(self.expr(e));
+        // A literal already borrows its payload in generic expressions.
+        // Numeric arithmetic includes it directly in its own compact tree.
+        if matches!(e, ast::Expr::Number(_)) {
+            return self.plain_expr(e, false);
+        }
+        if let Some(fast) = self.number(e) {
+            return Expr::Number {
+                fast,
+                fallback: Box::new(self.plain_expr(e, false)),
+            };
+        }
+        if let ast::Expr::Binary(
+            lhs,
+            op @ (BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge),
+            rhs,
+        ) = e
+        {
+            if let (Some(lhs), Some(rhs)) = (self.number(lhs), self.number(rhs)) {
+                return Expr::NumberCompare {
+                    lhs: Box::new(lhs),
+                    op: *op,
+                    rhs: Box::new(rhs),
+                    fallback: Box::new(self.plain_expr(e, false)),
+                };
+            }
+        }
+        self.plain_expr(e, true)
+    }
+    fn plain_expr(&self, e: &ast::Expr, specialise: bool) -> Expr {
+        let child = |e| {
+            if specialise {
+                self.expr(e)
+            } else {
+                self.plain_expr(e, false)
+            }
+        };
+        let boxed = |e| Box::new(child(e));
         match e {
             ast::Expr::Number(n) => Expr::Literal(Value::Number(*n)),
             ast::Expr::Str(s) => Expr::Literal(Value::Str(Rc::from(s.as_str()))),
             ast::Expr::Bool(b) => Expr::Literal(Value::Bool(*b)),
             ast::Expr::Null => Expr::Literal(Value::Null),
             ast::Expr::Ident(n) => Expr::Ident(self.lookup(n).expect("verified name")),
-            ast::Expr::Interpolated(v) => {
-                Expr::Interpolated(v.iter().map(|e| self.expr(e)).collect())
-            }
-            ast::Expr::Array(v) => Expr::Array(v.iter().map(|e| self.expr(e)).collect()),
+            ast::Expr::Interpolated(v) => Expr::Interpolated(v.iter().map(&child).collect()),
+            ast::Expr::Array(v) => Expr::Array(v.iter().map(&child).collect()),
             ast::Expr::Object(v) => Expr::Object(
                 v.iter()
                     .map(|(k, v)| {
                         (
                             match k {
                                 ast::FieldKey::Literal(s) => FieldKey::Literal(s.clone()),
-                                ast::FieldKey::Computed(e) => FieldKey::Computed(self.expr(e)),
+                                ast::FieldKey::Computed(e) => FieldKey::Computed(child(e)),
                             },
-                            self.expr(v),
+                            child(v),
                         )
                     })
                     .collect(),
@@ -219,7 +318,7 @@ impl Resolver {
             ast::Expr::LengthOf(e) => Expr::LengthOf(boxed(e)),
             ast::Expr::SetAt { base, path, value } => Expr::SetAt {
                 base: boxed(base),
-                path: path.iter().map(|e| self.expr(e)).collect(),
+                path: path.iter().map(&child).collect(),
                 value: boxed(value),
             },
             ast::Expr::Binary(a, op, b) => Expr::Binary(boxed(a), *op, boxed(b)),
@@ -259,6 +358,7 @@ impl Resolver {
                 layout: Layout {
                     names: Rc::new(names),
                     size: self.next,
+                    numbers: Rc::default(),
                 },
             },
             fields,
@@ -293,7 +393,18 @@ impl Resolver {
                     let saved = std::mem::replace(&mut self.scopes, vec![globals]);
                     let next = std::mem::replace(&mut self.next, 0);
                     let frame = std::mem::replace(&mut self.frame, 1);
-                    let (body, fields, _) = self.block(body, fields, None);
+                    let numbers = std::mem::take(&mut self.numbers);
+                    let scalar = std::mem::replace(
+                        &mut self.scalar,
+                        self.kinds
+                            .handlers
+                            .get(class_name)
+                            .cloned()
+                            .unwrap_or_default(),
+                    );
+                    let (mut body, fields, _) = self.block(body, fields, None);
+                    body.layout.numbers = Rc::new(std::mem::replace(&mut self.numbers, numbers));
+                    self.scalar = scalar;
                     self.scopes = saved;
                     self.next = next;
                     self.frame = frame;
@@ -309,6 +420,7 @@ impl Resolver {
                     let saved = std::mem::replace(&mut self.scopes, vec![HashMap::new()]);
                     let next = std::mem::replace(&mut self.next, 0);
                     let frame = std::mem::replace(&mut self.frame, 0);
+                    let numbers = std::mem::take(&mut self.numbers);
                     let statements = self.stmts(body);
                     let layout = self.layout();
                     if self.files.len() <= *file {
@@ -324,6 +436,7 @@ impl Resolver {
                     self.scopes = saved;
                     self.next = next;
                     self.frame = frame;
+                    self.numbers = numbers;
                     Stmt::Import {
                         alias: alias.as_ref().map(|n| self.bind(n)),
                         body,
@@ -389,15 +502,22 @@ impl Resolver {
                     .collect(),
             ),
             size: self.next,
+            numbers: Rc::new(self.numbers.clone()),
         }
     }
 }
 pub(super) fn resolve(program: &ast::Program) -> Tree {
+    let kinds = crate::kinds::of_program(program);
+    let scalar = kinds.top.clone();
     let mut r = Resolver {
         scopes: vec![HashMap::new()],
         next: 0,
         frame: 0,
         files: vec![Layout::default()],
+        kinds,
+        scalar,
+        numbers: HashMap::new(),
+        inferred: crate::infer::field_layouts(program),
     };
     let statements = r.stmts(&program.statements);
     let layout = r.layout();

@@ -187,3 +187,28 @@ fn callbacks_inspect_only_live_lexical_bindings() {
     assert_eq!(env.get("item"), None);
     assert_eq!(env.get("future"), Some(Value::Number(4.0)));
 }
+
+#[test]
+fn a_host_replacing_a_numeric_binding_takes_the_checked_path() {
+    let env = Rc::new(Environment::default());
+    let weak = Rc::downgrade(&env);
+    env.provide_module(
+        "probe",
+        Value::Null,
+        Rc::new(move |_| {
+            let env = weak.upgrade().unwrap();
+            assert_eq!(env.get("counter"), Some(Value::Number(1.0)));
+            env.link_module("counter", Value::Null, Rc::new(|_| Ok(Value::Null)));
+            Ok(Value::Null)
+        }),
+    );
+    let lexed = code::lexer::tokenize(
+        "link \"probe\" as probe\ncounter = 1\nbefore = counter + 1\nassert before = 2\nemit Replace to probe\nassert counter = null\nafter = counter + 1\n",
+    )
+    .unwrap();
+    let mut program = code::parser::parse(&lexed).unwrap();
+    program.statements[0] = link_stmt("probe", "probe");
+    let error = interpreter::prepare(&program, &env).unwrap_err();
+    assert_eq!(error, "cannot apply '+' to a null and a number");
+    assert_eq!(env.get("counter"), Some(Value::Null));
+}
