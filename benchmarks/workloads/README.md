@@ -13,16 +13,36 @@ algorithm in `code`, C and Rust. Every program checks its own answer.
 | `dictionary` | an object updated under computed keys |
 | `points` | a list of `{ x, y, vx, vy }` moved step by step (a game frame) |
 
-The language has no recursion, no element assignment, no `%`, `floor` or
-`sqrt`, so C and Rust use the same iterative steps; where `code` can only
-rebuild a list or an object, C and Rust use their idiomatic in-place form —
-that difference is part of what is measured. Classic workloads that need
-element writes (sieve, fannkuch) or `sqrt` (n-body) are left out until the
-language can express them.
+The language has no recursive handler calls or built-in `%`, `floor` or
+`sqrt`, so these programs use iterative steps. Part assignments and growth
+can update uniquely held containers in place; shared values keep their old
+contents. C and Rust use their idiomatic mutable representations. Layout,
+sharing, allocation, and lookup costs are part of what is measured.
 
 ```sh
 CODE_BIN=/path/to/code benchmarks/workloads/run.py [--runs 5] [workload ...]
 ```
+
+The runner pins launches to one allowed logical CPU unless `--no-pin` is
+given, shuffles the language order deterministically on each repetition,
+and records raw launch times in `results.csv` and medians/ratios in
+`results.json`. Startup is included and can dominate the shortest programs.
+Use `--output-dir` to keep an experimental run separate from the published
+results.
+
+## Current measurement (2026-10-14, code 2.16.0, i7-5930K, median of 7)
+
+| Workload | C | Rust | code | code / C |
+|---|---|---|---|---|
+| spectral_norm | 0.15744 s | 0.15728 s | 0.21680 s | 1.38× |
+| binary_trees | 0.00345 s | 0.00367 s | 0.01388 s | 4.02× |
+| string_build | 0.00148 s | 0.00125 s | 0.00465 s | 3.14× |
+| dictionary | 0.00376 s | 0.00307 s | 0.01782 s | 4.74× |
+| points | 0.00078 s | 0.00104 s | 0.00244 s | 3.13× |
+
+Pinned to logical CPU 0 on the same machine as the language comparison.
+These complete prebuilt launches put code at 1.38–4.74× C's time.
+The older tables below record development stages, not today's performance.
 
 ## Baseline (2026-10-11, code 2.14.8 + 113, i7-5930K, median of 5)
 

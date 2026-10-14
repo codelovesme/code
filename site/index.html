@@ -375,7 +375,10 @@
   }
   @media (max-width: 560px) {
     .feat-grid, .ex-grid { grid-template-columns: 1fr; }
-    .nav-links a:not(.gh) { display: none; }
+    .nav-inner { flex-wrap: wrap; gap: 0.5rem; padding-block: 0.7rem; }
+    .nav-links { flex-wrap: wrap; gap: 0.8rem; font-size: 0.8rem; }
+    .nav-links a[href="#features"], .nav-links a[href="#examples"] { display: none; }
+    section { scroll-margin-top: 110px; }
   }
   @media (prefers-reduced-motion: reduce) {
     .blob, .h1-cursor, .demo-code::after, .badge .dot { animation: none; }
@@ -470,7 +473,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></svg>
         </div>
         <h3>Six value types</h3>
-        <p>Number, String, Boolean, Null, Array, Object — exactly JSON's. Name a set of values with <code>type Color = "red" ∪ "green"</code>; test membership with <code>∈</code>.</p>
+        <p>Number, String, Boolean, Null, Array, Object — exactly JSON's. The two containers stay distinct: arrays are ordered, objects compare by field name.</p>
       </div>
       <div class="feat reveal">
         <div class="ico" style="background:rgba(167,139,250,0.1); color:var(--violet)">
@@ -483,15 +486,15 @@
         <div class="ico" style="background:rgba(244,114,182,0.1); color:var(--pink)">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>
         </div>
-        <h3>In your browser</h3>
-        <p>The actual interpreter, compiled to WebAssembly. What you see is the real thing — no mock, no server.</p>
+        <h3>A faster interpreter</h3>
+        <p>The playground uses v2.16.0’s register-bytecode interpreter, with typed number operations, compiled to WebAssembly. It runs here in your browser.</p>
       </div>
       <div class="feat reveal">
         <div class="ico" style="background:rgba(251,191,36,0.1); color:var(--amber)">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M8 3H3v5M21 3l-7 7M3 3l7 7M12 14v7M9 18l3 3 3-3"/></svg>
         </div>
-        <h3>Two backends</h3>
-        <p>Interpret with <code>code run --interpret</code>, compile to a native binary with <code>code build</code> — same behavior, enforced by tests.</p>
+        <h3>Build once, reuse the build</h3>
+        <p><code>code run</code> builds and caches a native executable for fast starts at native speed. Choose <code>--interpret</code> to interpret, or <code>code build</code> for an artifact. Both paths have the same behavior, enforced by tests.</p>
       </div>
       <div class="feat reveal">
         <div class="ico" style="background:rgba(134,239,172,0.1); color:var(--green)">
@@ -506,6 +509,27 @@
         </div>
         <h3>Loops &amp; conditionals</h3>
         <p><code>loop x over arr</code>, <code>if</code>, and <code>break</code>, with indented bodies. Braces make objects. No <code>while</code>, no <code>else</code> — ever.</p>
+      </div>
+      <div class="feat reveal">
+        <div class="ico" style="background:rgba(94,234,212,0.1); color:var(--teal)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></svg>
+        </div>
+        <h3>Named data types</h3>
+        <p><code>type Color = "red" ∪ "green"</code> names a set of values. Combine labels with <code>∪</code>, leave object fields open with <code>…</code>, and ask membership at run time with <code>∈</code>. Types can describe nested and recursive data.</p>
+      </div>
+      <div class="feat reveal">
+        <div class="ico" style="background:rgba(94,234,212,0.1); color:var(--teal)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></svg>
+        </div>
+        <h3>Native numbers</h3>
+        <p><code>code build --release</code> runs at C/Rust speed on the measured numeric loop. On the five broader list, record, and text workloads, it takes 1.38–4.74× C’s time. <a href="compare.html#performance">See the measurements</a>.</p>
+      </div>
+      <div class="feat reveal">
+        <div class="ico" style="background:rgba(94,234,212,0.1); color:var(--teal)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></svg>
+        </div>
+        <h3>Capabilities are modules</h3>
+        <p>Keep I/O explicit: <code>code install console</code>, then link it. Modules cover files, HTTP, databases, browser DOM and canvas, and more. Swap a mock in for fixtures; a handler reports failures as an <code>Exception</code> particle.</p>
       </div>
     </div>
   </section>
@@ -590,12 +614,57 @@
       </p>
       <p class="plat-note">
         <b>Platform:</b> the playground and <code>code-wasm</code> run anywhere.
-        The prebuilt <code>code</code> CLI and the first-party modules
-        (<code>code install</code>) are <b>Linux&nbsp;x86_64</b>, for now — from
-        source you need Rust and LLVM&nbsp;17.
+        The prebuilt <code>code</code> CLI and native module assets are
+        <b>Linux&nbsp;x86_64</b>, for now; browser modules also have
+        <b>wasm32</b> archives. Building the CLI from source needs Rust and LLVM&nbsp;17.
       </p>
     </div>
     <div class="pkg-grid">
+      <article class="pkg reveal">
+        <div class="pkg-head">
+          <span class="pkg-tag core">CLI · native &amp; wasm</span>
+          <h3><code>code</code> — run, build, check</h3>
+          <p class="pkg-desc">Start with a file or a project. Repeated runs reuse the cached native build; without a build toolchain, the interpreter remains the fallback.</p>
+        </div>
+        <div class="pkg-body">
+          <div>
+            <div class="step-label"><span class="num">1</span> get the CLI</div>
+            <p class="pkg-desc">Download the Linux x86_64 archive from <a href="https://github.com/codelovesme/code/releases/latest">the latest release</a>, or build this repository with Rust and LLVM 17:</p>
+<pre class="codeblock">cargo build --release --workspace</pre>
+          </div>
+          <div>
+            <div class="step-label"><span class="num">2</span> make a project and run it</div>
+<pre class="codeblock">code init demo
+cd demo
+code run
+code build --release</pre>
+          </div>
+          <div>
+            <div class="step-label"><span class="num">3</span> keep it checked</div>
+<pre class="codeblock">code check
+code format --check .
+mkdir tests
+cp main.code tests/start.code
+code test</pre>
+          </div>
+          <p class="pkg-note">The first build is part of the first run. Small programs build optimized immediately; larger ones can start on a quick build while the optimized one is prepared. <code>code run --strict</code> checks known contracts before running.</p>
+          <div class="pkg-links"><a href="https://github.com/codelovesme/code#running-it" target="_blank" rel="noopener">CLI docs ↗</a></div>
+        </div>
+      </article>
+
+      <article class="pkg reveal">
+        <div class="pkg-head">
+          <span class="pkg-tag core">euglena · applications</span>
+          <h3>Build an app on top of <code>code</code></h3>
+          <p class="pkg-desc">Euglena adds app manifests and shared gene files over the code toolchain, for native and browser applications.</p>
+        </div>
+        <div class="pkg-body">
+          <p class="pkg-desc">A manifest describes the app’s dependencies and configuration; Euglena assembles its entry program and delegates language work to code. The language stays small, while the app layer handles how the pieces are wired.</p>
+          <p class="pkg-note">Use the language by itself for a script or module, or use Euglena when the application needs that extra structure.</p>
+          <div class="pkg-links"><a href="https://github.com/codelovesme/euglena" target="_blank" rel="noopener">Euglena ↗</a><a href="https://github.com/codelovesme/euglena#usage" target="_blank" rel="noopener">app workflow ↗</a></div>
+        </div>
+      </article>
+
       <article class="pkg reveal">
         <div class="pkg-head">
           <span class="pkg-tag wasm">npm · browser &amp; node</span>
@@ -610,7 +679,7 @@
           <div>
             <div class="step-label"><span class="num">1</span> install</div>
 <pre class="codeblock"><span class="cm"># bundler (Vite, webpack, Rollup…)</span>
-npm install code-wasm
+npm install code-wasm@2.16.0
 
 <span class="cm"># …or straight from a CDN, no build step</span>
 import init, { run, run_with_modules } from "https://esm.sh/code-wasm@2.16.0";</pre>
@@ -644,8 +713,8 @@ run_with_modules(
           <p class="pkg-note">
             Everything crosses that boundary as JSON strings — a module backed by
             a plain function works exactly like one backed by a real
-            <code>.wasm</code> file. All modules must be provided up front:
-            <code>link</code> resolves before the program starts.
+            <code>.wasm</code> file. For <code>run_with_modules</code>, provide
+            every module up front; this JS bridge does not load native libraries.
           </p>
           <div class="pkg-links">
             <a href="https://www.npmjs.com/package/code-wasm" target="_blank" rel="noopener">npm ↗</a>
@@ -749,7 +818,7 @@ assert result.value = 42</pre>
             An optional third export, <code>code_module_vars</code>, makes
             <code>m.someConst</code> work alongside <code>emit</code>. C (and anything else that
             produces a C-ABI shared library) uses <code>src/code_abi.h</code> directly —
-            there's no registry to publish a bundle to.
+            modules are distributed through release assets and installed with <code>code install</code>.
           </p>
           <div class="pkg-links">
             <a href="https://crates.io/crates/code-native" target="_blank" rel="noopener">crates.io ↗</a>
@@ -1065,6 +1134,11 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
       file: "types.code",
       code: 'link "console" as out\ntype Color = "red" ∪ "green"\nx ∈ Number ∪ String = 1\nx = "red"\nassert x ∈ Color\nemit Print { value = x } to out',
       out: 'red',
+    },
+    {
+      file: "point.code",
+      code: 'link "console" as out\ntype PointShape = { x ∈ Number, y ∈ Number, … }\np = Point { x = 1, y = 2 }\nassert p ∈ PointShape\nemit Print { value = p.x } to out',
+      out: '1',
     },
   ];
   const demoFile = document.getElementById("demo-file");

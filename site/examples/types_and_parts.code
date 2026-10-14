@@ -1,0 +1,19 @@
+| Types name sets of values; labels allow several types on purpose.
+link "console" as out
+
+type Reading = Number ∪ String
+type PointShape = { x ∈ Number, y ∈ Number, … }
+
+reading ∈ Reading = 1
+reading = "ready"
+point = Point { x = 1, y = 2, title = "home" }
+assert point ∈ PointShape
+
+| A part write changes this binding; another holder keeps the old value.
+snapshot = point
+point.x += 1
+assert snapshot.x = 1
+assert point.x = 2
+
+emit Print { value = reading } to out
+emit Print { value = point.x } to out
