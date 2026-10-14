@@ -1,5 +1,5 @@
 {
-  "measured_at_utc": "2026-10-14T16:51:40+00:00",
+  "measured_at_utc": "2026-10-14T21:44:38+00:00",
   "workload": {
     "inner_iterations_per_repetition": 100000,
     "repetitions": 100,
@@ -13,7 +13,7 @@
     "distribution": "Debian GNU/Linux 13 (trixie)",
     "pinned_logical_cpu": 0,
     "code": "Code v2.16.0",
-    "code_commit": "efaa72e",
+    "code_commit": "e539e6a",
     "llvm": null,
     "c_compiler": "gcc (Debian 14.2.0-19) 14.2.0",
     "java_runtime": "openjdk version \"26.0.2.1\" 2026-08-18",
@@ -29,366 +29,369 @@
     ],
     "java_compile_command": "javac --release 26; HotSpot default runtime settings",
     "rust_compile_command": "rustc --edition 2024 -C opt-level=3 -C target-cpu=native",
-    "go_compile_command": "GO111MODULE=off go build -trimpath (default compiler optimizations)"
+    "go_compile_command": "GO111MODULE=off go build -trimpath (default compiler optimizations)",
+    "code_command": [
+      "/home/cdlvsm/git/codelovesme/code/target/release/code-launcher"
+    ]
   },
   "timed_runs_per_mode": 7,
   "compile_runs_per_compiler": 5,
   "compile_samples_seconds": {
     "code build --release": [
-      0.03491983888670802,
-      0.03489710111171007,
-      0.034945152932778,
-      0.03473872202448547,
-      0.03462311299517751
+      0.03564506606198847,
+      0.03564552892930806,
+      0.03529010294005275,
+      0.03566312603652477,
+      0.03536865394562483
     ],
     "javac --release 26": [
-      1.1348288571462035,
-      1.1117178099229932,
-      1.1185119128786027,
-      1.193754634121433,
-      1.1396040439140052
+      1.1385464819613844,
+      1.1086318418383598,
+      1.1099447328597307,
+      1.134775809943676,
+      1.0987175919581205
     ],
     "rustc --edition 2024 -C opt-level=3 -C target-cpu=native": [
-      0.07924758293665946,
-      0.07508776988834143,
-      0.07398538198322058,
-      0.07431492488831282,
-      0.07398024294525385
+      0.0786471120081842,
+      0.07418861798942089,
+      0.07374106394127011,
+      0.07434423896484077,
+      0.07413964695297182
     ],
     "go build -trimpath (default optimizations)": [
-      0.20998100098222494,
-      0.21222490794025362,
-      0.21198102994821966,
-      0.21038962714374065,
-      0.21030738786794245
+      0.20783549291081727,
+      0.2022256830241531,
+      0.20045476197265089,
+      0.20261670602485538,
+      0.21563547989353538
     ],
     "GCC -O2 -march=native": [
-      0.03269068198278546,
-      0.0321308730635792,
-      0.03234116779640317,
-      0.032315941993147135,
-      0.0323129550088197
+      0.036929824855178595,
+      0.03448828705586493,
+      0.036286260932683945,
+      0.03756020194850862,
+      0.03713428298942745
     ],
     "GCC -O3 -march=native": [
-      0.032561545027419925,
-      0.03234281693585217,
-      0.03310199803672731,
-      0.03316255193203688,
-      0.03270376590080559
+      0.03993560397066176,
+      0.03630491090007126,
+      0.03583104396238923,
+      0.03846423979848623,
+      0.03214236884377897
     ]
   },
   "samples_seconds": {
     "code run (cold cache)": [
-      0.043201128,
-      0.043846775,
-      0.04397553,
-      0.043435953,
-      0.043398939,
-      0.04400622,
-      0.043484475
+      0.044185735,
+      0.043889411,
+      0.043598641,
+      0.043757975,
+      0.044924685,
+      0.043994248,
+      0.04384239
     ],
     "code run (warm cache)": [
-      0.014660276,
-      0.014270669,
-      0.01460197,
-      0.014413186,
-      0.014458589,
-      0.014673107,
-      0.014439875
+      0.009555999,
+      0.009500887,
+      0.009527638,
+      0.009530672,
+      0.009541868,
+      0.009548457,
+      0.009515933
     ],
     "code run --interpret (interpreter)": [
-      0.402886812,
-      0.399094648,
-      0.39827985,
-      0.413396689,
-      0.399025247,
-      0.400130219,
-      0.405808696
+      0.406971171,
+      0.403644468,
+      0.399174814,
+      0.396881172,
+      0.402517124,
+      0.396682821,
+      0.405913479
     ],
     "code build --release (native)": [
-      0.008918065,
-      0.008837954,
-      0.008891718,
-      0.008852103,
-      0.008883305,
-      0.008892128,
-      0.008865283
+      0.008850385,
+      0.008846001,
+      0.008892259,
+      0.008889706,
+      0.008859166,
+      0.008843254,
+      0.009076483
     ],
     "C (GCC -O2 -march=native)": [
-      0.014699321,
-      0.014377374,
-      0.01443338,
-      0.014452822,
-      0.01462099,
-      0.014538514,
-      0.014437683
+      0.014758113,
+      0.014449955,
+      0.014616466,
+      0.014419793,
+      0.015545869,
+      0.014515238,
+      0.014493974
     ],
     "C (GCC -O3 -march=native)": [
-      0.014458223,
-      0.014449695,
-      0.014379512,
-      0.014433649,
-      0.014411558,
-      0.014400426,
-      0.014452469
+      0.014405815,
+      0.014406375,
+      0.014462328,
+      0.014425812,
+      0.014486604,
+      0.014495223,
+      0.014419787
     ],
     "Java 26 (HotSpot default)": [
-      0.051948374,
-      0.052811561,
-      0.052151117,
-      0.05413394,
-      0.054495289,
-      0.049720587,
-      0.054624615
+      0.054025606,
+      0.053454425,
+      0.053902108,
+      0.053299694,
+      0.05035702,
+      0.053491177,
+      0.052210742
     ],
     "Python (CPython)": [
-      1.425328129,
-      1.832400819,
-      1.433240647,
-      1.320925542,
-      1.447249935,
-      1.502614654,
-      1.306078233
+      1.492120958,
+      1.301367085,
+      1.283504093,
+      1.290465062,
+      1.36595998,
+      1.326763975,
+      1.3578156
     ],
     "JavaScript (Node.js/V8)": [
-      0.043883772,
-      0.051732715,
-      0.040630194,
-      0.04459217,
-      0.048961139,
-      0.039419098,
-      0.043207278
+      0.05748421,
+      0.043831572,
+      0.048725966,
+      0.040330837,
+      0.04765228,
+      0.040156665,
+      0.043068215
     ],
     "Rust (rustc -C opt-level=3)": [
-      0.009005768,
-      0.009029954,
-      0.009028088,
-      0.009236294,
-      0.009080496,
-      0.009034591,
-      0.009028746
+      0.009189741,
+      0.009020531,
+      0.009059882,
+      0.009024773,
+      0.009179905,
+      0.009037854,
+      0.00901898
     ],
     "Go (go build; default optimizations)": [
-      0.015303664,
-      0.015444451,
-      0.015334692,
-      0.015324201,
-      0.015685593,
-      0.015310638,
-      0.015583571
+      0.015591021,
+      0.015919278,
+      0.015364993,
+      0.015295088,
+      0.015469724,
+      0.015367349,
+      0.015391815
     ]
   },
   "samples_peak_rss_kib": {
     "code run (cold cache)": [
-      40312,
-      40936,
-      40876,
-      40676,
-      41384,
-      40684,
-      40316
+      40168,
+      40912,
+      40320,
+      40316,
+      40180,
+      40372,
+      40896
     ],
     "code run (warm cache)": [
-      29984,
-      29656,
-      29984,
-      29272,
-      29748,
-      29776,
-      29704
+      2160,
+      2144,
+      2040,
+      2108,
+      2116,
+      2132,
+      2044
     ],
     "code run --interpret (interpreter)": [
-      30212,
-      30160,
-      29948,
-      29876,
-      29968,
-      30420,
-      30784
+      30132,
+      30628,
+      30296,
+      29956,
+      30872,
+      30556,
+      29920
     ],
     "code build --release (native)": [
-      1204,
-      1220,
-      1228,
+      1224,
       1168,
+      1280,
       1204,
-      1268,
-      1256
+      1228,
+      1224,
+      1224
     ],
     "C (GCC -O2 -march=native)": [
-      1200,
-      1268,
-      1224,
-      1228,
+      1256,
       1204,
-      1224,
-      1220
+      1208,
+      1216,
+      1168,
+      1168,
+      1256
     ],
     "C (GCC -O3 -march=native)": [
-      1272,
-      1168,
-      1204,
-      1168,
+      1208,
+      1268,
+      1208,
       1216,
-      1256,
-      1220
+      1208,
+      1200,
+      1256
     ],
     "Java 26 (HotSpot default)": [
-      35748,
-      35808,
-      39260,
-      39108,
-      39192,
-      39144,
-      39340
+      39312,
+      39448,
+      39228,
+      39376,
+      39380,
+      39436,
+      39336
     ],
     "Python (CPython)": [
-      8788,
-      8496,
-      8788,
+      8636,
       8640,
-      8640,
-      8704,
-      8640
+      8696,
+      8636,
+      8696,
+      8696,
+      8636
     ],
     "JavaScript (Node.js/V8)": [
-      49980,
-      49860,
-      49744,
-      50116,
-      49728,
-      49860,
-      49472
+      49412,
+      49412,
+      49480,
+      49540,
+      49480,
+      49480,
+      49412
     ],
     "Rust (rustc -C opt-level=3)": [
+      1936,
+      2036,
       1876,
-      1980,
-      1876,
-      2028,
-      1996,
-      2020,
-      1940
+      2100,
+      2004,
+      2008,
+      1992
     ],
     "Go (go build; default optimizations)": [
       3544,
-      3552,
+      5612,
       3548,
       3548,
-      5636,
       3548,
-      5636
+      3548,
+      3548
     ]
   },
   "summary": [
     {
       "mode": "code build --release (native)",
-      "median_seconds": 0.008883305,
-      "min_seconds": 0.008837954,
-      "max_seconds": 0.008918065,
-      "million_iterations_per_second": 1125.7071551635345,
-      "median_peak_rss_kib": 1220,
+      "median_seconds": 0.008859166,
+      "min_seconds": 0.008843254,
+      "max_seconds": 0.009076483,
+      "million_iterations_per_second": 1128.774424138796,
+      "median_peak_rss_kib": 1224,
       "min_peak_rss_kib": 1168,
-      "max_peak_rss_kib": 1268
+      "max_peak_rss_kib": 1280
     },
     {
       "mode": "Rust (rustc -C opt-level=3)",
-      "median_seconds": 0.009029954,
-      "min_seconds": 0.009005768,
-      "max_seconds": 0.009236294,
-      "million_iterations_per_second": 1107.4253534403385,
-      "median_peak_rss_kib": 1980,
+      "median_seconds": 0.009037854,
+      "min_seconds": 0.00901898,
+      "max_seconds": 0.009189741,
+      "million_iterations_per_second": 1106.457351490741,
+      "median_peak_rss_kib": 2004,
       "min_peak_rss_kib": 1876,
-      "max_peak_rss_kib": 2028
+      "max_peak_rss_kib": 2100
+    },
+    {
+      "mode": "code run (warm cache)",
+      "median_seconds": 0.009530672,
+      "min_seconds": 0.009500887,
+      "max_seconds": 0.009555999,
+      "million_iterations_per_second": 1049.2439567745066,
+      "median_peak_rss_kib": 2116,
+      "min_peak_rss_kib": 2040,
+      "max_peak_rss_kib": 2160
     },
     {
       "mode": "C (GCC -O3 -march=native)",
-      "median_seconds": 0.014433649,
-      "min_seconds": 0.014379512,
-      "max_seconds": 0.014458223,
-      "million_iterations_per_second": 692.8254940936973,
-      "median_peak_rss_kib": 1216,
-      "min_peak_rss_kib": 1168,
-      "max_peak_rss_kib": 1272
-    },
-    {
-      "mode": "C (GCC -O2 -march=native)",
-      "median_seconds": 0.014452822,
-      "min_seconds": 0.014377374,
-      "max_seconds": 0.014699321,
-      "million_iterations_per_second": 691.9063972420057,
-      "median_peak_rss_kib": 1224,
+      "median_seconds": 0.014425812,
+      "min_seconds": 0.014405815,
+      "max_seconds": 0.014495223,
+      "million_iterations_per_second": 693.2018800744111,
+      "median_peak_rss_kib": 1208,
       "min_peak_rss_kib": 1200,
       "max_peak_rss_kib": 1268
     },
     {
-      "mode": "code run (warm cache)",
-      "median_seconds": 0.014458589,
-      "min_seconds": 0.014270669,
-      "max_seconds": 0.014673107,
-      "million_iterations_per_second": 691.6304211980851,
-      "median_peak_rss_kib": 29748,
-      "min_peak_rss_kib": 29272,
-      "max_peak_rss_kib": 29984
+      "mode": "C (GCC -O2 -march=native)",
+      "median_seconds": 0.014515238,
+      "min_seconds": 0.014419793,
+      "max_seconds": 0.015545869,
+      "million_iterations_per_second": 688.9311770154923,
+      "median_peak_rss_kib": 1208,
+      "min_peak_rss_kib": 1168,
+      "max_peak_rss_kib": 1256
     },
     {
       "mode": "Go (go build; default optimizations)",
-      "median_seconds": 0.015334692,
-      "min_seconds": 0.015303664,
-      "max_seconds": 0.015685593,
-      "million_iterations_per_second": 652.1161298837955,
+      "median_seconds": 0.015391815,
+      "min_seconds": 0.015295088,
+      "max_seconds": 0.015919278,
+      "million_iterations_per_second": 649.6959585338051,
       "median_peak_rss_kib": 3548,
       "min_peak_rss_kib": 3544,
-      "max_peak_rss_kib": 5636
-    },
-    {
-      "mode": "code run (cold cache)",
-      "median_seconds": 0.043484475,
-      "min_seconds": 0.043201128,
-      "max_seconds": 0.04400622,
-      "million_iterations_per_second": 229.9671319476664,
-      "median_peak_rss_kib": 40684,
-      "min_peak_rss_kib": 40312,
-      "max_peak_rss_kib": 41384
+      "max_peak_rss_kib": 5612
     },
     {
       "mode": "JavaScript (Node.js/V8)",
-      "median_seconds": 0.043883772,
-      "min_seconds": 0.039419098,
-      "max_seconds": 0.051732715,
-      "million_iterations_per_second": 227.87466856768827,
-      "median_peak_rss_kib": 49860,
-      "min_peak_rss_kib": 49472,
-      "max_peak_rss_kib": 50116
+      "median_seconds": 0.043831572,
+      "min_seconds": 0.040156665,
+      "max_seconds": 0.05748421,
+      "million_iterations_per_second": 228.1460496100847,
+      "median_peak_rss_kib": 49480,
+      "min_peak_rss_kib": 49412,
+      "max_peak_rss_kib": 49540
+    },
+    {
+      "mode": "code run (cold cache)",
+      "median_seconds": 0.043889411,
+      "min_seconds": 0.043598641,
+      "max_seconds": 0.044924685,
+      "million_iterations_per_second": 227.84539077090827,
+      "median_peak_rss_kib": 40320,
+      "min_peak_rss_kib": 40168,
+      "max_peak_rss_kib": 40912
     },
     {
       "mode": "Java 26 (HotSpot default)",
-      "median_seconds": 0.052811561,
-      "min_seconds": 0.049720587,
-      "max_seconds": 0.054624615,
-      "million_iterations_per_second": 189.35247909070515,
-      "median_peak_rss_kib": 39144,
-      "min_peak_rss_kib": 35748,
-      "max_peak_rss_kib": 39340
+      "median_seconds": 0.053454425,
+      "min_seconds": 0.05035702,
+      "max_seconds": 0.054025606,
+      "million_iterations_per_second": 187.07525148759902,
+      "median_peak_rss_kib": 39376,
+      "min_peak_rss_kib": 39228,
+      "max_peak_rss_kib": 39448
     },
     {
       "mode": "code run --interpret (interpreter)",
-      "median_seconds": 0.400130219,
-      "min_seconds": 0.39827985,
-      "max_seconds": 0.413396689,
-      "million_iterations_per_second": 24.991863961167102,
-      "median_peak_rss_kib": 30160,
-      "min_peak_rss_kib": 29876,
-      "max_peak_rss_kib": 30784
+      "median_seconds": 0.402517124,
+      "min_seconds": 0.396682821,
+      "max_seconds": 0.406971171,
+      "million_iterations_per_second": 24.843663545603587,
+      "median_peak_rss_kib": 30296,
+      "min_peak_rss_kib": 29920,
+      "max_peak_rss_kib": 30872
     },
     {
       "mode": "Python (CPython)",
-      "median_seconds": 1.433240647,
-      "min_seconds": 1.306078233,
-      "max_seconds": 1.832400819,
-      "million_iterations_per_second": 6.977195365573524,
+      "median_seconds": 1.326763975,
+      "min_seconds": 1.283504093,
+      "max_seconds": 1.492120958,
+      "million_iterations_per_second": 7.537135608464196,
       "median_peak_rss_kib": 8640,
-      "min_peak_rss_kib": 8496,
-      "max_peak_rss_kib": 8788
+      "min_peak_rss_kib": 8636,
+      "max_peak_rss_kib": 8696
     }
   ],
   "notes": [
@@ -399,11 +402,11 @@
     "Go, Rust, C, Java, and code native run prebuilt artifacts; their ahead-of-time compile/build times are measured separately. Java runs prebuilt JVM bytecode, and HotSpot's runtime JIT work remains part of its run time.",
     "Go runs a prebuilt binary. An untimed build warms the cache for this program's standard-library dependencies; each timed Go build changes only a source comment so the main package is rebuilt while those dependencies can be reused.",
     "Each timed launch runs through a tiny C fork/exec/wait4 wrapper, avoiding Python's inherited RSS floor. Its monotonic timer surrounds fork/exec/wait, excluding wrapper startup; Linux ru_maxrss is recorded in KiB. RSS is the largest resident process including waited descendants, not the sum of simultaneous process-tree memory or allocated bytes.",
-    "code run includes the LLVM-linked driver, which loads and keys the program, while code build --release (native) launches only the built executable. Cold-cache code run also includes compiler descendants in its peak RSS.",
     "One workload is a useful data point, not a universal language ranking.",
     "Python uses float (IEEE 754 binary64) values; its process startup, source parsing, and bytecode generation are included in run time.",
     "JavaScript uses Number values (IEEE 754 binary64) in Node.js/V8; process startup, source parsing, and any JIT work are included in run time.",
     "Rust uses f64 values and a rustc release optimization level of 3, targeting the local CPU.",
-    "Go uses float64 values and the Go toolchain's default compiler optimization settings; go build process startup is included in its separate build measurement."
+    "Go uses float64 values and the Go toolchain's default compiler optimization settings; go build process startup is included in its separate build measurement.",
+    "The measured CODE_BIN is the unreleased LLVM-free launcher beside the full driver. Warm runs validate metadata and exec without parsing or loading LLVM. Cold and interpreted runs still enter the driver; Unix native runs retain no waiting driver. Peak RSS includes transient startup before exec."
   ]
 }

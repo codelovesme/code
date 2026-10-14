@@ -446,19 +446,19 @@
     <div class="prose">
       <h3>Prebuilt and source-run comparisons</h3>
       <p>The first comparison runs prebuilt artifacts: <code>code build --release</code> against C, Java, Rust, and Go. The second accepts source paths: <code>code run</code> with cold and warm caches, and <code>code run --interpret</code>, against CPython and JavaScript on Node.js/V8. Both tables are sorted by their measured median run time. Each process handles the same sum-of-squares loop for 10 million inner iterations, with the result checked after every repetition.</p>
-      <p>Every timed result includes a fresh process launch. The prebuilt group excludes build time from runtime; its separate artifact-build median is shown alongside each row and again in the build table. The cold-cache <code>code run</code> launch includes compilation, cache writes, and native execution; each sample uses an empty <code>CODE_CACHE_DIR</code> prepared outside the timer. The warm-cache mode reuses a separate cache populated by an untimed launch and includes cache validation and native execution. The OS file cache is not cleared. <code>code run --interpret</code> includes parsing and register-bytecode lowering. CPython creates bytecode during the run, and Node/V8 parsing and JIT work happen during the run. This JavaScript measurement uses Node.js, not a browser.</p>
+      <p>Every timed result includes a fresh process launch. The prebuilt group excludes build time from runtime; its separate artifact-build median is shown alongside each row and again in the build table. The cold-cache <code>code run</code> launch includes compilation, cache writes, and native execution; each sample uses an empty <code>CODE_CACHE_DIR</code> prepared outside the timer. The warm-cache mode reuses a separate cache populated by an untimed launch and includes input-file checks and Unix exec into native execution; it does not parse the program on a valid hit. The OS file cache is not cleared. <code>code run --interpret</code> includes parsing and register-bytecode lowering. CPython creates bytecode during the run, and Node/V8 parsing and JIT work happen during the run. This JavaScript measurement uses Node.js, not a browser.</p>
     </div>
     <h3>Prebuilt runtime: code build compared with compiled-language artifacts</h3>
     <div class="table-shell compact-table" role="region" tabindex="0">
       <table>
         <thead><tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median run time</th><th scope="col">Range (7 runs)</th><th scope="col">Throughput</th><th scope="col">Separate artifact build</th></tr></thead>
         <tbody>
-          <tr><td>1</td><th scope="row"><code>code build --release</code></th><td>0.00888 s</td><td>0.00884–0.00892 s</td><td>1,125.71 M iterations/s</td><td>0.03490 s</td></tr>
-          <tr><td>2</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.00903 s</td><td>0.00901–0.00924 s</td><td>1,107.43 M iterations/s</td><td>0.07431 s</td></tr>
-          <tr><td>3</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>0.01443 s</td><td>0.01438–0.01446 s</td><td>692.83 M iterations/s</td><td>0.03270 s</td></tr>
-          <tr><td>4</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>0.01445 s</td><td>0.01438–0.01470 s</td><td>691.91 M iterations/s</td><td>0.03232 s</td></tr>
-          <tr><td>5</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>0.01533 s</td><td>0.01530–0.01569 s</td><td>652.12 M iterations/s</td><td>0.21039 s</td></tr>
-          <tr><td>6</td><th scope="row">Java 26, HotSpot defaults</th><td>0.05281 s</td><td>0.04972–0.05462 s</td><td>189.35 M iterations/s</td><td>1.13483 s</td></tr>
+          <tr><td>1</td><th scope="row"><code>code build --release</code></th><td>0.00886 s</td><td>0.00884–0.00908 s</td><td>1,128.77 M iterations/s</td><td>0.03565 s</td></tr>
+          <tr><td>2</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.00904 s</td><td>0.00902–0.00919 s</td><td>1,106.46 M iterations/s</td><td>0.07419 s</td></tr>
+          <tr><td>3</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>0.01443 s</td><td>0.01441–0.01450 s</td><td>693.20 M iterations/s</td><td>0.03630 s</td></tr>
+          <tr><td>4</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>0.01452 s</td><td>0.01442–0.01555 s</td><td>688.93 M iterations/s</td><td>0.03693 s</td></tr>
+          <tr><td>5</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>0.01539 s</td><td>0.01530–0.01592 s</td><td>649.70 M iterations/s</td><td>0.20262 s</td></tr>
+          <tr><td>6</td><th scope="row">Java 26, HotSpot defaults</th><td>0.05345 s</td><td>0.05036–0.05403 s</td><td>187.08 M iterations/s</td><td>1.10994 s</td></tr>
         </tbody>
       </table>
     </div>
@@ -466,12 +466,12 @@
       <figcaption><h3 id="compiled-runtime-chart-title">Prebuilt program runtime · fastest to slowest</h3><p>Linear scale from 0 to 0.06 seconds; bar labels show measured medians.</p></figcaption>
       <div class="benchmark-axis" aria-hidden="true"><span class="axis-spacer"></span><div class="axis-ticks"><span>0 s</span><span>0.012 s</span><span>0.024 s</span><span>0.036 s</span><span>0.048 s</span><span>0.06 s</span></div><span class="axis-value"></span></div>
       <div role="list" aria-label="Prebuilt program runtime · fastest to slowest">
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:14.805508%" aria-hidden="true"></span></div><span class="bar-value">0.00888 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:15.049923%" aria-hidden="true"></span></div><span class="bar-value">0.00903 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:24.056082%" aria-hidden="true"></span></div><span class="bar-value">0.01443 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:24.088037%" aria-hidden="true"></span></div><span class="bar-value">0.01445 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:25.557820%" aria-hidden="true"></span></div><span class="bar-value">0.01533 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, HotSpot defaults</span><div class="bar-track"><span class="bar java" style="width:88.019268%" aria-hidden="true"></span></div><span class="bar-value">0.05281 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:14.765277%" aria-hidden="true"></span></div><span class="bar-value">0.00886 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:15.063090%" aria-hidden="true"></span></div><span class="bar-value">0.00904 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:24.043020%" aria-hidden="true"></span></div><span class="bar-value">0.01443 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:24.192063%" aria-hidden="true"></span></div><span class="bar-value">0.01452 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:25.653025%" aria-hidden="true"></span></div><span class="bar-value">0.01539 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, HotSpot defaults</span><div class="bar-track"><span class="bar java" style="width:89.090708%" aria-hidden="true"></span></div><span class="bar-value">0.05345 s</span></div>
       </div>
     </figure>
     <h3>Source-run runtime: code run compared with Python and JavaScript</h3>
@@ -479,11 +479,11 @@
       <table>
         <thead><tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median run time</th><th scope="col">Range (7 runs)</th><th scope="col">Throughput</th><th scope="col">Source preparation</th></tr></thead>
         <tbody>
-          <tr><td>1</td><th scope="row"><code>code run</code> (warm cache)</th><td>0.01446 s</td><td>0.01427–0.01467 s</td><td>691.63 M iterations/s</td><td>Cache validation and native execution; build reused</td></tr>
-          <tr><td>2</td><th scope="row"><code>code run</code> (cold cache)</th><td>0.04348 s</td><td>0.04320–0.04401 s</td><td>229.97 M iterations/s</td><td>Build, cache writes, and native execution happen during run</td></tr>
-          <tr><td>3</td><th scope="row">JavaScript, Node.js v22.23.3 / V8</th><td>0.04388 s</td><td>0.03942–0.05173 s</td><td>227.87 M iterations/s</td><td>Parsing and JIT compilation happen during run</td></tr>
-          <tr><td>4</td><th scope="row"><code>code run --interpret</code> (interpreter)</th><td>0.40013 s</td><td>0.39828–0.41340 s</td><td>24.99 M iterations/s</td><td>Parsing and register-bytecode lowering happen during run</td></tr>
-          <tr><td>5</td><th scope="row">Python 3.13.5 (CPython)</th><td>1.43324 s</td><td>1.30608–1.83240 s</td><td>6.98 M iterations/s</td><td>Parsing and bytecode generation happen during run</td></tr>
+          <tr><td>1</td><th scope="row"><code>code run</code> (warm cache)</th><td>0.00953 s</td><td>0.00950–0.00956 s</td><td>1,049.24 M iterations/s</td><td>File checks and exec; build reused</td></tr>
+          <tr><td>2</td><th scope="row">JavaScript, Node.js v22.23.3 / V8</th><td>0.04383 s</td><td>0.04016–0.05748 s</td><td>228.15 M iterations/s</td><td>Parsing and JIT compilation happen during run</td></tr>
+          <tr><td>3</td><th scope="row"><code>code run</code> (cold cache)</th><td>0.04389 s</td><td>0.04360–0.04492 s</td><td>227.85 M iterations/s</td><td>Build, cache writes, and native execution happen during run</td></tr>
+          <tr><td>4</td><th scope="row"><code>code run --interpret</code> (interpreter)</th><td>0.40252 s</td><td>0.39668–0.40697 s</td><td>24.84 M iterations/s</td><td>Parsing and register-bytecode lowering happen during run</td></tr>
+          <tr><td>5</td><th scope="row">Python 3.13.5 (CPython)</th><td>1.32676 s</td><td>1.28350–1.49212 s</td><td>7.54 M iterations/s</td><td>Parsing and bytecode generation happen during run</td></tr>
         </tbody>
       </table>
     </div>
@@ -491,11 +491,11 @@
       <figcaption><h3 id="source-runtime-chart-title">Source-run program runtime · fastest to slowest</h3><p>Linear scale from 0 to 1.5 seconds; bar labels show measured medians.</p></figcaption>
       <div class="benchmark-axis" aria-hidden="true"><span class="axis-spacer"></span><div class="axis-ticks"><span>0 s</span><span>0.3 s</span><span>0.6 s</span><span>0.9 s</span><span>1.2 s</span><span>1.5 s</span></div><span class="axis-value"></span></div>
       <div role="list" aria-label="Source-run program runtime · fastest to slowest">
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (warm cache)</span><div class="bar-track"><span class="bar code" style="width:0.963906%" aria-hidden="true"></span></div><span class="bar-value">0.01446 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (cold cache)</span><div class="bar-track"><span class="bar code" style="width:2.898965%" aria-hidden="true"></span></div><span class="bar-value">0.04348 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">JavaScript, Node.js v22.23.3 / V8</span><div class="bar-track"><span class="bar javascript" style="width:2.925585%" aria-hidden="true"></span></div><span class="bar-value">0.04388 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run --interpret</code> (interpreter)</span><div class="bar-track"><span class="bar code" style="width:26.675348%" aria-hidden="true"></span></div><span class="bar-value">0.40013 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Python 3.13.5 (CPython)</span><div class="bar-track"><span class="bar python" style="width:95.549376%" aria-hidden="true"></span></div><span class="bar-value">1.43324 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (warm cache)</span><div class="bar-track"><span class="bar code" style="width:0.635378%" aria-hidden="true"></span></div><span class="bar-value">0.00953 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">JavaScript, Node.js v22.23.3 / V8</span><div class="bar-track"><span class="bar javascript" style="width:2.922105%" aria-hidden="true"></span></div><span class="bar-value">0.04383 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (cold cache)</span><div class="bar-track"><span class="bar code" style="width:2.925961%" aria-hidden="true"></span></div><span class="bar-value">0.04389 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run --interpret</code> (interpreter)</span><div class="bar-track"><span class="bar code" style="width:26.834475%" aria-hidden="true"></span></div><span class="bar-value">0.40252 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Python 3.13.5 (CPython)</span><div class="bar-track"><span class="bar python" style="width:88.450932%" aria-hidden="true"></span></div><span class="bar-value">1.32676 s</span></div>
       </div>
     </figure>
     <div class="prose">
@@ -506,12 +506,12 @@
       <table>
         <thead><tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median compile/build time</th></tr></thead>
         <tbody>
-          <tr><td>1</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>0.03232 s</td></tr>
-          <tr><td>2</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>0.03270 s</td></tr>
-          <tr><td>3</td><th scope="row"><code>code build --release</code></th><td>0.03490 s</td></tr>
-          <tr><td>4</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.07431 s</td></tr>
-          <tr><td>5</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>0.21039 s</td></tr>
-          <tr><td>6</td><th scope="row">Java 26, HotSpot defaults</th><td>1.13483 s</td></tr>
+          <tr><td>1</td><th scope="row"><code>code build --release</code></th><td>0.03565 s</td></tr>
+          <tr><td>2</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>0.03630 s</td></tr>
+          <tr><td>3</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>0.03693 s</td></tr>
+          <tr><td>4</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>0.07419 s</td></tr>
+          <tr><td>5</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>0.20262 s</td></tr>
+          <tr><td>6</td><th scope="row">Java 26, HotSpot defaults</th><td>1.10994 s</td></tr>
         </tbody>
       </table>
     </div>
@@ -519,18 +519,19 @@
       <figcaption><h3 id="compile-chart-title">Compile/build time · fastest to slowest</h3><p>Linear scale from 0 to 1.5 seconds; bar labels show measured medians.</p></figcaption>
       <div class="benchmark-axis" aria-hidden="true"><span class="axis-spacer"></span><div class="axis-ticks"><span>0 s</span><span>0.3 s</span><span>0.6 s</span><span>0.9 s</span><span>1.2 s</span><span>1.5 s</span></div><span class="axis-value"></span></div>
       <div role="list" aria-label="Compile/build time · fastest to slowest">
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.154396%" aria-hidden="true"></span></div><span class="bar-value">0.03232 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.180251%" aria-hidden="true"></span></div><span class="bar-value">0.03270 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:2.326473%" aria-hidden="true"></span></div><span class="bar-value">0.03490 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:4.954328%" aria-hidden="true"></span></div><span class="bar-value">0.07431 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:14.025975%" aria-hidden="true"></span></div><span class="bar-value">0.21039 s</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, HotSpot defaults</span><div class="bar-track"><span class="bar java" style="width:75.655257%" aria-hidden="true"></span></div><span class="bar-value">1.13483 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:2.376338%" aria-hidden="true"></span></div><span class="bar-value">0.03565 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.420327%" aria-hidden="true"></span></div><span class="bar-value">0.03630 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.461988%" aria-hidden="true"></span></div><span class="bar-value">0.03693 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:4.945908%" aria-hidden="true"></span></div><span class="bar-value">0.07419 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:13.507780%" aria-hidden="true"></span></div><span class="bar-value">0.20262 s</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, HotSpot defaults</span><div class="bar-track"><span class="bar java" style="width:73.996316%" aria-hidden="true"></span></div><span class="bar-value">1.10994 s</span></div>
       </div>
     </figure>
     <div class="prose">
-      <p><strong>Test machine and commands:</strong> Intel Core i7-5930K at 3.50 GHz, x86-64, Debian 13, Linux 6.12.107; runs pinned to logical CPU 0. <code>code</code> v2.16.0 (compiler source commit <code>efaa72e</code>) used <code>code build --release</code> and the small-program <code>code run</code> path (LLVM <code>-O2</code>), plus <code>code run --interpret</code>; C used GCC 14.2 with <code>-std=c17 -O2/-O3 -march=native</code>; Java used OpenJDK/Javac 26.0.2.1 with default HotSpot settings; Python used CPython 3.13.5; JavaScript used Node.js v22.23.3 with V8 12.4.254.21-node.57; Rust used <code>rustc 1.97.1</code>, edition 2024, <code>-C opt-level=3 -C target-cpu=native</code>; Go used Go 1.27.1 with default compiler optimizations.</p>
+      <p><strong>Test machine and commands:</strong> Intel Core i7-5930K at 3.50 GHz, x86-64, Debian 13, Linux 6.12.107; runs pinned to logical CPU 0. <code>code</code> v2.16.0 (compiler source commit <code>e539e6a</code>, with unreleased exec/cache/launcher changes) used <code>code build --release</code> and the small-program <code>code run</code> path (LLVM <code>-O2</code>), plus <code>code run --interpret</code>; C used GCC 14.2 with <code>-std=c17 -O2/-O3 -march=native</code>; Java used OpenJDK/Javac 26.0.2.1 with default HotSpot settings; Python used CPython 3.13.5; JavaScript used Node.js v22.23.3 with V8 12.4.254.21-node.57; Rust used <code>rustc 1.97.1</code>, edition 2024, <code>-C opt-level=3 -C target-cpu=native</code>; Go used Go 1.27.1 with default compiler optimizations.</p>
       <p>Each runtime measurement includes a fresh process launch. Java includes JVM startup and HotSpot warm-up; JavaScript includes Node/V8 startup, source parsing, and JIT work during this short-lived run. Python includes CPython startup, parsing, and bytecode generation. Rust, C, Java, Go, and <code>code build --release</code> artifacts were built before runtime timing. Cold-cache <code>code run</code> builds inside its timed launch; warm-cache launches reuse a build. Elapsed time and peak resident memory are measured for each launch. This loop does not exercise allocation-heavy data, I/O, concurrency, or a whole application. The C measurement wrapper times fork/exec/wait with a monotonic clock, excluding its own startup.</p>
       <p>Reproduce the measurements with the <a href="https://github.com/codelovesme/code/tree/main/benchmarks/language-comparison">benchmark sources and runner</a>; inspect the <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.csv">raw run samples</a> and <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results.json">full machine and compiler report</a>.</p>
+      <p><a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results-before-exec.json">Before exec/fast-cache: full report</a> · <a href="https://github.com/codelovesme/code/blob/main/benchmarks/language-comparison/results-before-exec.csv">raw samples</a>. Both before and after runs used seven launches per mode on the same machine and CPU.</p>
     </div>
     <div class="prose">
       <h3>Beyond the numeric loop</h3>
@@ -571,24 +572,26 @@
     <div class="prose">
       <h3>Measured peak resident memory per launch</h3>
       <p>The same numeric benchmark, seven launches per mode: median and full range, smallest to largest. One MiB is 1,048,576 bytes. Linux <code>wait4</code> reports <code>ru_maxrss</code> in KiB; a tiny C wrapper launches each program so Python's own resident pages do not become every child's measurement floor.</p>
-      <p><strong>The roughly 29 MiB for cached <code>code run</code> is the LLVM-linked code driver itself:</strong> it loads and keys the program before launching the cached build. The built program alone uses about <strong>1.2 MiB</strong>. Cold-cache runs include compiler descendants and reach about 40 MiB. <code>--interpret</code> also runs inside the driver.</p>
+      <p><strong>The waiting driver is gone on Unix.</strong> These unreleased changes ship a small launcher as <code>code</code>, beside the full <code>code-driver</code>. A valid warm record checks source/module/lock/compiler fingerprints without parsing or loading LLVM, then execs the program in the same process. The full driver also execs after a cold build.</p>
+      <p>Measured before → after: warm <code>code run</code> <strong>14.47 → 9.53 ms</strong> and <strong>29.15 → 2.07 MiB peak RSS</strong>. The native executable alone is 8.86 ms and 1.20 MiB. Warm launch adds 0.67 ms and 0.87 MiB peak: the timing target is met, while the peak-RSS margin remains above the requested ~0.5 MiB.</p>
+      <p>Peak RSS still includes the small launcher's transient startup, but there is no driver waiting beside the program for its lifetime. Cold-cache and interpreted runs still enter the LLVM-linked driver; the native program alone uses about 1.2 MiB. This is checkout performance, pending the owner's next release; it does not describe the already-published 2.16.0 CLI.</p>
       <p>RSS is resident physical memory, not allocated heap size. This measurement is the largest process peak, including waited descendants; it does not sum simultaneous memory across the process tree. It describes this numeric loop, not an allocation-heavy app or the browser playground.</p>
     </div>
     <div class="table-shell compact-table" role="region" tabindex="0">
       <table>
         <thead><tr><th scope="col">Order</th><th scope="col">Implementation</th><th scope="col">Median peak RSS</th><th scope="col">Range (7 runs)</th></tr></thead>
         <tbody>
-          <tr><td>1</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>1.19 MiB</td><td>1.14–1.24 MiB</td></tr>
-          <tr><td>2</td><th scope="row"><code>code build --release</code></th><td>1.19 MiB</td><td>1.14–1.24 MiB</td></tr>
-          <tr><td>3</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>1.20 MiB</td><td>1.17–1.24 MiB</td></tr>
-          <tr><td>4</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>1.93 MiB</td><td>1.83–1.98 MiB</td></tr>
-          <tr><td>5</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>3.46 MiB</td><td>3.46–5.50 MiB</td></tr>
-          <tr><td>6</td><th scope="row">Python 3.13.5 (CPython)</th><td>8.44 MiB</td><td>8.30–8.58 MiB</td></tr>
-          <tr><td>7</td><th scope="row"><code>code run</code> (warm cache)</th><td>29.05 MiB</td><td>28.59–29.28 MiB</td></tr>
-          <tr><td>8</td><th scope="row"><code>code run --interpret</code> (interpreter)</th><td>29.45 MiB</td><td>29.18–30.06 MiB</td></tr>
-          <tr><td>9</td><th scope="row">Java 26, HotSpot defaults</th><td>38.23 MiB</td><td>34.91–38.42 MiB</td></tr>
-          <tr><td>10</td><th scope="row"><code>code run</code> (cold cache)</th><td>39.73 MiB</td><td>39.37–40.41 MiB</td></tr>
-          <tr><td>11</td><th scope="row">JavaScript, Node.js v22.23.3 / V8</th><td>48.69 MiB</td><td>48.31–48.94 MiB</td></tr>
+          <tr><td>1</td><th scope="row">C, GCC <code>-O3 -march=native</code></th><td>1.18 MiB</td><td>1.17–1.24 MiB</td></tr>
+          <tr><td>2</td><th scope="row">C, GCC <code>-O2 -march=native</code></th><td>1.18 MiB</td><td>1.14–1.23 MiB</td></tr>
+          <tr><td>3</td><th scope="row"><code>code build --release</code></th><td>1.20 MiB</td><td>1.14–1.25 MiB</td></tr>
+          <tr><td>4</td><th scope="row">Rust 1.97.1, <code>rustc -C opt-level=3</code></th><td>1.96 MiB</td><td>1.83–2.05 MiB</td></tr>
+          <tr><td>5</td><th scope="row"><code>code run</code> (warm cache)</th><td>2.07 MiB</td><td>1.99–2.11 MiB</td></tr>
+          <tr><td>6</td><th scope="row">Go 1.27.1, <code>go build</code></th><td>3.46 MiB</td><td>3.46–5.48 MiB</td></tr>
+          <tr><td>7</td><th scope="row">Python 3.13.5 (CPython)</th><td>8.44 MiB</td><td>8.43–8.49 MiB</td></tr>
+          <tr><td>8</td><th scope="row"><code>code run --interpret</code> (interpreter)</th><td>29.59 MiB</td><td>29.22–30.15 MiB</td></tr>
+          <tr><td>9</td><th scope="row">Java 26, HotSpot defaults</th><td>38.45 MiB</td><td>38.31–38.52 MiB</td></tr>
+          <tr><td>10</td><th scope="row"><code>code run</code> (cold cache)</th><td>39.38 MiB</td><td>39.23–39.95 MiB</td></tr>
+          <tr><td>11</td><th scope="row">JavaScript, Node.js v22.23.3 / V8</th><td>48.32 MiB</td><td>48.25–48.38 MiB</td></tr>
         </tbody>
       </table>
     </div>
@@ -597,17 +600,17 @@
       <figcaption><h3 id="memory-chart-title">Peak resident memory · smallest to largest</h3><p>Linear scale from 0 to 50 MiB; bar labels show measured medians.</p></figcaption>
       <div class="benchmark-axis" aria-hidden="true"><span class="axis-spacer"></span><div class="axis-ticks"><span>0 MiB</span><span>10 MiB</span><span>20 MiB</span><span>30 MiB</span><span>40 MiB</span><span>50 MiB</span></div><span class="axis-value"></span></div>
       <div role="list" aria-label="Peak resident memory · smallest to largest">
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.375000%" aria-hidden="true"></span></div><span class="bar-value">1.19 MiB</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:2.382812%" aria-hidden="true"></span></div><span class="bar-value">1.19 MiB</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.390625%" aria-hidden="true"></span></div><span class="bar-value">1.20 MiB</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:3.867188%" aria-hidden="true"></span></div><span class="bar-value">1.93 MiB</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O3 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.359375%" aria-hidden="true"></span></div><span class="bar-value">1.18 MiB</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">C, GCC <code>-O2 -march=native</code></span><div class="bar-track"><span class="bar c" style="width:2.359375%" aria-hidden="true"></span></div><span class="bar-value">1.18 MiB</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code build --release</code></span><div class="bar-track"><span class="bar code" style="width:2.390625%" aria-hidden="true"></span></div><span class="bar-value">1.20 MiB</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Rust 1.97.1, <code>rustc -C opt-level=3</code></span><div class="bar-track"><span class="bar rust" style="width:3.914062%" aria-hidden="true"></span></div><span class="bar-value">1.96 MiB</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (warm cache)</span><div class="bar-track"><span class="bar code" style="width:4.132812%" aria-hidden="true"></span></div><span class="bar-value">2.07 MiB</span></div>
         <div class="benchmark-row" role="listitem"><span class="bar-label">Go 1.27.1, <code>go build</code></span><div class="bar-track"><span class="bar go" style="width:6.929687%" aria-hidden="true"></span></div><span class="bar-value">3.46 MiB</span></div>
         <div class="benchmark-row" role="listitem"><span class="bar-label">Python 3.13.5 (CPython)</span><div class="bar-track"><span class="bar python" style="width:16.875000%" aria-hidden="true"></span></div><span class="bar-value">8.44 MiB</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (warm cache)</span><div class="bar-track"><span class="bar code" style="width:58.101562%" aria-hidden="true"></span></div><span class="bar-value">29.05 MiB</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run --interpret</code> (interpreter)</span><div class="bar-track"><span class="bar code" style="width:58.906250%" aria-hidden="true"></span></div><span class="bar-value">29.45 MiB</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, HotSpot defaults</span><div class="bar-track"><span class="bar java" style="width:76.453125%" aria-hidden="true"></span></div><span class="bar-value">38.23 MiB</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (cold cache)</span><div class="bar-track"><span class="bar code" style="width:79.460938%" aria-hidden="true"></span></div><span class="bar-value">39.73 MiB</span></div>
-        <div class="benchmark-row" role="listitem"><span class="bar-label">JavaScript, Node.js v22.23.3 / V8</span><div class="bar-track"><span class="bar javascript" style="width:97.382812%" aria-hidden="true"></span></div><span class="bar-value">48.69 MiB</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run --interpret</code> (interpreter)</span><div class="bar-track"><span class="bar code" style="width:59.171875%" aria-hidden="true"></span></div><span class="bar-value">29.59 MiB</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">Java 26, HotSpot defaults</span><div class="bar-track"><span class="bar java" style="width:76.906250%" aria-hidden="true"></span></div><span class="bar-value">38.45 MiB</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label"><code>code run</code> (cold cache)</span><div class="bar-track"><span class="bar code" style="width:78.750000%" aria-hidden="true"></span></div><span class="bar-value">39.38 MiB</span></div>
+        <div class="benchmark-row" role="listitem"><span class="bar-label">JavaScript, Node.js v22.23.3 / V8</span><div class="bar-track"><span class="bar javascript" style="width:96.640625%" aria-hidden="true"></span></div><span class="bar-value">48.32 MiB</span></div>
       </div>
     </figure>
 
