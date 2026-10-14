@@ -11,13 +11,12 @@
 //
 //     node site/check_examples.mjs dist
 //
-// Exits non-zero on the first example the engine refuses, naming it. The
-// examples are exactly the fixtures that `run_language_tests.rs` proves run
-// cleanly, so anything failing here is the *engine* being out of step, and
-// the fix is to bump PLAYGROUND_CODE_WASM_VERSION rather than to change the
-// example.
+// Checks returned error strings as well as thrown errors. The one deliberate
+// undefined-variable example must fail; the landing demos must print exactly
+// what their output panels show.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { runInNewContext } from "node:vm";
 
 const dist = resolve(process.argv[2] ?? "dist");
 const { default: init, run_with_modules } = await import(`${dist}/pkg/code_wasm.js`);
@@ -26,6 +25,7 @@ await init({ module_or_path: readFileSync(`${dist}/pkg/code_wasm_bg.wasm`) });
 // The same `console` the page supplies, in its smallest honest form: the
 // site's own examples `link "console"`, and an engine handed no such module
 // would refuse them for a reason that has nothing to do with the language.
+let printed = [];
 const consoleModule = {
   dispatch(particleJson) {
     const particle = JSON.parse(particleJson);
@@ -34,15 +34,30 @@ const consoleModule = {
       typeof particle.value === "string"
         ? particle.value
         : JSON.stringify(particle.value);
-    return JSON.stringify({ _class: "TerminalResult", value: text.length });
+    printed.push(text);
+    return JSON.stringify({ _class: "PrintResult", value: [...text].length });
   },
 };
 
 const examples = JSON.parse(readFileSync(`${dist}/examples.json`, "utf8"));
+// The animated landing-page programs must produce the output they advertise.
+const page = readFileSync(`${dist}/index.html`, "utf8");
+const demos = runInNewContext(page.match(/const DEMOS = (\[[\s\S]*?\n  \]);/)[1]);
+for (const demo of demos) {
+  examples.push({ name: demo.file, code: demo.code, output: demo.out });
+}
 const failures = [];
 for (const example of examples) {
   try {
-    run_with_modules(example.code, { console: consoleModule });
+    printed = [];
+    const result = run_with_modules(example.code, { console: consoleModule });
+    const expectedError = example.name === "fail_undefined_variable";
+    if (expectedError ? !result.startsWith("error: undefined variable") : result !== "") {
+      throw new Error(result || "expected an undefined-variable error");
+    }
+    if (example.output !== undefined && printed.join("\n") !== example.output) {
+      throw new Error(`expected output ${JSON.stringify(example.output)}, got ${JSON.stringify(printed.join("\n"))}`);
+    }
   } catch (error) {
     failures.push(`${example.name}: ${String(error).split("\n")[0]}`);
   }
@@ -53,13 +68,7 @@ if (failures.length > 0) {
     `${failures.length} of ${examples.length} playground examples do not run in the pinned engine:`,
   );
   for (const failure of failures) console.error(`  ${failure}`);
-  console.error(
-    "\nThe examples come from tests/*.code and are proven to run; this is the pinned",
-  );
-  console.error(
-    "code-wasm release being older than the language. Bump PLAYGROUND_CODE_WASM_VERSION",
-  );
-  console.error("in .github/workflows/pages.yml to a release that has them.");
+  console.error("\nCheck the pinned code-wasm version, browser module support, and expected output.");
   process.exit(1);
 }
-console.log(`${examples.length} playground examples run in the pinned engine`);
+console.log(`${examples.length} playground and landing examples checked in the pinned engine`);

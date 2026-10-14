@@ -28,7 +28,7 @@ import init, { run } from "code-wasm";
 await init();
 
 console.log(run("a = 5\nassert a = 5\n"));
-// "a = 5\n"
+// "" (success)
 ```
 
 ### Directly in a browser, no bundler
@@ -37,7 +37,7 @@ console.log(run("a = 5\nassert a = 5\n"));
 <script type="module">
   import init, { run } from "https://esm.sh/code-wasm";
   await init();
-  console.log(run("let x = 1 + 1\nassert x = 2\n"));
+  console.log(run("x = 1 + 1\nassert x = 2\n"));
 </script>
 ```
 
@@ -56,7 +56,7 @@ import init, { run } from "code-wasm";
 const wasmUrl = import.meta.resolve("code-wasm/dist/code_wasm_bg.wasm");
 await init({ module_or_path: readFileSync(new URL(wasmUrl)) });
 
-console.log(run("let a = 1\n"));
+console.log(run("a = 1\n"));
 ```
 
 ## `run(src)`

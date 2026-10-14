@@ -13,13 +13,14 @@ cannot demonstrate.
 
 Fixtures that `link` are held back too, by content rather than by name:
 the playground runs through `crates/code-wasm`, which has no filesystem and
-so deliberately supports no modules at all. Testing the source is what makes
+only gets the console module supplied by the page. Testing the source makes
 this precise — it holds back exactly the examples that would fail to run,
 and stays right no matter what the fixtures are called.
 
 Usage: build.py <repo-root> <dist-dir>
 """
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -118,9 +119,9 @@ def main() -> None:
         if name.startswith("stress_"):
             continue
         source = path.read_text()
-        # `link` is top-level only, so a line starting with it is the whole
-        # of the syntax to look for.
-        if any(line.startswith("link ") for line in source.splitlines()):
+        # Native links can also occur inside handlers. The browser supplies
+        # only console, so neither form belongs in this fixture gallery.
+        if re.search(r"^\s*link\s", source, re.MULTILINE):
             continue
         examples.append(
             {

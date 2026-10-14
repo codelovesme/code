@@ -23,7 +23,7 @@ env:
   # Bump this and push after every real `code-wasm` npm release you want the
   # playground to pick up — it does not track `latest` automatically, the
   # same deliberate pinning the old language's playground used.
-  PLAYGROUND_CODE_WASM_VERSION: "1.1.3"
+  PLAYGROUND_CODE_WASM_VERSION: "2.16.0"
 
 permissions:
   contents: read

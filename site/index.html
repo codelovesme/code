@@ -4,9 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>code — a tiny language, in your browser</title>
-<meta name="description" content="code is a tiny, from-scratch language with exactly six value kinds and no type keywords. Try the real interpreter — compiled to WebAssembly — right in your browser." />
+<meta name="description" content="code is a tiny, from-scratch language with six JSON-shaped value types, named data types, and no functions. Try the real interpreter — compiled to WebAssembly — right in your browser." />
 <meta property="og:title" content="code — a tiny language, in your browser" />
-<meta property="og:description" content="Six value kinds, no type keywords, and a real interpreter running in WebAssembly. Try it now." />
+<meta property="og:description" content="Six JSON-shaped value types, named data types, and a real interpreter running in WebAssembly. Try it now." />
 <meta property="og:type" content="website" />
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="logo.png" />
@@ -416,8 +416,8 @@
     </h1>
     <p class="char-caption">each one is a <b>char</b> — together they spell <b>code</b></p>
     <p class="tagline">
-      A tiny, from-scratch language with <b>exactly six value kinds</b> and
-      <b>no type keywords</b> anywhere. This page runs the <b>real interpreter</b>,
+      A tiny, from-scratch language with <b>six JSON-shaped value types</b> and
+      <b>no functions</b>. This page runs the <b>real interpreter</b>,
       compiled to WebAssembly — no server, no install, no mock.
     </p>
     <div class="cta">
@@ -431,7 +431,7 @@
       </a>
       <a class="btn btn-ghost" href="compare.html">Compare with C, Java, Python, JavaScript, Rust, and Go</a>
     </div>
-    <div class="kinds" aria-label="the six value kinds">
+    <div class="kinds" aria-label="the six value types">
       <span class="kind"><i style="background:#5eead4"></i>number</span>
       <span class="kind"><i style="background:#86efac"></i>string</span>
       <span class="kind"><i style="background:#a78bfa"></i>boolean</span>
@@ -460,7 +460,7 @@
       <h2>Small on purpose</h2>
       <p class="section-sub">
         Every feature is deliberate. What isn't here — functions, <code>else</code>,
-        <code>while</code>, type keywords, mutation of constructed values — is absent
+        <code>while</code>, shared mutation — is absent
         by design, not by accident.
       </p>
     </div>
@@ -469,15 +469,15 @@
         <div class="ico" style="background:rgba(94,234,212,0.1); color:var(--teal)">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></svg>
         </div>
-        <h3>Six value kinds</h3>
-        <p>number, string, boolean, null, array, object — exactly JSON's. No type keywords anywhere in the language.</p>
+        <h3>Six value types</h3>
+        <p>Number, String, Boolean, Null, Array, Object — exactly JSON's. Name a set of values with <code>type Color = "red" ∪ "green"</code>; test membership with <code>∈</code>.</p>
       </div>
       <div class="feat reveal">
         <div class="ico" style="background:rgba(167,139,250,0.1); color:var(--violet)">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </div>
-        <h3>Bindings, not types</h3>
-        <p><code>let x = …</code> creates a name. It's untyped and always reassignable — even to a different kind.</p>
+        <h3>Types from values</h3>
+        <p><code>x = …</code> introduces or reassigns a name; nothing may shadow it. Variables, fields, and list elements keep their first non-null type. To allow another, label it up front: <code>x ∈ Number ∪ String = 1</code>.</p>
       </div>
       <div class="feat reveal">
         <div class="ico" style="background:rgba(244,114,182,0.1); color:var(--pink)">
@@ -491,7 +491,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M8 3H3v5M21 3l-7 7M3 3l7 7M12 14v7M9 18l3 3 3-3"/></svg>
         </div>
         <h3>Two backends</h3>
-        <p>Interpret with <code>code run</code>, compile to a native binary with <code>code build</code> — same behavior, enforced by tests.</p>
+        <p>Interpret with <code>code run --interpret</code>, compile to a native binary with <code>code build</code> — same behavior, enforced by tests.</p>
       </div>
       <div class="feat reveal">
         <div class="ico" style="background:rgba(134,239,172,0.1); color:var(--green)">
@@ -505,7 +505,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3"/></svg>
         </div>
         <h3>Loops &amp; conditionals</h3>
-        <p><code>loop x over arr</code>, <code>if</code>, and <code>break</code>. No <code>while</code>, no <code>else</code> — ever.</p>
+        <p><code>loop x over arr</code>, <code>if</code>, and <code>break</code>, with indented bodies. Braces make objects. No <code>while</code>, no <code>else</code> — ever.</p>
       </div>
     </div>
   </section>
@@ -522,7 +522,7 @@
     <div class="reveal">
       <div class="pg-toolbar">
         <div class="row">
-          <div class="badge"><span class="dot"></span> live in your browser · WebAssembly</div>
+          <div class="badge"><span class="dot"></span> live in your browser · code 2.16.0 · WebAssembly</div>
           <span class="spacer"></span>
           <button class="tool-btn pill" id="reset" title="Restore the current example">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>
@@ -570,8 +570,8 @@
       <div class="overline">examples</div>
       <h2>Every feature, proven</h2>
       <p class="section-sub">
-        These are the real test fixtures from the repository — each one is run
-        against both backends in CI. Click any card to load it into the playground.
+        The language examples are real test fixtures, run against both backends
+        in CI. Printing examples use the console supplied by this page. Click any card to load it into the playground.
       </p>
     </div>
     <div class="chips reveal" id="chips" role="tablist" aria-label="filter examples by category"></div>
@@ -613,12 +613,12 @@
 npm install code-wasm
 
 <span class="cm"># …or straight from a CDN, no build step</span>
-import init, { run } from "https://esm.sh/code-wasm";</pre>
+import init, { run, run_with_modules } from "https://esm.sh/code-wasm@2.16.0";</pre>
           </div>
           <div>
             <div class="step-label"><span class="num">2</span> run programs</div>
 <pre class="codeblock"><span class="kw">await</span> init();
-console.log(run(<span class="st">"let a = 5\nassert a = 5\n"</span>));
+console.log(run(<span class="st">"a = 5\nassert a = 5\n"</span>));
 <span class="cm">// "" — success is the empty string; a failed assert or parse</span>
 <span class="cm">// error returns "error: ..." instead. No core I/O means no dump</span>
 <span class="cm">// of bindings — a program's output is whatever it emits itself.</span></pre>
@@ -661,7 +661,7 @@ run_with_modules(
           <p class="pkg-desc">
             No second language. Asking for the container is asking for the
             library — a file's handlers become <code>code_module_dispatch</code>,
-            its <code>export let</code>s become <code>code_module_vars</code>, and
+            its top-level names stay private, and
             another <code>code</code> program links the result exactly like a
             native one.
           </p>
@@ -670,11 +670,8 @@ run_with_modules(
           <div>
             <div class="step-label"><span class="num">1</span> write it</div>
 <pre class="codeblock"><span class="cm">| greet.code</span>
-<span class="kw">export</span> <span class="kw">let</span> answer = 21 + 21
-
-Greet { who } =&gt; {
-    <span class="kw">return</span> Reply { text = <span class="st">"hello "</span> + who }
-}</pre>
+Greet { who ∈ String } =&gt;
+    <span class="kw">return</span> Reply { text = <span class="st">"hello "</span> + who }</pre>
           </div>
           <div>
             <div class="step-label"><span class="num">2</span> build it as a library</div>
@@ -684,13 +681,12 @@ Greet { who } =&gt; {
           <div>
             <div class="step-label"><span class="num">3</span> link it from another program</div>
 <pre class="codeblock">link <span class="st">"libgreet.so"</span> <span class="kw">as</span> g
-assert g.answer = 42
 emit Greet { who = <span class="st">"ada"</span> } <span class="kw">to</span> g <span class="kw">get</span> r
 assert r.text = <span class="st">"hello ada"</span></pre>
           </div>
           <p class="pkg-note">
-            Whatever a <code>let</code> at the top level doesn't <code>export</code>
-            stays private, the same rule a source <code>link</code> follows. The
+            A link reaches the file's handlers; its top-level names stay private,
+            the same rule a source <code>link</code> follows. The
             result works from <code>code run</code> or <code>code build</code> on the
             consuming side, no different from a module written in Rust or C.
           </p>
@@ -718,7 +714,7 @@ assert r.text = <span class="st">"hello ada"</span></pre>
 crate-type = [<span class="st">"cdylib"</span>]
 
 [dependencies]
-code-native = <span class="st">"1"</span></pre>
+code-native = <span class="st">"2.16.0"</span></pre>
           </div>
           <div>
             <div class="step-label"><span class="num">2</span> implement two exports</div>
@@ -731,13 +727,13 @@ pub <span class="kw">extern</span> <span class="st">"C"</span> <span class="kw">
 
 #[no_mangle]
 pub <span class="kw">unsafe extern</span> <span class="st">"C"</span> <span class="kw">fn</span> code_module_dispatch(out: *mut CodeValue, particle: *<span class="kw">const</span> CodeValue) {
-    <span class="kw">match</span> read_field_str(&amp;*particle, <span class="st">"_class"</span>) {
+    guarded(&amp;<span class="kw">mut</span> *out, <span class="st">"mymodule"</span>, |out| <span class="kw">match</span> read_field_str(&amp;*particle, <span class="st">"_class"</span>) {
         Some(<span class="st">"Double"</span>) =&gt; {
             <span class="kw">let</span> v = read_field_number(&amp;*particle, <span class="st">"value"</span>).unwrap_or(0.0);
-            make_result(&amp;<span class="kw">mut</span> *out, c<span class="st">"DoubleResult"</span>, |slot| number(slot, v * 2.0));
+            make_result(out, c<span class="st">"DoubleResult"</span>, |slot| number(slot, v * 2.0));
         }
-        other =&gt; runtime_error(format!(<span class="st">"unknown handler: {other:?}"</span>)),
-    }
+        _ =&gt; null(out),
+    });
 }</pre>
           </div>
           <div>
@@ -850,7 +846,7 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
   /* ---------- syntax highlighting ---------- */
   const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const TOKEN_RE =
-    /(--[^\n]*)|("(?:[^"\\]|\\.)*")|(\b\d+(?:\.\d+)?\b)|\b(let|assert|if|loop|over|get|break|continue|link|emit|to|core|export)\b|\b(true|false|null)\b|([A-Z][A-Za-z0-9_]*)(?=\s*\{)/g;
+    /(\|[^\n]*)|("(?:[^"\\]|\\.)*")|(\b\d+(?:\.\d+)?\b)|\b(assert|if|loop|over|get|break|continue|link|unlink|as|emit|to|core|this|base|return|and|or|not|is|type|of)\b|\b(true|false|null)\b|([A-Z][A-Za-z0-9_]*)/g;
   function highlight(src) {
     let out = "", last = 0, m;
     TOKEN_RE.lastIndex = 0;
@@ -912,13 +908,13 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
    * `run_with_modules` in crates/code-wasm. So the page does not *capture*
    * anything: it supplies its own `console`, whose `dispatch` writes into the
    * panel below instead of the browser's devtools. A program cannot tell the
-   * difference, and should not be able to: `terminal` writes to stdout on the
+   * difference, and should not be able to: `console` writes to stdout on the
    * native side without caring whether stdout is a terminal or a pipe.
    *
-   * The particle contract is `terminal`'s, so a program written here runs
+   * The particle contract is `console`'s, so a program written here runs
    * unchanged against the real thing: `Print { value }` in, and
-   * `TerminalResult { value }` back carrying how many characters were
-   * written. A String prints as itself and every other kind renders as
+   * `PrintResult { value }` back carrying how many characters were
+   * written. A String prints as itself and every other type renders as
    * compact JSON — the same rule string interpolation follows.
    */
   let printed = [];
@@ -936,7 +932,7 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
       }
       const text = renderPrinted(particle.value);
       printed.push(text);
-      return JSON.stringify({ _class: "TerminalResult", value: text.length });
+      return JSON.stringify({ _class: "PrintResult", value: [...text].length });
     },
   };
 
@@ -1057,18 +1053,18 @@ code build tests/greet.code -o /tmp/g &amp;&amp; CODE_CHECK_LEAKS=1 /tmp/g</pre>
   const DEMOS = [
     {
       file: "hello.code",
-      code: 'let name = "world"\nlet greeting = "hello, " + name\nassert greeting = "hello, world"',
-      out: 'name = "world"\ngreeting = "hello, world"',
+      code: 'link "console" as out\nname = "world"\ngreeting = "hello, " + name\nassert greeting = "hello, world"\nemit Print { value = greeting } to out',
+      out: 'hello, world',
     },
     {
-      file: "double.code",
-      code: "let nums = [1, 2, 3]\nlet doubled = []\nloop n over nums {\n    doubled = doubled + [n * 2]\n}\nassert doubled = [2, 4, 6]",
-      out: "nums = [1,2,3]\ndoubled = [2,4,6]",
+      file: "join.code",
+      code: 'link "console" as out\nresult = ""\nloop item over [1, 2, 3]\n    result += item\nassert result = "123"\nemit Print { value = result } to out',
+      out: "123",
     },
     {
-      file: "point.code",
-      code: 'let p = Point { x = 1, y = 2 }\nassert p._class = "Point"\nassert p.x = 1',
-      out: 'p = {"_class":"Point","x":1,"y":2}',
+      file: "types.code",
+      code: 'link "console" as out\ntype Color = "red" ∪ "green"\nx ∈ Number ∪ String = 1\nx = "red"\nassert x ∈ Color\nemit Print { value = x } to out',
+      out: 'red',
     },
   ];
   const demoFile = document.getElementById("demo-file");
