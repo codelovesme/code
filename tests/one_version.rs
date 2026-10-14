@@ -56,6 +56,7 @@ fn every_published_artifact_shares_the_repository_version() {
         repo("crates/code-native/Cargo.toml"),
         repo("crates/code-wasm/Cargo.toml"),
         repo("crates/code-lsp/Cargo.toml"),
+        repo("crates/code-launcher/Cargo.toml"),
     ];
     // Every module under crates/modules/, found rather than listed: a module
     // added next month is published too, and forgetting it here would be the

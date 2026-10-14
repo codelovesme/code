@@ -41,10 +41,11 @@ jobs:
           v="${{ github.ref_name }}"
           v="${v#v}"
           sed -i "0,/^version = \".*\"/s//version = \"$v\"/" Cargo.toml
+          sed -i "0,/^version = \".*\"/s//version = \"$v\"/" crates/code-launcher/Cargo.toml
           grep -m1 '^version = ' Cargo.toml
 
       - name: Build release binary
-        run: cargo build --release
+        run: cargo build --release --workspace
 
       # The binary embeds the C runtime compiled at build time (build.rs,
       # ticket 111). A runner without `cc` or `clang` would leave an object
@@ -73,7 +74,8 @@ jobs:
           v="${{ steps.version.outputs.version }}"
           stage="code-${v}-x86_64-linux"
           mkdir -p "$stage"
-          cp target/release/code "$stage/code"
+          cp target/release/code-launcher "$stage/code"
+          cp target/release/code "$stage/code-driver"
           cp LICENSE "$stage/"
           tar -czf "${stage}.tar.gz" "$stage"
           ls -1 ./*.tar.gz

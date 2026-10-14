@@ -2,8 +2,8 @@
 //! `$XDG_CACHE_HOME/code`, else `~/.cache/code` — one place for every
 //! project, as Go's GOCACHE and Zig's global cache are.
 //!
-//! What it holds is keyed by content only — what went in, never a name or a
-//! date — so an entry can be reused but never be the wrong one. Entries are
+//! Compiler artifacts use content keys. Run builds also key their input-file
+//! and compiler snapshots; run indexes are hints checked before reuse. Entries are
 //! written beside and renamed into place, so two builds at once never read
 //! half a file; a hit refreshes the entry's time, and when the cache passes
 //! its size limit (`CODE_CACHE_LIMIT` bytes, default 1 GB) the entries used
@@ -80,6 +80,25 @@ pub fn put(kind: &str, name: &str, from: &Path) {
         && fs::rename(&partial, dir.join(name)).is_ok();
     if !kept {
         let _ = fs::remove_file(&partial);
+    }
+}
+
+/// Atomically publishes a small cache record, using the same rules as artifacts.
+#[allow(dead_code)]
+pub(crate) fn put_bytes(kind: &str, name: &str, bytes: &[u8]) {
+    let Some(dir) = dir().map(|d| d.join(kind)) else {
+        return;
+    };
+    let partial = dir.join(format!(
+        "{name}.{}.{:?}.partial",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    if fs::create_dir_all(&dir).is_err()
+        || fs::write(&partial, bytes).is_err()
+        || fs::rename(&partial, dir.join(name)).is_err()
+    {
+        let _ = fs::remove_file(partial);
     }
 }
 

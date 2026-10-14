@@ -19,6 +19,10 @@ pub mod module_install;
 #[cfg(feature = "native-modules")]
 pub mod native;
 pub mod parser;
+#[cfg(feature = "llvm")]
+mod run_cache;
+#[cfg(feature = "llvm")]
+mod run_inputs;
 pub mod span;
 #[cfg(feature = "llvm")]
 mod split;
@@ -346,15 +350,23 @@ mod compile {
     /// and its optimised build is made in the background by `code` itself
     /// (`build_optimised_run`) for the runs after.
     pub fn run_executable(source_path: &Path) -> Option<PathBuf> {
+        let compiler = std::env::current_exe().ok()?;
+        if let Some(hit) = crate::run_cache::lookup(source_path, true, &compiler) {
+            return Some(hit.executable);
+        }
+        if let Some(hit) = crate::run_cache::lookup(source_path, false, &compiler) {
+            crate::run_cache::spawn_optimised_build(&compiler, source_path, &hit.optimised_name);
+            return Some(hit.executable);
+        }
         let run = RunBuild::load(source_path)?;
-        if let Some(hit) = crate::cache::get("run", &run.name(true)) {
+        if let Some(hit) = run.cached(true) {
             return Some(hit);
         }
         if run.source_len <= SMALL_PROGRAM {
             return run.build(true);
         }
-        let quick = crate::cache::get("run", &run.name(false)).or_else(|| run.build(false))?;
-        spawn_optimised_build(source_path, &run.name(true));
+        let quick = run.cached(false).or_else(|| run.build(false))?;
+        crate::run_cache::spawn_optimised_build(&compiler, source_path, &run.name(true));
         Some(quick)
     }
 
@@ -363,7 +375,7 @@ mod compile {
     pub fn build_optimised_run(source_path: &Path) {
         if let Some(run) = RunBuild::load(source_path) {
             let _ = run.build(true);
-            let _ = fs::remove_file(building_marker(&run.name(true)));
+            let _ = fs::remove_file(crate::run_cache::building_marker(&run.name(true)));
         }
     }
 
@@ -375,36 +387,28 @@ mod compile {
         program: Program,
         shape: String,
         stamp: String,
+        inputs: crate::run_cache::Inputs,
         source_len: usize,
     }
 
     impl RunBuild {
         /// The key is everything the executable is made of: this compiler,
         /// the whole loaded program (every linked file's source, as the
-        /// loader resolved it), and each linked module file's size and time,
-        /// since a static module is linked in and a reinstalled one can sit
-        /// at the same path.
+        /// loader resolved it), and the snapshot of source/module files,
+        /// locks, resolution candidates, and the compiler itself.
         fn load(source_path: &Path) -> Option<RunBuild> {
-            let program =
-                loader::load(&source_path.display().to_string(), &FilesystemResolver).ok()?;
-            let mut modules = Vec::new();
+            let resolver = crate::run_inputs::Resolver::new(source_path)?;
+            let program = loader::load(&source_path.display().to_string(), &resolver).ok()?;
+            let inputs = resolver.finish()?;
             let mut source_len = program.origin.as_ref().map_or(0, |o| o.source.len());
-            walk(&program.statements, &mut modules, &mut source_len);
-            let mut stamp = String::new();
-            for path in &modules {
-                let meta = fs::metadata(path).ok();
-                let len = meta.as_ref().map_or(0, |m| m.len());
-                let modified = meta
-                    .and_then(|m| m.modified().ok())
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map_or(0, |d| d.as_nanos());
-                stamp.push_str(&format!("{path}\0{len}\0{modified}\n"));
-            }
+            walk(&program.statements, &mut source_len);
+            let stamp = inputs.key()?;
             let shape = format!("{program:?}");
             Some(RunBuild {
                 program,
                 shape,
                 stamp,
+                inputs,
                 source_len,
             })
         }
@@ -418,9 +422,21 @@ mod compile {
             crate::cache::key(&[
                 env!("CARGO_PKG_VERSION").as_bytes(),
                 tier,
+                std::env::consts::ARCH.as_bytes(),
+                std::env::consts::OS.as_bytes(),
                 self.shape.as_bytes(),
                 self.stamp.as_bytes(),
             ])
+        }
+
+        fn cached(&self, optimised: bool) -> Option<PathBuf> {
+            if !self.inputs.matches() {
+                return None;
+            }
+            let name = self.name(optimised);
+            let hit = crate::cache::get("run", &name)?;
+            crate::run_cache::remember(&self.inputs, optimised, &name, &self.name(true));
+            Some(hit)
         }
 
         fn build(&self, optimised: bool) -> Option<PathBuf> {
@@ -429,7 +445,11 @@ mod compile {
             let built = scratch.join("program");
             let made = compile_program(&self.program, BuildTarget::Exe, &built, optimised, false);
             let kept = made.ok().and_then(|()| {
+                if !self.inputs.matches() {
+                    return None;
+                }
                 crate::cache::put("run", &name, &built);
+                crate::run_cache::remember(&self.inputs, optimised, &name, &self.name(true));
                 crate::cache::trim();
                 crate::cache::get("run", &name)
             });
@@ -438,57 +458,12 @@ mod compile {
         }
     }
 
-    /// Where a background optimised build says it is under way, so a second
-    /// run does not start another.
-    fn building_marker(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("code-run-{name}.building"))
-    }
-
-    /// Starts `code --build-optimised-run <path>` on its own, unless one for
-    /// this build is under way already. It outlives this run, in a process
-    /// group of its own so that the run's Ctrl+C does not stop it.
-    fn spawn_optimised_build(source_path: &Path, name: &str) {
-        let marker = building_marker(name);
-        if fs::File::options()
-            .write(true)
-            .create_new(true)
-            .open(&marker)
-            .is_err()
-        {
-            return;
-        }
-        let Ok(me) = std::env::current_exe() else {
-            let _ = fs::remove_file(&marker);
-            return;
-        };
-        let mut command = Command::new(me);
-        command
-            .arg("--build-optimised-run")
-            .arg(source_path)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            command.process_group(0);
-        }
-        if command.spawn().is_err() {
-            let _ = fs::remove_file(&marker);
-        }
-    }
-
-    /// Every native module path `statements` link, and the length of every
-    /// linked file's source, linked files included.
-    fn walk(statements: &[Stmt], modules: &mut Vec<String>, source_len: &mut usize) {
+    /// The length of every linked file's source, linked files included.
+    fn walk(statements: &[Stmt], source_len: &mut usize) {
         for statement in statements {
-            match statement {
-                Stmt::ImportNative { path, .. } => modules.push(path.clone()),
-                Stmt::Import { body, origin, .. } => {
-                    *source_len += origin.source.len();
-                    walk(body, modules, source_len);
-                }
-                _ => {}
+            if let Stmt::Import { body, origin, .. } = statement {
+                *source_len += origin.source.len();
+                walk(body, source_len);
             }
         }
     }
