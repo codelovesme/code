@@ -4,9 +4,10 @@ This benchmark compares one numeric workload in two separate runtime groups:
 
 - **Prebuilt programs:** `code build --release`, C, Java, Rust, and Go. Their
   artifacts are built before timing and then run as fresh processes.
-- **Source-run programs:** `code run`, Python, and JavaScript under Node.js/V8.
-  Source processing is part of each measured launch. CPython generates
-  bytecode while starting; Node/V8 parses JavaScript and may JIT-compile hot
+- **Source-run programs:** `code run` with cold and warm build caches,
+  `code run --interpret`, Python, and JavaScript under Node.js/V8.
+  Preparation needed for each mode is part of its measured launch. CPython
+  generates bytecode while starting; Node/V8 parses JavaScript and may JIT-compile hot
   code while the program runs.
 
 All implementations calculate the sum of squares from 0 through 99,999 one
@@ -53,9 +54,27 @@ records the measured compiler accurately.
 
 ## Limits and timing boundaries
 
-`code run`, Python, and JavaScript pass their source files directly to their
-runtimes. There is no separate build invocation for these three modes, so they
-do not appear in the ahead-of-time build-time table. For Python, source parsing
+`code run` now builds and caches a native executable, then runs it. The harness
+measures three source-run modes:
+
+- **`code run` (cold cache):** each launch gets an empty `CODE_CACHE_DIR`.
+  Compilation, cache writes, and native execution are inside the timer;
+  creating the directory is outside it. This is a cold build cache, not a
+  cold OS file cache.
+- **`code run` (warm cache):** one untimed launch populates a separate cache.
+  All timed launches reuse it, including cache validation and native execution.
+- **`code run --interpret`:** parsing and lowering to register bytecode are
+  included. Typed number operations use plain numeric registers and slots.
+
+The harness unsets `CODE_RUN` and sets `CODE_CACHE=1` for these modes, so caller
+overrides cannot silently turn the native modes into interpreter runs or disable
+the cache. It checks that the warm-up populated the native run cache. The small
+benchmark is built at LLVM `-O2` on its first launch; larger programs can start
+with `-O0` while an optimized build runs in the background.
+
+These modes, Python, and JavaScript pass source paths to their runtimes. They
+have no separately timed build invocation; the cold-cache `code run` build is
+included in its launch time. For Python, source parsing
 and CPython bytecode generation happen during the timed launch; no precompiled
 `.pyc` file is run. For JavaScript, Node/V8 startup and source parsing, plus any
 JIT compilation during execution, are included in the timed launch; no

@@ -179,8 +179,22 @@ def main() -> None:
         rust_out = temp / f"sum-squares-rust-{args.compile_runs - 1}"
         go_out = go_outputs[args.compile_runs - 1]
 
+        # Control the run cache independently of the caller's configuration.
+        # Cold samples each get a new directory; warm samples share an untimed
+        # build. Directory setup is outside timing, compilation is inside it.
+        code_env = os.environ.copy()
+        code_env.pop("CODE_RUN", None)
+        code_env["CODE_CACHE"] = "1"
+        code_env["CODE_CACHE_DIR"] = str(temp / "code-run-warm")
+        run_command = code + ["run", str(HERE / "sum_squares.code")]
+        checked(run_command, REPO, env=code_env)
+        if not any((temp / "code-run-warm" / "run").glob("*")):
+            raise RuntimeError("code run did not populate its native run cache")
+
         modes = {
-            "code run (interpreter)": code + ["run", str(HERE / "sum_squares.code")],
+            "code run (cold cache)": run_command,
+            "code run (warm cache)": run_command,
+            "code run --interpret (interpreter)": run_command + ["--interpret"],
             "code build --release (native)": [str(code_out)],
             "C (GCC -O2 -march=native)": [str(c_out["-O2"])],
             "C (GCC -O3 -march=native)": [str(c_out["-O3"])],
@@ -192,12 +206,19 @@ def main() -> None:
         }
         samples: dict[str, list[float]] = {name: [] for name in modes}
         order_rng = random.Random(20261009)
-        for _ in range(args.runs):
+        for run_index in range(args.runs):
             order = list(modes)
             order_rng.shuffle(order)
             for name in order:
+                run_env = None
+                if name.startswith("code run"):
+                    run_env = code_env.copy()
+                    if name == "code run (cold cache)":
+                        cold_cache = temp / f"code-run-cold-{run_index}"
+                        cold_cache.mkdir()
+                        run_env["CODE_CACHE_DIR"] = str(cold_cache)
                 started = time.perf_counter()
-                checked(modes[name], REPO)
+                checked(modes[name], REPO, env=run_env)
                 samples[name].append(time.perf_counter() - started)
 
         rows = []
@@ -274,8 +295,10 @@ def main() -> None:
             "samples_seconds": samples,
             "summary": rows,
             "notes": [
-                "Process startup is included in runtime measurements; separate ahead-of-time build time is excluded.",
-                "code run, Python, and JavaScript execute source directly; source processing is part of each runtime measurement. CPython generates bytecode during the run, and Node/V8 parses and may JIT-compile JavaScript during the run.",
+                "Process startup is included in every runtime measurement; prebuilt modes exclude their separate ahead-of-time build time.",
+                "code run (cold cache) uses an empty CODE_CACHE_DIR for every timed launch, including compilation and native execution. Cache directory setup is outside timing; the OS file cache is not cleared.",
+                "code run (warm cache) reuses a separate cache populated by one untimed launch; each timed launch includes cache validation and native execution. CODE_RUN is unset and CODE_CACHE=1 for both native source-run modes.",
+                "code run --interpret includes source parsing and register-bytecode lowering, with typed number operations. Python generates CPython bytecode during the run; Node/V8 parses and may JIT-compile JavaScript during the run.",
                 "Go, Rust, C, Java, and code native run prebuilt artifacts; their ahead-of-time compile/build times are measured separately. Java runs prebuilt JVM bytecode, and HotSpot's runtime JIT work remains part of its run time.",
                 "Go runs a prebuilt binary. An untimed build warms the cache for this program's standard-library dependencies; each timed Go build changes only a source comment so the main package is rebuilt while those dependencies can be reused.",
                 "No separate memory measurement was made.",
@@ -308,8 +331,12 @@ def main() -> None:
                 compile_value = "bytecode in run"
             elif row["mode"] == "JavaScript (Node.js/V8)":
                 compile_value = "parse/JIT in run"
+            elif row["mode"] == "code run (cold cache)":
+                compile_value = "build in run"
+            elif row["mode"] == "code run (warm cache)":
+                compile_value = "cached build"
             else:
-                compile_value = "parse in run"
+                compile_value = "bytecode in run"
             print(
                 f"{row['mode']:<41} {row['median_seconds']:>8.3f}    "
                 f"{min(samples[row['mode']]):.3f}–{max(samples[row['mode']]):.3f}    "
