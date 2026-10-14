@@ -1,0 +1,57 @@
+| Numeric assignments and reads cross the value boundary without losing
+| aliases, lexical scope, or a handler's local frame.
+seed = 3
+step = 2
+computed = -(seed * seed) + step / 2
+assert computed = -8
+assert seed < step + 2
+assert seed > step
+assert seed ≤ 3
+assert seed ≥ 3
+assert seed ≠ step
+kept = [seed, computed]
+seed += 4
+assert kept = [3, -8]
+assert "seed=$seed" = "seed=7"
+
+loop
+    local_index = 0
+    local_total = 0
+    loop
+        if local_index ≥ 5
+            break
+        local_total += local_index * local_index
+        local_index += 1
+    assert local_total = 30
+    break
+
+NumericCount { limit } =>
+    handler_index = 0
+    handler_total = 0
+    loop
+        if handler_index ≥ limit
+            break
+        handler_total += handler_index * handler_index
+        handler_index += 1
+    return NumericAnswer { value = handler_total }
+
+loop item over [3, 5]
+    emit NumericCount { limit = item } to this get answer
+    if item = 3
+        assert answer.value = 5
+    if item = 5
+        assert answer.value = 30
+
+| Inferred Number fields and variables may still be null or dynamic: they
+| retain the checked path and its original failure messages.
+nullable ∈ Number = 1
+nullable = null
+assert nullable = null
+point = { x = 1 }
+point.x = null
+assert point.x = null
+NumericNullable { value ∈ Number } =>
+    return NumericAnswer { value = value + 1 }
+emit NumericNullable { value = null } to this get failure
+assert failure ∈ Exception
+assert failure.message = "cannot apply '+' to a null and a number"
