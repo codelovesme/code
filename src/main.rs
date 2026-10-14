@@ -11,8 +11,8 @@ use code::codegen::BuildTarget;
 /// reports the release version here.
 const VERSION: &str = concat!("Code v", env!("CARGO_PKG_VERSION"));
 
-/// `run` interprets; `build` compiles (LLVM, see codegen.rs) and links a
-/// standalone executable via the system `cc`. Both are meant to run every
+/// `run` builds and caches, falling back to interpreting; `build` compiles
+/// through LLVM and links via `cc`. Both are meant to run every
 /// language feature identically (see memory `new-language-rewrite`).
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
@@ -1556,6 +1556,13 @@ fn artifact_name(stem: &str, target: BuildTarget) -> String {
 fn run_built(path: &str) -> ExitCode {
     #[cfg(feature = "llvm")]
     if let Some(exe) = code::run_executable(Path::new(path)) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            let e = std::process::Command::new(&exe).exec();
+            eprintln!("note: could not start the built program ({e}); interpreting it");
+        }
+        #[cfg(not(unix))]
         match std::process::Command::new(&exe).status() {
             Ok(status) => {
                 return match status.code() {

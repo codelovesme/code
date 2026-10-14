@@ -275,6 +275,7 @@ def main() -> None:
                 "distribution": os_description(),
                 "pinned_logical_cpu": pinned_cpu,
                 "code": version(code + ["--version"], REPO),
+                "code_command": code,
                 "code_commit": os.environ.get("CODE_COMMIT") or checked(
                     ["git", "rev-parse", "--short", "HEAD"], REPO
                 ).stdout.strip(),
@@ -321,7 +322,7 @@ def main() -> None:
                 "Go, Rust, C, Java, and code native run prebuilt artifacts; their ahead-of-time compile/build times are measured separately. Java runs prebuilt JVM bytecode, and HotSpot's runtime JIT work remains part of its run time.",
                 "Go runs a prebuilt binary. An untimed build warms the cache for this program's standard-library dependencies; each timed Go build changes only a source comment so the main package is rebuilt while those dependencies can be reused.",
                 "Each timed launch runs through a tiny C fork/exec/wait4 wrapper, avoiding Python's inherited RSS floor. Its monotonic timer surrounds fork/exec/wait, excluding wrapper startup; Linux ru_maxrss is recorded in KiB. RSS is the largest resident process including waited descendants, not the sum of simultaneous process-tree memory or allocated bytes.",
-                "code run includes the LLVM-linked driver, which loads and keys the program, while code build --release (native) launches only the built executable. Cold-cache code run also includes compiler descendants in its peak RSS.",
+                "The configured CODE_BIN is the CLI being measured. The unreleased release layout uses an LLVM-free code launcher beside code-driver: valid warm runs check input metadata then exec without parsing or loading LLVM. Cold builds and interpreted runs still enter the full driver; Unix native runs exec rather than keeping a waiting driver resident. Peak RSS includes transient startup, including compiler descendants on cold builds.",
                 "One workload is a useful data point, not a universal language ranking.",
                 "Python uses float (IEEE 754 binary64) values; its process startup, source parsing, and bytecode generation are included in run time.",
                 "JavaScript uses Number values (IEEE 754 binary64) in Node.js/V8; process startup, source parsing, and any JIT work are included in run time.",

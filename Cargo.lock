@@ -102,6 +102,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-launcher"
+version = "2.16.0"
+
+[[package]]
 name = "code-lsp"
 version = "2.16.0"
 dependencies = [

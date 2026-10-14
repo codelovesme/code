@@ -65,7 +65,7 @@ measures three source-run modes:
   creating the directory is outside it. This is a cold build cache, not a
   cold OS file cache.
 - **`code run` (warm cache):** one untimed launch populates a separate cache.
-  All timed launches reuse it, including cache validation and native execution.
+  All timed launches reuse it, including input-file validation and native execution.
 - **`code run --interpret`:** parsing and lowering to register bytecode are
   included. Typed number operations use plain numeric registers and slots.
 
@@ -102,9 +102,19 @@ own startup. Child output and failing exit statuses are preserved.
 RSS is resident physical memory, not heap allocation. For a mode with child
 processes, it records the largest process peak, including waited descendants;
 it does not add their simultaneously resident memory. In particular,
-`code run` includes the LLVM-linked driver that loads and keys the source,
-whereas the prebuilt native mode runs only the small built program. A cold
-cache launch also includes compiler descendants.
+The unreleased CLI ships an LLVM-free launcher as `code` beside `code-driver`.
+A warm ordinary run validates the saved source/module/lock/compiler snapshots
+without parsing, then execs the built program on Unix. A cold-cache launch
+still enters the LLVM-linked driver and includes compiler descendants; an
+interpreted run also uses the driver. No Unix driver remains waiting beside
+the native program. Peak RSS still includes transient startup before exec.
+
+For source-build measurements, set `CODE_BIN` to
+`target/release/code-launcher` beside the full `target/release/code`, or to
+the `code` in an assembled release bundle. The standalone full CLI still
+works, but its LLVM startup does not measure the lightweight warm path.
+`results-before-exec.json` and `.csv` retain the seven-run baseline before
+these changes; `results.json` and `.csv` measure the unreleased launcher.
 
 The numeric loop is code's best case. See `../workloads/` for list, record,
 text, and allocation workloads, with their own recorded samples.
