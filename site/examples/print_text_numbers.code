@@ -1,0 +1,9 @@
+| Text + number renders the number; += uses the same rule.
+link "console" as out
+
+result = ""
+loop item over [1, 2, 3]
+    result += item
+assert "" + 1 = "1"
+assert result = "123"
+emit Print { value = result } to out
