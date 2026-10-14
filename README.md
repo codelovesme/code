@@ -55,7 +55,7 @@ Prebuilt Linux x86_64 tarballs are attached to each [release](https://github.com
 To build from source you need Rust and LLVM 17:
 
 ```sh
-cargo build --release        # target/release/code
+cargo build --release --workspace # target/release/code-launcher + code
 cargo test --workspace       # runs every tests/*.code fixture in both modes
 ```
 
@@ -1871,8 +1871,14 @@ compiles through LLVM and links a native binary with the system `cc`. The
 rule binding them: **every feature must behave identically in both.**
 
 `code run` uses both (ticket 124). It builds the program into the shared
-cache (`code cache`) and starts the build; a program run again starts at
-once. A small program is built optimised before its first run, in tens of
+cache (`code cache`) and starts the build. A warm run validates a record of
+the entry, linked sources/modules, locks, compiler identity/version, target
+and optimisation tier without loading or parsing the program. Changed or
+missing inputs take the full loader/build path; `--strict` still checks first.
+On Unix the driver execs the program, preserving its PID, environment,
+standard streams, exit status and signals; it does not wait beside it.
+Other platforms retain spawn-and-wait. A small program is built optimised
+before its first run, in tens of
 milliseconds. A large one (more than about 500 lines with what it links)
 starts on a quick `-O0` build while the optimised one is made in the
 background for the runs after. Where nothing can be built — no LLVM in this
@@ -1880,6 +1886,15 @@ background for the runs after. Where nothing can be built — no LLVM in this
 so what it says about a broken program is what the interpreter says. Under
 the tests `CODE_RUN=interpret` (`.cargo/config.toml`), so `code run` there is
 the interpreter the fixtures compare with compiled code.
+
+The Linux release contains two files that must stay together: `code`, the
+small launcher without LLVM, and `code-driver`, the full CLI/compiler.
+Warm ordinary runs exec directly from the launcher; misses and other CLI
+commands delegate to the driver. This avoids the LLVM-linked executable's
+startup work even on a cache hit. From a workspace source build, use
+`target/release/code-launcher` beside `target/release/code` for this layout;
+the latter remains the standalone full CLI for existing tools and embedders.
+No interpreter or language semantics depend on the launcher.
 
 That is enforced, not aspirational. [`tests/run_language_tests.rs`](tests/run_language_tests.rs)
 discovers every `tests/*.code` file and runs it through both paths:

@@ -38,7 +38,8 @@ cargo clippy --workspace --all-targets
 
 **Always `--workspace`.** The root manifest has both a `[package]` and a
 `[workspace]`, so a plain `cargo build` / `cargo test` builds **only the root
-package** and silently skips `code-lsp`, `code-native`, `code-wasm`. On
+package** and silently skips `code-lsp`, `code-native`, `code-wasm`, and
+`code-launcher`. On
 2026-09-04 a green local suite (31 suites) shipped a release whose editor
 extension did not compile — a new reserved word was added to the lexer, and the
 language server colours tokens with an exhaustive match. `--workspace` runs 35
@@ -777,6 +778,31 @@ Rebuild wasm artifacts with the updated compiler to get the new reservation.
 The app's existing backend-formatting workarounds have not been removed.
 
 ---
+
+## A warm run without the driver (ticket 124, unreleased)
+
+`src/run_inputs.rs` records loader inputs and resolution candidates, including
+absent locks/files, then validates them before publishing a build.
+`src/run_cache.rs` is the shared, parsing-free validator: size/time plus Unix
+inode/ctime, canonical paths, compiler identity/version, target/tier, and module
+resolution environment. `.inputs` records sit beside the run executable;
+`run-index/` points at them. Missing/stale records or trimmed artifacts take the
+full load/parse/build path. The full build key includes the input snapshot too,
+so a changed lock cannot fall back to an old AST-only cache hit.
+
+Unix `run_built` execs the program. The detached -O2 worker starts before exec;
+non-Unix retains spawn-and-wait. `tests/run_builds_first.rs` covers invalidation,
+exec/PID/streams/signals, fallback, and background optimisation.
+
+The LLVM-linked full CLI costs about 28 MiB even for `--version`. Therefore the
+release ships an independent `code-launcher` crate as `code`, with the original
+full CLI renamed `code-driver` beside it. Both use the same cache validator;
+the frontend has no LLVM or language-crate dependency. Keep the two release
+files together. In the checkout, the binaries are `target/{debug,release}/code`
+(full CLI) and `code-launcher` (fast frontend). Existing test/embedding paths
+keep working; benchmark the frontend to measure the shipped warm path.
+`crates/code-launcher/tests/cli.rs` exercises the installed two-file layout.
+The release workflow includes both; no tag or release was made for this work.
 
 ## Releases
 
