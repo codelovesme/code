@@ -71,6 +71,7 @@ pub(super) enum NumberOp {
 }
 #[derive(Debug, Clone)]
 pub(super) enum Expr {
+    Code(Box<super::expression::Expression>),
     Number {
         fast: NumberExpr,
         fallback: Box<Expr>,
@@ -165,6 +166,7 @@ pub(super) struct Block {
     pub locals: Range<usize>,
     pub frame: usize,
     pub layout: Layout,
+    pub code: Option<Rc<super::bytecode::Code>>,
 }
 impl Deref for Block {
     type Target = [Stmt];
@@ -355,6 +357,7 @@ impl Resolver {
                 statements,
                 locals: start..self.next,
                 frame: self.frame,
+                code: None,
                 layout: Layout {
                     names: Rc::new(names),
                     size: self.next,
@@ -432,6 +435,7 @@ impl Resolver {
                         locals: 0..self.next,
                         frame: 0,
                         layout,
+                        code: None,
                     };
                     self.scopes = saved;
                     self.next = next;
@@ -522,13 +526,44 @@ pub(super) fn resolve(program: &ast::Program) -> Tree {
     let statements = r.stmts(&program.statements);
     let layout = r.layout();
     r.files[0] = layout.clone();
+    let mut body = Block {
+        statements,
+        locals: 0..r.next,
+        frame: 0,
+        layout,
+        code: None,
+    };
+    super::bytecode::lower(&mut body);
     Tree {
-        body: Block {
-            statements,
-            locals: 0..r.next,
-            frame: 0,
-            layout,
-        },
+        body,
         files: r.files,
+    }
+}
+
+#[cfg(test)]
+mod measurements {
+    #[test]
+    #[ignore = "set CODE_LOWER_SAMPLE_FILE to measure loading without executing the program"]
+    fn lowering_cost() {
+        let path = std::env::var("CODE_LOWER_SAMPLE_FILE").expect("CODE_LOWER_SAMPLE_FILE");
+        let start = std::time::Instant::now();
+        let program = crate::loader::load(&path, &crate::loader::FilesystemResolver).unwrap();
+        let load = start.elapsed();
+        crate::verify::verify_defined(&program).unwrap();
+        let mut samples = Vec::new();
+        for _ in 0..11 {
+            let start = std::time::Instant::now();
+            let lowered = super::resolve(&program);
+            samples.push(start.elapsed().as_secs_f64() * 1000.0);
+            std::hint::black_box(&lowered);
+        }
+        samples.sort_by(f64::total_cmp);
+        eprintln!(
+            "parse/load {:.3} ms; resolve/lower median {:.3} ms, range {:.3}..{:.3} ms",
+            load.as_secs_f64() * 1000.0,
+            samples[5],
+            samples[0],
+            samples[10]
+        );
     }
 }
