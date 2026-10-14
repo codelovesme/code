@@ -7,15 +7,10 @@ use std::rc::Rc;
 /// any `Value` at any time; this enum is the thing that's typed, never the
 /// binding.
 ///
-/// `Str`/`Array`/`Object` wrap their heap data in `Rc` so that cloning a
-/// `Value` — which happens on every variable read (`Environment::get`) and
-/// every time one value is embedded in another (`arr = [x]`) — is O(1)
-/// regardless of size, instead of a deep copy. Bindings remain dynamically
-/// typed at runtime; optional `∈ Type` annotations are development-time
-/// contracts consumed by `code check`. This is safe with zero extra
-/// bookkeeping only because nothing in the language can mutate a value
-/// in place yet (see memory `new-code-language-design`); adding array/object
-/// mutation later will need its own copy-on-write decision.
+/// `Str`/`Array`/`Object` wrap their heap data in `Rc`. Read-only operands
+/// borrow their values; a value that is stored or handed on is cloned,
+/// retaining the heap block in O(1) regardless of its size. A part write
+/// uses `Rc::make_mut`, so another holder continues to see its old value.
 ///
 /// Every traversal below — `Drop`, `PartialEq`, `Display` — is written with
 /// an explicit work stack rather than recursion, and `runtime.c` does the
@@ -107,6 +102,16 @@ fn take_children(value: &mut Value, stack: &mut Vec<Value>) {
 /// `assert v = { a, b }` failed on nothing.
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
+        // Scalars have no children to walk. In particular, comparing loop
+        // counters must not allocate a traversal stack just to read a number.
+        match (self, other) {
+            (Value::Number(a), Value::Number(b)) => return a == b,
+            (Value::Str(a), Value::Str(b)) => return a == b,
+            (Value::Bool(a), Value::Bool(b)) => return a == b,
+            (Value::Null, Value::Null) => return true,
+            (Value::Array(_), Value::Array(_)) | (Value::Object(_), Value::Object(_)) => {}
+            _ => return false,
+        }
         let mut pairs = vec![(self, other)];
         while let Some((a, b)) = pairs.pop() {
             let equal = match (a, b) {

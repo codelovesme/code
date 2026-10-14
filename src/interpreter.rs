@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -531,7 +532,13 @@ impl Environment {
     }
 
     fn set(&self, binding: &Binding, value: Value) {
-        self.st_mut().scopes[binding.frame].values[binding.slot] = Some(value);
+        let mut state = self.st_mut();
+        let slot = &mut state.scopes[binding.frame].values[binding.slot];
+        match (slot.as_mut(), &value) {
+            (Some(Value::Number(old)), Value::Number(new)) => *old = *new,
+            (Some(Value::Bool(old)), Value::Bool(new)) => *old = *new,
+            _ => *slot = Some(value),
+        }
     }
 
     fn take(&self, binding: &Binding) -> Value {
@@ -1361,19 +1368,20 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
             env.set(name, v);
             Ok(Flow::Normal)
         }
-        Stmt::Assert(expr) => match eval(expr, env)? {
-            Value::Bool(true) => Ok(Flow::Normal),
-            Value::Bool(false) => Err("assertion failed".to_string()),
-            v => Err(format!(
-                "assert requires a boolean, found {}",
-                a_type_name(&v)
-            )),
-        },
-        Stmt::If { condition, body } => match eval(condition, env)? {
-            Value::Bool(true) => exec_scoped_body(body, env),
-            Value::Bool(false) => Ok(Flow::Normal),
-            v => Err(format!("if requires a boolean, found {}", a_type_name(&v))),
-        },
+        Stmt::Assert(expr) => {
+            if boolean(expr, env, "assert")? {
+                Ok(Flow::Normal)
+            } else {
+                Err("assertion failed".to_string())
+            }
+        }
+        Stmt::If { condition, body } => {
+            if boolean(condition, env, "if")? {
+                exec_scoped_body(body, env)
+            } else {
+                Ok(Flow::Normal)
+            }
+        }
         Stmt::Loop { over, body } => {
             match over {
                 Some(over) => {
@@ -1936,23 +1944,103 @@ fn run_handler(
     result
 }
 
+/// A read may borrow a slot (or one of its parts) for this expression only.
+/// An expression that constructs a value owns its temporary. Only storing or
+/// handing on an operand calls `into_owned`, and therefore retains it.
+fn operand<'a>(expr: &'a Expr, state: &'a State) -> Result<Cow<'a, Value>, String> {
+    match expr {
+        Expr::Literal(value) => Ok(Cow::Borrowed(value)),
+        Expr::Ident(binding) => state.scopes[binding.frame].values[binding.slot]
+            .as_ref()
+            .map(Cow::Borrowed)
+            .ok_or_else(|| format!("undefined variable '{binding}'")),
+        Expr::Field(object, field) => match operand(object, state)? {
+            Cow::Borrowed(value) => field_operand(value, field),
+            Cow::Owned(value) => field_operand(&value, field).map(|v| Cow::Owned(v.into_owned())),
+        },
+        Expr::Index(object, index) => {
+            let object = operand(object, state)?;
+            let index = operand(index, state)?;
+            match object {
+                Cow::Borrowed(value) => index_operand(value, &index),
+                Cow::Owned(value) => {
+                    index_operand(&value, &index).map(|v| Cow::Owned(v.into_owned()))
+                }
+            }
+        }
+        _ => eval_value(expr, state).map(Cow::Owned),
+    }
+}
+
+fn field_operand<'a>(value: &'a Value, field: &str) -> Result<Cow<'a, Value>, String> {
+    match value {
+        Value::Object(fields) => Ok(fields
+            .iter()
+            .find(|(k, _)| k == field)
+            .map_or_else(|| Cow::Owned(Value::Null), |(_, v)| Cow::Borrowed(v))),
+        v => Err(format!(
+            "cannot read field '{field}' of {} — '.' requires an object",
+            a_type_name(v)
+        )),
+    }
+}
+
+fn index_operand<'a>(value: &'a Value, index: &Value) -> Result<Cow<'a, Value>, String> {
+    match (value, index) {
+        (Value::Array(items), Value::Number(n)) if *n >= 0.0 && n.fract() == 0.0 => Ok(items
+            .get(*n as usize)
+            .map_or_else(|| Cow::Owned(Value::Null), Cow::Borrowed)),
+        (Value::Object(fields), Value::Str(key)) => Ok(fields
+            .iter()
+            .find(|(k, _)| k.as_str() == key.as_ref())
+            .map_or_else(|| Cow::Owned(Value::Null), |(_, v)| Cow::Borrowed(v))),
+        (Value::Str(text), Value::Number(n)) if *n >= 0.0 && n.fract() == 0.0 => Ok(Cow::Owned(
+            text.chars()
+                .nth(*n as usize)
+                .map(|c| Value::Str(c.to_string().into()))
+                .unwrap_or(Value::Null),
+        )),
+        (Value::Array(_) | Value::Object(_) | Value::Str(_), _) => Ok(Cow::Owned(Value::Null)),
+        (v, _) => Err(format!(
+            "cannot index {} — '[]' requires an array, an object or a string",
+            a_type_name(v)
+        )),
+    }
+}
+
+fn boolean(expr: &Expr, env: &Environment, role: &str) -> Result<bool, String> {
+    let state = env.st();
+    match operand(expr, &state)?.as_ref() {
+        Value::Bool(value) => Ok(*value),
+        value => Err(format!(
+            "{role} requires a boolean, found {}",
+            a_type_name(value)
+        )),
+    }
+}
+
+/// An expression is pure. Its one state borrow ends before a statement can
+/// write a binding, dispatch a module, or run a handler that calls back here.
 fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
+    eval_value(expr, &env.st())
+}
+
+fn eval_value(expr: &Expr, state: &State) -> Result<Value, String> {
     match expr {
         Expr::SetAt { base, path, value } => {
-            let mut whole = eval(base, env)?;
+            let mut whole = eval_value(base, state)?;
             let keys = path
                 .iter()
-                .map(|key| eval(key, env))
+                .map(|key| eval_value(key, state))
                 .collect::<Result<Vec<_>, _>>()?;
-            set_at(&mut whole, &keys, eval(value, env)?)?;
+            set_at(&mut whole, &keys, eval_value(value, state)?)?;
             Ok(whole)
         }
-        Expr::Number(n) => Ok(Value::Number(*n)),
-        Expr::Str(s) => Ok(Value::Str(Rc::from(s.as_str()))),
+        Expr::Literal(value) => Ok(value.clone()),
         Expr::Interpolated(parts) => {
             let mut out = String::new();
             for part in parts {
-                match &eval(part, env)? {
+                match operand(part, state)?.as_ref() {
                     // Bare, not quoted — see `Expr::Interpolated`'s doc.
                     Value::Str(s) => out.push_str(s),
                     other => out.push_str(&other.to_string()),
@@ -1960,17 +2048,16 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
             }
             Ok(Value::Str(Rc::from(out.as_str())))
         }
-        Expr::Bool(b) => Ok(Value::Bool(*b)),
-        Expr::Null => Ok(Value::Null),
+
         // Cheap regardless of size: `Value::clone` on Str/Array/Object is
         // just an Rc refcount bump, not a deep copy (see value.rs).
-        Expr::Ident(name) => env
-            .read(name)
-            .ok_or_else(|| format!("undefined variable '{name}'")),
+        Expr::Ident(_) | Expr::Field(..) | Expr::Index(..) => {
+            Ok(operand(expr, state)?.into_owned())
+        }
         Expr::Array(items) => {
             let mut values = Vec::with_capacity(items.len());
             for item in items {
-                values.push(eval(item, env)?);
+                values.push(eval_value(item, state)?);
             }
             Ok(Value::Array(Rc::new(values)))
         }
@@ -1983,7 +2070,7 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                 let key = match key {
                     FieldKey::Literal(name) => name.clone(),
                     FieldKey::Computed(expr) => {
-                        let rendered = eval(expr, env)?;
+                        let rendered = eval_value(expr, state)?;
                         match &rendered {
                             Value::Str(text) => text.to_string(),
                             other => {
@@ -1995,39 +2082,15 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                         }
                     }
                 };
-                values.push((key, eval(value, env)?));
+                values.push((key, eval_value(value, state)?));
             }
             Ok(Value::Object(Rc::new(values)))
-        }
-        // Two different situations, deliberately answered differently
-        // (revised 2026-08-23, replacing a blanket permissive-null rule):
-        // the *wrong kind* of operand is a mistake and errors, while a
-        // member that merely isn't there is null. `"abc"[0]` silently
-        // yielding null hid real bugs; `obj.absent` being null is load-
-        // bearing, since it is how an un-exported module name reads.
-        Expr::Field(obj, field) => {
-            let v = eval(obj, env)?;
-            match &v {
-                // A *missing* field is still null — that is what makes a
-                // module's un-exported name read as null through its alias
-                // (`link_default_private.code`). Only the wrong *kind* of
-                // operand is an error.
-                Value::Object(fields) => Ok(fields
-                    .iter()
-                    .find(|(k, _)| k == field)
-                    .map(|(_, v)| v.clone())
-                    .unwrap_or(Value::Null)),
-                v => Err(format!(
-                    "cannot read field '{field}' of {} — '.' requires an object",
-                    a_type_name(v)
-                )),
-            }
         }
         // How many elements a value has. Only ever built for a `length`
         // inside an index (see `parser::bind_length`), so the kinds it can
         // meet are the ones `[]` accepts, plus Str for symmetry with
         // `Length`'s own operand rule.
-        Expr::LengthOf(value) => match &eval(value, env)? {
+        Expr::LengthOf(value) => match operand(value, state)?.as_ref() {
             Value::Array(items) => Ok(Value::Number(items.len() as f64)),
             Value::Object(fields) => Ok(Value::Number(fields.len() as f64)),
             Value::Str(s) => Ok(Value::Number(s.chars().count() as f64)),
@@ -2042,10 +2105,10 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
         // range past the end answers the part that is there. Must match
         // `runtime.c`'s slice arm.
         Expr::Slice { value, from, to } => {
-            let value = eval(value, env)?;
-            let start = range_bound(eval(from, env)?, "start")?;
-            let end = range_bound(eval(to, env)?, "end")?;
-            match &value {
+            let value = operand(value, state)?;
+            let start = range_bound(operand(from, state)?.as_ref(), "start")?;
+            let end = range_bound(operand(to, state)?.as_ref(), "end")?;
+            match value.as_ref() {
                 Value::Array(items) => {
                     let len = items.len() as f64;
                     let lo = start.max(0.0).min(len) as usize;
@@ -2077,57 +2140,15 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                 )),
             }
         }
-        Expr::Index(arr, index) => {
-            let v = eval(arr, env)?;
-            let i = eval(index, env)?;
-            match &v {
-                // An out-of-range or non-integer index stays null, for the
-                // same reason a missing field does: the operand kind is
-                // right, the lookup simply found nothing.
-                Value::Array(items) => Ok(match &i {
-                    Value::Number(n) if n.fract() == 0.0 && *n >= 0.0 => {
-                        items.get(*n as usize).cloned().unwrap_or(Value::Null)
-                    }
-                    _ => Value::Null,
-                }),
-                // `obj[key]` — a *computed* field read, the thing `.` can
-                // never offer since its name is always a bare identifier.
-                // Same absent-is-null rule as `Field`; a non-`Str` key is
-                // also just null, not an error, matching `Array`'s
-                // non-`Number` case above.
-                Value::Object(fields) => Ok(match &i {
-                    Value::Str(key) => fields
-                        .iter()
-                        .find(|(k, _)| k.as_str() == key.as_ref())
-                        .map(|(_, v)| v.clone())
-                        .unwrap_or(Value::Null),
-                    _ => Value::Null,
-                }),
-                // One character, as a one-character string: there is no
-                // character kind here, and there are only six.
-                Value::Str(text) => Ok(match &i {
-                    Value::Number(n) if *n >= 0.0 && n.fract() == 0.0 => text
-                        .chars()
-                        .nth(*n as usize)
-                        .map(|c| Value::Str(c.to_string().into()))
-                        .unwrap_or(Value::Null),
-                    _ => Value::Null,
-                }),
-                v => Err(format!(
-                    "cannot index {} — '[]' requires an array, an object or a string",
-                    a_type_name(v)
-                )),
-            }
-        }
         Expr::Unary(op, e) => {
-            let v = eval(e, env)?;
-            match (op, v) {
+            let v = operand(e, state)?;
+            match (op, v.as_ref()) {
                 (UnOp::Neg, Value::Number(n)) => Ok(Value::Number(-n)),
-                (UnOp::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
-                (UnOp::Neg, v) => Err(format!("cannot negate {}", a_type_name(&v))),
+                (UnOp::Not, Value::Bool(b)) => Ok(Value::Bool(!*b)),
+                (UnOp::Neg, v) => Err(format!("cannot negate {}", a_type_name(v))),
                 (UnOp::Not, v) => Err(format!(
                     "'not' requires a boolean, found {}",
-                    a_type_name(&v)
+                    a_type_name(v)
                 )),
             }
         }
@@ -2136,7 +2157,7 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
         // (`String`, `Number`, …) or a particle class; the parser decided
         // which (see `ast::IsTest`).
         Expr::Is(e, test) => {
-            let v = eval(e, env)?;
+            let v = operand(e, state)?;
             let answer = match test {
                 IsTest::Kind(kind) => kind_of(&v) == *kind,
                 // A particle is an object whose `_class` is that name. An
@@ -2148,37 +2169,38 @@ fn eval(expr: &Expr, env: &Environment) -> Result<Value, String> {
                 // an error.
                 IsTest::Class(class) => {
                     let label = crate::ast::Label::Named(class.clone());
-                    env.st().types.contains(&label, &v)
+                    state.types.contains(&label, &v)
                 }
-                IsTest::Label(label) => env.st().types.contains(label, &v),
+                IsTest::Label(label) => state.types.contains(label, &v),
             };
             Ok(Value::Bool(answer))
         }
         // `and`/`or` short-circuit: the right side is only evaluated (and
         // only needs to be a bool) when the left side didn't already
         // determine the result.
-        Expr::Binary(lhs, BinOp::And, rhs) => match eval(lhs, env)? {
+        Expr::Binary(lhs, BinOp::And, rhs) => match operand(lhs, state)?.as_ref() {
             Value::Bool(false) => Ok(Value::Bool(false)),
-            Value::Bool(true) => require_bool(eval(rhs, env)?, "and"),
-            v => Err(format!(
-                "'and' requires booleans, found {}",
-                a_type_name(&v)
-            )),
+            Value::Bool(true) => require_bool(operand(rhs, state)?.as_ref(), "and"),
+            v => Err(format!("'and' requires booleans, found {}", a_type_name(v))),
         },
-        Expr::Binary(lhs, BinOp::Or, rhs) => match eval(lhs, env)? {
+        Expr::Binary(lhs, BinOp::Or, rhs) => match operand(lhs, state)?.as_ref() {
             Value::Bool(true) => Ok(Value::Bool(true)),
-            Value::Bool(false) => require_bool(eval(rhs, env)?, "or"),
-            v => Err(format!("'or' requires booleans, found {}", a_type_name(&v))),
+            Value::Bool(false) => require_bool(operand(rhs, state)?.as_ref(), "or"),
+            v => Err(format!("'or' requires booleans, found {}", a_type_name(v))),
         },
         // Equality is well-defined for any two values, including mismatched
-        // kinds (simply `false`, never an error) — `Value`'s derived
-        // `PartialEq` already does exactly that.
-        Expr::Binary(lhs, BinOp::Eq, rhs) => Ok(Value::Bool(eval(lhs, env)? == eval(rhs, env)?)),
-        Expr::Binary(lhs, BinOp::Ne, rhs) => Ok(Value::Bool(eval(lhs, env)? != eval(rhs, env)?)),
+        // kinds (simply `false`, never an error). Only containers need a
+        // traversal stack; a scalar comparison reads its payload directly.
+        Expr::Binary(lhs, BinOp::Eq, rhs) => Ok(Value::Bool(
+            operand(lhs, state)?.as_ref() == operand(rhs, state)?.as_ref(),
+        )),
+        Expr::Binary(lhs, BinOp::Ne, rhs) => Ok(Value::Bool(
+            operand(lhs, state)?.as_ref() != operand(rhs, state)?.as_ref(),
+        )),
         Expr::Binary(lhs, op, rhs) => {
-            let l = eval(lhs, env)?;
-            let r = eval(rhs, env)?;
-            apply_binop(*op, l, r)
+            let l = operand(lhs, state)?;
+            let r = operand(rhs, state)?;
+            apply_binop(*op, &l, &r)
         }
     }
 }
@@ -2279,22 +2301,22 @@ fn core_result(class_name: &str, value: f64) -> Value {
     ]))
 }
 
-fn range_bound(v: Value, which: &str) -> Result<f64, String> {
+fn range_bound(v: &Value, which: &str) -> Result<f64, String> {
     match v {
-        Value::Number(n) => Ok(n),
+        Value::Number(n) => Ok(*n),
         other => Err(format!(
             "a range's {which} must be a number, found {}",
-            a_type_name(&other)
+            a_type_name(other)
         )),
     }
 }
 
-fn require_bool(v: Value, op: &str) -> Result<Value, String> {
+fn require_bool(v: &Value, op: &str) -> Result<Value, String> {
     match v {
-        Value::Bool(_) => Ok(v),
+        Value::Bool(b) => Ok(Value::Bool(*b)),
         v => Err(format!(
             "'{op}' requires booleans, found {}",
-            a_type_name(&v)
+            a_type_name(v)
         )),
     }
 }
@@ -2497,9 +2519,9 @@ fn type_name(v: &Value) -> &'static str {
 /// comment for the exact operand-type rules this implements. `And`/`Or`/
 /// `Eq`/`Ne` are handled directly in `eval` (short-circuiting / always-
 /// defined, respectively) and never reach here.
-fn apply_binop(op: BinOp, l: Value, r: Value) -> Result<Value, String> {
+fn apply_binop(op: BinOp, l: &Value, r: &Value) -> Result<Value, String> {
     use Value::*;
-    let result = match (op, &l, &r) {
+    let result = match (op, l, r) {
         (BinOp::Add, Number(a), Number(b)) => Some(Number(a + b)),
         (BinOp::Add, Str(a), Str(b)) => Some(Str(Rc::from(format!("{a}{b}").as_str()))),
         (BinOp::Add, Array(a), Array(b)) => {
@@ -2576,8 +2598,43 @@ fn apply_binop(op: BinOp, l: Value, r: Value) -> Result<Value, String> {
         format!(
             "cannot apply '{}' to {} and {}",
             op.symbol(),
-            a_type_name(&l),
-            a_type_name(&r)
+            a_type_name(l),
+            a_type_name(r)
         )
     })
+}
+
+#[cfg(test)]
+mod borrowed_tests {
+    use super::*;
+
+    #[test]
+    fn an_operand_retains_a_part_only_when_it_is_handed_on() {
+        let items = Rc::new(vec![Value::Number(1.0)]);
+        let env = Environment::default();
+        env.link_module(
+            "source",
+            Value::Object(Rc::new(vec![(
+                "items".into(),
+                Value::Array(Rc::clone(&items)),
+            )])),
+            Rc::new(|_| Ok(Value::Null)),
+        );
+        let expr = Expr::Field(
+            Box::new(Expr::Ident(Binding {
+                name: "source".into(),
+                frame: 0,
+                slot: 0,
+            })),
+            "items".into(),
+        );
+        let state = env.st();
+        let read = operand(&expr, &state).unwrap();
+        assert!(matches!(read, Cow::Borrowed(_)));
+        assert_eq!(Rc::strong_count(&items), 2);
+        let kept = read.into_owned();
+        assert_eq!(Rc::strong_count(&items), 3);
+        drop(kept);
+        assert_eq!(Rc::strong_count(&items), 2);
+    }
 }
