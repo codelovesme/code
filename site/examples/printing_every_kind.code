@@ -1,4 +1,4 @@
-| A String prints as itself; every other kind renders as compact JSON, which
+| A String prints as itself; every other type renders as compact JSON, which
 | is the same rule string interpolation follows.
 link "console" as out
 

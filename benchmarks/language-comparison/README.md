@@ -18,8 +18,9 @@ measurement, not a browser-engine measurement.
 
 This is a small, transparent data point. It does not model object allocation,
 I/O, startup-sensitive tiny scripts, concurrency, or every style of program,
-and it cannot establish a universal language ranking. It does not measure
-memory use.
+and it cannot establish a universal language ranking. It also records peak
+resident memory for each launch, which describes this loop's process footprint
+rather than its allocation rate or a whole application's memory needs.
 
 ## Run it
 
@@ -44,8 +45,10 @@ package is rebuilt while those dependencies can remain cached.
 CODE_BIN=/path/to/code benchmarks/language-comparison/run.py
 ```
 
-The script writes `results.csv` with all timed runtime samples and
-`results.json` with the summary, toolchain versions, and compiler times.
+The script writes `results.csv` with every launch's elapsed time and peak RSS,
+plus the median and full RSS range per mode. `results.json` records those
+samples and summaries, toolchain versions, and compiler times. Peak RSS
+measurement requires Linux.
 Override sample counts with `--runs` and `--compile-runs`; override compiler
 and runtime paths with `CC`, `JAVA`, `JAVAC`, `PYTHON`, `NODE`, `RUSTC`, and
 `GO`. If the `code` executable was built from a different revision than the
@@ -90,6 +93,18 @@ runtime measurement. C binaries use `-O2 -march=native` and
 `go build` with the Go compiler's default optimization settings. These are
 optimized but different implementations and runtimes.
 
-No peak-RSS or allocation-rate measurement is included. The benchmark tests
-numeric execution time only; memory-management differences in the comparison
-page are based on the languages' documented runtime designs.
+`peak.c`, built with the same C compiler as the benchmark, does
+fork/exec/wait4 and records Linux `ru_maxrss` in KiB. Launching through this
+small C process avoids inheriting Python's roughly 10 MB resident high-water
+mark. Its monotonic timer surrounds fork/exec/wait, excluding the wrapper's
+own startup. Child output and failing exit statuses are preserved.
+
+RSS is resident physical memory, not heap allocation. For a mode with child
+processes, it records the largest process peak, including waited descendants;
+it does not add their simultaneously resident memory. In particular,
+`code run` includes the LLVM-linked driver that loads and keys the source,
+whereas the prebuilt native mode runs only the small built program. A cold
+cache launch also includes compiler descendants.
+
+The numeric loop is code's best case. See `../workloads/` for list, record,
+text, and allocation workloads, with their own recorded samples.

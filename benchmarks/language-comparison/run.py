@@ -86,6 +86,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.runs < 1 or args.compile_runs < 1:
         parser.error("--runs and --compile-runs must be positive")
+    if platform.system() != "Linux":
+        parser.error("peak RSS measurements require Linux (wait4 reports KiB)")
 
     code = command_from_env("CODE_BIN", "code")
     cc = command_from_env("CC", "gcc")
@@ -106,6 +108,9 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="code-language-benchmark-") as temp_name:
         temp = Path(temp_name)
+        peak = temp / "peak"
+        checked(cc + ["-std=c17", "-O2", "-Wall", "-Wextra", "-Werror",
+                      str(HERE / "peak.c"), "-o", str(peak)], REPO)
         code_out = temp / "code-native"
         c_out: dict[str, Path] = {}
         java_classes = temp / "java-classes"
@@ -205,6 +210,7 @@ def main() -> None:
             "Go (go build; default optimizations)": [str(go_out)],
         }
         samples: dict[str, list[float]] = {name: [] for name in modes}
+        memory_samples: dict[str, list[int]] = {name: [] for name in modes}
         order_rng = random.Random(20261009)
         for run_index in range(args.runs):
             order = list(modes)
@@ -217,9 +223,12 @@ def main() -> None:
                         cold_cache = temp / f"code-run-cold-{run_index}"
                         cold_cache.mkdir()
                         run_env["CODE_CACHE_DIR"] = str(cold_cache)
-                started = time.perf_counter()
-                checked(modes[name], REPO, env=run_env)
-                samples[name].append(time.perf_counter() - started)
+                result = checked([str(peak)] + modes[name], REPO, env=run_env)
+                marker, elapsed, rss = result.stderr.splitlines()[-1].split()
+                if marker != "CODE_BENCH_USAGE":
+                    raise RuntimeError(f"missing measurement for {name}: {result.stderr}")
+                samples[name].append(float(elapsed))
+                memory_samples[name].append(int(rss))
 
         rows = []
         for name, values in samples.items():
@@ -230,17 +239,26 @@ def main() -> None:
                 "min_seconds": min(values),
                 "max_seconds": max(values),
                 "million_iterations_per_second": TOTAL_ITERATIONS / med / 1_000_000,
+                "median_peak_rss_kib": median(memory_samples[name]),
+                "min_peak_rss_kib": min(memory_samples[name]),
+                "max_peak_rss_kib": max(memory_samples[name]),
             })
         rows.sort(key=lambda row: row["median_seconds"])
 
         with (args.output_dir / "results.csv").open("w", newline="") as handle:
             writer = csv.DictWriter(
-                handle, fieldnames=["mode", "run", "elapsed_seconds"], lineterminator="\n"
+                handle, fieldnames=["mode", "run", "elapsed_seconds", "peak_rss_kib",
+                                   "median_peak_rss_kib", "min_peak_rss_kib", "max_peak_rss_kib"],
+                lineterminator="\n"
             )
             writer.writeheader()
             for name, values in samples.items():
                 for run_index, elapsed in enumerate(values, start=1):
-                    writer.writerow({"mode": name, "run": run_index, "elapsed_seconds": f"{elapsed:.9f}"})
+                    memory = memory_samples[name]
+                    writer.writerow({"mode": name, "run": run_index, "elapsed_seconds": f"{elapsed:.9f}",
+                                     "peak_rss_kib": memory[run_index - 1],
+                                     "median_peak_rss_kib": median(memory),
+                                     "min_peak_rss_kib": min(memory), "max_peak_rss_kib": max(memory)})
 
         report = {
             "measured_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
@@ -293,6 +311,7 @@ def main() -> None:
             "compile_runs_per_compiler": args.compile_runs,
             "compile_samples_seconds": compile_samples,
             "samples_seconds": samples,
+            "samples_peak_rss_kib": memory_samples,
             "summary": rows,
             "notes": [
                 "Process startup is included in every runtime measurement; prebuilt modes exclude their separate ahead-of-time build time.",
@@ -301,7 +320,8 @@ def main() -> None:
                 "code run --interpret includes source parsing and register-bytecode lowering, with typed number operations. Python generates CPython bytecode during the run; Node/V8 parses and may JIT-compile JavaScript during the run.",
                 "Go, Rust, C, Java, and code native run prebuilt artifacts; their ahead-of-time compile/build times are measured separately. Java runs prebuilt JVM bytecode, and HotSpot's runtime JIT work remains part of its run time.",
                 "Go runs a prebuilt binary. An untimed build warms the cache for this program's standard-library dependencies; each timed Go build changes only a source comment so the main package is rebuilt while those dependencies can be reused.",
-                "No separate memory measurement was made.",
+                "Each timed launch runs through a tiny C fork/exec/wait4 wrapper, avoiding Python's inherited RSS floor. Its monotonic timer surrounds fork/exec/wait, excluding wrapper startup; Linux ru_maxrss is recorded in KiB. RSS is the largest resident process including waited descendants, not the sum of simultaneous process-tree memory or allocated bytes.",
+                "code run includes the LLVM-linked driver, which loads and keys the program, while code build --release (native) launches only the built executable. Cold-cache code run also includes compiler descendants in its peak RSS.",
                 "One workload is a useful data point, not a universal language ranking.",
                 "Python uses float (IEEE 754 binary64) values; its process startup, source parsing, and bytecode generation are included in run time.",
                 "JavaScript uses Number values (IEEE 754 binary64) in Node.js/V8; process startup, source parsing, and any JIT work are included in run time.",
@@ -343,6 +363,10 @@ def main() -> None:
                 f"{row['million_iterations_per_second']:>8.2f}        {compile_value}"
             )
         print(f"\nRaw samples: {args.output_dir / 'results.csv'}")
+        print("\nPeak resident memory (MiB; median and range per launch):")
+        for row in sorted(rows, key=lambda row: row["median_peak_rss_kib"]):
+            print(f"{row['mode']:<41} {row['median_peak_rss_kib'] / 1024:.2f} "
+                  f"({row['min_peak_rss_kib'] / 1024:.2f}–{row['max_peak_rss_kib'] / 1024:.2f})")
         print(f"Full report: {args.output_dir / 'results.json'}")
 
 

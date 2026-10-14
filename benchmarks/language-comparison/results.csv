@@ -1,78 +1,78 @@
-mode,run,elapsed_seconds
-code run (cold cache),1,0.045657445
-code run (cold cache),2,0.043695161
-code run (cold cache),3,0.043721686
-code run (cold cache),4,0.044238771
-code run (cold cache),5,0.044567317
-code run (cold cache),6,0.043731846
-code run (cold cache),7,0.043884672
-code run (warm cache),1,0.014962574
-code run (warm cache),2,0.014767631
-code run (warm cache),3,0.014464014
-code run (warm cache),4,0.014562619
-code run (warm cache),5,0.014603344
-code run (warm cache),6,0.014764741
-code run (warm cache),7,0.014580548
-code run --interpret (interpreter),1,0.404226647
-code run --interpret (interpreter),2,0.406147035
-code run --interpret (interpreter),3,0.404221941
-code run --interpret (interpreter),4,0.403600809
-code run --interpret (interpreter),5,0.411348372
-code run --interpret (interpreter),6,0.403352372
-code run --interpret (interpreter),7,0.405419391
-code build --release (native),1,0.009155505
-code build --release (native),2,0.009092736
-code build --release (native),3,0.008968016
-code build --release (native),4,0.008998606
-code build --release (native),5,0.009537747
-code build --release (native),6,0.008940255
-code build --release (native),7,0.009091398
-C (GCC -O2 -march=native),1,0.014803833
-C (GCC -O2 -march=native),2,0.014547573
-C (GCC -O2 -march=native),3,0.014854054
-C (GCC -O2 -march=native),4,0.014711834
-C (GCC -O2 -march=native),5,0.014614420
-C (GCC -O2 -march=native),6,0.014575885
-C (GCC -O2 -march=native),7,0.014770530
-C (GCC -O3 -march=native),1,0.014778196
-C (GCC -O3 -march=native),2,0.014713888
-C (GCC -O3 -march=native),3,0.014539925
-C (GCC -O3 -march=native),4,0.014602899
-C (GCC -O3 -march=native),5,0.014761750
-C (GCC -O3 -march=native),6,0.015794937
-C (GCC -O3 -march=native),7,0.014581263
-Java 26 (HotSpot default),1,0.052852763
-Java 26 (HotSpot default),2,0.052164322
-Java 26 (HotSpot default),3,0.049867001
-Java 26 (HotSpot default),4,0.051509989
-Java 26 (HotSpot default),5,0.054676740
-Java 26 (HotSpot default),6,0.053054497
-Java 26 (HotSpot default),7,0.052321349
-Python (CPython),1,1.302260020
-Python (CPython),2,1.307210691
-Python (CPython),3,1.407562194
-Python (CPython),4,1.400075076
-Python (CPython),5,1.295465581
-Python (CPython),6,1.284874662
-Python (CPython),7,1.412980355
-JavaScript (Node.js/V8),1,0.048151637
-JavaScript (Node.js/V8),2,0.045336534
-JavaScript (Node.js/V8),3,0.040940696
-JavaScript (Node.js/V8),4,0.042561719
-JavaScript (Node.js/V8),5,0.046939961
-JavaScript (Node.js/V8),6,0.050524017
-JavaScript (Node.js/V8),7,0.040647091
-Rust (rustc -C opt-level=3),1,0.009201802
-Rust (rustc -C opt-level=3),2,0.009197001
-Rust (rustc -C opt-level=3),3,0.009259009
-Rust (rustc -C opt-level=3),4,0.009681314
-Rust (rustc -C opt-level=3),5,0.009250352
-Rust (rustc -C opt-level=3),6,0.009336077
-Rust (rustc -C opt-level=3),7,0.009308676
-Go (go build; default optimizations),1,0.015384339
-Go (go build; default optimizations),2,0.015759581
-Go (go build; default optimizations),3,0.015548713
-Go (go build; default optimizations),4,0.015495143
-Go (go build; default optimizations),5,0.015601879
-Go (go build; default optimizations),6,0.015719419
-Go (go build; default optimizations),7,0.015828937
+mode,run,elapsed_seconds,peak_rss_kib,median_peak_rss_kib,min_peak_rss_kib,max_peak_rss_kib
+code run (cold cache),1,0.043201128,40312,40684,40312,41384
+code run (cold cache),2,0.043846775,40936,40684,40312,41384
+code run (cold cache),3,0.043975530,40876,40684,40312,41384
+code run (cold cache),4,0.043435953,40676,40684,40312,41384
+code run (cold cache),5,0.043398939,41384,40684,40312,41384
+code run (cold cache),6,0.044006220,40684,40684,40312,41384
+code run (cold cache),7,0.043484475,40316,40684,40312,41384
+code run (warm cache),1,0.014660276,29984,29748,29272,29984
+code run (warm cache),2,0.014270669,29656,29748,29272,29984
+code run (warm cache),3,0.014601970,29984,29748,29272,29984
+code run (warm cache),4,0.014413186,29272,29748,29272,29984
+code run (warm cache),5,0.014458589,29748,29748,29272,29984
+code run (warm cache),6,0.014673107,29776,29748,29272,29984
+code run (warm cache),7,0.014439875,29704,29748,29272,29984
+code run --interpret (interpreter),1,0.402886812,30212,30160,29876,30784
+code run --interpret (interpreter),2,0.399094648,30160,30160,29876,30784
+code run --interpret (interpreter),3,0.398279850,29948,30160,29876,30784
+code run --interpret (interpreter),4,0.413396689,29876,30160,29876,30784
+code run --interpret (interpreter),5,0.399025247,29968,30160,29876,30784
+code run --interpret (interpreter),6,0.400130219,30420,30160,29876,30784
+code run --interpret (interpreter),7,0.405808696,30784,30160,29876,30784
+code build --release (native),1,0.008918065,1204,1220,1168,1268
+code build --release (native),2,0.008837954,1220,1220,1168,1268
+code build --release (native),3,0.008891718,1228,1220,1168,1268
+code build --release (native),4,0.008852103,1168,1220,1168,1268
+code build --release (native),5,0.008883305,1204,1220,1168,1268
+code build --release (native),6,0.008892128,1268,1220,1168,1268
+code build --release (native),7,0.008865283,1256,1220,1168,1268
+C (GCC -O2 -march=native),1,0.014699321,1200,1224,1200,1268
+C (GCC -O2 -march=native),2,0.014377374,1268,1224,1200,1268
+C (GCC -O2 -march=native),3,0.014433380,1224,1224,1200,1268
+C (GCC -O2 -march=native),4,0.014452822,1228,1224,1200,1268
+C (GCC -O2 -march=native),5,0.014620990,1204,1224,1200,1268
+C (GCC -O2 -march=native),6,0.014538514,1224,1224,1200,1268
+C (GCC -O2 -march=native),7,0.014437683,1220,1224,1200,1268
+C (GCC -O3 -march=native),1,0.014458223,1272,1216,1168,1272
+C (GCC -O3 -march=native),2,0.014449695,1168,1216,1168,1272
+C (GCC -O3 -march=native),3,0.014379512,1204,1216,1168,1272
+C (GCC -O3 -march=native),4,0.014433649,1168,1216,1168,1272
+C (GCC -O3 -march=native),5,0.014411558,1216,1216,1168,1272
+C (GCC -O3 -march=native),6,0.014400426,1256,1216,1168,1272
+C (GCC -O3 -march=native),7,0.014452469,1220,1216,1168,1272
+Java 26 (HotSpot default),1,0.051948374,35748,39144,35748,39340
+Java 26 (HotSpot default),2,0.052811561,35808,39144,35748,39340
+Java 26 (HotSpot default),3,0.052151117,39260,39144,35748,39340
+Java 26 (HotSpot default),4,0.054133940,39108,39144,35748,39340
+Java 26 (HotSpot default),5,0.054495289,39192,39144,35748,39340
+Java 26 (HotSpot default),6,0.049720587,39144,39144,35748,39340
+Java 26 (HotSpot default),7,0.054624615,39340,39144,35748,39340
+Python (CPython),1,1.425328129,8788,8640,8496,8788
+Python (CPython),2,1.832400819,8496,8640,8496,8788
+Python (CPython),3,1.433240647,8788,8640,8496,8788
+Python (CPython),4,1.320925542,8640,8640,8496,8788
+Python (CPython),5,1.447249935,8640,8640,8496,8788
+Python (CPython),6,1.502614654,8704,8640,8496,8788
+Python (CPython),7,1.306078233,8640,8640,8496,8788
+JavaScript (Node.js/V8),1,0.043883772,49980,49860,49472,50116
+JavaScript (Node.js/V8),2,0.051732715,49860,49860,49472,50116
+JavaScript (Node.js/V8),3,0.040630194,49744,49860,49472,50116
+JavaScript (Node.js/V8),4,0.044592170,50116,49860,49472,50116
+JavaScript (Node.js/V8),5,0.048961139,49728,49860,49472,50116
+JavaScript (Node.js/V8),6,0.039419098,49860,49860,49472,50116
+JavaScript (Node.js/V8),7,0.043207278,49472,49860,49472,50116
+Rust (rustc -C opt-level=3),1,0.009005768,1876,1980,1876,2028
+Rust (rustc -C opt-level=3),2,0.009029954,1980,1980,1876,2028
+Rust (rustc -C opt-level=3),3,0.009028088,1876,1980,1876,2028
+Rust (rustc -C opt-level=3),4,0.009236294,2028,1980,1876,2028
+Rust (rustc -C opt-level=3),5,0.009080496,1996,1980,1876,2028
+Rust (rustc -C opt-level=3),6,0.009034591,2020,1980,1876,2028
+Rust (rustc -C opt-level=3),7,0.009028746,1940,1980,1876,2028
+Go (go build; default optimizations),1,0.015303664,3544,3548,3544,5636
+Go (go build; default optimizations),2,0.015444451,3552,3548,3544,5636
+Go (go build; default optimizations),3,0.015334692,3548,3548,3544,5636
+Go (go build; default optimizations),4,0.015324201,3548,3548,3544,5636
+Go (go build; default optimizations),5,0.015685593,5636,3548,3544,5636
+Go (go build; default optimizations),6,0.015310638,3548,3548,3544,5636
+Go (go build; default optimizations),7,0.015583571,5636,3548,3544,5636
