@@ -190,3 +190,43 @@ assert wide = [1, 2, 3]
 word = "héllo"
 word = word[1, length)
 assert word = "éllo"
+
+| The appended element can itself hold the old list: no cycle or alias changes.
+nested ∈ Array of Any = [1]
+nested += [[nested]]
+assert nested = [1, [[1]]]
+snapshot = { values = nested }
+nested += nested
+assert snapshot.values = [1, [[1]]]
+assert nested = [1, [[1]], 1, [[1]]]
+nested = nested + nested[0, 2)
+assert nested = [1, [[1]], 1, [[1]], 1, [[1]]]
+
+| Scalar and container elements retain their own kinds rather than rendering.
+mixed ∈ Array of Any = []
+mixed += "é"
+mixed += true
+mixed += null
+mixed += { x = 3 }
+mixed += [[4]]
+assert mixed = ["é", true, null, { x = 3 }, [4]]
+
+| Failed operand evaluation leaves the global list available to the caller.
+FailListAppend {} =>
+    mixed += 1 / 0
+emit FailListAppend to this get append_failure
+assert append_failure ∈ Exception
+assert append_failure.message = "division by zero"
+assert mixed = ["é", true, null, { x = 3 }, [4]]
+
+| Handler results and a loop's snapshot retain the value they were handed.
+ListSnapshot {} =>
+    return Snapshot { values = mixed }
+emit ListSnapshot to this get saved_list
+walked = []
+loop item over mixed
+    walked += [item]
+    mixed += [0]
+assert walked = saved_list.values
+assert saved_list.values = ["é", true, null, { x = 3 }, [4]]
+assert mixed = ["é", true, null, { x = 3 }, [4], 0, 0, 0, 0, 0]

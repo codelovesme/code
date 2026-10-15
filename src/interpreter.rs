@@ -1416,6 +1416,23 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                 .read(name)
                 .ok_or_else(|| format!("undefined variable '{name}'"))?;
             let right = eval(rhs, env)?;
+            if matches!(&left, Value::Array(_)) {
+                // Only the temporary read dies here. RHS/self/iteration
+                // snapshots still own the old list and force detachment.
+                drop(left);
+                let mut state = env.st_mut();
+                let Some(Value::Array(items)) = state.scopes[name.frame].values[name.slot].as_mut()
+                else {
+                    unreachable!("pure expression changed its binding")
+                };
+                let items = Rc::make_mut(items);
+                if let Value::Array(suffix) = &right {
+                    items.extend(suffix.iter().cloned());
+                } else {
+                    items.push(right);
+                }
+                return Ok(Flow::Normal);
+            }
             if matches!(&left, Value::Str(_))
                 && !matches!(&right, Value::Array(_) | Value::Object(_))
             {
