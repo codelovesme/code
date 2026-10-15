@@ -232,5 +232,11 @@
     "Release-built CLIs, explicit --interpret; startup/parsing/bytecode lowering are included.",
     "Target: binary_trees. Other small differences are not claimed as reliable gains.",
     "Each benchmark checks its answer. List and object changes are measured independently."
-  ]
+  ],
+  "implementation_source_commit": "9760475",
+  "merge_commit": "e680e1a",
+  "callgrind_binary_trees_instructions": {
+    "before": 11434478715,
+    "after": 803451119
+  }
 }
