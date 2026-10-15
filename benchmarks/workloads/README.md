@@ -30,6 +30,34 @@ and records raw launch times in `results.csv` and medians/ratios in
 Use `--output-dir` to keep an experimental run separate from the published
 results.
 
+## Interpreter object growth (2026-10-16, unreleased)
+
+Measured independently after list growth, against main `e680e1a`. Release-built
+CLIs run each source with explicit `--interpret`: 15 serial fresh-process launches
+per mode, deterministic shuffled before/after order, logical CPU 0.
+
+| Workload | Before | After | Elapsed-time change |
+|---|---:|---:|---:|
+| binary_trees | 103.11 ms | 103.14 ms | +0.0% |
+| dictionary | 750.66 ms | 69.49 ms | -90.7% |
+| string_build | 13.44 ms | 13.51 ms | +0.5% |
+| points | 260.55 ms | 252.80 ms | -3.0% |
+| sum_squares | 405.71 ms | 402.47 ms | -0.8% |
+
+**Dictionary is 10.8× faster (90.7% less time)** without an object index.
+An exclusively held object keeps its existing keys and unchanged values.
+A shared object detaches before mutation; RHS reads finish before any write.
+The one-field update needs one scan. General merges preserve original field
+positions, first-match overrides and duplicate new RHS keys. The aliasing
+fixture and 256 generated Rust cases compare order and duplicate behavior
+with immutable addition. Callgrind instructions fell from **7,689,565,296 to
+621,706,102 (91.9%)**. The list step's tree gain is preserved; other small
+differences are not claimed as reliable speedups.
+
+Native module ABI 2 and the C runtime are unchanged; Aquarium release wasm
+remains byte-identical at 901,831 bytes.
+Raw samples and metadata: [interpreter-object-results.json](interpreter-object-results.json).
+
 ## Interpreter list growth (2026-10-16, unreleased)
 
 Measured independently after text growth, against main `f7cc234`. Release-built
@@ -50,7 +78,8 @@ on every append. `Rc::make_mut` detaches shared lists; evaluation finishes
 before the write, so self/contained aliases, handler replies, iteration
 snapshots and RHS errors retain their existing behavior. Array concatenation
 still flattens one level, and a non-array operand remains one element.
-Other workloads show only small differences. Object merging is a separate step.
+Callgrind instructions fell from **11,434,478,715 to 803,451,119 (93.0%)**.
+Other workloads show only small differences. Object merging is measured separately above.
 
 Raw samples and metadata: [interpreter-list-results.json](interpreter-list-results.json).
 

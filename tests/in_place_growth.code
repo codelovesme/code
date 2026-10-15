@@ -230,3 +230,59 @@ loop item over mixed
 assert walked = saved_list.values
 assert saved_list.values = ["é", true, null, { x = 3 }, [4]]
 assert mixed = ["é", true, null, { x = 3 }, [4], 0, 0, 0, 0, 0]
+
+| Object merging reads all RHS fields before writing any of the old fields.
+merge_state ∈ Object of Any = { a = 1, b = 2 }
+merge_state += { a = merge_state.b, b = merge_state.a, child = merge_state }
+assert merge_state = { a = 2, b = 1, child = { a = 1, b = 2 } }
+held_merge = merge_state
+merge_state += { a = 9, last = "é" }
+assert held_merge.a = 2
+assert held_merge.last = null
+assert merge_state.child = { a = 1, b = 2 }
+merge_names = []
+loop field, item over merge_state
+    merge_names += field
+assert merge_names = ["a", "b", "child", "last"]
+merge_state += merge_state
+assert merge_state.a = 9
+assert merge_state.last = "é"
+
+| Failed expressions and invalid additions leave the global object intact.
+FailObjectOperand {} =>
+    merge_state += { a = 1 / 0 }
+FailObjectAddition {} =>
+    merge_state += "invalid"
+emit FailObjectOperand to this get failed_merge_operand
+emit FailObjectAddition to this get failed_merge_addition
+assert failed_merge_operand ∈ Exception
+assert failed_merge_addition ∈ Exception
+assert merge_state.a = 9
+assert merge_state.last = "é"
+
+| Duplicate RHS keys retain generic merge's first-match and append behavior.
+duplicates = { a = 1, tail = 2 }
+duplicates += { a = 3, a = 4, new = 5, new = 6 }
+duplicate_names = []
+duplicate_values = []
+loop field, item over duplicates
+    duplicate_names += field
+    duplicate_values += item
+assert duplicate_names = ["a", "tail", "new", "new"]
+assert duplicate_values = [3, 2, 5, 6]
+held_duplicates = duplicates
+duplicates += { new = 9 }
+replaced_values = []
+loop item over duplicates
+    replaced_values += item
+assert replaced_values = [3, 2, 9, 9]
+assert held_duplicates.new = 5
+
+| The object being walked is a snapshot even as its binding grows and changes.
+walked_object = {}
+loop field, item over held_merge
+    walked_object += { "$field" = item }
+    held_merge += { a = 100, added = true }
+assert walked_object.a = 2
+assert walked_object.added = null
+assert held_merge.added
