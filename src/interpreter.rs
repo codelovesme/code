@@ -1433,6 +1433,17 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                 }
                 return Ok(Flow::Normal);
             }
+            if let (Value::Object(_), Value::Object(updates)) = (&left, &right) {
+                drop(left);
+                let mut state = env.st_mut();
+                let Some(Value::Object(fields)) =
+                    state.scopes[name.frame].values[name.slot].as_mut()
+                else {
+                    unreachable!("pure expression changed its binding")
+                };
+                merge_object_into(fields, updates);
+                return Ok(Flow::Normal);
+            }
             if matches!(&left, Value::Str(_))
                 && !matches!(&right, Value::Array(_) | Value::Object(_))
             {
@@ -2441,6 +2452,38 @@ fn type_name(v: &Value) -> &'static str {
     }
 }
 
+/// Preserve generic object addition's first-match replacement and original
+/// positions, including duplicate keys. Newly appended keys are tested against
+/// the original prefix only, so a new key repeated on the RHS stays repeated.
+fn merge_object_into(destination: &mut Rc<Vec<(String, Value)>>, updates: &[(String, Value)]) {
+    let fields = Rc::make_mut(destination);
+    if let [(key, value)] = updates {
+        // The common one-field update needs one scan and no key copies.
+        let mut found = false;
+        for (name, old) in fields.iter_mut() {
+            if name == key {
+                *old = value.clone();
+                found = true;
+            }
+        }
+        if !found {
+            fields.push((key.clone(), value.clone()));
+        }
+        return;
+    }
+    let original_len = fields.len();
+    for (key, value) in fields.iter_mut() {
+        if let Some((_, replacement)) = updates.iter().find(|(name, _)| name == key) {
+            *value = replacement.clone();
+        }
+    }
+    for (key, value) in updates {
+        if !fields[..original_len].iter().any(|(name, _)| name == key) {
+            fields.push((key.clone(), value.clone()));
+        }
+    }
+}
+
 /// `Add`/`Sub`/`Mul`/`Div`/`Lt`/`Gt`/`Le`/`Ge` — see `ast::BinOp`'s doc
 /// comment for the exact operand-type rules this implements. `And`/`Or`/
 /// `Eq`/`Ne` are handled directly in `eval` (short-circuiting / always-
@@ -2488,7 +2531,7 @@ fn apply_binop(op: BinOp, l: &Value, r: &Value) -> Result<Value, String> {
         // one extra rule: a field both sides name takes the *right* value
         // in the *left* position, which is what makes `a + b` mean "a, with
         // b's fields applied" rather than "a, then b appended". Order is
-        // load-bearing — `PartialEq` compares objects pairwise in order.
+        // load-bearing for iteration and printing.
         (BinOp::Add, Object(a), Object(b)) => {
             let mut fields: Vec<(String, Value)> = Vec::with_capacity(a.len() + b.len());
             for (key, value) in a.iter() {
@@ -2533,6 +2576,48 @@ fn apply_binop(op: BinOp, l: &Value, r: &Value) -> Result<Value, String> {
 #[cfg(test)]
 mod borrowed_tests {
     use super::*;
+
+    #[test]
+    fn growing_objects_preserves_generic_merge_order_and_duplicate_keys() {
+        let mut seed = 0x0126_2026_1016_u64;
+        let mut fields = || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let len = (seed % 9) as usize;
+            (0..len)
+                .map(|i| {
+                    seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                    (
+                        format!("k{}", seed % 4),
+                        Value::Number((seed % 97 + i as u64) as f64),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        for _ in 0..256 {
+            let original = Value::Object(Rc::new(fields()));
+            let updates = Value::Object(Rc::new(fields()));
+            let expected = apply_binop(BinOp::Add, &original, &updates).unwrap();
+            let before = original.to_string();
+            for shared in [false, true] {
+                let Value::Object(source) = &original else {
+                    unreachable!()
+                };
+                let mut destination = if shared {
+                    Rc::clone(source)
+                } else {
+                    Rc::new((**source).clone())
+                };
+                let Value::Object(changes) = &updates else {
+                    unreachable!()
+                };
+                merge_object_into(&mut destination, changes);
+                // JSON preserves ordering and duplicate entries; object equality
+                // intentionally ignores field order and would miss these bugs.
+                assert_eq!(Value::Object(destination).to_string(), expected.to_string());
+                assert_eq!(original.to_string(), before);
+            }
+        }
+    }
 
     #[test]
     fn an_operand_retains_a_part_only_when_it_is_handed_on() {
