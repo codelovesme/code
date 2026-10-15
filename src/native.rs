@@ -241,12 +241,12 @@ unsafe fn ffi_to_value(v: *const CodeValueFfi) -> Value {
         TAG_NUMBER => Value::Number(v.payload.number),
         TAG_STR => {
             if v.payload.str_.is_null() {
-                Value::Str(Rc::from(""))
+                Value::Str("".into())
             } else {
                 let s = CStr::from_ptr(v.payload.str_)
                     .to_string_lossy()
                     .into_owned();
-                Value::Str(Rc::from(s.as_str()))
+                Value::Str(s.as_str().into())
             }
         }
         TAG_BOOL => Value::Bool(v.payload.boolean != 0),

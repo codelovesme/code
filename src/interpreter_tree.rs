@@ -291,7 +291,7 @@ impl Resolver {
         let boxed = |e| Box::new(child(e));
         match e {
             ast::Expr::Number(n) => Expr::Literal(Value::Number(*n)),
-            ast::Expr::Str(s) => Expr::Literal(Value::Str(Rc::from(s.as_str()))),
+            ast::Expr::Str(s) => Expr::Literal(Value::Str(s.as_str().into())),
             ast::Expr::Bool(b) => Expr::Literal(Value::Bool(*b)),
             ast::Expr::Null => Expr::Literal(Value::Null),
             ast::Expr::Ident(n) => Expr::Ident(self.lookup(n).expect("verified name")),

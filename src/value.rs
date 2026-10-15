@@ -1,6 +1,48 @@
 use std::fmt;
 use std::rc::Rc;
 
+/// Shared UTF-8 text with spare capacity for an exclusively held value.
+/// Cloning shares the bytes; writes detach before changing a shared string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Text(Rc<String>);
+
+impl Text {
+    pub(crate) fn push_str(&mut self, suffix: &str) {
+        Rc::make_mut(&mut self.0).push_str(suffix);
+    }
+}
+
+impl std::ops::Deref for Text {
+    type Target = str;
+    fn deref(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl AsRef<str> for Text {
+    fn as_ref(&self) -> &str {
+        self
+    }
+}
+
+impl fmt::Display for Text {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self)
+    }
+}
+
+impl From<String> for Text {
+    fn from(value: String) -> Self {
+        Self(Rc::new(value))
+    }
+}
+
+impl From<&str> for Text {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+
 /// A runtime value. The language's value model is exactly JSON's six kinds —
 /// no value can exist outside this set, and there are no type keywords to
 /// name or extend it. Variables are untyped bindings — a name can point to
@@ -21,7 +63,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone)]
 pub enum Value {
     Number(f64),
-    Str(Rc<str>),
+    Str(Text),
     Bool(bool),
     Null,
     Array(Rc<Vec<Value>>),

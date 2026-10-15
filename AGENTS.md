@@ -845,6 +845,11 @@ report it as uninstallable while leaving that entry alone. That is expected.
 - Reach for the debugger early. gdb is installed; both gdb and valgrind install
   without root (`apt-get download` + `dpkg-deb -x` into `~/.local`). A single
   backtrace once found in minutes what three theory-driven rewrites had missed.
+- **Development crashes are investigated, not an automatic rollback** (owner,
+  2026-10-15): keep trying while there is a credible fix; revert if the cause
+  cannot be resolved. Never merge a crashing implementation. Record the cause
+  and repair, and complete required checks. This supersedes earlier ticket
+  instructions to abandon an optimization at its first crash.
 - **Measure before theorising.** The longest session in this project's history
   was lost to successive plausible theories, each costing a rewrite.
 
