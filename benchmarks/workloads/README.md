@@ -30,6 +30,43 @@ and records raw launch times in `results.csv` and medians/ratios in
 Use `--output-dir` to keep an experimental run separate from the published
 results.
 
+## Interpreter text growth (2026-10-15, unreleased)
+
+`code run --interpret` measured with release-built CLIs, main `d7f9614`
+against implementation `acefcd5`. These are interpreter measurements, separate
+from the prebuilt native executable table below. Fresh process launches include
+parsing and bytecode lowering; before/after order was shuffled deterministically
+and pinned to logical CPU 0. Each result is a median of 15 launches, except
+the non-target spectral_norm check (three launches per mode).
+
+| Workload | Before | After | Elapsed-time change |
+|---|---:|---:|---:|
+| string_build | 330.28 ms | 16.35 ms | -95.1% |
+| dictionary | 789.79 ms | 759.59 ms | -3.8% |
+| binary_trees | 1743.18 ms | 1414.69 ms | -18.8% |
+| points | 273.60 ms | 260.95 ms | -4.6% |
+| sum_squares | 417.27 ms | 414.76 ms | -0.6% |
+| spectral_norm | 24803.14 ms | 25018.44 ms | +0.9% |
+
+String_build is **20.2× faster (95.1% less elapsed time)**. Self-add text
+assignments retain capacity and grow uniquely held strings instead of copying
+the accumulated prefix on every addition. Shared strings detach before a
+write; both operands finish evaluating before mutation, so self-append,
+snapshots and errors preserve their existing behavior. Callgrind instructions
+fell from 2,395,382,234 to 63,476,070 (97.4%). Ordinary additions
+of other types retain their existing semantics. Numerical-loop performance
+is essentially unchanged; this does not close its JavaScript/V8 gap.
+
+The initial trial exposed an unlowered-expression panic. The repaired path
+reads the resolved binding directly and lowers only the executable right
+operand. Full workspace tests, clippy, formatting, wasm32 build, 144 playground
+examples against the fresh wasm engine and all 70 app fixtures in three modes
+passed. Aquarium release wasm remains byte-identical at 901,831 bytes.
+Native module ABI 2 and the C runtime are unchanged. Rust embedding
+callers construct text as `Value::Str(text.into())`.
+
+Raw samples and measurement metadata: [interpreter-text-results.json](interpreter-text-results.json).
+
 ## Current measurement (2026-10-15, ticket 126 step 2-retry, median of 15)
 
 | Workload | C | Rust | code | code / C |
