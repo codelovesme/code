@@ -535,18 +535,18 @@
     </div>
     <div class="prose">
       <h3>Beyond the numeric loop</h3>
-      <p><strong>This numeric loop is code's best case.</strong> On the project's list, record, text, and allocation workloads, <code>code build --release</code> took <strong>1.37–3.22× C's time</strong> in this run. The same algorithms check their answers in all three languages.</p>
+      <p><strong>This numeric loop is code's best case.</strong> On the project's list, record, text, and allocation workloads, <code>code build --release</code> took <strong>1.12–3.22× C's time</strong> in this run. The same algorithms check their answers in all three languages.</p>
       <p>Measured on the same machine and logical CPU, 15 fresh prebuilt launches per mode, with deterministic shuffled order. Medians include startup, which matters for the shortest programs. C uses <code>-O2 -march=native</code>, Rust <code>-C opt-level=3 -C target-cpu=native</code>, and code <code>--release</code>.</p>
     </div>
     <div class="table-shell compact-table" role="region" tabindex="0">
       <table>
         <thead><tr><th scope="col">Order</th><th scope="col">Workload</th><th scope="col">C median</th><th scope="col">Rust median</th><th scope="col">code median</th><th scope="col">code / C</th></tr></thead>
         <tbody>
-          <tr><td>1</td><th scope="row"><code>spectral_norm</code></th><td>0.15760 s</td><td>0.15711 s</td><td>0.21603 s</td><td>1.37×</td></tr>
-          <tr><td>2</td><th scope="row"><code>binary_trees</code></th><td>0.00341 s</td><td>0.00366 s</td><td>0.01097 s</td><td>3.22×</td></tr>
-          <tr><td>3</td><th scope="row"><code>string_build</code></th><td>0.00147 s</td><td>0.00124 s</td><td>0.00462 s</td><td>3.14×</td></tr>
-          <tr><td>4</td><th scope="row"><code>dictionary</code></th><td>0.00353 s</td><td>0.00301 s</td><td>0.01040 s</td><td>2.94×</td></tr>
-          <tr><td>5</td><th scope="row"><code>points</code></th><td>0.00077 s</td><td>0.00101 s</td><td>0.00238 s</td><td>3.09×</td></tr>
+          <tr><td>1</td><th scope="row"><code>spectral_norm</code></th><td>0.15746 s</td><td>0.15721 s</td><td>0.21421 s</td><td>1.36×</td></tr>
+          <tr><td>2</td><th scope="row"><code>binary_trees</code></th><td>0.00341 s</td><td>0.00368 s</td><td>0.01099 s</td><td>3.22×</td></tr>
+          <tr><td>3</td><th scope="row"><code>string_build</code></th><td>0.00149 s</td><td>0.00125 s</td><td>0.00166 s</td><td>1.12×</td></tr>
+          <tr><td>4</td><th scope="row"><code>dictionary</code></th><td>0.00363 s</td><td>0.00302 s</td><td>0.00656 s</td><td>1.80×</td></tr>
+          <tr><td>5</td><th scope="row"><code>points</code></th><td>0.00078 s</td><td>0.00104 s</td><td>0.00240 s</td><td>3.06×</td></tr>
         </tbody>
       </table>
     </div>
