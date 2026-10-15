@@ -30,6 +30,30 @@ and records raw launch times in `results.csv` and medians/ratios in
 Use `--output-dir` to keep an experimental run separate from the published
 results.
 
+## Interpreter list growth (2026-10-16, unreleased)
+
+Measured independently after text growth, against main `f7cc234`. Release-built
+CLIs run each source with explicit `--interpret`: 15 serial fresh-process launches
+per mode, deterministic shuffled before/after order, logical CPU 0.
+
+| Workload | Before | After | Elapsed-time change |
+|---|---:|---:|---:|
+| binary_trees | 1382.90 ms | 102.47 ms | -92.6% |
+| dictionary | 755.75 ms | 750.35 ms | -0.7% |
+| string_build | 13.40 ms | 13.55 ms | +1.1% |
+| points | 261.75 ms | 263.51 ms | +0.7% |
+| sum_squares | 403.16 ms | 402.80 ms | -0.1% |
+
+**Binary_trees is 13.5× faster (92.6% less time)**. List self-add assignments
+grow the exclusively held vector instead of cloning its existing elements
+on every append. `Rc::make_mut` detaches shared lists; evaluation finishes
+before the write, so self/contained aliases, handler replies, iteration
+snapshots and RHS errors retain their existing behavior. Array concatenation
+still flattens one level, and a non-array operand remains one element.
+Other workloads show only small differences. Object merging is a separate step.
+
+Raw samples and metadata: [interpreter-list-results.json](interpreter-list-results.json).
+
 ## Interpreter text growth (2026-10-15, unreleased)
 
 `code run --interpret` measured with release-built CLIs, main `d7f9614`
