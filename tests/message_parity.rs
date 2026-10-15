@@ -33,6 +33,10 @@ use std::process::Command;
 /// failure puts in `Exception.message` — it comes from the same `fail` call.
 const CASES: &[(&str, &str)] = &[
     ("add", "x = 1 + true\n"),
+    (
+        "append_interpolation",
+        "n = 2\ns ∈ Any = { x = 1 }\ns += \"$n\"\n",
+    ),
     ("sub", "x = 1 - \"a\"\n"),
     ("mul", "x = true * 2\n"),
     ("div", "x = 1 / \"a\"\n"),

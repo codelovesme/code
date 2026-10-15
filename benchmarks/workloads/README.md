@@ -30,23 +30,24 @@ and records raw launch times in `results.csv` and medians/ratios in
 Use `--output-dir` to keep an experimental run separate from the published
 results.
 
-## Current measurement (2026-10-15, ticket 126 step 3, median of 15)
+## Current measurement (2026-10-15, ticket 126 step 2-retry, median of 15)
 
 | Workload | C | Rust | code | code / C |
 |---|---|---|---|---|
-| spectral_norm | 0.15760 s | 0.15711 s | 0.21603 s | 1.37× |
-| binary_trees | 0.00341 s | 0.00366 s | 0.01097 s | 3.22× |
-| string_build | 0.00147 s | 0.00124 s | 0.00462 s | 3.14× |
-| dictionary | 0.00353 s | 0.00301 s | 0.01040 s | 2.94× |
-| points | 0.00077 s | 0.00101 s | 0.00238 s | 3.09× |
+| spectral_norm | 0.15746 s | 0.15721 s | 0.21421 s | 1.36× |
+| binary_trees | 0.00341 s | 0.00368 s | 0.01099 s | 3.22× |
+| string_build | 0.00149 s | 0.00125 s | 0.00166 s | 1.12× |
+| dictionary | 0.00363 s | 0.00302 s | 0.00656 s | 1.80× |
+| points | 0.00078 s | 0.00104 s | 0.00240 s | 3.06× |
 
 Pinned to logical CPU 0; fresh prebuilt launches include startup.
-These launches put code at 1.37–3.22× C's time. Ticket 126's large-object
+These launches put code at 1.12–3.22× C's time. Ticket 126's large-object
 index cut dictionary from 17.8 to 10.4 ms. Inline container lengths and empty-list
 checks, literal-key templates and transferring a last stack value cut binary_trees
 from 13.8 to 11.0 ms (129.6M → 101.8M instructions). The small-block pool was
-rejected for insufficient elapsed-time gain. Interpolation fusion was stopped
-after compiled verification failed; it is absent from these results.
+rejected for insufficient elapsed-time gain. Interpolation now appends directly into uniquely held text, with correct active-frame
+allocation of its pointer buffer: string_build fell from 4.6 to 1.7 ms and
+dictionary from 10.3 to 6.6 ms.
 The older tables below record development stages.
 
 ## Baseline (2026-10-11, code 2.14.8 + 113, i7-5930K, median of 5)
