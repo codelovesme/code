@@ -335,6 +335,14 @@ fn check_interpret(name: &str, path: &Path, expect: Expect, failures: &mut Vec<S
         .output()
         .unwrap_or_else(|e| panic!("{name}: run `code run` subprocess: {e}"));
 
+    if output.status.code().is_none() {
+        failures.push(format!(
+            "{name}: interpret: fixture crashed with {}",
+            output.status
+        ));
+        return;
+    }
+
     match (should_fail, output.status.success()) {
         (false, false) => failures.push(format!(
             "{name}: interpret: expected to run, but exited {}: {}",
@@ -403,7 +411,13 @@ fn check_compile(
                 .output()
                 .unwrap_or_else(|e| panic!("{name}: run compiled binary: {e}"));
 
-            if should_fail {
+            if output.status.code().is_none() {
+                failures.push(format!(
+                    "{name}: {label}: fixture crashed with {}; stderr: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            } else if should_fail {
                 if output.status.success() {
                     failures.push(format!(
                         "{name}: {label}: expected an error (compile-time or at runtime), but the binary ran successfully"

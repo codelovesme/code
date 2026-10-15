@@ -368,6 +368,23 @@ fn wasm_indexes_large_objects_with_the_same_answers() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn wasm_transfers_stack_values_with_the_same_answers() {
+    let dir = temp_dir("wasm-stack-transfer");
+    for release in [false, true] {
+        let out = dir.join("stack_transfer.wasm");
+        code::compile_file(
+            &fixture("stack_transfer.code"),
+            code::BuildTarget::Wasm,
+            &out,
+            release,
+        )
+        .expect("build stack_transfer.code --target wasm");
+        run_wasm_under_node(&dir, &out);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// `∈` a declared type walks the compiler's description of it in the
 /// runtime (`code_is_type`); on wasm a node's pointers are 32 bits, so its
 /// number sits at another offset.

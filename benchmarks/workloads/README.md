@@ -30,19 +30,23 @@ and records raw launch times in `results.csv` and medians/ratios in
 Use `--output-dir` to keep an experimental run separate from the published
 results.
 
-## Current measurement (2026-10-15, ticket 126 step 1, median of 15)
+## Current measurement (2026-10-15, ticket 126 step 3, median of 15)
 
 | Workload | C | Rust | code | code / C |
 |---|---|---|---|---|
-| spectral_norm | 0.15772 s | 0.15712 s | 0.21640 s | 1.37× |
-| binary_trees | 0.00342 s | 0.00366 s | 0.01382 s | 4.05× |
-| string_build | 0.00147 s | 0.00124 s | 0.00457 s | 3.10× |
-| dictionary | 0.00356 s | 0.00302 s | 0.01037 s | 2.92× |
-| points | 0.00077 s | 0.00102 s | 0.00244 s | 3.16× |
+| spectral_norm | 0.15760 s | 0.15711 s | 0.21603 s | 1.37× |
+| binary_trees | 0.00341 s | 0.00366 s | 0.01097 s | 3.22× |
+| string_build | 0.00147 s | 0.00124 s | 0.00462 s | 3.14× |
+| dictionary | 0.00353 s | 0.00301 s | 0.01040 s | 2.94× |
+| points | 0.00077 s | 0.00101 s | 0.00238 s | 3.09× |
 
 Pinned to logical CPU 0; fresh prebuilt launches include startup.
-These launches put code at 1.37–4.05× C's time. Dictionary's lazy
-hash index cuts 17.8 to 10.4 ms and 199.8M to 93.6M instructions.
+These launches put code at 1.37–3.22× C's time. Ticket 126's large-object
+index cut dictionary from 17.8 to 10.4 ms. Inline container lengths and empty-list
+checks, literal-key templates and transferring a last stack value cut binary_trees
+from 13.8 to 11.0 ms (129.6M → 101.8M instructions). The small-block pool was
+rejected for insufficient elapsed-time gain. Interpolation fusion was stopped
+after compiled verification failed; it is absent from these results.
 The older tables below record development stages.
 
 ## Baseline (2026-10-11, code 2.14.8 + 113, i7-5930K, median of 5)
