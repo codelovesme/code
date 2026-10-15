@@ -17,7 +17,7 @@ mod numeric;
 mod tree;
 #[cfg(feature = "native-modules")]
 use crate::native::NativeModule;
-use crate::value::Value;
+use crate::value::{forget_object_index, object_field, object_position, Value};
 use tree::{
     Binding, Block, EmitResult, EmitTarget, Expr, Field, FieldKey, Layout, NumberExpr, NumberOp,
     Stmt,
@@ -1998,10 +1998,9 @@ fn operand<'a>(expr: &'a Expr, state: &'a State) -> Result<Cow<'a, Value>, Strin
 
 fn field_operand<'a>(value: &'a Value, field: &str) -> Result<Cow<'a, Value>, String> {
     match value {
-        Value::Object(fields) => Ok(fields
-            .iter()
-            .find(|(k, _)| k == field)
-            .map_or_else(|| Cow::Owned(Value::Null), |(_, v)| Cow::Borrowed(v))),
+        Value::Object(fields) => {
+            Ok(object_field(fields, field).map_or_else(|| Cow::Owned(Value::Null), Cow::Borrowed))
+        }
         v => Err(format!(
             "cannot read field '{field}' of {} — '.' requires an object",
             a_type_name(v)
@@ -2014,10 +2013,9 @@ fn index_operand<'a>(value: &'a Value, index: &Value) -> Result<Cow<'a, Value>, 
         (Value::Array(items), Value::Number(n)) if *n >= 0.0 && n.fract() == 0.0 => Ok(items
             .get(*n as usize)
             .map_or_else(|| Cow::Owned(Value::Null), Cow::Borrowed)),
-        (Value::Object(fields), Value::Str(key)) => Ok(fields
-            .iter()
-            .find(|(k, _)| k.as_str() == key.as_ref())
-            .map_or_else(|| Cow::Owned(Value::Null), |(_, v)| Cow::Borrowed(v))),
+        (Value::Object(fields), Value::Str(key)) => {
+            Ok(object_field(fields, key).map_or_else(|| Cow::Owned(Value::Null), Cow::Borrowed))
+        }
         (Value::Str(text), Value::Number(n)) if *n >= 0.0 && n.fract() == 0.0 => Ok(Cow::Owned(
             text.chars()
                 .nth(*n as usize)
@@ -2239,8 +2237,10 @@ fn set_at(target: &mut Value, keys: &[Value], new: Value) -> Result<(), String> 
                         a_type_name(key)
                     ));
                 };
+                let position = object_position(fields, name);
+                forget_object_index(fields);
                 let fields = Rc::make_mut(fields);
-                match fields.iter().position(|(k, _)| **k == **name) {
+                match position {
                     Some(at) => &mut fields[at].1,
                     None if last => {
                         fields.push((name.to_string(), Value::Null));
@@ -2444,11 +2444,11 @@ fn apply_binop(op: BinOp, l: &Value, r: &Value) -> Result<Value, String> {
         (BinOp::Add, Object(a), Object(b)) => {
             let mut fields: Vec<(String, Value)> = Vec::with_capacity(a.len() + b.len());
             for (key, value) in a.iter() {
-                let overridden = b.iter().find(|(k, _)| k == key).map(|(_, v)| v);
+                let overridden = object_field(b, key);
                 fields.push((key.clone(), overridden.unwrap_or(value).clone()));
             }
             for (key, value) in b.iter() {
-                if !a.iter().any(|(k, _)| k == key) {
+                if object_field(a, key).is_none() {
                     fields.push((key.clone(), value.clone()));
                 }
             }

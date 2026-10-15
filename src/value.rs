@@ -1,5 +1,7 @@
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::fmt;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 /// A runtime value. The language's value model is exactly JSON's six kinds —
 /// no value can exist outside this set, and there are no type keywords to
@@ -29,6 +31,117 @@ pub enum Value {
     /// preserving it makes output deterministic and matches what a person
     /// wrote — a plain `Vec` is fine at this scale (linear key lookup).
     Object(Rc<Vec<(String, Value)>>),
+}
+
+// Keep the public Rc<Vec<...>> value shape. A weak owner identifies a cached
+// immutable vector without keeping its values alive. Rc::make_mut dissociates
+// weak owners before mutation; interpreter writes also drop the cache first.
+// Entries are bounded and do not contain references into the vector.
+type ObjectFields = Rc<Vec<(String, Value)>>;
+struct ObjectIndex {
+    owner: Weak<Vec<(String, Value)>>,
+    positions: Box<[usize]>,
+}
+struct ObjectIndexes {
+    entries: VecDeque<ObjectIndex>,
+    check: bool,
+}
+thread_local! {
+    static OBJECT_INDEXES: RefCell<ObjectIndexes> = RefCell::new(ObjectIndexes {
+        entries: VecDeque::new(),
+        check: std::env::var_os("CODE_OBJECT_INDEX_CHECK").is_some(),
+    });
+}
+fn object_key_hash(key: &str) -> usize {
+    key.bytes().fold(2166136261u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(16777619)
+    }) as usize
+}
+fn scan_object(fields: &[(String, Value)], key: &str) -> Option<usize> {
+    fields.iter().position(|(name, _)| name == key)
+}
+
+pub(crate) fn object_position(fields: &ObjectFields, key: &str) -> Option<usize> {
+    if fields.len() <= 16 {
+        return scan_object(fields, key);
+    }
+    OBJECT_INDEXES
+        .try_with(|cache| {
+            let mut cache = cache.borrow_mut();
+            let owner = Rc::as_ptr(fields);
+            let at = match cache
+                .entries
+                .iter()
+                .position(|entry| entry.owner.as_ptr() == owner)
+            {
+                Some(at) => at,
+                None => {
+                    cache.entries.retain(|entry| entry.owner.strong_count() > 0);
+                    if cache.entries.len() == 32 {
+                        cache.entries.pop_front();
+                    }
+                    let mut positions = vec![usize::MAX; (fields.len() * 2).next_power_of_two()];
+                    let mask = positions.len() - 1;
+                    for (i, (key, _)) in fields.iter().enumerate() {
+                        let mut bucket = object_key_hash(key) & mask;
+                        while positions[bucket] != usize::MAX {
+                            if fields[positions[bucket]].0 == *key {
+                                break;
+                            }
+                            bucket = (bucket + 1) & mask;
+                        }
+                        if positions[bucket] == usize::MAX {
+                            positions[bucket] = i;
+                        }
+                    }
+                    cache.entries.push_back(ObjectIndex {
+                        owner: Rc::downgrade(fields),
+                        positions: positions.into_boxed_slice(),
+                    });
+                    cache.entries.len() - 1
+                }
+            };
+            let index = &cache.entries[at];
+            let mask = index.positions.len() - 1;
+            let mut bucket = object_key_hash(key) & mask;
+            let found = loop {
+                let at = index.positions[bucket];
+                if at == usize::MAX {
+                    break None;
+                }
+                if fields[at].0 == key {
+                    break Some(at);
+                }
+                bucket = (bucket + 1) & mask;
+            };
+            if cache.check {
+                assert_eq!(
+                    found,
+                    scan_object(fields, key),
+                    "object index differs from scan"
+                );
+            }
+            found
+        })
+        .unwrap_or_else(|_| scan_object(fields, key))
+}
+
+pub(crate) fn object_field<'a>(fields: &'a ObjectFields, key: &str) -> Option<&'a Value> {
+    object_position(fields, key).map(|at| &fields[at].1)
+}
+
+pub(crate) fn forget_object_index(fields: &ObjectFields) {
+    if fields.len() <= 16 {
+        return;
+    }
+    // TLS may already be gone if an embedding drops values at thread exit.
+    let _ = OBJECT_INDEXES.try_with(|cache| {
+        let owner = Rc::as_ptr(fields);
+        cache
+            .borrow_mut()
+            .entries
+            .retain(|entry| entry.owner.as_ptr() != owner);
+    });
 }
 
 /// Dropping a nested `Value` would otherwise recurse once per level: the
@@ -74,6 +187,10 @@ fn take_children(value: &mut Value, stack: &mut Vec<Value>) {
             }
         }
         Value::Object(fields) => {
+            // Remove our weak owner so get_mut can still unroll the drop.
+            if Rc::strong_count(fields) == 1 {
+                forget_object_index(fields);
+            }
             if let Some(fields) = Rc::get_mut(fields) {
                 stack.extend(fields.drain(..).map(|(_, value)| value));
             }
@@ -274,5 +391,69 @@ pub fn label_of_value(value: &Value) -> Option<crate::ast::Label> {
                     .collect(),
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod object_index_tests {
+    use super::*;
+
+    fn large_fields() -> ObjectFields {
+        Rc::new(
+            (0..40)
+                .map(|i| (format!("k{i}"), Value::Number(i as f64)))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn cached_positions_follow_copies_growth_and_external_make_mut() {
+        let mut fields = large_fields();
+        assert_eq!(object_position(&fields, "k20"), Some(20));
+        // A safe Rust caller may mutate without our explicit invalidation.
+        Rc::make_mut(&mut fields).swap(0, 20);
+        assert_eq!(object_position(&fields, "k20"), Some(0));
+        let saved = Rc::clone(&fields);
+        forget_object_index(&fields);
+        Rc::make_mut(&mut fields).push(("new".to_string(), Value::Number(99.0)));
+        assert_eq!(object_field(&fields, "new"), Some(&Value::Number(99.0)));
+        assert_eq!(object_field(&saved, "new"), None);
+        assert_eq!(object_field(&saved, "k20"), Some(&Value::Number(20.0)));
+        drop(Value::Object(fields));
+        drop(Value::Object(saved));
+    }
+
+    #[test]
+    fn duplicate_keys_and_hash_collisions_keep_the_first_match() {
+        let mut fields = large_fields();
+        Rc::make_mut(&mut fields).extend([
+            ("costarring".to_string(), Value::Number(7.0)),
+            ("liquid".to_string(), Value::Number(9.0)),
+            ("k20".to_string(), Value::Number(999.0)),
+        ]);
+        assert_eq!(object_key_hash("costarring"), object_key_hash("liquid"));
+        assert_eq!(
+            object_field(&fields, "costarring"),
+            Some(&Value::Number(7.0))
+        );
+        assert_eq!(object_field(&fields, "liquid"), Some(&Value::Number(9.0)));
+        assert_eq!(object_field(&fields, "k20"), Some(&Value::Number(20.0)));
+        assert_eq!(object_field(&fields, "absent"), None);
+        drop(Value::Object(fields));
+    }
+
+    #[test]
+    fn cached_weak_owners_do_not_turn_iterative_drop_into_recursion() {
+        let mut value = Value::Null;
+        for _ in 0..5000 {
+            let mut fields: Vec<_> = (0..17)
+                .map(|i| (format!("k{i}"), Value::Number(i as f64)))
+                .collect();
+            fields.push(("child".to_string(), value));
+            let fields = Rc::new(fields);
+            assert_eq!(object_position(&fields, "child"), Some(17));
+            value = Value::Object(fields);
+        }
+        drop(value);
     }
 }
