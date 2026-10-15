@@ -208,7 +208,7 @@ fn one_number(
 fn to_value(v: &CodeValue) -> Value {
     match v.tag {
         CodeTag::Number => Value::Number(v.number()),
-        CodeTag::Str => Value::Str(Rc::from(read_str(v).unwrap_or(""))),
+        CodeTag::Str => Value::Str(read_str(v).unwrap_or("").into()),
         CodeTag::Bool => Value::Bool(v.boolean() != 0),
         CodeTag::Null => Value::Null,
         CodeTag::Array => Value::Array(Rc::new(array_elems(v).map(to_value).collect())),

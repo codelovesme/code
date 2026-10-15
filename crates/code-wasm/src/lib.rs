@@ -148,7 +148,7 @@ fn json_to_value(value: serde_json::Value) -> Value {
         serde_json::Value::Null => Value::Null,
         serde_json::Value::Bool(b) => Value::Bool(b),
         serde_json::Value::Number(n) => Value::Number(n.as_f64().unwrap_or(0.0)),
-        serde_json::Value::String(s) => Value::Str(Rc::from(s.as_str())),
+        serde_json::Value::String(s) => Value::Str(s.as_str().into()),
         serde_json::Value::Array(items) => {
             Value::Array(Rc::new(items.into_iter().map(json_to_value).collect()))
         }
@@ -213,10 +213,7 @@ mod tests {
         assert_eq!(decode_json("42").unwrap(), Value::Number(42.0));
         assert_eq!(decode_json("true").unwrap(), Value::Bool(true));
         assert_eq!(decode_json("null").unwrap(), Value::Null);
-        assert_eq!(
-            decode_json(r#""a:b""#).unwrap(),
-            Value::Str(Rc::from("a:b"))
-        );
+        assert_eq!(decode_json(r#""a:b""#).unwrap(), Value::Str("a:b".into()));
         assert_eq!(
             decode_json(r#"{"answer": 42}"#).unwrap(),
             Value::Object(Rc::new(vec![("answer".to_string(), Value::Number(42.0))]))
@@ -224,7 +221,7 @@ mod tests {
         assert_eq!(
             decode_json(r#"{"_class": "DoubleResult", "value": 42}"#).unwrap(),
             Value::Object(Rc::new(vec![
-                ("_class".to_string(), Value::Str(Rc::from("DoubleResult"))),
+                ("_class".to_string(), Value::Str("DoubleResult".into())),
                 ("value".to_string(), Value::Number(42.0)),
             ]))
         );
@@ -232,7 +229,7 @@ mod tests {
             decode_json(r#"[1, "two", null]"#).unwrap(),
             Value::Array(Rc::new(vec![
                 Value::Number(1.0),
-                Value::Str(Rc::from("two")),
+                Value::Str("two".into()),
                 Value::Null,
             ]))
         );

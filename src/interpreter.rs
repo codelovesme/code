@@ -1157,7 +1157,7 @@ impl LoopIter {
             LoopIter::Array(items) => (Value::Number(i as f64), items[i].clone()),
             LoopIter::Object(fields) => {
                 let (key, value) = &fields[i];
-                (Value::Str(Rc::from(key.as_str())), value.clone())
+                (Value::Str(key.as_str().into()), value.clone())
             }
         }
     }
@@ -1341,7 +1341,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                     guest,
                     inbound,
                     flows_take: Rc::new(move || taking.flows_take()),
-                    program: Value::Str(Rc::from(path)),
+                    program: Value::Str(path.into()),
                 };
                 let address = env.open_module(module);
                 env.set(alias, address);
@@ -1405,6 +1405,37 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
             let answer = set_at(&mut whole, &keys, new);
             env.set(name, whole);
             answer.map(|()| Flow::Normal)
+        }
+        Stmt::Assign {
+            name,
+            value: Expr::Binary(lhs, BinOp::Add, rhs),
+        } if matches!(&**lhs, Expr::Ident(read) if read == name) => {
+            // Expressions are pure: evaluate all reads/errors before changing
+            // the binding, including self-append and interpolations using it.
+            let left = env
+                .read(name)
+                .ok_or_else(|| format!("undefined variable '{name}'"))?;
+            let right = eval(rhs, env)?;
+            if matches!(&left, Value::Str(_))
+                && !matches!(&right, Value::Array(_) | Value::Object(_))
+            {
+                // Release only our temporary read. Any real aliases (including
+                // right itself) continue to force a copy before the write.
+                drop(left);
+                let mut state = env.st_mut();
+                let scope = &mut state.scopes[name.frame];
+                let Some(Value::Str(text)) = scope.values[name.slot].as_mut() else {
+                    unreachable!("pure expression changed its binding")
+                };
+                match &right {
+                    Value::Str(suffix) => text.push_str(suffix),
+                    value => text.push_str(&value.to_string()),
+                }
+                return Ok(Flow::Normal);
+            }
+            let value = apply_binop(BinOp::Add, &left, &right)?;
+            env.set(name, value);
+            Ok(Flow::Normal)
         }
         Stmt::Assign { name, value, .. } => {
             let v = eval(value, env)?;
@@ -2140,7 +2171,7 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
 /// not a bare scalar. Must match `runtime.c`'s `code_make_result` exactly.
 fn core_result(class_name: &str, value: f64) -> Value {
     Value::Object(Rc::new(vec![
-        ("_class".to_string(), Value::Str(Rc::from(class_name))),
+        ("_class".to_string(), Value::Str(class_name.into())),
         ("value".to_string(), Value::Number(value)),
     ]))
 }
@@ -2401,7 +2432,7 @@ fn apply_binop(op: BinOp, l: &Value, r: &Value) -> Result<Value, String> {
     use Value::*;
     let result = match (op, l, r) {
         (BinOp::Add, Number(a), Number(b)) => Some(Number(a + b)),
-        (BinOp::Add, Str(a), Str(b)) => Some(Str(Rc::from(format!("{a}{b}").as_str()))),
+        (BinOp::Add, Str(a), Str(b)) => Some(Str(format!("{a}{b}").into())),
         (BinOp::Add, Array(a), Array(b)) => {
             let mut items = (**a).clone();
             items.extend(b.iter().cloned());
@@ -2430,10 +2461,10 @@ fn apply_binop(op: BinOp, l: &Value, r: &Value) -> Result<Value, String> {
         // stays a type error — an object has no bare form to splice — so the
         // guard on each arm excludes both container kinds.
         (BinOp::Add, Str(a), b) if !matches!(b, Array(_) | Object(_)) => {
-            Some(Str(Rc::from(format!("{a}{b}").as_str())))
+            Some(Str(format!("{a}{b}").into()))
         }
         (BinOp::Add, a, Str(b)) if !matches!(a, Array(_) | Object(_)) => {
-            Some(Str(Rc::from(format!("{a}{b}").as_str())))
+            Some(Str(format!("{a}{b}").into()))
         }
         // Two objects merge, the way two arrays concatenate. Arrays have no
         // duplicate keys to reconcile and objects do, so this arm has the

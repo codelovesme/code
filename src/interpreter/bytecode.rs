@@ -407,6 +407,12 @@ fn lower_action(stmt: &mut Stmt) {
             }
             lower_expr(value);
         }
+        // Keep the self-add visible to exec, but lower its right operand.
+        // It must finish reading the old binding before we take it to append.
+        Stmt::Assign {
+            name,
+            value: Expr::Binary(lhs, BinOp::Add, rhs),
+        } if matches!(&**lhs, Expr::Ident(read) if read == name) => lower_expr(rhs),
         Stmt::Assign { value, .. }
         | Stmt::Assert(value)
         | Stmt::Return { value }

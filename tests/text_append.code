@@ -80,3 +80,41 @@ assert failure ∈ Exception
 assert old = { x = 1 }
 assert failure.source = "core"
 assert failure.message = "cannot apply '+' to an object and a string"
+
+| Plain self-add also preserves aliases held in containers and handler replies.
+plain = "é"
+kept = { text = plain }
+plain += plain
+assert plain = "éé"
+assert kept.text = "é"
+plain = plain + plain[0]
+assert plain = "ééé"
+plain += true
+plain += null
+plain += -0
+assert plain = "ééétruenull-0"
+plain += ""
+assert plain = "ééétruenull-0"
+
+SnapshotText {} =>
+    return TextSnapshot { value = plain }
+emit SnapshotText to this get snapshot
+plain += "!"
+assert snapshot.value = "ééétruenull-0"
+assert plain = "ééétruenull-0!"
+
+| A right-hand error or invalid addition must leave the accumulator intact.
+FailTextRight {} =>
+    plain += 1 / 0
+FailTextObject {} =>
+    plain += { x = 1 }
+emit FailTextRight to this get right_failure
+assert right_failure ∈ Exception
+emit FailTextObject to this get object_failure
+assert object_failure ∈ Exception
+assert plain = "ééétruenull-0!"
+
+| Generic fallback still prepends text to an array rather than rendering it.
+flexible ∈ Any = "prefix"
+flexible += [1, 2]
+assert flexible = ["prefix", 1, 2]
