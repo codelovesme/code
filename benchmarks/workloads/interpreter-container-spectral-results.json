@@ -1,0 +1,34 @@
+{
+  "measured_at_utc": "2026-10-15T22:44:22+00:00",
+  "cpu": 0,
+  "runs_per_mode": 3,
+  "baseline_commit": "f7cc234",
+  "implementation_source_commit": "b60682c",
+  "samples_seconds": {
+    "before": [
+      21.32305825012736,
+      21.315593688981608,
+      21.603973587043583
+    ],
+    "after": [
+      21.206542494008318,
+      21.07943733013235,
+      20.913723184959963
+    ]
+  },
+  "medians_seconds": {
+    "before": 21.32305825012736,
+    "after": 21.07943733013235
+  },
+  "note": "Non-target check after both container steps; serial shuffled fresh-process launches with release-built CLIs and explicit --interpret. No concurrent builds/tests/profiling.",
+  "elapsed_time_change_percent": -1.1425233525943934,
+  "notes": [
+    "Non-target check: small differences are not claimed as reliable speedups.",
+    "Both list and object steps are included in after; baseline is main f7cc234.",
+    "Builds, tests and profiling were stopped during timing."
+  ],
+  "binary_sha256": {
+    "before": "157845c5dd8cbb66fcf765bd1a7907f69d736be462bb5126f0b101568988e0af",
+    "after": "cd2d66ec51731591fad97963b9ef506fa1df69798ab22a6014b3873d3c14d73d"
+  }
+}

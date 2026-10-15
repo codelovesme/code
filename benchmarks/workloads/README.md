@@ -58,6 +58,16 @@ Native module ABI 2 and the C runtime are unchanged; Aquarium release wasm
 remains byte-identical at 901,831 bytes.
 Raw samples and metadata: [interpreter-object-results.json](interpreter-object-results.json).
 
+Both container steps passed full workspace tests, clippy with warnings denied,
+formatting, the wasm32 build, all 144 playground examples with the fresh wasm
+interpreter, all 70 app fixtures in three modes, and both PR CI jobs. A separate
+non-target spectral_norm check after both steps (three serial shuffled launches
+per mode) gave **21.32 → 21.08 s**, essentially unchanged. Its raw samples are in
+[interpreter-container-spectral-results.json](interpreter-container-spectral-results.json).
+List [PR #50](https://github.com/codelovesme/code/pull/50) and object
+[PR #51](https://github.com/codelovesme/code/pull/51) are merged; no release was made.
+
+
 ## Interpreter list growth (2026-10-16, unreleased)
 
 Measured independently after text growth, against main `f7cc234`. Release-built
