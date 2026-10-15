@@ -200,7 +200,8 @@ void code_take_failure(CodeValue *out) {
 
 typedef struct {
     long long rc;
-    /* A string block's length plus one once something has measured it, 0
+    /* A string block's byte length plus one in its low 58 bits, with a
+     * capacity exponent in its high six bits (see `remember_text`), 0
      * until then (`text_length`). An object block's *shape*: the address of
      * the compiler's key list the object was built from, while its keys are
      * still exactly those (`code_object_literal`, ticket 122 stage B), 0
@@ -3891,6 +3892,33 @@ void code_check_particle(const CodeValue *v) {
  * nested inside an array or object does keep its quotes. Iterative, for the
  * reason the traversal section above gives. */
 
+/* Strings alone use this encoding; object shapes/index pointers are unchanged.
+ * A power-of-two lower bound remembers capacity without enlarging the header.
+ * 58 length bits exceed any addressable allocation on the supported targets. */
+#define TEXT_LENGTH_MASK ((1ULL << 58) - 1)
+static void *room_for(void *payload, size_t bytes);
+static size_t block_room(void *block);
+
+static void remember_text(char *buf, size_t len, size_t cap) {
+    unsigned long long exponent = 0;
+    while (cap) { exponent++; cap >>= 1; }
+    header_of(buf)->text_length = (long long)((exponent << 58) | (len + 1));
+}
+
+static size_t text_capacity(const CodeValue *v) {
+    unsigned long long word = (unsigned long long)header_of(v->str)->text_length;
+    unsigned int exponent = (unsigned int)(word >> 58);
+    if (!exponent) {
+        size_t cap = block_room(header_of(v->str));
+        cap = cap > sizeof(CodeHeader) ? cap - sizeof(CodeHeader) : 0;
+        size_t len = word ? (size_t)(word - 1) : strlen(v->str);
+        remember_text((char *)v->str, len, cap);
+        word = (unsigned long long)header_of(v->str)->text_length;
+        exponent = (unsigned int)(word >> 58);
+    }
+    return exponent ? (size_t)(1ULL << (exponent - 1)) : 0;
+}
+
 typedef struct {
     char *buf;
     size_t len;
@@ -3903,7 +3931,7 @@ static void text_push(TextBuf *t, const char *s, size_t n) {
         while (next < t->len + n + 1) {
             next *= 2;
         }
-        char *bigger = realloc(t->buf, next);
+        char *bigger = t->buf ? room_for(t->buf, next) : heap_alloc(next);
         if (!bigger) {
             code_runtime_error("out of memory");
         }
@@ -3925,7 +3953,7 @@ static void text_push_str(TextBuf *t, const char *s) { text_push(t, s, strlen(s)
  * rounding to the shortest round-tripping length happens below. Verified
  * against Rust's own output over 205k values, random bit patterns included.
  *
- * Integral values short-circuit through `%lld`: it is the overwhelmingly
+ * Integral values short-circuit through a digit loop: it is the overwhelmingly
  * common case, and it is exact.
  *
  * The fractional path needs exactly two things a freestanding build cannot
@@ -3982,7 +4010,10 @@ static double number_parse(const char *text, size_t len) {
 
 static void text_push_number(TextBuf *t, double d) {
     char tmp[512];
-    if (d == (double)(long long)d && d >= -9007199254740992.0 && d <= 9007199254740992.0) {
+    if (d != d) { text_push_str(t, "NaN"); return; }
+    if (d > 1.7976931348623157e308) { text_push_str(t, "inf"); return; }
+    if (d < -1.7976931348623157e308) { text_push_str(t, "-inf"); return; }
+    if (d >= -9007199254740992.0 && d <= 9007199254740992.0 && d == (double)(long long)d) {
         /* `(long long)-0.0` is 0, which would print an unsigned zero — but
          * Rust's `Display` keeps the sign. Tested by dividing rather than
          * with `signbit`, so the wasm build needs no `math.h`. */
@@ -3990,8 +4021,15 @@ static void text_push_number(TextBuf *t, double d) {
             text_push_str(t, "-0");
             return;
         }
-        snprintf(tmp, sizeof tmp, "%lld", (long long)d);
-        text_push_str(t, tmp);
+        unsigned long long magnitude = (unsigned long long)(d < 0 ? -d : d);
+        char *end = tmp + sizeof tmp;
+        char *at = end;
+        do {
+            *--at = (char)('0' + magnitude % 10);
+            magnitude /= 10;
+        } while (magnitude);
+        if (d < 0) *--at = '-';
+        text_push(t, at, (size_t)(end - at));
         return;
     }
     /* 41 significant digits: more than the 17 any double needs to round-trip,
@@ -4132,8 +4170,7 @@ typedef struct {
 static TextStep *steps = NULL;
 static size_t steps_cap = 0;
 
-void code_to_text(CodeValue *out, const CodeValue *v) {
-    TextBuf t = {NULL, 0, 0};
+static void render_text(TextBuf *t, const CodeValue *v) {
     size_t len = 0;
 
     steps = grow(steps, &steps_cap, len + 1, sizeof(TextStep));
@@ -4144,36 +4181,36 @@ void code_to_text(CodeValue *out, const CodeValue *v) {
         TextStep step = steps[--len];
         if (!step.value) {
             if (step.is_key) {
-                text_push_json_string(&t, step.punct);
-                text_push(&t, ":", 1);
+                text_push_json_string(t, step.punct);
+                text_push(t, ":", 1);
             } else {
-                text_push_str(&t, step.punct);
+                text_push_str(t, step.punct);
             }
             continue;
         }
         const CodeValue *current = step.value;
         switch (current->tag) {
         case CODE_NUMBER:
-            text_push_number(&t, current->number);
+            text_push_number(t, current->number);
             break;
         case CODE_STR:
             if (top_level) {
-                text_push_str(&t, current->str);
+                text_push_str(t, current->str);
             } else {
-                text_push_json_string(&t, current->str);
+                text_push_json_string(t, current->str);
             }
             break;
         case CODE_BOOL:
-            text_push_str(&t, current->boolean ? "true" : "false");
+            text_push_str(t, current->boolean ? "true" : "false");
             break;
         case CODE_NULL:
-            text_push_str(&t, "null");
+            text_push_str(t, "null");
             break;
         /* Pushed in reverse so they pop in source order, with the closing
          * bracket pushed first and therefore popped last — mirroring
          * `value.rs`'s `Display`. */
         case CODE_ARRAY:
-            text_push(&t, "[", 1);
+            text_push(t, "[", 1);
             steps = grow(steps, &steps_cap, len + 1, sizeof(TextStep));
             steps[len++] = (TextStep){NULL, "]", 0};
             for (long long i = LEN(current) - 1; i >= 0; i--) {
@@ -4185,7 +4222,7 @@ void code_to_text(CodeValue *out, const CodeValue *v) {
             }
             break;
         case CODE_OBJECT:
-            text_push(&t, "{", 1);
+            text_push(t, "{", 1);
             steps = grow(steps, &steps_cap, len + 1, sizeof(TextStep));
             steps[len++] = (TextStep){NULL, "}", 0};
             for (long long i = LEN(current) - 1; i >= 0; i--) {
@@ -4200,23 +4237,30 @@ void code_to_text(CodeValue *out, const CodeValue *v) {
         }
         top_level = 0;
     }
+}
 
-    /* `text_push` always keeps one spare byte, but an empty render never
-     * called it — this makes the buffer exist either way. */
-    text_push(&t, "", 0);
-    t.buf[t.len] = '\0';
-
-    /* Rehomed into a refcounted block: `t.buf` came from plain `realloc`, and
-     * every owned string in this runtime has to be freeable by `code_release`
-     * like any other. Built before `out` is released — `out` may be the very
-     * value being rendered. */
-    char *owned = heap_alloc(t.len + 1);
-    memcpy(owned, t.buf, t.len + 1);
-    free(t.buf);
-    code_release(out);
+static void finish_text(CodeValue *out, TextBuf *t, int reused) {
+    text_push(t, "", 0);
+    t->buf[t->len] = '\0';
+    remember_text(t->buf, t->len, t->cap);
+    if (!reused) code_release(out);
     out->tag = CODE_STR;
     out->heap = 1;
-    out->str = owned;
+    out->str = t->buf;
+}
+
+void code_to_text(CodeValue *out, const CodeValue *v) {
+    TextBuf t = {NULL, 0, 0};
+    render_text(&t, v);
+    finish_text(out, &t, 0);
+}
+
+/* All expressions are evaluated before rendering or changing the destination.
+ * A single builder replaces per-part strings and repeated concatenation. */
+void code_text_parts(CodeValue *out, const CodeValue *const *parts, long long count) {
+    TextBuf t = {NULL, 0, 0};
+    for (long long i = 0; i < count; i++) render_text(&t, parts[i]);
+    finish_text(out, &t, 0);
 }
 
 /* Operand-type rules below must match ast.rs's `BinOp`/`UnOp` doc comment
@@ -4486,29 +4530,28 @@ static size_t text_length(const CodeValue *v) {
         return strlen(v->str);
     }
     CodeHeader *h = header_of(v->str);
-    if (h->text_length == 0) {
-        h->text_length = (long long)strlen(v->str) + 1;
+    unsigned long long word = (unsigned long long)h->text_length;
+    if (!(word & TEXT_LENGTH_MASK)) {
+        word |= strlen(v->str) + 1;
+        h->text_length = (long long)word;
     }
-    return (size_t)(h->text_length - 1);
+    return (size_t)((word & TEXT_LENGTH_MASK) - 1);
+}
+
+/* Start by keeping an owned text, or copying a literal once. */
+static TextBuf append_buffer(CodeValue *dst) {
+    size_t len = text_length(dst);
+    if (dst->heap) return (TextBuf){(char *)dst->str, len, text_capacity(dst)};
+    size_t cap = len + 64;
+    char *buf = heap_alloc(cap);
+    memcpy(buf, dst->str, len);
+    return (TextBuf){buf, len, cap};
 }
 
 static void join_in_place(CodeValue *dst, const CodeValue *b) {
-    size_t la = text_length(dst);
-    size_t lb = text_length(b);
-    char *buf;
-    if (dst->heap) {
-        buf = room_for((void *)dst->str, la + lb + 1);
-    } else {
-        /* A literal's characters are not ours to grow: copy them once into a
-         * block with room, and grow that from now on. */
-        size_t room = 2 * (la + lb) + 16;
-        buf = heap_alloc(room);
-        memcpy(buf, dst->str, la);
-    }
-    memcpy(buf + la, b->str, lb + 1);
-    header_of(buf)->text_length = (long long)(la + lb) + 1;
-    dst->str = buf;
-    dst->heap = 1;
+    TextBuf t = append_buffer(dst);
+    text_push(&t, b->str, text_length(b));
+    finish_text(dst, &t, 1);
 }
 
 /* `*dst = *dst + *b` for two objects, `dst` held alone: fields `b` shares
@@ -4621,6 +4664,27 @@ void code_add_into(CodeValue *dst, const CodeValue *b) {
         }
     }
     code_add(dst, dst, b);
+}
+
+/* Fused `name += "...$part..."`. Every borrowed part must stay readable
+ * until rendering ends. Self-interpolation takes the ordinary render-then-add
+ * path, as do shared texts and every non-text destination. */
+void code_append_text(CodeValue *dst, const CodeValue *const *parts, long long count) {
+    int can_append = dst->tag == CODE_STR && (!dst->heap || held_alone(dst));
+    for (long long i = 0; can_append && i < count; i++) {
+        if (parts[i] == dst || (parts[i]->tag == CODE_STR && parts[i]->str == dst->str))
+            can_append = 0;
+    }
+    if (can_append) {
+        TextBuf t = append_buffer(dst);
+        for (long long i = 0; i < count; i++) render_text(&t, parts[i]);
+        finish_text(dst, &t, 1);
+    } else {
+        CodeValue text = {0};
+        code_text_parts(&text, parts, count);
+        code_add_into(dst, &text);
+        code_release(&text);
+    }
 }
 
 /* What `name = name[from, to)` compiles to — popping a stack, dropping a

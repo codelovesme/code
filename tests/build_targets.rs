@@ -368,6 +368,23 @@ fn wasm_indexes_large_objects_with_the_same_answers() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn wasm_appends_interpolations_with_the_same_answers() {
+    let dir = temp_dir("wasm-text-append");
+    for release in [false, true] {
+        let out = dir.join("text_append.wasm");
+        code::compile_file(
+            &fixture("text_append.code"),
+            code::BuildTarget::Wasm,
+            &out,
+            release,
+        )
+        .expect("build text_append.code --target wasm");
+        run_wasm_under_node(&dir, &out);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// `∈` a declared type walks the compiler's description of it in the
 /// runtime (`code_is_type`); on wasm a node's pointers are 32 bits, so its
 /// number sits at another offset.

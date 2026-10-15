@@ -1,0 +1,42 @@
+| Every interpolation part sees the old accumulator, including repeated aliases.
+s = "a"
+s += "$s$s"
+assert s = "aaa"
+held = s
+n = 12
+s = s + "-$n,"
+assert held = "aaa"
+assert s = "aaa-12,"
+s += "$s"
+assert s = "aaa-12,aaa-12,"
+xs = []
+xs += "$n,"
+assert xs = ["12,"]
+s = ""
+a = [1, "é", null]
+s += "$a"
+assert s = "[1,\"é\",null]"
+| The fractional renderer remains shared with ordinary interpolation.
+values = [-0, 0, 1, -123, 9007199254740992, 9007199254740994, 1000000000000000000000, 0.1]
+s = ""
+expected = ""
+loop v over values
+    s += "$v,"
+    part = "$v,"
+    expected += part
+assert s = expected
+assert s = "-0,0,1,-123,9007199254740992,9007199254740994,1000000000000000000000,0.1,"
+big = 1
+i = 0
+loop
+    if i = 1100, break
+    big = big * 2
+    i += 1
+nan = big - big
+assert "$nan" = "NaN"
+assert "$big" = "inf"
+negative = -big
+assert "$negative" = "-inf"
+s = ""
+s += "$nan,$big,$negative"
+assert s = "NaN,inf,-inf"

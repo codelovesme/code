@@ -310,11 +310,6 @@ pub(crate) fn compile_to_object_traced(
         void_ty.fn_type(&[i8_ptr_ty.into(), f64_ty.into()], false),
         None,
     );
-    let fn_str = module.add_function(
-        "code_str",
-        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
-        None,
-    );
     let fn_bool = module.add_function(
         "code_bool",
         void_ty.fn_type(&[i8_ptr_ty.into(), i32_ty.into()], false),
@@ -605,11 +600,15 @@ pub(crate) fn compile_to_object_traced(
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
-    let fn_to_text = module.add_function(
-        "code_to_text",
-        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+    let fn_text_parts = module.add_function(
+        "code_text_parts",
+        void_ty.fn_type(
+            &[i8_ptr_ty.into(), i8_ptr_ptr_ty.into(), i64_ty.into()],
+            false,
+        ),
         None,
     );
+    let fn_append_text = module.add_function("code_append_text", fn_text_parts.get_type(), None);
     let fn_check_particle = module.add_function(
         "code_check_particle",
         void_ty.fn_type(&[i8_ptr_ty.into()], false),
@@ -862,7 +861,6 @@ pub(crate) fn compile_to_object_traced(
         f64_ty,
         i8_ptr_ty,
         fn_number,
-        fn_str,
         fn_bool,
         fn_null,
         fn_array,
@@ -885,7 +883,8 @@ pub(crate) fn compile_to_object_traced(
         fn_mul,
         fn_div,
         fn_neg,
-        fn_to_text,
+        fn_text_parts,
+        fn_append_text,
         fn_not,
         fn_is_particle,
         fn_is_type,
@@ -1225,7 +1224,6 @@ struct Gen<'a, 'm> {
     f64_ty: inkwell::types::FloatType<'a>,
     i8_ptr_ty: PointerType<'a>,
     fn_number: FunctionValue<'a>,
-    fn_str: FunctionValue<'a>,
     fn_bool: FunctionValue<'a>,
     fn_null: FunctionValue<'a>,
     fn_array: FunctionValue<'a>,
@@ -1257,7 +1255,8 @@ struct Gen<'a, 'm> {
     fn_mul: FunctionValue<'a>,
     fn_div: FunctionValue<'a>,
     fn_neg: FunctionValue<'a>,
-    fn_to_text: FunctionValue<'a>,
+    fn_text_parts: FunctionValue<'a>,
+    fn_append_text: FunctionValue<'a>,
     fn_not: FunctionValue<'a>,
     fn_is_particle: FunctionValue<'a>,
     /// `code_is_type`: `∈` a declared type or a label (ticket 123).
@@ -3941,6 +3940,10 @@ impl<'a, 'm> Gen<'a, 'm> {
         if let Expr::Binary(lhs, BinOp::Add, rhs) = value {
             if let (Expr::Ident(read), Some(slot)) = (&**lhs, self.lookup(name)) {
                 if read == name && !self.scalar_slots.contains_key(&slot) {
+                    if let Expr::Interpolated(parts) = &**rhs {
+                        self.gen_text_parts(slot, parts, true)?;
+                        return self.check_failed();
+                    }
                     let piece = self.gen_expr(rhs)?;
                     self.builder
                         .build_call(self.fn_add_into, &[slot.into(), piece.into()], "")
@@ -5753,6 +5756,48 @@ impl<'a, 'm> Gen<'a, 'm> {
         })
     }
 
+    /// Capture every part before mutating an accumulator: later parts may
+    /// refer to its old value. Runtime handles that alias as render-then-add.
+    fn gen_text_parts(
+        &mut self,
+        out: PointerValue<'a>,
+        parts: &[Expr],
+        append: bool,
+    ) -> Result<(), String> {
+        let count = self.i64_ty.const_int(parts.len() as u64, false);
+        let entry = self.current_function().get_first_basic_block().unwrap();
+        self.alloca_builder
+            .position_before(&entry.get_first_instruction().unwrap());
+        let pointers = self
+            .alloca_builder
+            .build_array_alloca(self.i8_ptr_ty, count, "textparts")
+            .map_err(|e| e.to_string())?;
+        for (i, part) in parts.iter().enumerate() {
+            let value = self.gen_expr(part)?;
+            let at = unsafe {
+                self.builder.build_gep(
+                    self.i8_ptr_ty,
+                    pointers,
+                    &[self.i64_ty.const_int(i as u64, false)],
+                    "textpart",
+                )
+            }
+            .map_err(|e| e.to_string())?;
+            self.builder
+                .build_store(at, value)
+                .map_err(|e| e.to_string())?;
+        }
+        let function = if append {
+            self.fn_append_text
+        } else {
+            self.fn_text_parts
+        };
+        self.builder
+            .build_call(function, &[out.into(), pointers.into(), count.into()], "")
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// Evaluates `expr` into a `CodeValue` and returns a pointer to it.
     ///
     /// The pointer is *borrowed*, not owned: for `Expr::Ident` it is the
@@ -5769,35 +5814,10 @@ impl<'a, 'm> Gen<'a, 'm> {
             // literal's text is borrowed (`heap` 0), so nothing retains or
             // releases it, and every use reads the same read-only slot.
             Expr::Str(s) => Ok(self.str_constant(s)),
-            // Folded left with `code_add` rather than a bespoke n-ary join:
-            // string `+` already concatenates and already handles the case
-            // where the destination is also an operand, which is exactly what
-            // an accumulator needs. Literal parts skip `code_to_text` — they
-            // are strings already, and routing them through it would heap-copy
-            // every constant segment for nothing.
             Expr::Interpolated(parts) => {
-                let acc = self.alloc_temp("interp")?;
-                let empty = self.global_str("", "interpempty")?;
-                self.builder
-                    .build_call(self.fn_str, &[acc.into(), empty.into()], "")
-                    .map_err(|e| e.to_string())?;
-                for part in parts {
-                    let ptr = self.gen_expr(part)?;
-                    let text = if matches!(part, Expr::Str(_)) {
-                        ptr
-                    } else {
-                        let slot = self.alloc_temp("interptext")?;
-                        self.builder
-                            .build_call(self.fn_to_text, &[slot.into(), ptr.into()], "")
-                            .map_err(|e| e.to_string())?;
-                        slot
-                    };
-                    self.builder
-                        .build_call(self.fn_add, &[acc.into(), acc.into(), text.into()], "")
-                        .map_err(|e| e.to_string())?;
-                    self.check_failed()?;
-                }
-                Ok(acc)
+                let out = self.alloc_temp("interp")?;
+                self.gen_text_parts(out, parts, false)?;
+                Ok(out)
             }
             Expr::Null => {
                 let slot = self.alloc_plain_temp("null")?;
