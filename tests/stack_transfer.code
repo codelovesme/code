@@ -1,0 +1,54 @@
+| A value read just before its slot is removed can transfer its reference.
+stack = [{ n = 1 }, { n = 2 }, { n = 3 }]
+saved = stack
+sum = 0
+loop
+    if stack = [], break
+    node = stack[length - 1]
+    stack = stack[0, length - 1)
+    sum += node.n
+assert sum = 6
+assert saved = [{ n = 1 }, { n = 2 }, { n = 3 }]
+| The same pattern on strings keeps character indexing and slicing.
+text = "éab"
+answer = ""
+loop
+    if text = "", break
+    ch = text[length - 1]
+    text = text[0, length - 1)
+    answer += ch
+assert answer = "baé"
+| Handler frames and retained nested values follow the same rule.
+Take { xs ∈ Array of { n ∈ Number } } =>
+    work = xs
+    total = 0
+    loop
+        if work = [], break
+        taken = work[length - 1]
+        work = work[0, length - 1)
+        total += taken.n
+    return Sum { value = total }
+emit Take { xs = saved } to this get result
+assert result.value = 6
+assert saved[2].n = 3
+| An empty read still answers null, and its empty slice stays empty.
+empty = []
+round = 0
+loop
+    if round = 1, break
+    missing = empty[length - 1]
+    empty = empty[0, length - 1)
+    assert missing = null
+    round += 1
+assert empty = []
+| Only an immediate matching slice may permit a transfer.
+other = [{ n = 9 }]
+round2 = 0
+loop
+    if round2 = 1, break
+    first = other[length - 1]
+    copy = other
+    other = other[0, length - 1)
+    assert copy[0].n = 9
+    assert first.n = 9
+    round2 += 1

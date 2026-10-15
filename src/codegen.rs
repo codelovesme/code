@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
 
@@ -92,6 +92,66 @@ impl BuildTarget {
 enum LibraryMode {
     Shared,
     Static { prefix: String },
+}
+
+/// Moving a last element is safe only when the next statement drops it and
+/// no event drain can observe the intermediate slot. Scan loop bodies only;
+/// top-level statements have an inbound drain between them.
+fn take_last_sites(statements: &[Stmt]) -> HashSet<usize> {
+    fn walk(statements: &[Stmt], in_loop: bool, found: &mut HashSet<usize>) {
+        if in_loop {
+            for pair in statements.windows(2) {
+                let [Stmt::Assign {
+                    name: dest, value, ..
+                }, Stmt::Assign {
+                    name: source,
+                    value:
+                        Expr::Slice {
+                            value: whole,
+                            from,
+                            to,
+                        },
+                    ..
+                }] = pair
+                else {
+                    continue;
+                };
+                let Expr::Index(base, index) = value else {
+                    continue;
+                };
+                let Expr::Ident(name) = &**base else { continue };
+                let Expr::Binary(length, BinOp::Sub, one) = &**index else {
+                    continue;
+                };
+                let Expr::LengthOf(measured) = &**length else {
+                    continue;
+                };
+                if name == source
+                    && dest != source
+                    && **whole == **base
+                    && **measured == **base
+                    && **to == **index
+                    && **from == Expr::Number(0.0)
+                    && **one == Expr::Number(1.0)
+                {
+                    found.insert(value as *const Expr as usize);
+                }
+            }
+        }
+        for stmt in statements {
+            match stmt {
+                Stmt::Loop { body, .. } => walk(body, true, found),
+                Stmt::If { body, .. } => walk(body, in_loop, found),
+                Stmt::HandlerDef { body, .. } | Stmt::Import { body, .. } => {
+                    walk(body, false, found)
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut found = HashSet::new();
+    walk(statements, false, &mut found);
+    found
 }
 
 /// Everything a library defines that is not one of its ABI entry points
@@ -344,6 +404,21 @@ pub(crate) fn compile_to_object_traced(
         None,
     );
     let fn_object_literal = module.add_function("code_object_literal", fn_object.get_type(), None);
+    let fn_object_template = module.add_function(
+        "code_object_template",
+        void_ty.fn_type(
+            &[
+                i8_ptr_ty.into(),
+                i8_ptr_ptr_ty.into(),
+                i8_ptr_ty.into(),
+                i64_ty.into(),
+                i8_ptr_ty.into(),
+                i64_ty.into(),
+            ],
+            false,
+        ),
+        None,
+    );
     let fn_copy = module.add_function(
         "code_copy",
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
@@ -359,6 +434,7 @@ pub(crate) fn compile_to_object_traced(
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_take_last = module.add_function("code_take_last", fn_add_into.get_type(), None);
     let fn_operand_number = module.add_function(
         "code_operand_number",
         f64_ty.fn_type(
@@ -868,9 +944,11 @@ pub(crate) fn compile_to_object_traced(
         fn_array,
         fn_object,
         fn_object_literal,
+        fn_object_template,
         fn_copy,
         fn_move,
         fn_add_into,
+        fn_take_last,
         fn_set_at,
         fn_slice_into,
         fn_field_ref,
@@ -943,6 +1021,8 @@ pub(crate) fn compile_to_object_traced(
         kinds: Default::default(),
         layouts: Default::default(),
         shapes: HashMap::new(),
+        take_last_sites: take_last_sites(&program.statements),
+        object_templates: HashMap::new(),
         str_constants: HashMap::new(),
         likely_numbers: std::collections::HashSet::new(),
         mostly_empty: std::collections::HashSet::new(),
@@ -1233,10 +1313,12 @@ struct Gen<'a, 'm> {
     /// `runtime.c`'s `code_object_literal` — an object literal whose keys
     /// all come with their hash in front (`hashed_key`).
     fn_object_literal: FunctionValue<'a>,
+    fn_object_template: FunctionValue<'a>,
     fn_copy: FunctionValue<'a>,
     fn_move: FunctionValue<'a>,
     /// `runtime.c`'s `code_add_into` — `name += value` (ticket 121).
     fn_add_into: FunctionValue<'a>,
+    fn_take_last: FunctionValue<'a>,
     /// `runtime.c`'s `code_set_at` — `xs[i] = v`, `fish.x = v`.
     fn_set_at: FunctionValue<'a>,
     /// `runtime.c`'s `code_slice_into` — `name = name[from, to)`.
@@ -1407,6 +1489,8 @@ struct Gen<'a, 'm> {
     /// One constant key list per distinct object-literal key list — passed to
     /// `code_object_literal`, and its address is the objects' shape.
     shapes: HashMap<Vec<String>, PointerValue<'a>>,
+    take_last_sites: HashSet<usize>,
+    object_templates: HashMap<Vec<String>, (PointerValue<'a>, usize)>,
     /// One read-only value slot per string literal (`str_constant`).
     str_constants: HashMap<String, PointerValue<'a>>,
     /// Slots read where the program only ever puts a number (or null):
@@ -3896,6 +3980,26 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// nothing may shadow a visible name (`verify.rs` refuses that), so the
     /// two cases can never both apply.
     fn gen_assign(&mut self, name: &str, value: &Expr) -> Result<(), String> {
+        let site = value as *const Expr as usize;
+        if self.take_last_sites.contains(&site) && !self.scalar_names.contains_key(name) {
+            let Expr::Index(array, _) = value else {
+                unreachable!("last-element site")
+            };
+            let source = self.gen_expr(array)?;
+            let out = match self.lookup(name) {
+                Some(slot) => slot,
+                None => {
+                    let slot = self.binding_slot((site, 0), |gen| gen.alloc_slot("var"))?;
+                    self.bind(name, slot);
+                    slot
+                }
+            };
+            self.builder
+                .build_call(self.fn_take_last, &[out.into(), source.into()], "")
+                .map_err(|e| e.to_string())?;
+            return self.check_failed();
+        }
+
         // `fishes[5].x = v` changes the variable's own value, level by level
         // where nothing else holds it, instead of rebuilding it.
         // `stack = stack[0, length - 1)` cuts the variable's own list where
@@ -4536,6 +4640,36 @@ impl<'a, 'm> Gen<'a, 'm> {
         ptr
     }
 
+    fn object_template(&mut self, order: &[String]) -> (PointerValue<'a>, usize) {
+        if let Some(template) = self.object_templates.get(order) {
+            return *template;
+        }
+        let mut offsets = Vec::new();
+        let mut chars = Vec::new();
+        for key in order {
+            offsets.extend_from_slice(&((chars.len() + 4) as u32).to_le_bytes());
+            chars.extend_from_slice(&key_hash(key).to_le_bytes());
+            chars.extend_from_slice(key.as_bytes());
+            chars.push(0);
+        }
+        offsets.extend(chars);
+        let data = self.i8_ty.const_array(
+            &offsets
+                .iter()
+                .map(|b| self.i8_ty.const_int(u64::from(*b), false))
+                .collect::<Vec<_>>(),
+        );
+        let global = self
+            .module
+            .add_global(data.get_type(), None, "objecttemplate");
+        global.set_initializer(&data);
+        global.set_constant(true);
+        global.set_linkage(Linkage::Private);
+        let result = (global.as_pointer_value(), offsets.len());
+        self.object_templates.insert(order.to_vec(), result);
+        result
+    }
+
     /// The constant key list for objects built with exactly these keys, in
     /// this order: an array of `hashed_key` pointers. Its address is the
     /// shape `code_object_literal` marks such objects with.
@@ -4686,6 +4820,7 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn gen_val(&mut self, expr: &Expr) -> Result<Val<'a>, String> {
         match expr {
             Expr::Number(n) => Ok(Val::Num(self.f64_ty.const_float(*n))),
+            Expr::LengthOf(inner) if self.hot() => self.gen_container_length(inner).map(Val::Num),
             Expr::Bool(b) => Ok(Val::Bool(
                 self.context.bool_type().const_int(*b as u64, false),
             )),
@@ -5044,6 +5179,84 @@ impl<'a, 'm> Gen<'a, 'm> {
             .map_err(|e| e.to_string())?;
         phi.add_incoming(&[(&slot, fast), (&found, slow_end)]);
         Ok(phi.as_basic_value().into_pointer_value())
+    }
+
+    /// Container lengths in hot code avoid boxing a number just to unbox it
+    /// in an index. Strings and invalid operands retain the runtime path.
+    fn gen_container_length(
+        &mut self,
+        expr: &Expr,
+    ) -> Result<inkwell::values::FloatValue<'a>, String> {
+        let value = self.gen_expr(expr)?;
+        let function = self.current_function();
+        let bail = self.bail();
+        let slow = bail.unwrap_or_else(|| self.context.append_basic_block(function, "lengthslow"));
+        let array = self.has_tag(value, 4)?;
+        let object = self.has_tag(value, 5)?;
+        let container = self
+            .builder
+            .build_or(array, object, "container")
+            .map_err(|e| e.to_string())?;
+        let fast = self.context.append_basic_block(function, "lengthfast");
+        self.builder
+            .build_conditional_branch(container, fast, slow)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(fast);
+        let list = self.load_list(value)?;
+        let nonempty = self
+            .builder
+            .build_is_not_null(list, "haslength")
+            .map_err(|e| e.to_string())?;
+        let measured = self.context.append_basic_block(function, "lengthmeasured");
+        let ready = self.context.append_basic_block(function, "lengthready");
+        self.builder
+            .build_conditional_branch(nonempty, measured, ready)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(measured);
+        let len = self
+            .builder
+            .build_load(self.i64_ty, list, "length")
+            .map_err(|e| e.to_string())?
+            .into_int_value();
+        let number = self
+            .builder
+            .build_signed_int_to_float(len, self.f64_ty, "lengthnumber")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(ready)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(ready);
+        let length = self
+            .builder
+            .build_phi(self.f64_ty, "lengthvalue")
+            .map_err(|e| e.to_string())?;
+        length.add_incoming(&[(&self.f64_ty.const_zero(), fast), (&number, measured)]);
+        let length = length.as_basic_value().into_float_value();
+        if bail.is_some() {
+            return Ok(length);
+        }
+        let merge = self.context.append_basic_block(function, "lengthmerged");
+        self.builder
+            .build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(slow);
+        let out = self.alloc_plain_temp("lengthslow")?;
+        self.builder
+            .build_call(self.fn_length_of, &[out.into(), value.into()], "")
+            .map_err(|e| e.to_string())?;
+        self.check_failed()?;
+        let number = self.load_number(out)?;
+        let end = self.builder.get_insert_block().unwrap();
+        self.builder
+            .build_unconditional_branch(merge)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(merge);
+        let result = self
+            .builder
+            .build_phi(self.f64_ty, "lengthresult")
+            .map_err(|e| e.to_string())?;
+        result.add_incoming(&[(&length, ready), (&number, end)]);
+        Ok(result.as_basic_value().into_float_value())
     }
 
     /// A slot holding `value`. A number or a boolean goes in a fresh plain
@@ -5928,22 +6141,47 @@ impl<'a, 'm> Gen<'a, 'm> {
 
                 let out = self.alloc_temp("obj")?;
                 let len_val = self.i64_ty.const_int(len, false);
-                self.builder
-                    .build_call(
-                        if all_literal {
-                            self.fn_object_literal
-                        } else {
-                            self.fn_object
-                        },
-                        &[
-                            out.into(),
-                            shape.unwrap_or(keys_buf).into(),
-                            values_buf.into(),
-                            len_val.into(),
-                        ],
-                        "",
-                    )
-                    .map_err(|e| e.to_string())?;
+                if all_literal && len > 0 && self.hot() {
+                    let order: Vec<String> = fields
+                        .iter()
+                        .map(|(key, _)| match key {
+                            FieldKey::Literal(key) => key.clone(),
+                            _ => unreachable!("all literal"),
+                        })
+                        .collect();
+                    let (data, bytes) = self.object_template(&order);
+                    self.builder
+                        .build_call(
+                            self.fn_object_template,
+                            &[
+                                out.into(),
+                                shape.unwrap().into(),
+                                values_buf.into(),
+                                len_val.into(),
+                                data.into(),
+                                self.i64_ty.const_int(bytes as u64, false).into(),
+                            ],
+                            "",
+                        )
+                        .map_err(|e| e.to_string())?;
+                } else {
+                    self.builder
+                        .build_call(
+                            if all_literal {
+                                self.fn_object_literal
+                            } else {
+                                self.fn_object
+                            },
+                            &[
+                                out.into(),
+                                shape.unwrap_or(keys_buf).into(),
+                                values_buf.into(),
+                                len_val.into(),
+                            ],
+                            "",
+                        )
+                        .map_err(|e| e.to_string())?;
+                }
                 Ok(out)
             }
             // Found the way an operand is (`gen_peek`: the field's hash, this
@@ -6068,6 +6306,38 @@ impl<'a, 'm> Gen<'a, 'm> {
             let value = self.gen_operand(other)?;
             let equal = match self.settle(value)? {
                 Val::Boxed(ptr) | Val::Held(ptr) => self.has_tag(ptr, 3)?,
+                Val::Num(_) | Val::Bool(_) => bool_ty.const_zero(),
+            };
+            return if negate {
+                self.builder
+                    .build_not(equal, "ne")
+                    .map_err(|e| e.to_string())
+            } else {
+                Ok(equal)
+            };
+        }
+        let empty_other = match (lhs, rhs) {
+            (Expr::Array(items), other) | (other, Expr::Array(items)) if items.is_empty() => {
+                Some(other)
+            }
+            _ => None,
+        };
+        if let Some(other) = empty_other {
+            let value = self.gen_operand(other)?;
+            let equal = match self.settle(value)? {
+                Val::Boxed(ptr) | Val::Held(ptr) => {
+                    let array = self.has_tag(ptr, 4)?;
+                    // Every empty array this runtime constructs has no block;
+                    // native answers are rebuilt by code_array on arrival.
+                    let list = self.load_list(ptr)?;
+                    let empty = self
+                        .builder
+                        .build_is_null(list, "emptyarray")
+                        .map_err(|e| e.to_string())?;
+                    self.builder
+                        .build_and(array, empty, "equalempty")
+                        .map_err(|e| e.to_string())?
+                }
                 Val::Num(_) | Val::Bool(_) => bool_ty.const_zero(),
             };
             return if negate {

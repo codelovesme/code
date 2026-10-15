@@ -647,6 +647,36 @@ void code_object_literal(CodeValue *out, const char **keys, void *values, long l
     }
 }
 
+/* A hot literal's key run is a compiler-built template: u32 character
+ * offsets, then [hash][characters\0] for every key. Copy the run once and
+ * relocate its pointers; neither strlen nor hashing is needed per object. */
+void code_object_template(CodeValue *out, const char **shape, void *values, long long len,
+                          const unsigned char *data, long long bytes) {
+    CodeList *list = NULL;
+    if (len > 0) {
+        size_t offsets = (size_t)len * sizeof(unsigned int);
+        size_t chars_bytes = (size_t)bytes - offsets;
+        list = list_alloc(len, (size_t)len * sizeof(const char *) + chars_bytes);
+        void *items = list + 1;
+        list->keys = (const char **)((char *)items + (size_t)len * CODE_VALUE_SLOT_SIZE);
+        char *chars = (char *)(list->keys + len);
+        memcpy(chars, data + offsets, chars_bytes);
+        for (long long i = 0; i < len; i++) {
+            unsigned int offset;
+            memcpy(&offset, data + (size_t)i * sizeof offset, sizeof offset);
+            list->keys[i] = chars + offset;
+            const CodeValue *src = slot_at(values, i);
+            code_retain(src);
+            *slot_at(items, i) = *src;
+        }
+        header_of(list)->text_length = (long long)(size_t)shape;
+    }
+    code_release(out);
+    out->tag = CODE_OBJECT;
+    out->heap = len > 0;
+    out->list = list;
+}
+
 static void build_object(CodeValue *out, const char **keys, void *values, long long len,
                          int keys_hashed) {
     CodeList *list = NULL;
@@ -4393,6 +4423,23 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         return;
     }
     fail_binary("+", a, b);
+}
+
+/* Only generated for a last-element read immediately followed by trimming
+ * that same array, inside a loop (no inbound drain between the statements).
+ * A shared array keeps its contents until the usual copy/slice finishes. */
+void code_take_last(CodeValue *out, CodeValue *array) {
+    if (array->tag == CODE_ARRAY && array->heap && header_of(array->list)->rc == 1
+        && LEN(array) > 0) {
+        code_move(out, slot_at(ITEMS(array), LEN(array) - 1));
+        return;
+    }
+    CodeValue length = {0};
+    code_length_of(&length, array);
+    if (code_failed) return;
+    CodeValue index = {0};
+    index.number = length.number - 1;
+    code_index(out, array, &index);
 }
 
 /* ---- Growing a value nothing else holds (ticket 121) -----------------------
