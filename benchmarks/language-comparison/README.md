@@ -22,6 +22,15 @@ and it cannot establish a universal language ranking. It also records peak
 resident memory for each launch, which describes this loop's process footprint
 rather than its allocation rate or a whole application's memory needs.
 
+## Latest rerun (2026-10-16)
+
+[The 15-launch rerun](reruns/2026-10-16/README.md) measures source revision
+`3171efb`, after interpreter text/list/object growth. The scalar numeric loop
+still takes **404.03 ms** with `--interpret`, against **42.60 ms**
+for Node/V8 and **1381.19 ms** for CPython. Full cross-language timings,
+memory, build times and raw samples are archived in that directory. The older
+published `results.json` / `results.csv` are preserved.
+
 ## Run it
 
 Requires Python 3.10 or newer, a `code` executable built from this checkout,
