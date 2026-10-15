@@ -535,18 +535,18 @@
     </div>
     <div class="prose">
       <h3>Beyond the numeric loop</h3>
-      <p><strong>This numeric loop is code's best case.</strong> On the project's list, record, text, and allocation workloads, <code>code build --release</code> took <strong>1.38–4.74× C's time</strong> in this run. The same algorithms check their answers in all three languages.</p>
-      <p>Measured on the same machine and logical CPU, seven fresh prebuilt launches per mode, with deterministic shuffled order. Medians include startup, which matters for the shortest programs. C uses <code>-O2 -march=native</code>, Rust <code>-C opt-level=3 -C target-cpu=native</code>, and code <code>--release</code>.</p>
+      <p><strong>This numeric loop is code's best case.</strong> On the project's list, record, text, and allocation workloads, <code>code build --release</code> took <strong>1.37–4.05× C's time</strong> in this run. The same algorithms check their answers in all three languages.</p>
+      <p>Measured on the same machine and logical CPU, 15 fresh prebuilt launches per mode, with deterministic shuffled order. Medians include startup, which matters for the shortest programs. C uses <code>-O2 -march=native</code>, Rust <code>-C opt-level=3 -C target-cpu=native</code>, and code <code>--release</code>.</p>
     </div>
     <div class="table-shell compact-table" role="region" tabindex="0">
       <table>
         <thead><tr><th scope="col">Order</th><th scope="col">Workload</th><th scope="col">C median</th><th scope="col">Rust median</th><th scope="col">code median</th><th scope="col">code / C</th></tr></thead>
         <tbody>
-          <tr><td>1</td><th scope="row"><code>spectral_norm</code></th><td>0.15744 s</td><td>0.15728 s</td><td>0.21680 s</td><td>1.38×</td></tr>
-          <tr><td>2</td><th scope="row"><code>binary_trees</code></th><td>0.00345 s</td><td>0.00367 s</td><td>0.01388 s</td><td>4.02×</td></tr>
-          <tr><td>3</td><th scope="row"><code>string_build</code></th><td>0.00148 s</td><td>0.00125 s</td><td>0.00465 s</td><td>3.14×</td></tr>
-          <tr><td>4</td><th scope="row"><code>dictionary</code></th><td>0.00376 s</td><td>0.00307 s</td><td>0.01782 s</td><td>4.74×</td></tr>
-          <tr><td>5</td><th scope="row"><code>points</code></th><td>0.00078 s</td><td>0.00104 s</td><td>0.00244 s</td><td>3.13×</td></tr>
+          <tr><td>1</td><th scope="row"><code>spectral_norm</code></th><td>0.15772 s</td><td>0.15712 s</td><td>0.21640 s</td><td>1.37×</td></tr>
+          <tr><td>2</td><th scope="row"><code>binary_trees</code></th><td>0.00342 s</td><td>0.00366 s</td><td>0.01382 s</td><td>4.05×</td></tr>
+          <tr><td>3</td><th scope="row"><code>string_build</code></th><td>0.00147 s</td><td>0.00124 s</td><td>0.00457 s</td><td>3.10×</td></tr>
+          <tr><td>4</td><th scope="row"><code>dictionary</code></th><td>0.00356 s</td><td>0.00302 s</td><td>0.01037 s</td><td>2.92×</td></tr>
+          <tr><td>5</td><th scope="row"><code>points</code></th><td>0.00077 s</td><td>0.00102 s</td><td>0.00244 s</td><td>3.16×</td></tr>
         </tbody>
       </table>
     </div>

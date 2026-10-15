@@ -30,19 +30,20 @@ and records raw launch times in `results.csv` and medians/ratios in
 Use `--output-dir` to keep an experimental run separate from the published
 results.
 
-## Current measurement (2026-10-14, code 2.16.0, i7-5930K, median of 7)
+## Current measurement (2026-10-15, ticket 126 step 1, median of 15)
 
 | Workload | C | Rust | code | code / C |
 |---|---|---|---|---|
-| spectral_norm | 0.15744 s | 0.15728 s | 0.21680 s | 1.38× |
-| binary_trees | 0.00345 s | 0.00367 s | 0.01388 s | 4.02× |
-| string_build | 0.00148 s | 0.00125 s | 0.00465 s | 3.14× |
-| dictionary | 0.00376 s | 0.00307 s | 0.01782 s | 4.74× |
-| points | 0.00078 s | 0.00104 s | 0.00244 s | 3.13× |
+| spectral_norm | 0.15772 s | 0.15712 s | 0.21640 s | 1.37× |
+| binary_trees | 0.00342 s | 0.00366 s | 0.01382 s | 4.05× |
+| string_build | 0.00147 s | 0.00124 s | 0.00457 s | 3.10× |
+| dictionary | 0.00356 s | 0.00302 s | 0.01037 s | 2.92× |
+| points | 0.00077 s | 0.00102 s | 0.00244 s | 3.16× |
 
-Pinned to logical CPU 0 on the same machine as the language comparison.
-These complete prebuilt launches put code at 1.38–4.74× C's time.
-The older tables below record development stages, not today's performance.
+Pinned to logical CPU 0; fresh prebuilt launches include startup.
+These launches put code at 1.37–4.05× C's time. Dictionary's lazy
+hash index cuts 17.8 to 10.4 ms and 199.8M to 93.6M instructions.
+The older tables below record development stages.
 
 ## Baseline (2026-10-11, code 2.14.8 + 113, i7-5930K, median of 5)
 

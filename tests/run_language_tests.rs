@@ -330,6 +330,7 @@ fn check_interpret(name: &str, path: &Path, expect: Expect, failures: &mut Vec<S
     let should_fail = expect != Expect::Succeed;
     let output = Command::new(env!("CARGO_BIN_EXE_code"))
         .arg("run")
+        .arg("--interpret")
         .arg(path)
         .output()
         .unwrap_or_else(|e| panic!("{name}: run `code run` subprocess: {e}"));

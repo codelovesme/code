@@ -208,8 +208,31 @@ typedef struct {
     long long text_length;
 } CodeHeader;
 
-/* An object's shape, or 0 (see `CodeHeader`). */
-#define SHAPE_OF(v) (header_of((v)->list)->text_length)
+/* Large objects reuse the shape word for a tagged pointer. The compiler's
+ * shape arrays are pointer-aligned, so their low bit is clear. Generated
+ * shape checks simply take their generic path for an indexed object. The
+ * last two header words and the module ABI remain exactly as before. */
+typedef struct {
+    long long shape;
+    size_t mask;
+    long long positions[]; /* position + 1; zero is an empty bucket */
+} ObjectIndex;
+
+static CodeHeader *header_of(const void *payload);
+
+static ObjectIndex *object_index(const CodeValue *v) {
+    if (!v->heap) return NULL;
+    size_t word = (size_t)header_of(v->list)->text_length;
+    return (word & 1) ? (ObjectIndex *)(word & ~(size_t)1) : NULL;
+}
+
+static long long object_shape(const CodeValue *v) {
+    ObjectIndex *index = object_index(v);
+    return index ? index->shape : header_of(v->list)->text_length;
+}
+#define SHAPE_OF(v) object_shape(v)
+
+static void drop_object_index(const CodeValue *v);
 
 /* Blocks currently allocated. Exists only so `code_check_leaks` can turn
  * "the refcounting is correct" into something a test can actually observe —
@@ -242,6 +265,15 @@ static void *heap_alloc(size_t bytes) {
 
 static CodeHeader *header_of(const void *payload) {
     return (CodeHeader *)((char *)payload - sizeof(CodeHeader));
+}
+
+static void drop_object_index(const CodeValue *v) {
+    ObjectIndex *index = object_index(v);
+    if (index) {
+        header_of(v->list)->text_length = index->shape;
+        free(index);
+        code_blocks_add(-1);
+    }
 }
 
 /* The single block a heap-owning value refers to. A list's or an object's
@@ -350,6 +382,7 @@ void code_release(CodeValue *v) {
                 }
             }
         }
+        if (current.tag == CODE_OBJECT) drop_object_index(&current);
         free(header_of(heap_block(&current)));
         code_blocks_add(-1);
     }
@@ -475,7 +508,7 @@ static unsigned int stored_hash(const char *key) {
 }
 
 /* Where `key` (whose hash is `hash`) is in `obj`, or -1. */
-static long long field_position(const CodeValue *obj, const char *key, unsigned int hash) {
+static long long scan_field_position(const CodeValue *obj, const char *key, unsigned int hash) {
     /* Read once: `strcmp` is a call, and the count and keys sit behind the
      * value's block pointer. */
     long long len = LEN(obj);
@@ -486,6 +519,56 @@ static long long field_position(const CodeValue *obj, const char *key, unsigned 
         }
     }
     return -1;
+}
+
+/* Lookup runs on the program thread. Inbound workers only copy and release
+ * values, so they never build an index or touch these settings. */
+static long long object_index_threshold = 0;
+static int object_index_check;
+
+static long long field_position(const CodeValue *obj, const char *key, unsigned int hash) {
+    if (LEN(obj) <= 8 || !obj->heap) return scan_field_position(obj, key, hash);
+    if (!object_index_threshold) {
+        const char *setting = getenv("CODE_OBJECT_INDEX_THRESHOLD");
+        object_index_threshold = setting ? strtol(setting, NULL, 10) : 16;
+        if (object_index_threshold < 1) object_index_threshold = 16;
+        object_index_check = getenv("CODE_OBJECT_INDEX_CHECK") != NULL;
+    }
+    if (LEN(obj) <= object_index_threshold) return scan_field_position(obj, key, hash);
+    ObjectIndex *index = object_index(obj);
+    const char **keys = KEYS(obj);
+    if (!index) {
+        size_t buckets = 32;
+        while (buckets < (size_t)LEN(obj) * 2) buckets *= 2;
+        index = calloc(1, sizeof *index + buckets * sizeof(long long));
+        if (!index) code_runtime_error("out of memory");
+        code_blocks_add(1);
+        index->shape = SHAPE_OF(obj);
+        index->mask = buckets - 1;
+        for (long long i = 0; i < LEN(obj); i++) {
+            size_t bucket = stored_hash(keys[i]) & index->mask;
+            while (index->positions[bucket]) {
+                long long at = index->positions[bucket] - 1;
+                /* Duplicate keys retain the scan's first-match semantics. */
+                if (strcmp(keys[at], keys[i]) == 0) break;
+                bucket = (bucket + 1) & index->mask;
+            }
+            if (!index->positions[bucket]) index->positions[bucket] = i + 1;
+        }
+        header_of(obj->list)->text_length = (long long)((size_t)index | 1);
+    }
+    size_t bucket = hash & index->mask;
+    long long found = -1;
+    while (index->positions[bucket]) {
+        long long at = index->positions[bucket] - 1;
+        if (stored_hash(keys[at]) == hash && strcmp(keys[at], key) == 0) {
+            found = at;
+            break;
+        }
+        bucket = (bucket + 1) & index->mask;
+    }
+    if (object_index_check && found != scan_field_position(obj, key, hash)) __builtin_trap();
+    return found;
 }
 
 /* `find_field` for an object this runtime built. */
@@ -560,7 +643,7 @@ void code_object(CodeValue *out, const char **keys, void *values, long long len)
 void code_object_literal(CodeValue *out, const char **keys, void *values, long long len) {
     build_object(out, keys, values, len, 1);
     if (len > 0) {
-        SHAPE_OF(out) = (long long)(size_t)keys;
+        header_of(out->list)->text_length = (long long)(size_t)keys;
     }
 }
 
@@ -4275,7 +4358,7 @@ void code_add(CodeValue *out, const CodeValue *a, const CodeValue *b) {
         out->heap = total > 0;
         out->list = list;
         if (total > 0) {
-            SHAPE_OF(out) = shape;
+            header_of(out->list)->text_length = shape;
         }
         return;
     }
@@ -4443,18 +4526,25 @@ static void join_in_place(CodeValue *dst, const CodeValue *b) {
 static int grow_object_in_place(CodeValue *dst, const CodeValue *b) {
     long long extra = 0;
     size_t extra_chars = 0;
+    long long local_positions[16];
+    long long *positions = LEN(b) <= 16 ? local_positions : malloc((size_t)LEN(b) * sizeof(long long));
+    if (!positions) code_runtime_error("out of memory");
     for (long long j = 0; j < LEN(b); j++) {
         for (long long k = 0; k < j; k++) {
             if (strcmp(KEYS(b)[k], KEYS(b)[j]) == 0) {
+                if (positions != local_positions) free(positions);
                 return 0;
             }
         }
-        if (!own_field_of_key(dst, KEYS(b)[j])) {
+        positions[j] = field_position(dst, KEYS(b)[j], stored_hash(KEYS(b)[j]));
+        if (positions[j] < 0) {
             extra++;
             extra_chars += KEY_HASH_BYTES + strlen(KEYS(b)[j]) + 1;
         }
     }
     if (extra > 0) {
+        /* Positions survive a move, but a new key invalidates the index. */
+        drop_object_index(dst);
         CodeList *base = dst->list;
         long long fits = ((char *)base->keys - (char *)(base + 1)) / CODE_VALUE_SLOT_SIZE;
         const char *last = base->keys[base->len - 1];
@@ -4492,7 +4582,7 @@ static int grow_object_in_place(CodeValue *dst, const CodeValue *b) {
     }
     for (long long j = 0; j < LEN(b); j++) {
         const CodeValue *src = slot_at(ITEMS(b), j);
-        CodeValue *slot = (CodeValue *)own_field_of_key(dst, KEYS(b)[j]);
+        CodeValue *slot = positions[j] < 0 ? NULL : slot_at(ITEMS(dst), positions[j]);
         code_retain(src);
         if (slot) {
             code_release(slot);
@@ -4504,9 +4594,10 @@ static int grow_object_in_place(CodeValue *dst, const CodeValue *b) {
         }
     }
     if (extra > 0) {
-        SHAPE_OF(dst) = 0; /* a key list of its own now */
+        header_of(dst->list)->text_length = 0; /* a key list of its own now */
     }
     dst->list->len = n;
+    if (positions != local_positions) free(positions);
     return 1;
 }
 
@@ -4596,7 +4687,7 @@ static void own_level(CodeValue *v) {
         code_array(&copy, ITEMS(v), LEN(v));
     } else {
         build_object(&copy, KEYS(v), ITEMS(v), LEN(v), 1);
-        SHAPE_OF(&copy) = SHAPE_OF(v); /* the same keys, in the same order */
+        header_of(copy.list)->text_length = SHAPE_OF(v); /* the same keys, in the same order */
     }
     code_release(v);
     *v = copy;

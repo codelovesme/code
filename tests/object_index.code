@@ -1,0 +1,40 @@
+| The large-object index survives value changes and is dropped on new keys.
+o = { costarring = 7, liquid = 9 }
+i = 0
+loop
+    if i = 80, break
+    o = o + { "k$i" = i }
+    assert o["k$i"] = i
+    assert o["absent"] = null
+    i += 1
+| These distinct names have the same FNV-1a hash.
+assert o.costarring = 7
+assert o.liquid = 9
+saved = o
+o["k20"] = 500
+o["new"] = 600
+assert saved["k20"] = 20
+assert saved["new"] = null
+assert o["k20"] = 500
+assert o["new"] = 600
+merged = saved + o
+assert merged = o
+xs = [saved, o, merged]
+xs = xs[1, length)
+assert xs[0]["k20"] = 500
+xs = []
+o = {}
+saved = {}
+merged = {}
+| The positions buffer also handles a merge with more than sixteen fields.
+a = {}
+b = {}
+i = 0
+loop
+    if i = 40, break
+    a += { "k$i" = i }
+    b += { "k$i" = i + 1 }
+    i += 1
+assert a["k20"] = 20
+a += b
+assert a = b

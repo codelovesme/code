@@ -350,6 +350,24 @@ fn wasm_reads_shaped_objects_with_the_same_answers() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Large objects use the same index with wasm's 32-bit pointers.
+#[test]
+fn wasm_indexes_large_objects_with_the_same_answers() {
+    let dir = temp_dir("wasm-object-index");
+    for release in [false, true] {
+        let out = dir.join("object_index.wasm");
+        code::compile_file(
+            &fixture("object_index.code"),
+            code::BuildTarget::Wasm,
+            &out,
+            release,
+        )
+        .expect("build object_index.code --target wasm");
+        run_wasm_under_node(&dir, &out);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// `∈` a declared type walks the compiler's description of it in the
 /// runtime (`code_is_type`); on wasm a node's pointers are 32 bits, so its
 /// number sits at another offset.

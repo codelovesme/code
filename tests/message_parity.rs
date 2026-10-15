@@ -125,6 +125,7 @@ fn report_of(stderr: &[u8]) -> String {
 fn interpreted(name: &str, path: &Path) -> String {
     let output = Command::new(env!("CARGO_BIN_EXE_code"))
         .arg("run")
+        .arg("--interpret")
         .arg(path)
         .output()
         .expect("run `code run` subprocess");
@@ -137,8 +138,8 @@ fn interpreted(name: &str, path: &Path) -> String {
     report_of(&output.stderr)
 }
 
-fn compiled(name: &str, path: &Path, exe: &Path) -> String {
-    code::compile_file(path, code::BuildTarget::Exe, exe, false)
+fn compiled(name: &str, path: &Path, exe: &Path, release: bool) -> String {
+    code::compile_file(path, code::BuildTarget::Exe, exe, release)
         .unwrap_or_else(|e| panic!("{name}: expected this to compile — the failure is meant to be a runtime one, not a compile-time one: {e}"));
     let output = Command::new(exe).output().expect("run compiled binary");
     assert!(
@@ -166,13 +167,15 @@ fn both_backends_word_every_runtime_failure_identically() {
         let path = dir.join(format!("{name}.code"));
         std::fs::write(&path, src).expect("write case");
         let run = interpreted(name, &path);
-        let build = compiled(name, &path, &dir.join(name));
-        if run != build {
-            mismatches.push(format!(
-                "  {name}\n    run:\n{}\n    build:\n{}",
-                indent(&run),
-                indent(&build)
-            ));
+        for release in [false, true] {
+            let build = compiled(name, &path, &dir.join(name), release);
+            if run != build {
+                mismatches.push(format!(
+                    "  {name} (release={release})\n    interpret:\n{}\n    build:\n{}",
+                    indent(&run),
+                    indent(&build)
+                ));
+            }
         }
     }
 
