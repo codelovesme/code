@@ -25,7 +25,7 @@
 //! is never reported. A handler's field list is what arrives; its labels
 //! (`fish ∈ { x ∈ Number }`) seed the kinds of what it receives.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::ast::{
     BinOp, EmitResult, EmitTarget, Expr, Field, FieldKey, Label, LoopOver, Program, Span, Stmt,
@@ -104,9 +104,30 @@ pub struct Layouts {
     /// only ever makes a number (or null): their address. Codegen reads the number in
     /// line when the tag says so, and calls the runtime when it does not.
     pub numbers: std::collections::HashSet<usize>,
+    /// Sites proved closed under ticket 126's internal-handler escape rule.
+    /// This proves escape scope only, not backend operation support.
+    pub closed_numeric: ClosedNumeric,
+}
+
+#[derive(Default)]
+pub struct ClosedNumeric {
+    pub lists: HashSet<usize>,
+    pub records: HashSet<usize>,
+}
+
+/// Internal handler inputs and replies join the same storage group. Values
+/// crossing a module, dynamic label or tracing boundary remain boxed.
+pub fn closed_numeric_values(program: &Program) -> ClosedNumeric {
+    field_layouts(program).closed_numeric
 }
 
 pub fn field_layouts(program: &Program) -> Layouts {
+    field_layouts_with_boundaries(program, false)
+}
+
+/// Library exports, browser callbacks and compiled tracing expose values to
+/// code outside this compilation. These builds conservatively keep boxes.
+pub fn field_layouts_with_boundaries(program: &Program, exposed: bool) -> Layouts {
     let mut warnings = Vec::new();
     let mut suggestions = Vec::new();
     let mut layouts = Layouts::default();
@@ -117,7 +138,11 @@ pub fn field_layouts(program: &Program) -> Layouts {
         &mut suggestions,
         &mut layouts,
         &Types::of(program),
+        false,
     );
+    if exposed {
+        layouts.closed_numeric = ClosedNumeric::default();
+    }
     layouts
 }
 
@@ -149,6 +174,7 @@ fn check_file(
         suggestions,
         &mut layouts,
         defs,
+        false,
     );
 }
 
@@ -159,6 +185,7 @@ fn check_file_into(
     suggestions: &mut Vec<Suggestion>,
     layouts: &mut Layouts,
     defs: &Types,
+    imported: bool,
 ) {
     let mut infer = Infer {
         defs,
@@ -181,10 +208,24 @@ fn check_file_into(
         field_sites: Vec::new(),
         part_sites: Vec::new(),
         read_sites: Vec::new(),
+        storage_sites: Vec::new(),
+        contains: Vec::new(),
+        escapes: Vec::new(),
+        comparisons: Vec::new(),
+        unknown_dispatch: false,
     };
     for statement in statements {
         if let Stmt::HandlerDef { class_name, .. } = statement {
             infer.local.insert(class_name.clone());
+        }
+    }
+    // A linked module can enter any handler and receive its reply. Local
+    // literal sends still unify both sides, but these handler groups escape.
+    if imported || external_code(statements) {
+        for class in infer.local.clone() {
+            let input = infer.input(&class);
+            let result = infer.result(&class);
+            infer.escapes.extend([input, result]);
         }
     }
     // A handler's labels say what it receives before any body sends it
@@ -276,6 +317,7 @@ fn check_file_into(
             infer.layouts.numbers.insert(site);
         }
     }
+    infer.finish_escape_analysis();
 }
 
 /// `Point { … }` — an object literal whose `_class` is written down.
@@ -287,6 +329,34 @@ fn kinds_of(shape: &Shape) -> Vec<ValueKind> {
         Shape::Mixed(kinds) => kinds.clone(),
         Shape::Array(_) => vec![ValueKind::Array],
         Shape::Object { .. } => vec![ValueKind::Object],
+    }
+}
+
+fn external_code(statements: &[Stmt]) -> bool {
+    statements.iter().any(|statement| match statement {
+        Stmt::ImportNative { .. }
+        | Stmt::LinkRuntime { .. }
+        | Stmt::Link { .. }
+        | Stmt::Import { .. } => true,
+        Stmt::If { body, .. } | Stmt::Loop { body, .. } | Stmt::HandlerDef { body, .. } => {
+            external_code(body)
+        }
+        _ => false,
+    })
+}
+
+fn dynamic_label(label: &Label, defs: &Types, seen: &mut HashSet<String>) -> bool {
+    match label {
+        Label::Union(_) => true,
+        Label::Named(name) if name == "Any" => true,
+        Label::Named(name) if seen.insert(name.clone()) => defs
+            .get(name)
+            .is_some_and(|label| dynamic_label(label, defs, seen)),
+        Label::ArrayOf(inner) | Label::ObjectOf(inner) => dynamic_label(inner, defs, seen),
+        Label::Fields(fields) | Label::Open(fields) => fields
+            .iter()
+            .any(|(_, label)| dynamic_label(label, defs, seen)),
+        _ => false,
     }
 }
 
@@ -342,15 +412,92 @@ struct Infer<'a> {
     part_sites: Vec<((usize, usize), Var, String)>,
     /// Every `.field` and `[index]` read: its address and what it reads.
     read_sites: Vec<(usize, Var)>,
+    storage_sites: Vec<(usize, Var)>,
+    // Keep original containment edges even if a parent later becomes Any.
+    contains: Vec<(Var, Var)>,
+    escapes: Vec<Var>,
+    comparisons: Vec<(Var, Var)>,
+    unknown_dispatch: bool,
 }
 
 impl Infer<'_> {
     fn fresh(&mut self, shape: Shape) -> Var {
         let var = self.parent.len();
+        match &shape {
+            Shape::Array(element) => self.contains.push((var, *element)),
+            Shape::Object { fields, map } => {
+                self.contains
+                    .extend(fields.values().map(|child| (var, *child)));
+                if let Some(child) = map {
+                    self.contains.push((var, *child));
+                }
+            }
+            _ => {}
+        }
         self.parent.push(var);
         self.shapes.push(shape);
         self.labelled.push(false);
         var
+    }
+
+    fn finish_escape_analysis(&mut self) {
+        let mut children: HashMap<Var, Vec<Var>> = HashMap::new();
+        for (parent, child) in std::mem::take(&mut self.contains) {
+            let parent = self.root(parent);
+            let child = self.root(child);
+            children.entry(parent).or_default().push(child);
+        }
+        let mut todo = std::mem::take(&mut self.escapes);
+        if self.local.contains(crate::flows::HANDLER) {
+            // Trace can observe an interaction's particles and replies,
+            // including nested values. Keep the whole compilation boxed.
+            todo.extend(0..self.parent.len());
+        }
+        if self.unknown_dispatch {
+            todo.extend(self.inputs.values().copied());
+            todo.extend(self.results.values().copied());
+        }
+        for var in 0..self.parent.len() {
+            if matches!(self.shape(var), Shape::Any | Shape::Mixed(_)) {
+                todo.push(var);
+            }
+        }
+        for (left, right) in std::mem::take(&mut self.comparisons) {
+            if self.root(left) != self.root(right) {
+                todo.extend([left, right]);
+            }
+        }
+        let mut escaped = HashSet::new();
+        while let Some(var) = todo.pop() {
+            let root = self.root(var);
+            if escaped.insert(root) {
+                if let Some(parts) = children.get(&root) {
+                    todo.extend(parts);
+                }
+            }
+        }
+        for (site, var) in std::mem::take(&mut self.storage_sites) {
+            let root = self.root(var);
+            if escaped.contains(&root) {
+                continue;
+            }
+            match self.shape(root) {
+                Shape::Array(element)
+                    if matches!(self.shape(element), Shape::Scalar(ValueKind::Number)) =>
+                {
+                    self.layouts.closed_numeric.lists.insert(site);
+                }
+                Shape::Object { fields, map: None }
+                    if !fields.is_empty()
+                        && fields.values().all(|field| {
+                            matches!(self.shape(*field), Shape::Scalar(ValueKind::Number))
+                        }) =>
+                {
+                    self.layouts.closed_numeric.records.insert(site);
+                }
+                _ => {}
+            }
+        }
     }
 
     fn root(&mut self, var: Var) -> Var {
@@ -510,6 +657,7 @@ impl Infer<'_> {
         match self.shapes[root].clone() {
             Shape::Unknown => {
                 let field = self.fresh(Shape::Unknown);
+                self.contains.push((root, field));
                 self.shapes[root] = Shape::Object {
                     fields: BTreeMap::from([(name.to_string(), field)]),
                     map: None,
@@ -525,6 +673,7 @@ impl Infer<'_> {
                     None => self.fresh(Shape::Unknown),
                 };
                 fields.insert(name.to_string(), field);
+                self.contains.push((root, field));
                 self.shapes[root] = Shape::Object { fields, map };
                 field
             }
@@ -538,6 +687,7 @@ impl Infer<'_> {
         match self.shapes[root].clone() {
             Shape::Unknown => {
                 let values = self.fresh(Shape::Unknown);
+                self.contains.push((root, values));
                 self.shapes[root] = Shape::Object {
                     fields: BTreeMap::new(),
                     map: Some(values),
@@ -549,6 +699,7 @@ impl Infer<'_> {
                     Some(values) => values,
                     None => self.fresh(Shape::Unknown),
                 };
+                self.contains.push((root, values));
                 self.shapes[root] = Shape::Object {
                     fields: fields.clone(),
                     map: Some(values),
@@ -568,6 +719,7 @@ impl Infer<'_> {
             Shape::Unknown => {
                 let element = self.fresh(Shape::Unknown);
                 self.shapes[root] = Shape::Array(element);
+                self.contains.push((root, element));
                 element
             }
             Shape::Array(element) => element,
@@ -580,6 +732,9 @@ impl Infer<'_> {
         let var = self.label_shape(label);
         let root = self.root(var);
         self.labelled[root] = true;
+        if dynamic_label(label, self.defs, &mut HashSet::new()) {
+            self.escapes.push(var);
+        }
         var
     }
 
@@ -795,6 +950,12 @@ impl Infer<'_> {
                         .map(str::to_string),
                     _ => None,
                 };
+                if local.is_none() {
+                    self.escapes.push(sent);
+                    if matches!(target, EmitTarget::This | EmitTarget::Base) {
+                        self.unknown_dispatch = true;
+                    }
+                }
                 let answer = match (&local, target) {
                     (Some(class), _) => {
                         let input = self.input(class);
@@ -834,6 +995,7 @@ impl Infer<'_> {
                 self.suggestions,
                 self.layouts,
                 self.defs,
+                true,
             ),
             Stmt::Link { alias, .. } => {
                 if let Some(alias) = alias {
@@ -870,7 +1032,7 @@ impl Infer<'_> {
     }
 
     fn expr(&mut self, expr: &Expr) -> Var {
-        match expr {
+        let var = match expr {
             Expr::Number(_) | Expr::LengthOf(_) => {
                 if let Expr::LengthOf(inner) = expr {
                     self.expr(inner);
@@ -880,7 +1042,8 @@ impl Infer<'_> {
             Expr::Str(_) => self.scalar(ValueKind::String),
             Expr::Interpolated(parts) => {
                 for part in parts {
-                    self.expr(part);
+                    let rendered = self.expr(part);
+                    self.escapes.push(rendered);
                 }
                 self.scalar(ValueKind::String)
             }
@@ -932,7 +1095,9 @@ impl Infer<'_> {
                 self.scalar(ValueKind::Boolean)
             }
             Expr::Binary(left, op, right) => self.binary(left, *op, right),
-        }
+        };
+        self.storage_sites.push((expr as *const Expr as usize, var));
+        var
     }
 
     fn index(&mut self, container_expr: &Expr, index: &Expr) -> Var {
@@ -1030,6 +1195,9 @@ impl Infer<'_> {
     fn binary(&mut self, left: &Expr, op: BinOp, right: &Expr) -> Var {
         let l = self.expr(left);
         let r = self.expr(right);
+        if matches!(op, BinOp::Eq | BinOp::Ne) {
+            self.comparisons.push((l, r));
+        }
         // A list written right here and joined (`[name] + controls`, `[1] +
         // true`, `"x" + [1, 2]`) is a new list, born of whatever both sides
         // hold — as a list written with several types is. `xs + [x]` is
@@ -1131,6 +1299,116 @@ fn article(kind: &str) -> String {
 mod tests {
     use super::*;
     use crate::{lexer, parser};
+
+    fn parsed(source: &str) -> Program {
+        parser::parse(&lexer::tokenize(source).expect("tokenize")).expect("parse")
+    }
+
+    fn first_list_is_closed(source: &str) -> bool {
+        let program = parsed(source);
+        let Stmt::Assign { value, .. } = &program.statements[0] else {
+            panic!("list assignment first")
+        };
+        closed_numeric_values(&program)
+            .lists
+            .contains(&(value as *const Expr as usize))
+    }
+
+    #[test]
+    fn closed_lists_allow_scalar_reads_but_no_boundary_or_dynamic_flow() {
+        assert!(first_list_is_closed(
+            "xs = [1, 2]\nanswer = xs[0] + xs[1]\nassert answer = 3\n"
+        ));
+        assert!(first_list_is_closed(
+            "xs = [1, 2]\nemit Answer { value = xs[0] } to core\n"
+        ));
+        for suffix in [
+            "alias = xs\nemit Draw { value = alias } to canvas\n",
+            "link \"external.so\" as external\nRead {} => return Result { value = xs }\n",
+            "Read {} => return Result { value = xs }\nrequest = Read {}\nemit request to this\n",
+            "anything ∈ Any = xs\n",
+            "anything ∈ (Array of Number) ∪ String = xs\n",
+            "container = { value = xs }\nanything ∈ Any = container\n",
+            "container ∈ Any = null\ncontainer = { value = xs }\n",
+            "other = [1, 2]\nassert xs = other\n",
+            "emit Trace { value = xs } to console\n",
+            "container = [xs, \"mixed\"]\n",
+        ] {
+            assert!(
+                !first_list_is_closed(&format!("xs = [1, 2]\n{suffix}")),
+                "{suffix}"
+            );
+        }
+    }
+
+    #[test]
+    fn internal_handler_chains_join_inputs_and_replies() {
+        assert!(first_list_is_closed("xs = [1, 2]\nFirst { value } =>\n    emit Second { value = value } to this get answer\n    return answer\nSecond { value } => return Result { value = value }\nemit First { value = xs } to this get answer\nassert answer.value[0] = 1\n"));
+    }
+
+    #[test]
+    fn every_external_boundary_keeps_the_group_boxed() {
+        for suffix in [
+            "emit Draw { value = xs } to outside\n",
+            "link \"external.a\" as outside\nemit Draw { value = xs } to outside\n",
+            "link \"external.so\" as outside\nemit Draw { value = xs } to outside\n",
+            "link \"hosted\" as outside\nemit Draw { value = xs } to outside\n",
+            "link \"browser.a\" as outside\nemit Draw { value = xs } to outside\n",
+            "emit Fetch {} to outside get reply\nxs = reply.value\n",
+            "Trace { steps } => return null\n",
+            "link \"external.so\" as outside\nRead {} => return Result { value = xs }\n",
+        ] {
+            assert!(
+                !first_list_is_closed(&format!("xs = [1, 2]\n{suffix}")),
+                "{suffix}"
+            );
+        }
+        let program = parsed("xs = [1, 2]\n");
+        assert!(
+            field_layouts_with_boundaries(&program, true)
+                .closed_numeric
+                .lists
+                .is_empty(),
+            "code trace / exported builds"
+        );
+    }
+
+    #[test]
+    fn dynamic_labels_are_followed_through_named_types() {
+        let program = parsed("type Values = (Array of Number) ∪ (Array of Number)\nxs = [1, 2]\nlabelled ∈ Values = xs\n");
+        assert!(closed_numeric_values(&program).lists.is_empty());
+    }
+
+    #[test]
+    fn numeric_records_need_the_same_closed_scope() {
+        let local = parsed("p = { x = 1, y = 2 }\nanswer = p.x + p.y\nassert answer = 3\n");
+        assert!(!closed_numeric_values(&local).records.is_empty());
+        let sent = parsed("p = { x = 1, y = 2 }\nemit Draw { point = p } to canvas\n");
+        assert!(closed_numeric_values(&sent).records.is_empty());
+        let mixed = parsed("p = { x = 1, name = \"point\" }\n");
+        assert!(closed_numeric_values(&mixed).records.is_empty());
+    }
+
+    #[test]
+    fn internal_handler_scope_keeps_spectral_lists_and_points_records() {
+        let spectral = parsed(include_str!("../benchmarks/workloads/spectral_norm.code"));
+        let spectral = closed_numeric_values(&spectral);
+        assert!(
+            !spectral.lists.is_empty(),
+            "internal Times inputs and Vec replies are inside the group"
+        );
+        let points = parsed(include_str!("../benchmarks/workloads/points.code"));
+        let points = closed_numeric_values(&points);
+        assert!(
+            !points.records.is_empty(),
+            "points records stay inside the program"
+        );
+        eprintln!(
+            "closed sites: spectral lists {}, points records {}",
+            spectral.lists.len(),
+            points.records.len()
+        );
+    }
 
     fn warnings(source: &str) -> Vec<String> {
         let lexed = lexer::tokenize(source).expect("tokenize");
