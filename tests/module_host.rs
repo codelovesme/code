@@ -419,6 +419,18 @@ fn numeric_index_reads_preserve_string_addition_on_the_fallback_path() {
             "1changed",
         ),
         ("items[index] + 1", Value::Str("x".into()), "x1"),
+        // A late failed guard must evaluate the complete generic expression
+        // with its own temporaries, including the original operand order.
+        (
+            "1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + items[index] + 10",
+            Value::Array(Rc::new(vec![Value::Str("changed".into())])),
+            "45changed10",
+        ),
+        (
+            "items[index] + 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10",
+            Value::Array(Rc::new(vec![Value::Str("changed".into())])),
+            "changed12345678910",
+        ),
     ] {
         let env = Rc::new(Environment::default());
         let weak = Rc::downgrade(&env);

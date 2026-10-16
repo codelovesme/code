@@ -1,0 +1,35 @@
+{
+  "stage": "buffers",
+  "measured_at_utc": "2026-10-16T11:01:59+00:00",
+  "baseline_commit": "02a8c25",
+  "cpu": 0,
+  "runs_per_mode": 3,
+  "command": "<CLI> run --interpret <source>",
+  "order": "serial fresh launches, deterministic shuffled order, no concurrent builds/tests/profiling",
+  "binary_sha256": {
+    "before": "77b002bd44a90f0bbf8d9ffcc2ef39ac3210d187eb2baf68a873ef063dc54534",
+    "after": "d937f3bd027d0694f761e5950f7bee1199dc2d24da3febb26104680301e1a9d0"
+  },
+  "results": {
+    "spectral_norm": {
+      "samples_seconds": {
+        "before": [
+          14.916507940040901,
+          14.961460347054526,
+          15.02584565593861
+        ],
+        "after": [
+          13.396899759070948,
+          13.57462067087181,
+          13.606232712045312
+        ]
+      },
+      "medians_seconds": {
+        "before": 14.961460347054526,
+        "after": 13.57462067087181
+      },
+      "reduction_percent": 9.26941384071338
+    }
+  },
+  "variant": "fallback-only"
+}
