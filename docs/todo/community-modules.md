@@ -621,3 +621,11 @@ the same data `code list` reads. It doubles as the de-facto index.
   module run a second switch on a string, re-implementing the dispatcher one
   level down. Sketched in the module's README before coding, as this entry
   asked.
+
+### Text utility continuation (ticket 128, unreleased)
+
+Strings adds Contains, StartsWith, EndsWith and IndexOf (optional ASCII
+ignore_case), literal Replace, scalar-indexed Slice and bounded Pad. Split
+accepts nonempty multi-character separators; Join accepts any string separator,
+including empty. Native and browser contracts are documented in
+`crates/modules/strings/README.md`. No release or app migration is implied.

@@ -351,7 +351,7 @@ jobs:
               printf 'emit Print { value = "phase B works" } to mod get r\nassert r.value = 13\n' >> dogfood/demo.code
               ;;
             strings)
-              printf 'emit Echo { value = 13 } to mod get r\nassert r.value = 13\n' >> dogfood/demo.code
+              printf 'emit Echo { value = 13 } to mod get r\nassert r.value = 13\nemit Contains { value = "AbCd", search = "bc", ignore_case = true } to mod get found\nassert found.value\nemit Slice { value = "a😀é", start = 1, end = 2 } to mod get sliced\nassert sliced.value = "😀"\nemit Pad { value = "7", width = 3, fill = "0" } to mod get padded\nassert padded.value = "007"\nemit Split { value = "a::b", separator = "::" } to mod get parts\nassert parts.value = ["a", "b"]\n' >> dogfood/demo.code
               ;;
             math)
               printf 'emit Double { value = 21 } to mod get r\nassert r.value = 42\n' >> dogfood/demo.code
@@ -669,7 +669,7 @@ jobs:
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
               console) handlers='["Print"]' ;;
-              strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower", "Length"]' ;;
+              strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower", "Length", "Contains", "StartsWith", "EndsWith", "IndexOf", "Replace", "Slice", "Pad"]' ;;
               math) handlers='["Double", "Sum", "Floor", "Ceil", "Round", "Trunc", "Div", "Mod", "Abs", "Min", "Max", "Parse", "Sqrt", "Pow", "Sin", "Cos", "Ln", "Exp"]' ;;
             env) handlers='["Get", "Require"]' ;;
               http_client) handlers='["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"]' ;;

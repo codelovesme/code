@@ -2,8 +2,9 @@
 #[path = "support/utility_modules.rs"]
 mod utilities;
 #[test]
-fn existing_strings_and_length_agree_across_backends() {
+fn strings_utilities_agree_across_backends() {
     for name in [
+        "strings_utilities.code",
         "strings_length.code",
         "strings_shout.code",
         "strings_echo_nested.code",

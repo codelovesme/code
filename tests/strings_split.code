@@ -1,4 +1,4 @@
-| `Split` breaks a string on a single-character separator. Empty segments
+| `Split` breaks a string on a nonempty literal separator. Empty segments
 | survive, and a leading separator yields an empty first segment — the
 | least-surprising reading of "split".
 link "native_modules/strings.so" as s

@@ -44,3 +44,19 @@ assert.equal(math({ _class: 'Unknown' }), null);
 assert.equal(strings({ _class: 'Unknown' }), null);
 assert.equal(time({ _class: 'Unknown' }), null);
 console.log('utility browser edge contracts passed');
+// Optional fields distinguish absence from explicit null; all integer checks
+// must match the native ABI even for JS values JSON cannot represent.
+for (const n of [NaN, Infinity, -Infinity, 0.5, 9007199254740992, null, true]) {
+  for (const [name, key] of [['Pad', 'width'], ['Slice', 'start'], ['Slice', 'end']]) {
+    assert.deepEqual(strings({ _class: name, value: 'a😀é', [key]: n }), {
+      _class: 'Exception', source: 'strings', innerException: null,
+      message: `${name} requires a safe integer '${key}' field`,
+    });
+  }
+}
+const million = strings({ _class: 'Pad', value: '😀', width: 1000000, fill: 'é😀' }).value;
+assert.equal([...million].length, 1000000);
+assert.equal(million.endsWith('😀'), true);
+assert.equal(strings({ _class: 'Pad', value: '', width: 1000001 })._class, 'Exception');
+assert.equal(strings({ _class: 'Slice', value: '😀é', start: -0, end: 9007199254740991 }).value, '😀é');
+assert.equal(strings({ _class: 'Replace', value: 'aaa', search: 'aa', replacement: '$&' }).value, '$&a');

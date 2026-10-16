@@ -812,7 +812,7 @@ divisor-sign Mod, Abs/Min/Max, strict decimal Parse and Sqrt/Pow/Sin/Cos/Ln/Exp.
 Round ties away from zero. Read `crates/modules/math/README.md` for contracts.
 
 `math` and `strings` now have browser halves. Strings adds Unicode-scalar
-Length; ASCII case/trim and single-scalar separators stay compatible.
+Length; successful ASCII case/trim and single-scalar separators stay compatible.
 New stateless `time` provides Timestamp (whole Unix seconds) and TimezoneOffset
 (minutes east of UTC). Keep `timer` separate: Delay/Cancel own pending work.
 Core's existing Timestamp/TimezoneOffset/Length remain compatibility entry
@@ -827,6 +827,25 @@ must link the same modules their guests call. App migration and live deployment
 are separate work; fixture/browser parity is not a release. Keep future calendar
 and text expansion work under ticket 099 rather than adding generic utilities
 to core.
+
+
+## Text utility continuation (ticket 128, unreleased)
+
+Strings now also has Contains/StartsWith/EndsWith/IndexOf (value, search,
+optional Bool ignore_case with ASCII folding), literal case-sensitive Replace
+(value, search, replacement), scalar-indexed Slice (start/end optional signed
+safe integers, end exclusive, negatives from end, clamped), and Pad (width,
+optional fill/side, default space/left, width 0..1000000). IndexOf returns -1
+when absent. Search accepts empty needles; Replace refuses them. Optional
+fields default only when absent; explicit null is an error.
+
+Split accepts any nonempty string separator; Join any string, including empty.
+This intentionally broadens their old refusal contract; successful single-scalar
+behavior and empty segments remain. Read `crates/modules/strings/README.md` for
+full contracts. Native/dev/release/compiled-wasm fixtures and page/ABI edge tests
+cover the changes. Tests run on generated hosts in Node, not a live browser UI.
+App helpers, shell manifests and released pins have not been migrated. Keep
+these source additions separate from claims about public module availability.
 
 ## Releases
 
