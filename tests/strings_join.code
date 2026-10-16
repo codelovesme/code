@@ -1,5 +1,5 @@
 | `Join` is `Split`'s inverse: one string from an array of strings, with a
-| single-character separator between elements. An empty array joins to the
+| literal separator between elements. An empty array joins to the
 | empty string (there is nothing to separate).
 link "native_modules/strings.so" as s
 emit Join { value = ["a", "b", "c"], separator = "-" } to s get n

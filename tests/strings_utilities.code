@@ -1,0 +1,208 @@
+| Literal matching, scalar offsets, clamped slices and bounded padding.
+link "native_modules/strings.so" as s
+emit Contains { value = "", search = "", ignore_case = false } to s get r0
+assert r0 = { _class = "ContainsResult", value = true }
+emit Contains { value = "a😀éB", search = "é", ignore_case = false } to s get r1
+assert r1 = { _class = "ContainsResult", value = true }
+emit Contains { value = "AbC", search = "bc", ignore_case = true } to s get r2
+assert r2 = { _class = "ContainsResult", value = true }
+emit Contains { value = "Éclair", search = "é", ignore_case = true } to s get r3
+assert r3 = { _class = "ContainsResult", value = false }
+emit Contains { value = "abc", search = "z", ignore_case = false } to s get r4
+assert r4 = { _class = "ContainsResult", value = false }
+emit Contains { value = "abc", search = "", ignore_case = false } to s get r5
+assert r5 = { _class = "ContainsResult", value = true }
+emit Contains { value = "aaab", search = "aab", ignore_case = false } to s get r6
+assert r6 = { _class = "ContainsResult", value = true }
+emit Contains { value = "AbC", search = "bc" } to s get r7
+assert r7 = { _class = "ContainsResult", value = false }
+emit Contains { value = 4, search = "a" } to s get r8
+assert r8 = { _class = "Exception", source = "strings", message = "Contains requires a string 'value'", innerException = null }
+emit Contains { value = "a" } to s get r9
+assert r9 = { _class = "Exception", source = "strings", message = "Contains requires a string 'search' field", innerException = null }
+emit Contains { value = "a", search = "a", ignore_case = null } to s get r10
+assert r10 = { _class = "Exception", source = "strings", message = "Contains requires a boolean 'ignore_case' field", innerException = null }
+emit StartsWith { value = "", search = "", ignore_case = false } to s get r11
+assert r11 = { _class = "StartsWithResult", value = true }
+emit StartsWith { value = "a😀éB", search = "é", ignore_case = false } to s get r12
+assert r12 = { _class = "StartsWithResult", value = false }
+emit StartsWith { value = "AbC", search = "bc", ignore_case = true } to s get r13
+assert r13 = { _class = "StartsWithResult", value = false }
+emit StartsWith { value = "Éclair", search = "é", ignore_case = true } to s get r14
+assert r14 = { _class = "StartsWithResult", value = false }
+emit StartsWith { value = "abc", search = "z", ignore_case = false } to s get r15
+assert r15 = { _class = "StartsWithResult", value = false }
+emit StartsWith { value = "abc", search = "", ignore_case = false } to s get r16
+assert r16 = { _class = "StartsWithResult", value = true }
+emit StartsWith { value = "aaab", search = "aab", ignore_case = false } to s get r17
+assert r17 = { _class = "StartsWithResult", value = false }
+emit StartsWith { value = "AbC", search = "bc" } to s get r18
+assert r18 = { _class = "StartsWithResult", value = false }
+emit StartsWith { value = 4, search = "a" } to s get r19
+assert r19 = { _class = "Exception", source = "strings", message = "StartsWith requires a string 'value'", innerException = null }
+emit StartsWith { value = "a" } to s get r20
+assert r20 = { _class = "Exception", source = "strings", message = "StartsWith requires a string 'search' field", innerException = null }
+emit StartsWith { value = "a", search = "a", ignore_case = null } to s get r21
+assert r21 = { _class = "Exception", source = "strings", message = "StartsWith requires a boolean 'ignore_case' field", innerException = null }
+emit EndsWith { value = "", search = "", ignore_case = false } to s get r22
+assert r22 = { _class = "EndsWithResult", value = true }
+emit EndsWith { value = "a😀éB", search = "é", ignore_case = false } to s get r23
+assert r23 = { _class = "EndsWithResult", value = false }
+emit EndsWith { value = "AbC", search = "bc", ignore_case = true } to s get r24
+assert r24 = { _class = "EndsWithResult", value = true }
+emit EndsWith { value = "Éclair", search = "é", ignore_case = true } to s get r25
+assert r25 = { _class = "EndsWithResult", value = false }
+emit EndsWith { value = "abc", search = "z", ignore_case = false } to s get r26
+assert r26 = { _class = "EndsWithResult", value = false }
+emit EndsWith { value = "abc", search = "", ignore_case = false } to s get r27
+assert r27 = { _class = "EndsWithResult", value = true }
+emit EndsWith { value = "aaab", search = "aab", ignore_case = false } to s get r28
+assert r28 = { _class = "EndsWithResult", value = true }
+emit EndsWith { value = "AbC", search = "bc" } to s get r29
+assert r29 = { _class = "EndsWithResult", value = false }
+emit EndsWith { value = 4, search = "a" } to s get r30
+assert r30 = { _class = "Exception", source = "strings", message = "EndsWith requires a string 'value'", innerException = null }
+emit EndsWith { value = "a" } to s get r31
+assert r31 = { _class = "Exception", source = "strings", message = "EndsWith requires a string 'search' field", innerException = null }
+emit EndsWith { value = "a", search = "a", ignore_case = null } to s get r32
+assert r32 = { _class = "Exception", source = "strings", message = "EndsWith requires a boolean 'ignore_case' field", innerException = null }
+emit IndexOf { value = "", search = "", ignore_case = false } to s get r33
+assert r33 = { _class = "IndexOfResult", value = 0 }
+emit IndexOf { value = "a😀éB", search = "é", ignore_case = false } to s get r34
+assert r34 = { _class = "IndexOfResult", value = 2 }
+emit IndexOf { value = "AbC", search = "bc", ignore_case = true } to s get r35
+assert r35 = { _class = "IndexOfResult", value = 1 }
+emit IndexOf { value = "Éclair", search = "é", ignore_case = true } to s get r36
+assert r36 = { _class = "IndexOfResult", value = -1 }
+emit IndexOf { value = "abc", search = "z", ignore_case = false } to s get r37
+assert r37 = { _class = "IndexOfResult", value = -1 }
+emit IndexOf { value = "abc", search = "", ignore_case = false } to s get r38
+assert r38 = { _class = "IndexOfResult", value = 0 }
+emit IndexOf { value = "aaab", search = "aab", ignore_case = false } to s get r39
+assert r39 = { _class = "IndexOfResult", value = 1 }
+emit IndexOf { value = "AbC", search = "bc" } to s get r40
+assert r40 = { _class = "IndexOfResult", value = -1 }
+emit IndexOf { value = 4, search = "a" } to s get r41
+assert r41 = { _class = "Exception", source = "strings", message = "IndexOf requires a string 'value'", innerException = null }
+emit IndexOf { value = "a" } to s get r42
+assert r42 = { _class = "Exception", source = "strings", message = "IndexOf requires a string 'search' field", innerException = null }
+emit IndexOf { value = "a", search = "a", ignore_case = null } to s get r43
+assert r43 = { _class = "Exception", source = "strings", message = "IndexOf requires a boolean 'ignore_case' field", innerException = null }
+emit Replace { value = "aaaa", search = "aa", replacement = "b" } to s get r44
+assert r44 = { _class = "ReplaceResult", value = "bb" }
+emit Replace { value = "aaa", search = "aa", replacement = "b" } to s get r45
+assert r45 = { _class = "ReplaceResult", value = "ba" }
+emit Replace { value = "a.\$a.\$", search = ".\$", replacement = "\$&" } to s get r46
+assert r46 = { _class = "ReplaceResult", value = "a\$&a\$&" }
+emit Replace { value = "😀é😀", search = "😀", replacement = "X" } to s get r47
+assert r47 = { _class = "ReplaceResult", value = "XéX" }
+emit Replace { value = "ab", search = "z", replacement = "X" } to s get r48
+assert r48 = { _class = "ReplaceResult", value = "ab" }
+emit Replace { value = "aaa", search = "a", replacement = "" } to s get r49
+assert r49 = { _class = "ReplaceResult", value = "" }
+emit Replace { value = "", search = "x", replacement = "z" } to s get r50
+assert r50 = { _class = "ReplaceResult", value = "" }
+emit Replace { value = "abc", search = "", replacement = "x" } to s get r51
+assert r51 = { _class = "Exception", source = "strings", message = "Replace requires a non-empty 'search' field", innerException = null }
+emit Replace { value = "abc", search = "a" } to s get r52
+assert r52 = { _class = "Exception", source = "strings", message = "Replace requires a string 'replacement' field", innerException = null }
+emit Slice { value = "a😀é" } to s get r53
+assert r53 = { _class = "SliceResult", value = "a😀é" }
+emit Slice { value = "a😀é", start = 0, end = 2 } to s get r54
+assert r54 = { _class = "SliceResult", value = "a😀" }
+emit Slice { value = "a😀é", start = 1, end = 2 } to s get r55
+assert r55 = { _class = "SliceResult", value = "😀" }
+emit Slice { value = "a😀é", start = -2, end = -1 } to s get r56
+assert r56 = { _class = "SliceResult", value = "😀" }
+emit Slice { value = "a😀é", start = -99, end = 99 } to s get r57
+assert r57 = { _class = "SliceResult", value = "a😀é" }
+emit Slice { value = "a😀é", start = 99, end = 100 } to s get r58
+assert r58 = { _class = "SliceResult", value = "" }
+emit Slice { value = "a😀é", start = 2, end = 1 } to s get r59
+assert r59 = { _class = "SliceResult", value = "" }
+emit Slice { value = "a😀é", start = -1, end = -99 } to s get r60
+assert r60 = { _class = "SliceResult", value = "" }
+emit Slice { value = "a😀é", start = 0, end = 0 } to s get r61
+assert r61 = { _class = "SliceResult", value = "" }
+emit Slice { value = "a😀é", start = -9007199254740991, end = 9007199254740991 } to s get r62
+assert r62 = { _class = "SliceResult", value = "a😀é" }
+emit Slice { value = "é", start = 1 } to s get r63
+assert r63 = { _class = "SliceResult", value = "́" }
+emit Slice { value = "", start = -5, end = 9 } to s get r64
+assert r64 = { _class = "SliceResult", value = "" }
+emit Slice { value = "abc", start = null } to s get r65
+assert r65 = { _class = "Exception", source = "strings", message = "Slice requires a safe integer 'start' field", innerException = null }
+emit Slice { value = "abc", start = true } to s get r66
+assert r66 = { _class = "Exception", source = "strings", message = "Slice requires a safe integer 'start' field", innerException = null }
+emit Slice { value = "abc", start = 1.5 } to s get r67
+assert r67 = { _class = "Exception", source = "strings", message = "Slice requires a safe integer 'start' field", innerException = null }
+emit Slice { value = "abc", start = "1" } to s get r68
+assert r68 = { _class = "Exception", source = "strings", message = "Slice requires a safe integer 'start' field", innerException = null }
+emit Slice { value = "abc", start = 9007199254740992 } to s get r69
+assert r69 = { _class = "Exception", source = "strings", message = "Slice requires a safe integer 'start' field", innerException = null }
+emit Slice { value = "abc", end = null } to s get r70
+assert r70 = { _class = "Exception", source = "strings", message = "Slice requires a safe integer 'end' field", innerException = null }
+emit Slice { value = "abc", end = true } to s get r71
+assert r71 = { _class = "Exception", source = "strings", message = "Slice requires a safe integer 'end' field", innerException = null }
+emit Slice { value = "abc", end = 1.5 } to s get r72
+assert r72 = { _class = "Exception", source = "strings", message = "Slice requires a safe integer 'end' field", innerException = null }
+emit Slice { value = "abc", end = "1" } to s get r73
+assert r73 = { _class = "Exception", source = "strings", message = "Slice requires a safe integer 'end' field", innerException = null }
+emit Slice { value = "abc", end = 9007199254740992 } to s get r74
+assert r74 = { _class = "Exception", source = "strings", message = "Slice requires a safe integer 'end' field", innerException = null }
+emit Pad { value = "7", width = 3 } to s get r75
+assert r75 = { _class = "PadResult", value = "  7" }
+emit Pad { value = "a😀", width = 5, fill = "é😀", side = "left" } to s get r76
+assert r76 = { _class = "PadResult", value = "é😀éa😀" }
+emit Pad { value = "a😀", width = 5, fill = "é😀", side = "right" } to s get r77
+assert r77 = { _class = "PadResult", value = "a😀é😀é" }
+emit Pad { value = "abcd", width = 2 } to s get r78
+assert r78 = { _class = "PadResult", value = "abcd" }
+emit Pad { value = "", width = 3, fill = "ab" } to s get r79
+assert r79 = { _class = "PadResult", value = "aba" }
+emit Pad { value = "x", width = 0 } to s get r80
+assert r80 = { _class = "PadResult", value = "x" }
+emit Pad { value = "x", width = null } to s get r81
+assert r81 = { _class = "Exception", source = "strings", message = "Pad requires a safe integer 'width' field", innerException = null }
+emit Pad { value = "x", width = true } to s get r82
+assert r82 = { _class = "Exception", source = "strings", message = "Pad requires a safe integer 'width' field", innerException = null }
+emit Pad { value = "x", width = 0.5 } to s get r83
+assert r83 = { _class = "Exception", source = "strings", message = "Pad requires a safe integer 'width' field", innerException = null }
+emit Pad { value = "x", width = "3" } to s get r84
+assert r84 = { _class = "Exception", source = "strings", message = "Pad requires a safe integer 'width' field", innerException = null }
+emit Pad { value = "x", width = 9007199254740992 } to s get r85
+assert r85 = { _class = "Exception", source = "strings", message = "Pad requires a safe integer 'width' field", innerException = null }
+emit Pad { value = "x", width = -1 } to s get r86
+assert r86 = { _class = "Exception", source = "strings", message = "Pad requires 'width' between 0 and 1000000", innerException = null }
+emit Pad { value = "x", width = 1000001 } to s get r87
+assert r87 = { _class = "Exception", source = "strings", message = "Pad requires 'width' between 0 and 1000000", innerException = null }
+emit Pad { value = "x", width = 1, fill = "" } to s get r88
+assert r88 = { _class = "Exception", source = "strings", message = "Pad requires a non-empty 'fill' field", innerException = null }
+emit Pad { value = "x", width = 1, side = "center" } to s get r89
+assert r89 = { _class = "Exception", source = "strings", message = "Pad requires 'side' to be left or right", innerException = null }
+emit Pad { value = "x", width = 1, side = null } to s get r90
+assert r90 = { _class = "Exception", source = "strings", message = "Pad requires a string 'side' field", innerException = null }
+emit Pad { value = "x", width = 1, fill = false } to s get r91
+assert r91 = { _class = "Exception", source = "strings", message = "Pad requires a string 'fill' field", innerException = null }
+emit Split { value = "a::b::::", separator = "::" } to s get r92
+assert r92 = { _class = "SplitResult", value = ["a", "b", "", ""] }
+emit Split { value = "😀é😀éx", separator = "😀é" } to s get r93
+assert r93 = { _class = "SplitResult", value = ["", "", "x"] }
+emit Split { value = "abc", separator = "::" } to s get r94
+assert r94 = { _class = "SplitResult", value = ["abc"] }
+emit Split { value = "", separator = "::" } to s get r95
+assert r95 = { _class = "SplitResult", value = [""] }
+emit Split { value = "aaaaa", separator = "aa" } to s get r96
+assert r96 = { _class = "SplitResult", value = ["", "", "a"] }
+emit Join { value = ["a", "😀", "é"], separator = "" } to s get r97
+assert r97 = { _class = "JoinResult", value = "a😀é" }
+emit Join { value = ["a", "", "b"], separator = "::" } to s get r98
+assert r98 = { _class = "JoinResult", value = "a::::b" }
+emit Join { value = [], separator = "long" } to s get r99
+assert r99 = { _class = "JoinResult", value = "" }
+emit Split { value = "x", separator = "" } to s get r100
+assert r100 = { _class = "Exception", source = "strings", message = "Split requires a non-empty 'separator' field", innerException = null }
+emit Join { value = ["x", 2], separator = "" } to s get r101
+assert r101 = { _class = "Exception", source = "strings", message = "Join requires an array of strings", innerException = null }
+emit Contains { value = "recovered", search = "cover" } to s get r102
+assert r102 = { _class = "ContainsResult", value = true }
