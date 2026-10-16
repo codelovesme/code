@@ -199,6 +199,18 @@ Batch 1 (proves the pipeline):
   counterparts, `Group` / `GroupEnd` → `console.group`. No `Read`: there
   is no stdin in a browser, and the module doesn't pretend otherwise.
   Overlapping particles share names and result shapes with `console`'s.
+- **time** — unreleased 2026-10-16: Timestamp and TimezoneOffset on native
+  and browser, separate from timer's pending callbacks. Same units/result
+  shapes as core; existing core entry points remain for compatibility. See
+  [the module](../../crates/modules/time/README.md).
+- **math extensions** — unreleased 2026-10-16: Floor/Ceil/Round/Trunc,
+  Div/Mod, Abs/Min/Max, strict decimal Parse, Sqrt/Pow/Sin/Cos/Ln/Exp,
+  browser parity, and finite-number/error rules. See
+  [the module](../../crates/modules/math/README.md).
+- **strings extensions** — unreleased 2026-10-16: browser parity for existing
+  handlers and Unicode-scalar Length; ASCII case/trim and single-character
+  separators remain compatible. Core Length remains generic. See
+  [the module](../../crates/modules/strings/README.md).
 - **math** — shipped 2026-08-24: `Double`, `Sum`. Written in Rust on
   `code-native`, inheriting the numeric half of `test_math` under the split
   proposal (`Shout`/`Echo` went to **strings**; `test_math` stays a pure

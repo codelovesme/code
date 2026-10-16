@@ -263,6 +263,12 @@ mod compile {
             "storage",
             include_str!("../crates/modules/storage/page.mjs"),
         ),
+        ("math", include_str!("../crates/modules/math/page.mjs")),
+        (
+            "strings",
+            include_str!("../crates/modules/strings/page.mjs"),
+        ),
+        ("time", include_str!("../crates/modules/time/page.mjs")),
         ("timer", include_str!("../crates/modules/timer/page.mjs")),
     ];
 

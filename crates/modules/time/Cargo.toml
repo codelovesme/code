@@ -1,0 +1,19 @@
+[workspace]
+
+[package]
+name = "time"
+version = "2.16.0"
+edition = "2021"
+description = "Stateless clock queries for Code: Unix seconds and local UTC offset."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+code-native = { path = "../../code-native", default-features = false, features = ["static-module"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+code-native = { path = "../../code-native" }
+libc = "0.2"

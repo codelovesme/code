@@ -1,0 +1,145 @@
+| Math utilities: values, result classes, signed arithmetic and refusals.
+link "native_modules/math.so" as m
+
+emit Double { value = 21 } to m get answer0
+assert answer0 ∈ DoubleResult
+assert answer0.value = 42
+
+emit Sum { value = [1, 2, 3] } to m get answer1
+assert answer1 ∈ SumResult
+assert answer1.value = 6
+
+emit Floor { value = -1.2 } to m get answer2
+assert answer2 ∈ FloorResult
+assert answer2.value = -2
+
+emit Ceil { value = -1.2 } to m get answer3
+assert answer3 ∈ CeilResult
+assert answer3.value = -1
+
+emit Round { value = -2.5 } to m get answer4
+assert answer4 ∈ RoundResult
+assert answer4.value = -3
+
+emit Trunc { value = -1.9 } to m get answer5
+assert answer5 ∈ TruncResult
+assert answer5.value = -1
+
+emit Div { value = -7, by = 3 } to m get answer6
+assert answer6 ∈ DivResult
+assert answer6.value = -3
+
+emit Mod { value = -7, by = 3 } to m get answer7
+assert answer7 ∈ ModResult
+assert answer7.value = 2
+
+emit Abs { value = -4 } to m get answer8
+assert answer8 ∈ AbsResult
+assert answer8.value = 4
+
+emit Min { value = 5, other = -2 } to m get answer9
+assert answer9 ∈ MinResult
+assert answer9.value = -2
+
+emit Max { value = -5, other = 2 } to m get answer10
+assert answer10 ∈ MaxResult
+assert answer10.value = 2
+
+emit Parse { text = "-.5e2" } to m get answer11
+assert answer11 ∈ ParseResult
+assert answer11.value = -50
+
+emit Sqrt { value = 9 } to m get answer12
+assert answer12 ∈ SqrtResult
+assert answer12.value = 3
+
+emit Pow { value = 2, exponent = 10 } to m get answer13
+assert answer13 ∈ PowResult
+assert answer13.value = 1024
+
+emit Sin { value = 0 } to m get answer14
+assert answer14 ∈ SinResult
+assert answer14.value = 0
+
+emit Cos { value = 0 } to m get answer15
+assert answer15 ∈ CosResult
+assert answer15.value = 1
+
+emit Ln { value = 1 } to m get answer16
+assert answer16 ∈ LnResult
+assert answer16.value = 0
+
+emit Exp { value = 0 } to m get answer17
+assert answer17 ∈ ExpResult
+assert answer17.value = 1
+
+emit Sum { value = [] } to m get empty
+assert empty.value = 0
+loop sample over [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5]
+    emit Round { value = sample } to m get rounded
+    emit Abs { value = rounded.value } to m get magnitude
+    assert magnitude.value ≥ 1
+emit Round { value = 0.49999999999999994 } to m get near_tie
+assert near_tie.value = 0
+emit Round { value = -0.49999999999999994 } to m get negative_near
+assert negative_near.value = 0
+emit Div { value = 7, by = -3 } to m get negative_divisor
+assert negative_divisor.value = -3
+emit Mod { value = 7, by = -3 } to m get negative_mod
+assert negative_mod.value = -2
+emit Mod { value = -7, by = -3 } to m get both_negative
+assert both_negative.value = -1
+emit Mod { value = -6, by = 3 } to m get exact_mod
+assert exact_mod.value = 0
+
+loop text over ["", "+", ".", " 1", "1 ", "1\n", "0xff", "NaN", "Infinity", "1e", "1e+", "1_000", "１２"]
+    emit Parse { text = text } to m get invalid
+    assert invalid ∈ Exception
+    assert invalid.source = "math"
+    assert invalid.message = "Parse requires decimal text"
+emit Parse { text = "1e21" } to m get large
+emit Floor { value = large.value } to m get large_floor
+assert large_floor.value = large.value
+emit Parse { text = "1e-999" } to m get small
+assert small.value = 0
+emit Parse { text = "1e999" } to m get overflow
+assert overflow.message = "Parse result must be finite"
+emit Parse { text = 12 } to m get wrong_parse
+assert wrong_parse.message = "Parse requires a string 'text'"
+emit Floor {} to m get missing
+assert missing.message = "Floor requires a numeric 'value'"
+emit Min { value = 1 } to m get missing_other
+assert missing_other.message = "Min requires a numeric 'other'"
+emit Div { value = 1, by = 0 } to m get divided
+assert divided.message = "Div requires a non-zero 'by'"
+emit Mod { value = 1, by = -0 } to m get modulus
+assert modulus.message = "Mod requires a non-zero 'by'"
+emit Sqrt { value = -1 } to m get root
+assert root.message = "Sqrt requires a non-negative 'value'"
+emit Ln { value = 0 } to m get logarithm
+assert logarithm.message = "Ln requires a positive 'value'"
+emit Exp { value = 1000 } to m get exponential
+assert exponential.message = "Exp result must be finite"
+emit Pow { value = -1, exponent = 0.5 } to m get power
+assert power.message = "Pow result must be finite"
+emit UnknownMath to m get unknown
+assert unknown = null
+
+| Nontrivial transcendental results allow platform libm rounding differences.
+emit Sqrt { value = 2 } to m get sqrt_two
+assert sqrt_two.value > 1.41421356237309
+assert sqrt_two.value < 1.41421356237310
+emit Sin { value = 1 } to m get sine
+assert sine.value > 0.84147098480789
+assert sine.value < 0.84147098480790
+emit Cos { value = 1 } to m get cosine
+assert cosine.value > 0.54030230586813
+assert cosine.value < 0.54030230586815
+emit Ln { value = 2 } to m get natural_log
+assert natural_log.value > 0.69314718055994
+assert natural_log.value < 0.69314718055995
+emit Exp { value = 1 } to m get euler
+assert euler.value > 2.71828182845904
+assert euler.value < 2.71828182845905
+emit Floor { value = -0.1 } to m get recovered
+assert recovered.value = -1

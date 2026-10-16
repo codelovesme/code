@@ -9,12 +9,15 @@
 name = "math"
 version = "2.16.0"
 edition = "2021"
-description = "The `math` native module for the Code programming language — Double, Sum. Written in Rust on code-native; inherits the numeric half of test_math under the split proposal."
+description = "Numeric utilities for Code: arithmetic, rounding, parsing and transcendental functions."
 license = "GPL-3.0"
 repository = "https://github.com/codelovesme/code"
 
 [lib]
 crate-type = ["cdylib"]
 
-[dependencies]
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+code-native = { path = "../../code-native", default-features = false, features = ["static-module"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 code-native = { path = "../../code-native" }

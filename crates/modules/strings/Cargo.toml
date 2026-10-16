@@ -9,12 +9,15 @@
 name = "strings"
 version = "2.16.0"
 edition = "2021"
-description = "The `strings` native module for the Code programming language — Shout, Echo, Split, Join, Trim, Upper, Lower. Written in Rust on code-native; the first first-party module to take that path."
+description = "The `strings` native module for the Code programming language — Shout, Echo, Split, Join, Trim, Upper, Lower, Length. Written in Rust on code-native; the first first-party module to take that path."
 license = "GPL-3.0"
 repository = "https://github.com/codelovesme/code"
 
 [lib]
 crate-type = ["cdylib"]
 
-[dependencies]
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+code-native = { path = "../../code-native", default-features = false, features = ["static-module"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 code-native = { path = "../../code-native" }

@@ -295,6 +295,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "searchxng",
     "api_registry",
     "storage",
+    "time",
     "timer",
     "mqtt",
     "ntfy",
