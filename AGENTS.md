@@ -804,6 +804,30 @@ keep working; benchmark the frontend to measure the shipped warm path.
 `crates/code-launcher/tests/cli.rs` exercises the installed two-file layout.
 The release workflow includes both; no tag or release was made for this work.
 
+## Utility modules (ticket 127, unreleased)
+
+Numeric helpers belong in existing `math`, not core: rounding, floored Div,
+divisor-sign Mod, Abs/Min/Max, strict decimal Parse and Sqrt/Pow/Sin/Cos/Ln/Exp.
+`Double`/`Sum` remain; invalid/non-finite operands or results return Exception.
+Round ties away from zero. Read `crates/modules/math/README.md` for contracts.
+
+`math` and `strings` now have browser halves. Strings adds Unicode-scalar
+Length; ASCII case/trim and single-scalar separators stay compatible.
+New stateless `time` provides Timestamp (whole Unix seconds) and TimezoneOffset
+(minutes east of UTC). Keep `timer` separate: Delay/Cancel own pending work.
+Core's existing Timestamp/TimezoneOffset/Length remain compatibility entry
+points; no handler removal or new arrays module occurred. The generated wasm
+host now floors its core timestamp too, correcting its former fractional-
+second disagreement with native/interpreter and the documented contract.
+
+These additions are on main/source, not in released module assets yet. Do not
+claim that installing the current public pins supplies them. New apps can use
+the shared helpers once their chosen module build carries them; browser shells
+must link the same modules their guests call. App migration and live deployment
+are separate work; fixture/browser parity is not a release. Keep future calendar
+and text expansion work under ticket 099 rather than adding generic utilities
+to core.
+
 ## Releases
 
 Cutting a release is the one act that is **not** pre-authorised — a tag

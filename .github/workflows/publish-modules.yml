@@ -534,6 +534,9 @@ jobs:
                 clipboard) printf 'emit Copy { text = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
               esac
               ;;
+            time)
+              printf 'emit Timestamp to mod get r\nassert r ∈ TimestampResult\nemit TimezoneOffset to mod get z\nassert z ∈ TimezoneOffsetResult\n' >> dogfood/demo.code
+              ;;
             timer)
               # Since 2.7: a delay works on a machine too. It is known by a
               # number, and cancelling it before it fires is `ok`. The
@@ -666,8 +669,8 @@ jobs:
             # module gains one (the index consumers show it in docs/help).
             case "$m" in
               console) handlers='["Print"]' ;;
-              strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower"]' ;;
-              math) handlers='["Double", "Sum"]' ;;
+              strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower", "Length"]' ;;
+              math) handlers='["Double", "Sum", "Floor", "Ceil", "Round", "Trunc", "Div", "Mod", "Abs", "Min", "Max", "Parse", "Sqrt", "Pow", "Sin", "Cos", "Ln", "Exp"]' ;;
             env) handlers='["Get", "Require"]' ;;
               http_client) handlers='["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"]' ;;
               http_server) handlers='["Config", "Listen"]' ;;
@@ -701,6 +704,7 @@ jobs:
               router) handlers='["Route", "Navigate", "Watch", "Where"]' ;;
               storage) handlers='["Get", "Set", "Remove"]' ;;
               clipboard) handlers='["Copy"]' ;;
+              time) handlers='["Timestamp", "TimezoneOffset"]' ;;
               timer) handlers='["Delay", "Cancel"]' ;;
               mqtt) handlers='["Config", "Subscribe", "Unsubscribe", "Publish", "Status", "Disconnect", "SetWill"]' ;;
               ntfy) handlers='["Config", "Notify"]' ;;

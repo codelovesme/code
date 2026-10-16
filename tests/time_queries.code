@@ -1,0 +1,24 @@
+| Querying time is stateless; core's compatibility entry points still work.
+link "native_modules/time.so" as time
+emit Timestamp to core get before
+emit Timestamp to time get clock
+emit Timestamp to core get after
+assert clock ∈ TimestampResult
+assert clock.value ≥ before.value
+assert clock.value ≤ after.value
+emit TimezoneOffset to time get local
+emit TimezoneOffset to core get original
+assert local ∈ TimezoneOffsetResult
+assert local.value = original.value
+assert local.value ≥ - 1440
+assert local.value ≤ 1440
+emit UnknownClock to time get unknown
+assert unknown = null
+emit Length { value = [1, 2, 3] } to core get array_length
+assert array_length.value = 3
+
+ClockSnapshot =>
+    emit Timestamp to core get core_time
+    emit Timestamp to time get module_time
+    emit TimezoneOffset to time get offset
+    return Snapshot { core_value = core_time.value, value = module_time.value, offset = offset.value }

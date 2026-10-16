@@ -1,0 +1,15 @@
+| Length counts Unicode scalars, matching core rather than UTF-16 units.
+link "native_modules/strings.so" as s
+loop text over ["", "hello", "a😀é", "é", "日本語"]
+    emit Length { value = text } to s get measured
+    emit Length { value = text } to core get original
+    assert measured ∈ LengthResult
+    assert measured.value = original.value
+emit Length { value = "a😀é" } to s get astral
+assert astral.value = 3
+emit Length { value = [] } to s get refused
+assert refused ∈ Exception
+assert refused.source = "strings"
+assert refused.message = "Length requires a string 'value'"
+emit UnknownStrings to s get unknown
+assert unknown = null
