@@ -239,3 +239,80 @@ fn compact_numeric_code_resumes_after_a_callback_changes_a_slot() {
     assert_eq!(env.get("counter"), Some(Value::Null));
     assert_eq!(env.get("local"), None);
 }
+
+#[test]
+fn numeric_writes_fall_back_without_losing_the_destination_or_operand_order() {
+    for (expression, replacement, expected) in [
+        (
+            "counter + 1",
+            Value::Null,
+            Err("cannot apply '+' to a null and a number"),
+        ),
+        (
+            "1 + counter",
+            Value::Str("changed".into()),
+            Ok(Value::Str("1changed".into())),
+        ),
+        (
+            "counter + 1",
+            Value::Str("changed".into()),
+            Ok(Value::Str("changed1".into())),
+        ),
+        (
+            "2 * (counter + 1)",
+            Value::Null,
+            Err("cannot apply '+' to a null and a number"),
+        ),
+        (
+            "(counter + 1) * 2",
+            Value::Null,
+            Err("cannot apply '+' to a null and a number"),
+        ),
+        (
+            "(1 + 2) * counter",
+            Value::Null,
+            Err("cannot apply '*' to a number and a null"),
+        ),
+        (
+            "(1 + 2) + counter",
+            Value::Str("changed".into()),
+            Ok(Value::Str("3changed".into())),
+        ),
+        ("counter / 0", Value::Number(1.0), Err("division by zero")),
+    ] {
+        let env = Rc::new(Environment::default());
+        let weak = Rc::downgrade(&env);
+        env.provide_module(
+            "probe",
+            Value::Null,
+            Rc::new(move |_| {
+                weak.upgrade().unwrap().link_module(
+                    "counter",
+                    replacement.clone(),
+                    Rc::new(|_| Ok(Value::Null)),
+                );
+                Ok(Value::Null)
+            }),
+        );
+        let source = format!(
+            "link \"probe\" as probe\ncounter = 1\ndestination = 99\nloop\n    emit Replace to probe\n    destination = {expression}\n    break\n"
+        );
+        let mut program = code::parser::parse(&code::lexer::tokenize(&source).unwrap()).unwrap();
+        program.statements[0] = link_stmt("probe", "probe");
+        let result = interpreter::prepare(&program, &env);
+        match expected {
+            Ok(value) => {
+                result.unwrap();
+                assert_eq!(env.get("destination"), Some(value), "{expression}");
+            }
+            Err(message) => {
+                assert_eq!(result.unwrap_err(), message, "{expression}");
+                assert_eq!(
+                    env.get("destination"),
+                    Some(Value::Number(99.0)),
+                    "{expression}"
+                );
+            }
+        }
+    }
+}

@@ -49,10 +49,23 @@ enum Op {
     Condition(usize, usize),
     Enter(usize),
     Leave,
-    Exit { depth: usize, target: usize },
+    Exit {
+        depth: usize,
+        target: usize,
+    },
     Escape(Flow),
-    Group { fallback: Fallback, target: usize },
+    Group {
+        fallback: Fallback,
+        target: usize,
+    },
     Arithmetic(usize, NumberOp, Address, Address),
+    ArithmeticStore {
+        binding: Binding,
+        op: NumberOp,
+        lhs: Address,
+        rhs: Address,
+        fallback: usize,
+    },
     Neg(usize, Address),
     Store(Binding, Address),
     Compare(BinOp, Address, Address, usize),
@@ -132,8 +145,25 @@ impl Compiler {
                     fallback: Fallback::Action(action),
                     target: 0,
                 });
-                let value = self.address(fast);
-                self.code.ops.push(Op::Store(name.clone(), value));
+                if let NumberExpr::Binary(lhs, op, rhs) = fast {
+                    let lhs = self.address(lhs);
+                    let rhs = self.address(rhs);
+                    // Leaf operands need no separate fallback-group dispatch.
+                    // Nested operations keep the group until the final write.
+                    if self.code.ops.len() == group + 1 {
+                        self.code.ops.pop();
+                    }
+                    self.code.ops.push(Op::ArithmeticStore {
+                        binding: name.clone(),
+                        op: *op,
+                        lhs,
+                        rhs,
+                        fallback: action,
+                    });
+                } else {
+                    let value = self.address(fast);
+                    self.code.ops.push(Op::Store(name.clone(), value));
+                }
                 let end = self.code.ops.len();
                 if let Op::Group { target, .. } = &mut self.code.ops[group] {
                     *target = end;
@@ -296,6 +326,30 @@ impl Code {
                             match numeric::arithmetic(*op, lhs, rhs) {
                                 Ok(n) => registers[*dst] = n,
                                 Err(e) => break Stop::Error(e),
+                            }
+                        }
+                        Op::ArithmeticStore {
+                            binding,
+                            op,
+                            lhs,
+                            rhs,
+                            fallback,
+                        } => {
+                            let (Some(lhs), Some(rhs)) =
+                                (lhs.read(&state, &registers), rhs.read(&state, &registers))
+                            else {
+                                break Stop::Fallback(Fallback::Action(*fallback), pc);
+                            };
+                            let value = match numeric::arithmetic(*op, lhs, rhs) {
+                                Ok(value) => value,
+                                Err(e) => break Stop::Error(e),
+                            };
+                            let scope = &mut state.scopes[binding.frame];
+                            if let Some(number) = binding.number {
+                                scope.numbers[number] = Some(value);
+                                scope.values[binding.slot] = None;
+                            } else {
+                                scope.set(binding.slot, None, Value::Number(value));
                             }
                         }
                         Op::Neg(dst, src) => {
