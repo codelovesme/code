@@ -91,7 +91,7 @@ fn run_with_modules_inner(src: &str, modules: Object) -> Result<Environment, Str
                     .ok_or_else(|| format!("module '{alias}'.vars() must return a JSON string"))?;
                 decode_json(&json)?
             }
-            None => Value::Object(Rc::new(Vec::new())),
+            None => Value::Object(Rc::new(Vec::new().into())),
         };
 
         let dispatch_alias = alias.clone();
@@ -216,14 +216,19 @@ mod tests {
         assert_eq!(decode_json(r#""a:b""#).unwrap(), Value::Str("a:b".into()));
         assert_eq!(
             decode_json(r#"{"answer": 42}"#).unwrap(),
-            Value::Object(Rc::new(vec![("answer".to_string(), Value::Number(42.0))]))
+            Value::Object(Rc::new(
+                vec![("answer".to_string(), Value::Number(42.0))].into()
+            ))
         );
         assert_eq!(
             decode_json(r#"{"_class": "DoubleResult", "value": 42}"#).unwrap(),
-            Value::Object(Rc::new(vec![
-                ("_class".to_string(), Value::Str("DoubleResult".into())),
-                ("value".to_string(), Value::Number(42.0)),
-            ]))
+            Value::Object(Rc::new(
+                vec![
+                    ("_class".to_string(), Value::Str("DoubleResult".into())),
+                    ("value".to_string(), Value::Number(42.0)),
+                ]
+                .into()
+            ))
         );
         assert_eq!(
             decode_json(r#"[1, "two", null]"#).unwrap(),

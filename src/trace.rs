@@ -342,7 +342,7 @@ fn parse_value(chars: &[char], at: &mut usize, depth: usize) -> Result<Value, St
             skip_space(chars, at);
             if chars.get(*at) == Some(&'}') {
                 *at += 1;
-                return Ok(Value::Object(std::rc::Rc::new(fields)));
+                return Ok(Value::Object(std::rc::Rc::new(fields.into())));
             }
             loop {
                 skip_space(chars, at);
@@ -359,7 +359,7 @@ fn parse_value(chars: &[char], at: &mut usize, depth: usize) -> Result<Value, St
                     Some(',') => *at += 1,
                     Some('}') => {
                         *at += 1;
-                        return Ok(Value::Object(std::rc::Rc::new(fields)));
+                        return Ok(Value::Object(std::rc::Rc::new(fields.into())));
                     }
                     _ => return Err(format!("expected ',' or '}}' at character {at}")),
                 }

@@ -83,10 +83,9 @@ struct RuntimeModule {
 /// The value a `link` inside a handler binds: an ordinary object, so
 /// nothing about the language's six value kinds changes.
 fn module_address(row: usize) -> Value {
-    Value::Object(Rc::new(vec![(
-        MODULE_FIELD.to_string(),
-        Value::Number(row as f64),
-    )]))
+    Value::Object(Rc::new(
+        vec![(MODULE_FIELD.to_string(), Value::Number(row as f64))].into(),
+    ))
 }
 
 /// The row an address names, or an error naming what was passed instead.
@@ -1139,7 +1138,7 @@ enum Flow {
 /// comment for the law (`X[k] = v`) this exists to satisfy.
 enum LoopIter {
     Array(Rc<Vec<Value>>),
-    Object(Rc<Vec<(String, Value)>>),
+    Object(Rc<crate::value::ObjectFields>),
 }
 
 impl LoopIter {
@@ -1234,7 +1233,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                     let dispatching = Rc::clone(&module);
                     let dispatch: ModuleDispatch = Rc::new(move |v| dispatching.dispatch(v));
                     let asking = Rc::clone(&module);
-                    env.link_resolved(alias, Value::Object(Rc::new(vars)), dispatch);
+                    env.link_resolved(alias, Value::Object(Rc::new(vars.into())), dispatch);
                     env.link_inbound(
                         alias,
                         Rc::new(move || inbound.take()),
@@ -1383,7 +1382,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
             // it answers null, which is exactly what a name the module had
             // not exported already answered.
             if let Some(alias) = alias {
-                env.set(alias, Value::Object(Rc::new(Vec::new())));
+                env.set(alias, Value::Object(Rc::new(Vec::new().into())));
             }
             Ok(Flow::Normal)
         }
@@ -1709,12 +1708,15 @@ fn check_emittable(value: &Value) -> Result<(), String> {
 /// a program's own statements; a module names itself instead. `inner` is null
 /// here — nothing wraps a language-level failure yet.
 fn exception(message: String) -> Value {
-    Value::Object(Rc::new(vec![
-        ("_class".to_string(), Value::Str("Exception".into())),
-        ("source".to_string(), Value::Str("core".into())),
-        ("message".to_string(), Value::Str(message.into())),
-        ("innerException".to_string(), Value::Null),
-    ]))
+    Value::Object(Rc::new(
+        vec![
+            ("_class".to_string(), Value::Str("Exception".into())),
+            ("source".to_string(), Value::Str("core".into())),
+            ("message".to_string(), Value::Str(message.into())),
+            ("innerException".to_string(), Value::Null),
+        ]
+        .into(),
+    ))
 }
 
 /// How a trace names an emit's recipient. `module:<alias>` keeps the alias,
@@ -1763,12 +1765,15 @@ pub fn hosting_stopped() -> Value {
 }
 
 fn host_exception(message: String) -> Value {
-    Value::Object(Rc::new(vec![
-        ("_class".to_string(), Value::Str("Exception".into())),
-        ("source".to_string(), Value::Str("host".into())),
-        ("message".to_string(), Value::Str(message.into())),
-        ("innerException".to_string(), Value::Null),
-    ]))
+    Value::Object(Rc::new(
+        vec![
+            ("_class".to_string(), Value::Str("Exception".into())),
+            ("source".to_string(), Value::Str("host".into())),
+            ("message".to_string(), Value::Str(message.into())),
+            ("innerException".to_string(), Value::Null),
+        ]
+        .into(),
+    ))
 }
 
 /// Where an `emit` goes, and what it answers. Split out of `exec` so the
@@ -2058,9 +2063,8 @@ fn operand<'a>(expr: &'a Expr, state: &'a State) -> Result<Cow<'a, Value>, Strin
 fn field_operand<'a>(value: &'a Value, field: &str) -> Result<Cow<'a, Value>, String> {
     match value {
         Value::Object(fields) => Ok(fields
-            .iter()
-            .find(|(k, _)| k == field)
-            .map_or_else(|| Cow::Owned(Value::Null), |(_, v)| Cow::Borrowed(v))),
+            .field(field)
+            .map_or_else(|| Cow::Owned(Value::Null), Cow::Borrowed)),
         v => Err(format!(
             "cannot read field '{field}' of {} — '.' requires an object",
             a_type_name(v)
@@ -2074,9 +2078,8 @@ fn index_operand<'a>(value: &'a Value, index: &Value) -> Result<Cow<'a, Value>, 
             .get(*n as usize)
             .map_or_else(|| Cow::Owned(Value::Null), Cow::Borrowed)),
         (Value::Object(fields), Value::Str(key)) => Ok(fields
-            .iter()
-            .find(|(k, _)| k.as_str() == key.as_ref())
-            .map_or_else(|| Cow::Owned(Value::Null), |(_, v)| Cow::Borrowed(v))),
+            .field(key)
+            .map_or_else(|| Cow::Owned(Value::Null), Cow::Borrowed)),
         (Value::Str(text), Value::Number(n)) if *n >= 0.0 && n.fract() == 0.0 => Ok(Cow::Owned(
             text.chars()
                 .nth(*n as usize)
@@ -2136,10 +2139,13 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
         // things are only correct in one of them — opening a listening
         // socket of your own above all, since a thread that outlives a
         // module's release point makes it impossible to unload.
-        "Linked" => Ok(Value::Object(Rc::new(vec![
-            ("_class".to_string(), Value::Str("LinkedResult".into())),
-            ("value".to_string(), Value::Bool(false)),
-        ]))),
+        "Linked" => Ok(Value::Object(Rc::new(
+            vec![
+                ("_class".to_string(), Value::Str("LinkedResult".into())),
+                ("value".to_string(), Value::Bool(false)),
+            ]
+            .into(),
+        ))),
         "Timestamp" => {
             // Whole seconds since the Unix epoch — the old language's
             // `Timestamp` did exactly this, and human-readable formatting
@@ -2198,10 +2204,13 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
 /// what goes into `emit` is a particle, so what comes back out is one too,
 /// not a bare scalar. Must match `runtime.c`'s `code_make_result` exactly.
 fn core_result(class_name: &str, value: f64) -> Value {
-    Value::Object(Rc::new(vec![
-        ("_class".to_string(), Value::Str(class_name.into())),
-        ("value".to_string(), Value::Number(value)),
-    ]))
+    Value::Object(Rc::new(
+        vec![
+            ("_class".to_string(), Value::Str(class_name.into())),
+            ("value".to_string(), Value::Number(value)),
+        ]
+        .into(),
+    ))
 }
 
 fn slice_operand(value: &Value, start: f64, end: f64) -> Result<Value, String> {
@@ -2299,11 +2308,12 @@ fn set_at(target: &mut Value, keys: &[Value], new: Value) -> Result<(), String> 
                     ));
                 };
                 let fields = Rc::make_mut(fields);
-                match fields.iter().position(|(k, _)| **k == **name) {
-                    Some(at) => &mut fields[at].1,
+                match fields.position(name) {
+                    Some(at) => fields.value_mut(at),
                     None if last => {
                         fields.push((name.to_string(), Value::Null));
-                        &mut fields.last_mut().unwrap().1
+                        let at = fields.len() - 1;
+                        fields.value_mut(at)
                     }
                     None => {
                         return Err(format!(
@@ -2455,18 +2465,15 @@ fn type_name(v: &Value) -> &'static str {
 /// Preserve generic object addition's first-match replacement and original
 /// positions, including duplicate keys. Newly appended keys are tested against
 /// the original prefix only, so a new key repeated on the RHS stays repeated.
-fn merge_object_into(destination: &mut Rc<Vec<(String, Value)>>, updates: &[(String, Value)]) {
+fn merge_object_into(
+    destination: &mut Rc<crate::value::ObjectFields>,
+    updates: &[(String, Value)],
+) {
     let fields = Rc::make_mut(destination);
     if let [(key, value)] = updates {
-        // The common one-field update needs one scan and no key copies.
-        let mut found = false;
-        for (name, old) in fields.iter_mut() {
-            if name == key {
-                *old = value.clone();
-                found = true;
-            }
-        }
-        if !found {
+        // A large unique object uses its index; small objects and duplicate
+        // names retain the ordered scan and all matching left replacements.
+        if !fields.replace_all(key, value) {
             fields.push((key.clone(), value.clone()));
         }
         return;
@@ -2543,7 +2550,7 @@ fn apply_binop(op: BinOp, l: &Value, r: &Value) -> Result<Value, String> {
                     fields.push((key.clone(), value.clone()));
                 }
             }
-            Some(Object(Rc::new(fields)))
+            Some(Object(Rc::new(fields.into())))
         }
         (BinOp::Sub, Number(a), Number(b)) => Some(Number(a - b)),
         (BinOp::Mul, Number(a), Number(b)) => Some(Number(a * b)),
@@ -2582,7 +2589,7 @@ mod borrowed_tests {
         let mut seed = 0x0126_2026_1016_u64;
         let mut fields = || {
             seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-            let len = (seed % 9) as usize;
+            let len = (seed % 97) as usize;
             (0..len)
                 .map(|i| {
                     seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
@@ -2594,8 +2601,8 @@ mod borrowed_tests {
                 .collect::<Vec<_>>()
         };
         for _ in 0..256 {
-            let original = Value::Object(Rc::new(fields()));
-            let updates = Value::Object(Rc::new(fields()));
+            let original = Value::Object(Rc::new(fields().into()));
+            let updates = Value::Object(Rc::new(fields().into()));
             let expected = apply_binop(BinOp::Add, &original, &updates).unwrap();
             let before = original.to_string();
             for shared in [false, true] {
@@ -2625,10 +2632,9 @@ mod borrowed_tests {
         let env = Environment::default();
         env.link_module(
             "source",
-            Value::Object(Rc::new(vec![(
-                "items".into(),
-                Value::Array(Rc::clone(&items)),
-            )])),
+            Value::Object(Rc::new(
+                vec![("items".into(), Value::Array(Rc::clone(&items)))].into(),
+            )),
             Rc::new(|_| Ok(Value::Null)),
         );
         let expr = Expr::Field(
