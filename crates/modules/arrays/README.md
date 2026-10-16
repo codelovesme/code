@@ -24,7 +24,8 @@ A missing item defaults to null, matching Code field access.
 Contains, IndexOf and Unique use structural equality: arrays compare in order,
 objects by field name rather than insertion order. Types are distinct (false
 and 0 differ); signed zeros compare equal. Unique preserves the first matching
-value, including its object field order. Unique uses quadratic pairwise checks;
+value. Native results retain its field order; browser results use the existing
+JavaScript/JSON enumeration rules (integer-like object keys enumerate numerically). Unique uses quadratic pairwise checks;
 it does not hash/serialize values or invent a different equality rule.
 
 Slice matches strings.Slice: start/end are finite safe integers (absolute value
