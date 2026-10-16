@@ -1,0 +1,38 @@
+{
+  "stage": "reads",
+  "measured_at_utc": "2026-10-16T09:57:25+00:00",
+  "baseline_commit": "863b6b3",
+  "cpu": 0,
+  "runs_per_mode": 3,
+  "command": "<CLI> run --interpret <source>",
+  "order": "serial fresh launches, deterministic shuffled order, no concurrent builds/tests/profiling",
+  "binary_sha256": {
+    "before": "555e5104e79764f4f6e735afcfce67d5336b78b1a8e71e14ebc8a917dcddd06c",
+    "after": "77b002bd44a90f0bbf8d9ffcc2ef39ac3210d187eb2baf68a873ef063dc54534"
+  },
+  "results": {
+    "spectral_norm": {
+      "samples_seconds": {
+        "before": [
+          20.953996058087796,
+          21.036822142079473,
+          20.961489530047402
+        ],
+        "after": [
+          15.176621119957417,
+          15.00171402702108,
+          15.01531291892752
+        ]
+      },
+      "medians_seconds": {
+        "before": 20.961489530047402,
+        "after": 15.01531291892752
+      },
+      "reduction_percent": 28.36714729931902
+    }
+  },
+  "implementation_source_commit": "85888f6",
+  "notes": [
+    "Original N=1000 source and result assertions unchanged; three serial shuffled fresh launches per mode, CPU 0. No concurrent builds/tests/profiling."
+  ]
+}

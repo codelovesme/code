@@ -242,43 +242,137 @@ fn compact_numeric_code_resumes_after_a_callback_changes_a_slot() {
 
 #[test]
 fn numeric_writes_fall_back_without_losing_the_destination_or_operand_order() {
-    for (expression, replacement, expected) in [
+    for shared in [false, true] {
+        for (expression, replacement, expected) in [
+            (
+                "counter + 1",
+                Value::Null,
+                Err("cannot apply '+' to a null and a number"),
+            ),
+            (
+                "1 + counter",
+                Value::Str("changed".into()),
+                Ok(Value::Str("1changed".into())),
+            ),
+            (
+                "counter + 1",
+                Value::Str("changed".into()),
+                Ok(Value::Str("changed1".into())),
+            ),
+            (
+                "2 * (counter + 1)",
+                Value::Null,
+                Err("cannot apply '+' to a null and a number"),
+            ),
+            (
+                "(counter + 1) * 2",
+                Value::Null,
+                Err("cannot apply '+' to a null and a number"),
+            ),
+            (
+                "(1 + 2) * counter",
+                Value::Null,
+                Err("cannot apply '*' to a number and a null"),
+            ),
+            (
+                "(1 + 2) + counter",
+                Value::Str("changed".into()),
+                Ok(Value::Str("3changed".into())),
+            ),
+            ("counter / 0", Value::Number(1.0), Err("division by zero")),
+        ] {
+            let env = Rc::new(Environment::default());
+            let weak = Rc::downgrade(&env);
+            env.provide_module(
+                "probe",
+                Value::Null,
+                Rc::new(move |_| {
+                    weak.upgrade().unwrap().link_module(
+                        "counter",
+                        replacement.clone(),
+                        Rc::new(|_| Ok(Value::Null)),
+                    );
+                    Ok(Value::Null)
+                }),
+            );
+            let observer = if shared {
+                "ObserveCounter => return CounterValue { value = counter }\n"
+            } else {
+                ""
+            };
+            let source = format!(
+            "link \"probe\" as probe\ncounter = 1\n{observer}destination = 99\nloop\n    emit Replace to probe\n    destination = {expression}\n    break\n"
+        );
+            let mut program =
+                code::parser::parse(&code::lexer::tokenize(&source).unwrap()).unwrap();
+            program.statements[0] = link_stmt("probe", "probe");
+            let result = interpreter::prepare(&program, &env);
+            match expected {
+                Ok(value) => {
+                    result.unwrap();
+                    assert_eq!(env.get("destination"), Some(value), "{expression}");
+                }
+                Err(message) => {
+                    assert_eq!(result.unwrap_err(), message, "{expression}");
+                    assert_eq!(
+                        env.get("destination"),
+                        Some(Value::Number(99.0)),
+                        "{expression}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn numeric_index_reads_guard_host_replacements_and_resume_at_the_next_action() {
+    for (binding, replacement, expected) in [
         (
-            "counter + 1",
+            "items",
+            Value::Array(Rc::new(vec![Value::Number(7.0)])),
+            Ok(Value::Number(22.0)),
+        ),
+        (
+            "items",
+            Value::Array(Rc::new(vec![Value::Null])),
+            Err("cannot apply '*' to a null and a number"),
+        ),
+        (
+            "items",
             Value::Null,
-            Err("cannot apply '+' to a null and a number"),
+            Err("cannot index a null — '[]' requires an array, an object or a string"),
         ),
         (
-            "1 + counter",
-            Value::Str("changed".into()),
-            Ok(Value::Str("1changed".into())),
+            "index",
+            Value::Number(-1.0),
+            Err("cannot apply '*' to a null and a number"),
         ),
         (
-            "counter + 1",
-            Value::Str("changed".into()),
-            Ok(Value::Str("changed1".into())),
+            "index",
+            Value::Number(0.5),
+            Err("cannot apply '*' to a null and a number"),
         ),
         (
-            "2 * (counter + 1)",
-            Value::Null,
-            Err("cannot apply '+' to a null and a number"),
+            "index",
+            Value::Number(2.0),
+            Err("cannot apply '*' to a null and a number"),
         ),
         (
-            "(counter + 1) * 2",
-            Value::Null,
-            Err("cannot apply '+' to a null and a number"),
+            "index",
+            Value::Number(f64::NAN),
+            Err("cannot apply '*' to a null and a number"),
         ),
         (
-            "(1 + 2) * counter",
-            Value::Null,
-            Err("cannot apply '*' to a number and a null"),
+            "index",
+            Value::Number(f64::INFINITY),
+            Err("cannot apply '*' to a null and a number"),
         ),
         (
-            "(1 + 2) + counter",
-            Value::Str("changed".into()),
-            Ok(Value::Str("3changed".into())),
+            "index",
+            Value::Str("wrong".into()),
+            Err("cannot apply '*' to a null and a number"),
         ),
-        ("counter / 0", Value::Number(1.0), Err("division by zero")),
     ] {
         let env = Rc::new(Environment::default());
         let weak = Rc::downgrade(&env);
@@ -287,32 +381,63 @@ fn numeric_writes_fall_back_without_losing_the_destination_or_operand_order() {
             Value::Null,
             Rc::new(move |_| {
                 weak.upgrade().unwrap().link_module(
-                    "counter",
+                    binding,
                     replacement.clone(),
                     Rc::new(|_| Ok(Value::Null)),
                 );
                 Ok(Value::Null)
             }),
         );
-        let source = format!(
-            "link \"probe\" as probe\ncounter = 1\ndestination = 99\nloop\n    emit Replace to probe\n    destination = {expression}\n    break\n"
-        );
-        let mut program = code::parser::parse(&code::lexer::tokenize(&source).unwrap()).unwrap();
+        let source = "link \"probe\" as probe\nitems = [2, 4]\nindex = 0\ndestination = 99\nloop\n    emit Replace to probe\n    destination = items[index] * 3 + 1\n    break\nassert destination = 22\n";
+        let mut program = code::parser::parse(&code::lexer::tokenize(source).unwrap()).unwrap();
         program.statements[0] = link_stmt("probe", "probe");
         let result = interpreter::prepare(&program, &env);
         match expected {
             Ok(value) => {
                 result.unwrap();
-                assert_eq!(env.get("destination"), Some(value), "{expression}");
+                assert_eq!(env.get("destination"), Some(value));
             }
             Err(message) => {
-                assert_eq!(result.unwrap_err(), message, "{expression}");
-                assert_eq!(
-                    env.get("destination"),
-                    Some(Value::Number(99.0)),
-                    "{expression}"
-                );
+                assert_eq!(result.unwrap_err(), message);
+                assert_eq!(env.get("destination"), Some(Value::Number(99.0)));
             }
         }
+    }
+}
+
+#[test]
+fn numeric_index_reads_preserve_string_addition_on_the_fallback_path() {
+    for (expression, replacement, expected) in [
+        (
+            "items[index] + 1",
+            Value::Array(Rc::new(vec![Value::Str("changed".into())])),
+            "changed1",
+        ),
+        (
+            "1 + items[index]",
+            Value::Array(Rc::new(vec![Value::Str("changed".into())])),
+            "1changed",
+        ),
+        ("items[index] + 1", Value::Str("x".into()), "x1"),
+    ] {
+        let env = Rc::new(Environment::default());
+        let weak = Rc::downgrade(&env);
+        env.provide_module(
+            "probe",
+            Value::Null,
+            Rc::new(move |_| {
+                weak.upgrade().unwrap().link_module(
+                    "items",
+                    replacement.clone(),
+                    Rc::new(|_| Ok(Value::Null)),
+                );
+                Ok(Value::Null)
+            }),
+        );
+        let source = format!("link \"probe\" as probe\nitems = [2]\nindex = 0\ndestination = 99\nloop\n    emit Replace to probe\n    destination = {expression}\n    break\n");
+        let mut program = code::parser::parse(&code::lexer::tokenize(&source).unwrap()).unwrap();
+        program.statements[0] = link_stmt("probe", "probe");
+        interpreter::prepare(&program, &env).unwrap();
+        assert_eq!(env.get("destination"), Some(Value::Str(expected.into())));
     }
 }

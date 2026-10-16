@@ -50,6 +50,11 @@ enum Op {
         rhs: numeric::Address,
         fallback: usize,
     },
+    ReadNumber {
+        dst: usize,
+        source: Box<numeric::Read>,
+        fallback: usize,
+    },
     Neg(usize, numeric::Address),
     Bound(usize, &'static str),
     Key(usize),
@@ -91,6 +96,29 @@ impl Expression {
                 });
                 Address::Register(dst)
             }
+            NumberExpr::BoxedSlot { frame, slot } => {
+                let dst = self.numbers;
+                self.numbers += 1;
+                patches.push(self.ops.len());
+                self.ops.push(Op::ReadNumber {
+                    dst,
+                    source: Box::new(numeric::Read::Slot(*frame, *slot)),
+                    fallback: 0,
+                });
+                Address::Register(dst)
+            }
+            NumberExpr::Index { frame, slot, index } => {
+                let index = self.number(index, patches);
+                let dst = self.numbers;
+                self.numbers += 1;
+                patches.push(self.ops.len());
+                self.ops.push(Op::ReadNumber {
+                    dst,
+                    source: Box::new(numeric::Read::Index(*frame, *slot, index)),
+                    fallback: 0,
+                });
+                Address::Register(dst)
+            }
             NumberExpr::Neg(value) => {
                 let rhs = self.number(value, patches);
                 let dst = self.numbers;
@@ -118,7 +146,9 @@ impl Expression {
     fn patch(&mut self, patches: &[usize], target: usize) {
         for p in patches {
             match &mut self.ops[*p] {
-                Op::Number { fallback, .. } | Op::Arithmetic { fallback, .. } => *fallback = target,
+                Op::Number { fallback, .. }
+                | Op::Arithmetic { fallback, .. }
+                | Op::ReadNumber { fallback, .. } => *fallback = target,
                 Op::Neg(..) => {}
                 _ => unreachable!(),
             }
@@ -450,6 +480,18 @@ impl Expression {
                         continue;
                     };
                     numbers[*dst] = numeric::arithmetic(*op, lhs, rhs)?;
+                    continue;
+                }
+                Op::ReadNumber {
+                    dst,
+                    source,
+                    fallback,
+                } => {
+                    if let Some(value) = source.read(state, numbers) {
+                        numbers[*dst] = value;
+                    } else {
+                        pc = *fallback;
+                    }
                     continue;
                 }
                 Op::Neg(dst, source) => {

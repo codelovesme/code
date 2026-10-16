@@ -30,6 +30,62 @@ and records raw launch times in `results.csv` and medians/ratios in
 Use `--output-dir` to keep an experimental run separate from the published
 results.
 
+## Guarded numeric expression reads (2026-10-16, unreleased)
+
+Against main `863b6b3`, implementation `85888f6`: release-built CLIs with
+explicit `run --interpret`, serial shuffled fresh launches, CPU 0. Startup,
+parsing and lowering are included; no concurrent builds/tests/profiling ran.
+Original sources and result assertions are unchanged. Medians of 15 launches
+per mode except the long spectral target (three launches per mode).
+
+| Workload | Before | After | Elapsed-time change |
+|---|---:|---:|---:|
+| spectral_norm | 20.961 s | 15.015 s | -28.4% |
+| sum_squares | 328.170 ms | 328.091 ms | -0.0% |
+| binary_trees | 101.878 ms | 102.180 ms | +0.3% |
+| dictionary | 67.081 ms | 67.388 ms | +0.5% |
+| string_build | 12.911 ms | 13.006 ms | +0.7% |
+| points | 253.902 ms | 259.520 ms | +2.2% |
+
+**Spectral_norm uses 28.4% less time (1.40x faster)**. Other small changes are
+not claimed as gains. The scalar numeric loop retains its previous speed.
+A reduced N=100 instruction profile, separate from full-size timing, fell
+**1,956,963,615 -> 1,453,678,820 instructions (25.7%)**. Before the change,
+Expression::run accounted for 51.86% of instruction references, with additional
+value/drop/vector/allocation work. This is not a CPU-time percentage.
+
+Numeric inference can now select guarded reads from boxed shared/handler
+bindings and from a named numeric list at a numeric index. The values remain
+in their existing representation. These reads feed numeric expression registers;
+a guard miss takes the original expression path for type/null/bounds/error
+semantics. Reads hold no data across callbacks. The block VM's scalar runtime
+instructions and Address variants stay unchanged. Bare borrowed reads and a
+single operation on boxed numbers keep their cheap original paths rather than
+round-tripping through numeric registers. There is no storage/ABI change, JIT,
+whole-loop recognition, field-read optimization or floating-point reassociation.
+
+An earlier broad prototype reached 6.98 s on spectral_norm but regressed the
+scalar loop by 54.8% and dictionary by 18.1%; **that is rejected evidence, not
+a retained gain**. Dedicated reads, preserving the scalar block VM, and avoiding
+over-specialization removed those regressions. The first new fixture also used
+unsupported `1e30` syntax; spelling out the integer repaired its all-mode parse
+failure. No runtime crash or answer disagreement occurred.
+
+Full workspace tests, clippy with warnings denied, Rust/fixture formatting,
+debug/release builds and the wasm32 interpreter build passed. Host callback
+coverage checks null, NaN/infinite/negative/fractional/large indices, container
+replacement, dynamic string addition, failed writes, and shared boxed bindings.
+The expanded fixtures also cover aliases and evaluation/error order.
+
+Raw samples, hashes and profile totals:
+[short workloads](interpreter-numeric-reads-results.json),
+[full spectral target](interpreter-numeric-reads-spectral-results.json).
+
+The preceding comparison/group fusion trial was reverted: **328.491 ->
+310.896 ms, 5.36% less time**, below the 10% retention gate.
+[Rejected trial samples](interpreter-compare-stopped-results.json).
+No release was made.
+
 ## Interpreter numeric instruction fusion (2026-10-16, unreleased)
 
 Release-built interpreter CLIs, main `ac6cb6e` versus numeric arithmetic/write

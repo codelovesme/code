@@ -1,0 +1,59 @@
+{
+  "stage": "compare",
+  "measured_at_utc": "2026-10-16T09:26:29+00:00",
+  "baseline_commit": "863b6b3",
+  "cpu": 0,
+  "runs_per_mode": 15,
+  "command": "<CLI> run --interpret <source>",
+  "order": "serial fresh launches, deterministic shuffled order, no concurrent builds/tests/profiling",
+  "binary_sha256": {
+    "before": "555e5104e79764f4f6e735afcfce67d5336b78b1a8e71e14ebc8a917dcddd06c",
+    "after": "de4f0f7dbca446eba29268662282d4e6c2e664934aeb0e168e20d0955ee0ccd8"
+  },
+  "results": {
+    "sum_squares": {
+      "samples_seconds": {
+        "before": [
+          0.32914124708622694,
+          0.3394133548717946,
+          0.3310909979045391,
+          0.32947057904675603,
+          0.3283643489703536,
+          0.3284906609915197,
+          0.3284950261004269,
+          0.32909557898528874,
+          0.3249712048564106,
+          0.3245631940662861,
+          0.3267391810659319,
+          0.32468884508125484,
+          0.32600176497362554,
+          0.3427237879950553,
+          0.32450445205904543
+        ],
+        "after": [
+          0.3119203189853579,
+          0.3123378891032189,
+          0.3116768170148134,
+          0.3108957139775157,
+          0.31132512586191297,
+          0.31126811215654016,
+          0.30799033609218895,
+          0.3079768009483814,
+          0.31403125799261034,
+          0.30824938998557627,
+          0.30719667696394026,
+          0.30743288598023355,
+          0.30885490705259144,
+          0.3392737240064889,
+          0.30595788010396063
+        ]
+      },
+      "medians_seconds": {
+        "before": 0.3284906609915197,
+        "after": 0.3108957139775157
+      },
+      "reduction_percent": 5.356300529486957
+    }
+  },
+  "outcome": "Stopped and reverted: 5.36% target reduction is below the 10% gate; no source retained or full candidate validation claimed."
+}
