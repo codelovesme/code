@@ -1,0 +1,28 @@
+{
+  "measured_at_utc": "2026-10-16T07:33:20+00:00",
+  "cpu": 0,
+  "runs_per_mode": 3,
+  "baseline_commit": "ac6cb6e",
+  "implementation_source_commit": "91459c5",
+  "samples_seconds": {
+    "before": [
+      21.093018705025315,
+      20.846125999931246,
+      21.269816698972136
+    ],
+    "after": [
+      21.0140076209791,
+      21.154150638030842,
+      21.21768617699854
+    ]
+  },
+  "medians_seconds": {
+    "before": 21.093018705025315,
+    "after": 21.154150638030842
+  },
+  "note": "Non-target check after numeric statement fusion; serial shuffled fresh-process launches with release-built CLIs and explicit --interpret. No concurrent builds/tests/profiling.",
+  "binary_sha256": {
+    "before": "5fe799bbcfb979c8daf32b4babd8631a68bc2f15c3e6803675b21bbcf3f4d006",
+    "after": "555e5104e79764f4f6e735afcfce67d5336b78b1a8e71e14ebc8a917dcddd06c"
+  }
+}

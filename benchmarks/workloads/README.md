@@ -30,6 +30,57 @@ and records raw launch times in `results.csv` and medians/ratios in
 Use `--output-dir` to keep an experimental run separate from the published
 results.
 
+## Interpreter numeric instruction fusion (2026-10-16, unreleased)
+
+Release-built interpreter CLIs, main `ac6cb6e` versus numeric arithmetic/write
+fusion: 15 serial fresh-process launches per mode, deterministic shuffled order,
+pinned to logical CPU 0. Parsing, lowering and startup are included. There were
+no concurrent builds, tests or profiling during timing; each program checks its
+own answer.
+
+| Workload | Before | After | Elapsed-time change |
+|---|---:|---:|---:|
+| sum_squares | 405.81 ms | 328.96 ms | -18.9% |
+| binary_trees | 102.26 ms | 101.56 ms | -0.7% |
+| dictionary | 68.10 ms | 66.77 ms | -2.0% |
+| string_build | 13.35 ms | 12.97 ms | -2.9% |
+| points | 251.53 ms | 252.47 ms | +0.4% |
+| spectral_norm (3 launches per mode) | 21.09 s | 21.15 s | +0.3% |
+
+**The numeric loop uses 18.9% less elapsed time (1.23× faster)**. Small changes
+on other workloads are not claimed as gains. Callgrind counted
+**5,358,074,552 → 4,388,067,804 instructions, down 18.1%**. Before the change,
+95.0% of instruction references were in bytecode execution and 4.85% in scope
+cleanup. These are instruction counts, not sampled CPU-time percentages.
+
+The final binary numeric operation writes directly to its destination instead
+of a temporary register followed by a separate store. With leaf operands its
+fallback metadata is carried in that same instruction, removing the separate
+group instruction too: `i = i + 1` takes one dispatch instead of three. Nested
+operands keep their existing evaluation order, intermediate rounding, checked
+fallback and error path. Arithmetic succeeds before the destination is changed;
+loop delivery and trace boundaries are unchanged. No whole-loop recognition,
+algorithm shortcut, JIT, native ABI or C-runtime change is involved.
+
+Raw samples, binary hashes and profile totals:
+[interpreter-numeric-results.json](interpreter-numeric-results.json).
+The longer non-target check is recorded in
+[interpreter-numeric-spectral-results.json](interpreter-numeric-spectral-results.json).
+
+Full workspace tests, clippy with warnings denied, Rust/fixture formatting,
+the wasm32 interpreter build, the expanded numeric fixture in that fresh engine,
+and all 144 playground examples passed. Regression coverage includes dynamic
+host replacements on either operand, nested-expression fallback, noncommutative
+operations, rounding and failed writes leaving the destination unchanged.
+
+The first full run reached the launcher tests but failed with `StorageFull` /
+`No space left on device`: the 32 GiB `/tmp` tmpfs was full. Moving temporary
+output under the home directory then made two module-install tests discover the
+existing ancestor `~/.code` directory. The final complete run passed with
+`TMPDIR=/var/tmp/code-tests-numeric-cdlvsm`, outside both the full tmpfs and the
+home project search path. Neither environment failure required a source change.
+No release was made.
+
 ## Interpreter object growth (2026-10-16, unreleased)
 
 Measured independently after list growth, against main `e680e1a`. Release-built

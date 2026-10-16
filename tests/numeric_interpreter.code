@@ -55,3 +55,43 @@ NumericNullable { value ∈ Number } =>
 emit NumericNullable { value = null } to this get failure
 assert failure ∈ Exception
 assert failure.message = "cannot apply '+' to a null and a number"
+
+| Combined arithmetic/write instructions must keep operand order, intermediate
+| rounding and the old destination until the entire expression succeeds.
+large = 9007199254740992
+one = 1
+saved = 7
+loop
+    rounded = (large + one) - large
+    assert rounded = 0
+    difference = 10 - seed
+    assert difference = 3
+    quotient = 21 / seed
+    assert quotient = 3
+    product = -seed * step
+    assert product = -14
+    break
+
+NumericFailedWrite =>
+    zero = 0
+    loop
+        saved = saved + 10 / zero
+        break
+    return Unexpected
+
+emit NumericFailedWrite to this get divided
+assert divided ∈ Exception
+assert divided.message = "division by zero"
+assert saved = 7
+
+NumericFailedFinalWrite =>
+    zero = 0
+    loop
+        saved = (saved + 10) / zero
+        break
+    return Unexpected
+
+emit NumericFailedFinalWrite to this get final_divided
+assert final_divided ∈ Exception
+assert final_divided.message = "division by zero"
+assert saved = 7
