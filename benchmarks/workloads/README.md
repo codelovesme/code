@@ -30,6 +30,62 @@ and records raw launch times in `results.csv` and medians/ratios in
 Use `--output-dir` to keep an experimental run separate from the published
 results.
 
+## Expression temporary buffers (2026-10-16, unreleased)
+
+Against main `02a8c25`: successful numeric expressions keep their generic
+fallback in a separate expression program, so its boxed registers are only
+prepared if a guard fails. Numeric lowering reuses dead intermediate registers
+while preserving left-to-right evaluation and keeping the left operand alive
+until the right is read. Both banks remain invocation-local; no unsafe code,
+shared scratch storage, value layout, scalar VM or module ABI changes.
+
+Release-built full CLIs, explicit `run --interpret`, CPU 0, serial shuffled
+fresh launches with startup/parsing/lowering included. Original workload sources
+and assertions are unchanged. No builds/tests/profiling ran during timing.
+Medians of 15 launches per mode, except full spectral (three per mode):
+
+| Workload | Before | After | Elapsed-time change |
+|---|---:|---:|---:|
+| spectral_norm | 14.887 s | 12.677 s | -14.8% |
+| sum_squares | 327.073 ms | 326.160 ms | -0.3% |
+| binary_trees | 101.775 ms | 102.128 ms | +0.3% |
+| dictionary | 66.271 ms | 67.564 ms | +2.0% |
+| string_build | 12.991 ms | 13.061 ms | +0.5% |
+| points | 258.961 ms | 248.031 ms | -4.2% |
+
+**Spectral uses 14.8% less time (1.17x faster)**, above the 10% target gate.
+The small dictionary cost is reported rather than called zero; other small
+differences are not additional target wins. Raw samples and binary hashes:
+`interpreter-buffer-results.json` and
+`interpreter-buffer-spectral-results.json`.
+
+The isolated fallback-only variant measured **14.961 -> 13.575 s (9.3%)**,
+below the gate and not retained alone. Its three-pair raw samples are in
+`interpreter-buffer-fallback-only-results.json`; the final result above also
+includes numeric-register reuse, which removes the second temporary bank's
+repeated heap allocation.
+
+For explanation only, the reduced N=100 spectral instruction profile (assertion
+1.274 < result < 1.275) changes **1,453,678,820 -> 1,185,779,226 instructions
+(-18.4%)**. The before profile is reused from the preceding experiment's exact
+same frozen binary (SHA-256 `77b002bd...`); this is not a new wall-time pair.
+Expression value-bank preparation calls fall from 400,100 to zero, and its
+numeric-bank reserve calls from 400,000 to zero. Other allocations still occur.
+Scalar Code::run and numeric Read::read self-instruction counts are unchanged.
+Instruction counts/shares are not CPU-time measurements. Profiles and diagnostic
+logs are retained locally in `/var/tmp/interpret-next/buffers/`.
+
+Aquarium release wasm rebuilt from the same current source with both CLIs is
+byte-identical: **901,255 bytes**, SHA-256
+`d923e206e787ed895e9718bb94a151ad1d68e80931d7c0aec309ef187d74b36e`.
+Both builds write only to scratch output directories.
+
+Local validation: full workspace debug/release builds and tests, clippy with
+warnings denied, Rust/fixture formatting, wasm32 code-wasm build and all 145
+playground/landing examples pass. Regression cases include long/balanced trees,
+nested computed indices, late null guards, repeat calls preserving old answers,
+and host replacements requiring string concatenation in original operand order.
+
 ## Guarded numeric expression reads (2026-10-16, unreleased)
 
 Against main `863b6b3`, implementation `85888f6`: release-built CLIs with
