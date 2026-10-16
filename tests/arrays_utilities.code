@@ -308,7 +308,5 @@ assert ordered.value[1].id = "first"
 assert reversed.value[1].id = "first"
 assert sliced.value[0].id = "first"
 assert unique.value[0].id = "first"
-emit Length { value = [1, 2] } to core get compatible
-assert compatible.value = 2
 emit NotAnArrayHandler to a get unknown
 assert unknown = null

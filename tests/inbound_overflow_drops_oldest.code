@@ -1,3 +1,4 @@
+link "native_modules/arrays.so" as length_arrays
 | The queue is bounded (CODE_INBOUND_CAPACITY, 256): a module that pushes
 | faster than the program drains costs bounded memory, not unbounded. Past
 | capacity the *oldest* pending particle is dropped, so what survives is the
@@ -15,7 +16,7 @@ Tick { value } =>
 emit Start { value = 300 } to ev get started
 assert started.value = 300
 
-emit Length { value = seen } to core get n
+emit Length { value = seen } to length_arrays get n
 assert n.value = 256
 assert seen[0] = 44
 assert seen[255] = 299

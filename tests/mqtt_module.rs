@@ -241,8 +241,7 @@ assert p.ok
 
 loop
     spins += 1
-    emit Length { value = heard } to core get n
-    if n.value = 2, break
+    if heard[1] ≠ null and heard[2] = null, break
     if spins > 8000000, break
 
 | The retained message first, marked so; then our own, echoed.

@@ -46,7 +46,7 @@ check(
 
 check(
   "run(), particle construction and dispatch to core",
-  mod.run('emit Length { value = "hello" } to core get n\nassert n.value = 5\n'),
+  mod.run('emit Linked to core get n\nassert n.value = false\n'),
   "",
 );
 

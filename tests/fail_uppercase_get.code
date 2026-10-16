@@ -1,1 +1,2 @@
-emit Length { value = [1] } to core get Result
+link "native_modules/arrays.so" as length_arrays
+emit Length { value = [1] } to length_arrays get Result

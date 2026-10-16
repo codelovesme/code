@@ -6,5 +6,5 @@ loop
     if i = n, break
     s = s + "$i,"
     i = i + 1
-emit Length { value = s } to core get { value as size }
-assert size = 108890
+assert s[108889] = ","
+assert s[108890] = null

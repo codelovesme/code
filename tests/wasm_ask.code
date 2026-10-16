@@ -16,5 +16,7 @@ MayDraw { app, into } =>
 
 | An answer that is not an object at all — a host has to cope with that too.
 Count { of } =>
-    emit Length { value = of } to core get many
+    many = { value = 0 }
+    loop item over of
+        many.value += 1
     return Counted { value = many.value }

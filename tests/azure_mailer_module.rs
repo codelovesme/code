@@ -129,8 +129,7 @@ assert sent ∈ Sent
 spins = 0
 loop
     spins += 1
-    emit Length {{ value = arrived }} to core get n
-    if n.value = 1
+    if arrived[0] ≠ null and arrived[1] = null
         break
     if spins > 4000000
         break

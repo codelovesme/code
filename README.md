@@ -9,7 +9,8 @@ speed; it interprets where it cannot build.
 ```
 user = { name = "ada", wins = [1, 2, 3] }
 
-emit Length { value = user.wins } to core get n
+link "native_modules/arrays.so" as arrays
+emit Length { value = user.wins } to arrays get n
 assert n.value = 3
 
 name = user.name
@@ -739,20 +740,24 @@ The way a program reaches the outside world is to `emit` a particle to a
 handler:
 
 ```
-emit Length { value = [1, 2, 3] } to core get n
+link "arrays.so" as arrays
+emit Length { value = [1, 2, 3] } to arrays get n
 assert n._class = "LengthResult"
 assert n.value = 3
 ```
 
 - **`to core`** dispatches to a handler compiled into the runtime itself.
-  Core stays deliberately minimal: `Length` (of an Array, or of a Str in
-  characters — not bytes), `Timestamp` (Unix seconds), `TimezoneOffset`
+  Core stays deliberately minimal: `Timestamp` (Unix seconds), `TimezoneOffset`
   (minutes to add to UTC for the clock where this is running — `Timestamp`
   cannot say what *day* it is for the person reading, and that is the only
   day a calendar column can be sorted by), and
   [`Linked`](#linked) (whether this run is a module somebody linked, rather
   than a program of its own). Every
   core result comes back as a *particle*, never a bare value.
+- **Length** belongs to `arrays` and `strings` (Unicode characters).
+  Install/link the appropriate module. `core.Length` is removed in unreleased
+  source; old calls answer null as an unhandled class. Index-context `length`
+  remains a language operation.
 - **`to this`** dispatches to a handler the program
   [defines itself](#handlers).
 - **`to <alias>`** dispatches to a [linked module](#modules).
@@ -764,10 +769,12 @@ assert n.value = 3
 question of the same particle, so they ask it in the same words:
 
 ```code
-emit Length { value = [1, 2, 3] } to core get { value }
+link "arrays.so" as arrays
+link "strings.so" as strings
+emit Length { value = [1, 2, 3] } to arrays get { value }
 assert value = 3
 
-emit Length { value = "abcd" } to core get { value as size }
+emit Length { value = "abcd" } to strings get { value as size }
 assert size = 4
 ```
 
@@ -1137,8 +1144,9 @@ is not there reads as null — exactly as `.field` does everywhere else — and 
 handler runs and answers on that basis.
 
 ```code
-emit Length { } to core get a
-emit Length { value = null } to core get b
+link "strings.so" as strings
+emit Length { } to strings get a
+emit Length { value = null } to strings get b
 assert a.message = b.message      | the same particle, so the same answer
 ```
 

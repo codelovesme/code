@@ -1,3 +1,4 @@
+link "native_modules/arrays.so" as length_arrays
 | A module speaking from a thread of its own.
 |
 | Every earlier inbound fixture pushes from inside the `code_module_dispatch`
@@ -26,7 +27,7 @@ assert started.value = 3
 spins = 0
 loop
     spins += 1
-    emit Length { value = seen } to core get n
+    emit Length { value = seen } to length_arrays get n
     if n.value = 3
         break
     | A bound, so a push that never arrives fails this fixture instead of

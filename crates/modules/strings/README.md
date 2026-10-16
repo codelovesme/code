@@ -11,7 +11,7 @@ browser half, Length and the search/slice/padding additions are unreleased.
 | Join | value (array of strings), separator (string, may be empty) | Joined text |
 | Trim | value (string) | Remove leading/trailing ASCII whitespace |
 | Upper / Lower | value (string) | ASCII case conversion |
-| Length | value (string) | Unicode scalar count, like core Length |
+| Length | value (string) | Unicode scalar count |
 | Contains / StartsWith / EndsWith | value, search (strings), ignore_case? (Bool, default false) | Bool |
 | IndexOf | value, search (strings), ignore_case? (Bool, default false) | First zero-based scalar position, or -1 |
 | Replace | value, search, replacement (strings) | All literal, non-overlapping matches replaced |
@@ -57,6 +57,6 @@ Case conversion leaves non-ASCII characters untouched. Trim removes only
 space, tab, newline, carriage return, form feed and vertical tab, leaving
 non-breaking spaces intact. Full Unicode case folding is separate work.
 
-Core Length still accepts arrays and strings for compatibility. strings Length
-is the text-specific entry point. Link strings in a browser shell as well as
+Length now lives in strings for text and arrays for lists; core Length is
+removed in unreleased source. Index-context length remains in the language. Link strings in a browser shell as well as
 in any guest that calls it; its page.mjs is bundled into generated host.mjs.

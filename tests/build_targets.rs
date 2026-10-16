@@ -8,6 +8,9 @@
 
 #![cfg(feature = "llvm")]
 
+#[path = "support/utility_modules.rs"]
+mod utility_modules;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -260,18 +263,7 @@ fn wasm_spells_numbers_the_way_the_other_modes_do() {
 /// own, not glibc's — so the aliasing fixture runs there too.
 #[test]
 fn wasm_grows_values_in_place_with_the_same_answers() {
-    let dir = temp_dir("wasm-in-place");
-    let out = dir.join("in_place.wasm");
-    code::compile_file(
-        &fixture("in_place_growth.code"),
-        code::BuildTarget::Wasm,
-        &out,
-        false,
-    )
-    .expect("build in_place_growth.code --target wasm");
-
-    run_wasm_under_node(&dir, &out);
-    let _ = fs::remove_dir_all(&dir);
+    utility_modules::fixture("strings", "in_place_growth.code");
 }
 
 /// Setting one part of a value (`fishes[1].x = 10`) copies a level only when

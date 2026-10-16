@@ -1,3 +1,4 @@
+link "native_modules/arrays.so" as length_arrays
 | `interpreter` — source text loaded as a linked program of its own: its
 | handlers, its own top level, nothing of the base's. Talked to with
 | particles, unloaded again. Bad source is an Exception at Load, a failing
@@ -52,7 +53,7 @@ assert third ∈ Exception
 | What is loaded, by id and name.
 emit Loaded {} to plasmid get listing
 assert listing ∈ Programs
-emit Length { value = listing.items } to core get how_many
+emit Length { value = listing.items } to length_arrays get how_many
 assert how_many.value = 2
 assert listing.items[0].id = 1
 assert listing.items[0].name = "greeter"

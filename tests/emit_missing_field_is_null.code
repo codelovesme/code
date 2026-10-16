@@ -16,11 +16,11 @@ Greet { who } =>
 emit Greet {} to this get g
 assert g.missing = true
 
-| A core handler: `Length { }` and `Length { value = null }` are the same
-| particle, so they are the same failure — null has no length. Not two
-| different complaints, one of them about the shape of the emit. That the
-| two messages are now identical is pinned by `tests/message_parity.rs`,
-| which provokes both at the top level under both backends.
+| Null has no text length; omission and explicit null have one diagnostic.
+emit Length {} to strings get missing_length
+emit Length { value = null } to strings get null_length
+assert missing_length ∈ Exception
+assert missing_length.message = null_length.message
 
 | A module handler with nothing to validate answers rather than refusing:
 | there is no value `Echo` cannot pass through, or `Print` cannot render.

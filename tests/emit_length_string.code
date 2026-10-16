@@ -1,7 +1,8 @@
+link "native_modules/strings.so" as length_strings
 | `Length` also accepts a string, counting its bytes.
-emit Length { value = "hello world" } to core get n
+emit Length { value = "hello world" } to length_strings get n
 assert n._class = "LengthResult"
 assert n.value = 11
 
-emit Length { value = "" } to core get empty
+emit Length { value = "" } to length_strings get empty
 assert empty.value = 0

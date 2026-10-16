@@ -575,3 +575,10 @@ the cache.
 Side by side with the 80-byte build, as the same binaries: points 3.86 → 2.66
 ms and binary_trees 20.3 → 15.7 ms. dictionary is unchanged; its time is the
 key search.
+
+Length migration (unreleased, ticket 130): string_build now validates its
+108890-character result by the last in-range and first out-of-range indices.
+The build loop and expected length are unchanged; this keeps the runtime
+workload independent of separately installed utility modules after core.Length
+removal. Historical raw timings used the earlier core Length assertion and
+are not silently reclassified as measurements of the new fixture.

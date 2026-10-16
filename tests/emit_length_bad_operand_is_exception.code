@@ -1,5 +1,6 @@
-| `Length`'s own operand-type rule: "value" must be an array or a string.
-| Anything else is core failing to do the work, and core answers with an
+link "native_modules/arrays.so" as length_arrays
+| `Length`'s own operand-type rule: "value" must be an array.
+| Anything else is the module failing to do the work, and it answers with an
 | `Exception` like any other recipient — it does not end the frame that
 | emitted (2026-08-28; was `fail_emit_length_non_array.code`, which pinned
 | the old behaviour).
@@ -14,19 +15,19 @@
 | level, where these now answer instead of failing. This fixture is what
 | keeps the two backends' wording identical for them, since it runs under
 | both.
-emit Length { value = 5 } to core get n
+emit Length { value = 5 } to length_arrays get n
 assert n ∈ Exception
-assert n.source = "core"
-assert n.message = "Length requires an array or string 'value', found a number"
+assert n.source = "arrays"
+assert n.message = "Length requires an array 'value'"
 
-emit Length { value = null } to core get a
-emit Length {} to core get b
+emit Length { value = null } to length_arrays get a
+emit Length {} to length_arrays get b
 assert a ∈ Exception
 assert b ∈ Exception
 assert a.message = b.message
-assert a.message = "Length requires an array or string 'value', found a null"
+assert a.message = "Length requires an array 'value'"
 
 | The working path is untouched.
-emit Length { value = [1, 2, 3] } to core get ok
+emit Length { value = [1, 2, 3] } to length_arrays get ok
 assert ok ∈ LengthResult
 assert ok.value = 3

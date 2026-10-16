@@ -13,7 +13,11 @@ Note {} =>
     return Noted
 
 Inner { text } =>
-    emit Length { value = text } to core get size
+    size_value = 0
+    loop
+        if text[size_value] = null, break
+        size_value += 1
+    size = { value = size_value }
     return InnerDone { size = size.value }
 
 Outer { word } =>
@@ -46,7 +50,9 @@ emit Outer { word = "hello" } to this get answer
 assert answer.size = 5
 
 | Delivered as soon as its root answered, before the next line.
-emit Length { value = traces } to core get count
+count = { value = 0 }
+loop length_probe_item over traces
+    count.value += 1
 assert count.value = 1
 first = traces[0]
 assert first.root = { from = "this", class = "Outer", particle = Outer { word = "hello" }, program = null }
@@ -56,7 +62,9 @@ assert first.started ≥ now.value * 1000
 assert first.ms ≥ 0
 
 | The root, then its two children, each saying which step it ran inside.
-emit Length { value = first.steps } to core get stepped
+stepped = { value = 0 }
+loop length_probe_item over first.steps
+    stepped.value += 1
 assert stepped.value = 3
 assert first.steps[0].id = 0
 assert first.steps[0].parent = null
@@ -79,7 +87,9 @@ assert traces[1].steps[0].ok = false
 emit Unreachable {} to this get lost
 assert lost ∈ Exception
 lost_trace = traces[2]
-emit Length { value = lost_trace.steps } to core get lost_steps
+lost_steps = { value = 0 }
+loop length_probe_item over lost_trace.steps
+    lost_steps.value += 1
 assert lost_steps.value = 2
 assert lost_trace.steps[1].class = "Ping"
 assert lost_trace.steps[1].parent = 0
@@ -89,9 +99,15 @@ assert lost_trace.ok = false
 | Past the cap, steps are counted rather than kept.
 emit Many {} to this
 many = traces[3]
-emit Length { value = many.steps } to core get kept
+kept = { value = 0 }
+loop length_probe_item over many.steps
+    kept.value += 1
 assert kept.value = 500
 assert many.dropped = 101
 
-emit Length { value = traces } to core get total
+total = { value = 0 }
+
+loop length_probe_item over traces
+
+    total.value += 1
 assert total.value = 4

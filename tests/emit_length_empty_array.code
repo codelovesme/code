@@ -1,2 +1,3 @@
-emit Length { value = [] } to core get n
+link "native_modules/arrays.so" as length_arrays
+emit Length { value = [] } to length_arrays get n
 assert n.value = 0

@@ -57,14 +57,18 @@ assert held.text = "ada"
 
 | One interaction of the host's, then the two ticks the guest's own module
 | pushed, each an interaction of the guest's.
-emit Length { value = traces } to core get count
+count = { value = 0 }
+loop length_probe_item over traces
+    count.value += 1
 assert count.value = 3
 
 hold = traces[0]
 assert hold.root.class = "Hold"
 assert hold.root.program = null
 steps = hold.steps
-emit Length { value = steps } to core get stepped
+stepped = { value = 0 }
+loop length_probe_item over steps
+    stepped.value += 1
 assert stepped.value = 7
 
 | The host's call into the guest...
@@ -107,10 +111,14 @@ Again {} =>
     return Done
 
 emit Again {} to this
-emit Length { value = traces } to core get total
+total = { value = 0 }
+loop length_probe_item over traces
+    total.value += 1
 assert total.value = 4
 again = traces[3]
-emit Length { value = again.steps } to core get again_steps
+again_steps = { value = 0 }
+loop length_probe_item over again.steps
+    again_steps.value += 1
 assert again_steps.value = 4
 assert again.steps[2].class = "Ping"
 assert again.steps[3].class = "Shout"

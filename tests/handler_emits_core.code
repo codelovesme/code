@@ -1,9 +1,10 @@
-| A handler body is ordinary code: it can emit to core and to a linked
-| native module, not just to `this`.
+link "native_modules/arrays.so" as length_arrays
+| A handler body is ordinary code: it can emit to linked native modules,
+| not just to `this`.
 link "native_modules/math.so" as m
 
 Total { values } =>
-    emit Length { value = values } to core get n
+    emit Length { value = values } to length_arrays get n
     emit Sum { value = values } to m get s
     return Totals { count = n.value, sum = s.value }
 

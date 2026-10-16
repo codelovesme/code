@@ -1,3 +1,4 @@
+link "native_modules/arrays.so" as length_arrays
 | The mock answers `later = true` the way `localai` does: `Sent { value = id }`
 | now, `ChatResult { content, _request_id }` on the inbound ring afterwards —
 | so a program's state machine around a slow model call can be tested.
@@ -17,7 +18,7 @@ assert sent ∈ Sent
 spins = 0
 loop
     spins += 1
-    emit Length { value = arrived } to core get n
+    emit Length { value = arrived } to length_arrays get n
     if n.value = 1
         break
     if spins > 4000000
@@ -43,7 +44,7 @@ assert said ∈ Sent
 spins = 0
 loop
     spins += 1
-    emit Length { value = heard } to core get n
+    emit Length { value = heard } to length_arrays get n
     if n.value = 1
         break
     if spins > 4000000
