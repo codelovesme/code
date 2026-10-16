@@ -237,6 +237,7 @@ mod compile {
     /// asset beside the archive, which is release, install and lockfile work
     /// nobody needs yet.
     const WEB_MODULE_PARTS: &[(&str, &str)] = &[
+        ("arrays", include_str!("../crates/modules/arrays/page.mjs")),
         ("canvas", include_str!("../crates/modules/canvas/page.mjs")),
         (
             "clipboard",

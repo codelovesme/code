@@ -1,0 +1,314 @@
+| Structural equality, stable Unicode ordering and non-mutating transforms.
+link "native_modules/arrays.so" as a
+emit Length { value = [] } to a get r0
+assert r0 = { _class = "LengthResult", value = 0 }
+emit Reverse { value = [] } to a get r1
+assert r1 = { _class = "ReverseResult", value = [] }
+emit Length { value = [null, false, 0, "", [], {}] } to a get r2
+assert r2 = { _class = "LengthResult", value = 6 }
+emit Reverse { value = [null, false, 0, "", [], {}] } to a get r3
+assert r3 = { _class = "ReverseResult", value = [{}, [], "", 0, false, null] }
+emit Length { value = [{ a = 1, b = [2, 3] }, { b = [2, 3], a = 1 }, [1, 2], [2, 1], false, 0, null] } to a get r4
+assert r4 = { _class = "LengthResult", value = 7 }
+emit Reverse { value = [{ a = 1, b = [2, 3] }, { b = [2, 3], a = 1 }, [1, 2], [2, 1], false, 0, null] } to a get r5
+assert r5 = { _class = "ReverseResult", value = [null, 0, false, [2, 1], [1, 2], { b = [2, 3], a = 1 }, { a = 1, b = [2, 3] }] }
+emit Contains { value = [], item = null } to a get r6
+assert r6 = { _class = "ContainsResult", value = false }
+emit Contains { value = [1, 2, 1], item = 1 } to a get r7
+assert r7 = { _class = "ContainsResult", value = true }
+emit Contains { value = [false, 0], item = 0 } to a get r8
+assert r8 = { _class = "ContainsResult", value = true }
+emit Contains { value = [0, false], item = false } to a get r9
+assert r9 = { _class = "ContainsResult", value = true }
+emit Contains { value = [{ a = 1, b = [2, 3] }], item = { b = [2, 3], a = 1 } } to a get r10
+assert r10 = { _class = "ContainsResult", value = true }
+emit Contains { value = [[1, 2]], item = [2, 1] } to a get r11
+assert r11 = { _class = "ContainsResult", value = false }
+emit Contains { value = [[], {}], item = {} } to a get r12
+assert r12 = { _class = "ContainsResult", value = true }
+emit Contains { value = [null], item = null } to a get r13
+assert r13 = { _class = "ContainsResult", value = true }
+emit Contains { value = [] } to a get r14
+assert r14 = { _class = "ContainsResult", value = false }
+emit Contains { value = [null] } to a get r15
+assert r15 = { _class = "ContainsResult", value = true }
+emit IndexOf { value = [], item = null } to a get r16
+assert r16 = { _class = "IndexOfResult", value = -1 }
+emit IndexOf { value = [1, 2, 1], item = 1 } to a get r17
+assert r17 = { _class = "IndexOfResult", value = 0 }
+emit IndexOf { value = [false, 0], item = 0 } to a get r18
+assert r18 = { _class = "IndexOfResult", value = 1 }
+emit IndexOf { value = [0, false], item = false } to a get r19
+assert r19 = { _class = "IndexOfResult", value = 1 }
+emit IndexOf { value = [{ a = 1, b = [2, 3] }], item = { b = [2, 3], a = 1 } } to a get r20
+assert r20 = { _class = "IndexOfResult", value = 0 }
+emit IndexOf { value = [[1, 2]], item = [2, 1] } to a get r21
+assert r21 = { _class = "IndexOfResult", value = -1 }
+emit IndexOf { value = [[], {}], item = {} } to a get r22
+assert r22 = { _class = "IndexOfResult", value = 1 }
+emit IndexOf { value = [null], item = null } to a get r23
+assert r23 = { _class = "IndexOfResult", value = 0 }
+emit IndexOf { value = [] } to a get r24
+assert r24 = { _class = "IndexOfResult", value = -1 }
+emit IndexOf { value = [null] } to a get r25
+assert r25 = { _class = "IndexOfResult", value = 0 }
+emit Unique { value = [null, null, false, 0, false, 0, "0", [], {}, [], { b = 2, a = 1 }, { a = 1, b = 2 }] } to a get r26
+assert r26 = { _class = "UniqueResult", value = [null, false, 0, "0", [], {}, { b = 2, a = 1 }] }
+emit Unique { value = [] } to a get r27
+assert r27 = { _class = "UniqueResult", value = [] }
+emit Unique { value = [[1, 2], [2, 1], [1, 2]] } to a get r28
+assert r28 = { _class = "UniqueResult", value = [[1, 2], [2, 1]] }
+emit Slice { value = [1, 2, 3] } to a get r29
+assert r29 = { _class = "SliceResult", value = [1, 2, 3] }
+emit Slice { value = [1, 2, 3], start = 0, end = 2 } to a get r30
+assert r30 = { _class = "SliceResult", value = [1, 2] }
+emit Slice { value = [1, 2, 3], start = 1, end = 2 } to a get r31
+assert r31 = { _class = "SliceResult", value = [2] }
+emit Slice { value = [1, 2, 3], start = -2, end = -1 } to a get r32
+assert r32 = { _class = "SliceResult", value = [2] }
+emit Slice { value = [1, 2, 3], start = -99, end = 99 } to a get r33
+assert r33 = { _class = "SliceResult", value = [1, 2, 3] }
+emit Slice { value = [1, 2, 3], start = 99, end = 100 } to a get r34
+assert r34 = { _class = "SliceResult", value = [] }
+emit Slice { value = [1, 2, 3], start = 2, end = 1 } to a get r35
+assert r35 = { _class = "SliceResult", value = [] }
+emit Slice { value = [1, 2, 3], start = -1, end = -99 } to a get r36
+assert r36 = { _class = "SliceResult", value = [] }
+emit Slice { value = [1, 2, 3], start = 0, end = 0 } to a get r37
+assert r37 = { _class = "SliceResult", value = [] }
+emit Slice { value = [1, 2, 3], start = -9007199254740991, end = 9007199254740991 } to a get r38
+assert r38 = { _class = "SliceResult", value = [1, 2, 3] }
+emit Slice { value = [], start = -5, end = 5 } to a get r39
+assert r39 = { _class = "SliceResult", value = [] }
+emit Slice { value = [], start = null } to a get r40
+assert r40 = { _class = "Exception", source = "arrays", message = "Slice requires a safe integer 'start' field", innerException = null }
+emit Slice { value = [], start = true } to a get r41
+assert r41 = { _class = "Exception", source = "arrays", message = "Slice requires a safe integer 'start' field", innerException = null }
+emit Slice { value = [], start = "1" } to a get r42
+assert r42 = { _class = "Exception", source = "arrays", message = "Slice requires a safe integer 'start' field", innerException = null }
+emit Slice { value = [], start = 1.5 } to a get r43
+assert r43 = { _class = "Exception", source = "arrays", message = "Slice requires a safe integer 'start' field", innerException = null }
+emit Slice { value = [], start = 9007199254740992 } to a get r44
+assert r44 = { _class = "Exception", source = "arrays", message = "Slice requires a safe integer 'start' field", innerException = null }
+emit Slice { value = [], end = null } to a get r45
+assert r45 = { _class = "Exception", source = "arrays", message = "Slice requires a safe integer 'end' field", innerException = null }
+emit Slice { value = [], end = true } to a get r46
+assert r46 = { _class = "Exception", source = "arrays", message = "Slice requires a safe integer 'end' field", innerException = null }
+emit Slice { value = [], end = "1" } to a get r47
+assert r47 = { _class = "Exception", source = "arrays", message = "Slice requires a safe integer 'end' field", innerException = null }
+emit Slice { value = [], end = 1.5 } to a get r48
+assert r48 = { _class = "Exception", source = "arrays", message = "Slice requires a safe integer 'end' field", innerException = null }
+emit Slice { value = [], end = 9007199254740992 } to a get r49
+assert r49 = { _class = "Exception", source = "arrays", message = "Slice requires a safe integer 'end' field", innerException = null }
+emit Sort { value = [], descending = false } to a get r50
+assert r50 = { _class = "SortResult", value = [] }
+emit Sort { value = [], descending = true } to a get r51
+assert r51 = { _class = "SortResult", value = [] }
+emit Sort { value = [3, 10, -1, 3, 0], descending = false } to a get r52
+assert r52 = { _class = "SortResult", value = [-1, 0, 3, 3, 10] }
+emit Sort { value = [3, 10, -1, 3, 0], descending = true } to a get r53
+assert r53 = { _class = "SortResult", value = [10, 3, 3, 0, -1] }
+emit Sort { value = [0.00000000000000000001, 1000000000000000000000, -1000000000000000000000], descending = false } to a get r54
+assert r54 = { _class = "SortResult", value = [-1000000000000000000000, 0.00000000000000000001, 1000000000000000000000] }
+emit Sort { value = [0.00000000000000000001, 1000000000000000000000, -1000000000000000000000], descending = true } to a get r55
+assert r55 = { _class = "SortResult", value = [1000000000000000000000, 0.00000000000000000001, -1000000000000000000000] }
+emit Sort { value = ["z", "é", "😀", "", "𐀀", "", "a"], descending = false } to a get r56
+assert r56 = { _class = "SortResult", value = ["", "a", "z", "é", "", "𐀀", "😀"] }
+emit Sort { value = ["z", "é", "😀", "", "𐀀", "", "a"], descending = true } to a get r57
+assert r57 = { _class = "SortResult", value = ["😀", "𐀀", "", "é", "z", "a", ""] }
+emit Sort { value = [{ id = "a", score = 2 }, { id = "b", score = 1 }, { id = "c", score = 2 }, { id = "d", score = 1 }], by = "score", descending = false } to a get r58
+assert r58 = { _class = "SortResult", value = [{ id = "b", score = 1 }, { id = "d", score = 1 }, { id = "a", score = 2 }, { id = "c", score = 2 }] }
+emit Sort { value = [{ id = "a", score = 2 }, { id = "b", score = 1 }, { id = "c", score = 2 }, { id = "d", score = 1 }], by = "score", descending = true } to a get r59
+assert r59 = { _class = "SortResult", value = [{ id = "a", score = 2 }, { id = "c", score = 2 }, { id = "b", score = 1 }, { id = "d", score = 1 }] }
+emit Sort { value = [{ id = "a", key = "😀" }, { id = "b", key = "é" }, { id = "c", key = "😀" }], by = "key" } to a get r60
+assert r60 = { _class = "SortResult", value = [{ id = "b", key = "é" }, { id = "a", key = "😀" }, { id = "c", key = "😀" }] }
+emit Sort { value = [], by = null } to a get r61
+assert r61 = { _class = "Exception", source = "arrays", message = "Sort requires a string 'by' field", innerException = null }
+emit Sort { value = [], descending = null } to a get r62
+assert r62 = { _class = "Exception", source = "arrays", message = "Sort requires a boolean 'descending' field", innerException = null }
+emit Sort { value = [{}], by = "key" } to a get r63
+assert r63 = { _class = "Exception", source = "arrays", message = "Sort requires object items with the 'by' field", innerException = null }
+emit Sort { value = [1], by = "key" } to a get r64
+assert r64 = { _class = "Exception", source = "arrays", message = "Sort requires object items with the 'by' field", innerException = null }
+emit Sort { value = [{ key = null }], by = "key" } to a get r65
+assert r65 = { _class = "Exception", source = "arrays", message = "Sort requires finite number or string keys", innerException = null }
+emit Sort { value = [1, "2"] } to a get r66
+assert r66 = { _class = "Exception", source = "arrays", message = "Sort requires keys of one type", innerException = null }
+emit Sort { value = [false] } to a get r67
+assert r67 = { _class = "Exception", source = "arrays", message = "Sort requires finite number or string keys", innerException = null }
+emit Sort { value = [{}] } to a get r68
+assert r68 = { _class = "Exception", source = "arrays", message = "Sort requires finite number or string keys", innerException = null }
+emit Sum { value = [] } to a get r69
+assert r69 = { _class = "SumResult", value = 0.0 }
+emit Sum { value = [0] } to a get r70
+assert r70 = { _class = "SumResult", value = 0.0 }
+emit Sum { value = [-3, 2, 1] } to a get r71
+assert r71 = { _class = "SumResult", value = 0.0 }
+emit Sum { value = [1000000000000000000000, 0.00000000000000000001, -1000000000000000000000] } to a get r72
+assert r72 = { _class = "SumResult", value = 0.0 }
+emit Sum { value = [null] } to a get r73
+assert r73 = { _class = "Exception", source = "arrays", message = "Sum requires an array of finite numbers", innerException = null }
+emit Sum { value = [true] } to a get r74
+assert r74 = { _class = "Exception", source = "arrays", message = "Sum requires an array of finite numbers", innerException = null }
+emit Sum { value = ["1"] } to a get r75
+assert r75 = { _class = "Exception", source = "arrays", message = "Sum requires an array of finite numbers", innerException = null }
+emit Sum { value = [{}] } to a get r76
+assert r76 = { _class = "Exception", source = "arrays", message = "Sum requires an array of finite numbers", innerException = null }
+emit Min { value = [] } to a get r77
+assert r77 = { _class = "MinResult", value = null }
+emit Min { value = [0] } to a get r78
+assert r78 = { _class = "MinResult", value = 0 }
+emit Min { value = [-3, 2, 1] } to a get r79
+assert r79 = { _class = "MinResult", value = -3 }
+emit Min { value = [1000000000000000000000, 0.00000000000000000001, -1000000000000000000000] } to a get r80
+assert r80 = { _class = "MinResult", value = -1000000000000000000000 }
+emit Min { value = [null] } to a get r81
+assert r81 = { _class = "Exception", source = "arrays", message = "Min requires an array of finite numbers", innerException = null }
+emit Min { value = [true] } to a get r82
+assert r82 = { _class = "Exception", source = "arrays", message = "Min requires an array of finite numbers", innerException = null }
+emit Min { value = ["1"] } to a get r83
+assert r83 = { _class = "Exception", source = "arrays", message = "Min requires an array of finite numbers", innerException = null }
+emit Min { value = [{}] } to a get r84
+assert r84 = { _class = "Exception", source = "arrays", message = "Min requires an array of finite numbers", innerException = null }
+emit Max { value = [] } to a get r85
+assert r85 = { _class = "MaxResult", value = null }
+emit Max { value = [0] } to a get r86
+assert r86 = { _class = "MaxResult", value = 0 }
+emit Max { value = [-3, 2, 1] } to a get r87
+assert r87 = { _class = "MaxResult", value = 2 }
+emit Max { value = [1000000000000000000000, 0.00000000000000000001, -1000000000000000000000] } to a get r88
+assert r88 = { _class = "MaxResult", value = 1000000000000000000000 }
+emit Max { value = [null] } to a get r89
+assert r89 = { _class = "Exception", source = "arrays", message = "Max requires an array of finite numbers", innerException = null }
+emit Max { value = [true] } to a get r90
+assert r90 = { _class = "Exception", source = "arrays", message = "Max requires an array of finite numbers", innerException = null }
+emit Max { value = ["1"] } to a get r91
+assert r91 = { _class = "Exception", source = "arrays", message = "Max requires an array of finite numbers", innerException = null }
+emit Max { value = [{}] } to a get r92
+assert r92 = { _class = "Exception", source = "arrays", message = "Max requires an array of finite numbers", innerException = null }
+emit Sum { value = [179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, 179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000] } to a get r93
+assert r93 = { _class = "Exception", source = "arrays", message = "Sum result must be finite", innerException = null }
+emit Length {} to a get r94
+assert r94 = { _class = "Exception", source = "arrays", message = "Length requires an array 'value'", innerException = null }
+emit Length { value = null } to a get r95
+assert r95 = { _class = "Exception", source = "arrays", message = "Length requires an array 'value'", innerException = null }
+emit Length { value = "abc" } to a get r96
+assert r96 = { _class = "Exception", source = "arrays", message = "Length requires an array 'value'", innerException = null }
+emit Contains {} to a get r97
+assert r97 = { _class = "Exception", source = "arrays", message = "Contains requires an array 'value'", innerException = null }
+emit Contains { value = null } to a get r98
+assert r98 = { _class = "Exception", source = "arrays", message = "Contains requires an array 'value'", innerException = null }
+emit Contains { value = "abc" } to a get r99
+assert r99 = { _class = "Exception", source = "arrays", message = "Contains requires an array 'value'", innerException = null }
+emit IndexOf {} to a get r100
+assert r100 = { _class = "Exception", source = "arrays", message = "IndexOf requires an array 'value'", innerException = null }
+emit IndexOf { value = null } to a get r101
+assert r101 = { _class = "Exception", source = "arrays", message = "IndexOf requires an array 'value'", innerException = null }
+emit IndexOf { value = "abc" } to a get r102
+assert r102 = { _class = "Exception", source = "arrays", message = "IndexOf requires an array 'value'", innerException = null }
+emit Reverse {} to a get r103
+assert r103 = { _class = "Exception", source = "arrays", message = "Reverse requires an array 'value'", innerException = null }
+emit Reverse { value = null } to a get r104
+assert r104 = { _class = "Exception", source = "arrays", message = "Reverse requires an array 'value'", innerException = null }
+emit Reverse { value = "abc" } to a get r105
+assert r105 = { _class = "Exception", source = "arrays", message = "Reverse requires an array 'value'", innerException = null }
+emit Slice {} to a get r106
+assert r106 = { _class = "Exception", source = "arrays", message = "Slice requires an array 'value'", innerException = null }
+emit Slice { value = null } to a get r107
+assert r107 = { _class = "Exception", source = "arrays", message = "Slice requires an array 'value'", innerException = null }
+emit Slice { value = "abc" } to a get r108
+assert r108 = { _class = "Exception", source = "arrays", message = "Slice requires an array 'value'", innerException = null }
+emit Unique {} to a get r109
+assert r109 = { _class = "Exception", source = "arrays", message = "Unique requires an array 'value'", innerException = null }
+emit Unique { value = null } to a get r110
+assert r110 = { _class = "Exception", source = "arrays", message = "Unique requires an array 'value'", innerException = null }
+emit Unique { value = "abc" } to a get r111
+assert r111 = { _class = "Exception", source = "arrays", message = "Unique requires an array 'value'", innerException = null }
+emit Sort {} to a get r112
+assert r112 = { _class = "Exception", source = "arrays", message = "Sort requires an array 'value'", innerException = null }
+emit Sort { value = null } to a get r113
+assert r113 = { _class = "Exception", source = "arrays", message = "Sort requires an array 'value'", innerException = null }
+emit Sort { value = "abc" } to a get r114
+assert r114 = { _class = "Exception", source = "arrays", message = "Sort requires an array 'value'", innerException = null }
+emit Sum {} to a get r115
+assert r115 = { _class = "Exception", source = "arrays", message = "Sum requires an array 'value'", innerException = null }
+emit Sum { value = null } to a get r116
+assert r116 = { _class = "Exception", source = "arrays", message = "Sum requires an array 'value'", innerException = null }
+emit Sum { value = "abc" } to a get r117
+assert r117 = { _class = "Exception", source = "arrays", message = "Sum requires an array 'value'", innerException = null }
+emit Min {} to a get r118
+assert r118 = { _class = "Exception", source = "arrays", message = "Min requires an array 'value'", innerException = null }
+emit Min { value = null } to a get r119
+assert r119 = { _class = "Exception", source = "arrays", message = "Min requires an array 'value'", innerException = null }
+emit Min { value = "abc" } to a get r120
+assert r120 = { _class = "Exception", source = "arrays", message = "Min requires an array 'value'", innerException = null }
+emit Max {} to a get r121
+assert r121 = { _class = "Exception", source = "arrays", message = "Max requires an array 'value'", innerException = null }
+emit Max { value = null } to a get r122
+assert r122 = { _class = "Exception", source = "arrays", message = "Max requires an array 'value'", innerException = null }
+emit Max { value = "abc" } to a get r123
+assert r123 = { _class = "Exception", source = "arrays", message = "Max requires an array 'value'", innerException = null }
+emit Unique { value = [8, 0, -7, 4, -1, 2, -1, -5, -4, -4, 0, -1, -4, 7, 6, -4, -5, 0] } to a get r124
+assert r124 = { _class = "UniqueResult", value = [8, 0, -7, 4, -1, 2, -5, -4, 7, 6] }
+emit Sort { value = [8, 0, -7, 4, -1, 2, -1, -5, -4, -4, 0, -1, -4, 7, 6, -4, -5, 0] } to a get r125
+assert r125 = { _class = "SortResult", value = [-7, -5, -5, -4, -4, -4, -4, -1, -1, -1, 0, 0, 0, 2, 4, 6, 7, 8] }
+emit Unique { value = [0, -6] } to a get r126
+assert r126 = { _class = "UniqueResult", value = [0, -6] }
+emit Sort { value = [0, -6] } to a get r127
+assert r127 = { _class = "SortResult", value = [-6, 0] }
+emit Unique { value = [-7, -1, -3, -5, -1, 7, -7, 0, 1, 2, -4, 2, 7] } to a get r128
+assert r128 = { _class = "UniqueResult", value = [-7, -1, -3, -5, 7, 0, 1, 2, -4] }
+emit Sort { value = [-7, -1, -3, -5, -1, 7, -7, 0, 1, 2, -4, 2, 7] } to a get r129
+assert r129 = { _class = "SortResult", value = [-7, -7, -5, -4, -3, -1, -1, 0, 1, 2, 2, 7, 7] }
+emit Unique { value = [-5, 8, -4, -2, -3, 8, 6, -3, 2, 1, 3, 6, 2, 3, -4, 8] } to a get r130
+assert r130 = { _class = "UniqueResult", value = [-5, 8, -4, -2, -3, 6, 2, 1, 3] }
+emit Sort { value = [-5, 8, -4, -2, -3, 8, 6, -3, 2, 1, 3, 6, 2, 3, -4, 8] } to a get r131
+assert r131 = { _class = "SortResult", value = [-5, -4, -4, -3, -3, -2, 1, 2, 2, 3, 3, 6, 6, 8, 8, 8] }
+emit Unique { value = [4, -2, -8, -1, -4] } to a get r132
+assert r132 = { _class = "UniqueResult", value = [4, -2, -8, -1, -4] }
+emit Sort { value = [4, -2, -8, -1, -4] } to a get r133
+assert r133 = { _class = "SortResult", value = [-8, -4, -2, -1, 4] }
+emit Unique { value = [0, -1, 8, -6, 5, -3] } to a get r134
+assert r134 = { _class = "UniqueResult", value = [0, -1, 8, -6, 5, -3] }
+emit Sort { value = [0, -1, 8, -6, 5, -3] } to a get r135
+assert r135 = { _class = "SortResult", value = [-6, -3, -1, 0, 5, 8] }
+emit Unique { value = [-8, -7, 3, 4, -3, -8] } to a get r136
+assert r136 = { _class = "UniqueResult", value = [-8, -7, 3, 4, -3] }
+emit Sort { value = [-8, -7, 3, 4, -3, -8] } to a get r137
+assert r137 = { _class = "SortResult", value = [-8, -8, -7, -3, 3, 4] }
+emit Unique { value = [8, -3, 1, 4] } to a get r138
+assert r138 = { _class = "UniqueResult", value = [8, -3, 1, 4] }
+emit Sort { value = [8, -3, 1, 4] } to a get r139
+assert r139 = { _class = "SortResult", value = [-3, 1, 4, 8] }
+emit Unique { value = [4, 4, 4, 1, -1, 8, -2, 7] } to a get r140
+assert r140 = { _class = "UniqueResult", value = [4, 1, -1, 8, -2, 7] }
+emit Sort { value = [4, 4, 4, 1, -1, 8, -2, 7] } to a get r141
+assert r141 = { _class = "SortResult", value = [-2, -1, 1, 4, 4, 4, 7, 8] }
+emit Unique { value = [] } to a get r142
+assert r142 = { _class = "UniqueResult", value = [] }
+emit Sort { value = [] } to a get r143
+assert r143 = { _class = "SortResult", value = [] }
+emit Unique { value = [3, 4, 8, -2, 6, 7, -2, 1, -5, 5, -2, -5, 7, -5, 6, 6, 0, -6, -5] } to a get r144
+assert r144 = { _class = "UniqueResult", value = [3, 4, 8, -2, 6, 7, 1, -5, 5, 0, -6] }
+emit Sort { value = [3, 4, 8, -2, 6, 7, -2, 1, -5, 5, -2, -5, 7, -5, 6, 6, 0, -6, -5] } to a get r145
+assert r145 = { _class = "SortResult", value = [-6, -5, -5, -5, -5, -2, -2, -2, 0, 1, 3, 4, 5, 6, 6, 6, 7, 7, 8] }
+emit Unique { value = [5, 5, 2, 3, 3, 0, -1] } to a get r146
+assert r146 = { _class = "UniqueResult", value = [5, 2, 3, 0, -1] }
+emit Sort { value = [5, 5, 2, 3, 3, 0, -1] } to a get r147
+assert r147 = { _class = "SortResult", value = [-1, 0, 2, 3, 3, 5, 5] }
+source = [{ id = "first", score = 2 }, { id = "second", score = 1 }]
+emit Sort { value = source, by = "score" } to a get ordered
+assert source[0].id = "first"
+assert ordered.value[0].id = "second"
+emit Reverse { value = source } to a get reversed
+emit Slice { value = source, start = 0, end = 1 } to a get sliced
+emit Unique { value = source } to a get unique
+source[0].id = "changed"
+assert ordered.value[1].id = "first"
+assert reversed.value[1].id = "first"
+assert sliced.value[0].id = "first"
+assert unique.value[0].id = "first"
+emit Length { value = [1, 2] } to core get compatible
+assert compatible.value = 2
+emit NotAnArrayHandler to a get unknown
+assert unknown = null
