@@ -847,6 +847,22 @@ cover the changes. Tests run on generated hosts in Node, not a live browser UI.
 App helpers, shell manifests and released pins have not been migrated. Keep
 these source additions separate from claims about public module availability.
 
+
+## Array utilities (ticket 129, unreleased)
+
+New stateless arrays has Length, structural Contains/IndexOf/Unique, Reverse,
+clamped Slice (same start/end rules as strings), stable Sort (homogeneous finite
+numbers or Unicode-scalar string keys, optional by/descending), and numeric
+Sum/Min/Max. Input is value; search item defaults to null like Code field
+access. Empty Sum is 0, empty Min/Max null. Core Length remains compatible.
+Native uses core values_equal; browser comparison is iterative and object
+field-order independent. Read crates/modules/arrays/README.md for contracts,
+quadratic Unique cost and existing JSON transport limits. All transformed
+arrays preserve Code input snapshots. New install/release/browser wiring is
+present, but no public module artifact, shell or application migration follows
+from merging source. Tests instantiate real wasm archives/generated hosts in
+Node; they do not constitute live browser deployment verification.
+
 ## Releases
 
 Cutting a release is the one act that is **not** pre-authorised — a tag

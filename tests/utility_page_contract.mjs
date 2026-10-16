@@ -60,3 +60,31 @@ assert.equal(million.endsWith('😀'), true);
 assert.equal(strings({ _class: 'Pad', value: '', width: 1000001 })._class, 'Exception');
 assert.equal(strings({ _class: 'Slice', value: '😀é', start: -0, end: 9007199254740991 }).value, '😀é');
 assert.equal(strings({ _class: 'Replace', value: 'aaa', search: 'aa', replacement: '$&' }).value, '$&a');
+const arrays = dispatch('arrays');
+for (const name of ['Sum', 'Min', 'Max', 'Sort']) {
+  for (const n of [NaN, Infinity, -Infinity]) {
+    assert.deepEqual(arrays({ _class: name, value: [n] }), {
+      _class: 'Exception', source: 'arrays', innerException: null,
+      message: name === 'Sort' ? 'Sort requires finite number or string keys' : `${name} requires an array of finite numbers`,
+    });
+  }
+}
+for (const n of [NaN, Infinity, -Infinity, 0.5, 9007199254740992]) {
+  for (const key of ['start', 'end']) {
+    assert.equal(arrays({ _class: 'Slice', value: [], [key]: n }).message, `Slice requires a safe integer '${key}' field`);
+  }
+}
+for (const name of ['Sum', 'Min', 'Max']) {
+  assert.equal(Object.is(arrays({ _class: name, value: [-0] }).value, -0), false);
+}
+const original = [{ n: 2, id: 'a' }, { n: 1, id: 'b' }, { n: 2, id: 'c' }];
+Object.freeze(original);
+for (const item of original) Object.freeze(item);
+assert.deepEqual(arrays({ _class: 'Sort', value: original, by: 'n', descending: true }).value.map(v => v.id), ['a', 'c', 'b']);
+assert.deepEqual(arrays({ _class: 'Reverse', value: original }).value.map(v => v.id), ['c', 'b', 'a']);
+assert.equal(arrays({ _class: 'Contains', value: [JSON.parse('{"__proto__":1,"x":2}')], item: JSON.parse('{"x":2,"__proto__":1}') }).value, true);
+assert.deepEqual(arrays({ _class: 'Sort', value: [{ '': 2 }, { '': 1 }], by: '' }).value, [{ '': 1 }, { '': 2 }]);
+let deepA = 0, deepB = 0;
+for (let i = 0; i < 3000; i++) { deepA = [deepA]; deepB = [deepB]; }
+assert.equal(arrays({ _class: 'Contains', value: [deepA], item: deepB }).value, true);
+assert.equal(arrays({ _class: 'Unknown' }), null);

@@ -629,3 +629,11 @@ ignore_case), literal Replace, scalar-indexed Slice and bounded Pad. Split
 accepts nonempty multi-character separators; Join accepts any string separator,
 including empty. Native and browser contracts are documented in
 `crates/modules/strings/README.md`. No release or app migration is implied.
+
+### Array utilities (ticket 129, unreleased)
+
+New arrays provides Length, structural Contains/IndexOf/Unique, Reverse,
+clamped Slice, stable Sort (numbers/Unicode strings or a named object field),
+and numeric Sum/Min/Max. Native/browser implementations share fixtures;
+`crates/modules/arrays/README.md` records contracts and JSON transport limits.
+Core Length remains compatible. No release, app migration or shell rollout.

@@ -1,0 +1,23 @@
+# Standalone workspace, deliberately: first-party modules build on their own
+# (their release CI checks out the repo and builds each module alone), and
+# the empty `[workspace]` table stops `cargo` from walking up into the main
+# repo's workspace when the module is built in-tree. Same convention the
+# `old/` tree uses.
+[workspace]
+
+[package]
+name = "arrays"
+version = "2.16.0"
+edition = "2021"
+description = "Array utilities for Code, with native and browser implementations."
+license = "GPL-3.0"
+repository = "https://github.com/codelovesme/code"
+
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+code-native = { path = "../../code-native", default-features = false, features = ["static-module"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+code-native = { path = "../../code-native" }
