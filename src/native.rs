@@ -266,7 +266,7 @@ unsafe fn ffi_to_value(v: *const CodeValueFfi) -> Value {
                 let key = CStr::from_ptr(key_ptr).to_string_lossy().into_owned();
                 fields.push((key, ffi_to_value(slot_at(items, i))));
             }
-            Value::Object(Rc::new(fields))
+            Value::Object(Rc::new(fields.into()))
         }
         _ => Value::Null, // TAG_NULL or anything unrecognized
     }
@@ -865,7 +865,7 @@ fn hosting_particle(class: &str, app: &str, name: &str, particle: Option<Value>)
     if let Some(particle) = particle {
         fields.push(("particle".to_string(), particle));
     }
-    Value::Object(Rc::new(fields))
+    Value::Object(Rc::new(fields.into()))
 }
 
 fn is_class(value: &Value, class: &str) -> bool {

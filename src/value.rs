@@ -1,5 +1,195 @@
+use std::cell::OnceCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+
+/// Ordered object entries with an index belonging to this exact snapshot.
+/// Arbitrary mutable access invalidates it; value-only writes and appends
+/// maintain it without retaining another owner of the copy-on-write entries.
+/// Construct a `Value::Object` from a vector with
+/// `Value::Object(Rc::new(entries.into()))`; iterators can collect directly
+/// into `ObjectFields`. Read-only Vec access is unchanged through `Deref`.
+pub struct ObjectFields {
+    entries: Vec<(String, Value)>,
+    index: OnceCell<Box<FieldIndex>>,
+}
+
+struct FieldIndex {
+    positions: HashMap<String, usize>,
+    unique: bool,
+}
+
+impl ObjectFields {
+    const INDEX_MIN: usize = 32;
+
+    fn indexed(&self) -> &FieldIndex {
+        self.index.get_or_init(|| {
+            let mut positions = HashMap::with_capacity(self.entries.len());
+            let mut unique = true;
+            for (at, (key, _)) in self.entries.iter().enumerate() {
+                match positions.entry(key.clone()) {
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        entry.insert(at);
+                    }
+                    std::collections::hash_map::Entry::Occupied(_) => unique = false,
+                }
+            }
+            Box::new(FieldIndex { positions, unique })
+        })
+    }
+
+    #[inline]
+    pub(crate) fn position(&self, key: &str) -> Option<usize> {
+        if self.entries.len() < Self::INDEX_MIN {
+            return self.entries.iter().position(|(name, _)| name == key);
+        }
+        self.indexed().positions.get(key).copied()
+    }
+
+    #[inline]
+    pub(crate) fn field(&self, key: &str) -> Option<&Value> {
+        self.position(key).map(|at| &self.entries[at].1)
+    }
+
+    pub(crate) fn value_mut(&mut self, at: usize) -> &mut Value {
+        &mut self.entries[at].1
+    }
+
+    pub(crate) fn replace_all(&mut self, key: &str, value: &Value) -> bool {
+        if self.entries.len() >= Self::INDEX_MIN && self.indexed().unique {
+            if let Some(at) = self.position(key) {
+                self.entries[at].1 = value.clone();
+                return true;
+            }
+            return false;
+        }
+        let mut found = false;
+        for (name, old) in &mut self.entries {
+            if name == key {
+                *old = value.clone();
+                found = true;
+            }
+        }
+        found
+    }
+
+    pub fn push(&mut self, entry: (String, Value)) {
+        if let Some(index) = self.index.get_mut() {
+            match index.positions.entry(entry.0.clone()) {
+                std::collections::hash_map::Entry::Vacant(at) => {
+                    at.insert(self.entries.len());
+                }
+                std::collections::hash_map::Entry::Occupied(_) => index.unique = false,
+            }
+        }
+        self.entries.push(entry);
+    }
+}
+
+impl From<Vec<(String, Value)>> for ObjectFields {
+    fn from(entries: Vec<(String, Value)>) -> Self {
+        Self {
+            entries,
+            index: OnceCell::new(),
+        }
+    }
+}
+
+impl FromIterator<(String, Value)> for ObjectFields {
+    fn from_iter<T: IntoIterator<Item = (String, Value)>>(iter: T) -> Self {
+        Vec::from_iter(iter).into()
+    }
+}
+
+impl Clone for ObjectFields {
+    fn clone(&self) -> Self {
+        self.entries.clone().into()
+    }
+}
+
+impl fmt::Debug for ObjectFields {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.entries.fmt(f)
+    }
+}
+
+impl std::ops::Deref for ObjectFields {
+    type Target = Vec<(String, Value)>;
+    fn deref(&self) -> &Self::Target {
+        &self.entries
+    }
+}
+
+impl std::ops::DerefMut for ObjectFields {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.index.take();
+        &mut self.entries
+    }
+}
+
+#[cfg(test)]
+mod object_index_tests {
+    use super::*;
+
+    fn wide() -> ObjectFields {
+        (0..64)
+            .map(|i| (format!("k{i}"), Value::Number(i as f64)))
+            .collect()
+    }
+
+    #[test]
+    fn indexed_snapshots_survive_value_writes_appends_and_external_key_changes() {
+        let mut fields = Rc::new(wide());
+        assert_eq!(fields.field("k40"), Some(&Value::Number(40.0)));
+        let original = Rc::clone(&fields);
+        let edited = Rc::make_mut(&mut fields);
+        assert!(edited.replace_all("k40", &Value::Number(400.0)));
+        edited.push(("added".into(), Value::Number(65.0)));
+        assert_eq!(edited.field("added"), Some(&Value::Number(65.0)));
+        assert_eq!(original.field("k40"), Some(&Value::Number(40.0)));
+        assert_eq!(original.field("added"), None);
+        // Public Vec-style mutation can alter both positions and duplicates.
+        edited.swap(0, 40);
+        edited[1].0 = "k40".into();
+        assert_eq!(edited.field("k40"), Some(&Value::Number(400.0)));
+        edited.remove(0);
+        assert_eq!(edited.field("k40"), Some(&Value::Number(1.0)));
+        edited.retain(|(key, _)| key != "added");
+        assert_eq!(edited.field("added"), None);
+        assert_eq!(original.field("k0"), Some(&Value::Number(0.0)));
+    }
+
+    #[test]
+    fn duplicates_keep_first_reads_and_all_left_merge_positions() {
+        let mut fields = wide();
+        fields.push(("k40".into(), Value::Number(99.0)));
+        assert_eq!(fields.field("k40"), Some(&Value::Number(40.0)));
+        assert!(fields.replace_all("k40", &Value::Number(7.0)));
+        assert_eq!(fields[40].1, Value::Number(7.0));
+        assert_eq!(fields[64].1, Value::Number(7.0));
+        fields.push(("k40".into(), Value::Number(100.0)));
+        assert_eq!(fields.field("k40"), Some(&Value::Number(7.0)));
+        assert!(fields.replace_all("k40", &Value::Number(8.0)));
+        assert_eq!(fields[65].1, Value::Number(8.0));
+        fields.push(("".into(), Value::Number(5.0)));
+        fields.push(("日本語".into(), Value::Number(6.0)));
+        assert_eq!(fields.field(""), Some(&Value::Number(5.0)));
+        assert_eq!(fields.field("日本語"), Some(&Value::Number(6.0)));
+        assert_eq!(fields.field("missing"), None);
+    }
+
+    #[test]
+    fn indexed_objects_drop_deep_children_iteratively() {
+        let mut value = Value::Null;
+        for _ in 0..4000 {
+            let mut fields = wide();
+            fields.push(("child".into(), value));
+            assert_eq!(fields.field("k40"), Some(&Value::Number(40.0)));
+            value = Value::Object(Rc::new(fields));
+        }
+        drop(value);
+    }
+}
 
 /// Shared UTF-8 text with spare capacity for an exclusively held value.
 /// Cloning shares the bytes; writes detach before changing a shared string.
@@ -69,8 +259,8 @@ pub enum Value {
     Array(Rc<Vec<Value>>),
     /// Insertion-ordered `key: value` pairs. JSON doesn't mandate order, but
     /// preserving it makes output deterministic and matches what a person
-    /// wrote — a plain `Vec` is fine at this scale (linear key lookup).
-    Object(Rc<Vec<(String, Value)>>),
+    /// wrote. Large objects lazily index their keys without changing order.
+    Object(Rc<ObjectFields>),
 }
 
 /// Dropping a nested `Value` would otherwise recurse once per level: the

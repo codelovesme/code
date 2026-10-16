@@ -24,7 +24,9 @@ fn link_stmt(path: &str, alias: &str) -> Stmt {
 fn doubler_module(env: &mut Environment, name: &str) {
     env.provide_module(
         name,
-        Value::Object(Rc::new(vec![("answer".to_string(), Value::Number(42.0))])),
+        Value::Object(Rc::new(
+            vec![("answer".to_string(), Value::Number(42.0))].into(),
+        )),
         Rc::new(|particle: &Value| {
             let Value::Object(fields) = particle else {
                 return Ok(Value::Null);
@@ -86,10 +88,9 @@ fn dispatches_through_a_provided_closure() {
     // variables.
     assert_eq!(
         result.get("m"),
-        Some(Value::Object(Rc::new(vec![(
-            "answer".to_string(),
-            Value::Number(42.0)
-        )])))
+        Some(Value::Object(Rc::new(
+            vec![("answer".to_string(), Value::Number(42.0))].into()
+        )))
     );
 }
 

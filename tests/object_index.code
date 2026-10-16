@@ -1,4 +1,4 @@
-| The large-object index survives value changes and is dropped on new keys.
+| Large-object lookups survive value changes, appended keys and snapshots.
 o = { costarring = 7, liquid = 9 }
 i = 0
 loop
@@ -38,3 +38,71 @@ loop
 assert a["k20"] = 20
 a += b
 assert a = b
+
+| Large objects keep ordered fields and snapshots across indexed reads,
+| part writes, merges and iteration. Duplicate fields keep their old rules.
+counts = {}
+i = 0
+loop
+    if i = 96, break
+    counts += { "k$i" = i }
+    i += 1
+assert counts["k40"] = 40
+assert counts["absent"] = null
+
+snapshot = counts
+counts["k40"] = 400
+assert counts["k40"] = 400
+assert snapshot["k40"] = 40
+counts += { "k40" = 401, "added" = 100 }
+assert counts["k40"] = 401
+assert counts.added = 100
+assert snapshot["added"] = null
+names = []
+loop name, number over counts
+    names += name
+assert names[0] = "k0"
+assert names[40] = "k40"
+assert names[96] = "added"
+
+duplicate_key = "duplicate"
+counts += { duplicate = 7, "$duplicate_key" = 8 }
+assert counts.duplicate = 7
+duplicate_snapshot = counts
+counts += { duplicate = 9 }
+duplicate_total = 0
+loop name, number over counts
+    if name = duplicate_key
+        duplicate_total += number
+assert duplicate_total = 18
+assert duplicate_snapshot.duplicate = 7
+counts.duplicate = 1
+duplicate_total = 0
+loop name, number over counts
+    if name = duplicate_key
+        duplicate_total += number
+assert duplicate_total = 10
+
+| The first right-hand duplicate replaces an existing field; new duplicate
+| names both append in their written order.
+counts += { k20 = 11, "k20" = 12 }
+assert counts.k20 = 11
+counts += { "" = 31, "日本語" = 32 }
+assert counts[""] = 31
+assert counts["日本語"] = 32
+
+parent = { inner = counts }
+parent_snapshot = parent
+parent.inner["k40"] = 700
+assert parent.inner["k40"] = 700
+assert parent_snapshot.inner["k40"] = 401
+assert counts["k40"] = 401
+
+| A loop holds its original snapshot while the binding being walked changes.
+visited = 0
+loop name, number over snapshot
+    snapshot[name] = number + 1
+    visited += 1
+assert visited = 96
+assert snapshot["k40"] = 41
+assert counts["k40"] = 401

@@ -364,7 +364,7 @@ impl Expression {
                         };
                         object.push((key, values[*value].take().unwrap().into_owned()));
                     }
-                    (*dst, Cow::Owned(Value::Object(Rc::new(object))))
+                    (*dst, Cow::Owned(Value::Object(Rc::new(object.into()))))
                 }
                 Op::Text(dst, parts) => {
                     let mut text = String::new();
