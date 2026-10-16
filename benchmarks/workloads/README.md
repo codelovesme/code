@@ -89,6 +89,39 @@ The preceding comparison/group fusion trial was reverted: **328.491 ->
 [Rejected trial samples](interpreter-compare-stopped-results.json).
 No release was made.
 
+## Field-read experiment stopped (2026-10-16)
+
+After PR #53, a separate candidate combined `object.x` and `records[i].x`
+with a checked numeric read in the expression VM. Fifteen serial shuffled
+launches per mode, CPU 0, unchanged sources:
+
+| Workload | Before | Trial | Elapsed-time change |
+|---|---:|---:|---:|
+| points | 257.200 ms | 221.553 ms | -13.9% |
+| dictionary | 66.678 ms | 71.618 ms | +7.4% |
+| sum_squares | 325.612 ms | 325.659 ms | +0.0% |
+| binary_trees | 102.200 ms | 101.482 ms | -0.7% |
+| string_build | 12.856 ms | 13.002 ms | +1.1% |
+| spectral_norm (3 launches per mode) | 14.931 s | 15.101 s | +1.1% |
+
+**Reverted because the dictionary regression outweighed keeping this narrow
+candidate under the non-regression policy.** The points gain is rejected
+trial evidence, not the current implementation's speed. Its full-size points
+instruction count fell 1,891,401,617 -> 1,724,694,417 (8.8%). No object index,
+storage change, release or deployment was involved.
+
+Focused host-replacement and numeric/shapes/set_parts/loop fixtures passed,
+including missing/null fields, invalid indices, aliases, duplicate-field
+first-match semantics and string fallback. No crash or mode disagreement
+occurred. Full candidate workspace/wasm/app validation was not run after the
+performance stop. No field code, fixture or implementation PR remains;
+restored main keeps the verified PR #53 improvement above.
+
+[Rejected short-workload samples](interpreter-field-stopped-results.json) and
+[non-target spectral samples](interpreter-field-stopped-spectral-results.json).
+The local patch, extra fixture and frozen binaries are preserved under
+`/var/tmp/interpret-next/fields/` for a future independently profiled design.
+
 ## Interpreter numeric instruction fusion (2026-10-16, unreleased)
 
 Release-built interpreter CLIs, main `ac6cb6e` versus numeric arithmetic/write

@@ -1,0 +1,35 @@
+{
+  "stage": "fields",
+  "measured_at_utc": "2026-10-16T10:13:38+00:00",
+  "baseline_commit": "8c2ff80",
+  "cpu": 0,
+  "runs_per_mode": 3,
+  "command": "<CLI> run --interpret <source>",
+  "order": "serial fresh launches, deterministic shuffled order, no concurrent builds/tests/profiling",
+  "binary_sha256": {
+    "before": "77b002bd44a90f0bbf8d9ffcc2ef39ac3210d187eb2baf68a873ef063dc54534",
+    "after": "1609f27aa529b8afe9c1775968353b4b9fb82e5b08ca4808c08d539b082fc726"
+  },
+  "results": {
+    "spectral_norm": {
+      "samples_seconds": {
+        "before": [
+          14.899822389008477,
+          14.950820998987183,
+          14.930698501877487
+        ],
+        "after": [
+          14.899809485999867,
+          15.25102671282366,
+          15.10148776602
+        ]
+      },
+      "medians_seconds": {
+        "before": 14.930698501877487,
+        "after": 15.10148776602
+      },
+      "reduction_percent": -1.1438799338225003
+    }
+  },
+  "outcome": "Non-target check for the rejected field candidate; no implementation retained."
+}
