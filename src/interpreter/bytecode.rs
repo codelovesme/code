@@ -94,6 +94,9 @@ impl Compiler {
         match expr {
             NumberExpr::Literal(n) => Address::Constant(*n),
             NumberExpr::Slot { frame, number } => Address::Slot(*frame, *number),
+            NumberExpr::BoxedSlot { .. } | NumberExpr::Index { .. } => {
+                unreachable!("guarded reads use the expression VM")
+            }
             NumberExpr::Neg(value) => {
                 let src = self.address(value);
                 let dst = self.code.registers;
@@ -138,7 +141,7 @@ impl Compiler {
             Stmt::Assign {
                 name,
                 value: Expr::Number { fast, .. },
-            } => {
+            } if fast.scalar() => {
                 let action = self.action(stmt);
                 let group = self.code.ops.len();
                 self.code.ops.push(Op::Group {
@@ -171,7 +174,13 @@ impl Compiler {
             }
             Stmt::If { condition, body } => {
                 let branch;
-                if let Expr::NumberCompare { lhs, op, rhs, .. } = condition {
+                let scalar = match condition {
+                    Expr::NumberCompare { lhs, op, rhs, .. } if lhs.scalar() && rhs.scalar() => {
+                        Some((lhs, op, rhs))
+                    }
+                    _ => None,
+                };
+                if let Some((lhs, op, rhs)) = scalar {
                     let mut fallback = condition.clone();
                     lower_expr(&mut fallback);
                     let condition_id = self.code.conditions.len();

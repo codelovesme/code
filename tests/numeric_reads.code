@@ -1,0 +1,66 @@
+| Numeric reads retain their original null/bounds/errors and copy-on-write
+| behavior, including handler parameters and shared top-level numbers.
+offset = 3
+items = [2, 4, 8]
+kept = items
+position = 0
+loop
+    if position = 3, break
+    answer = items[position] * 2 + offset
+    assert answer = kept[position] * 2 + 3
+    position = position + 1
+items[0] = 9
+assert kept = [2, 4, 8]
+
+ReadNumber { values ∈ Array of Number, index ∈ Number } =>
+    loop
+        result = values[index] * 3 + offset
+        return ReadAnswer { value = result }
+
+emit ReadNumber { values = items, index = 0 } to this get first
+assert first.value = 30
+emit ReadNumber { values = items, index = -0 } to this get minus_zero
+assert minus_zero.value = 30
+emit ReadNumber { values = [], index = 0 } to this get empty
+assert empty ∈ Exception
+assert empty.message = "cannot apply '*' to a null and a number"
+emit ReadNumber { values = [2, null], index = 1 } to this get missing
+assert missing ∈ Exception
+assert missing.message = empty.message
+loop bad_index over [-1, 0.5, 3, 1000000000000000000000000000000]
+    emit ReadNumber { values = items, index = bad_index } to this get outside
+    assert outside ∈ Exception
+    assert outside.message = empty.message
+
+ReadNullable { values ∈ Array of Number, index ∈ Number } =>
+    loop
+        if values[index] = null
+            return Missing
+        return Present
+
+emit ReadNullable { values = items, index = 30 } to this get absent
+assert absent ∈ Missing
+emit ReadNullable { values = items, index = 1 } to this get present
+assert present ∈ Present
+
+| A failed indexed read must not commit a partial assignment to shared state.
+saved = 17
+FailedRead { values ∈ Array of Number } =>
+    zero = 0
+    loop
+        saved = values[0] + 1 / zero
+        break
+    return Unexpected
+
+emit FailedRead { values = [null] } to this get failed
+assert failed ∈ Exception
+assert failed.message = "division by zero"
+assert saved = 17
+
+| Numeric values returned through ordinary expressions still keep aliases.
+emit ReadNumber { values = items, index = 1 } to this get held
+offset = 5
+items[1] = 10
+assert held.value = 15
+emit ReadNumber { values = items, index = 1 } to this get later
+assert later.value = 35

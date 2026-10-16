@@ -58,9 +58,46 @@ pub(super) enum FieldKey {
 #[derive(Debug, Clone)]
 pub(super) enum NumberExpr {
     Literal(f64),
-    Slot { frame: usize, number: usize },
+    Slot {
+        frame: usize,
+        number: usize,
+    },
+    BoxedSlot {
+        frame: usize,
+        slot: usize,
+    },
+    Index {
+        frame: usize,
+        slot: usize,
+        index: Box<NumberExpr>,
+    },
     Neg(Box<NumberExpr>),
     Binary(Box<NumberExpr>, NumberOp, Box<NumberExpr>),
+}
+impl NumberExpr {
+    fn single_boxed_operation(&self) -> bool {
+        let atom = |value: &Self| {
+            matches!(
+                value,
+                Self::Literal(_) | Self::Slot { .. } | Self::BoxedSlot { .. }
+            )
+        };
+        match self {
+            Self::Binary(lhs, _, rhs) => atom(lhs) && atom(rhs) && (!lhs.scalar() || !rhs.scalar()),
+            Self::Neg(value) => matches!(&**value, Self::BoxedSlot { .. }),
+            _ => false,
+        }
+    }
+    /// The block VM keeps its original scalar-only dispatch loop. Guarded
+    /// value/container reads run in the expression VM instead.
+    pub fn scalar(&self) -> bool {
+        match self {
+            Self::Literal(_) | Self::Slot { .. } => true,
+            Self::Neg(value) => value.scalar(),
+            Self::Binary(lhs, _, rhs) => lhs.scalar() && rhs.scalar(),
+            Self::BoxedSlot { .. } | Self::Index { .. } => false,
+        }
+    }
 }
 #[derive(Debug, Clone, Copy)]
 pub(super) enum NumberOp {
@@ -232,9 +269,32 @@ impl Resolver {
                     .contains(&(e as *const ast::Expr as usize)) =>
             {
                 let binding = self.lookup(name)?;
-                NumberExpr::Slot {
+                if let Some(number) = binding.number {
+                    NumberExpr::Slot {
+                        frame: binding.frame,
+                        number,
+                    }
+                } else {
+                    NumberExpr::BoxedSlot {
+                        frame: binding.frame,
+                        slot: binding.slot,
+                    }
+                }
+            }
+            ast::Expr::Index(base, index)
+                if self
+                    .inferred
+                    .numbers
+                    .contains(&(e as *const ast::Expr as usize)) =>
+            {
+                let ast::Expr::Ident(name) = &**base else {
+                    return None;
+                };
+                let binding = self.lookup(name)?;
+                NumberExpr::Index {
                     frame: binding.frame,
-                    number: binding.number?,
+                    slot: binding.slot,
+                    index: Box::new(self.number(index)?),
                 }
             }
             ast::Expr::Unary(UnOp::Neg, value) => NumberExpr::Neg(Box::new(self.number(value)?)),
@@ -257,7 +317,22 @@ impl Resolver {
         if matches!(e, ast::Expr::Number(_)) {
             return self.plain_expr(e, false);
         }
+        // A list element already borrows its payload. Only arithmetic and
+        // comparisons need a guarded read into a numeric register.
+        if matches!(e, ast::Expr::Index(..)) {
+            return self.plain_expr(e, true);
+        }
+        if matches!(e, ast::Expr::Ident(name) if self.scopes.iter().rev().find_map(|s| s.get(name)).is_some_and(|b| b.number.is_none()))
+        {
+            return self.plain_expr(e, false);
+        }
         if let Some(fast) = self.number(e) {
+            // One operation on borrowed boxed numbers is already cheap. A
+            // numeric register round trip adds guards and boxes it again.
+            // Larger expressions and guarded container reads amortize that work.
+            if fast.single_boxed_operation() {
+                return self.plain_expr(e, true);
+            }
             return Expr::Number {
                 fast,
                 fallback: Box::new(self.plain_expr(e, false)),
