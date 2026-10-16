@@ -76,6 +76,9 @@ debug/release builds and the wasm32 interpreter build passed. Host callback
 coverage checks null, NaN/infinite/negative/fractional/large indices, container
 replacement, dynamic string addition, failed writes, and shared boxed bindings.
 The expanded fixtures also cover aliases and evaluation/error order.
+Both numeric fixtures passed in the fresh wasm interpreter, all 145 playground
+examples and all 70 app fixtures in three modes passed, and both PR CI jobs
+passed. [PR #53](https://github.com/codelovesme/code/pull/53) merged as `1558212`.
 
 Raw samples, hashes and profile totals:
 [short workloads](interpreter-numeric-reads-results.json),
