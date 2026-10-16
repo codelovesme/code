@@ -69,7 +69,10 @@ The longer non-target check is recorded in
 
 Full workspace tests, clippy with warnings denied, Rust/fixture formatting,
 the wasm32 interpreter build, the expanded numeric fixture in that fresh engine,
-and all 144 playground examples passed. Regression coverage includes dynamic
+all 144 playground examples and all 70 application fixtures in
+interpret/dev/release modes passed. Both PR CI jobs passed;
+[PR #52](https://github.com/codelovesme/code/pull/52) merged as `65975d5`.
+Temporary app-test module links were removed. Regression coverage includes dynamic
 host replacements on either operand, nested-expression fallback, noncommutative
 operations, rounding and failed writes leaving the destination unchanged.
 
