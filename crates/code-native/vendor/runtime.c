@@ -820,7 +820,7 @@ void code_field(CodeValue *out, const CodeValue *obj, const char *field) {
  * exactly. */
 /* The byte offset of character `n` in a UTF-8 string, or the offset of the
  * terminator when the string is shorter. Characters, not bytes, everywhere a
- * string is measured or cut — `strlen` reported 6 for "héllo", and `Length`
+ * string is measured or cut — `strlen` reported 6 for "héllo", and text Length
  * has counted codepoints since it shipped. */
 static size_t char_offset(const char *s, long long n) {
     size_t i = 0;
@@ -855,7 +855,7 @@ void code_length_of(CodeValue *out, const CodeValue *value) {
         return;
     }
     if (value->tag == CODE_STR) {
-        /* Characters, not bytes — the same continuation-byte count `Length`
+        /* Characters, not bytes — the same continuation-byte count text Length
          * uses, and for the same reason. */
         long long chars = 0;
         for (const char *p = value->str; *p; p++) {
@@ -994,7 +994,7 @@ void code_index(CodeValue *out, const CodeValue *arr, const CodeValue *index) {
  * operand-type rules.
  *
  * A future handler that returns *part of* its input (rather than a fresh
- * Number/Str/Array/Object, as `Length` always does) would need to
+ * Number/Str/Array/Object, as index-context length does) would need to
  * `code_retain` that piece before it can safely end up in `out` — nothing
  * here does that today, so this is a note for whoever adds the next one,
  * not a currently-exercised path. */
@@ -1081,7 +1081,7 @@ const CodeValue *code_index_ref(CodeValue *scratch, const CodeValue *arr, const 
  * rather than a raw struct copy for `value` for the same reason the doc
  * comment above `find_field` flags: a future handler whose result owns a
  * heap block needs it retained, and `code_copy` does that for free even
- * though `Length`'s `value` here never does. */
+ * though the clock queries here never do. */
 static void code_make_result(CodeValue *out, const char *class_name, const CodeValue *value) {
     const char *keys[2] = {"_class", "value"};
     _Alignas(8) char slots[2 * CODE_VALUE_SLOT_SIZE] = {0};
@@ -1090,7 +1090,7 @@ static void code_make_result(CodeValue *out, const char *class_name, const CodeV
     code_object(out, keys, slots, 2);
     /* `code_object` retained its own copy of each slot; these scratch ones
      * are done being needed the moment it returns. Harmless no-ops for
-     * `Length` (`slots[0]` is a literal, `slots[1]` a Number — neither ever
+     * the clock queries (`slots[0]` is a literal, `slots[1]` a Number — neither is ever
      * `heap`), but load-bearing the moment a handler's `value` argument (see
      * this function's doc comment above `code_core_dispatch`) is itself
      * heap-owned: without this, that caller's own reference to `value`
@@ -1217,57 +1217,6 @@ void code_core_dispatch(CodeValue *out, const CodeValue *particle) {
     #endif
         code_make_result(out, "TimezoneOffsetResult", &off);
         code_release(&off);
-        return;
-    }
-
-    if (strcmp(class_val->str, "Length") == 0) {
-        /* A field the particle does not carry is null — the same answer
-         * `.field` gives — so there is no separate "you didn't supply it"
-         * case to report. Emitting a particle is not a form to be validated
-         * before the handler may run: `Length { }` means `Length { "value":
-         * null }`, and null has no length, which is what the type check below
-         * says. (Owner's rule, 2026-08-28; `net` was rewritten around it in
-         * phase 2 and this is core catching up.) */
-        static const CodeValue absent = {.tag = CODE_NULL};
-        const CodeValue *value = find_field(particle, "value");
-        if (!value) {
-            value = &absent;
-        }
-        /* Zero-initialized for the same reason `code_make_result`'s `slots`
-         * is: `code_number` releases `out` before setting it. */
-        CodeValue count = {0};
-        if (value->tag == CODE_ARRAY) {
-            code_number(&count, (double)LEN(value));
-            code_make_result(out, "LengthResult", &count);
-            return;
-        }
-        if (value->tag == CODE_STR) {
-            /* Characters, not bytes: `strlen` reported 6 for "héllo".
-             * Counting the bytes that are not UTF-8 continuation bytes
-             * (0b10xxxxxx) counts codepoints, which is what `chars().count()`
-             * gives on the interpreter side — the two must agree. */
-            long long chars = 0;
-            for (const char *p = value->str; *p; p++) {
-                if (((unsigned char)*p & 0xC0) != 0x80) {
-                    chars++;
-                }
-            }
-            code_number(&count, (double)chars);
-            code_make_result(out, "LengthResult", &count);
-            return;
-        }
-        /* Core answers rather than unwinding its caller, the same as a
-         * module and the same as a handler written in the language: `core` is
-         * a recipient like any other, so `emit Length { } to core get r`
-         * binds `r` instead of ending the frame that emitted (2026-08-28).
-         *
-         * Only failures from *here* — after the particle has been accepted
-         * and dispatched — answer this way. A malformed emit (`emit 5 to
-         * core`) is the emitting frame's own mistake and still fails there,
-         * exactly as `emit 5 to this` does. */
-        char msg[192];
-        operand_message(msg, sizeof msg, "Length requires an array or string 'value'", value);
-        code_make_exception(out, "core", msg, NULL);
         return;
     }
 

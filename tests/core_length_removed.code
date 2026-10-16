@@ -1,0 +1,24 @@
+| Length lives in modules. Core's unhandled-class rule is still null.
+link "native_modules/arrays.so" as arrays
+link "native_modules/strings.so" as strings
+loop value over [[], "", {}, null, 0, false, [1, 2], "a😀é"]
+    emit Length { value = value } to core get old
+    assert old = null
+emit Length to core get missing
+assert missing = null
+emit Length { value = [1, 2, 3] } to arrays get count
+assert count = LengthResult { value = 3 }
+emit Length { value = "a😀é" } to strings get size
+assert size = LengthResult { value = 3 }
+items = [7, 8, 9]
+assert items[length - 1] = 9
+assert items[0, length) = items
+text = "a😀é"
+assert text[length - 1] = "é"
+assert text[0, length) = text
+emit Linked to core get linked
+assert linked.value = false
+emit Timestamp to core get timestamp
+assert timestamp ∈ TimestampResult
+emit TimezoneOffset to core get offset
+assert offset ∈ TimezoneOffsetResult

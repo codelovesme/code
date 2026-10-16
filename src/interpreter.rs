@@ -2164,35 +2164,6 @@ fn dispatch_core(particle: &Value) -> Result<Value, String> {
             // `today` stay out of it.
             Ok(core_result("TimezoneOffsetResult", tz_offset_minutes()))
         }
-        // A field the particle does not carry is null — the same answer
-        // `.field` gives — so an absent `value` is not a separate case to
-        // report. Emitting a particle is not a form to be validated before
-        // the handler may run: `Length { }` means `Length { value = null }`,
-        // and null has no length. Must match runtime.c's `Length` arm.
-        "Length" => match fields
-            .iter()
-            .find(|(k, _)| k == "value")
-            .map_or(&Value::Null, |(_, v)| v)
-        {
-            Value::Array(items) => Ok(core_result("LengthResult", items.len() as f64)),
-            // Characters, not bytes — `len()` reported 6 for "héllo". Must
-            // match runtime.c's continuation-byte count exactly.
-            Value::Str(s) => Ok(core_result("LengthResult", s.chars().count() as f64)),
-            // Core answers rather than unwinding its caller, the same as a
-            // module and the same as a handler written in the language:
-            // `core` is a recipient like any other, so `emit Length { } to
-            // core get r` binds `r` instead of ending the frame that emitted
-            // (2026-08-28). Must match runtime.c's `Length` arm.
-            //
-            // Only failures from *here* answer this way. A malformed emit
-            // (`emit 5 to core`) is the emitting frame's own mistake and
-            // still fails there, exactly as `emit 5 to this` does — which is
-            // why the two checks above this still return `Err`.
-            v => Ok(exception(format!(
-                "Length requires an array or string 'value', found {}",
-                a_type_name(v)
-            ))),
-        },
         // Not a core class. Null, for the same reason `dispatch_handler`
         // gives one — core is a recipient like any other.
         _ => Ok(Value::Null),
