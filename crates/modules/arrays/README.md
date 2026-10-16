@@ -58,7 +58,7 @@ cannot round-trip as numbers. This module does not change that boundary; parity
 contracts apply to finite JSON values with unique object keys. Number validation
 also rejects direct non-finite ABI/JavaScript sort keys and numeric operands.
 
-Core Length remains compatible for arrays/strings; arrays.Length is the
-array-specific entry point. Link arrays in both a guest and its browser shell,
+Length now lives in arrays for lists and strings for text. Core Length is
+removed in unreleased source; index-context length remains in the language. Link arrays in both a guest and its browser shell,
 then rebuild the compiler/generated host after changing page.mjs. These source
 additions are not yet published module assets; no app migration is included.

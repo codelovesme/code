@@ -815,8 +815,9 @@ Round ties away from zero. Read `crates/modules/math/README.md` for contracts.
 Length; successful ASCII case/trim and single-scalar separators stay compatible.
 New stateless `time` provides Timestamp (whole Unix seconds) and TimezoneOffset
 (minutes east of UTC). Keep `timer` separate: Delay/Cancel own pending work.
-Core's existing Timestamp/TimezoneOffset/Length remain compatibility entry
-points; no handler removal or new arrays module occurred. The generated wasm
+At that stage core Timestamp/TimezoneOffset/Length remained compatible;
+At that stage no handler was removed and no arrays module existed.
+Ticket 130 below now removes Length. The generated wasm
 host now floors its core timestamp too, correcting its former fractional-
 second disagreement with native/interpreter and the documented contract.
 
@@ -854,7 +855,8 @@ New stateless arrays has Length, structural Contains/IndexOf/Unique, Reverse,
 clamped Slice (same start/end rules as strings), stable Sort (homogeneous finite
 numbers or Unicode-scalar string keys, optional by/descending), and numeric
 Sum/Min/Max. Input is value; search item defaults to null like Code field
-access. Empty Sum is 0, empty Min/Max null. Core Length remains compatible.
+access. Empty Sum is 0, empty Min/Max null. The initial core Length compatibility
+was superseded by ticket 130 below.
 Native uses core values_equal; browser comparison is iterative and object
 field-order independent. Read crates/modules/arrays/README.md for contracts,
 quadratic Unique cost and existing JSON transport limits. All transformed
@@ -862,6 +864,23 @@ arrays preserve Code input snapshots. New install/release/browser wiring is
 present, but no public module artifact, shell or application migration follows
 from merging source. Tests instantiate real wasm archives/generated hosts in
 Node; they do not constitute live browser deployment verification.
+
+
+## Length leaves core (ticket 130, unreleased breaking change)
+
+Core now handles Timestamp, TimezoneOffset and Linked. Length belongs to
+arrays (lists) and strings (Unicode scalar count). Old Length particles to
+core return null via the normal unhandled-class rule; there is no hidden
+compatibility dispatcher. Index-context length and code_length_of remain
+language/runtime primitives, including their optimized paths; ABI stays 2.
+
+Source fixtures/examples, CLI scaffold, wasm smoke and consumers in Euglena/
+apps are migrated. Trace fixtures observe container contents directly so
+measuring a trace does not add module interactions; core-boundary tests use
+Linked. The standalone string_build workload checks exact last/first-absent
+indices instead of importing a module; historical timings predate that check.
+Shared utility tests can bundle multiple real archives/generated host halves.
+Old release assets still carry their old API: this work does not publish a tag.
 
 ## Releases
 

@@ -11,7 +11,7 @@ Three tiers, distinguished by *where the bytes live*:
 
 | tier | what | how users get it |
 |---|---|---|
-| **core** | `Length` (shipped), `Timestamp` | compiled into the `code` binary — nothing to install, works everywhere including the wasm playground |
+| **core** | `Timestamp`, `TimezoneOffset`, `Linked` | compiled into the `code` binary — nothing to install, works everywhere including the wasm playground |
 | **first-party modules** | `console`, `canvas`, `math`, `strings`, `env`, `http_client`, `http_server`, `net_client`, `net_server`, `searchxng`, `api_registry`, … | native: GitHub Releases + `code install <name>`; browser: npm |
 | **community modules** | anyone's | the author publishes to *their own* GitHub Releases (a template repo provides the CI); consumers install by URL first, by name once an index exists |
 
@@ -637,3 +637,12 @@ clamped Slice, stable Sort (numbers/Unicode strings or a named object field),
 and numeric Sum/Min/Max. Native/browser implementations share fixtures;
 `crates/modules/arrays/README.md` records contracts and JSON transport limits.
 Core Length remains compatible. No release, app migration or shell rollout.
+
+### Length leaves core (ticket 130, unreleased breaking change)
+
+Use arrays.Length for lists and strings.Length for text. The core Length
+handler is removed in interpreter and compiled runtime; sending it to core now
+answers null under the normal unhandled-class rule. Index-context length stays
+a language primitive, and native ABI version 2 is unchanged. Migrate aliases,
+module pins and guest-hosting shell offers together. Prior 127–129 compatibility
+notes describe those earlier stages, not the post-130 handler set.
