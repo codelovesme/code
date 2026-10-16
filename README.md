@@ -1750,6 +1750,7 @@ running inside another in a browser — the same two questions a machine host
 answers, where there is no dlopen and a container stands in for a process;
 see [its README](crates/modules/guest/README.md)),
 `math` (numeric utilities — see [its README](crates/modules/math/README.md)),
+`arrays` (array utilities — see [its README](crates/modules/arrays/README.md)),
 `strings` (text utilities — see [its README](crates/modules/strings/README.md)),
 `time` (stateless clock queries, separate from timer — see
 [its README](crates/modules/time/README.md)),
@@ -1996,7 +1997,7 @@ crates/
   code-native/  the crate for writing native modules in Rust (crates.io)
   code-lsp/     diagnostics, semantic tokens and formatting, over the real
                 lexer/parser and the same `code format` the CLI runs
-  modules/      first-party modules: console, canvas, dom, guest, math, strings, time, env, json,
+  modules/      first-party modules: console, canvas, dom, guest, math, strings, arrays, time, env, json,
                 json_store, crypto, uuid, jwt, markdown, fs, process, git, mailer,
                 azure_mailer,
                 oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,
