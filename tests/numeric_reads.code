@@ -64,3 +64,34 @@ items[1] = 10
 assert held.value = 15
 emit ReadNumber { values = items, index = 1 } to this get later
 assert later.value = 35
+
+| Long guarded expressions exercise both register banks. A late miss must
+| keep the earlier result and destination alive, then allow the next call.
+LongRead { values ∈ Array of Number } =>
+    loop
+        total = values[0] + values[1] + values[2] + values[3] + values[4] + values[5] + values[6] + values[7] + values[8]
+        return LongAnswer { value = total }
+
+long_items = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+emit LongRead { values = long_items } to this get long_first
+assert long_first.value = 45
+long_items[8] = null
+emit LongRead { values = long_items } to this get long_failed
+assert long_failed ∈ Exception
+assert long_failed.message = "cannot apply '+' to a number and a null"
+assert long_first.value = 45
+long_items[8] = 10
+emit LongRead { values = long_items } to this get long_later
+assert long_later.value = 46
+
+BalancedRead { values ∈ Array of Number } =>
+    loop
+        balanced = (values[0] + values[1]) * ((values[2] + values[3]) * (values[4] + values[5]))
+        indexed = values[values[0] + values[0]] + -(values[1] * (values[2] + values[3]))
+        if (values[0] + values[1]) * values[2] < values[3] * (values[4] + values[5])
+            return BalancedAnswer { balanced = balanced, indexed = indexed }
+        return Unexpected
+
+emit BalancedRead { values = [1, 2, 3, 4, 5, 6] } to this get balanced_read
+assert balanced_read.balanced = 231
+assert balanced_read.indexed = -11

@@ -61,7 +61,7 @@ enum Op {
     NumberValue(usize, numeric::Address),
     Compare(usize, BinOp, numeric::Address, numeric::Address, usize),
     Jump(usize),
-    Copy(usize, usize),
+    Fallback(usize, Box<Expression>),
 }
 impl Expression {
     pub fn lower(expr: &Expr) -> Self {
@@ -80,14 +80,22 @@ impl Expression {
         self.values += 1;
         n
     }
-    fn number(&mut self, expr: &NumberExpr, patches: &mut Vec<usize>) -> numeric::Address {
+    fn number_register(&mut self, base: usize) -> usize {
+        self.numbers = self.numbers.max(base + 1);
+        base
+    }
+    fn number(
+        &mut self,
+        expr: &NumberExpr,
+        patches: &mut Vec<usize>,
+        base: usize,
+    ) -> numeric::Address {
         use numeric::Address;
         match expr {
             NumberExpr::Literal(n) => Address::Constant(*n),
             NumberExpr::Slot { frame, number } => {
                 // A single read still needs a guard before the result is boxed.
-                let dst = self.numbers;
-                self.numbers += 1;
+                let dst = self.number_register(base);
                 patches.push(self.ops.len());
                 self.ops.push(Op::Number {
                     dst,
@@ -97,8 +105,7 @@ impl Expression {
                 Address::Register(dst)
             }
             NumberExpr::BoxedSlot { frame, slot } => {
-                let dst = self.numbers;
-                self.numbers += 1;
+                let dst = self.number_register(base);
                 patches.push(self.ops.len());
                 self.ops.push(Op::ReadNumber {
                     dst,
@@ -108,9 +115,8 @@ impl Expression {
                 Address::Register(dst)
             }
             NumberExpr::Index { frame, slot, index } => {
-                let index = self.number(index, patches);
-                let dst = self.numbers;
-                self.numbers += 1;
+                let index = self.number(index, patches, base);
+                let dst = self.number_register(base);
                 patches.push(self.ops.len());
                 self.ops.push(Op::ReadNumber {
                     dst,
@@ -120,17 +126,19 @@ impl Expression {
                 Address::Register(dst)
             }
             NumberExpr::Neg(value) => {
-                let rhs = self.number(value, patches);
-                let dst = self.numbers;
-                self.numbers += 1;
+                let rhs = self.number(value, patches, base);
+                let dst = self.number_register(base);
                 self.ops.push(Op::Neg(dst, rhs));
                 Address::Register(dst)
             }
             NumberExpr::Binary(lhs, op, rhs) => {
-                let lhs = self.number(lhs, patches);
-                let rhs = self.number(rhs, patches);
-                let dst = self.numbers;
-                self.numbers += 1;
+                // Each subtree's intermediate registers are dead once its
+                // result is read. Keep the left result while evaluating the
+                // right, then reuse the first register for their answer.
+                let lhs = self.number(lhs, patches, base);
+                let rhs_base = base + usize::from(matches!(lhs, Address::Register(_)));
+                let rhs = self.number(rhs, patches, rhs_base);
+                let dst = self.number_register(base);
                 patches.push(self.ops.len());
                 self.ops.push(Op::Arithmetic {
                     dst,
@@ -159,7 +167,7 @@ impl Expression {
         let op = match expr {
             Expr::Number { fast, fallback } => {
                 let mut patches = Vec::new();
-                let n = self.number(fast, &mut patches);
+                let n = self.number(fast, &mut patches, 0);
                 self.ops.push(Op::NumberValue(dst, n));
                 let jump = self.ops.len();
                 self.ops.push(Op::Jump(0));
@@ -175,8 +183,9 @@ impl Expression {
                 fallback,
             } => {
                 let mut patches = Vec::new();
-                let lhs = self.number(lhs, &mut patches);
-                let rhs = self.number(rhs, &mut patches);
+                let lhs = self.number(lhs, &mut patches, 0);
+                let rhs_base = usize::from(matches!(lhs, numeric::Address::Register(_)));
+                let rhs = self.number(rhs, &mut patches, rhs_base);
                 let compare = self.ops.len();
                 self.ops.push(Op::Compare(dst, *op, lhs, rhs, 0));
                 let jump = self.ops.len();
@@ -268,9 +277,11 @@ impl Expression {
         dst
     }
     fn value_into(&mut self, expr: &Expr, dst: usize) {
-        let source = self.value(expr);
-        // Move the result into the caller's register.
-        self.ops.push(Op::Copy(dst, source));
+        // Generic guards rarely fail. Keep their registers in a separate
+        // program so successful numeric reads do not allocate, initialize or
+        // drop a bank of unused boxed temporaries on every evaluation.
+        self.ops
+            .push(Op::Fallback(dst, Box::new(Self::lower(expr))));
     }
     pub fn run<'a>(&'a self, state: &'a State) -> Result<Cow<'a, Value>, String> {
         let mut small: [Option<Cow<'a, Value>>; 8] = std::array::from_fn(|_| None);
@@ -326,7 +337,7 @@ impl Expression {
                     };
                     (*dst, value)
                 }
-                Op::Copy(dst, source) => (*dst, values[*source].take().unwrap()),
+                Op::Fallback(dst, expression) => (*dst, expression.run(state)?),
                 Op::Array(dst, items) => (
                     *dst,
                     Cow::Owned(Value::Array(Rc::new(
