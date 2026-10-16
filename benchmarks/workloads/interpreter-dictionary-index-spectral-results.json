@@ -1,0 +1,36 @@
+{
+  "stage": "dictionary-index",
+  "measured_at_utc": "2026-10-16T14:08:17+00:00",
+  "baseline_commit": "6dfc002",
+  "cpu": 0,
+  "runs_per_mode": 3,
+  "command": "<CLI> run --interpret <source>",
+  "order": "serial fresh launches, deterministic shuffled order, no concurrent builds/tests/profiling",
+  "binary_sha256": {
+    "before": "9290e78fe8dfed3e22788fac6090fb543a8536b8e2beee2b300f7fad23709df3",
+    "after": "2e92f79e99f04eeaad95cc8f42a67a34b7d397f7702d39097a896ee01fd82932"
+  },
+  "results": {
+    "spectral_norm": {
+      "samples_seconds": {
+        "before": [
+          12.650657288962975,
+          12.580685817170888,
+          12.690779930911958
+        ],
+        "after": [
+          12.361456837970763,
+          12.380776306148618,
+          12.400216728914529
+        ]
+      },
+      "medians_seconds": {
+        "before": 12.650657288962975,
+        "after": 12.380776306148618
+      },
+      "reduction_percent": 2.1333356571900275
+    }
+  },
+  "implementation_commit": "09861d3",
+  "variant": "object-owned lazy index, threshold 32 fields"
+}

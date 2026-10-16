@@ -30,6 +30,62 @@ and records raw launch times in `results.csv` and medians/ratios in
 Use `--output-dir` to keep an experimental run separate from the published
 results.
 
+## Interpreter object-owned indices (2026-10-16, unreleased)
+
+Against main `6dfc002`, implementation `09861d3`: ordered object entries now
+own optional lazy index metadata. Objects below 32 fields keep linear scans;
+larger objects index first positions on demand. Value-only writes preserve the
+index, appends extend it, arbitrary mutable entry access invalidates it, and
+copy-on-write clones start with a fresh index. Duplicate reads still select the
+first occurrence; merges still replace every matching left occurrence with
+the first matching right value and preserve order/new duplicates. No weak
+owners, pointer-identity cache or new unsafe code.
+
+Release-built full CLIs, explicit `run --interpret`, CPU 0, serial shuffled
+fresh launches including startup/parsing/lowering. Original workload sources
+and assertions are unchanged. No concurrent builds/tests/profiling during
+timing. The final rebuilt binary was remeasured after documentation edits
+changed its hash. Medians of 15 launches per mode, except full spectral (three):
+
+| Workload | Before | After | Elapsed-time change |
+|---|---:|---:|---:|
+| dictionary | 67.546 ms | 23.275 ms | -65.5% |
+| sum_squares | 327.660 ms | 328.732 ms | +0.3% |
+| binary_trees | 102.869 ms | 104.192 ms | +1.3% |
+| string_build | 12.996 ms | 12.626 ms | -2.8% |
+| points | 249.918 ms | 250.317 ms | +0.2% |
+| spectral_norm | 12.651 s | 12.381 s | -2.1% |
+
+**Dictionary uses 65.5% less time (2.90x faster)**, above the 10% target gate.
+The small tree cost is reported rather than called zero. Other small changes
+are not additional target wins. Raw data and binary hashes:
+`interpreter-dictionary-index-results.json` and
+`interpreter-dictionary-index-spectral-results.json`.
+
+Full unchanged dictionary Callgrind: **609,823,480 -> 151,841,840 instructions
+(-75.1%)**. Before: merge_object_into 24.53%, index_operand 9.46%, and an unnamed
+libc routine called by the key scans 43.87% of self instructions. These are
+instruction shares/counts, not CPU-time shares. Profiles and preliminary
+variants remain in `/var/tmp/interpret-next/dictionary-index/`.
+
+Tradeoffs: a native Rust layout probe gives ObjectFields 32 bytes versus the
+previous Vec's 24 bytes (8 bytes per object, including small objects); indexed
+objects additionally allocate a table and cloned key strings. First access to
+a large object pays to build that table. Rust embedders constructing objects
+from a vector use `Value::Object(Rc::new(entries.into()))`; iterator collect
+can infer ObjectFields directly. This is a Rust source API adaptation; the
+language's six kinds, order, JSON and native module C ABI are unchanged.
+
+Local validation passes: workspace debug/release builds, `cargo test --workspace`,
+clippy with warnings denied, Rust/fixture formatting, wasm32 build, 145
+playground examples and all 70 app
+fixtures in interpreter/dev/release. Tests cover aliases, duplicate ordering,
+same-FNV distinct names, external Vec-style swaps/renames/removals, 256 random
+wide merges checked against generic addition, and iterative teardown through
+4,000 indexed object levels. Fresh Aquarium release wasm is byte-identical:
+901,255 bytes, SHA-256
+`d923e206e787ed895e9718bb94a151ad1d68e80931d7c0aec309ef187d74b36e`.
+
 ## Expression temporary buffers (2026-10-16, unreleased)
 
 Against main `02a8c25`: successful numeric expressions keep their generic
