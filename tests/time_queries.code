@@ -14,8 +14,6 @@ assert local.value ≥ - 1440
 assert local.value ≤ 1440
 emit UnknownClock to time get unknown
 assert unknown = null
-emit Length { value = [1, 2, 3] } to core get array_length
-assert array_length.value = 3
 
 ClockSnapshot =>
     emit Timestamp to core get core_time

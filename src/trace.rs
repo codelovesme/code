@@ -510,8 +510,8 @@ mod tests {
     /// boundary marked as nested.
     #[test]
     fn records_emit_boundaries_in_call_order() {
-        let source = "Greet { who } =>\n    emit Length { value = who } to core get n\n    \
-                      return Greeting { size = n.value }\n\nemit Greet { who = \"abc\" } to this\n";
+        let source = "Greet { who } =>\n    emit Linked to core get n\n    \
+                      return Greeting { size = 3 }\n\nemit Greet { who = \"abc\" } to this\n";
         let recorder = Rc::new(Recorder::new());
         let env = interpreter::Environment::default();
         env.record_trace(Rc::clone(&recorder));
@@ -526,7 +526,7 @@ mod tests {
             events[0].answer.to_string(),
             "{\"_class\":\"Greeting\",\"size\":3}"
         );
-        assert_eq!(events[1].particle_class, "Length");
+        assert_eq!(events[1].particle_class, "Linked");
         assert_eq!(events[1].target, "core");
         assert_eq!(events[1].depth, 1, "a nested boundary records its depth");
         assert!(is_replayable(&events[0]));

@@ -14,7 +14,11 @@ Tick { value } =>
 | it causes are each a root from `ev`.
 emit Start { value = 3 } to ev
 
-emit Length { value = traces } to core get count
+count = { value = 0 }
+
+loop length_probe_item over traces
+
+    count.value += 1
 assert count.value = 4
 assert traces[0].from = "this"
 assert traces[0].class = "Start"

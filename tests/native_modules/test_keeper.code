@@ -33,5 +33,7 @@ RecallText =>
 RecallWhole =>
     if last_whole = null
         return Recalled { subject = "", count = 0 }
-    emit Length { value = last_whole.added } to core get n
+    n = { value = 0 }
+    loop added_item over last_whole.added
+        n.value += 1
     return Recalled { subject = last_whole.added[0].subject, count = n.value }

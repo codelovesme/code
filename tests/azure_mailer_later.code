@@ -1,3 +1,4 @@
+link "native_modules/arrays.so" as length_arrays
 | A held worker must never block on a mail transport. A refused loopback
 | request is enough to prove the async result and its correlation id.
 link "native_modules/azure_mailer.so" as mail
@@ -20,7 +21,7 @@ assert sent.value ∈ Number
 spins = 0
 loop
     spins += 1
-    emit Length { value = arrived } to core get n
+    emit Length { value = arrived } to length_arrays get n
     if n.value = 1
         break
     if spins > 4000000

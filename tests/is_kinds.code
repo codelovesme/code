@@ -1,3 +1,4 @@
+link "native_modules/arrays.so" as length_arrays
 | `is` asks one of two questions, told apart by the name: which of the six
 | kinds a value is, or what a particle is tagged.
 assert 3 ∈ Number
@@ -27,7 +28,7 @@ assert not (reply ∈ Request)
 assert not ({ a = 1 } ∈ Reply)
 
 | The kinds a core handler answers with are the same six.
-emit Length { value = [1, 2, 3] } to core get n
+emit Length { value = [1, 2, 3] } to length_arrays get n
 assert n ∈ Object
 assert n.value ∈ Number
 

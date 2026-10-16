@@ -1,3 +1,4 @@
+link "native_modules/arrays.so" as length_arrays
 | `later = true`: the request goes out on a thread of its own and `Get`
 | answers `Sent { id }` at once; the `HttpResponse` arrives afterwards as a
 | particle carrying `_request_id`, handled here on the program's thread when
@@ -21,7 +22,7 @@ assert sent.value ∈ Number
 spins = 0
 loop
     spins += 1
-    emit Length { value = arrived } to core get n
+    emit Length { value = arrived } to length_arrays get n
     if n.value = 1
         break
     if spins > 4000000

@@ -1,3 +1,4 @@
+link "native_modules/arrays.so" as length_arrays
 | `pty` — a program on a pseudo-terminal: opened, typed into, resized,
 | its screen read as rows of spans, closed. What a fixture can hold without
 | waiting on the program's output is what is here; the output itself, with
@@ -20,7 +21,7 @@ assert resized ∈ Resized
 
 emit Screen { id = opened.id } to pty get screen
 assert screen ∈ TerminalScreen
-emit Length { value = screen.lines } to core get { value as rows }
+emit Length { value = screen.lines } to length_arrays get { value as rows }
 assert rows = 4
 assert screen.cursor_row ≥ 0
 

@@ -534,8 +534,8 @@ scores = [88, 94, 71]
 
 | `emit` sends a particle to a recipient. `core` is compiled in, so this
 | works with nothing installed.
-emit Length { value = scores } to core get n
-assert n.value = 3
+emit Linked to core get where
+assert where.value = false
 
 | The only loop form there is. What survives it is an ordinary binding
 | declared before it — a loop has no accumulator clause of its own.

@@ -10,9 +10,15 @@ pub fn fixture(module: &str, file: &str) {
         std::process::id()
     ));
     fs::create_dir_all(dir.join("native_modules")).unwrap();
-    let so = modules::build_so(module);
-    fs::copy(so, dir.join(format!("native_modules/{module}.so"))).unwrap();
     let text = fs::read_to_string(modules::repo().join("tests").join(file)).unwrap();
+    let linked: Vec<_> = ["math", "strings", "arrays", "time"]
+        .into_iter()
+        .filter(|name| text.contains(&format!("native_modules/{name}.so")))
+        .collect();
+    for name in &linked {
+        let so = modules::build_so(name);
+        fs::copy(so, dir.join(format!("native_modules/{name}.so"))).unwrap();
+    }
     let source = dir.join("fixture.code");
     fs::write(&source, &text).unwrap();
     code::run_file(&source).unwrap_or_else(|e| panic!("{module} interpreter: {e}"));
@@ -38,13 +44,13 @@ pub fn fixture(module: &str, file: &str) {
         eprintln!("skipped browser utility check: node/wasm target unavailable");
         return;
     }
-    let archive = modules::build_wasm32_a(module);
-    fs::copy(archive, dir.join(format!("native_modules/{module}.a"))).unwrap();
-    fs::write(
-        &source,
-        text.replace(&format!("{module}.so"), &format!("{module}.a")),
-    )
-    .unwrap();
+    let mut browser_text = text.clone();
+    for name in &linked {
+        let archive = modules::build_wasm32_a(name);
+        fs::copy(archive, dir.join(format!("native_modules/{name}.a"))).unwrap();
+        browser_text = browser_text.replace(&format!("{name}.so"), &format!("{name}.a"));
+    }
+    fs::write(&source, browser_text).unwrap();
     code::compile_file(
         &source,
         code::BuildTarget::Wasm,

@@ -1,3 +1,5 @@
+link "native_modules/arrays.so" as length_arrays
+link "native_modules/strings.so" as length_strings
 | `name += value` and `name = name + value` grow the variable's own value
 | where it stands when nothing else holds it (ticket 121). Nothing about the
 | answers may change: whatever else holds the old value still sees the old
@@ -10,14 +12,14 @@ loop
     if i = 100, break
     xs += i
     i = i + 1
-emit Length { value = xs } to core get { value as n }
+emit Length { value = xs } to length_arrays get { value as n }
 assert n = 100
 assert xs[99] = 99
 ys = xs
 xs += 100
 assert xs[100] = 100
 assert ys[100] = null
-emit Length { value = ys } to core get { value as m }
+emit Length { value = ys } to length_arrays get { value as m }
 assert m = 100
 
 | Appending a list to itself, and a list as one element.
@@ -147,19 +149,19 @@ loop
     if step = 300, break
     long += "ab"
     step = step + 1
-emit Length { value = long } to core get { value as long_size }
+emit Length { value = long } to length_strings get { value as long_size }
 assert long_size = 600
 twin = long
 long += "çé"
 twin += "x"
-emit Length { value = long } to core get { value as grown_size }
-emit Length { value = twin } to core get { value as twin_size }
+emit Length { value = long } to length_strings get { value as grown_size }
+emit Length { value = twin } to length_strings get { value as twin_size }
 assert grown_size = 602
 assert twin_size = 601
 assert long[600, length) = "çé"
 assert twin[598, length) = "abx"
 long += long
-emit Length { value = long } to core get { value as doubled }
+emit Length { value = long } to length_strings get { value as doubled }
 assert doubled = 1204
 assert long[length - 2, length) = "çé"
 

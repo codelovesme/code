@@ -6,7 +6,7 @@
 | fail_handler_unknown, which asserted the opposite until 2026-08-28. See
 | docs/todo/errors-as-particles.md.
 
-| `to core`: core knows Length and Timestamp, nothing else.
+| `to core`: core knows Timestamp, TimezoneOffset and Linked.
 emit Foo { value = 1 } to core get a
 assert a = null
 

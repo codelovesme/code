@@ -1,3 +1,4 @@
+link "native_modules/arrays.so" as length_arrays
 | `timer` on a machine: a delay answers at once and fires later, from a
 | thread of its own, into the program's ring — the handler runs here, on the
 | program's thread, when a loop iteration drains. A cancelled one never
@@ -36,7 +37,7 @@ assert nothing.ok = false
 spins = 0
 loop
     spins += 1
-    emit Length { value = fired } to core get n
+    emit Length { value = fired } to length_arrays get n
     if n.value = 3
         break
     if spins > 4000000

@@ -626,7 +626,7 @@ fn trace_records_particle_boundaries_as_deterministic_json() {
     let dir = temp_dir("trace");
     fs::write(
         dir.join("main.code"),
-        "Greet { who } =>\n    emit Length { value = who } to core get n\n    return Greeting { size = n.value }\n\nemit Greet { who = \"abc\" } to this get answer\nassert answer.size = 3\n",
+        "Greet { who } =>\n    emit Linked to core get n\n    return Greeting { size = 3 }\n\nemit Greet { who = \"abc\" } to this get answer\nassert answer.size = 3\n",
     )
     .expect("write traced source");
 
@@ -645,7 +645,7 @@ fn trace_records_particle_boundaries_as_deterministic_json() {
         .find("\"particle_class\": \"Greet\"")
         .expect("the handler boundary is traced");
     let length_at = stdout
-        .find("\"particle_class\": \"Length\"")
+        .find("\"particle_class\": \"Linked\"")
         .expect("the core boundary is traced");
     assert!(
         greet_at < length_at,
@@ -675,7 +675,7 @@ fn replay_reruns_recorded_particles_and_catches_a_changed_answer() {
     let dir = temp_dir("replay");
     fs::write(
         dir.join("main.code"),
-        "Greet { who } =>\n    emit Length { value = who } to core get n\n    return Greeting { size = n.value }\n\nemit Greet { who = \"abc\" } to this get answer\nassert answer.size = 3\n",
+        "Greet { who } =>\n    emit Linked to core get n\n    return Greeting { size = 3 }\n\nemit Greet { who = \"abc\" } to this get answer\nassert answer.size = 3\n",
     )
     .expect("write traced source");
 

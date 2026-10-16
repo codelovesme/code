@@ -1,3 +1,4 @@
+link "native_modules/arrays.so" as length_arrays
 | `later = true` on `Chat`: `Sent { id }` at once, and the outcome afterwards
 | as a particle carrying `_request_id` — here an `Exception`, since port 1
 | refuses, which is the same path a slow answer takes.
@@ -17,7 +18,7 @@ assert sent ∈ Sent
 spins = 0
 loop
     spins += 1
-    emit Length { value = arrived } to core get n
+    emit Length { value = arrived } to length_arrays get n
     if n.value = 1
         break
     if spins > 4000000

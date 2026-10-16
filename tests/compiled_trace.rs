@@ -19,7 +19,7 @@ fn compiled_boundaries_match_and_replay() {
         "Child {} =>\n    emit Parent to base get p\n    return p\n",
     )
     .unwrap();
-    fs::write(dir.join("main.code"), "link \"child.code\"\nParent {} =>\n    emit Length { value = [true, null, \"é\\n\"] } to core get n\n    return Answer { value = n.value }\nOuter {} =>\n    emit Child to this get c\n    emit Missing to this\n    return c\nBroken {} =>\n    x = 1 / 0\n    return x\nemit Outer to this\nemit Broken to this\nemit Unknown to core\n").unwrap();
+    fs::write(dir.join("main.code"), "link \"child.code\"\nParent {} =>\n    emit Linked to core get n\n    return Answer { value = n.value }\nOuter {} =>\n    emit Child to this get c\n    emit Missing to this\n    return c\nBroken {} =>\n    x = 1 / 0\n    return x\nemit Outer to this\nemit Broken to this\nemit Unknown to core\n").unwrap();
     let interpreted = cli(&dir, &["trace"]);
     assert!(
         interpreted.status.success(),
@@ -78,7 +78,7 @@ fn compiled_trace_errors_do_not_publish_a_successful_trace() {
     for source in [
         "emit 5 to this\n",
         "x = 1 / 0\n",
-        "emit Length { value = 4 } to core\nx = 1 / 0\n",
+        "emit RemovedLength to core\nx = 1 / 0\n",
     ] {
         fs::write(dir.join("main.code"), source).unwrap();
         for args in [vec!["trace"], vec!["trace", "--compiled"]] {
@@ -139,7 +139,7 @@ Again {} =>
     emit p to this get r
     return r
 Nested {} =>
-    emit Length { value = 4 } to core
+    emit RemovedLength to core
     emit Packet { values = [1.25, -0.0, true, false, null, "é\n\t\"\\"] } to echo get a
     return a
 emit Fail to this
