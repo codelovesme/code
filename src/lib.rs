@@ -555,7 +555,7 @@ mod compile {
                     let _ = fs::remove_file(out_path);
                     return Err(error);
                 }
-                return write_web_host(out_path, &prefixes);
+                return write_web_host(out_path, &prefixes, !release);
             }
 
             match target {
@@ -755,12 +755,22 @@ mod compile {
     /// Overwritten every build, and named the same every time so a page's
     /// `import` never has to change. It is output, not source: a project
     /// ignores it the way it ignores the `.wasm` beside it.
-    fn write_web_host(out_path: &Path, linked: &[(&str, &str)]) -> Result<(), String> {
+    fn write_web_host(out_path: &Path, linked: &[(&str, &str)], debug: bool) -> Result<(), String> {
         let prefixes: Vec<&str> = linked.iter().map(|(_, prefix)| *prefix).collect();
         let beside = out_path.parent().unwrap_or(Path::new("."));
         let host = beside.join("host.mjs");
-        fs::write(&host, web_host_source(&prefixes))
-            .map_err(|e| format!("write {}: {e}", host.display()))
+        fs::write(
+            &host,
+            web_host_source(&prefixes).replace(
+                "false; //__CODE_WEB_DEBUG__",
+                if debug {
+                    "true; //__CODE_WEB_DEBUG__"
+                } else {
+                    "false; //__CODE_WEB_DEBUG__"
+                },
+            ),
+        )
+        .map_err(|e| format!("write {}: {e}", host.display()))
     }
 
     /// The page's half for a program that linked `prefixes`.

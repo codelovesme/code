@@ -43,6 +43,8 @@
 /// here takes the particle its module was sent and returns the one it
 /// answers. Nothing crosses as a pointer, a length, or a shape invented for
 /// one module.
+const DEBUG_MODULE_CALLS = false; //__CODE_WEB_DEBUG__
+
 const PARTS = [
   //__CODE_WEB_PARTS__
 ];
@@ -192,16 +194,20 @@ export function createHost({
         return answering.has(name) && (!guard || guard.canUseLocal?.(name) === true) ? 0x1_4c4f4341n : 0n;
       } catch { return 0n; }
     }
-    let result;
+    let result, particle;
     try {
-      result = answer_for(name, JSON.parse(str(jsonPtr, Number(jsonLen))), currentInstance());
+      particle = JSON.parse(str(jsonPtr, Number(jsonLen)));
+      result = answer_for(name, particle, currentInstance());
     } catch (e) {
       result = { _class: "Exception", source: name, message: String(e?.message ?? e) };
     }
     // Nothing answered: no half for this module, or a half that had nothing
     // to say to this class. The module reads a negative length as that, and
     // hands the program null.
-    if (result === null || result === undefined) return -1n;
+    if (result === null || result === undefined) {
+      if (DEBUG_MODULE_CALLS) console.warn(`[code] unanswered module call: ${name} / ${typeof particle?._class === "string" ? particle._class : "<no class>"}`);
+      return -1n;
+    }
     const text = JSON.stringify(result);
     // A module built with a buffer of its own says how big it is. One that
     // left the buffer to the runtime passes none, and the room is reserved

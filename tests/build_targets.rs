@@ -140,6 +140,20 @@ fn wasm_target_produces_a_runnable_module() {
     .expect("build --target wasm");
     assert!(out.is_file(), "expected a wasm file at {}", out.display());
 
+    assert!(fs::read_to_string(dir.join("host.mjs"))
+        .unwrap()
+        .contains("const DEBUG_MODULE_CALLS = true;"));
+    run_wasm_under_node(&dir, &out);
+    code::compile_file(
+        &fixture("arithmetic_basic.code"),
+        code::BuildTarget::Wasm,
+        &out,
+        true,
+    )
+    .expect("release wasm build");
+    assert!(fs::read_to_string(dir.join("host.mjs"))
+        .unwrap()
+        .contains("const DEBUG_MODULE_CALLS = false;"));
     run_wasm_under_node(&dir, &out);
     let _ = fs::remove_dir_all(&dir);
 }
