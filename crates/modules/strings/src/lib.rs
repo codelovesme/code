@@ -50,6 +50,31 @@ mod machine {
         CODE_ABI_VERSION
     }
 
+    /// # Safety
+    /// The view and callbacks are immutable and valid only during this call.
+    #[no_mangle]
+    pub unsafe extern "C" fn code_module_dispatch_borrowed_v1(
+        out: *mut CodeValue,
+        api: *const borrowed::CodeBorrowedApi,
+        particle: *const core::ffi::c_void,
+    ) -> core::ffi::c_int {
+        let Some(p) = borrowed::BorrowedValue::from_raw(api, particle) else {
+            return 0;
+        };
+        if p.field("_class").and_then(|v| v.text()) != Some("Length") {
+            return 0;
+        }
+        guarded(&mut *out, "strings", |out| {
+            match p.field("value").and_then(|v| v.text()) {
+                Some(value) => make_result(out, c"LengthResult", |slot| {
+                    number(slot, value.chars().count() as f64)
+                }),
+                None => exception(out, "strings", "Length requires a string 'value'"),
+            }
+        });
+        1
+    }
+
     /// The single dispatch point: read the particle's `_class`, route to the
     /// matching handler. A class this module does not handle is null; a handler
     /// that cannot do the work returns an `Exception`. Neither ends the program
@@ -434,8 +459,12 @@ mod machine {
 #[cfg(target_arch = "wasm32")]
 include!("../../browser_half.rs");
 #[cfg(target_arch = "wasm32")]
-browser_half!(
+include!("../../browser_length.rs");
+#[cfg(target_arch = "wasm32")]
+browser_length_half!(
     "strings",
+    1,
+    br#"{"_class":"Exception","source":"strings","message":"Length requires a string 'value'","innerException":null}"#,
     strings_code_module_abi_version,
     strings_code_module_dispatch
 );

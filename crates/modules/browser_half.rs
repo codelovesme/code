@@ -1,4 +1,5 @@
-// The wasm half of a browser module, which is the same for all of them.
+// The default wasm half of a browser module. Arrays/strings additionally
+// include browser_length.rs for their pure Length handler.
 //
 // **A module speaks particles, in both directions.** Toward the language
 // that has always been true; toward the page it was not — a module used to

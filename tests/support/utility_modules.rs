@@ -65,8 +65,43 @@ const moduleName = '__MODULE__';
 Date.now = () => 1790000000123;
 const messages = [];
 const host = createHost({ log: (...parts) => messages.push(parts.join(' ')) });
-const { instance } = await WebAssembly.instantiate(readFileSync('./fixture.wasm'), { env: host.env });
+let instance;
+let pageCalls = 0;
+if (moduleName === 'length') {
+  const ask = host.env.code_web_ask;
+  // Imports capture this function at instantiation.
+  host.env.code_web_ask = (...args) => {
+    if (args[5] !== -1n) {
+      const p = JSON.parse(new TextDecoder().decode(new Uint8Array(
+        instance.exports.memory.buffer, Number(args[2]), Number(args[3]))));
+      if (p._class === 'Length') throw new Error('Length crossed the JSON bridge');
+      pageCalls++;
+    }
+    return ask(...args);
+  };
+}
+({ instance } = await WebAssembly.instantiate(readFileSync('./fixture.wasm'), { env: host.env }));
 if (host.start(instance) !== 0) throw new Error(messages.join('\n') || 'utility wasm fixture failed');
+if (moduleName === 'length' && pageCalls < 2) throw new Error('ordinary fallback handlers were not called');
+if (moduleName === 'length') {
+  // An older host knows no preflight. Any negative no-answer code must
+  // fall back; even -2 is deliberately tested, not mistaken for permission.
+  for (const olderReply of [-1n, -2n]) {
+    const old = createHost({log: () => {}});
+    const ask = old.env.code_web_ask;
+    old.env.code_web_ask = (...args) => args[5] === -1n ? olderReply : ask(...args);
+    const {instance} = await WebAssembly.instantiate(readFileSync('./fixture.wasm'), {env: old.env});
+    if (old.start(instance) !== 0) throw new Error('older host fallback failed');
+  }
+  let override = false;
+  const guarded = createHost({log: () => {}, guard: (name, p, local) =>
+    override && name === 'arrays' ? {_class: 'LengthResult', value: 777} : local(name, p)});
+  const {instance} = await WebAssembly.instantiate(readFileSync('./fixture.wasm'), {env: guarded.env});
+  if (guarded.start(instance) !== 0) throw new Error('custom guarded host failed');
+  override = true;
+  if (guarded.ask({_class: 'ProbeLength'})?.value !== 777)
+    throw new Error('local Length bypassed a custom guard');
+}
 if (moduleName === 'time') {
   const clock = host.ask({ _class: 'ClockSnapshot' });
   const offset = process.env.TZ === 'UTC' ? 0 : 120;

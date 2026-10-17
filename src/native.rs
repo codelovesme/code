@@ -21,6 +21,66 @@ use libloading::Library;
 
 use crate::value::Value;
 
+#[path = "borrowed_abi.rs"]
+mod borrowed;
+use borrowed::{CodeBorrowedApi, CodeValueInfo};
+
+unsafe extern "C" fn inspect_borrowed(value: *const c_void) -> CodeValueInfo {
+    // SAFETY: only pointers into this dispatch's immutable Value tree are used.
+    let value = unsafe { &*value.cast::<Value>() };
+    let (tag, length, bytes) = match value {
+        Value::Number(_) => (TAG_NUMBER, 0, std::ptr::null()),
+        Value::Bool(_) => (TAG_BOOL, 0, std::ptr::null()),
+        Value::Null => (TAG_NULL, 0, std::ptr::null()),
+        Value::Array(items) => (TAG_ARRAY, items.len(), std::ptr::null()),
+        Value::Object(fields) => (TAG_OBJECT, fields.len(), std::ptr::null()),
+        Value::Str(text) => {
+            // Match Arena::cstr's existing interior-NUL transport behavior.
+            let text = if text.as_bytes().contains(&0) {
+                ""
+            } else {
+                text.as_ref()
+            };
+            (TAG_STR, text.len(), text.as_ptr())
+        }
+    };
+    CodeValueInfo {
+        tag,
+        length: length as u64,
+        bytes,
+    }
+}
+
+unsafe extern "C" fn field_borrowed(
+    value: *const c_void,
+    key: *const u8,
+    len: u64,
+) -> *const c_void {
+    // SAFETY: the synchronous module supplies valid key bytes; value is ours.
+    let value = unsafe { &*value.cast::<Value>() };
+    let key = if len == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(key, len as usize) }
+    };
+    let Ok(key) = std::str::from_utf8(key) else {
+        return std::ptr::null();
+    };
+    match value {
+        Value::Object(fields) => fields
+            .field(key)
+            .map(|v| v as *const Value as *const c_void)
+            .unwrap_or(std::ptr::null()),
+        _ => std::ptr::null(),
+    }
+}
+
+static BORROWED_API: CodeBorrowedApi = CodeBorrowedApi {
+    version: 1,
+    inspect: inspect_borrowed,
+    field: field_borrowed,
+};
+
 const CODE_ABI_VERSION: u32 = 2;
 
 /// Must equal `code_abi.h`'s `CODE_INBOUND_CAPACITY`. The two runtimes have
@@ -275,6 +335,9 @@ unsafe fn ffi_to_value(v: *const CodeValueFfi) -> Value {
 /// A loaded, ready-to-dispatch native module — what `link "x.so" as x`
 /// produces at runtime.
 pub struct NativeModule {
+    borrowed_dispatch: Option<BorrowedDispatchFn>,
+    dispatch_fn: DispatchFn,
+    release_value: ReleaseFn,
     /// `ManuallyDrop` because of `Drop for NativeModule` below: a module with
     /// a thread of its own must not be unloaded while that thread is running.
     lib: ManuallyDrop<Library>,
@@ -338,6 +401,11 @@ impl std::fmt::Debug for NativeModule {
 }
 
 type DispatchFn = unsafe extern "C" fn(*mut CodeValueFfi, *const CodeValueFfi);
+type BorrowedDispatchFn = unsafe extern "C" fn(
+    *mut CodeValueFfi,
+    *const CodeBorrowedApi,
+    *const c_void,
+) -> std::ffi::c_int;
 type ReleaseFn = unsafe extern "C" fn(*mut CodeValueFfi);
 type VersionFn = unsafe extern "C" fn() -> u32;
 type VarsFn = unsafe extern "C" fn() -> *const CodeVarListFfi;
@@ -528,12 +596,10 @@ impl NativeModule {
 
         // Fail fast on the other two required symbols too, rather than only
         // discovering a missing one on the first `emit` that reaches it.
-        unsafe {
-            lib.get::<DispatchFn>(b"code_module_dispatch")
-                .map_err(|_| format!("native module '{path}' missing 'code_module_dispatch'"))?;
-            lib.get::<ReleaseFn>(b"code_release")
-                .map_err(|_| format!("native module '{path}' missing 'code_release'"))?;
-        }
+        let dispatch_fn = *unsafe { lib.get::<DispatchFn>(b"code_module_dispatch") }
+            .map_err(|_| format!("native module '{path}' missing 'code_module_dispatch'"))?;
+        let release_value = *unsafe { lib.get::<ReleaseFn>(b"code_release") }
+            .map_err(|_| format!("native module '{path}' missing 'code_release'"))?;
 
         // Optional, like `code_module_vars`: a module that never speaks
         // first simply doesn't export it. Leaked on purpose — the module
@@ -566,6 +632,13 @@ impl NativeModule {
             .map(|f| *f);
 
         Ok(NativeModule {
+            dispatch_fn,
+            release_value,
+            borrowed_dispatch: unsafe {
+                lib.get::<BorrowedDispatchFn>(b"code_module_dispatch_borrowed_v1")
+            }
+            .ok()
+            .map(|f| *f),
             image,
             lib: ManuallyDrop::new(lib),
             path: path.to_string(),
@@ -689,34 +762,39 @@ impl NativeModule {
         }
     }
 
-    /// Dispatch `particle` and return the module's (deep-copied, host-owned)
-    /// result — mirrors `runtime.c`'s `code_native_dispatch` exactly.
+    /// Dispatch `particle` and copy/release the module-owned result. An opt-in
+    /// metadata reader can answer without marshaling the input; a decline uses
+    /// the ordinary ABI 2 path, like runtime.c's code_native_dispatch.
     pub fn dispatch(&self, particle: &Value) -> Result<Value, String> {
-        let mut arena = Arena::default();
-        let particle_ffi = arena.build(particle);
-
         let mut result = CodeValueFfi::NULL;
         unsafe {
-            let dispatch = self
-                .lib
-                .get::<DispatchFn>(b"code_module_dispatch")
-                .map_err(|_| {
-                    format!(
-                        "native module '{}' missing 'code_module_dispatch'",
-                        self.path
-                    )
-                })?;
-            dispatch(&mut result, &particle_ffi);
+            if let Some(dispatch) = self.borrowed_dispatch {
+                // The module opts in and decides what it can answer. No engine
+                // knowledge of module names, classes or Length semantics.
+                let handled = dispatch(
+                    &mut result,
+                    &BORROWED_API,
+                    particle as *const Value as *const c_void,
+                );
+                if handled != 0 {
+                    let value = ffi_to_value(&result);
+                    (self.release_value)(&mut result);
+                    return Ok(value);
+                }
+                (self.release_value)(&mut result);
+                result = CodeValueFfi::NULL;
+            }
+        }
+        let mut arena = Arena::default();
+        let particle_ffi = arena.build(particle);
+        unsafe {
+            (self.dispatch_fn)(&mut result, &particle_ffi);
         }
 
         let value = unsafe { ffi_to_value(&result) };
 
         unsafe {
-            let release = self
-                .lib
-                .get::<ReleaseFn>(b"code_release")
-                .map_err(|_| format!("native module '{}' missing 'code_release'", self.path))?;
-            release(&mut result);
+            (self.release_value)(&mut result);
         }
 
         Ok(value)
