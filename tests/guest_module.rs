@@ -51,16 +51,24 @@ const SHELL: &str = r##"
 | may reach.
 
 link "guest.a" as guest
+link "arrays.a" as arrays
+link "strings.a" as strings
 link "dom.a" as dom
 link "storage.a" as store
 link "router.a" as router
 link "console.a" as out
 link "timer.a" as clock
 
+length_offers = 0
+
 | Asked once, the first time a guest reaches for a module. `notes` is not
 | mentioned at all, so it keeps its own of everything.
 Offer { app, name } =>
+    if name = "arrays" or name = "strings"
+        length_offers = length_offers + 1
     if app = "mail"
+        if name = "arrays", return Offered
+        if name = "strings", return Denied
         if name = "storage"
             return Denied { }
         if name = "router"
@@ -68,6 +76,7 @@ Offer { app, name } =>
 
 | Everything sent to a module this host took.
 Module { app, name, particle } =>
+    if name = "arrays", return LengthResult { value = "/length-from-host" }
     return RouteResult { value = "/from-the-host" }
 
 Loaded { app } =>
@@ -91,6 +100,12 @@ Say { app, text } =>
 Trip { app } =>
     emit Tell { app = app, particle = Break { } } to guest get r
     return r
+
+ProbeLength { app } =>
+    emit Tell { app = app, particle = ProbeLength } to guest get r
+    return r
+
+LengthOffers => return Count { value = length_offers }
 "##;
 
 /// The application. Nothing in it knows whether it is the page or is running
@@ -98,11 +113,23 @@ Trip { app } =>
 const MAIL: &str = r##"
 | An ordinary application.
 
+link "arrays.a" as arrays
+link "strings.a" as strings
+
 link "dom.a" as dom
 link "storage.a" as store
 link "router.a" as router
 link "console.a" as out
 link "timer.a" as clock
+
+ProbeLength =>
+    emit Length { value = [1, 2, 3] } to arrays get a
+    emit Length { value = [1, 2, 3] } to arrays get again
+    assert a = again
+    emit Length { value = "é😀é" } to strings get s
+    emit Length { value = "é😀é" } to strings get again_text
+    assert s = again_text
+    emit Print { value = "array: $a.value, text: $s._class" } to out
 
 | Drawn later, so that letting the guest go in between proves that a stopped
 | guest is really stopped.
@@ -258,6 +285,14 @@ check("what the guest reached did not go the way the host said", lines, [
   "loaded mail",
 ]);
 
+lines.length = 0;
+host.ask({ _class: 'ProbeLength', app: 'mail' });
+await settle();
+check('Length bypassed the host override or denial', lines,
+  ['mail: array: /length-from-host, text: Exception']);
+check('preflight and dispatch must share one Offer cache',
+  host.ask({ _class: 'LengthOffers' }).value, 2);
+
 check("a second copy of the same guest was not refused",
   host.ask({ _class: "Open", app: "mail", url: "mail.wasm", into: "#panel" }),
   { _class: "LoadResult", ok: false, reason: "'mail' is already running" });
@@ -278,6 +313,13 @@ check("a guest the host said nothing about did not get its own", lines, [
   "notes: drew: true",
   "loaded notes",
 ]);
+lines.length = 0;
+host.ask({ _class: 'ProbeLength', app: 'notes' });
+await settle();
+check('unoffered Length did not use its own modules', lines,
+  ['notes: array: 3, text: LengthResult']);
+check('each guest settles each Length module once',
+  host.ask({ _class: 'LengthOffers' }).value, 4);
 check("two guests did not draw in two containers", [drawn(panel), drawn(side)], ["hello", "hello"]);
 // Under the key it asked for, in the store the shell reads: a guest is not
 // kept apart from what a shell signed in with, any more than it would be
@@ -402,7 +444,9 @@ fn a_shell_runs_another_application_inside_itself() {
     // Everything the shell offers, plus the one that does the offering. A
     // guest reaches only the halves its host's build carried, so this list is
     // the menu — `mail` links exactly the same five and gets them all.
-    for module in ["guest", "dom", "storage", "router", "console", "timer"] {
+    for module in [
+        "guest", "dom", "storage", "router", "console", "timer", "arrays", "strings",
+    ] {
         archive(&dir, module);
     }
 
