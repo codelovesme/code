@@ -27,6 +27,7 @@ def main():
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--samples", type=int, default=9)
     parser.add_argument("--calls", type=int, default=2000)
+    parser.add_argument("--modes", nargs="+", choices=["interpret", "native", "wasm"], default=["interpret", "native", "wasm"])
     args = parser.parse_args()
     args.out = args.out.resolve()
     args.out.mkdir(parents=True, exist_ok=True)
@@ -60,10 +61,12 @@ def main():
                         "    return Done\nemit Bench to this get done\nassert done = Done\n")
                 source = directory / "main.code"
                 source.write_text(f'link "{variant / (module + ".so")}" as m\n' + body)
-                checked([str(variant / "code"), "build", str(source), "--release", "-o", str(directory / "native")])
+                if "native" in args.modes:
+                    checked([str(variant / "code"), "build", str(source), "--release", "-o", str(directory / "native")])
                 wasm_source = directory / "wasm.code"
                 wasm_source.write_text(f'link "{variant / (module + ".a")}" as m\n' + body)
-                checked([str(variant / "code"), "build", str(wasm_source), "--target", "wasm", "--release", "-o", str(directory / "main.wasm")])
+                if "wasm" in args.modes:
+                    checked([str(variant / "code"), "build", str(wasm_source), "--target", "wasm", "--release", "-o", str(directory / "main.wasm")])
                 runner = directory / "bench.mjs"
                 runner.write_text("""import {readFileSync} from 'node:fs';
 import {createHost} from './host.mjs';
@@ -80,13 +83,17 @@ for(let i=0;i<14;i++){
 console.log(JSON.stringify(samples));
 """.replace("i<14", f"i<{args.samples + 5}"))
                 programs.append(dict(variant=label, case=name, calls=calls,
-                                     sha256=hashlib.sha256(source.read_bytes()).hexdigest()))
+                                     sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                                     wasm_sha256=hashlib.sha256(wasm_source.read_bytes()).hexdigest()))
                 for mode in ("interpret", "native"):
+                    if mode not in args.modes:
+                        continue
                     command = [str(variant / "code"), "run", str(source), "--interpret"] if mode == "interpret" else [str(directory / "native")]
                     checked(command)  # Warm OS caches before shuffled fresh launches.
                     for _ in range(args.samples):
                         jobs.append((label, name, calls, mode, command))
-                jobs.append((label, name, calls, "wasm", ["node", str(runner)]))
+                if "wasm" in args.modes:
+                    jobs.append((label, name, calls, "wasm", ["node", str(runner)]))
     random.Random(131).shuffle(jobs)
     for label, name, calls, mode, command in jobs:
         start = time.perf_counter_ns()
@@ -100,6 +107,8 @@ console.log(JSON.stringify(samples));
     for label in artifacts:
         for name, _, _, _, _ in cases:
             for mode in ("interpret", "native", "wasm"):
+                if mode not in args.modes:
+                    continue
                 medians = [statistics.median(r["ms"] for r in records if
                            (r["variant"],r["case"],r["mode"],r["calls"]) == (label,name,mode,c))
                            for c in (0,args.calls)]

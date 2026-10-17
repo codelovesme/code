@@ -8,17 +8,49 @@ struct ListHead {
     keys: *const *const core::ffi::c_char,
 }
 
+unsafe fn pointer<T>(p: *const CodeValue) -> *const T {
+    // A pointer is four bytes on wasm32; the rest of the eight-byte union
+    // payload is padding, not pointer bits, and need not be initialized/zero.
+    core::ptr::addr_of!((*p).payload).cast::<*const T>().read()
+}
+
+#[inline(always)]
+unsafe fn c_string_eq(p: *const u8, expected: &[u8]) -> bool {
+    if p.is_null() {
+        return false;
+    }
+    for (i, byte) in expected.iter().enumerate() {
+        let got = p.add(i).read();
+        // Stop at NUL even if a future selector contains an embedded NUL.
+        if got == 0 || got != *byte {
+            return false;
+        }
+    }
+    p.add(expected.len()).read() == 0
+}
+
 unsafe fn field(p: *const CodeValue, name: &str) -> Option<*const CodeValue> {
-    if (*p).tag != 5 || (*p).payload == 0 {
+    if (*p).tag != 5 {
         return None;
     }
-    let head = (*p).payload as *const ListHead;
+    let head = pointer::<ListHead>(p);
+    if head.is_null() {
+        return None;
+    }
     for i in 0..(*head).len as usize {
-        if CStr::from_ptr(*(*head).keys.add(i)).to_bytes() == name.as_bytes() {
+        if c_string_eq((*(*head).keys.add(i)).cast(), name.as_bytes()) {
             return Some((head.add(1) as *const u8).add(i * 16) as *const CodeValue);
         }
     }
     None
+}
+
+#[inline(always)]
+unsafe fn is_length(p: *const CodeValue) -> bool {
+    let Some(class) = field(p, "_class") else {
+        return false;
+    };
+    (*class).tag == 1 && c_string_eq(pointer::<u8>(class), b"Length")
 }
 
 unsafe fn text<'a>(p: *const CodeValue) -> Option<&'a [u8]> {
@@ -26,10 +58,11 @@ unsafe fn text<'a>(p: *const CodeValue) -> Option<&'a [u8]> {
     if (*p).tag != 1 {
         return None;
     }
-    if (*p).payload == 0 {
+    let bytes = pointer::<core::ffi::c_char>(p);
+    if bytes.is_null() {
         return Some(b"");
     }
-    Some(CStr::from_ptr((*p).payload as *const core::ffi::c_char).to_bytes())
+    Some(CStr::from_ptr(bytes).to_bytes())
 }
 
 extern "C" {
@@ -46,9 +79,6 @@ unsafe fn try_length(
     tag: i32,
     error: &[u8],
 ) -> bool {
-    if field(p, "_class").and_then(|v| text(v)) != Some(b"Length".as_slice()) {
-        return false;
-    }
     // Capacity -1 is an optional host preflight, never a particle. The grant
     // is larger than any wasm32 buffer length; it cannot be confused with an
     // old host's JSON length or any negative "no answer" return.
@@ -70,10 +100,11 @@ unsafe fn try_length(
         return true;
     };
     let count = if tag == 4 {
-        if (*value).payload == 0 {
+        let head = pointer::<ListHead>(value);
+        if head.is_null() {
             0
         } else {
-            (*((*value).payload as *const ListHead)).len as usize
+            (*head).len as usize
         }
     } else {
         text(value)
@@ -116,7 +147,7 @@ macro_rules! browser_length_half {
         /// Pointers are initialized ABI 2 values valid during dispatch.
         #[no_mangle]
         pub unsafe extern "C" fn $dispatch(out: *mut CodeValue, particle: *const CodeValue) {
-            if !try_length($name, out, particle, $tag, $error) {
+            if !is_length(particle) || !try_length($name, out, particle, $tag, $error) {
                 ask_the_page($name, out, particle);
             }
         }

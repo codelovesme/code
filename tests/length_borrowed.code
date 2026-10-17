@@ -36,5 +36,7 @@ emit Shout { value = "abc" } to s get shouted
 assert shouted.value = "ABC!"
 emit Unknown { value = [1] } to a get unknown
 assert unknown = null
+emit Lengthened { value = [1] } to a get prefix
+assert prefix = null
 emit Length { value = [1] } to core get removed
 assert removed = null
