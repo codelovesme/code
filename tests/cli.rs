@@ -589,31 +589,137 @@ fn check_reports_typed_handler_contract_violations_as_json() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// `to this` reaches every handler in the program, whichever file defines
+/// it (ticket 136): both backends register a linked module's handlers into
+/// the one program-wide table, so `check` must look there too. Direct,
+/// transitive and upward calls, checked from a different directory.
 #[test]
-fn check_keeps_linked_source_handler_scopes_separate() {
-    let dir = temp_dir("check-handler-scopes");
+fn check_sees_handlers_in_linked_files() {
+    let dir = temp_dir("check-linked-handlers");
+    fs::create_dir_all(dir.join("lib")).expect("create lib dir");
+    fs::write(
+        dir.join("lib/leaf.code"),
+        "Leaf { n ∈ Number } =>\n    return Leafed { value = n * 10 }\n",
+    )
+    .expect("write leaf module");
+    fs::write(
+        dir.join("mid.code"),
+        "link \"lib/leaf.code\"\n\nMid { n } =>\n    emit FromMain { n = n } to this get m\n    return m\n",
+    )
+    .expect("write mid module");
+    fs::write(
+        dir.join("main.code"),
+        "link \"mid.code\"\n\nFromMain { n } =>\n    return Main { value = n + 1 }\n\nemit Leaf { n = 1 } to this get a\nassert a.value = 10\nemit Mid { n = 1 } to this get b\nassert b.value = 2\n",
+    )
+    .expect("write entry source");
+
+    // The program really runs this way; the checker must agree with it.
+    let run = code(&dir, &["run", "main.code"]);
+    assert!(
+        run.status.success(),
+        "linked handlers should run: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    let elsewhere = temp_dir("check-linked-handlers-cwd");
+    let entry = dir.join("main.code");
+    let out = code(&elsewhere, &["check", entry.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "handlers in linked files should be known: {stdout}"
+    );
+    assert!(stdout.contains("\"diagnostics\": []"), "got: {stdout}");
+
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_dir_all(&elsewhere);
+}
+
+/// Seeing linked handlers is not seeing everything: a name no file defines
+/// is still unknown, a linked handler's contract is still checked, and a
+/// file's typed bindings stay its own.
+#[test]
+fn check_still_reports_what_linked_files_do_not_define() {
+    let dir = temp_dir("check-linked-negative");
     fs::write(
         dir.join("module.code"),
-        "FromModule {} =>\n    return Ack {}\n",
+        "Typed { score ∈ Number } =>\n    return Ack {}\n\nemit Typed { score = label } to this\n",
     )
     .expect("write linked module");
     fs::write(
         dir.join("main.code"),
-        "link \"module.code\"\n\nFromMain {} =>\n    emit FromModule {} to this get result\n    return Ack {}\n",
+        "link \"module.code\"\n\nlabel ∈ String = \"a\"\n\nemit Tpyed { score = 1 } to this\nemit Typed { score = \"bad\", scoer = 1 } to this\n",
     )
     .expect("write entry source");
 
     let out = code(&dir, &["check"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(!out.status.success(), "real errors should fail: {stdout}");
     assert!(
-        !out.status.success(),
-        "a module handler should not be visible to the entry file: {stdout}"
-    );
-    assert!(
-        stdout.contains("\"code\": \"unknown-handler\""),
+        stdout.contains("no handler named 'Tpyed' is defined for `to this` (try 'Typed')"),
         "got: {stdout}"
     );
-    assert!(stdout.contains("FromModule"), "got: {stdout}");
+    assert!(
+        stdout.contains("\"code\": \"unknown-field\""),
+        "got: {stdout}"
+    );
+    // Exactly one mismatch: the entry's `\"bad\"`. The module's `label` is
+    // not the entry's String — the entry's binding does not reach it.
+    assert_eq!(
+        stdout.matches("\"code\": \"type-mismatch\"").count(),
+        1,
+        "got: {stdout}"
+    );
+    assert!(stdout.contains("\"actual\": \"String\""), "got: {stdout}");
+    // Said at the label it breaks, in the file that declares it — not at
+    // that line number in the caller's file.
+    assert!(
+        stdout.contains(
+            "\"location\": {\"file\": \"module.code\", \"line\": 1, \"column\": 9, \"end_line\": 1, \"end_column\": 23}"
+        ),
+        "the mismatch should point at Typed's label: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Two entries in one directory are two programs: a handler one of them
+/// links does not become known to the other. And a link cycle stays the
+/// loader's plain error, not a checker crash.
+#[test]
+fn check_keeps_independent_entries_apart() {
+    let dir = temp_dir("check-linked-roots");
+    fs::write(dir.join("helper.code"), "Helped {} =>\n    return Ack {}\n").expect("write helper");
+    fs::write(
+        dir.join("with.code"),
+        "link \"helper.code\"\n\nemit Helped {} to this\n",
+    )
+    .expect("write linking entry");
+    fs::write(dir.join("without.code"), "emit Helped {} to this\n").expect("write unlinked entry");
+    fs::write(dir.join("cycle_a.code"), "link \"cycle_b.code\"\n").expect("write cycle a");
+    fs::write(dir.join("cycle_b.code"), "link \"cycle_a.code\"\n").expect("write cycle b");
+
+    let with = code(&dir, &["check", "with.code"]);
+    assert!(
+        with.status.success(),
+        "got: {}",
+        String::from_utf8_lossy(&with.stdout)
+    );
+    let without = code(&dir, &["check", "without.code"]);
+    let stdout = String::from_utf8_lossy(&without.stdout);
+    assert!(!without.status.success(), "got: {stdout}");
+    assert!(
+        stdout.contains("no handler named 'Helped'"),
+        "got: {stdout}"
+    );
+
+    for _ in 0..2 {
+        let cycle = code(&dir, &["check", "cycle_a.code"]);
+        let stdout = String::from_utf8_lossy(&cycle.stdout);
+        assert_eq!(cycle.status.code(), Some(1), "got: {stdout}");
+        assert!(stdout.contains("\"code\": \"load-error\""), "got: {stdout}");
+        assert!(stdout.contains("circular link"), "got: {stdout}");
+    }
 
     let _ = fs::remove_dir_all(&dir);
 }
