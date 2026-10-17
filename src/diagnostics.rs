@@ -100,11 +100,15 @@ impl ExpectedType {
 /// valid at runtime; this command is the explicit development-time check that
 /// lets an AI catch a likely typo before running the program.
 ///
-/// Each resolved source module has its own `to this` handler table. Collecting
-/// a table before walking its bodies permits forward references while keeping
-/// a module from accidentally validating a call against a different module's
-/// handlers. Dynamic particle expressions are left alone because their class
-/// is not knowable here.
+/// `to this` is checked against the program-wide handler table, the one both
+/// backends dispatch against: a linked module's top level is a top level, so
+/// its handlers join that table (`interpreter::register_handlers`,
+/// `codegen::declare_handlers`), and a call from any file — the entry, a
+/// linked module, a module it links — reaches a handler in any other. Only
+/// handlers cross files; top-level bindings stay each file's own. The table
+/// is collected from the whole resolved program before any body is walked,
+/// which also permits forward references. Dynamic particle expressions are
+/// left alone because their class is not knowable here.
 pub fn check_handlers(program: &Program) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let defs = Types::of(program);
@@ -124,8 +128,11 @@ pub fn check_handlers(program: &Program) -> Vec<Diagnostic> {
             origin: program.origin.clone(),
         });
     }
+    let mut handlers = HashMap::new();
+    collect_handlers(&program.statements, program.origin.as_ref(), &mut handlers);
     check_file(
         &program.statements,
+        &handlers,
         program.origin.as_ref(),
         &mut diagnostics,
         &defs,
@@ -152,25 +159,51 @@ pub fn has_errors(diagnostics: &[Diagnostic]) -> bool {
         .any(|diagnostic| diagnostic.severity == Severity::Error)
 }
 
+/// The program-wide `to this` table: each class's fields, and the origin of
+/// the file that declares them — a field's span is a place in that file, not
+/// in the caller's.
+type Handlers<'a> = HashMap<String, (&'a [Field], Option<&'a Origin>)>;
+
+/// Every handler in the resolved program, through every `Stmt::Import`
+/// body, the way the backends register them. A class defined twice is the
+/// runtime's "duplicate handler" error, not this checker's; the first
+/// definition's fields are the ones checked against.
+fn collect_handlers<'a>(
+    statements: &'a [Stmt],
+    origin: Option<&'a Origin>,
+    handlers: &mut Handlers<'a>,
+) {
+    for statement in statements {
+        match statement {
+            Stmt::HandlerDef {
+                class_name, fields, ..
+            } => {
+                handlers
+                    .entry(class_name.clone())
+                    .or_insert((fields.as_slice(), origin));
+            }
+            Stmt::Import {
+                body,
+                origin: imported_origin,
+                ..
+            } => collect_handlers(body, Some(imported_origin), handlers),
+            _ => {}
+        }
+    }
+}
+
 fn check_file(
     statements: &[Stmt],
+    handlers: &Handlers<'_>,
     origin: Option<&Origin>,
     diagnostics: &mut Vec<Diagnostic>,
     defs: &Types,
 ) {
-    let handlers: HashMap<String, Vec<Field>> = statements
-        .iter()
-        .filter_map(|statement| match statement {
-            Stmt::HandlerDef {
-                class_name, fields, ..
-            } => Some((class_name.clone(), fields.clone())),
-            _ => None,
-        })
-        .collect();
+    // A file's own world for bindings: nothing from the file that linked it.
     let mut types = HashMap::new();
     check_statements(
         statements,
-        &handlers,
+        handlers,
         None,
         &mut types,
         origin,
@@ -181,7 +214,7 @@ fn check_file(
 
 fn check_statements(
     statements: &[Stmt],
-    handlers: &HashMap<String, Vec<Field>>,
+    handlers: &Handlers<'_>,
     current_handler: Option<&str>,
     types: &mut HashMap<String, StaticType>,
     origin: Option<&Origin>,
@@ -219,7 +252,7 @@ fn check_statements(
                 body,
                 origin: imported_origin,
                 ..
-            } => check_file(body, Some(imported_origin), diagnostics, defs),
+            } => check_file(body, handlers, Some(imported_origin), diagnostics, defs),
             Stmt::If { body, .. } | Stmt::Loop { body, .. } => {
                 let mut nested_types = types.clone();
                 check_statements(
@@ -300,7 +333,7 @@ fn check_statements(
 fn check_emit(
     particle: &Expr,
     target: &EmitTarget,
-    handlers: &HashMap<String, Vec<Field>>,
+    handlers: &Handlers<'_>,
     current_handler: Option<&str>,
     types: &HashMap<String, StaticType>,
     context: &mut CheckContext<'_>,
@@ -331,7 +364,7 @@ fn check_emit(
     let Some(class_name) = static_particle_class(particle) else {
         return;
     };
-    let Some(fields) = handlers.get(class_name) else {
+    let Some(&(fields, declared_in)) = handlers.get(class_name) else {
         let suggestion = closest_name(class_name, handlers.keys().map(String::as_str));
         context.diagnostics.push(Diagnostic {
             code: "unknown-handler",
@@ -398,12 +431,18 @@ fn check_emit(
             continue;
         };
         if let Some(annotation) = &field.annotation {
+            // Said at the field's label, so in the file that declares it.
+            let mut declaring = CheckContext {
+                origin: declared_in,
+                diagnostics: &mut *context.diagnostics,
+                defs: context.defs,
+            };
             check_value_against_annotation(
                 annotation,
                 value,
                 types,
                 current_handler,
-                context,
+                &mut declaring,
                 Some(field_name),
                 field.span,
             );
