@@ -582,3 +582,57 @@ The build loop and expected length are unchanged; this keeps the runtime
 workload independent of separately installed utility modules after core.Length
 removal. Historical raw timings used the earlier core Length assertion and
 are not silently reclassified as measurements of the new fixture.
+
+
+## Length module boundary (ticket 131, source only)
+
+`python3 benchmarks/module_length.py BEFORE AFTER --out OUTPUT` reproduces
+the frozen-artifact experiment. Each directory contains the CLI, native arrays/
+strings libraries and wasm archives. The committed module-length-results.json
+contains all hashes, source hashes and raw samples. CPU 0, seed 131, serial
+shuffled fresh launches, nine samples; wasm uses nine warm handler samples
+after five warmups. No concurrent local tests/builds/profiling during timing.
+Wasm was remeasured in a separate shuffled pass after the wasm-only padding/
+selector repair; CLI/native library hashes and their earlier samples are unchanged.
+Both CLIs use Rust 1.97.1, Clang 17.0.6 and GCC 14.2.0. The baseline is
+main 116cf88, already using module Length, rather than an older core handler.
+
+Each row performs 2,000 calls with assertions. Interpreter/native process
+totals include startup, parsing and container construction; warm wasm timings
+only cover the handler. Zero-call controls are in the raw data. Medians, ms:
+
+| Input | Interpreter before → after | Compiled wasm before → after |
+|---|---:|---:|
+| Array, 10 numbers | 9.539 → 8.237 | 7.884 → 1.169 |
+| Array, 1,000 numbers | 28.699 → 8.396 | 96.878 → 1.114 |
+| Array, 10,000 numbers | 213.965 → 10.905 | 891.560 → 1.031 |
+| Array, 1,000 nested records | 748.737 → 8.648 | 2629.670 → 1.110 |
+| Unicode text, 30,000 scalars | 133.360 → 25.766 | 2317.348 → 121.004 |
+
+The large numeric array's zero-call-adjusted interpreter cost is 204.840 →
+1.529 ms. Its element count no longer changes the cost of the call path.
+Unicode counting still scans text. Native compiled Length already borrows ABI
+values; its numeric-array process total is 2.430 → 2.400 ms, not an additional
+speed win. Small native totals vary: nested records 1.742 → 1.891 ms.
+Fallback handlers remain measured: final wasm Trim 6.876 → 6.509 ms; Reverse
+8.749 → 8.795 ms (+0.5%, 0.046 ms per 2,000 calls). An earlier classifier
+showed 8–10% small-handler costs; a short negative gate avoids entering the
+Length implementation for those classes. Small timing differences are not
+additional performance claims. Interpreter Trim/Reverse
+use 9.643 → 8.826 and 10.384 → 9.628 ms. These costs are retained visibly.
+No claim is made about general language speed, application FPS, or the separate
+code-wasm JSON callback interpreter, whose interface remains unchanged.
+
+Callgrind on the original 10,000-literal/2,000-call probe: 1,283,658,818 →
+50,603,899 instructions (96.06% fewer). Arena::build/list accounted for 70.15%
+of baseline self instructions. Profiling an initial string prototype identified
+redundant UTF-8 validation (82.75% of instructions); the optional view now
+requires valid UTF-8 explicitly and borrows it without that second validation.
+All metadata pointers remain synchronous, read-only, thread-confined borrows.
+Local full inputs, frozen binaries, profiles and logs: /var/tmp/length-131/.
+
+The ABI review reproduced a wasm32 empty-array error when a C caller filled
+the unused upper four bytes of a pointer payload. The new reader now loads
+pointer-width bytes, not an entire u64. A C archive fixture poisons that
+padding and memory address zero: it fails before the repair and passes after.
+No layout or import change was needed.

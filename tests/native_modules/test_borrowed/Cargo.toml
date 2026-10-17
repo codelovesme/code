@@ -1,0 +1,9 @@
+[workspace]
+[package]
+name = "test_borrowed"
+version = "0.1.0"
+edition = "2021"
+[lib]
+crate-type = ["cdylib"]
+[dependencies]
+code-native = { path = "../../../crates/code-native" }

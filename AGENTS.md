@@ -882,6 +882,27 @@ indices instead of importing a module; historical timings predate that check.
 Shared utility tests can bundle multiple real archives/generated host halves.
 Old release assets still carry their old API: this work does not publish a tag.
 
+## Length without container transport (ticket 131, unreleased)
+
+The native interpreter tries the optional module export
+`code_module_dispatch_borrowed_v1` before building an ABI input tree. Modules
+own the decision to answer or decline; the engine knows no Length handler or
+module name. The metadata API version is 1; value ABI remains 2. Its raw wire
+types are mirrored in code-native/vendor and checked by vendor_sync so both
+published packages are self-contained. Views/text are immutable, synchronous,
+thread-confined borrows; results still belong to the module and are copied/
+released. Ordinary dispatch remains required, including for older hosts.
+
+Arrays/strings compile a local wasm Length handler. It first asks the existing
+code_web_ask import for permission using a no-particle preflight (capacity -1).
+Only the positive grant outside wasm32 buffer-length range permits local work.
+Other replies, older hosts and custom guards without explicit permission use
+ordinary JSON dispatch. The guest guard settles Offer in its existing cache;
+Offered/Denied must never be bypassed. Keep the override/denial and one-Offer
+guest regression when changing this. Other handlers still use browser_half.
+Array elements are not traversed for local Length; Unicode text is still
+scanned. The separate code-wasm interpreter JSON callback API is unchanged.
+
 ## Releases
 
 Cutting a release is the one act that is **not** pre-authorised — a tag

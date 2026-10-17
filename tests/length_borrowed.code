@@ -1,0 +1,42 @@
+| The same result for both aliases and all backends, without a core shim.
+link "native_modules/arrays.so" as a
+link "native_modules/arrays.so" as other
+link "native_modules/strings.so" as s
+
+ProbeLength =>
+    emit Length { value = [1, 2, 3] } to a get answer
+    return answer
+
+loop value over [null, false, 42, "wrong", {}]
+    emit Length { value = value } to a get bad
+    assert bad = Exception { source = "arrays", message = "Length requires an array 'value'", innerException = null }
+loop value over [null, false, 42, [], {}]
+    emit Length { value = value } to s get bad_text
+    assert bad_text = Exception { source = "strings", message = "Length requires a string 'value'", innerException = null }
+emit Length to a get absent
+assert absent ∈ Exception
+emit Length to s get absent_text
+assert absent_text ∈ Exception
+loop value over [[], [null], [[], {}, [1, 2, 3]], [{ nested = [1, { text = "😀" }] }]]
+    emit Length { value = value, ignored = value } to a get count
+    emit Length { value = value } to other get count_again
+    assert count = count_again
+    expected = 0
+    loop item over value
+        expected = expected + 1
+    assert count.value = expected
+    assert value[count.value] = null
+emit Length { value = "é😀é" } to s get text_count
+assert text_count = LengthResult { value = 4 }
+emit Length { value = "" } to s get empty
+assert empty = LengthResult { value = 0 }
+emit Reverse { value = [1, 2, 3] } to a get reversed
+assert reversed.value = [3, 2, 1]
+emit Shout { value = "abc" } to s get shouted
+assert shouted.value = "ABC!"
+emit Unknown { value = [1] } to a get unknown
+assert unknown = null
+emit Lengthened { value = [1] } to a get prefix
+assert prefix = null
+emit Length { value = [1] } to core get removed
+assert removed = null

@@ -62,6 +62,9 @@ const PARTS = [
 /// for a program that *is* the page: nothing comes between it and its own
 /// modules. A program running inside another is given one, which is how its
 /// host decides what it may reach.
+/// A guard may additionally implement canUseLocal(name) returning true only
+/// when the module may answer locally without calling the guard. Without that
+/// explicit permission, pure wasm handlers use ordinary guarded dispatch too.
 ///
 /// All four together are what makes a second world on one page possible: the
 /// `guest` module calls this again, with a document that stops at a
@@ -181,6 +184,14 @@ export function createHost({
   // failure as anyway, and what the same module's machine half returns.
   env.code_web_ask = (namePtr, nameLen, jsonPtr, jsonLen, outPtr, cap) => {
     const name = str(namePtr, Number(nameLen));
+    // Optional preflight for pure handlers implemented by the wasm module.
+    // A guard must explicitly allow it; custom guards keep seeing full calls.
+    // No particle is serialized unless the host actually needs to receive it.
+    if (cap === -1n) {
+      try {
+        return answering.has(name) && (!guard || guard.canUseLocal?.(name) === true) ? 0x1_4c4f4341n : 0n;
+      } catch { return 0n; }
+    }
     let result;
     try {
       result = answer_for(name, JSON.parse(str(jsonPtr, Number(jsonLen))), currentInstance());

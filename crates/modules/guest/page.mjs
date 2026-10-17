@@ -264,7 +264,7 @@
   /// answers a class it does not handle.
   const guardFor = (app) => {
     const settled = new Map();
-    return (module, particle, answerHere) => {
+    const verdictFor = (module) => {
       let verdict = settled.get(module);
       if (verdict === undefined) {
         const said = ctx.ask({ _class: "Offer", app, name: module });
@@ -274,6 +274,10 @@
         verdict = which === "Offered" ? "the host's" : which === "Denied" ? "nobody's" : "its own";
         settled.set(module, verdict);
       }
+      return verdict;
+    };
+    const guard = (module, particle, answerHere) => {
+      const verdict = verdictFor(module);
       if (verdict === "its own") return answerHere(module, particle);
       if (verdict === "nobody's") {
         return {
@@ -285,6 +289,10 @@
       const answer = ctx.ask({ _class: "Module", app, name: module, particle });
       return isParticle(answer) ? answer : null;
     };
+    // Settle Offer through exactly the same cache as full particle dispatch.
+    // Offered/Denied still go through the host; only its own module runs here.
+    guard.canUseLocal = (module) => verdictFor(module) === "its own";
+    return guard;
   };
 
   /// Lets go of everything a guest was: its instance and its memory, the

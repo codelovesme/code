@@ -13,8 +13,8 @@ for (const name of ['math', 'strings', 'time', 'arrays']) {
   const handler = factory({})[1];
   modules['native_modules/' + name + '.so'] = { dispatch: json => JSON.stringify(handler(JSON.parse(json))) };
 }
-for (const file of ['core_length_removed', 'arrays_utilities', 'math_utilities', 'math_double', 'math_sum', 'math_refuses_with_exception', 'strings_utilities', 'strings_length', 'strings_case', 'strings_echo_nested', 'strings_split', 'strings_join', 'strings_trim', 'strings_shout', 'strings_refuses_with_exception', 'time_queries']) {
+for (const file of ['core_length_removed', 'length_borrowed', 'arrays_utilities', 'math_utilities', 'math_double', 'math_sum', 'math_refuses_with_exception', 'strings_utilities', 'strings_length', 'strings_case', 'strings_echo_nested', 'strings_split', 'strings_join', 'strings_trim', 'strings_shout', 'strings_refuses_with_exception', 'time_queries']) {
   const result = run_with_modules(readFileSync(new URL('tests/' + file + '.code', root), 'utf8'), modules);
   if (result !== '') throw new Error(file + ': ' + result);
 }
-console.log('16 utility fixtures passed in actual code-wasm interpreter');
+console.log('17 utility fixtures passed in actual code-wasm interpreter');

@@ -12,6 +12,35 @@ mod machine {
     }
 
     /// # Safety
+    /// The view and callbacks are immutable and valid only during this call.
+    #[no_mangle]
+    pub unsafe extern "C" fn code_module_dispatch_borrowed_v1(
+        out: *mut CodeValue,
+        api: *const borrowed::CodeBorrowedApi,
+        particle: *const core::ffi::c_void,
+    ) -> core::ffi::c_int {
+        let Some(p) = borrowed::BorrowedValue::from_raw(api, particle) else {
+            return 0;
+        };
+        if p.field("_class").and_then(|v| v.text()) != Some("Length") {
+            return 0;
+        }
+        guarded(&mut *out, "arrays", |out| {
+            match p
+                .field("value")
+                .map(|v| v.info())
+                .filter(|v| v.tag == CodeTag::Array as i32)
+            {
+                Some(value) => make_result(out, c"LengthResult", |slot| {
+                    number(slot, value.length as f64)
+                }),
+                None => exception(out, "arrays", "Length requires an array 'value'"),
+            }
+        });
+        1
+    }
+
+    /// # Safety
     /// The host supplies valid initialized ABI values for the duration of dispatch.
     #[no_mangle]
     pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *const CodeValue) {
@@ -214,8 +243,12 @@ mod machine {
 #[cfg(target_arch = "wasm32")]
 include!("../../browser_half.rs");
 #[cfg(target_arch = "wasm32")]
-browser_half!(
+include!("../../browser_length.rs");
+#[cfg(target_arch = "wasm32")]
+browser_length_half!(
     "arrays",
+    4,
+    br#"{"_class":"Exception","source":"arrays","message":"Length requires an array 'value'","innerException":null}"#,
     arrays_code_module_abi_version,
     arrays_code_module_dispatch
 );
