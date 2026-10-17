@@ -60,3 +60,11 @@ non-breaking spaces intact. Full Unicode case folding is separate work.
 Length now lives in strings for text and arrays for lists; core Length is
 removed in unreleased source. Index-context length remains in the language. Link strings in a browser shell as well as
 in any guest that calls it; its page.mjs is bundled into generated host.mjs.
+
+The native interpreter can read Length's text through the optional borrowed
+metadata API, without copying it into the module. Compiled wasm implements
+Length locally when its host permits it; overrides, denials and older hosts
+retain ordinary dispatch. Counting Unicode scalars still scans the UTF-8 text;
+this is not constant-time string Length. Other handlers and the separate
+code-wasm interpreter's JSON callback bridge are unchanged. Existing native
+interior-NUL transport limitations are retained, not a new string contract.

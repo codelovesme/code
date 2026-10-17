@@ -313,6 +313,27 @@ package builds standalone (`cargo publish --dry-run`), and publishes.
 everything except the actual publish — a real dry run against the exact
 package that would ship.
 
+## Optional borrowed metadata dispatch (unreleased)
+
+A module may additionally export `code_module_dispatch_borrowed_v1(out, api,
+particle) -> c_int`. The interpreter tries it before constructing the full
+ABI value tree. Return nonzero for a module-owned result, or zero to request
+ordinary dispatch. The host releases either result, including one declined.
+Keep the required ordinary exports: older hosts ignore this entry point.
+The value layout and `CODE_ABI_VERSION` remain 2; the metadata API version is 1.
+
+`borrowed::BorrowedValue::from_raw` checks the API version and exposes metadata,
+first-field lookup and UTF-8 text. It does not expose array elements or scalar
+number payloads. Use it only for handlers that can answer from that information
+(arrays/strings Length are examples); decline everything else. See
+[arrays](../modules/arrays/src/lib.rs) for an implementation.
+
+All opaque pointers, field values and text slices are immutable, confined to
+the calling thread, and borrowed only until dispatch returns. Never retain
+them or pass them to CodeValue constructors/releases. Return an ordinary owned
+CodeValue. The host's existing transport limitations still apply. Wire types
+are mirrored in vendor/borrowed_abi.rs and checked against the main crate.
+
 ## License
 
 GPL-3.0 — see [LICENSE](./LICENSE). This crate links `runtime.c` from the

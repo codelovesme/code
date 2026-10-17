@@ -52,11 +52,20 @@ one. Direct JavaScript factory calls follow the browser module convention:
 array containers are new, with element references treated as immutable JSON.
 
 Native equality delegates to the core ABI. Browser equality is iterative and
-matches it for JSON values. Existing browser transport serializes particles as
+matches it for JSON values. Ordinary browser transport serializes particles as
 JSON: duplicate object keys cannot be preserved and non-finite numeric payloads
-cannot round-trip as numbers. This module does not change that boundary; parity
+cannot round-trip as numbers. For that transport, parity
 contracts apply to finite JSON values with unique object keys. Number validation
 also rejects direct non-finite ABI/JavaScript sort keys and numeric operands.
+
+Length can avoid transporting the container. The interpreter uses the optional
+`code_module_dispatch_borrowed_v1` metadata view; compiled native already reads
+the array's ABI header. Compiled wasm counts in this module after its host
+explicitly permits local dispatch. Array Length does not walk its elements.
+Host overrides/denials still receive the ordinary call; older hosts/modules
+fall back to ordinary dispatch. The local path selects the first `value`
+field like native; legacy JSON fallback retains its unique-key restriction.
+The separate code-wasm interpreter's JSON callback bridge is unchanged.
 
 Length now lives in arrays for lists and strings for text. Core Length is
 removed in unreleased source; index-context length remains in the language. Link arrays in both a guest and its browser shell,
