@@ -967,3 +967,13 @@ each other's way:
   in its own commit, push immediately, and say so.
 - `crates/modules/*` are naturally separable — two agents on two different
   modules will not collide.
+
+## Browser module diagnostics (ticket 100, unreleased)
+
+Generated wasm hosts enable unanswered-module console warnings for development
+builds only. The host bundle's build mode governs its hosted programs too.
+Warnings name the module and particle class, never the particle payload, and
+leave the existing null result intact. Optional local-dispatch preflights are
+not unanswered calls and never warn. Release hosts retain silent behavior;
+`web_host_source` used by embedders retains its quiet default. Shell/guest
+manifest auditing belongs to Euglena, not this runtime.
