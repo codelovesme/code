@@ -79,6 +79,8 @@ use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 /// this.
 pub const CODE_ABI_VERSION: u32 = 2;
 
+pub mod borrowed;
+
 /// Byte stride of an array/object element buffer: one [`CodeValue`]. Address
 /// a buffer through [`slot_at`] all the same.
 pub const CODE_VALUE_SLOT_SIZE: usize = 16;

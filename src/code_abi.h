@@ -211,6 +211,38 @@ typedef struct CodeValue {
 
 #define CODE_VALUE_SLOT_SIZE 16
 
+/* Optional synchronous metadata dispatch. A module may export
+ * int code_module_dispatch_borrowed_v1(CodeValue *out,
+ *     const CodeBorrowedApi *api, const void *particle).
+ * A nonzero return means it answered; zero asks the host to call ordinary
+ * code_module_dispatch with a fully marshaled particle. Unsupported api->version
+ * must return zero. All other exports remain mandatory; old hosts ignore this.
+ * ABI 2 value layout is unchanged. The interpreter currently supplies version 1;
+ * compiled hosts already supply ordinary borrowed CodeValues and need no view.
+ *
+ * Opaque values and UTF-8 bytes are read-only and valid only until dispatch
+ * returns, on the calling thread. Never retain them, mutate them, send them to
+ * another thread, or use them as CodeValues. Callbacks may only be called with
+ * the root or a value returned by field. field borrows its UTF-8 key during
+ * that callback; it returns the FIRST matching field, or NULL if absent or
+ * not an object. A result is an ordinary module-owned CodeValue, copied and
+ * released by the host as usual. Even a declined result is released first.
+ * inspect exposes metadata only: tag, container element count or string byte
+ * length, and a borrowed UTF-8 pointer for strings (NULL allowed when empty).
+ * Non-string scalars have length zero and bytes NULL. Hosts preserve their
+ * existing transport limitations (e.g. interpreter interior-NUL strings).
+ */
+typedef struct CodeValueInfo {
+    int32_t tag;
+    uint64_t length;
+    const uint8_t *bytes;
+} CodeValueInfo;
+typedef struct CodeBorrowedApi {
+    uint32_t version;
+    CodeValueInfo (*inspect)(const void *value);
+    const void *(*field)(const void *value, const uint8_t *key, uint64_t length);
+} CodeBorrowedApi;
+
 /* A list's or an object's element count, slots and keys — 0/NULL for an
  * empty one, and for a value of any other kind. */
 static inline CodeList *code_list_of(const CodeValue *v) {

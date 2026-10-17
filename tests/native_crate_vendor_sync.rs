@@ -10,6 +10,10 @@ fn vendored_files_match_src() {
     let pairs = [
         ("src/code_abi.h", "crates/code-native/vendor/code_abi.h"),
         ("src/runtime.c", "crates/code-native/vendor/runtime.c"),
+        (
+            "src/borrowed_abi.rs",
+            "crates/code-native/vendor/borrowed_abi.rs",
+        ),
     ];
     for (canonical, vendored) in pairs {
         let want = std::fs::read_to_string(canonical)
