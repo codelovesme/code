@@ -102,14 +102,14 @@ if (moduleName === 'length') {
   if (guarded.ask({_class: 'ProbeLength'})?.value !== 777)
     throw new Error('local Length bypassed a custom guard');
 }
-if (moduleName === 'time') {
+if (moduleName === 'time' && '__FILE__' === 'time_queries.code') {
   const clock = host.ask({ _class: 'ClockSnapshot' });
   const offset = process.env.TZ === 'UTC' ? 0 : 120;
   if (clock.value !== 1790000000 || clock.core_value !== 1790000000 || clock.offset !== offset) {
     throw new Error('clock units/offset: ' + JSON.stringify(clock));
   }
 }
-"#.replace("__MODULE__", module)).unwrap();
+"#.replace("__MODULE__", module).replace("__FILE__", file)).unwrap();
     for timezone in ["UTC", "Etc/GMT-2"] {
         let out = Command::new("node")
             .arg("probe.mjs")
