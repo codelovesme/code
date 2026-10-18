@@ -1,0 +1,50 @@
+| Calendar days both ways — Hinnant's proleptic Gregorian arithmetic — the
+| same in the interpreter, compiled code and the browser half.
+link "native_modules/time.so" as time
+
+known = [
+    { year = 1970, month = 1, day = 1, days = 0, weekday = 4 }
+    { year = 1969, month = 12, day = 31, days = -1, weekday = 3 }
+    { year = 2000, month = 2, day = 29, days = 11016, weekday = 2 }
+    { year = 2000, month = 3, day = 1, days = 11017, weekday = 3 }
+    { year = 2026, month = 9, day = 11, days = 20707, weekday = 5 }
+    { year = 2026, month = 10, day = 18, days = 20744, weekday = 0 }
+    { year = 2100, month = 2, day = 28, days = 47540, weekday = 0 }
+    { year = 2100, month = 3, day = 1, days = 47541, weekday = 1 }
+    { year = 1600, month = 2, day = 29, days = -135081, weekday = 2 }
+    { year = 1, month = 1, day = 1, days = -719162, weekday = 1 }
+    { year = 0, month = 3, day = 1, days = -719468, weekday = 3 }
+]
+loop date over known
+    emit DaysFromDate { year = date.year, month = date.month, day = date.day } to time get days
+    assert days = DaysFromDateResult { value = date.days }
+    emit DateFromDays { days = date.days } to time get back
+    assert back = DateFromDaysResult { year = date.year, month = date.month, day = date.day, weekday = date.weekday }
+
+| Every 37th day for six thousand years either side of 1970, there and back.
+days = -2200000
+loop
+    if days > 2200000, break
+    emit DateFromDays { days = days } to time get date
+    emit DaysFromDate { year = date.year, month = date.month, day = date.day } to time get again
+    assert again.value = days
+    days = days + 37
+
+| A day past the month's end rolls into the next month.
+emit DaysFromDate { year = 2026, month = 2, day = 31 } to time get rolled
+emit DaysFromDate { year = 2026, month = 3, day = 3 } to time get march
+assert rolled.value = march.value
+
+| What is not a date is refused.
+emit DaysFromDate { year = 2026, month = 13, day = 1 } to time get no_month
+assert no_month ∈ Exception
+emit DaysFromDate { year = 2026, month = 1, day = 0 } to time get no_day
+assert no_day ∈ Exception
+emit DaysFromDate { year = 2026.5, month = 1, day = 1 } to time get fraction
+assert fraction ∈ Exception
+emit DaysFromDate { year = "2026", month = 1, day = 1 } to time get text
+assert text ∈ Exception
+emit DateFromDays { days = 1.5 } to time get half_day
+assert half_day ∈ Exception
+emit DateFromDays to time get no_days
+assert no_days ∈ Exception
