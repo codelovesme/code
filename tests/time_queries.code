@@ -4,8 +4,11 @@ emit Timestamp to core get before
 emit Timestamp to time get clock
 emit Timestamp to core get after
 assert clock ∈ TimestampResult
-assert clock.value ≥ before.value
-assert clock.value ≤ after.value
+| Two readings of the wall clock, not one: core's may come from a coarser
+| source than the module's, so at a second's edge the module can already
+| be in the next second. One second either side is the same instant.
+assert clock.value ≥ before.value - 1
+assert clock.value ≤ after.value + 1
 emit TimezoneOffset to time get local
 emit TimezoneOffset to core get original
 assert local ∈ TimezoneOffsetResult
