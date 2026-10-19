@@ -708,7 +708,7 @@ jobs:
               router) handlers='["Route", "Navigate", "Watch", "Where"]' ;;
               storage) handlers='["Get", "Set", "Remove"]' ;;
               clipboard) handlers='["Copy"]' ;;
-              time) handlers='["Timestamp", "TimezoneOffset"]' ;;
+              time) handlers='["Timestamp", "TimezoneOffset", "DaysFromDate", "DateFromDays"]' ;;
               timer) handlers='["Delay", "Cancel"]' ;;
               mqtt) handlers='["Config", "Subscribe", "Unsubscribe", "Publish", "Status", "Disconnect", "SetWill"]' ;;
               ntfy) handlers='["Config", "Notify"]' ;;
