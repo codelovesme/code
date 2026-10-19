@@ -7,7 +7,7 @@
 
 [package]
 name = "math"
-version = "2.16.0"
+version = "2.17.0"
 edition = "2021"
 description = "Numeric utilities for Code: arithmetic, rounding, parsing and transcendental functions."
 license = "GPL-3.0"

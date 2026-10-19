@@ -7,7 +7,7 @@
 
 [package]
 name = "arrays"
-version = "2.16.0"
+version = "2.17.0"
 edition = "2021"
 description = "Array utilities for Code, with native and browser implementations."
 license = "GPL-3.0"
