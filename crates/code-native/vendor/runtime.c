@@ -1512,10 +1512,15 @@ static int shares_one_instance(void *lib) {
 }
 
 /* Whether `lib` offers an instance per link (`code_abi.h` item 13), with
- * nothing that would tie it to one: the same conditions as item 12. */
+ * nothing that would tie it to one: no serving, release or drain, and a
+ * module that pushes takes its queue per instance
+ * (`code_module_instance_set_inbound`, ticket 178). */
 static int offers_instances(void *lib) {
+    int pushes = dlsym(lib, "code_module_set_inbound") != NULL;
     return dlsym(lib, INSTANCE_EXPORT) && dlsym(lib, "code_module_instance_dispatch")
-           && has_no_life_of_its_own(lib);
+           && (!pushes || dlsym(lib, "code_module_instance_set_inbound"))
+           && !dlsym(lib, "code_module_serving") && !dlsym(lib, "code_module_release")
+           && !dlsym(lib, "code_module_drain");
 }
 #endif
 
@@ -1659,7 +1664,16 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     void (*set_inbound)(void *, CodeEmitFn) =
         (void (*)(void *, CodeEmitFn))dlsym(handle, "code_module_set_inbound");
     nh->has_inbound = set_inbound != NULL;
-    if (set_inbound) {
+    /* A link with an instance of its own gets a queue of its own: handed to
+     * that instance, never to the module-wide export another link's queue
+     * would replace (ticket 178). */
+    void (*instance_set_inbound)(void *, void *, CodeEmitFn) =
+        nh->instance ? (void (*)(void *, void *, CodeEmitFn))dlsym(
+                           handle, "code_module_instance_set_inbound")
+                     : NULL;
+    if (instance_set_inbound) {
+        instance_set_inbound(nh->instance, nh, code_emit_inbound);
+    } else if (set_inbound) {
         set_inbound(nh, code_emit_inbound);
     }
     return nh;

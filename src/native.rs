@@ -408,6 +408,8 @@ type DispatchFn = unsafe extern "C" fn(*mut CodeValueFfi, *const CodeValueFfi);
 /// `code_abi.h` item 13: a new instance, and a dispatch to one.
 type InstanceNewFn = unsafe extern "C" fn() -> *mut c_void;
 type InstanceDispatchFn = unsafe extern "C" fn(*mut c_void, *mut CodeValueFfi, *const CodeValueFfi);
+/// `code_module_instance_set_inbound`: one link's queue, for its instance.
+type InstanceSetInboundFn = unsafe extern "C" fn(*mut c_void, *mut c_void, EmitFn);
 type BorrowedDispatchFn = unsafe extern "C" fn(
     *mut CodeValueFfi,
     *const CodeBorrowedApi,
@@ -625,7 +627,20 @@ fn offers_instances(lib: &Library) -> bool {
                 .get::<InstanceDispatchFn>(b"code_module_instance_dispatch")
                 .is_ok()
     };
-    offers && has_no_life_of_its_own(lib)
+    // A module that pushes may still be shared when it takes its queue per
+    // instance (ticket 178). Must match `runtime.c`'s `offers_instances`.
+    // SAFETY: only looked up, not called.
+    let (pushes, own_queue, held) = unsafe {
+        (
+            lib.get::<SetInboundFn>(b"code_module_set_inbound").is_ok(),
+            lib.get::<InstanceSetInboundFn>(b"code_module_instance_set_inbound")
+                .is_ok(),
+            lib.get::<ServingFn>(b"code_module_serving").is_ok()
+                || lib.get::<ModuleReleaseFn>(b"code_module_release").is_ok()
+                || lib.get::<ModuleReleaseFn>(b"code_module_drain").is_ok(),
+        )
+    };
+    offers && (!pushes || own_queue) && !held
 }
 
 /// No queue it pushes into, nothing holding the program open, no top-level
@@ -693,11 +708,38 @@ impl NativeModule {
         // first simply doesn't export it. Leaked on purpose — the module
         // holds the raw pointer for as long as it is loaded, which is until
         // the program ends.
+        // Opened once for every link, so this link gets an instance of its
+        // own (`code_abi.h` item 13).
+        let instance = if image.is_none() && offers_instances(&lib) {
+            // SAFETY: both checked present by `offers_instances`.
+            unsafe {
+                let make = *lib.get::<InstanceNewFn>(INSTANCE_EXPORT).unwrap();
+                let dispatch = *lib
+                    .get::<InstanceDispatchFn>(b"code_module_instance_dispatch")
+                    .unwrap();
+                let made = make();
+                if made.is_null() {
+                    return Err(format!("native module '{path}' could not make an instance"));
+                }
+                Some((made, dispatch))
+            }
+        } else {
+            None
+        };
+
         let inbound: &'static InboundQueue = Box::leak(Box::new(InboundQueue::default()));
         let mut has_inbound = false;
         unsafe {
             if let Ok(set) = lib.get::<SetInboundFn>(b"code_module_set_inbound") {
-                set(inbound as *const InboundQueue as *mut c_void, push_inbound);
+                // A link with an instance of its own gets a queue of its own,
+                // handed to that instance rather than to the module-wide
+                // export another link's queue would replace (ticket 178).
+                let own = lib.get::<InstanceSetInboundFn>(b"code_module_instance_set_inbound");
+                let queue = inbound as *const InboundQueue as *mut c_void;
+                match (instance, own) {
+                    (Some((made, _)), Ok(set_own)) => set_own(made, queue, push_inbound),
+                    _ => set(queue, push_inbound),
+                }
                 has_inbound = true;
             }
         }
@@ -718,25 +760,6 @@ impl NativeModule {
         let module_release = unsafe { lib.get::<ModuleReleaseFn>(b"code_module_release") }
             .ok()
             .map(|f| *f);
-
-        // Opened once for every link, so this link gets an instance of its
-        // own (`code_abi.h` item 13).
-        let instance = if image.is_none() && offers_instances(&lib) {
-            // SAFETY: both checked present by `offers_instances`.
-            unsafe {
-                let make = *lib.get::<InstanceNewFn>(INSTANCE_EXPORT).unwrap();
-                let dispatch = *lib
-                    .get::<InstanceDispatchFn>(b"code_module_instance_dispatch")
-                    .unwrap();
-                let made = make();
-                if made.is_null() {
-                    return Err(format!("native module '{path}' could not make an instance"));
-                }
-                Some((made, dispatch))
-            }
-        } else {
-            None
-        };
 
         Ok(NativeModule {
             dispatch_fn,

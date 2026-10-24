@@ -130,3 +130,76 @@ fn a_module_with_instances_is_one_image_with_settings_per_link() {
         );
     }
 }
+
+/// A module that answers later from a thread of its own, opened once with an
+/// instance — and a queue — per link (`code_abi.h` item 13, ticket 178):
+/// both links' `later` answers arrive, each carrying the id its own `Get`
+/// was given, and no copy of the module's file is held.
+const QUEUES: &str = r#"
+link "native_modules/http_client.so" as one
+link "native_modules/http_client.so" as two
+link "native_modules/arrays.so" as arrays
+link "native_modules/process.so" as p
+link "native_modules/strings.so" as s
+
+arrived = []
+HttpResponse { ok, _request_id as id } =>
+    arrived += [id]
+    return Seen {}
+
+emit Get { url = "http://127.0.0.1:1/", later = true } to one get first
+emit Get { url = "http://127.0.0.1:1/", later = true } to two get second
+spins = 0
+loop
+    spins += 1
+    emit Length { value = arrived } to arrays get n
+    if n.value = 2
+        break
+    if spins > 4000000
+        break
+emit Length { value = arrived } to arrays get n
+assert n.value = 2
+emit Contains { value = arrived, item = first.value } to arrays get has_first
+assert has_first.value
+emit Contains { value = arrived, item = second.value } to arrays get has_second
+assert has_second.value
+
+emit Run { command = "sh", args = ["-c", "ls -l /proc/\$PPID/fd | grep -c memfd:code-module"] } to p get r
+emit Trim { value = r.stdout } to s get images
+assert images.value = "1"
+"#;
+
+#[test]
+fn a_module_that_answers_later_has_a_queue_per_link() {
+    let dir = std::env::temp_dir().join(format!("code-instance-queues-{}", std::process::id()));
+    fs::create_dir_all(dir.join("native_modules")).unwrap();
+    for name in ["http_client", "arrays", "process", "strings"] {
+        fs::copy(
+            modules::build_so(name),
+            dir.join(format!("native_modules/{name}.so")),
+        )
+        .unwrap();
+    }
+    let source = dir.join("program.code");
+    fs::write(&source, QUEUES).unwrap();
+    let interpreted = Command::new(env!("CARGO_BIN_EXE_code"))
+        .args(["run", "--interpret"])
+        .arg(&source)
+        .output()
+        .unwrap();
+    assert!(
+        interpreted.status.success(),
+        "interpreted: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    for release in [false, true] {
+        let bin = dir.join(if release { "release" } else { "dev" });
+        code::compile_file(&source, code::BuildTarget::Exe, &bin, release).unwrap();
+        let out = Command::new(&bin).output().unwrap();
+        assert!(
+            out.status.success(),
+            "compiled (release {release}): {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}

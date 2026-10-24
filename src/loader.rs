@@ -460,6 +460,7 @@ impl FilesystemResolver {
                         has_inbound: symbols.has_inbound,
                         has_reply: symbols.has_reply,
                         has_instances: symbols.has_instances,
+                        has_instance_inbound: symbols.has_instance_inbound,
                         stateless: symbols.stateless,
                         has_serving: symbols.has_serving,
                     },
@@ -708,6 +709,7 @@ struct StaticSymbols {
     has_inbound: bool,
     has_reply: bool,
     has_instances: bool,
+    has_instance_inbound: bool,
     stateless: bool,
     has_serving: bool,
 }
@@ -755,6 +757,7 @@ fn static_module_symbols(path: &str) -> Result<StaticSymbols, String> {
         has_inbound: has("set_inbound"),
         has_reply: has("inbound_reply"),
         has_instances: has("instance_new") && has("instance_dispatch"),
+        has_instance_inbound: has("instance_set_inbound"),
         stateless: has("stateless"),
         has_serving: has("serving"),
         prefix,

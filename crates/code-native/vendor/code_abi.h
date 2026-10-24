@@ -162,9 +162,14 @@
  *      host that predates this — which then copies the module per link as
  *      it always did (ticket 178: mongodb was 16 copies on one host).
  *
- *      Same conditions as item 12: not honoured for a module that exports
- *      `code_module_set_inbound`, `code_module_serving`, `code_module_release`
- *      or `code_module_drain` (a queue per instance is not part of this yet).
+ *      Not honoured for a module that exports `code_module_serving`,
+ *      `code_module_release` or `code_module_drain`. A module that pushes
+ *      (`code_module_set_inbound`) is honoured only when it also exports
+ *      `void code_module_instance_set_inbound(void *instance, void *queue,
+ *      CodeEmitFn emit)`: each link's queue is then handed to that link's
+ *      instance, and what a thread started by a dispatch pushes goes to the
+ *      link that asked (ticket 178; `code-native`'s `inbound_here` and
+ *      `InboundScope`). `code_module_inbound_reply` stays module-wide.
  *      Optional and additive; the ABI version does not move.
  *
  * Why `emit` is a function *pointer* the host supplies, rather than a

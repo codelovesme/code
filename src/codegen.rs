@@ -266,6 +266,9 @@ struct StaticModuleFns<'a> {
     instances: Option<(FunctionValue<'a>, FunctionValue<'a>)>,
     /// `<prefix>_code_module_serving`, when the archive exports it.
     serving: Option<FunctionValue<'a>>,
+    /// `<prefix>_code_module_instance_set_inbound`, when the archive takes
+    /// its queue per instance (ticket 178).
+    instance_set_inbound: Option<FunctionValue<'a>>,
 }
 
 /// A wasm build may link a `.a` but not a `.so`.
@@ -820,6 +823,7 @@ pub(crate) fn compile_to_object_traced(
                     has_inbound,
                     has_reply,
                     has_instances,
+                    has_instance_inbound,
                     has_serving,
                     ..
                 },
@@ -892,6 +896,18 @@ pub(crate) fn compile_to_object_traced(
                     None,
                 )
             });
+            // `(void *instance, void *queue, CodeEmitFn emit)` — each alias's
+            // queue handed to its own instance (ticket 178).
+            let instance_set_inbound = (*has_instances && *has_instance_inbound).then(|| {
+                module.add_function(
+                    &format!("{prefix}_code_module_instance_set_inbound"),
+                    void_ty.fn_type(
+                        &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+                        false,
+                    ),
+                    None,
+                )
+            });
             let fns = StaticModuleFns {
                 abi_version,
                 dispatch,
@@ -899,6 +915,7 @@ pub(crate) fn compile_to_object_traced(
                 set_inbound,
                 inbound_reply,
                 instances,
+                instance_set_inbound,
                 serving,
             };
             static_prefix_fns.insert(prefix.clone(), fns);
@@ -3636,6 +3653,34 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .map_err(|e| e.to_string())?;
                 self.bind(alias, permanent);
 
+                // An instance of its own, made where this alias is linked and
+                // parked in a global, as the queue is: a handler that emits
+                // to it is a function of its own.
+                let own = match fns.instances {
+                    None => None,
+                    Some((make, dispatch)) => {
+                        let made = self
+                            .builder
+                            .build_call(make, &[], "static_instance")
+                            .map_err(|e| e.to_string())?
+                            .try_as_basic_value()
+                            .left()
+                            .expect("<prefix>_code_module_instance_new returns i8*, not void")
+                            .into_pointer_value();
+                        let slot = self.module.add_global(
+                            self.i8_ptr_ty,
+                            None,
+                            &format!("_code_static_instance_{alias}"),
+                        );
+                        slot.set_initializer(&self.i8_ptr_ty.const_null());
+                        let slot = slot.as_pointer_value();
+                        self.builder
+                            .build_store(slot, made)
+                            .map_err(|e| e.to_string())?;
+                        Some((slot, dispatch))
+                    }
+                };
+
                 // A queue of its own, but only if the archive said it would
                 // push. A module that never speaks first pays for nothing.
                 let inbound = match fns.set_inbound {
@@ -3665,38 +3710,29 @@ impl<'a, 'm> Gen<'a, 'm> {
                         // The pusher handed across is *this* runtime's, which
                         // for a `.a` is also the module's — there is only one.
                         let emit = self.fn_emit_inbound.as_global_value().as_pointer_value();
-                        self.builder
-                            .build_call(set_inbound, &[handle.into(), emit.into()], "")
-                            .map_err(|e| e.to_string())?;
+                        // Its own instance takes its own queue, so a second
+                        // alias does not replace the first's (ticket 178).
+                        match (own, fns.instance_set_inbound) {
+                            (Some((instance_slot, _)), Some(set_own)) => {
+                                let instance = self
+                                    .builder
+                                    .build_load(self.i8_ptr_ty, instance_slot, "own_instance")
+                                    .map_err(|e| e.to_string())?;
+                                self.builder
+                                    .build_call(
+                                        set_own,
+                                        &[instance.into(), handle.into(), emit.into()],
+                                        "",
+                                    )
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            _ => {
+                                self.builder
+                                    .build_call(set_inbound, &[handle.into(), emit.into()], "")
+                                    .map_err(|e| e.to_string())?;
+                            }
+                        }
                         Some(slot)
-                    }
-                };
-
-                // An instance of its own, made where this alias is linked and
-                // parked in a global, as the queue is: a handler that emits
-                // to it is a function of its own.
-                let own = match fns.instances {
-                    None => None,
-                    Some((make, dispatch)) => {
-                        let made = self
-                            .builder
-                            .build_call(make, &[], "static_instance")
-                            .map_err(|e| e.to_string())?
-                            .try_as_basic_value()
-                            .left()
-                            .expect("<prefix>_code_module_instance_new returns i8*, not void")
-                            .into_pointer_value();
-                        let slot = self.module.add_global(
-                            self.i8_ptr_ty,
-                            None,
-                            &format!("_code_static_instance_{alias}"),
-                        );
-                        slot.set_initializer(&self.i8_ptr_ty.const_null());
-                        let slot = slot.as_pointer_value();
-                        self.builder
-                            .build_store(slot, made)
-                            .map_err(|e| e.to_string())?;
-                        Some((slot, dispatch))
                     }
                 };
 

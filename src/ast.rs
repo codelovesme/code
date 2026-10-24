@@ -595,6 +595,9 @@ pub enum NativeFormat {
         /// `_instance_dispatch` (`code_abi.h` item 13): then every alias
         /// linking it gets an instance of its own (ticket 141).
         has_instances: bool,
+        /// Whether it exports `<prefix>_code_module_instance_set_inbound`:
+        /// then each alias's queue is handed to its own instance (ticket 178).
+        has_instance_inbound: bool,
         /// Whether it exports `<prefix>_code_module_stateless` (item 12):
         /// then two aliases may share it as it is.
         stateless: bool,

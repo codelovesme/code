@@ -46,6 +46,9 @@ link "jwt.a" as first
 link "jwt.a" as second
 link "timer.a" as clock
 link "console.a" as term
+link "http_client.a" as web
+link "http_client.a" as web2
+link "arrays.a" as arrays
 
 emit Floor { value = 3.7 } to math get f
 assert f.value = 3
@@ -72,6 +75,25 @@ assert bad ∈ Exception
 emit Nothing { } to first get unknown
 assert unknown = null
 
+| Two linked-in aliases of a module that answers later from its own
+| thread, each instance with its own queue (ticket 178).
+arrived = []
+HttpResponse { ok, _request_id as id } =>
+    arrived += [id]
+    return Seen {}
+emit Get { url = "http://127.0.0.1:1/", later = true } to web get one_sent
+emit Get { url = "http://127.0.0.1:1/", later = true } to web2 get two_sent
+spins = 0
+loop
+    spins += 1
+    emit Length { value = arrived } to arrays get waiting
+    if waiting.value = 2
+        break
+    if spins > 4000000
+        break
+emit Length { value = arrived } to arrays get landed
+assert landed.value = 2
+
 Refresh { what } =>
     emit Print { value = "fired $what" } to term
 emit Delay { ms = 20, then = { _class = "Refresh", what = "prices" } } to clock get d
@@ -83,7 +105,16 @@ fn real_modules_link_into_one_program() {
     let dir = std::env::temp_dir().join(format!("code-static-modules-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
-    for name in ["math", "strings", "jwt", "timer", "console", "process"] {
+    for name in [
+        "math",
+        "strings",
+        "jwt",
+        "timer",
+        "console",
+        "process",
+        "http_client",
+        "arrays",
+    ] {
         archive(name, &dir);
     }
     let source = dir.join("program.code");
