@@ -897,7 +897,8 @@ mod compile {
                 // defaults to 64 KiB, which ordinary nested render handlers
                 // exhaust. Keep the stack below data so overflow traps instead
                 // of overwriting globals and the runtime heap.
-                .args(["-z", "stack-size=1048576"])
+                .arg("-z")
+                .arg(format!("stack-size={}", codegen::WASM_STACK_BYTES))
                 .arg("--stack-first")
                 .arg("--export=main")
                 // How a page calls back in. A program that draws nothing

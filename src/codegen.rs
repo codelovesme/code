@@ -271,6 +271,16 @@ struct StaticModuleFns<'a> {
     instance_set_inbound: Option<FunctionValue<'a>>,
 }
 
+/// A page's linear-memory stack: what `link_wasm` reserves
+/// (`-z stack-size`), and so what a wasm handler's stack check measures
+/// against (ticket 104).
+pub(crate) const WASM_STACK_BYTES: u64 = 1_048_576;
+
+/// How much stack a wasm handler wants left when it starts, for the runtime
+/// calls it makes below its own frame. Under this, it answers an Exception
+/// rather than run on into a trap.
+const WASM_STACK_MARGIN: u64 = 64 * 1024;
+
 /// A wasm build may link a `.a` but not a `.so`.
 ///
 /// Not a restriction so much as the shape of the target: a `.a` is linked
@@ -1964,6 +1974,83 @@ impl<'a, 'm> Gen<'a, 'm> {
         let active = active.as_pointer_value();
         let reenter = self.context.append_basic_block(function, "toodeep");
         let enter = self.context.append_basic_block(function, "enter");
+        // In a page the stack is a fixed 1 MiB of linear memory, below the
+        // data (`--stack-first`). A chain of handlers deep enough to use it
+        // up used to end in a `memset` trap that said nothing about depth
+        // (ticket 104). So a wasm handler looks first: with less than
+        // `WASM_STACK_MARGIN` left above `__stack_low`, it answers an
+        // Exception naming the stack, the way the depth bound answers —
+        // leaving the margin for the runtime calls a handler makes.
+        if self.wasm {
+            let roomy = self.context.append_basic_block(function, "stackroom");
+            let exhausted = self.context.append_basic_block(function, "stackgone");
+            // Where this frame is: the address of a byte of its own. Not
+            // `llvm.stacksave`: in a handler with no frame of its own, wasm
+            // lowered that to a frame-pointer local nobody had set, which
+            // read 0 and stopped every call made from a page callback
+            // (found 2026-10-24). An address taken makes a frame, and is
+            // always inside the stack.
+            let here = self
+                .entry_builder()
+                .build_alloca(self.i8_ty, "stack_here")
+                .map_err(|e| e.to_string())?;
+            let low = match self.module.get_global("__stack_low") {
+                Some(low) => low,
+                None => {
+                    let low = self.module.add_global(self.i8_ty, None, "__stack_low");
+                    low.set_linkage(inkwell::module::Linkage::External);
+                    low
+                }
+            };
+            let int_ty = self.context.i32_type();
+            let here = self
+                .builder
+                .build_ptr_to_int(here, int_ty, "stack_at")
+                .map_err(|e| e.to_string())?;
+            let low = self
+                .builder
+                .build_ptr_to_int(low.as_pointer_value(), int_ty, "stack_low")
+                .map_err(|e| e.to_string())?;
+            let floor = self
+                .builder
+                .build_int_add(
+                    low,
+                    int_ty.const_int(WASM_STACK_MARGIN, false),
+                    "stack_floor",
+                )
+                .map_err(|e| e.to_string())?;
+            let short = self
+                .builder
+                .build_int_compare(IntPredicate::ULT, here, floor, "stack_short")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_conditional_branch(short, exhausted, roomy)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(exhausted);
+            let msg = self.global_str(
+                &format!(
+                    "handler '{class_name}' found the stack nearly used up — too deep a chain \
+                     of handler calls for a page's {} KiB stack",
+                    WASM_STACK_BYTES / 1024
+                ),
+                "stackgone",
+            )?;
+            let source = self.global_str("runtime", "excsource")?;
+            self.builder
+                .build_call(
+                    self.fn_make_exception,
+                    &[
+                        out.into(),
+                        source.into(),
+                        msg.into(),
+                        self.i8_ptr_ty.const_null().into(),
+                    ],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+            self.builder.build_return(None).map_err(|e| e.to_string())?;
+            self.builder.position_at_end(roomy);
+        }
         let running = self
             .builder
             .build_load(self.i32_ty, active, "running")
