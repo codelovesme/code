@@ -175,10 +175,7 @@ jobs:
       - name: Compile
         run: |
           set -euo pipefail
-          m="${{ matrix.module }}"
-          mkdir -p dist
-          (cd "crates/modules/$m" && cargo build --release)
-          mv "crates/modules/$m/target/release/lib$m.so" "dist/${m}-linux-x86_64.so"
+          scripts/build-module-linux.sh "${{ matrix.module }}" dist
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
