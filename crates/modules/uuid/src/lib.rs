@@ -34,6 +34,13 @@ pub extern "C" fn code_module_abi_version() -> u32 {
     CODE_ABI_VERSION
 }
 
+/// This module keeps no state, so every link of it may share one instance
+/// (`code_abi.h` item 12, ticket 177).
+#[no_mangle]
+pub extern "C" fn code_module_stateless() -> core::ffi::c_int {
+    1
+}
+
 /// The single dispatch point: read `_class`, route to a handler. An
 /// unhandled class is null; a handler that cannot do the work returns an
 /// `Exception`. Neither ends the program.

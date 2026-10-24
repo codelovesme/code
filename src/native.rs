@@ -530,11 +530,30 @@ unsafe extern "C" fn push_inbound(queue: *mut c_void, value: *const CodeValueFfi
 /// `None` where this is not available, and the caller falls back to an
 /// ordinary open: one instance, shared, as before. Must match `runtime.c`'s
 /// `module_image`, which does the same for a compiled program.
+///
+/// Also says whether the file carries the name `code_module_stateless`
+/// (`code_abi.h` item 12): such a module may be opened once and shared by
+/// every link (ticket 177), which `open` then checks properly. Found in the
+/// bytes rather than by opening the file, because opening a `.code` library
+/// runs its top level.
 #[cfg(target_os = "linux")]
-fn module_image(path: &str) -> Option<std::os::fd::OwnedFd> {
+fn module_image(path: &str) -> (Option<std::os::fd::OwnedFd>, bool) {
+    let Ok(bytes) = std::fs::read(path) else {
+        return (None, false);
+    };
+    let marked = bytes
+        .windows(STATELESS_EXPORT.len())
+        .any(|w| w == STATELESS_EXPORT);
+    (image_of(&bytes), marked)
+}
+
+/// The name a module that keeps no state exports (`code_abi.h` item 12).
+const STATELESS_EXPORT: &[u8] = b"code_module_stateless";
+
+#[cfg(target_os = "linux")]
+fn image_of(bytes: &[u8]) -> Option<std::os::fd::OwnedFd> {
     use std::os::fd::FromRawFd;
 
-    let bytes = std::fs::read(path).ok()?;
     let name = CString::new("code-module").ok()?;
     // SAFETY: `name` is a valid NUL-terminated string for the duration of
     // the call, and the result is checked before it is owned.
@@ -563,8 +582,29 @@ fn module_image(path: &str) -> Option<std::os::fd::OwnedFd> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn module_image(_path: &str) -> Option<std::os::fd::OwnedFd> {
-    None
+fn module_image(_path: &str) -> (Option<std::os::fd::OwnedFd>, bool) {
+    (None, false)
+}
+
+/// Whether `lib` declares that it keeps no state and has nothing that would
+/// make one instance per link matter: no queue it pushes into, nothing
+/// holding the program open, no top-level values to give up. Must match
+/// `runtime.c`'s `shares_one_instance`.
+fn shares_one_instance(lib: &Library) -> bool {
+    type StatelessFn = unsafe extern "C" fn() -> std::ffi::c_int;
+    // SAFETY: resolved from a library that is loaded; the declaration's
+    // signature is `code_abi.h` item 12's.
+    unsafe {
+        let declares = lib
+            .get::<StatelessFn>(STATELESS_EXPORT)
+            .map(|f| f() != 0)
+            .unwrap_or(false);
+        declares
+            && lib.get::<SetInboundFn>(b"code_module_set_inbound").is_err()
+            && lib.get::<ServingFn>(b"code_module_serving").is_err()
+            && lib.get::<ModuleReleaseFn>(b"code_module_release").is_err()
+            && lib.get::<ModuleReleaseFn>(b"code_module_drain").is_err()
+    }
 }
 
 impl NativeModule {
@@ -572,14 +612,29 @@ impl NativeModule {
         // Its own image, so this instance is nobody else's. A failure is not
         // fatal: the ordinary open still works, it just shares with any
         // other link of the same file.
-        let image = module_image(path);
-        let lib = match &image {
-            Some(fd) => {
-                use std::os::fd::AsRawFd;
-                let proc = format!("/proc/self/fd/{}", fd.as_raw_fd());
-                unsafe { Library::new(&proc) }.or_else(|_| unsafe { Library::new(path) })
-            }
-            None => unsafe { Library::new(path) },
+        let (mut image, marked) = module_image(path);
+        // A module that keeps no state: the ordinary open, which the loader
+        // shares between every link of the file.
+        let shared = if marked {
+            unsafe { Library::new(path) }
+                .ok()
+                .filter(shares_one_instance)
+        } else {
+            None
+        };
+        if shared.is_some() {
+            image = None;
+        }
+        let lib = match (shared, &image) {
+            (Some(lib), _) => Ok(lib),
+            (None, image) => match image {
+                Some(fd) => {
+                    use std::os::fd::AsRawFd;
+                    let proc = format!("/proc/self/fd/{}", fd.as_raw_fd());
+                    unsafe { Library::new(&proc) }.or_else(|_| unsafe { Library::new(path) })
+                }
+                None => unsafe { Library::new(path) },
+            },
         }
         .map_err(|e| format!("cannot load native module '{path}': {e}"))?;
 

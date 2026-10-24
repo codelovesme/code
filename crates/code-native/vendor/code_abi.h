@@ -132,6 +132,22 @@
  *      Optional and additive: a module without it simply has no queues worth
  *      emptying, and the ABI version does not move.
  *
+ *  12. *Optionally* export `int code_module_stateless(void)`, returning
+ *      non-zero, to say this module keeps no state: no settings, no
+ *      connection, nothing a call leaves behind for the next one.
+ *
+ *      Every link of a module normally gets its own copy of it (a name is a
+ *      module — see `runtime.c` `module_image`), and the whole file is paid
+ *      for in memory once per link. A module that keeps nothing has nothing
+ *      to keep apart, so every link of its file then shares one instance
+ *      (ticket 177). Declare it only when it is true: two links of a module
+ *      that does keep something would then change each other's.
+ *
+ *      Not honoured for a module that also exports `code_module_set_inbound`,
+ *      `code_module_serving`, `code_module_release` or `code_module_drain`.
+ *      Optional and additive: a module without it is loaded per link as
+ *      before, and the ABI version does not move.
+ *
  * Why `emit` is a function *pointer* the host supplies, rather than a
  * `code_emit_inbound` a module could call directly: a `.so` carries its own
  * copy of this runtime (see below), so a direct call would push onto the

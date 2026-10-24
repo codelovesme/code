@@ -1431,8 +1431,17 @@ static NativeHandle *host_native(const CodeHostModule *supplied, char *err, size
  * applications.)
  *
  * Returns -1 where this is not available, and the caller falls back to an
- * ordinary open — one instance, shared, as before. */
-static int module_image(const char *path) {
+ * ordinary open — one instance, shared, as before.
+ *
+ * While copying it looks for the name `code_module_stateless` in the file
+ * (`code_abi.h` item 12) and sets `*marked` when it is there: a module that
+ * keeps no state can be opened once and shared by every link instead
+ * (ticket 177), which `open_native` then checks properly. Looked for in the
+ * bytes rather than by opening the file first, because opening a `.code`
+ * library runs its top level. */
+#define STATELESS_EXPORT "code_module_stateless"
+static int module_image(const char *path, int *marked) {
+    *marked = 0;
 #if defined(__linux__) && !defined(CODE_WASM)
     int src = open(path, O_RDONLY | O_CLOEXEC);
     if (src < 0) {
@@ -1443,17 +1452,27 @@ static int module_image(const char *path) {
         close(src);
         return -1;
     }
-    char buf[65536];
+    /* The tail of the previous read goes in front of the next, so a name
+     * that straddles two reads is still found. */
+    enum { CARRY = sizeof STATELESS_EXPORT - 1 };
+    char buf[CARRY + 65536];
+    size_t carried = 0;
     for (;;) {
-        ssize_t n = read(src, buf, sizeof buf);
+        ssize_t n = read(src, buf + carried, sizeof buf - carried);
         if (n == 0) {
             break;
         }
-        if (n < 0 || write(image, buf, (size_t)n) != n) {
+        if (n < 0 || write(image, buf + carried, (size_t)n) != n) {
             close(src);
             close(image);
             return -1;
         }
+        size_t have = carried + (size_t)n;
+        if (!*marked && memmem(buf, have, STATELESS_EXPORT, CARRY)) {
+            *marked = 1;
+        }
+        carried = have < CARRY ? have : CARRY;
+        memmove(buf, buf + have - carried, carried);
     }
     close(src);
     return image;
@@ -1462,6 +1481,19 @@ static int module_image(const char *path) {
     return -1;
 #endif
 }
+
+#ifndef CODE_WASM
+/* Whether the library `lib` declares that it keeps no state and has nothing
+ * that would make one instance per link matter: no queue it pushes into,
+ * nothing holding the program open, no top-level values to give up. Only
+ * then is one instance shared (`code_abi.h` item 12). */
+static int shares_one_instance(void *lib) {
+    int (*stateless)(void) = (int (*)(void))dlsym(lib, STATELESS_EXPORT);
+    return stateless && stateless() && !dlsym(lib, "code_module_set_inbound")
+           && !dlsym(lib, "code_module_serving") && !dlsym(lib, "code_module_release")
+           && !dlsym(lib, "code_module_drain");
+}
+#endif
 
 static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     /* A host, once installed, is the only way out. Not a fallback to opening
@@ -1485,9 +1517,24 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     /* Its own image, so this instance is nobody else's — see
      * `module_image`. A failure there is not fatal: the ordinary open still
      * works, it just shares with any other link of the same file. */
-    int image = module_image(path);
+    int marked = 0;
+    int image = module_image(path, &marked);
     void *handle = NULL;
-    if (image >= 0) {
+    if (marked) {
+        /* The ordinary open, which the loader shares between every link of
+         * the file — what a module that keeps no state wants. */
+        void *shared = dlopen(path, RTLD_NOW);
+        if (shared && shares_one_instance(shared)) {
+            handle = shared;
+            if (image >= 0) {
+                close(image);
+                image = -1;
+            }
+        } else if (shared) {
+            dlclose(shared);
+        }
+    }
+    if (!handle && image >= 0) {
         char proc[64];
         snprintf(proc, sizeof proc, "/proc/self/fd/%d", image);
         handle = dlopen(proc, RTLD_NOW);

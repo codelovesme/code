@@ -50,6 +50,13 @@ mod machine {
         CODE_ABI_VERSION
     }
 
+    /// This module keeps no state, so every link of it may share one instance
+    /// (`code_abi.h` item 12, ticket 177).
+    #[no_mangle]
+    pub extern "C" fn code_module_stateless() -> core::ffi::c_int {
+        1
+    }
+
     /// # Safety
     /// The view and callbacks are immutable and valid only during this call.
     #[no_mangle]
