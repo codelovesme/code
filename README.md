@@ -1414,6 +1414,33 @@ Asking for the container is asking for the library — there is no separate
 flag. Its names stay its own, the same rule a source `link` follows, so the
 library reports no values at all and the alias is the same empty object.
 
+### Native modules by name
+
+`link "math" as math` names the module, not a file. If there is a `math.code`
+it is that, compiled with the program as always. Otherwise it is the native
+module `math`, and **the kind of build decides which of its files is meant**:
+
+| Build | `link "math"` is |
+|---|---|
+| `code build` (an executable), and the program `code run` builds | `math-linux-x86_64.a`, linked into the program |
+| `code build --target shared` (a library a host holds) | `math-linux-x86_64.so`, opened beside it, so the host's copy is shared |
+| `code run --interpret` | `math-linux-x86_64.so` (the interpreter cannot link an archive in) |
+| `code build --target wasm` | `math-wasm32.a`, the browser half |
+| `code build --link dynamic` / `--link static` (or `CODE_LINK`) | that, for any native build |
+
+Each name is looked for where a written path is: next to the program, then
+the project's `.code/modules/` (through its lock), `$CODE_MODULE_PATH`, and
+`~/.code/modules/`. A build that wants the archive and finds only the `.so`
+is an error that says so, **never a quiet dynamic link**: releases before
+native archives existed carry only the `.so`, so `code install` a newer one
+or build with `--link dynamic`. A written `"math.so"` or `"math.a"` is not a
+name and is exactly what it says.
+
+An executable built this way needs none of its modules' `.so` files to run.
+Two names for one linked-in module are still two modules when it offers an
+instance per link, and one shared module when it keeps no state; one that
+keeps state and offers neither is refused under a second name.
+
 ### Linking while the program runs
 
 `link` inside a handler body opens a module the program only worked out

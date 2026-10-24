@@ -40,6 +40,10 @@ pub struct PlatformAsset {
     pub asset: String,
     /// Lowercase hex sha256 of that asset.
     pub sha256: String,
+    /// For a native archive (`<platform>-static`, ticket 142): the system
+    /// libraries a program linking it needs, as linker flags.
+    #[serde(default)]
+    pub link: Vec<String>,
 }
 
 /// Versioned, opt-in capability metadata carried by a module manifest.
@@ -350,6 +354,25 @@ pub struct LockEntry {
     /// project-local directory.
     #[serde(default)]
     pub global: bool,
+    /// The same version's native archive, when its release carries one
+    /// (`<platform>-static`, ticket 142): what a native build links the
+    /// module into the program from. Absent in a lock written before, or
+    /// for a release without one — a static link of it is then an error
+    /// that says so.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub static_archive: Option<StaticArchive>,
+}
+
+/// A native archive pinned beside a module's `.so` (ticket 142), installed
+/// in the same `<name>/<version>/` directory with `<asset>.libs` next to it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StaticArchive {
+    pub asset: String,
+    /// Lowercase hex sha256, re-checked at load time like the `.so`'s.
+    pub sha256: String,
+    /// System libraries the final link needs, as linker flags.
+    #[serde(default)]
+    pub link: Vec<String>,
 }
 
 /// The project's `.code/lock.json`.
@@ -493,6 +516,14 @@ pub fn fetch_url_status(url: &str) -> Result<(u32, String), String> {
         .trim()
         .parse::<u32>()
         .map_err(|_| format!("curl reported no status for '{url}'"))?;
+    // A `file://` registry — a release laid out on disk, for trying modules
+    // before publishing them (ticket 142) — has no HTTP status: curl says
+    // 0 for a read that worked, and fails outright for one that did not.
+    let status = if status == 0 && url.starts_with("file://") {
+        200
+    } else {
+        status
+    };
     Ok((status, body.to_string()))
 }
 
@@ -728,6 +759,44 @@ pub fn install(
         ));
     }
 
+    // The same version's native archive, when the release carries one
+    // (ticket 142): what a native build links the module into the program
+    // from. Its link flags go beside it, as `<asset>.libs`, which is where
+    // `code build` reads them. A release without one installs as before.
+    let static_archive = match manifest.platform(&format!("{platform}-static")) {
+        None => None,
+        Some(archive) => {
+            let archive_dest = dir.join(&archive.asset);
+            let _ = fs::remove_file(&archive_dest);
+            let url = format!(
+                "{}/{}",
+                asset_url.rsplit_once('/').map_or("", |(stem, _)| stem),
+                archive.asset
+            );
+            download_to(&url, &archive_dest)?;
+            if !verify_sha256(&archive_dest, &archive.sha256)? {
+                let _ = fs::remove_file(&archive_dest);
+                return Err(format!(
+                    "sha256 mismatch for '{name}@{version}''s native archive — refusing to \
+                     install it (partial file removed)"
+                ));
+            }
+            let libs = archive_dest.with_file_name(format!("{}.libs", archive.asset));
+            let text: String = archive
+                .link
+                .iter()
+                .map(|flag| format!("{flag}\n"))
+                .collect();
+            fs::write(&libs, text)
+                .map_err(|e| format!("cannot write '{}': {e}", libs.display()))?;
+            Some(StaticArchive {
+                asset: archive.asset.clone(),
+                sha256: archive.sha256.clone(),
+                link: archive.link.clone(),
+            })
+        }
+    };
+
     // Record the lock entry in the project's .code dir. A global install
     // still lands in the *project's* lockfile, flagged — there is no global
     // lockfile by design.
@@ -745,6 +814,7 @@ pub fn install(
             setup: manifest.setup.clone(),
             capabilities: manifest.capabilities.clone(),
             global: scope == InstallScope::Global,
+            static_archive,
         },
     );
     write_lockfile(&lock_path, &lock)?;
@@ -938,6 +1008,7 @@ mod tests {
                     handler_contracts: None,
                 }),
                 global: false,
+                static_archive: None,
             },
         );
         let back = Lockfile::parse(&lock.render()).unwrap();
@@ -969,6 +1040,7 @@ mod tests {
                 setup: None,
                 capabilities: None,
                 global: false,
+                static_archive: None,
             },
         );
         let text = lock.render();

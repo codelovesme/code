@@ -178,7 +178,7 @@ mod compile {
 
     use crate::ast::{NativeFormat, Program, Stmt};
     use crate::codegen::{self, BuildTarget};
-    use crate::loader::{self, FilesystemResolver};
+    use crate::loader;
 
     /// Runtime support functions (`code_number`, `code_array`, ...) that
     /// every compiled program links against — embedded so `code build`
@@ -338,8 +338,9 @@ mod compile {
         release: bool,
         tracing: bool,
     ) -> Result<(), String> {
+        let resolver = loader::PolicyResolver(loader::LinkPolicy::for_target(target));
         let program: Program = crate::timings::measure("load and parse", || {
-            loader::load(&source_path.display().to_string(), &FilesystemResolver)
+            loader::load(&source_path.display().to_string(), &resolver)
         })?;
         compile_program(&program, target, out_path, release, tracing)
     }
