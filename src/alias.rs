@@ -15,8 +15,8 @@
 //! LLVM keeps what it read: a loop's fast version (`codegen::gen_loop`) finds
 //! `pts[i]` once per iteration, and `pts` itself once per loop.
 //!
-//! A slot's payload is one place whatever it is read as — a number, a
-//! pointer, a flag — so those share a name. An access it cannot place
+//! A slot's payload read or written as a number has a name of its own; read
+//! as a pointer or a flag it shares one (`field_name` says why that holds). An access it cannot place
 //! (through a pointer a runtime call answered, a phi, an argument) is left
 //! untagged, which LLVM treats as touching anything — the safe default.
 //! Runtime calls are untagged too.
@@ -190,6 +190,22 @@ fn slot_field(offset: i64, bytes: u32, float: bool, wasm: bool) -> bool {
     }
 }
 
+/// A slot field's name: its offset, and for the payload whether it is read or
+/// written as a number. Generated code writes a payload only as a number
+/// (always with its tag, into a slot that holds nothing on the heap) and
+/// reads a pointer or a flag out of one only where the tag said so; moving a
+/// payload whatever it holds is the runtime's, through calls. So a number
+/// written into a point's `x` cannot be the list's pointer to that point, and
+/// LLVM keeps `pts[i]` across `pts[i].x = x` (ticket 126: points re-found
+/// `pts[i]` and re-checked its shape for every field it wrote).
+fn field_name(prefix: &str, within: i64, float: bool) -> String {
+    if within == PAYLOAD && float {
+        format!("{prefix}.{within}.number")
+    } else {
+        format!("{prefix}.{within}")
+    }
+}
+
 /// The TBAA type for an access of `ty` at `place`, or `None` when it is not
 /// one of the fields above read as such.
 fn name_of(place: (Region, i64), ty: LLVMTypeRef, wasm: bool) -> Option<String> {
@@ -204,7 +220,7 @@ fn name_of(place: (Region, i64), ty: LLVMTypeRef, wasm: bool) -> Option<String> 
     };
     if region == Region::Local {
         let within = offset.rem_euclid(SLOT);
-        return slot_field(within, bytes, float, wasm).then(|| format!("local.{within}"));
+        return slot_field(within, bytes, float, wasm).then(|| field_name("local", within, float));
     }
     // The header — its count at -16, its spare word (a shape) at -8 — then
     // the list's head — its count, its keys — then its slots.
@@ -214,7 +230,7 @@ fn name_of(place: (Region, i64), ty: LLVMTypeRef, wasm: bool) -> Option<String> 
         8 => (bytes == pointer_width(wasm) && !float).then(|| "list.keys".to_string()),
         _ if offset >= LIST_HEAD => {
             let within = (offset - LIST_HEAD).rem_euclid(SLOT);
-            slot_field(within, bytes, float, wasm).then(|| format!("heap.{within}"))
+            slot_field(within, bytes, float, wasm).then(|| field_name("heap", within, float))
         }
         _ => None,
     }

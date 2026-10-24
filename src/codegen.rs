@@ -446,6 +446,11 @@ pub(crate) fn compile_to_object_traced(
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
+    let fn_add_take = module.add_function(
+        "code_add_take",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
     let fn_take_last = module.add_function("code_take_last", fn_add_into.get_type(), None);
     let fn_operand_number = module.add_function(
         "code_operand_number",
@@ -1009,6 +1014,7 @@ pub(crate) fn compile_to_object_traced(
         fn_copy,
         fn_move,
         fn_add_into,
+        fn_add_take,
         fn_take_last,
         fn_set_at,
         fn_slice_into,
@@ -1379,6 +1385,9 @@ struct Gen<'a, 'm> {
     fn_move: FunctionValue<'a>,
     /// `runtime.c`'s `code_add_into` — `name += value` (ticket 121).
     fn_add_into: FunctionValue<'a>,
+    /// `code_add_into` for a part that is this statement's temporary: it
+    /// moves in rather than being retained and then cleared (ticket 126).
+    fn_add_take: FunctionValue<'a>,
     fn_take_last: FunctionValue<'a>,
     /// `runtime.c`'s `code_set_at` — `xs[i] = v`, `fish.x = v`.
     fn_set_at: FunctionValue<'a>,
@@ -4291,9 +4300,24 @@ impl<'a, 'm> Gen<'a, 'm> {
                         return self.check_failed();
                     }
                     let piece = self.gen_expr(rhs)?;
+                    // A part just computed into a temporary is handed over,
+                    // as `gen_assign` moves one; `code_add_take` leaves it
+                    // empty, so its clear is skipped.
+                    let temp = self
+                        .temps
+                        .iter()
+                        .rposition(|(ptr, count, _)| *ptr == piece && *count == 1);
+                    let helper = if temp.is_some() {
+                        self.fn_add_take
+                    } else {
+                        self.fn_add_into
+                    };
                     self.builder
-                        .build_call(self.fn_add_into, &[slot.into(), piece.into()], "")
+                        .build_call(helper, &[slot.into(), piece.into()], "")
                         .map_err(|e| e.to_string())?;
+                    if let Some(at) = temp {
+                        self.temps[at].2 = true;
+                    }
                     return self.check_failed();
                 }
             }
@@ -4587,37 +4611,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         .build_load(self.i64_ty, block, "len")
                         .map_err(|e| e.to_string())?
                         .into_int_value();
-                    let len_f = b
-                        .build_signed_int_to_float(len, self.f64_ty, "lenf")
-                        .map_err(|e| e.to_string())?;
-                    let from_zero = b
-                        .build_float_compare(
-                            FloatPredicate::OGE,
-                            n,
-                            self.f64_ty.const_zero(),
-                            "fromzero",
-                        )
-                        .map_err(|e| e.to_string())?;
-                    let below = b
-                        .build_float_compare(FloatPredicate::OLT, n, len_f, "below")
-                        .map_err(|e| e.to_string())?;
-                    let in_range = b
-                        .build_and(from_zero, below, "inrange")
-                        .map_err(|e| e.to_string())?;
-                    let i = b
-                        .build_float_to_signed_int(n, self.i64_ty, "i")
-                        .map_err(|e| e.to_string())?;
-                    let back = b
-                        .build_signed_int_to_float(i, self.f64_ty, "back")
-                        .map_err(|e| e.to_string())?;
-                    let whole = b
-                        .build_float_compare(FloatPredicate::OEQ, back, n, "whole")
-                        .map_err(|e| e.to_string())?;
-                    let false_ = self.context.bool_type().const_zero();
-                    let number_ok = b
-                        .build_select(in_range, whole, false_, "numberok")
-                        .map_err(|e| e.to_string())?
-                        .into_int_value();
+                    let (i, number_ok) = self.element_index(n, len)?;
                     ok = b
                         .build_and(ok, number_ok, "element")
                         .map_err(|e| e.to_string())?;
@@ -5351,34 +5345,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_load(self.i64_ty, list, "len")
             .map_err(|e| e.to_string())?
             .into_int_value();
-        let len_f = b
-            .build_signed_int_to_float(len, self.f64_ty, "lenf")
-            .map_err(|e| e.to_string())?;
-        let from_zero = b
-            .build_float_compare(FloatPredicate::OGE, n, self.f64_ty.const_zero(), "fromzero")
-            .map_err(|e| e.to_string())?;
-        let below = b
-            .build_float_compare(FloatPredicate::OLT, n, len_f, "below")
-            .map_err(|e| e.to_string())?;
-        let in_range = b
-            .build_and(from_zero, below, "inrange")
-            .map_err(|e| e.to_string())?;
-        // Converted only where it is in range; `select` keeps an out-of-range
-        // (poison) conversion from deciding anything.
-        let i = b
-            .build_float_to_signed_int(n, self.i64_ty, "i")
-            .map_err(|e| e.to_string())?;
-        let back = b
-            .build_signed_int_to_float(i, self.f64_ty, "back")
-            .map_err(|e| e.to_string())?;
-        let whole = b
-            .build_float_compare(FloatPredicate::OEQ, back, n, "whole")
-            .map_err(|e| e.to_string())?;
-        let false_ = self.context.bool_type().const_zero();
-        let ok = b
-            .build_select(in_range, whole, false_, "elementok")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
+        let (i, ok) = self.element_index(n, len)?;
         b.build_conditional_branch(ok, fast, slow)
             .map_err(|e| e.to_string())?;
         b.position_at_end(fast);
@@ -5538,6 +5505,46 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .build_gep(self.i8_ty, ptr, &[offset], "field")
                 .map_err(|e| e.to_string())
         }
+    }
+
+    /// The element a number `n` names in a list of `len`: its index, and
+    /// whether `n` is a whole number from 0 below `len`. Checked as whole
+    /// numbers, not as fractions: a loop's counter is a whole number LLVM
+    /// can see through, and then the check is one comparison (ticket 126:
+    /// two conversions and three float comparisons per element of points).
+    /// The conversion is frozen, so an `n` outside an i64's range gives some
+    /// whole number rather than poison; it converts back to something other
+    /// than `n`, or (near 2^63) to an index far past any list.
+    fn element_index(
+        &self,
+        n: FloatValue<'a>,
+        len: IntValue<'a>,
+    ) -> Result<(IntValue<'a>, IntValue<'a>), String> {
+        let b = self.builder;
+        let raw = b
+            .build_float_to_signed_int(n, self.i64_ty, "i")
+            .map_err(|e| e.to_string())?;
+        let i = unsafe {
+            IntValue::new(inkwell::llvm_sys::core::LLVMBuildFreeze(
+                b.as_mut_ptr(),
+                inkwell::values::AsValueRef::as_value_ref(&raw),
+                c"index".as_ptr(),
+            ))
+        };
+        let back = b
+            .build_signed_int_to_float(i, self.f64_ty, "back")
+            .map_err(|e| e.to_string())?;
+        let whole = b
+            .build_float_compare(FloatPredicate::OEQ, back, n, "whole")
+            .map_err(|e| e.to_string())?;
+        // Unsigned: a negative index is past every length.
+        let below = b
+            .build_int_compare(IntPredicate::ULT, i, len, "below")
+            .map_err(|e| e.to_string())?;
+        let ok = b
+            .build_and(whole, below, "elementok")
+            .map_err(|e| e.to_string())?;
+        Ok((i, ok))
     }
 
     /// The block (`CodeList`) of the list or object `value` holds — null for
@@ -6394,9 +6401,23 @@ impl<'a, 'm> Gen<'a, 'm> {
                     let value_mark = self.temps.len();
                     let value_ptr = self.gen_expr(value)?;
                     let dest = self.slot_at(values_buf, i as u64, "objelem")?;
+                    // A value this field just computed into a temporary is
+                    // moved, as `gen_assign` moves one: copying it (a retain)
+                    // and clearing the temporary (a release) did nothing.
+                    let temp = (value_mark..self.temps.len())
+                        .rev()
+                        .find(|&at| self.temps[at].0 == value_ptr && self.temps[at].1 == 1);
+                    let helper = if temp.is_some() {
+                        self.fn_move
+                    } else {
+                        self.fn_copy
+                    };
                     self.builder
-                        .build_call(self.fn_copy, &[dest.into(), value_ptr.into()], "")
+                        .build_call(helper, &[dest.into(), value_ptr.into()], "")
                         .map_err(|e| e.to_string())?;
+                    if let Some(at) = temp {
+                        self.temps[at].2 = true;
+                    }
                     self.clear_temps_from(value_mark)?;
                     self.bound_block()?;
                 }
@@ -6426,6 +6447,15 @@ impl<'a, 'm> Gen<'a, 'm> {
                             "",
                         )
                         .map_err(|e| e.to_string())?;
+                    // The template took the values and left the scratch
+                    // zeroed (`runtime.c`): nothing in it to clear.
+                    if let Some(at) = self
+                        .temps
+                        .iter()
+                        .rposition(|(ptr, count, _)| *ptr == values_buf && *count == len)
+                    {
+                        self.temps[at].2 = true;
+                    }
                 } else {
                     self.builder
                         .build_call(

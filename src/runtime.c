@@ -650,7 +650,12 @@ void code_object_literal(CodeValue *out, const char **keys, void *values, long l
 
 /* A hot literal's key run is a compiler-built template: u32 character
  * offsets, then [hash][characters\0] for every key. Copy the run once and
- * relocate its pointers; neither strlen nor hashing is needed per object. */
+ * relocate its pointers; neither strlen nor hashing is needed per object.
+ *
+ * The values are taken, not copied: `values` is the literal's own scratch,
+ * which the compiler fills and does not clear afterwards, so each value's
+ * reference moves into the object and its scratch slot is left zeroed
+ * (ticket 126: a retain here and a release of the scratch per field). */
 void code_object_template(CodeValue *out, const char **shape, void *values, long long len,
                           const unsigned char *data, long long bytes) {
     CodeList *list = NULL;
@@ -666,9 +671,9 @@ void code_object_template(CodeValue *out, const char **shape, void *values, long
             unsigned int offset;
             memcpy(&offset, data + (size_t)i * sizeof offset, sizeof offset);
             list->keys[i] = chars + offset;
-            const CodeValue *src = slot_at(values, i);
-            code_retain(src);
+            CodeValue *src = slot_at(values, i);
             *slot_at(items, i) = *src;
+            memset(src, 0, sizeof *src);
         }
         header_of(list)->text_length = (long long)(size_t)shape;
     }
@@ -4766,6 +4771,31 @@ void code_add_into(CodeValue *dst, const CodeValue *b) {
         }
     }
     code_add(dst, dst, b);
+}
+
+/* `name += part` where `part` is a temporary of this statement and nothing
+ * else holds it: what `code_add_into` then clearing the temporary does,
+ * except that one element appended to a list held alone moves in, so
+ * neither the retain nor the temporary's release is paid (ticket 126:
+ * binary_trees' `level += { … }` and `stack += node.l`). `part` is left
+ * zeroed either way. */
+void code_add_take(CodeValue *dst, CodeValue *part) {
+    if (part != dst && dst->tag == CODE_ARRAY && part->tag != CODE_ARRAY
+        && (held_alone(dst) || !dst->heap)) {
+        long long had = LEN(dst);
+        long long total = had + 1;
+        CodeList *list = dst->heap
+            ? room_for(dst->list, sizeof(CodeList) + (size_t)total * CODE_VALUE_SLOT_SIZE)
+            : list_alloc(4, 0);
+        *slot_at(list + 1, had) = *part;
+        memset(part, 0, sizeof *part);
+        list->len = total;
+        dst->list = list;
+        dst->heap = 1;
+        return;
+    }
+    code_add_into(dst, part);
+    code_clear(part);
 }
 
 /* Fused `name += "...$part..."`. Every borrowed part must stay readable
