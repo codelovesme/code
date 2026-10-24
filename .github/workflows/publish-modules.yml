@@ -342,9 +342,14 @@ jobs:
           name: module-${{ matrix.module }}-linux-x86_64
           path: dogfood
       - name: Run through both output modes
+        # The module comes in through env, not `${{ }}` in the script:
+        # GitHub caps a script holding an expression at 21000 characters,
+        # and this one is longer (2.18.0's tag started no run at all).
+        env:
+          MODULE: ${{ matrix.module }}
         run: |
           set -euo pipefail
-          m="${{ matrix.module }}"
+          m="$MODULE"
           # One small dispatch per module — proof the artifact loads and
           # routes a particle, in both output modes. `Print` writes to
           # stdout and reports 13; `Echo` hands its operand back unchanged,
