@@ -1702,10 +1702,19 @@ fn cmd_install(mut args: Vec<String>) -> ExitCode {
                 .extension()
                 .map(|e| e.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "so".to_string());
-            println!(
-                "link it with:  link \"{}.{ext}\" as <alias>",
-                installed.name
-            );
+            // With its native archive beside it, the module can be named and
+            // each build link it the way it should (ticket 142).
+            if ext == "so" && installed.path.with_extension("a").is_file() {
+                println!(
+                    "link it with:  link \"{}\" as <alias>   (linked in, or opened, as the build needs)",
+                    installed.name
+                );
+            } else {
+                println!(
+                    "link it with:  link \"{}.{ext}\" as <alias>",
+                    installed.name
+                );
+            }
             ExitCode::SUCCESS
         }
         Err(e) => {
