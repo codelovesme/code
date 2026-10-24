@@ -31,13 +31,15 @@ trap 'rm -rf "$work"' EXIT
 
 notes="$work/notes.txt"
 (cd "crates/modules/$m" \
-  && cargo rustc --release --lib --crate-type staticlib \
+  && cargo rustc --color never --release --lib --crate-type staticlib \
        --features code-native/static-module \
        --target-dir target/static -- --print native-static-libs) 2> "$notes" \
   || { cat "$notes" >&2; exit 1; }
 archive="crates/modules/$m/target/static/release/lib$m.a"
 
 # The libraries rustc says a staticlib of this crate needs, as linker flags.
+# `--color never` above: with CARGO_TERM_COLOR=always (CI) the note ends in
+# an escape code, and the last flag would be "-lc\e[0m".
 libs="$(sed -n 's/.*native-static-libs: //p' "$notes" | tail -1)"
 
 # Only what the module's exports reach: each `code_module_*` it defines is
