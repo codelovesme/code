@@ -11,10 +11,11 @@
 #[path = "support/modules.rs"]
 mod modules;
 
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::io::{ErrorKind, Read, Write};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::{Duration, Instant};
 use std::{fs, thread};
 
 fn build_module() -> PathBuf {
@@ -23,7 +24,19 @@ fn build_module() -> PathBuf {
 
 /// Serve exactly two requests — `POST /token`, then `GET /userinfo` — with
 /// canned JSON, and hang up. Enough of HTTP/1.1 for `ureq` to be happy.
+///
+/// Each request is read whole before the answer goes out, and the answer is
+/// ended with a half-close rather than by dropping the socket. Hanging up
+/// with part of a request still unread makes the kernel reset the
+/// connection, and a reset throws away the answer the client had not read
+/// yet: the module then saw "Peer disconnected" in about one run in seven
+/// (2026-10-24). A connection that never comes no longer blocks forever
+/// either; after a deadline the server gives up, and the test fails on the
+/// program's own answer instead of hanging.
 fn fake_provider(listener: TcpListener) {
+    listener
+        .set_nonblocking(true)
+        .expect("nonblocking listener");
     for (path_check, json) in [
         (
             "POST /token",
@@ -34,19 +47,71 @@ fn fake_provider(listener: TcpListener) {
             r#"{"sub":"user-9","email":"u@example.com","name":"Ada L","picture":"https://img/u.png"}"#,
         ),
     ] {
-        let (mut stream, _) = listener.accept().expect("accept");
-        let mut buf = [0u8; 4096];
-        let n = stream.read(&mut buf).unwrap_or(0);
-        let head = String::from_utf8_lossy(&buf[..n]);
+        let Some(mut stream) = accept_within(&listener, Duration::from_secs(20)) else {
+            return;
+        };
+        let head = read_request(&mut stream);
         assert!(
             head.starts_with(path_check),
             "expected `{path_check}`, got:\n{head}"
         );
-        // Drain a POST body if the request line promised one — small and
-        // already in `buf`, so nothing more to read for this test.
-        let _ = &head;
         respond(&mut stream, json);
+        let _ = stream.shutdown(Shutdown::Write);
+        // Until the client closes its end: nothing it sends is left unread.
+        let mut rest = [0u8; 256];
+        while matches!(stream.read(&mut rest), Ok(n) if n > 0) {}
     }
+}
+
+fn accept_within(listener: &TcpListener, wait: Duration) -> Option<TcpStream> {
+    let deadline = Instant::now() + wait;
+    loop {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                stream.set_nonblocking(false).expect("blocking stream");
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(10)))
+                    .expect("read timeout");
+                return Some(stream);
+            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(5));
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
+/// The request line and headers, and as much body as `Content-Length` says.
+fn read_request(stream: &mut TcpStream) -> String {
+    let mut got = Vec::new();
+    let mut buf = [0u8; 4096];
+    let head_end = loop {
+        if let Some(at) = got.windows(4).position(|w| w == b"\r\n\r\n") {
+            break at + 4;
+        }
+        match stream.read(&mut buf) {
+            Ok(n) if n > 0 => got.extend_from_slice(&buf[..n]),
+            _ => return String::from_utf8_lossy(&got).into_owned(),
+        }
+    };
+    let head = String::from_utf8_lossy(&got[..head_end]).into_owned();
+    let length = head
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().ok())
+                .flatten()
+        })
+        .unwrap_or(0);
+    while got.len() < head_end + length {
+        match stream.read(&mut buf) {
+            Ok(n) if n > 0 => got.extend_from_slice(&buf[..n]),
+            _ => break,
+        }
+    }
+    head
 }
 
 fn respond(stream: &mut TcpStream, body: &str) {
