@@ -288,6 +288,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "mongodb_mock",
     "net_client",
     "net_server",
+    "objects",
     "oauth",
     "oauth_mock",
     "process",

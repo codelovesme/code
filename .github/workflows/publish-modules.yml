@@ -365,6 +365,9 @@ jobs:
             math)
               printf 'emit Double { value = 21 } to mod get r\nassert r.value = 42\n' >> dogfood/demo.code
               ;;
+            objects)
+              printf 'emit Has { value = { a = null }, key = "a" } to mod get has\nassert has.value\nemit Delete { value = { a = 1, b = 2 }, key = "a" } to mod get rest\nassert rest.value = { b = 2 }\n' >> dogfood/demo.code
+              ;;
             env)
               # PATH is set on every runner, and reading it needs nothing
               # arranged — proof the artifact loads and routes.
@@ -681,6 +684,7 @@ jobs:
               arrays) handlers='["Length", "Contains", "IndexOf", "Reverse", "Slice", "Unique", "Sort", "Sum", "Min", "Max"]' ;;
               strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower", "Length", "Contains", "StartsWith", "EndsWith", "IndexOf", "Replace", "Slice", "Pad"]' ;;
               math) handlers='["Double", "Sum", "Floor", "Ceil", "Round", "Trunc", "Div", "Mod", "Abs", "Min", "Max", "Parse", "Sqrt", "Pow", "Sin", "Cos", "Ln", "Exp"]' ;;
+              objects) handlers='["Keys", "Values", "Has", "Delete"]' ;;
             env) handlers='["Get", "Require"]' ;;
               http_client) handlers='["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"]' ;;
               http_server) handlers='["Config", "Listen"]' ;;

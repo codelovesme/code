@@ -55,7 +55,11 @@ fn request_with(
     headers: &[(&str, &str)],
     body: &str,
 ) -> String {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    // Generous on purpose: `code run` builds the program before it starts,
+    // and under a full parallel test run that took longer than the 10 s this
+    // used to allow (2026-10-24). A working run still connects the moment
+    // the server is up; only a broken one waits this long.
+    let deadline = Instant::now() + Duration::from_secs(60);
     let extra: String = headers
         .iter()
         .map(|(name, value)| format!("{name}: {value}\r\n"))

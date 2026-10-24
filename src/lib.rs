@@ -7,7 +7,6 @@ pub mod codegen;
 pub mod diagnostics;
 pub mod flows;
 pub mod format;
-pub mod handlers;
 pub mod infer;
 pub mod interpreter;
 pub mod introspection;
@@ -259,6 +258,10 @@ mod compile {
             include_str!("../crates/modules/http_client/page.mjs"),
         ),
         ("media", include_str!("../crates/modules/media/page.mjs")),
+        (
+            "objects",
+            include_str!("../crates/modules/objects/page.mjs"),
+        ),
         ("router", include_str!("../crates/modules/router/page.mjs")),
         (
             "storage",

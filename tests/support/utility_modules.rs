@@ -11,7 +11,7 @@ pub fn fixture(module: &str, file: &str) {
     ));
     fs::create_dir_all(dir.join("native_modules")).unwrap();
     let text = fs::read_to_string(modules::repo().join("tests").join(file)).unwrap();
-    let linked: Vec<_> = ["math", "strings", "arrays", "time"]
+    let linked: Vec<_> = ["math", "strings", "arrays", "time", "objects"]
         .into_iter()
         .filter(|name| text.contains(&format!("native_modules/{name}.so")))
         .collect();

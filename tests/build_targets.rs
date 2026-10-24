@@ -158,6 +158,26 @@ fn wasm_target_produces_a_runnable_module() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A handler may call itself (ticket 102), and in a browser too: the tree
+/// walk, the mutual pair and the walk past the bound all answer, and 64
+/// live frames of one handler fit in wasm's 1 MiB stack, dev and release.
+#[test]
+fn wasm_recursion_runs_within_its_bound() {
+    let dir = temp_dir("wasm-recursion");
+    let out = dir.join("recursion.wasm");
+    for release in [false, true] {
+        code::compile_file(
+            &fixture("handler_recursion.code"),
+            code::BuildTarget::Wasm,
+            &out,
+            release,
+        )
+        .expect("build the recursion fixture for wasm");
+        run_wasm_under_node(&dir, &out);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// A browser rejects a single wasm function with more than 50,000 parameters
 /// and locals. At `-O0`, LLVM's wasm backend used to assign a distinct local
 /// to practically every intermediate produced by an application-sized style

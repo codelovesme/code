@@ -931,8 +931,8 @@ pub type InboundReply = Rc<dyn Fn(&Value, &Value)>;
 /// in the file — without it, which handlers a body could reach would depend
 /// on definition order.
 ///
-/// Hoisting does *not* permit cycles: `handlers::check_cycles` rejects those
-/// before a statement runs.
+/// A handler may reach itself, directly or through others (ticket 102):
+/// depth is bounded at run time, by `MOST_LIVE`, not refused up front.
 ///
 /// Descends into `Stmt::Import` bodies (a linked module's top level is a top
 /// level too, so its handlers join the same program-wide table) and nothing
@@ -1012,7 +1012,6 @@ pub fn run(program: &Program) -> Result<Environment, String> {
 /// that keeps one itself must keep it where it is.
 pub fn prepare(program: &Program, env: &Environment) -> Result<(), String> {
     env.st_mut().types = crate::types::Types::of(program);
-    crate::handlers::check_cycles(program)?;
     // The same pre-run check `code build` has always run (`verify.rs`, which
     // is where it moved out of `codegen.rs` on 2026-08-28 so both backends
     // could share it). Interpreting used to find an undefined name only on
@@ -1957,12 +1956,12 @@ fn run_handler(
     // Resolution succeeded, so the particle carried a real class — reading
     // it back is how the depth guard below knows what to key on.
     let class = class_of(particle);
-    // Depth is bounded, not forbidden. `handlers::check_cycles` refuses
-    // every cycle it can see before the program runs; dispatch is by the
-    // particle's runtime `_class`, so a particle held in a variable names
-    // a handler no static pass could resolve, and a linked module asking
-    // its base a question re-enters the handler that reached it. Both are
-    // ordinary — what is not is a handler that keeps re-entering itself,
+    // Depth is bounded, not forbidden (ticket 102: a handler may call
+    // itself — a tree is walked by recursion). Whatever names the handler,
+    // a literal particle, one held in a variable, a linked module asking
+    // its base a question that re-enters the handler that reached it, the
+    // count below is the one rule. Recursion and such exchanges are
+    // ordinary; what is not is a handler that keeps re-entering itself,
     // and that is caught by the count: past `MOST_LIVE` invocations of one
     // handler the emit answers an `Exception`, and the invocations already
     // running are untouched. `codegen.rs` keeps the same count in its

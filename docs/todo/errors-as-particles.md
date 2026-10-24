@@ -309,8 +309,9 @@ that changes error semantics needs its own both-mode fixture.
      re-enter gets it back and the invocation already running is untouched —
      which is why the re-entered function returns straight out instead of
      branching to `exit`, since `exit` would clear a guard belonging to a
-     frame further down the stack. `handlers::check_cycles` still refuses the
-     statically visible cycles before either backend runs.
+     frame further down the stack. (`handlers::check_cycles` also refused the
+     statically visible cycles before either backend ran, until ticket 102
+     allowed recursion on 2026-10-24; the bound is now the only rule.)
      `fail_handler_dynamic_cycle.code` → `handler_dynamic_cycle_is_exception.code`.
    - **`verify_defined` moved to `src/verify.rs` and now runs in both
      backends.** It was codegen-only, which made an undefined name a

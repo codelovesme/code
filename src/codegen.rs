@@ -324,7 +324,6 @@ pub(crate) fn compile_to_object_traced(
     }
     crate::timings::measure("checks", || -> Result<(), String> {
         crate::verify::verify_defined(program)?;
-        crate::handlers::check_cycles(program)?;
         if target == BuildTarget::Wasm {
             reject_wasm_native_links(&program.statements)?;
         }
@@ -1952,15 +1951,12 @@ impl<'a, 'm> Gen<'a, 'm> {
 
         self.builder.position_at_end(start);
 
-        // Depth guard. `handlers::check_cycles` rejects every cycle it can
-        // see before codegen runs, but dispatch is by the particle's runtime
-        // `_class`, so a particle held in a variable names a handler no
-        // static pass could resolve — and a linked module asking its base a
-        // question re-enters the handler that reached it. Both are
-        // ordinary; a handler that keeps re-entering itself is not, and the
-        // count catches it: past `MOST_LIVE` live invocations the emit
-        // answers an Exception. Same number and same answer as the
-        // interpreter's `run_handler`.
+        // Depth guard, the one rule recursion has (ticket 102: a handler may
+        // call itself). Whatever names the handler — a literal particle, one
+        // in a variable, a linked module asking its base back — a handler
+        // that keeps re-entering itself is caught by the count: past
+        // `MOST_LIVE` live invocations the emit answers an Exception. Same
+        // number and same answer as the interpreter's `run_handler`.
         let active =
             self.module
                 .add_global(self.i32_ty, None, &format!("_code_active_{class_name}"));

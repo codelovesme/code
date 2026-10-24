@@ -1009,27 +1009,33 @@ The rest of the rules:
   reads and reassigns top-level bindings and linked module aliases (it must:
   `link` is top-level too, so otherwise a handler could never print), but a
   caller's locals are invisible to it. Ordinary scope rules apply inside.
-- **The handler call graph must be acyclic** — see below.
+- **A handler's depth is bounded** — see below.
 
-### No recursion
+### Recursion, to a bound
 
-A handler may emit to another handler, and a handler may be on the call
-stack more than once — but **not without bound**. A base module asks a
-linked module a question; the linked module asks back through a module the
-base furnished; the base's handler that reached it runs again to answer.
-That is ordinary. What is not is a handler that keeps re-entering itself,
-and the runtime stops it at a number: past **64 live invocations of one
+A handler may emit to itself, or to one that emits back to it, so a tree is
+walked as a tree:
+
+```code
+Count { node } =>
+    total = 1
+    loop child over node.children
+        emit Count { node = child } to this get below
+        total = total + below.value
+    return Counted { value = total }
+
+leaf = { children = [] }
+emit Count { node = { children = [leaf, { children = [leaf] }] } } to this get n
+assert n.value = 4
+```
+
+What it may not do is go on without end. Past **64 live invocations of one
 handler** the emit answers an `Exception`, and the invocations already
-running are untouched — each gets that answer back as a value and decides
-for itself. An ordinary exchange is a handful deep; 64 is where a loop is
-caught long before the stack could overflow, and it is the same number in
-both backends.
-
-Cycles a static pass can see are still caught **before the program runs**,
-in both output modes, and reported as the whole path (`handler cycle: A ->
-B -> C -> A`) — a refusal, like any other pre-run error. Because dispatch
-is by the particle's runtime `_class`, a particle held in a variable names
-a handler no static pass can resolve; those are what the bound is for.
+running are untouched: each gets that answer back as a value and decides for
+itself. The program never overflows its stack; 64 frames fit in a browser's
+1 MiB too, and the number is the same in every backend. It used to be a rule
+before the program ran as well (`handler cycle: A -> B -> A`), until
+2026-10-24: a tree's depth is a fact about the data, not about the program.
 
 ### Watching an interaction: `Trace`
 
@@ -1158,7 +1164,7 @@ nothing that could have supplied it: `Length { }` **is**
 
 Errors found before the first statement runs are refusals, not values: a parse
 error, an undefined name, a `link` that cannot be resolved, a duplicate
-handler, a handler cycle a static pass can see. Both output modes refuse the
+handler. Both output modes refuse the
 same programs, and refusing early is preferred to failing halfway through,
 after a program has already had effects.
 
