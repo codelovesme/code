@@ -259,14 +259,14 @@ extern "C" {
     // the real name from a function rustc actually treats as part of the
     // crate (not an archive) — see that `#[no_mangle]` fn's own doc comment
     // for why the rename is needed at all.
-    #[cfg(feature = "shared-module")]
+    #[cfg(all(feature = "shared-module", not(feature = "static-module")))]
     fn code_native_vendored_release(v: *mut CodeValue);
 }
 
 // A `.a` module links against the *host's* runtime, which already defines
 // `code_release` under its real name — so there is nothing to rename and
 // nothing to re-export, and `release` below calls it directly.
-#[cfg(not(feature = "shared-module"))]
+#[cfg(any(not(feature = "shared-module"), feature = "static-module"))]
 extern "C" {
     fn code_release(v: *mut CodeValue);
 }
@@ -288,7 +288,7 @@ extern "C" {
 /// calls this on values it deep-copied out of your `code_module_dispatch`
 /// result, so you should never need to call it yourself except via
 /// [`release`].
-#[cfg(feature = "shared-module")]
+#[cfg(all(feature = "shared-module", not(feature = "static-module")))]
 #[no_mangle]
 pub unsafe extern "C" fn code_release(v: *mut CodeValue) {
     code_native_vendored_release(v)

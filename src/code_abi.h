@@ -436,7 +436,25 @@ void code_module_set_host(const CodeHostVtable *host, void *host_ctx);
  * `<prefix>_code_module_abi_version`, `<prefix>_code_module_vars`. `code
  * build` finds them by running `nm` on the archive at link time (see
  * `loader.rs`), so `link "libfoo.a" as m` needs no syntax to name the
- * prefix — it just has to be unique. */
+ * prefix — it just has to be unique.
+ *
+ * The optional entry points take the prefix the same way:
+ * `<prefix>_code_module_set_inbound`, `_inbound_reply`, `_serving` (which
+ * holds the program open, as a `.so`'s does), `_stateless` (item 12) and
+ * `_instance_new` / `_instance_dispatch` (item 13). With instances, every
+ * alias linking the archive gets one of its own where its `link` runs; a
+ * module that keeps state and offers none is refused under a second alias
+ * in a native build, since both names would share its statics.
+ *
+ * A first-party module is not written twice for this. It exports its
+ * `code_module_*` names once, for its `.so`; `scripts/build-module-static.sh`
+ * builds it as a `staticlib` with no runtime (`code-native/static-module`),
+ * renames those exports to `<module>_code_module_*` and makes every other
+ * symbol it defines local — each Rust module carries its own standard
+ * library, and two in one program would otherwise collide. The system
+ * libraries the archive needs at the final link are written beside it,
+ * `<archive>.libs`, one linker flag per line, and `code build` adds them
+ * (ticket 141). */
 
 /* ---- Events: a whole particle, from where the event happens --------------
  *

@@ -514,10 +514,37 @@ mod compile {
             for stmt in &program.statements {
                 if let Stmt::ImportNative {
                     path,
-                    format: NativeFormat::Static { prefix, .. },
+                    alias,
+                    format:
+                        NativeFormat::Static {
+                            prefix,
+                            has_instances,
+                            stateless,
+                            ..
+                        },
                     ..
                 } = stmt
                 {
+                    // One archive under two names is one module's statics
+                    // in one binary: the second alias's `Config` would change
+                    // the first's. Linked dynamically each name gets its own
+                    // copy; linked in, only an instance per alias (code_abi.h
+                    // item 13) or a module that keeps no state (item 12)
+                    // keeps them apart (ticket 141). A browser build keeps
+                    // today's behaviour: its archives declare neither.
+                    if !wasm
+                        && !has_instances
+                        && !stateless
+                        && static_modules.contains(&path.as_str())
+                    {
+                        return Err(format!(
+                            "cannot link '{path}' as '{alias}' too: it is already linked under \
+                             another name, and linked into the program both names would share \
+                             one module's settings. It offers no instance per link \
+                             (code_module_instance_new) and does not declare that it keeps no \
+                             state (code_module_stateless) — link it once, or as a .so"
+                        ));
+                    }
                     // Two *different* archives answering to the same prefix
                     // define the same symbols, and one would win silently.
                     // The linker used to catch that on its own; a wasm link
@@ -579,6 +606,25 @@ mod compile {
         result
     }
 
+    /// The system libraries each static module archive says it needs at the
+    /// final link: `<archive>.libs` beside it, one linker flag per line, as
+    /// `scripts/build-module-static.sh` writes (ticket 141). An archive
+    /// without one needs nothing beyond what every program links.
+    fn static_module_libs(static_modules: &[&str]) -> Vec<String> {
+        let mut flags: Vec<String> = Vec::new();
+        for archive in static_modules {
+            let Ok(text) = fs::read_to_string(format!("{archive}.libs")) else {
+                continue;
+            };
+            for flag in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+                if !flags.iter().any(|f| f == flag) {
+                    flags.push(flag.to_string());
+                }
+            }
+        }
+        flags
+    }
+
     /// Links a standalone executable: the program object plus the embedded
     /// C runtime, any statically `link`ed modules, and the usual system
     /// libraries.
@@ -591,6 +637,11 @@ mod compile {
             Command::new("cc")
                 .args(obj_paths)
                 .args(static_modules)
+                .args(static_module_libs(static_modules))
+                // A module archive carries its whole standard library
+                // (`scripts/build-module-static.sh`); what the program does
+                // not reach is dropped here instead of shipped.
+                .arg("-Wl,--gc-sections")
                 .arg("-lm")
                 .arg("-ldl")
                 // The runtime locks each module's inbound ring, because a
@@ -624,6 +675,7 @@ mod compile {
                 .arg("-fPIC")
                 .args(obj_paths)
                 .args(static_modules)
+                .args(static_module_libs(static_modules))
                 .arg("-lm")
                 .arg("-ldl")
                 // See `cc_link`.

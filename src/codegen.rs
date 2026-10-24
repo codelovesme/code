@@ -261,6 +261,11 @@ struct StaticModuleFns<'a> {
     /// `<prefix>_code_module_inbound_reply`, when the archive exports it —
     /// hearing what the program answered to what it pushed.
     inbound_reply: Option<FunctionValue<'a>>,
+    /// `<prefix>_code_module_instance_new` and `_instance_dispatch`, when
+    /// the archive offers an instance per alias (`code_abi.h` item 13).
+    instances: Option<(FunctionValue<'a>, FunctionValue<'a>)>,
+    /// `<prefix>_code_module_serving`, when the archive exports it.
+    serving: Option<FunctionValue<'a>>,
 }
 
 /// A wasm build may link a `.a` but not a `.so`.
@@ -814,6 +819,9 @@ pub(crate) fn compile_to_object_traced(
                     has_vars,
                     has_inbound,
                     has_reply,
+                    has_instances,
+                    has_serving,
+                    ..
                 },
             ..
         } = stmt
@@ -857,12 +865,41 @@ pub(crate) fn compile_to_object_traced(
                     None,
                 )
             });
+            // `code_abi.h` item 13: an instance per alias, so two aliases of
+            // one archive keep their own settings (ticket 141).
+            let instances = has_instances.then(|| {
+                (
+                    module.add_function(
+                        &format!("{prefix}_code_module_instance_new"),
+                        i8_ptr_ty.fn_type(&[], false),
+                        None,
+                    ),
+                    module.add_function(
+                        &format!("{prefix}_code_module_instance_dispatch"),
+                        void_ty.fn_type(
+                            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+                            false,
+                        ),
+                        None,
+                    ),
+                )
+            });
+            // `int (void)`, asked by the keep-alive loop as a `.so`'s is.
+            let serving = has_serving.then(|| {
+                module.add_function(
+                    &format!("{prefix}_code_module_serving"),
+                    i32_ty.fn_type(&[], false),
+                    None,
+                )
+            });
             let fns = StaticModuleFns {
                 abi_version,
                 dispatch,
                 vars,
                 set_inbound,
                 inbound_reply,
+                instances,
+                serving,
             };
             static_prefix_fns.insert(prefix.clone(), fns);
             static_native_fns.insert(alias.clone(), fns);
@@ -1654,6 +1691,14 @@ enum NativeLink<'a> {
         /// calls through `code_native_reply`; an archive is linked straight
         /// in, so the call is direct — the same split as `dispatch`.
         reply: Option<FunctionValue<'a>>,
+        /// This alias's own instance — the global holding what
+        /// `<prefix>_code_module_instance_new` made when it was linked — and
+        /// the dispatch that takes it, when the archive offers instances
+        /// (`code_abi.h` item 13). Calls go there instead of `dispatch`.
+        own: Option<(PointerValue<'a>, FunctionValue<'a>)>,
+        /// `<prefix>_code_module_serving`, when the archive exports one: it
+        /// holds the program open, as a `.so`'s does (`gen_keep_alive`).
+        serving: Option<FunctionValue<'a>>,
     },
 }
 
@@ -2155,10 +2200,20 @@ impl<'a, 'm> Gen<'a, 'm> {
                 NativeLink::Static { .. } => None,
             })
             .collect();
+        // A linked-in module that serves is asked directly (ticket 141: a
+        // static timer let the program end before its delay fired).
+        let static_serving: Vec<FunctionValue<'a>> = self
+            .native_links
+            .values()
+            .filter_map(|link| match link {
+                NativeLink::Static { serving, .. } => *serving,
+                NativeLink::Dynamic(_) => None,
+            })
+            .collect();
         // Empty *and* unable to open anything later means there is nothing
         // that could ever hold this program open — skip the loop entirely.
         // A program that links while running cannot say that from here.
-        if handles.is_empty() && !self.links_at_runtime {
+        if handles.is_empty() && static_serving.is_empty() && !self.links_at_runtime {
             return Ok(());
         }
 
@@ -2217,6 +2272,24 @@ impl<'a, 'm> Gen<'a, 'm> {
             let is_serving = self
                 .builder
                 .build_int_compare(inkwell::IntPredicate::NE, answer, zero, "is_serving")
+                .map_err(|e| e.to_string())?;
+            serving = self
+                .builder
+                .build_or(serving, is_serving, "any_serving")
+                .map_err(|e| e.to_string())?;
+        }
+        for serving_fn in static_serving {
+            let answer = self
+                .builder
+                .build_call(serving_fn, &[], "static_serving")
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .left()
+                .ok_or_else(|| "<prefix>_code_module_serving returned nothing".to_string())?
+                .into_int_value();
+            let is_serving = self
+                .builder
+                .build_int_compare(inkwell::IntPredicate::NE, answer, zero, "static_is_serving")
                 .map_err(|e| e.to_string())?;
             serving = self
                 .builder
@@ -3599,6 +3672,34 @@ impl<'a, 'm> Gen<'a, 'm> {
                     }
                 };
 
+                // An instance of its own, made where this alias is linked and
+                // parked in a global, as the queue is: a handler that emits
+                // to it is a function of its own.
+                let own = match fns.instances {
+                    None => None,
+                    Some((make, dispatch)) => {
+                        let made = self
+                            .builder
+                            .build_call(make, &[], "static_instance")
+                            .map_err(|e| e.to_string())?
+                            .try_as_basic_value()
+                            .left()
+                            .expect("<prefix>_code_module_instance_new returns i8*, not void")
+                            .into_pointer_value();
+                        let slot = self.module.add_global(
+                            self.i8_ptr_ty,
+                            None,
+                            &format!("_code_static_instance_{alias}"),
+                        );
+                        slot.set_initializer(&self.i8_ptr_ty.const_null());
+                        let slot = slot.as_pointer_value();
+                        self.builder
+                            .build_store(slot, made)
+                            .map_err(|e| e.to_string())?;
+                        Some((slot, dispatch))
+                    }
+                };
+
                 self.native_links.insert(
                     alias.to_string(),
                     NativeLink::Static {
@@ -3606,6 +3707,8 @@ impl<'a, 'm> Gen<'a, 'm> {
                         dispatch: fns.dispatch,
                         inbound,
                         reply: fns.inbound_reply,
+                        own,
+                        serving: fns.serving,
                     },
                 );
             }
@@ -3764,7 +3867,10 @@ impl<'a, 'm> Gen<'a, 'm> {
                             .map_err(|e| e.to_string())?;
                     }
                     NativeLink::Static {
-                        dispatch, instance, ..
+                        dispatch,
+                        instance,
+                        own,
+                        ..
                     } => {
                         // Restore the caller's identity after nested dispatch:
                         // a browser half can ask this program another question.
@@ -3780,9 +3886,26 @@ impl<'a, 'm> Gen<'a, 'm> {
                         } else {
                             None
                         };
-                        self.builder
-                            .build_call(*dispatch, &[temp.into(), particle_ptr.into()], "")
-                            .map_err(|e| e.to_string())?;
+                        match own {
+                            Some((slot, instance_dispatch)) => {
+                                let own_instance = self
+                                    .builder
+                                    .build_load(self.i8_ptr_ty, *slot, "own_instance")
+                                    .map_err(|e| e.to_string())?;
+                                self.builder
+                                    .build_call(
+                                        *instance_dispatch,
+                                        &[own_instance.into(), temp.into(), particle_ptr.into()],
+                                        "",
+                                    )
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            None => {
+                                self.builder
+                                    .build_call(*dispatch, &[temp.into(), particle_ptr.into()], "")
+                                    .map_err(|e| e.to_string())?;
+                            }
+                        }
                         if let Some((slot, previous)) = previous {
                             self.builder
                                 .build_store(slot, previous)

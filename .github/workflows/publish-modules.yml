@@ -109,6 +109,7 @@ jobs:
             [[ "$half" == 1 ]] && wasm+=("$m")
             same="$(jq -r --arg m "$m" --arg h "$hash" '.[$m] == $h' <<<"$old")"
             if [[ "$same" == true ]] && grep -qx "${m}-linux-x86_64.so" <<<"$assets" \
+                 && grep -qx "${m}-linux-x86_64.a" <<<"$assets" \
                  && { [[ "$half" == 0 ]] || grep -qx "${m}-wasm32.a" <<<"$assets"; }; then
               reuse+=("$m")
             else
@@ -176,11 +177,17 @@ jobs:
         run: |
           set -euo pipefail
           scripts/build-module-linux.sh "${{ matrix.module }}" dist
+          # And the archive a program links the module into (ticket 141),
+          # with the system libraries it needs at that link beside it.
+          scripts/build-module-static.sh "${{ matrix.module }}" dist
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: module-${{ matrix.module }}-linux-x86_64
-          path: "dist/*.so"
+          path: |
+            dist/*.so
+            dist/*-linux-x86_64.a
+            dist/*-linux-x86_64.a.libs
 
   # The browser's half. A module a web application links has to arrive as a
   # `.a`, not a `.so`: a page has no dlopen, so what it needs is linked *into*
@@ -244,6 +251,8 @@ jobs:
           m="${{ matrix.module }}"
           prev="${{ needs.plan.outputs.previous }}"
           gh release download "$prev" --repo "$GITHUB_REPOSITORY" -D dist -p "${m}-linux-x86_64.so"
+          gh release download "$prev" --repo "$GITHUB_REPOSITORY" -D dist -p "${m}-linux-x86_64.a"
+          gh release download "$prev" --repo "$GITHUB_REPOSITORY" -D dist -p "${m}-linux-x86_64.a.libs"
           if [[ "${{ contains(fromJSON(needs.plan.outputs.wasm), matrix.module) }}" == true ]]; then
             gh release download "$prev" --repo "$GITHUB_REPOSITORY" -D dist -p "${m}-wasm32.a"
           fi
@@ -658,7 +667,7 @@ jobs:
           name: release-plan
           path: dist
       - name: Flatten into dist/
-        run: find dist -type f \( -name '*.so' -o -name '*.dylib' -o -name '*.a' \) -exec mv {} dist/ \;
+        run: find dist -type f \( -name '*.so' -o -name '*.dylib' -o -name '*.a' -o -name '*.a.libs' \) -exec mv {} dist/ \;
       - name: Write one module.json per module
         run: |
           set -euo pipefail
@@ -743,6 +752,14 @@ jobs:
               wasm32=",
               \"wasm32\": { \"asset\": \"${m}-wasm32.a\", \"sha256\": \"$(sum ${m}-wasm32.a)\" }"
             fi
+            # The archive a native program links the module into (ticket
+            # 141), and the system libraries that link needs.
+            static=''
+            if [ -f "dist/${m}-linux-x86_64.a" ]; then
+              libs="$(jq -Rnc '[inputs | select(length > 0)]' < "dist/${m}-linux-x86_64.a.libs")"
+              static=",
+              \"linux-x86_64-static\": { \"asset\": \"${m}-linux-x86_64.a\", \"sha256\": \"$(sum ${m}-linux-x86_64.a)\", \"link\": ${libs} }"
+            fi
             cat > "dist/${m}.json" <<EOF
           {
             "name": "${m}",
@@ -752,7 +769,7 @@ jobs:
             "vars": [],
             ${setup}
             "platforms": {
-              "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" }${wasm32}
+              "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" }${static}${wasm32}
             }
           }
           EOF

@@ -319,15 +319,18 @@ impl ModuleResolver for FilesystemResolver {
                 #[cfg(feature = "install")]
                 Self::verify_locked_module(base, &canonical)?;
                 let path = canonical.display().to_string();
-                let (prefix, has_vars, has_inbound, has_reply) = static_module_symbols(&path)?;
+                let symbols = static_module_symbols(&path)?;
                 return Ok(ResolvedModule::Native {
                     identity: path.clone(),
                     path,
                     format: NativeFormat::Static {
-                        prefix,
-                        has_vars,
-                        has_inbound,
-                        has_reply,
+                        prefix: symbols.prefix,
+                        has_vars: symbols.has_vars,
+                        has_inbound: symbols.has_inbound,
+                        has_reply: symbols.has_reply,
+                        has_instances: symbols.has_instances,
+                        stateless: symbols.stateless,
+                        has_serving: symbols.has_serving,
                     },
                 });
             }
@@ -526,7 +529,18 @@ fn read_defined_symbols(path: &str) -> Result<String, String> {
     ))
 }
 
-fn static_module_symbols(path: &str) -> Result<(String, bool, bool, bool), String> {
+/// What `nm` says a `.a` module exports, beyond its prefix.
+struct StaticSymbols {
+    prefix: String,
+    has_vars: bool,
+    has_inbound: bool,
+    has_reply: bool,
+    has_instances: bool,
+    stateless: bool,
+    has_serving: bool,
+}
+
+fn static_module_symbols(path: &str) -> Result<StaticSymbols, String> {
     let text = read_defined_symbols(path)?;
     let names: Vec<&str> = text
         .lines()
@@ -563,11 +577,16 @@ fn static_module_symbols(path: &str) -> Result<(String, bool, bool, bool), Strin
              .a module needs both)"
         ));
     }
-    let has_vars = names.contains(&format!("{prefix}_code_module_vars").as_str());
-    let has_inbound = names.contains(&format!("{prefix}_code_module_set_inbound").as_str());
-    let has_reply = names.contains(&format!("{prefix}_code_module_inbound_reply").as_str());
-
-    Ok((prefix, has_vars, has_inbound, has_reply))
+    let has = |entry: &str| names.contains(&format!("{prefix}_code_module_{entry}").as_str());
+    Ok(StaticSymbols {
+        has_vars: has("vars"),
+        has_inbound: has("set_inbound"),
+        has_reply: has("inbound_reply"),
+        has_instances: has("instance_new") && has("instance_dispatch"),
+        stateless: has("stateless"),
+        has_serving: has("serving"),
+        prefix,
+    })
 }
 
 /// A resolver for hosts with no module story at all — the wasm playground.
