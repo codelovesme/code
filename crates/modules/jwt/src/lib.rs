@@ -88,7 +88,18 @@ struct Config {
     expires_in: u64,
 }
 
-static STATE: Mutex<Option<Config>> = Mutex::new(None);
+/// One link's settings. Each link of this module has its own
+/// (`code_abi.h` item 13, ticket 178): a host that knows instances opens the
+/// file once and makes one of these per link; one that does not gets
+/// `DEFAULT`, behind the ordinary `code_module_dispatch`, and a copy of the
+/// file per link as before.
+struct Instance {
+    state: Mutex<Option<Config>>,
+}
+
+static DEFAULT: Instance = Instance {
+    state: Mutex::new(None),
+};
 
 /// The ABI version this module speaks. Must equal `CODE_ABI_VERSION` or the
 /// host refuses to load us.
@@ -107,12 +118,39 @@ pub extern "C" fn code_module_abi_version() -> u32 {
 /// call and laid out per `code_abi.h` — the host guarantees this.
 #[no_mangle]
 pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *const CodeValue) {
-    let particle = &*particle;
-    guarded(&mut *out, "jwt", |out| {
+    dispatch(&DEFAULT, &mut *out, &*particle)
+}
+
+/// A new link's own settings (`code_abi.h` item 13). Never freed: a module
+/// is not unloaded.
+#[no_mangle]
+pub extern "C" fn code_module_instance_new() -> *mut core::ffi::c_void {
+    Box::into_raw(Box::new(Instance {
+        state: Mutex::new(None),
+    })) as *mut core::ffi::c_void
+}
+
+/// `code_module_dispatch` for one link's instance.
+///
+/// # Safety
+///
+/// `instance` must come from `code_module_instance_new`; the other two as
+/// for `code_module_dispatch`.
+#[no_mangle]
+pub unsafe extern "C" fn code_module_instance_dispatch(
+    instance: *mut core::ffi::c_void,
+    out: *mut CodeValue,
+    particle: *const CodeValue,
+) {
+    dispatch(&*(instance as *const Instance), &mut *out, &*particle)
+}
+
+fn dispatch(instance: &Instance, out: &mut CodeValue, particle: &CodeValue) {
+    guarded(out, "jwt", |out| {
         let outcome = match read_field_str(particle, "_class").unwrap_or("") {
-            "Config" => config(out, particle),
-            "Sign" => sign(out, particle),
-            "Decode" => decode(out, particle),
+            "Config" => config(instance, out, particle),
+            "Sign" => sign(instance, out, particle),
+            "Decode" => decode(instance, out, particle),
             "GenerateKeypair" => generate_keypair(out),
             _ => {
                 null(out);
@@ -132,7 +170,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
 /// `Config { secret | private_key | public_key, expires_in? }` →
 /// `ConfigResult { ok }`. The setup particle: `Sign`/`Decode` are an
 /// `Exception` until it has run.
-fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+fn config(instance: &Instance, out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let named = |name: &str| {
         find_field(particle, name)
             .and_then(read_str)
@@ -183,7 +221,7 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
             n as u64
         }
     };
-    *STATE.lock().unwrap_or_else(|e| e.into_inner()) = Some(Config { key, expires_in });
+    *instance.state.lock().unwrap_or_else(|e| e.into_inner()) = Some(Config { key, expires_in });
     one_field(out, c"ConfigResult", c"ok", |slot| boolean(slot, true));
     Ok(())
 }
@@ -223,7 +261,7 @@ fn generate_keypair(out: &mut CodeValue) -> Result<(), String> {
 }
 
 /// `Sign { sub, role?, expires_in? }` → `SignResult { token }`.
-fn sign(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+fn sign(instance: &Instance, out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let sub = find_field(particle, "sub")
         .and_then(read_str)
         .filter(|s| !s.is_empty())
@@ -232,7 +270,7 @@ fn sign(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         .and_then(read_str)
         .unwrap_or("");
 
-    let guard = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    let guard = instance.state.lock().unwrap_or_else(|e| e.into_inner());
     let config = guard
         .as_ref()
         .ok_or("jwt has no secret — send Config { secret } first")?;
@@ -280,12 +318,12 @@ fn sign(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 /// `Decode { token }` → `DecodeResult { valid, sub, role, exp }`. Signature
 /// and expiry failures are `valid = false`, not exceptions — that is the
 /// question `Decode` exists to answer.
-fn decode(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+fn decode(instance: &Instance, out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let token = find_field(particle, "token")
         .and_then(read_str)
         .ok_or("Decode requires a string 'token'")?;
 
-    let guard = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    let guard = instance.state.lock().unwrap_or_else(|e| e.into_inner());
     let config = guard
         .as_ref()
         .ok_or("jwt has no secret — send Config { secret } first")?;

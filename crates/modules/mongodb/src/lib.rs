@@ -29,14 +29,43 @@
 //! `code_release` needs no code here — `code-native` links the vendored
 //! `runtime.c` into the cdylib and re-exports it.
 
+use code_native::*;
 use driver::bson::{doc, Bson, Document};
 use driver::options::IndexOptions;
-use driver::IndexModel;
-use code_native::*;
 use driver::sync::{Client, Collection, Database};
+use driver::IndexModel;
+use std::cell::Cell;
 use std::sync::Mutex;
 
-static DB: Mutex<Option<Database>> = Mutex::new(None);
+/// One link's connection. Each link of this module has its own
+/// (`code_abi.h` item 13, ticket 178): a host that knows instances opens the
+/// file once and makes one of these per link; one that does not gets
+/// `DEFAULT`, behind the ordinary `code_module_dispatch`, and a copy of the
+/// file per link as before.
+struct Instance {
+    db: Mutex<Option<Database>>,
+}
+
+static DEFAULT: Instance = Instance {
+    db: Mutex::new(None),
+};
+
+thread_local! {
+    /// The instance the dispatch running on this thread is for — set by
+    /// `dispatch` for the length of one call, so the handlers below reach
+    /// their link's connection without each taking it. Null is `DEFAULT`.
+    static CURRENT: Cell<*const Instance> = const { Cell::new(std::ptr::null()) };
+}
+
+fn current() -> &'static Instance {
+    let at = CURRENT.with(Cell::get);
+    if at.is_null() {
+        &DEFAULT
+    } else {
+        // SAFETY: set by `dispatch` from a live, never-freed instance.
+        unsafe { &*at }
+    }
+}
 
 const NOT_CONNECTED: &str = "mongodb is not connected — send Config { url, database } first";
 const KV_COLLECTION: &str = "state";
@@ -58,8 +87,41 @@ pub extern "C" fn code_module_abi_version() -> u32 {
 /// call and laid out per `code_abi.h` — the host guarantees this.
 #[no_mangle]
 pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *const CodeValue) {
-    let particle = &*particle;
-    guarded(&mut *out, "mongodb", |out| {
+    dispatch(&DEFAULT, &mut *out, &*particle)
+}
+
+/// A new link's own connection (`code_abi.h` item 13). Never freed: a module
+/// is not unloaded.
+#[no_mangle]
+pub extern "C" fn code_module_instance_new() -> *mut core::ffi::c_void {
+    Box::into_raw(Box::new(Instance {
+        db: Mutex::new(None),
+    })) as *mut core::ffi::c_void
+}
+
+/// `code_module_dispatch` for one link's instance.
+///
+/// # Safety
+///
+/// `instance` must come from `code_module_instance_new`; the other two as
+/// for `code_module_dispatch`.
+#[no_mangle]
+pub unsafe extern "C" fn code_module_instance_dispatch(
+    instance: *mut core::ffi::c_void,
+    out: *mut CodeValue,
+    particle: *const CodeValue,
+) {
+    dispatch(&*(instance as *const Instance), &mut *out, &*particle)
+}
+
+fn dispatch(instance: &Instance, out: &mut CodeValue, particle: &CodeValue) {
+    let previous = CURRENT.with(|c| c.replace(instance));
+    dispatch_current(out, particle);
+    CURRENT.with(|c| c.set(previous));
+}
+
+fn dispatch_current(out: &mut CodeValue, particle: &CodeValue) {
+    guarded(out, "mongodb", |out| {
         let outcome = match read_field_str(particle, "_class").unwrap_or("") {
             "Config" => config(out, particle),
             "Store" => store(out, particle),
@@ -106,7 +168,7 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         .run()
         .map_err(|e| format!("cannot reach MongoDB at '{}': {e}", redact(url)))?;
 
-    *DB.lock().unwrap_or_else(|e| e.into_inner()) = Some(db);
+    *current().db.lock().unwrap_or_else(|e| e.into_inner()) = Some(db);
     ok_result(out, c"ConfigResult");
     Ok(())
 }
@@ -259,7 +321,12 @@ fn replace_one(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> 
         .replace_one(filter, replacement)
         .run()
         .map_err(|e| format!("ReplaceOne failed: {e}"))?;
-    one_number(out, c"ReplaceOneResult", c"matched", result.matched_count as f64);
+    one_number(
+        out,
+        c"ReplaceOneResult",
+        c"matched",
+        result.matched_count as f64,
+    );
     Ok(())
 }
 
@@ -272,7 +339,12 @@ fn delete_one(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         .delete_one(filter)
         .run()
         .map_err(|e| format!("DeleteOne failed: {e}"))?;
-    one_number(out, c"DeleteOneResult", c"deleted", result.deleted_count as f64);
+    one_number(
+        out,
+        c"DeleteOneResult",
+        c"deleted",
+        result.deleted_count as f64,
+    );
     Ok(())
 }
 
@@ -285,7 +357,12 @@ fn delete_many(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> 
         .delete_many(filter)
         .run()
         .map_err(|e| format!("DeleteMany failed: {e}"))?;
-    one_number(out, c"DeleteManyResult", c"deleted", result.deleted_count as f64);
+    one_number(
+        out,
+        c"DeleteManyResult",
+        c"deleted",
+        result.deleted_count as f64,
+    );
     Ok(())
 }
 
@@ -397,7 +474,11 @@ fn bson_to_code(out: &mut CodeValue, b: &Bson) {
         Bson::Boolean(v) => boolean(out, *v),
         Bson::Null | Bson::Undefined => null(out),
         Bson::ObjectId(oid) => owned_str(out, &oid.to_hex()),
-        Bson::DateTime(dt) => owned_str(out, &dt.try_to_rfc3339_string().unwrap_or_else(|_| dt.to_string())),
+        Bson::DateTime(dt) => owned_str(
+            out,
+            &dt.try_to_rfc3339_string()
+                .unwrap_or_else(|_| dt.to_string()),
+        ),
         Bson::Array(a) => {
             let mut buf = SlotBuffer::new(a.len());
             for (i, item) in a.iter().enumerate() {
@@ -432,7 +513,9 @@ fn id_string(id: &Bson) -> String {
 // ---------------------------------------------------------------------------
 
 fn database() -> Result<Database, String> {
-    DB.lock()
+    current()
+        .db
+        .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone()
         .ok_or_else(|| NOT_CONNECTED.to_string())
@@ -489,7 +572,12 @@ fn ok_result(out: &mut CodeValue, class: &'static std::ffi::CStr) {
     one_bool(out, class, c"ok", true);
 }
 
-fn one_str(out: &mut CodeValue, class: &'static std::ffi::CStr, key: &'static std::ffi::CStr, value: &str) {
+fn one_str(
+    out: &mut CodeValue,
+    class: &'static std::ffi::CStr,
+    key: &'static std::ffi::CStr,
+    value: &str,
+) {
     let mut b = SlotBuffer::new(2);
     borrowed_str(b.slot_mut(0), class);
     owned_str(b.slot_mut(1), value);
@@ -497,7 +585,12 @@ fn one_str(out: &mut CodeValue, class: &'static std::ffi::CStr, key: &'static st
     b.release_all();
 }
 
-fn one_bool(out: &mut CodeValue, class: &'static std::ffi::CStr, key: &'static std::ffi::CStr, value: bool) {
+fn one_bool(
+    out: &mut CodeValue,
+    class: &'static std::ffi::CStr,
+    key: &'static std::ffi::CStr,
+    value: bool,
+) {
     let mut b = SlotBuffer::new(2);
     borrowed_str(b.slot_mut(0), class);
     boolean(b.slot_mut(1), value);
@@ -505,7 +598,12 @@ fn one_bool(out: &mut CodeValue, class: &'static std::ffi::CStr, key: &'static s
     b.release_all();
 }
 
-fn one_number(out: &mut CodeValue, class: &'static std::ffi::CStr, key: &'static std::ffi::CStr, value: f64) {
+fn one_number(
+    out: &mut CodeValue,
+    class: &'static std::ffi::CStr,
+    key: &'static std::ffi::CStr,
+    value: f64,
+) {
     let mut b = SlotBuffer::new(2);
     borrowed_str(b.slot_mut(0), class);
     number(b.slot_mut(1), value);

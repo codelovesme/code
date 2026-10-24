@@ -125,3 +125,62 @@ emit Drop {{ collection = "ephemeral" }} to db
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// Two links of mongodb, each to its own database, from one image
+/// (`code_abi.h` item 13, ticket 178): what one stores the other does not
+/// see, and the process holds no copy of the module's file.
+#[test]
+fn two_links_are_two_connections_from_one_image() {
+    let Ok(uri) = env::var("MONGO_URI") else {
+        eprintln!("skipping mongodb_module instances: set MONGO_URI to run it");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("code-mongodb-instances-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("create test directory");
+    fs::copy(build_module(), dir.join("mongodb.so")).expect("copy mongodb.so");
+    let a = format!("code_test_a_{}", std::process::id());
+    let b = format!("code_test_b_{}", std::process::id());
+    let program = format!(
+        r#"link "mongodb.so" as one
+link "mongodb.so" as two
+
+emit Config {{ url = "{uri}", database = "{a}" }} to one get c1
+assert c1.ok
+emit Config {{ url = "{uri}", database = "{b}" }} to two get c2
+assert c2.ok
+emit Drop {{ collection = "state" }} to one
+emit Drop {{ collection = "state" }} to two
+
+emit Store {{ key = "who", value = "one" }} to one get s
+assert s.key = "who"
+emit Fetch {{ key = "who" }} to two get elsewhere
+assert elsewhere.found = false
+emit Fetch {{ key = "who" }} to one get here
+assert here.value = "one"
+
+emit Drop {{ collection = "state" }} to one
+emit Drop {{ collection = "state" }} to two
+"#
+    );
+    let source = dir.join("instances.code");
+    fs::write(&source, program).expect("write program");
+    let interpreted = Command::new(env!("CARGO_BIN_EXE_code"))
+        .args(["run", "--interpret"])
+        .arg(&source)
+        .output()
+        .expect("run interpreter");
+    assert!(
+        interpreted.status.success(),
+        "interpreted: {}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    let bin = dir.join("instances");
+    code::compile_file(&source, code::BuildTarget::Exe, &bin, true).expect("compile");
+    let out = Command::new(&bin).output().expect("run compiled");
+    assert!(
+        out.status.success(),
+        "compiled: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

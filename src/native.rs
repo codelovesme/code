@@ -337,6 +337,10 @@ unsafe fn ffi_to_value(v: *const CodeValueFfi) -> Value {
 pub struct NativeModule {
     borrowed_dispatch: Option<BorrowedDispatchFn>,
     dispatch_fn: DispatchFn,
+    /// This link's own instance of a module opened once for every link
+    /// (`code_abi.h` item 13), and the dispatch that takes it. `None` for
+    /// every other module. Never freed, like the library itself.
+    instance: Option<(*mut c_void, InstanceDispatchFn)>,
     release_value: ReleaseFn,
     /// `ManuallyDrop` because of `Drop for NativeModule` below: a module with
     /// a thread of its own must not be unloaded while that thread is running.
@@ -401,6 +405,9 @@ impl std::fmt::Debug for NativeModule {
 }
 
 type DispatchFn = unsafe extern "C" fn(*mut CodeValueFfi, *const CodeValueFfi);
+/// `code_abi.h` item 13: a new instance, and a dispatch to one.
+type InstanceNewFn = unsafe extern "C" fn() -> *mut c_void;
+type InstanceDispatchFn = unsafe extern "C" fn(*mut c_void, *mut CodeValueFfi, *const CodeValueFfi);
 type BorrowedDispatchFn = unsafe extern "C" fn(
     *mut CodeValueFfi,
     *const CodeBorrowedApi,
@@ -541,14 +548,19 @@ fn module_image(path: &str) -> (Option<std::os::fd::OwnedFd>, bool) {
     let Ok(bytes) = std::fs::read(path) else {
         return (None, false);
     };
-    let marked = bytes
-        .windows(STATELESS_EXPORT.len())
-        .any(|w| w == STATELESS_EXPORT);
+    let marked = contains(&bytes, STATELESS_EXPORT) || contains(&bytes, INSTANCE_EXPORT);
     (image_of(&bytes), marked)
+}
+
+#[cfg(target_os = "linux")]
+fn contains(bytes: &[u8], name: &[u8]) -> bool {
+    bytes.windows(name.len()).any(|w| w == name)
 }
 
 /// The name a module that keeps no state exports (`code_abi.h` item 12).
 const STATELESS_EXPORT: &[u8] = b"code_module_stateless";
+/// The name a module with an instance per link exports (item 13).
+const INSTANCE_EXPORT: &[u8] = b"code_module_instance_new";
 
 #[cfg(target_os = "linux")]
 fn image_of(bytes: &[u8]) -> Option<std::os::fd::OwnedFd> {
@@ -594,13 +606,34 @@ fn shares_one_instance(lib: &Library) -> bool {
     type StatelessFn = unsafe extern "C" fn() -> std::ffi::c_int;
     // SAFETY: resolved from a library that is loaded; the declaration's
     // signature is `code_abi.h` item 12's.
-    unsafe {
-        let declares = lib
-            .get::<StatelessFn>(STATELESS_EXPORT)
+    let declares = unsafe {
+        lib.get::<StatelessFn>(STATELESS_EXPORT)
             .map(|f| f() != 0)
-            .unwrap_or(false);
-        declares
-            && lib.get::<SetInboundFn>(b"code_module_set_inbound").is_err()
+            .unwrap_or(false)
+    };
+    declares && has_no_life_of_its_own(lib)
+}
+
+/// Whether `lib` offers an instance per link (`code_abi.h` item 13), under
+/// the same conditions as item 12. Must match `runtime.c`'s
+/// `offers_instances`.
+fn offers_instances(lib: &Library) -> bool {
+    // SAFETY: only looked up, not called.
+    let offers = unsafe {
+        lib.get::<InstanceNewFn>(INSTANCE_EXPORT).is_ok()
+            && lib
+                .get::<InstanceDispatchFn>(b"code_module_instance_dispatch")
+                .is_ok()
+    };
+    offers && has_no_life_of_its_own(lib)
+}
+
+/// No queue it pushes into, nothing holding the program open, no top-level
+/// values to give up: nothing that ties a module to one link.
+fn has_no_life_of_its_own(lib: &Library) -> bool {
+    // SAFETY: only looked up, not called.
+    unsafe {
+        lib.get::<SetInboundFn>(b"code_module_set_inbound").is_err()
             && lib.get::<ServingFn>(b"code_module_serving").is_err()
             && lib.get::<ModuleReleaseFn>(b"code_module_release").is_err()
             && lib.get::<ModuleReleaseFn>(b"code_module_drain").is_err()
@@ -618,7 +651,7 @@ impl NativeModule {
         let shared = if marked {
             unsafe { Library::new(path) }
                 .ok()
-                .filter(shares_one_instance)
+                .filter(|lib| offers_instances(lib) || shares_one_instance(lib))
         } else {
             None
         };
@@ -686,8 +719,28 @@ impl NativeModule {
             .ok()
             .map(|f| *f);
 
+        // Opened once for every link, so this link gets an instance of its
+        // own (`code_abi.h` item 13).
+        let instance = if image.is_none() && offers_instances(&lib) {
+            // SAFETY: both checked present by `offers_instances`.
+            unsafe {
+                let make = *lib.get::<InstanceNewFn>(INSTANCE_EXPORT).unwrap();
+                let dispatch = *lib
+                    .get::<InstanceDispatchFn>(b"code_module_instance_dispatch")
+                    .unwrap();
+                let made = make();
+                if made.is_null() {
+                    return Err(format!("native module '{path}' could not make an instance"));
+                }
+                Some((made, dispatch))
+            }
+        } else {
+            None
+        };
+
         Ok(NativeModule {
             dispatch_fn,
+            instance,
             release_value,
             borrowed_dispatch: unsafe {
                 lib.get::<BorrowedDispatchFn>(b"code_module_dispatch_borrowed_v1")
@@ -823,7 +876,7 @@ impl NativeModule {
     pub fn dispatch(&self, particle: &Value) -> Result<Value, String> {
         let mut result = CodeValueFfi::NULL;
         unsafe {
-            if let Some(dispatch) = self.borrowed_dispatch {
+            if let (Some(dispatch), None) = (self.borrowed_dispatch, self.instance) {
                 // The module opts in and decides what it can answer. No engine
                 // knowledge of module names, classes or Length semantics.
                 let handled = dispatch(
@@ -843,7 +896,10 @@ impl NativeModule {
         let mut arena = Arena::default();
         let particle_ffi = arena.build(particle);
         unsafe {
-            (self.dispatch_fn)(&mut result, &particle_ffi);
+            match self.instance {
+                Some((instance, dispatch)) => dispatch(instance, &mut result, &particle_ffi),
+                None => (self.dispatch_fn)(&mut result, &particle_ffi),
+            }
         }
 
         let value = unsafe { ffi_to_value(&result) };

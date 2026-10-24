@@ -47,7 +47,18 @@ struct Setup {
     timeout: Duration,
 }
 
-static SETUP: Mutex<Option<Setup>> = Mutex::new(None);
+/// One link's settings. Each link of this module has its own
+/// (`code_abi.h` item 13, ticket 178): a host that knows instances opens the
+/// file once and makes one of these per link; one that does not gets
+/// `DEFAULT`, behind the ordinary `code_module_dispatch`, and a copy of the
+/// file per link as before.
+struct Instance {
+    setup: Mutex<Option<Setup>>,
+}
+
+static DEFAULT: Instance = Instance {
+    setup: Mutex::new(None),
+};
 
 const DEFAULT_URL: &str = "https://ntfy.sh";
 const DEFAULT_TIMEOUT_SECONDS: f64 = 10.0;
@@ -71,11 +82,38 @@ pub extern "C" fn code_module_abi_version() -> u32 {
 /// call and laid out per `code_abi.h` — the host guarantees this.
 #[no_mangle]
 pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *const CodeValue) {
-    let particle = &*particle;
-    guarded(&mut *out, "ntfy", |out| {
+    dispatch(&DEFAULT, &mut *out, &*particle)
+}
+
+/// A new link's own settings (`code_abi.h` item 13). Never freed: a module
+/// is not unloaded.
+#[no_mangle]
+pub extern "C" fn code_module_instance_new() -> *mut core::ffi::c_void {
+    Box::into_raw(Box::new(Instance {
+        setup: Mutex::new(None),
+    })) as *mut core::ffi::c_void
+}
+
+/// `code_module_dispatch` for one link's instance.
+///
+/// # Safety
+///
+/// `instance` must come from `code_module_instance_new`; the other two as
+/// for `code_module_dispatch`.
+#[no_mangle]
+pub unsafe extern "C" fn code_module_instance_dispatch(
+    instance: *mut core::ffi::c_void,
+    out: *mut CodeValue,
+    particle: *const CodeValue,
+) {
+    dispatch(&*(instance as *const Instance), &mut *out, &*particle)
+}
+
+fn dispatch(instance: &Instance, out: &mut CodeValue, particle: &CodeValue) {
+    guarded(out, "ntfy", |out| {
         let outcome = match read_field_str(particle, "_class").unwrap_or("") {
-            "Config" => config(out, particle),
-            "Notify" => notify(out, particle),
+            "Config" => config(instance, out, particle),
+            "Notify" => notify(instance, out, particle),
             _ => {
                 null(out);
                 Ok(())
@@ -93,7 +131,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
 
 /// `Config { topic, url?, token?, username?, password?, timeout_seconds? }`
 /// → `ConfigResult { ok }`.
-fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+fn config(instance: &Instance, out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let topic = require_str(particle, "topic", "Config")?;
     check_topic(topic)?;
 
@@ -104,16 +142,22 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         .trim_end_matches('/')
         .to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(format!("'url' must start with http:// or https://, not '{url}'"));
+        return Err(format!(
+            "'url' must start with http:// or https://, not '{url}'"
+        ));
     }
 
     let auth = match (
-        find_field(particle, "token").and_then(read_str).filter(|s| !s.is_empty()),
+        find_field(particle, "token")
+            .and_then(read_str)
+            .filter(|s| !s.is_empty()),
         find_field(particle, "username").and_then(read_str),
         find_field(particle, "password").and_then(read_str),
     ) {
         (Some(token), _, _) => Some(format!("Bearer {token}")),
-        (None, Some(u), Some(p)) => Some(format!("Basic {}", base64(format!("{u}:{p}").as_bytes()))),
+        (None, Some(u), Some(p)) => {
+            Some(format!("Basic {}", base64(format!("{u}:{p}").as_bytes())))
+        }
         (None, Some(_), None) | (None, None, Some(_)) => {
             return Err("ntfy auth needs both 'username' and 'password', or a 'token'".to_string())
         }
@@ -131,7 +175,7 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         }
     };
 
-    *SETUP.lock().unwrap_or_else(|e| e.into_inner()) = Some(Setup {
+    *instance.setup.lock().unwrap_or_else(|e| e.into_inner()) = Some(Setup {
         url,
         topic: topic.to_string(),
         auth,
@@ -148,10 +192,15 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 
 /// A topic is one path segment: letters, digits, `-` and `_`, as ntfy has it.
 fn check_topic(topic: &str) -> Result<(), String> {
-    if topic.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if topic
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         Ok(())
     } else {
-        Err(format!("'topic' may hold letters, digits, '-' and '_' only, not '{topic}'"))
+        Err(format!(
+            "'topic' may hold letters, digits, '-' and '_' only, not '{topic}'"
+        ))
     }
 }
 
@@ -178,14 +227,17 @@ fn base64(bytes: &[u8]) -> String {
 
 /// `Notify { message, title?, priority?, tags?, click?, topic?, markdown?,
 /// attach?, file?, file_url?, filename? }` → `Notified { ok, id }`.
-fn notify(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
-    let guard = SETUP.lock().unwrap_or_else(|e| e.into_inner());
+fn notify(instance: &Instance, out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let guard = instance.setup.lock().unwrap_or_else(|e| e.into_inner());
     let setup = guard
         .as_ref()
         .ok_or("ntfy has no server — send Config { topic } first")?;
 
     let message = require_str(particle, "message", "Notify")?;
-    let topic = match find_field(particle, "topic").and_then(read_str).filter(|s| !s.is_empty()) {
+    let topic = match find_field(particle, "topic")
+        .and_then(read_str)
+        .filter(|s| !s.is_empty())
+    {
         Some(t) => {
             check_topic(t)?;
             t
@@ -194,7 +246,10 @@ fn notify(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     };
 
     let mut headers: Vec<(&str, String)> = Vec::new();
-    if let Some(title) = find_field(particle, "title").and_then(read_str).filter(|s| !s.is_empty()) {
+    if let Some(title) = find_field(particle, "title")
+        .and_then(read_str)
+        .filter(|s| !s.is_empty())
+    {
         headers.push(("Title", header_safe(title)));
     }
     if let Some(v) = find_field(particle, "priority") {
@@ -204,7 +259,10 @@ fn notify(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     if !tags.is_empty() {
         headers.push(("Tags", tags.join(",")));
     }
-    if let Some(click) = find_field(particle, "click").and_then(read_str).filter(|s| !s.is_empty()) {
+    if let Some(click) = find_field(particle, "click")
+        .and_then(read_str)
+        .filter(|s| !s.is_empty())
+    {
         headers.push(("Click", header_safe(click)));
     }
     if read_field_bool(particle, "markdown").unwrap_or(false) {
@@ -213,11 +271,25 @@ fn notify(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     if let Some(auth) = &setup.auth {
         headers.push(("Authorization", auth.clone()));
     }
-    let attach = find_field(particle, "attach").and_then(read_str).filter(|s| !s.is_empty());
-    let file = find_field(particle, "file").and_then(read_str).filter(|s| !s.is_empty());
-    let file_url = find_field(particle, "file_url").and_then(read_str).filter(|s| !s.is_empty());
-    if [attach.is_some(), file.is_some(), file_url.is_some()].iter().filter(|x| **x).count() > 1 {
-        return Err("Notify takes one of 'attach' (a URL), 'file' (a path) or 'file_url', not more".to_string());
+    let attach = find_field(particle, "attach")
+        .and_then(read_str)
+        .filter(|s| !s.is_empty());
+    let file = find_field(particle, "file")
+        .and_then(read_str)
+        .filter(|s| !s.is_empty());
+    let file_url = find_field(particle, "file_url")
+        .and_then(read_str)
+        .filter(|s| !s.is_empty());
+    if [attach.is_some(), file.is_some(), file_url.is_some()]
+        .iter()
+        .filter(|x| **x)
+        .count()
+        > 1
+    {
+        return Err(
+            "Notify takes one of 'attach' (a URL), 'file' (a path) or 'file_url', not more"
+                .to_string(),
+        );
     }
     if let Some(url) = attach {
         headers.push(("Attach", header_safe(url)));
@@ -239,9 +311,12 @@ fn notify(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
                 .map_err(|e| format!("Notify cannot read the file '{path}': {e}"))?
                 .len();
             if size > MAX_FILE_BYTES {
-                return Err(format!("the file '{path}' is {size} bytes; ntfy takes at most {MAX_FILE_BYTES}"));
+                return Err(format!(
+                    "the file '{path}' is {size} bytes; ntfy takes at most {MAX_FILE_BYTES}"
+                ));
             }
-            body = std::fs::read(path).map_err(|e| format!("Notify cannot read the file '{path}': {e}"))?;
+            body = std::fs::read(path)
+                .map_err(|e| format!("Notify cannot read the file '{path}': {e}"))?;
         } else {
             body = fetch(&agent, path)?;
         }
@@ -261,8 +336,12 @@ fn notify(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     }
 
     let target = format!("{}/{}", setup.url, topic);
-    let mut request = if upload.is_some() { agent.put(&target) } else { agent.post(&target) }
-        .header("Content-Type", content_type);
+    let mut request = if upload.is_some() {
+        agent.put(&target)
+    } else {
+        agent.post(&target)
+    }
+    .header("Content-Type", content_type);
     for (name, value) in &headers {
         request = request.header(*name, value.as_str());
     }
@@ -278,7 +357,10 @@ fn notify(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         .read_to_string()
         .unwrap_or_default();
     if !(200..300).contains(&status) {
-        return Err(format!("ntfy refused the notification ({status}): {}", body.trim()));
+        return Err(format!(
+            "ntfy refused the notification ({status}): {}",
+            body.trim()
+        ));
     }
 
     // ntfy answers the message as JSON; its `id` is worth handing back.
@@ -296,7 +378,9 @@ fn notify(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 /// than MAX_FILE_BYTES, is refused.
 fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, String> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(format!("'file_url' must start with http:// or https://, not '{url}'"));
+        return Err(format!(
+            "'file_url' must start with http:// or https://, not '{url}'"
+        ));
     }
     let mut response = agent
         .get(url)
@@ -362,7 +446,9 @@ fn header_text(s: &str) -> String {
 /// A header value cannot carry a line break; the rest ntfy takes as-is
 /// (UTF-8 in a title is fine — ntfy reads it — but a newline ends the header).
 fn header_safe(s: &str) -> String {
-    s.chars().map(|c| if c == '\r' || c == '\n' { ' ' } else { c }).collect()
+    s.chars()
+        .map(|c| if c == '\r' || c == '\n' { ' ' } else { c })
+        .collect()
 }
 
 /// The string under `"key":` in a flat JSON object — enough for ntfy's

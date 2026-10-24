@@ -148,6 +148,25 @@
  *      Optional and additive: a module without it is loaded per link as
  *      before, and the ABI version does not move.
  *
+ *  13. *Optionally* export `void *code_module_instance_new(void)` and
+ *      `void code_module_instance_dispatch(void *instance, CodeValue *out,
+ *      const CodeValue *particle)`, to keep state per link without a copy
+ *      of the module per link.
+ *
+ *      The host then opens the file once for every link, asks for a new
+ *      instance per link, and sends that link's particles to
+ *      `code_module_instance_dispatch` with its instance; settings and
+ *      connections live in the instance, not in globals. An instance is
+ *      never freed (a module is not unloaded). The module still exports
+ *      `code_module_dispatch`, working on an instance of its own, for a
+ *      host that predates this — which then copies the module per link as
+ *      it always did (ticket 178: mongodb was 16 copies on one host).
+ *
+ *      Same conditions as item 12: not honoured for a module that exports
+ *      `code_module_set_inbound`, `code_module_serving`, `code_module_release`
+ *      or `code_module_drain` (a queue per instance is not part of this yet).
+ *      Optional and additive; the ABI version does not move.
+ *
  * Why `emit` is a function *pointer* the host supplies, rather than a
  * `code_emit_inbound` a module could call directly: a `.so` carries its own
  * copy of this runtime (see below), so a direct call would push onto the

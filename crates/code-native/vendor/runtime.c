@@ -1323,6 +1323,11 @@ typedef struct {
      * instead of the `dlsym`'d pointers above, which are all NULL then. */
     int from_host;
     CodeHostModule host;
+    /* `code_abi.h` item 13: a module opened once and instantiated per link.
+     * Set, every call goes to `instance_dispatch` with this link's
+     * `instance` instead of to `dispatch`. NULL for every other module. */
+    void *instance;
+    void (*instance_dispatch)(void *instance, CodeValue *out, const CodeValue *particle);
     /* Optional `code_module_release` — `code_abi.h` item 9, the point at
      * which the module gives up the top-level values it otherwise owns for
      * its whole lifetime. NULL for every module that has none, which is all
@@ -1433,13 +1438,16 @@ static NativeHandle *host_native(const CodeHostModule *supplied, char *err, size
  * Returns -1 where this is not available, and the caller falls back to an
  * ordinary open — one instance, shared, as before.
  *
- * While copying it looks for the name `code_module_stateless` in the file
- * (`code_abi.h` item 12) and sets `*marked` when it is there: a module that
- * keeps no state can be opened once and shared by every link instead
- * (ticket 177), which `open_native` then checks properly. Looked for in the
- * bytes rather than by opening the file first, because opening a `.code`
- * library runs its top level. */
+ * While copying it looks for the names `code_module_stateless` (`code_abi.h`
+ * item 12, ticket 177) and `code_module_instance_new` (item 13, ticket 178)
+ * in the file and says which it found in `*marked`: such a module can be
+ * opened once and shared by every link — as it is, or with an instance of
+ * its own per link — which `open_native` then checks properly. Looked for
+ * in the bytes rather than by opening the file first, because opening a
+ * `.code` library runs its top level. */
 #define STATELESS_EXPORT "code_module_stateless"
+#define INSTANCE_EXPORT "code_module_instance_new"
+enum { MARKED_STATELESS = 1, MARKED_INSTANCES = 2 };
 static int module_image(const char *path, int *marked) {
     *marked = 0;
 #if defined(__linux__) && !defined(CODE_WASM)
@@ -1454,7 +1462,10 @@ static int module_image(const char *path, int *marked) {
     }
     /* The tail of the previous read goes in front of the next, so a name
      * that straddles two reads is still found. */
-    enum { CARRY = sizeof STATELESS_EXPORT - 1 };
+    enum {
+        CARRY = sizeof INSTANCE_EXPORT > sizeof STATELESS_EXPORT ? sizeof INSTANCE_EXPORT - 1
+                                                                 : sizeof STATELESS_EXPORT - 1
+    };
     char buf[CARRY + 65536];
     size_t carried = 0;
     for (;;) {
@@ -1468,8 +1479,11 @@ static int module_image(const char *path, int *marked) {
             return -1;
         }
         size_t have = carried + (size_t)n;
-        if (!*marked && memmem(buf, have, STATELESS_EXPORT, CARRY)) {
-            *marked = 1;
+        if (memmem(buf, have, STATELESS_EXPORT, sizeof STATELESS_EXPORT - 1)) {
+            *marked |= MARKED_STATELESS;
+        }
+        if (memmem(buf, have, INSTANCE_EXPORT, sizeof INSTANCE_EXPORT - 1)) {
+            *marked |= MARKED_INSTANCES;
         }
         carried = have < CARRY ? have : CARRY;
         memmove(buf, buf + have - carried, carried);
@@ -1487,11 +1501,21 @@ static int module_image(const char *path, int *marked) {
  * that would make one instance per link matter: no queue it pushes into,
  * nothing holding the program open, no top-level values to give up. Only
  * then is one instance shared (`code_abi.h` item 12). */
+static int has_no_life_of_its_own(void *lib) {
+    return !dlsym(lib, "code_module_set_inbound") && !dlsym(lib, "code_module_serving")
+           && !dlsym(lib, "code_module_release") && !dlsym(lib, "code_module_drain");
+}
+
 static int shares_one_instance(void *lib) {
     int (*stateless)(void) = (int (*)(void))dlsym(lib, STATELESS_EXPORT);
-    return stateless && stateless() && !dlsym(lib, "code_module_set_inbound")
-           && !dlsym(lib, "code_module_serving") && !dlsym(lib, "code_module_release")
-           && !dlsym(lib, "code_module_drain");
+    return stateless && stateless() && has_no_life_of_its_own(lib);
+}
+
+/* Whether `lib` offers an instance per link (`code_abi.h` item 13), with
+ * nothing that would tie it to one: the same conditions as item 12. */
+static int offers_instances(void *lib) {
+    return dlsym(lib, INSTANCE_EXPORT) && dlsym(lib, "code_module_instance_dispatch")
+           && has_no_life_of_its_own(lib);
 }
 #endif
 
@@ -1524,7 +1548,9 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
         /* The ordinary open, which the loader shares between every link of
          * the file — what a module that keeps no state wants. */
         void *shared = dlopen(path, RTLD_NOW);
-        if (shared && shares_one_instance(shared)) {
+        int fits = shared && (((marked & MARKED_INSTANCES) && offers_instances(shared))
+                              || ((marked & MARKED_STATELESS) && shares_one_instance(shared)));
+        if (fits) {
             handle = shared;
             if (image >= 0) {
                 close(image);
@@ -1606,6 +1632,21 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     /* And the point at which it hands out what its own modules pushed.
      * Only a `.code` library has one, and only a host ever calls it. */
     nh->module_drain = (void (*)(void))dlsym(handle, "code_module_drain");
+
+    /* Opened once for every link (above), so this link gets an instance of
+     * its own: its own settings, its own connection (`code_abi.h` item 13).
+     * Never freed, like the handle: a module is not unloaded. */
+    if (image < 0 && offers_instances(handle)) {
+        void *(*make)(void) = (void *(*)(void))dlsym(handle, INSTANCE_EXPORT);
+        nh->instance = make();
+        nh->instance_dispatch = (void (*)(void *, CodeValue *, const CodeValue *))dlsym(
+            handle, "code_module_instance_dispatch");
+        if (!nh->instance) {
+            snprintf(err, errlen, "native module '%s' could not make an instance", path);
+            free(nh);
+            return NULL;
+        }
+    }
 
     /* Also optional: a module that never speaks first doesn't export it.
      * The pusher handed across is *this* runtime's, not the module's own
@@ -1996,7 +2037,11 @@ void code_native_dispatch(void *handle, CodeValue *out, const CodeValue *particl
     }
     NativeHandle *nh = (NativeHandle *)handle;
     CodeValue result = {0};
-    nh->dispatch(&result, particle);
+    if (nh->instance_dispatch) {
+        nh->instance_dispatch(nh->instance, &result, particle);
+    } else {
+        nh->dispatch(&result, particle);
+    }
     code_native_copy_in(out, &result);
     nh->release(&result);
 }
