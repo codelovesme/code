@@ -101,6 +101,18 @@ fn main() -> ExitCode {
                     "-r" | "--release" => release = true,
                     "--strict" => strict = true,
                     "--timings" => timings = true,
+                    // How a module named by identity (`link "math"`) is
+                    // linked: into the program, or opened beside it (ticket
+                    // 142). The loader reads it as `CODE_LINK`.
+                    "--link" => match args.next().as_deref() {
+                        Some(value @ ("static" | "dynamic")) => {
+                            std::env::set_var("CODE_LINK", value)
+                        }
+                        _ => {
+                            eprintln!("--link takes static or dynamic");
+                            return ExitCode::FAILURE;
+                        }
+                    },
                     "-t" | "--target" => {
                         let Some(value) = args.next() else {
                             eprintln!("--target takes a value (exe|shared|static|wasm)");
@@ -302,6 +314,10 @@ artifact goes in a build/ directory beside what you named, called after it:
 options:
   -t, --target exe|shared|static|wasm   default exe
   -r, --release                         -O2; the default is unoptimized
+      --link static|dynamic             how `link \"<name>\"` modules are linked:
+                                        into the program (an executable's
+                                        default) or opened beside it (a
+                                        shared library's); also CODE_LINK
       --strict                          refuse errors `code check` can prove
       --timings                         say where the build's time went
                                         (also CODE_TIMINGS=1)
@@ -744,7 +760,10 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let program = match code::loader::load(&entry, &code::loader::FilesystemResolver) {
+    let program = match code::loader::load(
+        &entry,
+        &code::loader::PolicyResolver(code::loader::LinkPolicy::Any),
+    ) {
         Ok(program) => program,
         Err(message) => {
             let diagnostic = code::diagnostics::Diagnostic {
@@ -831,8 +850,11 @@ fn cmd_check(args: Vec<String>) -> ExitCode {
 /// The report remains the same versioned JSON contract; it goes to stderr at
 /// those execution boundaries so a program's stdout is never polluted.
 fn strict_check_entry(entry: &str) -> Result<(), String> {
-    let program = code::loader::load(entry, &code::loader::FilesystemResolver)
-        .map_err(|message| format!("error: {message}"))?;
+    let program = code::loader::load(
+        entry,
+        &code::loader::PolicyResolver(code::loader::LinkPolicy::Any),
+    )
+    .map_err(|message| format!("error: {message}"))?;
     let diagnostics = code::diagnostics::check_handlers(&program);
     if code::diagnostics::has_errors(&diagnostics) {
         Err(render_check_report(&diagnostics, program.origin.as_ref()))
@@ -1073,7 +1095,10 @@ fn cmd_handlers(args: Vec<String>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let program = match code::loader::load(&entry, &code::loader::FilesystemResolver) {
+    let program = match code::loader::load(
+        &entry,
+        &code::loader::PolicyResolver(code::loader::LinkPolicy::Any),
+    ) {
         Ok(program) => program,
         Err(message) => {
             eprintln!("error: {message}");
@@ -1677,10 +1702,19 @@ fn cmd_install(mut args: Vec<String>) -> ExitCode {
                 .extension()
                 .map(|e| e.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "so".to_string());
-            println!(
-                "link it with:  link \"{}.{ext}\" as <alias>",
-                installed.name
-            );
+            // With its native archive beside it, the module can be named and
+            // each build link it the way it should (ticket 142).
+            if ext == "so" && installed.path.with_extension("a").is_file() {
+                println!(
+                    "link it with:  link \"{}\" as <alias>   (linked in, or opened, as the build needs)",
+                    installed.name
+                );
+            } else {
+                println!(
+                    "link it with:  link \"{}.{ext}\" as <alias>",
+                    installed.name
+                );
+            }
             ExitCode::SUCCESS
         }
         Err(e) => {

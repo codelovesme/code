@@ -261,7 +261,25 @@ struct StaticModuleFns<'a> {
     /// `<prefix>_code_module_inbound_reply`, when the archive exports it —
     /// hearing what the program answered to what it pushed.
     inbound_reply: Option<FunctionValue<'a>>,
+    /// `<prefix>_code_module_instance_new` and `_instance_dispatch`, when
+    /// the archive offers an instance per alias (`code_abi.h` item 13).
+    instances: Option<(FunctionValue<'a>, FunctionValue<'a>)>,
+    /// `<prefix>_code_module_serving`, when the archive exports it.
+    serving: Option<FunctionValue<'a>>,
+    /// `<prefix>_code_module_instance_set_inbound`, when the archive takes
+    /// its queue per instance (ticket 178).
+    instance_set_inbound: Option<FunctionValue<'a>>,
 }
+
+/// A page's linear-memory stack: what `link_wasm` reserves
+/// (`-z stack-size`), and so what a wasm handler's stack check measures
+/// against (ticket 104).
+pub(crate) const WASM_STACK_BYTES: u64 = 1_048_576;
+
+/// How much stack a wasm handler wants left when it starts, for the runtime
+/// calls it makes below its own frame. Under this, it answers an Exception
+/// rather than run on into a trap.
+const WASM_STACK_MARGIN: u64 = 64 * 1024;
 
 /// A wasm build may link a `.a` but not a `.so`.
 ///
@@ -316,7 +334,6 @@ pub(crate) fn compile_to_object_traced(
     }
     crate::timings::measure("checks", || -> Result<(), String> {
         crate::verify::verify_defined(program)?;
-        crate::handlers::check_cycles(program)?;
         if target == BuildTarget::Wasm {
             reject_wasm_native_links(&program.statements)?;
         }
@@ -426,6 +443,11 @@ pub(crate) fn compile_to_object_traced(
     );
     let fn_add_into = module.add_function(
         "code_add_into",
+        void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
+        None,
+    );
+    let fn_add_take = module.add_function(
+        "code_add_take",
         void_ty.fn_type(&[i8_ptr_ty.into(), i8_ptr_ty.into()], false),
         None,
     );
@@ -814,6 +836,10 @@ pub(crate) fn compile_to_object_traced(
                     has_vars,
                     has_inbound,
                     has_reply,
+                    has_instances,
+                    has_instance_inbound,
+                    has_serving,
+                    ..
                 },
             ..
         } = stmt
@@ -857,12 +883,54 @@ pub(crate) fn compile_to_object_traced(
                     None,
                 )
             });
+            // `code_abi.h` item 13: an instance per alias, so two aliases of
+            // one archive keep their own settings (ticket 141).
+            let instances = has_instances.then(|| {
+                (
+                    module.add_function(
+                        &format!("{prefix}_code_module_instance_new"),
+                        i8_ptr_ty.fn_type(&[], false),
+                        None,
+                    ),
+                    module.add_function(
+                        &format!("{prefix}_code_module_instance_dispatch"),
+                        void_ty.fn_type(
+                            &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+                            false,
+                        ),
+                        None,
+                    ),
+                )
+            });
+            // `int (void)`, asked by the keep-alive loop as a `.so`'s is.
+            let serving = has_serving.then(|| {
+                module.add_function(
+                    &format!("{prefix}_code_module_serving"),
+                    i32_ty.fn_type(&[], false),
+                    None,
+                )
+            });
+            // `(void *instance, void *queue, CodeEmitFn emit)` — each alias's
+            // queue handed to its own instance (ticket 178).
+            let instance_set_inbound = (*has_instances && *has_instance_inbound).then(|| {
+                module.add_function(
+                    &format!("{prefix}_code_module_instance_set_inbound"),
+                    void_ty.fn_type(
+                        &[i8_ptr_ty.into(), i8_ptr_ty.into(), i8_ptr_ty.into()],
+                        false,
+                    ),
+                    None,
+                )
+            });
             let fns = StaticModuleFns {
                 abi_version,
                 dispatch,
                 vars,
                 set_inbound,
                 inbound_reply,
+                instances,
+                instance_set_inbound,
+                serving,
             };
             static_prefix_fns.insert(prefix.clone(), fns);
             static_native_fns.insert(alias.clone(), fns);
@@ -946,6 +1014,7 @@ pub(crate) fn compile_to_object_traced(
         fn_copy,
         fn_move,
         fn_add_into,
+        fn_add_take,
         fn_take_last,
         fn_set_at,
         fn_slice_into,
@@ -1316,6 +1385,9 @@ struct Gen<'a, 'm> {
     fn_move: FunctionValue<'a>,
     /// `runtime.c`'s `code_add_into` — `name += value` (ticket 121).
     fn_add_into: FunctionValue<'a>,
+    /// `code_add_into` for a part that is this statement's temporary: it
+    /// moves in rather than being retained and then cleared (ticket 126).
+    fn_add_take: FunctionValue<'a>,
     fn_take_last: FunctionValue<'a>,
     /// `runtime.c`'s `code_set_at` — `xs[i] = v`, `fish.x = v`.
     fn_set_at: FunctionValue<'a>,
@@ -1654,6 +1726,14 @@ enum NativeLink<'a> {
         /// calls through `code_native_reply`; an archive is linked straight
         /// in, so the call is direct — the same split as `dispatch`.
         reply: Option<FunctionValue<'a>>,
+        /// This alias's own instance — the global holding what
+        /// `<prefix>_code_module_instance_new` made when it was linked — and
+        /// the dispatch that takes it, when the archive offers instances
+        /// (`code_abi.h` item 13). Calls go there instead of `dispatch`.
+        own: Option<(PointerValue<'a>, FunctionValue<'a>)>,
+        /// `<prefix>_code_module_serving`, when the archive exports one: it
+        /// holds the program open, as a `.so`'s does (`gen_keep_alive`).
+        serving: Option<FunctionValue<'a>>,
     },
 }
 
@@ -1890,15 +1970,12 @@ impl<'a, 'm> Gen<'a, 'm> {
 
         self.builder.position_at_end(start);
 
-        // Depth guard. `handlers::check_cycles` rejects every cycle it can
-        // see before codegen runs, but dispatch is by the particle's runtime
-        // `_class`, so a particle held in a variable names a handler no
-        // static pass could resolve — and a linked module asking its base a
-        // question re-enters the handler that reached it. Both are
-        // ordinary; a handler that keeps re-entering itself is not, and the
-        // count catches it: past `MOST_LIVE` live invocations the emit
-        // answers an Exception. Same number and same answer as the
-        // interpreter's `run_handler`.
+        // Depth guard, the one rule recursion has (ticket 102: a handler may
+        // call itself). Whatever names the handler — a literal particle, one
+        // in a variable, a linked module asking its base back — a handler
+        // that keeps re-entering itself is caught by the count: past
+        // `MOST_LIVE` live invocations the emit answers an Exception. Same
+        // number and same answer as the interpreter's `run_handler`.
         let active =
             self.module
                 .add_global(self.i32_ty, None, &format!("_code_active_{class_name}"));
@@ -1906,6 +1983,83 @@ impl<'a, 'm> Gen<'a, 'm> {
         let active = active.as_pointer_value();
         let reenter = self.context.append_basic_block(function, "toodeep");
         let enter = self.context.append_basic_block(function, "enter");
+        // In a page the stack is a fixed 1 MiB of linear memory, below the
+        // data (`--stack-first`). A chain of handlers deep enough to use it
+        // up used to end in a `memset` trap that said nothing about depth
+        // (ticket 104). So a wasm handler looks first: with less than
+        // `WASM_STACK_MARGIN` left above `__stack_low`, it answers an
+        // Exception naming the stack, the way the depth bound answers —
+        // leaving the margin for the runtime calls a handler makes.
+        if self.wasm {
+            let roomy = self.context.append_basic_block(function, "stackroom");
+            let exhausted = self.context.append_basic_block(function, "stackgone");
+            // Where this frame is: the address of a byte of its own. Not
+            // `llvm.stacksave`: in a handler with no frame of its own, wasm
+            // lowered that to a frame-pointer local nobody had set, which
+            // read 0 and stopped every call made from a page callback
+            // (found 2026-10-24). An address taken makes a frame, and is
+            // always inside the stack.
+            let here = self
+                .entry_builder()
+                .build_alloca(self.i8_ty, "stack_here")
+                .map_err(|e| e.to_string())?;
+            let low = match self.module.get_global("__stack_low") {
+                Some(low) => low,
+                None => {
+                    let low = self.module.add_global(self.i8_ty, None, "__stack_low");
+                    low.set_linkage(inkwell::module::Linkage::External);
+                    low
+                }
+            };
+            let int_ty = self.context.i32_type();
+            let here = self
+                .builder
+                .build_ptr_to_int(here, int_ty, "stack_at")
+                .map_err(|e| e.to_string())?;
+            let low = self
+                .builder
+                .build_ptr_to_int(low.as_pointer_value(), int_ty, "stack_low")
+                .map_err(|e| e.to_string())?;
+            let floor = self
+                .builder
+                .build_int_add(
+                    low,
+                    int_ty.const_int(WASM_STACK_MARGIN, false),
+                    "stack_floor",
+                )
+                .map_err(|e| e.to_string())?;
+            let short = self
+                .builder
+                .build_int_compare(IntPredicate::ULT, here, floor, "stack_short")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_conditional_branch(short, exhausted, roomy)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(exhausted);
+            let msg = self.global_str(
+                &format!(
+                    "handler '{class_name}' found the stack nearly used up — too deep a chain \
+                     of handler calls for a page's {} KiB stack",
+                    WASM_STACK_BYTES / 1024
+                ),
+                "stackgone",
+            )?;
+            let source = self.global_str("runtime", "excsource")?;
+            self.builder
+                .build_call(
+                    self.fn_make_exception,
+                    &[
+                        out.into(),
+                        source.into(),
+                        msg.into(),
+                        self.i8_ptr_ty.const_null().into(),
+                    ],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+            self.builder.build_return(None).map_err(|e| e.to_string())?;
+            self.builder.position_at_end(roomy);
+        }
         let running = self
             .builder
             .build_load(self.i32_ty, active, "running")
@@ -2155,10 +2309,20 @@ impl<'a, 'm> Gen<'a, 'm> {
                 NativeLink::Static { .. } => None,
             })
             .collect();
+        // A linked-in module that serves is asked directly (ticket 141: a
+        // static timer let the program end before its delay fired).
+        let static_serving: Vec<FunctionValue<'a>> = self
+            .native_links
+            .values()
+            .filter_map(|link| match link {
+                NativeLink::Static { serving, .. } => *serving,
+                NativeLink::Dynamic(_) => None,
+            })
+            .collect();
         // Empty *and* unable to open anything later means there is nothing
         // that could ever hold this program open — skip the loop entirely.
         // A program that links while running cannot say that from here.
-        if handles.is_empty() && !self.links_at_runtime {
+        if handles.is_empty() && static_serving.is_empty() && !self.links_at_runtime {
             return Ok(());
         }
 
@@ -2217,6 +2381,24 @@ impl<'a, 'm> Gen<'a, 'm> {
             let is_serving = self
                 .builder
                 .build_int_compare(inkwell::IntPredicate::NE, answer, zero, "is_serving")
+                .map_err(|e| e.to_string())?;
+            serving = self
+                .builder
+                .build_or(serving, is_serving, "any_serving")
+                .map_err(|e| e.to_string())?;
+        }
+        for serving_fn in static_serving {
+            let answer = self
+                .builder
+                .build_call(serving_fn, &[], "static_serving")
+                .map_err(|e| e.to_string())?
+                .try_as_basic_value()
+                .left()
+                .ok_or_else(|| "<prefix>_code_module_serving returned nothing".to_string())?
+                .into_int_value();
+            let is_serving = self
+                .builder
+                .build_int_compare(inkwell::IntPredicate::NE, answer, zero, "static_is_serving")
                 .map_err(|e| e.to_string())?;
             serving = self
                 .builder
@@ -3563,6 +3745,34 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .map_err(|e| e.to_string())?;
                 self.bind(alias, permanent);
 
+                // An instance of its own, made where this alias is linked and
+                // parked in a global, as the queue is: a handler that emits
+                // to it is a function of its own.
+                let own = match fns.instances {
+                    None => None,
+                    Some((make, dispatch)) => {
+                        let made = self
+                            .builder
+                            .build_call(make, &[], "static_instance")
+                            .map_err(|e| e.to_string())?
+                            .try_as_basic_value()
+                            .left()
+                            .expect("<prefix>_code_module_instance_new returns i8*, not void")
+                            .into_pointer_value();
+                        let slot = self.module.add_global(
+                            self.i8_ptr_ty,
+                            None,
+                            &format!("_code_static_instance_{alias}"),
+                        );
+                        slot.set_initializer(&self.i8_ptr_ty.const_null());
+                        let slot = slot.as_pointer_value();
+                        self.builder
+                            .build_store(slot, made)
+                            .map_err(|e| e.to_string())?;
+                        Some((slot, dispatch))
+                    }
+                };
+
                 // A queue of its own, but only if the archive said it would
                 // push. A module that never speaks first pays for nothing.
                 let inbound = match fns.set_inbound {
@@ -3592,9 +3802,28 @@ impl<'a, 'm> Gen<'a, 'm> {
                         // The pusher handed across is *this* runtime's, which
                         // for a `.a` is also the module's — there is only one.
                         let emit = self.fn_emit_inbound.as_global_value().as_pointer_value();
-                        self.builder
-                            .build_call(set_inbound, &[handle.into(), emit.into()], "")
-                            .map_err(|e| e.to_string())?;
+                        // Its own instance takes its own queue, so a second
+                        // alias does not replace the first's (ticket 178).
+                        match (own, fns.instance_set_inbound) {
+                            (Some((instance_slot, _)), Some(set_own)) => {
+                                let instance = self
+                                    .builder
+                                    .build_load(self.i8_ptr_ty, instance_slot, "own_instance")
+                                    .map_err(|e| e.to_string())?;
+                                self.builder
+                                    .build_call(
+                                        set_own,
+                                        &[instance.into(), handle.into(), emit.into()],
+                                        "",
+                                    )
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            _ => {
+                                self.builder
+                                    .build_call(set_inbound, &[handle.into(), emit.into()], "")
+                                    .map_err(|e| e.to_string())?;
+                            }
+                        }
                         Some(slot)
                     }
                 };
@@ -3606,6 +3835,8 @@ impl<'a, 'm> Gen<'a, 'm> {
                         dispatch: fns.dispatch,
                         inbound,
                         reply: fns.inbound_reply,
+                        own,
+                        serving: fns.serving,
                     },
                 );
             }
@@ -3764,7 +3995,10 @@ impl<'a, 'm> Gen<'a, 'm> {
                             .map_err(|e| e.to_string())?;
                     }
                     NativeLink::Static {
-                        dispatch, instance, ..
+                        dispatch,
+                        instance,
+                        own,
+                        ..
                     } => {
                         // Restore the caller's identity after nested dispatch:
                         // a browser half can ask this program another question.
@@ -3780,9 +4014,26 @@ impl<'a, 'm> Gen<'a, 'm> {
                         } else {
                             None
                         };
-                        self.builder
-                            .build_call(*dispatch, &[temp.into(), particle_ptr.into()], "")
-                            .map_err(|e| e.to_string())?;
+                        match own {
+                            Some((slot, instance_dispatch)) => {
+                                let own_instance = self
+                                    .builder
+                                    .build_load(self.i8_ptr_ty, *slot, "own_instance")
+                                    .map_err(|e| e.to_string())?;
+                                self.builder
+                                    .build_call(
+                                        *instance_dispatch,
+                                        &[own_instance.into(), temp.into(), particle_ptr.into()],
+                                        "",
+                                    )
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            None => {
+                                self.builder
+                                    .build_call(*dispatch, &[temp.into(), particle_ptr.into()], "")
+                                    .map_err(|e| e.to_string())?;
+                            }
+                        }
                         if let Some((slot, previous)) = previous {
                             self.builder
                                 .build_store(slot, previous)
@@ -4049,9 +4300,24 @@ impl<'a, 'm> Gen<'a, 'm> {
                         return self.check_failed();
                     }
                     let piece = self.gen_expr(rhs)?;
+                    // A part just computed into a temporary is handed over,
+                    // as `gen_assign` moves one; `code_add_take` leaves it
+                    // empty, so its clear is skipped.
+                    let temp = self
+                        .temps
+                        .iter()
+                        .rposition(|(ptr, count, _)| *ptr == piece && *count == 1);
+                    let helper = if temp.is_some() {
+                        self.fn_add_take
+                    } else {
+                        self.fn_add_into
+                    };
                     self.builder
-                        .build_call(self.fn_add_into, &[slot.into(), piece.into()], "")
+                        .build_call(helper, &[slot.into(), piece.into()], "")
                         .map_err(|e| e.to_string())?;
+                    if let Some(at) = temp {
+                        self.temps[at].2 = true;
+                    }
                     return self.check_failed();
                 }
             }
@@ -4345,37 +4611,7 @@ impl<'a, 'm> Gen<'a, 'm> {
                         .build_load(self.i64_ty, block, "len")
                         .map_err(|e| e.to_string())?
                         .into_int_value();
-                    let len_f = b
-                        .build_signed_int_to_float(len, self.f64_ty, "lenf")
-                        .map_err(|e| e.to_string())?;
-                    let from_zero = b
-                        .build_float_compare(
-                            FloatPredicate::OGE,
-                            n,
-                            self.f64_ty.const_zero(),
-                            "fromzero",
-                        )
-                        .map_err(|e| e.to_string())?;
-                    let below = b
-                        .build_float_compare(FloatPredicate::OLT, n, len_f, "below")
-                        .map_err(|e| e.to_string())?;
-                    let in_range = b
-                        .build_and(from_zero, below, "inrange")
-                        .map_err(|e| e.to_string())?;
-                    let i = b
-                        .build_float_to_signed_int(n, self.i64_ty, "i")
-                        .map_err(|e| e.to_string())?;
-                    let back = b
-                        .build_signed_int_to_float(i, self.f64_ty, "back")
-                        .map_err(|e| e.to_string())?;
-                    let whole = b
-                        .build_float_compare(FloatPredicate::OEQ, back, n, "whole")
-                        .map_err(|e| e.to_string())?;
-                    let false_ = self.context.bool_type().const_zero();
-                    let number_ok = b
-                        .build_select(in_range, whole, false_, "numberok")
-                        .map_err(|e| e.to_string())?
-                        .into_int_value();
+                    let (i, number_ok) = self.element_index(n, len)?;
                     ok = b
                         .build_and(ok, number_ok, "element")
                         .map_err(|e| e.to_string())?;
@@ -5109,34 +5345,7 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_load(self.i64_ty, list, "len")
             .map_err(|e| e.to_string())?
             .into_int_value();
-        let len_f = b
-            .build_signed_int_to_float(len, self.f64_ty, "lenf")
-            .map_err(|e| e.to_string())?;
-        let from_zero = b
-            .build_float_compare(FloatPredicate::OGE, n, self.f64_ty.const_zero(), "fromzero")
-            .map_err(|e| e.to_string())?;
-        let below = b
-            .build_float_compare(FloatPredicate::OLT, n, len_f, "below")
-            .map_err(|e| e.to_string())?;
-        let in_range = b
-            .build_and(from_zero, below, "inrange")
-            .map_err(|e| e.to_string())?;
-        // Converted only where it is in range; `select` keeps an out-of-range
-        // (poison) conversion from deciding anything.
-        let i = b
-            .build_float_to_signed_int(n, self.i64_ty, "i")
-            .map_err(|e| e.to_string())?;
-        let back = b
-            .build_signed_int_to_float(i, self.f64_ty, "back")
-            .map_err(|e| e.to_string())?;
-        let whole = b
-            .build_float_compare(FloatPredicate::OEQ, back, n, "whole")
-            .map_err(|e| e.to_string())?;
-        let false_ = self.context.bool_type().const_zero();
-        let ok = b
-            .build_select(in_range, whole, false_, "elementok")
-            .map_err(|e| e.to_string())?
-            .into_int_value();
+        let (i, ok) = self.element_index(n, len)?;
         b.build_conditional_branch(ok, fast, slow)
             .map_err(|e| e.to_string())?;
         b.position_at_end(fast);
@@ -5296,6 +5505,46 @@ impl<'a, 'm> Gen<'a, 'm> {
                 .build_gep(self.i8_ty, ptr, &[offset], "field")
                 .map_err(|e| e.to_string())
         }
+    }
+
+    /// The element a number `n` names in a list of `len`: its index, and
+    /// whether `n` is a whole number from 0 below `len`. Checked as whole
+    /// numbers, not as fractions: a loop's counter is a whole number LLVM
+    /// can see through, and then the check is one comparison (ticket 126:
+    /// two conversions and three float comparisons per element of points).
+    /// The conversion is frozen, so an `n` outside an i64's range gives some
+    /// whole number rather than poison; it converts back to something other
+    /// than `n`, or (near 2^63) to an index far past any list.
+    fn element_index(
+        &self,
+        n: FloatValue<'a>,
+        len: IntValue<'a>,
+    ) -> Result<(IntValue<'a>, IntValue<'a>), String> {
+        let b = self.builder;
+        let raw = b
+            .build_float_to_signed_int(n, self.i64_ty, "i")
+            .map_err(|e| e.to_string())?;
+        let i = unsafe {
+            IntValue::new(inkwell::llvm_sys::core::LLVMBuildFreeze(
+                b.as_mut_ptr(),
+                inkwell::values::AsValueRef::as_value_ref(&raw),
+                c"index".as_ptr(),
+            ))
+        };
+        let back = b
+            .build_signed_int_to_float(i, self.f64_ty, "back")
+            .map_err(|e| e.to_string())?;
+        let whole = b
+            .build_float_compare(FloatPredicate::OEQ, back, n, "whole")
+            .map_err(|e| e.to_string())?;
+        // Unsigned: a negative index is past every length.
+        let below = b
+            .build_int_compare(IntPredicate::ULT, i, len, "below")
+            .map_err(|e| e.to_string())?;
+        let ok = b
+            .build_and(whole, below, "elementok")
+            .map_err(|e| e.to_string())?;
+        Ok((i, ok))
     }
 
     /// The block (`CodeList`) of the list or object `value` holds — null for
@@ -6152,9 +6401,23 @@ impl<'a, 'm> Gen<'a, 'm> {
                     let value_mark = self.temps.len();
                     let value_ptr = self.gen_expr(value)?;
                     let dest = self.slot_at(values_buf, i as u64, "objelem")?;
+                    // A value this field just computed into a temporary is
+                    // moved, as `gen_assign` moves one: copying it (a retain)
+                    // and clearing the temporary (a release) did nothing.
+                    let temp = (value_mark..self.temps.len())
+                        .rev()
+                        .find(|&at| self.temps[at].0 == value_ptr && self.temps[at].1 == 1);
+                    let helper = if temp.is_some() {
+                        self.fn_move
+                    } else {
+                        self.fn_copy
+                    };
                     self.builder
-                        .build_call(self.fn_copy, &[dest.into(), value_ptr.into()], "")
+                        .build_call(helper, &[dest.into(), value_ptr.into()], "")
                         .map_err(|e| e.to_string())?;
+                    if let Some(at) = temp {
+                        self.temps[at].2 = true;
+                    }
                     self.clear_temps_from(value_mark)?;
                     self.bound_block()?;
                 }
@@ -6184,6 +6447,15 @@ impl<'a, 'm> Gen<'a, 'm> {
                             "",
                         )
                         .map_err(|e| e.to_string())?;
+                    // The template took the values and left the scratch
+                    // zeroed (`runtime.c`): nothing in it to clear.
+                    if let Some(at) = self
+                        .temps
+                        .iter()
+                        .rposition(|(ptr, count, _)| *ptr == values_buf && *count == len)
+                    {
+                        self.temps[at].2 = true;
+                    }
                 } else {
                     self.builder
                         .build_call(

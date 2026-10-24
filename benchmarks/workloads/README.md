@@ -636,3 +636,45 @@ the unused upper four bytes of a pointer payload. The new reader now loads
 pointer-width bytes, not an entire u64. A C archive fixture poisons that
 padding and memory address zero: it fails before the repair and passes after.
 No layout or import change was needed.
+
+## points and binary_trees: fewer repeated checks and copies (2026-10-24, ticket 126)
+
+`code build --release` of v2.17.0 against this change, `run.py --runs 15`,
+the two alternated twice (Chrome was busy on the machine; C's own times
+were steady in both pairs). Medians:
+
+| Workload | v2.17.0 | now | change | code / C before → after |
+|---|---:|---:|---:|---|
+| points | 2.4 ms | 2.1 ms | −12% | 3.10× → 2.67× |
+| binary_trees | 11.7 ms | 10.5 ms | −10% | 3.43× → 3.08× |
+| spectral_norm | 213.6 ms | 192.7 ms | −10% | 1.35× → 1.23× |
+| dictionary | 7.0 ms | 6.5 ms | −7% | 1.99× → 1.86× |
+| string_build | 1.8 ms | 1.8 ms | — | 1.23× → 1.20× |
+
+Callgrind: points' loop 18.9M → 15.7M instructions in `main` (94 → 78 per
+point and step); binary_trees 101.8M → 88.7M.
+
+- **A number in a slot is told apart from a pointer in one** (`alias.rs`).
+  Writing `pts[i].x` made LLVM assume `pts`'s pointer to `pts[i]` might have
+  changed, so `pts[i].y = y` found `pts[i]` again and re-checked its shape
+  and count. Generated code writes a slot's payload only as a number and
+  reads a pointer only where the tag said so, so the two can have names of
+  their own. The two writes now share one set of checks.
+- **A list index is checked as a whole number** (`element_index`): one
+  unsigned comparison with the length, after a frozen conversion, instead of
+  two conversions and three float comparisons.
+- **An object literal moves what it is built from.** A field's temporary is
+  moved into the literal's scratch (as `gen_assign` moves one), and
+  `code_object_template` now takes the scratch's values instead of retaining
+  them, so the scratch is not cleared afterwards.
+- **`name += part` takes a temporary part** (`code_add_take`): one element
+  appended to a list held alone moves in; anything else is `code_add_into`
+  and then the temporary's clear, as before.
+
+No ABI change (`code_abi.h` untouched), the vendored runtime is identical.
+Aquarium's release wasm 892,973 → 880,036 bytes (−1.4%). Checked:
+`cargo test --workspace --release` (313 passed), clippy `-D warnings`,
+formatting, the code-wasm wasm32 build, `CODE_CHECK_LEAKS=1` on both
+workloads, and every my-euglena-apps fixture interpreted and compiled with
+this compiler (all pass; host and todo-worker needed a fresh checkout's
+setup: a stale hand-copied `interpreter.so`, and the global `~/.code`).

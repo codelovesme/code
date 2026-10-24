@@ -259,14 +259,14 @@ extern "C" {
     // the real name from a function rustc actually treats as part of the
     // crate (not an archive) — see that `#[no_mangle]` fn's own doc comment
     // for why the rename is needed at all.
-    #[cfg(feature = "shared-module")]
+    #[cfg(all(feature = "shared-module", not(feature = "static-module")))]
     fn code_native_vendored_release(v: *mut CodeValue);
 }
 
 // A `.a` module links against the *host's* runtime, which already defines
 // `code_release` under its real name — so there is nothing to rename and
 // nothing to re-export, and `release` below calls it directly.
-#[cfg(not(feature = "shared-module"))]
+#[cfg(any(not(feature = "shared-module"), feature = "static-module"))]
 extern "C" {
     fn code_release(v: *mut CodeValue);
 }
@@ -288,7 +288,7 @@ extern "C" {
 /// calls this on values it deep-copied out of your `code_module_dispatch`
 /// result, so you should never need to call it yourself except via
 /// [`release`].
-#[cfg(feature = "shared-module")]
+#[cfg(all(feature = "shared-module", not(feature = "static-module")))]
 #[no_mangle]
 pub unsafe extern "C" fn code_release(v: *mut CodeValue) {
     code_native_vendored_release(v)
@@ -815,16 +815,112 @@ macro_rules! declare_inbound_reply {
 /// a silent drop (`tests/fail_inbound_unhandled.code` pins that). Push only
 /// what the program has agreed to receive.
 pub fn emit_inbound(value: &CodeValue) -> bool {
-    let emit = INBOUND_EMIT.load(Ordering::Acquire);
-    if emit == 0 {
-        return false;
+    inbound_here().emit(value)
+}
+
+/// Where a push goes: a host's queue and the pusher it handed over with it.
+///
+/// What a module that works on a thread of its own captures *before* it
+/// starts the thread (`let inbound = inbound_here();`) and pushes through
+/// afterwards — so a module with an instance per link (`code_abi.h` item
+/// 13) answers into the queue of the link that asked, not into whichever
+/// link was configured last (ticket 178).
+#[derive(Clone, Copy)]
+pub struct Inbound {
+    queue: *mut c_void,
+    emit: usize,
+}
+
+// SAFETY: the host's queue and pusher are made to be used from a module's
+// own threads — that is what they are for (`code_abi.h`, "Inbound").
+unsafe impl Send for Inbound {}
+
+impl Inbound {
+    /// What the host handed over, kept by an instance of its own.
+    pub fn new(queue: *mut c_void, emit: CodeEmitFn) -> Inbound {
+        Inbound {
+            queue,
+            emit: emit as usize,
+        }
     }
-    let queue = INBOUND_QUEUE.load(Ordering::Acquire);
-    // SAFETY: `emit` is non-zero only because `store_inbound` wrote a real
-    // `CodeEmitFn` there, and `queue` is whatever the host paired with it.
-    let emit: CodeEmitFn = unsafe { std::mem::transmute::<usize, CodeEmitFn>(emit) };
-    unsafe { emit(queue, value) };
-    true
+
+    /// Nowhere: a push through this answers `false`.
+    pub const NONE: Inbound = Inbound {
+        queue: std::ptr::null_mut(),
+        emit: 0,
+    };
+
+    /// Push `value` there, as [`emit_inbound`] says. `false` when no queue
+    /// was ever handed over.
+    pub fn emit(&self, value: &CodeValue) -> bool {
+        if self.emit == 0 {
+            return false;
+        }
+        // SAFETY: non-zero only from a real `CodeEmitFn` (`new`, or
+        // `store_inbound`), paired with its own queue.
+        let emit: CodeEmitFn = unsafe { std::mem::transmute::<usize, CodeEmitFn>(self.emit) };
+        unsafe { emit(self.queue, value) };
+        true
+    }
+}
+
+thread_local! {
+    /// The queue of the instance whose dispatch is running on this thread,
+    /// set by [`with_inbound`] for the length of the call.
+    static CURRENT_INBOUND: std::cell::Cell<Option<Inbound>> = const { std::cell::Cell::new(None) };
+}
+
+/// Where a push made here goes: the queue of the instance being dispatched
+/// on this thread (see [`with_inbound`]), else the module's one queue
+/// (`code_module_set_inbound`).
+pub fn inbound_here() -> Inbound {
+    if let Some(inbound) = CURRENT_INBOUND.with(std::cell::Cell::get) {
+        return inbound;
+    }
+    Inbound {
+        queue: INBOUND_QUEUE.load(Ordering::Acquire),
+        emit: INBOUND_EMIT.load(Ordering::Acquire),
+    }
+}
+
+/// Makes `inbound` where pushes made on this thread go until it is dropped
+/// — the first line of a thread a module starts with what it captured from
+/// [`inbound_here`]:
+///
+/// ```rust,ignore
+/// let inbound = code_native::inbound_here();
+/// std::thread::spawn(move || {
+///     let _inbound = code_native::InboundScope::enter(inbound);
+///     // … emit_inbound(…) lands in the queue of the link that asked
+/// });
+/// ```
+pub struct InboundScope {
+    previous: Option<Inbound>,
+}
+
+impl InboundScope {
+    pub fn enter(inbound: Inbound) -> InboundScope {
+        InboundScope {
+            previous: CURRENT_INBOUND.with(|c| c.replace(Some(inbound))),
+        }
+    }
+}
+
+impl Drop for InboundScope {
+    fn drop(&mut self) {
+        let previous = self.previous;
+        CURRENT_INBOUND.with(|c| c.set(previous));
+    }
+}
+
+/// Run `f` with `inbound` as where pushes made on this thread go — what a
+/// module's `code_module_instance_dispatch` wraps its dispatch in, so the
+/// threads that call starts capture its link's queue.
+pub fn with_inbound<R>(inbound: Inbound, f: impl FnOnce() -> R) -> R {
+    let previous = CURRENT_INBOUND.with(|c| c.replace(Some(inbound)));
+    let result = f();
+    CURRENT_INBOUND.with(|c| c.set(previous));
+    result
 }
 
 // ===========================================================================

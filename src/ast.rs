@@ -591,6 +591,19 @@ pub enum NativeFormat {
         /// Whether it exports `<prefix>_code_module_inbound_reply` — the
         /// other half of speaking first: hearing what the program answered.
         has_reply: bool,
+        /// Whether it exports `<prefix>_code_module_instance_new` and
+        /// `_instance_dispatch` (`code_abi.h` item 13): then every alias
+        /// linking it gets an instance of its own (ticket 141).
+        has_instances: bool,
+        /// Whether it exports `<prefix>_code_module_instance_set_inbound`:
+        /// then each alias's queue is handed to its own instance (ticket 178).
+        has_instance_inbound: bool,
+        /// Whether it exports `<prefix>_code_module_stateless` (item 12):
+        /// then two aliases may share it as it is.
+        stateless: bool,
+        /// Whether it exports `<prefix>_code_module_serving`: a module that
+        /// holds the program open while it works, as a `.so` does.
+        has_serving: bool,
     },
     /// A `crates/code-wasm`-only format: the alias dispatches to a plain
     /// synchronous JS callback (JSON string in, JSON string out) that the

@@ -109,6 +109,7 @@ jobs:
             [[ "$half" == 1 ]] && wasm+=("$m")
             same="$(jq -r --arg m "$m" --arg h "$hash" '.[$m] == $h' <<<"$old")"
             if [[ "$same" == true ]] && grep -qx "${m}-linux-x86_64.so" <<<"$assets" \
+                 && grep -qx "${m}-linux-x86_64.a" <<<"$assets" \
                  && { [[ "$half" == 0 ]] || grep -qx "${m}-wasm32.a" <<<"$assets"; }; then
               reuse+=("$m")
             else
@@ -175,15 +176,18 @@ jobs:
       - name: Compile
         run: |
           set -euo pipefail
-          m="${{ matrix.module }}"
-          mkdir -p dist
-          (cd "crates/modules/$m" && cargo build --release)
-          mv "crates/modules/$m/target/release/lib$m.so" "dist/${m}-linux-x86_64.so"
+          scripts/build-module-linux.sh "${{ matrix.module }}" dist
+          # And the archive a program links the module into (ticket 141),
+          # with the system libraries it needs at that link beside it.
+          scripts/build-module-static.sh "${{ matrix.module }}" dist
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: module-${{ matrix.module }}-linux-x86_64
-          path: "dist/*.so"
+          path: |
+            dist/*.so
+            dist/*-linux-x86_64.a
+            dist/*-linux-x86_64.a.libs
 
   # The browser's half. A module a web application links has to arrive as a
   # `.a`, not a `.so`: a page has no dlopen, so what it needs is linked *into*
@@ -247,6 +251,8 @@ jobs:
           m="${{ matrix.module }}"
           prev="${{ needs.plan.outputs.previous }}"
           gh release download "$prev" --repo "$GITHUB_REPOSITORY" -D dist -p "${m}-linux-x86_64.so"
+          gh release download "$prev" --repo "$GITHUB_REPOSITORY" -D dist -p "${m}-linux-x86_64.a"
+          gh release download "$prev" --repo "$GITHUB_REPOSITORY" -D dist -p "${m}-linux-x86_64.a.libs"
           if [[ "${{ contains(fromJSON(needs.plan.outputs.wasm), matrix.module) }}" == true ]]; then
             gh release download "$prev" --repo "$GITHUB_REPOSITORY" -D dist -p "${m}-wasm32.a"
           fi
@@ -358,6 +364,9 @@ jobs:
               ;;
             math)
               printf 'emit Double { value = 21 } to mod get r\nassert r.value = 42\n' >> dogfood/demo.code
+              ;;
+            objects)
+              printf 'emit Has { value = { a = null }, key = "a" } to mod get has\nassert has.value\nemit Delete { value = { a = 1, b = 2 }, key = "a" } to mod get rest\nassert rest.value = { b = 2 }\n' >> dogfood/demo.code
               ;;
             env)
               # PATH is set on every runner, and reading it needs nothing
@@ -564,6 +573,21 @@ jobs:
               # read back with their time — proof the artifact loads and routes.
               printf 'emit V7 {} to mod get a\nemit V7 {} to mod get b\nassert a.value ≠ b.value\nemit Parse { value = a.value } to mod get pa\nemit Parse { value = b.value } to mod get pb\nassert pa.version = 7\nassert pb.unix_ms ≥ pa.unix_ms\n' >> dogfood/demo.code
               ;;
+            xml)
+              # A small feed read into its tree, and text that is not XML
+              # answered with an Exception — proof the artifact loads and routes.
+              printf 'emit Parse { value = "<rss version=\\"2.0\\"><title>A &amp; B</title></rss>" } to mod get f\nassert f.value.attrs = { version = "2.0" }\nassert f.value.children[0].children = ["A & B"]\nemit Parse { value = "<a>" } to mod get bad\nassert bad ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            regex)
+              # A pattern matched, found and replaced, and one that does not
+              # compile answered with an Exception — proof the artifact loads and routes.
+              printf 'emit Match { value = "Order 1234", pattern = "[0-9]+" } to mod get m\nassert m.value\nemit Find { value = "a1b22", pattern = "[0-9]+" } to mod get f\nassert f.value[1].text = "22"\nemit Replace { value = "a1b22", pattern = "[0-9]+", replacement = "#" } to mod get r\nassert r.value = "a#b#"\nemit Match { value = "x", pattern = "(" } to mod get bad\nassert bad ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            csv)
+              # Rows written and read back, and a ragged row answered with an
+              # Exception — proof the artifact loads and routes.
+              printf 'emit Stringify { value = [{ a = 1, b = "x, y" }] } to mod get w\nemit Parse { value = w.value } to mod get p\nassert p.value = [{ a = "1", b = "x, y" }]\nemit Parse { value = "a,b\\n1,2,3" } to mod get bad\nassert bad ∈ Exception\n' >> dogfood/demo.code
+              ;;
             pty)
               # A program on a pseudo-terminal: opened, its screen read, closed.
               # The runner has no terminal of its own, and this needs none.
@@ -661,7 +685,7 @@ jobs:
           name: release-plan
           path: dist
       - name: Flatten into dist/
-        run: find dist -type f \( -name '*.so' -o -name '*.dylib' -o -name '*.a' \) -exec mv {} dist/ \;
+        run: find dist -type f \( -name '*.so' -o -name '*.dylib' -o -name '*.a' -o -name '*.a.libs' \) -exec mv {} dist/ \;
       - name: Write one module.json per module
         run: |
           set -euo pipefail
@@ -675,6 +699,7 @@ jobs:
               arrays) handlers='["Length", "Contains", "IndexOf", "Reverse", "Slice", "Unique", "Sort", "Sum", "Min", "Max"]' ;;
               strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower", "Length", "Contains", "StartsWith", "EndsWith", "IndexOf", "Replace", "Slice", "Pad"]' ;;
               math) handlers='["Double", "Sum", "Floor", "Ceil", "Round", "Trunc", "Div", "Mod", "Abs", "Min", "Max", "Parse", "Sqrt", "Pow", "Sin", "Cos", "Ln", "Exp"]' ;;
+              objects) handlers='["Keys", "Values", "Has", "Delete"]' ;;
             env) handlers='["Get", "Require"]' ;;
               http_client) handlers='["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"]' ;;
               http_server) handlers='["Config", "Listen"]' ;;
@@ -683,6 +708,9 @@ jobs:
               api_registry) handlers='["Config", "Warm", "Search", "Stop"]' ;;
               crypto) handlers='["Hash", "Verify", "RandomCode"]' ;;
               uuid) handlers='["V7", "Parse"]' ;;
+              xml) handlers='["Parse"]' ;;
+              regex) handlers='["Match", "Find", "Replace", "Split"]' ;;
+              csv) handlers='["Parse", "Stringify"]' ;;
               jwt) handlers='["Config", "Sign", "Decode"]' ;;
               markdown) handlers='["RenderMarkdown", "SplitByHeading"]' ;;
               fs) handlers='["Config", "ReadFile", "WriteFile", "DeleteFile", "CreateDir", "RemoveDir", "ListDir", "Exists"]' ;;
@@ -746,6 +774,14 @@ jobs:
               wasm32=",
               \"wasm32\": { \"asset\": \"${m}-wasm32.a\", \"sha256\": \"$(sum ${m}-wasm32.a)\" }"
             fi
+            # The archive a native program links the module into (ticket
+            # 141), and the system libraries that link needs.
+            static=''
+            if [ -f "dist/${m}-linux-x86_64.a" ]; then
+              libs="$(jq -Rnc '[inputs | select(length > 0)]' < "dist/${m}-linux-x86_64.a.libs")"
+              static=",
+              \"linux-x86_64-static\": { \"asset\": \"${m}-linux-x86_64.a\", \"sha256\": \"$(sum ${m}-linux-x86_64.a)\", \"link\": ${libs} }"
+            fi
             cat > "dist/${m}.json" <<EOF
           {
             "name": "${m}",
@@ -755,7 +791,7 @@ jobs:
             "vars": [],
             ${setup}
             "platforms": {
-              "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" }${wasm32}
+              "linux-x86_64": { "asset": "${m}-linux-x86_64.so", "sha256": "$(sum ${m}-linux-x86_64.so)" }${static}${wasm32}
             }
           }
           EOF

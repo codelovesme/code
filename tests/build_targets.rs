@@ -158,6 +158,73 @@ fn wasm_target_produces_a_runnable_module() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A handler may call itself (ticket 102), and in a browser too: the tree
+/// walk, the mutual pair and the walk past the bound all answer, and 64
+/// live frames of one handler fit in wasm's 1 MiB stack, dev and release.
+#[test]
+fn wasm_recursion_runs_within_its_bound() {
+    let dir = temp_dir("wasm-recursion");
+    let out = dir.join("recursion.wasm");
+    for release in [false, true] {
+        code::compile_file(
+            &fixture("handler_recursion.code"),
+            code::BuildTarget::Wasm,
+            &out,
+            release,
+        )
+        .expect("build the recursion fixture for wasm");
+        run_wasm_under_node(&dir, &out);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A chain of handlers deep enough to use up a page's stack answers an
+/// Exception that names it, instead of trapping in a `memset` (ticket 104).
+/// Two thousand handlers, each holding 32 texts and calling the next —
+/// distinct handlers, so the recursion bound is not what stops them. The
+/// deepest frame that would have run short answers instead; the ones above
+/// hand that answer up, and the program ends normally.
+#[test]
+fn wasm_deep_handler_chain_answers_instead_of_trapping() {
+    let depth = 2000;
+    let mut src = String::new();
+    for k in 1..=depth {
+        if k == depth {
+            src.push_str(&format!(
+                "H{k} {{ n }} =>\n    return Done {{ value = [\"$n\"] }}\n"
+            ));
+            continue;
+        }
+        src.push_str(&format!("H{k} {{ n }} =>\n"));
+        for i in 1..=32 {
+            src.push_str(&format!("    a{i} = \"{i}:$n\"\n"));
+        }
+        src.push_str(&format!(
+            "    emit H{} {{ n = n + 1 }} to this get r\n",
+            k + 1
+        ));
+        src.push_str("    if r ∈ Exception, return r\n");
+        let parts: Vec<String> = (1..=32).map(|i| format!("a{i}")).collect();
+        src.push_str(&format!(
+            "    return Done {{ value = [{}] }}\n",
+            parts.join(", ")
+        ));
+    }
+    src.push_str("emit H1 { n = 1 } to this get answer\n");
+    src.push_str("assert answer ∈ Exception\n");
+    src.push_str("assert answer.source = \"runtime\"\n");
+    let dir = temp_dir("wasm-deep-chain");
+    let source = dir.join("chain.code");
+    fs::write(&source, &src).unwrap();
+    let out = dir.join("chain.wasm");
+    for release in [false, true] {
+        code::compile_file(&source, code::BuildTarget::Wasm, &out, release)
+            .expect("build the deep chain for wasm");
+        run_wasm_under_node(&dir, &out);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// A browser rejects a single wasm function with more than 50,000 parameters
 /// and locals. At `-O0`, LLVM's wasm backend used to assign a distinct local
 /// to practically every intermediate produced by an application-sized style

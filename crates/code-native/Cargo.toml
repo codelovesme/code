@@ -1,6 +1,6 @@
 [package]
 name = "code-native"
-version = "2.17.0"
+version = "2.18.0"
 edition = "2021"
 description = "Write native .so modules for the Code programming language in Rust — safe CodeValue builders/readers over the real runtime.c, no reimplementation."
 license = "GPL-3.0"
@@ -27,6 +27,11 @@ shared-module = []
 # (`multiple definition of 'code_release'`, and forty more). Turn this on
 # with `default-features = false`, name your exports with a prefix unique
 # among every `.a` the program links, and see this crate's README.
+#
+# It wins over `shared-module` when both are on, so a module that declares
+# the default can still be built as a native archive from the command line
+# (`--features code-native/static-module`, as
+# `scripts/build-module-static.sh` does, ticket 141).
 static-module = []
 
 [build-dependencies]

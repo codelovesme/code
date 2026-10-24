@@ -1,0 +1,47 @@
+| A handler may call itself (ticket 102). A tree is walked as a tree:
+| each node asks the same handler about its children.
+Count { node } =>
+    total = 1
+    loop child over node.children
+        emit Count { node = child } to this get below
+        total = total + below.value
+    return Counted { value = total }
+
+leaf = { children = [] }
+tree = { children = [leaf, { children = [leaf, leaf, { children = [leaf] }] }, leaf] }
+emit Count { node = tree } to this get counted
+assert counted ∈ Counted
+assert counted.value = 8
+
+| Two handlers through each other, the classic way.
+Even { n } =>
+    if n = 0, return Answer { value = true }
+    emit Odd { n = n - 1 } to this get r
+    return r
+Odd { n } =>
+    if n = 0, return Answer { value = false }
+    emit Even { n = n - 1 } to this get r
+    return r
+
+emit Even { n = 10 } to this get ten
+assert ten.value
+emit Even { n = 7 } to this get seven
+assert not seven.value
+
+| Depth is bounded, not unlimited: past 64 live invocations of one handler
+| the emit answers an Exception, and every invocation already running gets
+| it back as a value and carries on — the program never overflows its stack.
+Down { n } =>
+    if n = 0, return Done { depth = 0 }
+    emit Down { n = n - 1 } to this get inner
+    if inner ∈ Exception, return Done { depth = 0, stopped = inner }
+    return Done { depth = inner.depth + 1, stopped = inner.stopped }
+
+emit Down { n = 30 } to this get shallow
+assert shallow.depth = 30
+assert shallow.stopped = null
+
+emit Down { n = 1000 } to this get deep
+assert deep ∈ Done
+assert deep.stopped ∈ Exception
+assert deep.depth = 63

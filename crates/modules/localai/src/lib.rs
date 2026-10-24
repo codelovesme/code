@@ -45,7 +45,85 @@ use serde_json::{json, Value as Json};
 use std::sync::Mutex;
 use std::time::Duration;
 
-static CONFIG: Mutex<Option<Config>> = Mutex::new(None);
+/// One link's queue and settings. Each link of this module has its own
+/// (`code_abi.h` item 13, ticket 178): a host that knows instances opens the
+/// file once and makes one of these per link, and an answer pushed with
+/// `later` goes to the queue of the link that asked. A host that does not
+/// gets `DEFAULT`, behind the ordinary `code_module_dispatch`, and a copy of
+/// the file per link as before.
+struct Instance {
+    inbound: Mutex<code_native::Inbound>,
+    config: Mutex<Option<Config>>,
+}
+
+static DEFAULT: Instance = Instance {
+    inbound: Mutex::new(code_native::Inbound::NONE),
+    config: Mutex::new(None),
+};
+
+thread_local! {
+    /// The instance the dispatch running on this thread is for — set for
+    /// the length of one call. Null is `DEFAULT`.
+    static CURRENT: std::cell::Cell<*const Instance> = const { std::cell::Cell::new(std::ptr::null()) };
+}
+
+fn current() -> &'static Instance {
+    let at = CURRENT.with(std::cell::Cell::get);
+    if at.is_null() {
+        &DEFAULT
+    } else {
+        // SAFETY: set by `code_module_instance_dispatch` from a live,
+        // never-freed instance.
+        unsafe { &*at }
+    }
+}
+
+/// A new link's own instance (`code_abi.h` item 13). Never freed: a module
+/// is not unloaded.
+#[no_mangle]
+pub extern "C" fn code_module_instance_new() -> *mut core::ffi::c_void {
+    Box::into_raw(Box::new(Instance {
+        inbound: Mutex::new(code_native::Inbound::NONE),
+        config: Mutex::new(None),
+    })) as *mut core::ffi::c_void
+}
+
+/// The queue this link's answers go to (`code_abi.h` item 13).
+///
+/// # Safety
+///
+/// `instance` must come from `code_module_instance_new`; `queue` and `emit`
+/// are the host's, valid while the module is loaded.
+#[no_mangle]
+pub unsafe extern "C" fn code_module_instance_set_inbound(
+    instance: *mut core::ffi::c_void,
+    queue: *mut core::ffi::c_void,
+    emit: code_native::CodeEmitFn,
+) {
+    let instance = &*(instance as *const Instance);
+    *instance.inbound.lock().unwrap_or_else(|e| e.into_inner()) =
+        code_native::Inbound::new(queue, emit);
+}
+
+/// `code_module_dispatch` for one link's instance.
+///
+/// # Safety
+///
+/// `instance` must come from `code_module_instance_new`; the other two as
+/// for `code_module_dispatch`.
+#[no_mangle]
+pub unsafe extern "C" fn code_module_instance_dispatch(
+    instance: *mut core::ffi::c_void,
+    out: *mut CodeValue,
+    particle: *const CodeValue,
+) {
+    let instance = &*(instance as *const Instance);
+    let inbound = *instance.inbound.lock().unwrap_or_else(|e| e.into_inner());
+    let _inbound = code_native::InboundScope::enter(inbound);
+    let previous = CURRENT.with(|c| c.replace(instance));
+    code_module_dispatch(out, particle);
+    CURRENT.with(|c| c.set(previous));
+}
 
 struct Config {
     base: String,
@@ -127,7 +205,7 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
                 .unwrap_or(DEFAULT_TIMEOUT_SECONDS),
         ),
     };
-    *CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = Some(cfg);
+    *current().config.lock().unwrap_or_else(|e| e.into_inner()) = Some(cfg);
 
     let mut b = SlotBuffer::new(2);
     borrowed_str(b.slot_mut(0), c"ConfigResult");
@@ -139,7 +217,7 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 
 fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<(), String> {
     let (url, body, timeout, api_key) = {
-        let guard = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = current().config.lock().unwrap_or_else(|e| e.into_inner());
         let cfg = guard.as_ref().ok_or(NOT_CONFIGURED)?;
 
         let messages = build_messages(particle)?;
@@ -175,9 +253,13 @@ fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<()
     // program's thread. Without `later`, nothing changes.
     if read_field_bool(particle, "later") == Some(true) {
         let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::SeqCst);
-        std::thread::spawn(move || {
-            let outcome = chat_perform(&url, body, timeout, &api_key, json_mode);
-            push_later(id, c"ChatResult", c"content", outcome);
+        std::thread::spawn({
+            let inbound = code_native::inbound_here();
+            move || {
+                let _inbound = code_native::InboundScope::enter(inbound);
+                let outcome = chat_perform(&url, body, timeout, &api_key, json_mode);
+                push_later(id, c"ChatResult", c"content", outcome);
+            }
         });
         make_result(out, c"Sent", |slot| number(slot, id as f64));
         return Ok(());
@@ -191,7 +273,13 @@ fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<()
 /// The one exchange with the model: the request, the read, the checks —
 /// and for `ChatJson`, the fence stripped and the JSON made canonical.
 /// Blocking, which is why a `later` caller runs it on a thread.
-fn chat_perform(url: &str, body: Json, timeout: Duration, api_key: &str, json_mode: bool) -> Result<String, String> {
+fn chat_perform(
+    url: &str,
+    body: Json,
+    timeout: Duration,
+    api_key: &str,
+    json_mode: bool,
+) -> Result<String, String> {
     let mut resp = authorized(agent(timeout).post(url), api_key)
         .header("Content-Type", "application/json")
         .send(body.to_string())
@@ -233,7 +321,12 @@ fn chat_perform(url: &str, body: Json, timeout: Duration, api_key: &str, json_mo
 
 /// Push a `later` outcome into the program: the result class with its one
 /// text field and `_request_id`, or an `Exception` carrying the same id.
-fn push_later(id: u64, class: &'static std::ffi::CStr, key: &'static std::ffi::CStr, outcome: Result<String, String>) {
+fn push_later(
+    id: u64,
+    class: &'static std::ffi::CStr,
+    key: &'static std::ffi::CStr,
+    outcome: Result<String, String>,
+) {
     push_later_fields(id, class, outcome.map(|text| vec![(key, text)]));
 }
 
@@ -265,7 +358,17 @@ fn push_later_fields(
             owned_str(b.slot_mut(2), &message);
             null(b.slot_mut(3));
             number(b.slot_mut(4), id as f64);
-            object(&mut particle, &[c"_class", c"source", c"message", c"innerException", c"_request_id"], &mut b);
+            object(
+                &mut particle,
+                &[
+                    c"_class",
+                    c"source",
+                    c"message",
+                    c"innerException",
+                    c"_request_id",
+                ],
+                &mut b,
+            );
             b.release_all();
         }
     }
@@ -295,7 +398,7 @@ fn transcribe(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let format = opt_str(particle, "audio_format").unwrap_or_else(|| "webm".to_string());
 
     let (url, model, timeout, api_key) = {
-        let guard = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = current().config.lock().unwrap_or_else(|e| e.into_inner());
         let cfg = guard.as_ref().ok_or(NOT_CONFIGURED)?;
         (
             format!("{}/audio/transcriptions", cfg.base),
@@ -413,7 +516,7 @@ fn speak(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         .ok_or("Speak requires a non-empty string 'text'")?
         .to_string();
     let (url, timeout, api_key, body) = {
-        let guard = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = current().config.lock().unwrap_or_else(|e| e.into_inner());
         let cfg = guard.as_ref().ok_or(NOT_CONFIGURED)?;
         let mut body = json!({
             "model": opt_str(particle, "model").unwrap_or_else(|| cfg.model.clone()),
@@ -435,10 +538,14 @@ fn speak(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 
     if read_field_bool(particle, "later") == Some(true) {
         let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::SeqCst);
-        std::thread::spawn(move || {
-            let outcome = speak_perform(&url, body, timeout, &api_key)
-                .map(|(audio, format)| vec![(c"audio_base64", audio), (c"format", format)]);
-            push_later_fields(id, c"SpeakResult", outcome);
+        std::thread::spawn({
+            let inbound = code_native::inbound_here();
+            move || {
+                let _inbound = code_native::InboundScope::enter(inbound);
+                let outcome = speak_perform(&url, body, timeout, &api_key)
+                    .map(|(audio, format)| vec![(c"audio_base64", audio), (c"format", format)]);
+                push_later_fields(id, c"SpeakResult", outcome);
+            }
         });
         make_result(out, c"Sent", |slot| number(slot, id as f64));
         return Ok(());
@@ -456,7 +563,12 @@ fn speak(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 
 /// The one exchange with the speech model: the bytes and the audio subtype
 /// from the content type ("audio/wav" → "wav"). Blocking, as `chat_perform`.
-fn speak_perform(url: &str, body: Json, timeout: Duration, api_key: &str) -> Result<(String, String), String> {
+fn speak_perform(
+    url: &str,
+    body: Json,
+    timeout: Duration,
+    api_key: &str,
+) -> Result<(String, String), String> {
     let mut resp = authorized(agent(timeout).post(url), api_key)
         .header("Content-Type", "application/json")
         .send(body.to_string())

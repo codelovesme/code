@@ -1,0 +1,32 @@
+link "native_modules/objects.so" as objects
+| An object used as a map (ticket 102): the same answers interpreted,
+| compiled, --release and in a browser.
+
+m = { a = 1, b = null, c = [2, 3] }
+emit Keys { value = m } to objects get keys
+assert keys ∈ KeysResult
+assert keys.value = ["a", "b", "c"]
+emit Values { value = m } to objects get values
+assert values.value = [1, null, [2, 3]]
+
+| Has tells a key set to null from one that is not there.
+emit Has { value = m, key = "b" } to objects get has_b
+assert has_b.value
+emit Has { value = m, key = "z" } to objects get has_z
+assert not has_z.value
+assert m.b = null
+assert m.z = null
+
+emit Delete { value = m, key = "a" } to objects get rest
+assert rest.value = { b = null, c = [2, 3] }
+emit Delete { value = m, key = "z" } to objects get same
+assert same.value = m
+
+emit Keys { value = {} } to objects get none
+assert none.value = []
+
+emit Keys { value = [1] } to objects get not_object
+assert not_object ∈ Exception
+assert not_object.message = "Keys requires an object 'value'"
+emit Has { value = m, key = 1 } to objects get bad_key
+assert bad_key.message = "Has requires a text 'key'"

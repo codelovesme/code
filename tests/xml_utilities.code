@@ -1,0 +1,40 @@
+link "native_modules/xml.so" as xml
+| XML text in, a tree out (ticket 103): the same answers interpreted,
+| compiled and --release (native only: no browser half).
+
+feed = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- a feed -->\n<rss version=\"2.0\">\n  <channel>\n    <title>News &amp; notes</title>\n    <item>\n      <title><![CDATA[Fish <and> chips]]></title>\n      <link>https://example.com/a?x=1&amp;y=2</link>\n      <dc:creator>Ada</dc:creator>\n      <enclosure url=\"https://example.com/a.mp3\" length=\"12\"/>\n    </item>\n  </channel>\n</rss>\n"
+emit Parse { value = feed } to xml get parsed
+assert parsed ∈ ParseResult
+rss = parsed.value
+assert rss.tag = "rss"
+assert rss.attrs = { version = "2.0" }
+| Whitespace between elements is layout, not content.
+channel = rss.children[0]
+assert channel.tag = "channel"
+assert channel.children[0] = { tag = "title", attrs = {}, children = ["News & notes"] }
+item = channel.children[1]
+assert item.children[0].children = ["Fish <and> chips"]
+assert item.children[1].children = ["https://example.com/a?x=1&y=2"]
+assert item.children[2].tag = "dc:creator"
+assert item.children[3] = { tag = "enclosure", attrs = { url = "https://example.com/a.mp3", length = "12" }, children = [] }
+
+| Text and elements stay in document order; text next to a CDATA section is one text.
+emit Parse { value = "<p>a <b>bold</b> b<![CDATA[ & c]]></p>" } to xml get mixed
+assert mixed.value.children = ["a ", { tag = "b", attrs = {}, children = ["bold"] }, " b & c"]
+
+| Not well-formed: an Exception that says where, never a crash.
+emit Parse { value = "<a><b></a>" } to xml get crossed
+assert crossed ∈ Exception
+emit Parse { value = "<a>" } to xml get unclosed
+assert unclosed ∈ Exception
+assert unclosed.message = "<a> is never closed"
+emit Parse { value = "<a/><b/>" } to xml get two_roots
+assert two_roots ∈ Exception
+assert two_roots.message = "a second root element <b> at byte 8"
+emit Parse { value = "hello" } to xml get no_root
+assert no_root ∈ Exception
+emit Parse { value = "<a>&nope;</a>" } to xml get bad_entity
+assert bad_entity ∈ Exception
+emit Parse { value = 3 } to xml get not_text
+assert not_text ∈ Exception
+assert not_text.message = "Parse requires a text 'value'"

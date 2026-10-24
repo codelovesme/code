@@ -36,9 +36,16 @@ assert boom ∈ Exception
 emit Send { id = first.id, particle = Hello { who = "again" } } to plasmid get still
 assert still.text = "hello again"
 
+| A plasmid may call itself (ticket 102), so this one loads. Asked, it
+| goes as deep as the bound lets it and answers the Exception it was
+| handed there — it does not end the program, and Load did not refuse it.
+emit Load { source = "Loop {} =>\n    emit Loop {} to this get again\n    return again\n" } to plasmid get looping
+assert looping ∈ Loaded
+emit Send { id = looping.id, particle = Loop {} } to plasmid get looped
+assert looped ∈ Exception
+emit Unload { id = looping.id } to plasmid get dropped
+
 | Source that does not hold up is refused at Load, with the reason.
-emit Load { source = "Loop {} =>\n    emit Loop {} to this get again\n    return again\n" } to plasmid get cyclic
-assert cyclic ∈ Exception
 emit Load { source = "Bad {} =>\n    return missing_name\n" } to plasmid get undefined
 assert undefined ∈ Exception
 emit Load { source = "link \"anything.so\" as x\n" } to plasmid get linking

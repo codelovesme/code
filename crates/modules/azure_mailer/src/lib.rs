@@ -36,7 +36,85 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
-static CONFIG: Mutex<Option<Config>> = Mutex::new(None);
+/// One link's queue and settings. Each link of this module has its own
+/// (`code_abi.h` item 13, ticket 178): a host that knows instances opens the
+/// file once and makes one of these per link, and an answer pushed with
+/// `later` goes to the queue of the link that asked. A host that does not
+/// gets `DEFAULT`, behind the ordinary `code_module_dispatch`, and a copy of
+/// the file per link as before.
+struct Instance {
+    inbound: Mutex<code_native::Inbound>,
+    config: Mutex<Option<Config>>,
+}
+
+static DEFAULT: Instance = Instance {
+    inbound: Mutex::new(code_native::Inbound::NONE),
+    config: Mutex::new(None),
+};
+
+thread_local! {
+    /// The instance the dispatch running on this thread is for — set for
+    /// the length of one call. Null is `DEFAULT`.
+    static CURRENT: std::cell::Cell<*const Instance> = const { std::cell::Cell::new(std::ptr::null()) };
+}
+
+fn current() -> &'static Instance {
+    let at = CURRENT.with(std::cell::Cell::get);
+    if at.is_null() {
+        &DEFAULT
+    } else {
+        // SAFETY: set by `code_module_instance_dispatch` from a live,
+        // never-freed instance.
+        unsafe { &*at }
+    }
+}
+
+/// A new link's own instance (`code_abi.h` item 13). Never freed: a module
+/// is not unloaded.
+#[no_mangle]
+pub extern "C" fn code_module_instance_new() -> *mut core::ffi::c_void {
+    Box::into_raw(Box::new(Instance {
+        inbound: Mutex::new(code_native::Inbound::NONE),
+        config: Mutex::new(None),
+    })) as *mut core::ffi::c_void
+}
+
+/// The queue this link's answers go to (`code_abi.h` item 13).
+///
+/// # Safety
+///
+/// `instance` must come from `code_module_instance_new`; `queue` and `emit`
+/// are the host's, valid while the module is loaded.
+#[no_mangle]
+pub unsafe extern "C" fn code_module_instance_set_inbound(
+    instance: *mut core::ffi::c_void,
+    queue: *mut core::ffi::c_void,
+    emit: code_native::CodeEmitFn,
+) {
+    let instance = &*(instance as *const Instance);
+    *instance.inbound.lock().unwrap_or_else(|e| e.into_inner()) =
+        code_native::Inbound::new(queue, emit);
+}
+
+/// `code_module_dispatch` for one link's instance.
+///
+/// # Safety
+///
+/// `instance` must come from `code_module_instance_new`; the other two as
+/// for `code_module_dispatch`.
+#[no_mangle]
+pub unsafe extern "C" fn code_module_instance_dispatch(
+    instance: *mut core::ffi::c_void,
+    out: *mut CodeValue,
+    particle: *const CodeValue,
+) {
+    let instance = &*(instance as *const Instance);
+    let inbound = *instance.inbound.lock().unwrap_or_else(|e| e.into_inner());
+    let _inbound = code_native::InboundScope::enter(inbound);
+    let previous = CURRENT.with(|c| c.replace(instance));
+    code_module_dispatch(out, particle);
+    CURRENT.with(|c| c.set(previous));
+}
 
 struct Config {
     /// No trailing slash, so joining a path never doubles one.
@@ -99,7 +177,7 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let (endpoint, access_key) = parse_connection_string(connection_string)?;
     let host = host_of(&endpoint)?;
 
-    *CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = Some(Config {
+    *current().config.lock().unwrap_or_else(|e| e.into_inner()) = Some(Config {
         endpoint,
         host,
         access_key,
@@ -175,7 +253,7 @@ fn host_of(endpoint: &str) -> Result<String, String> {
 
 fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let (endpoint, host, access_key, default_from) = {
-        let guard = CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+        let guard = current().config.lock().unwrap_or_else(|e| e.into_inner());
         let cfg = guard.as_ref().ok_or(NOT_CONFIGURED)?;
         (
             cfg.endpoint.clone(),
@@ -239,17 +317,21 @@ fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     // `Exception`) carrying that id through the inbound ring afterwards.
     if read_field_bool(particle, "later") == Some(true) {
         let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::SeqCst);
-        std::thread::spawn(move || {
-            let outcome = send_request(
-                &endpoint,
-                &host,
-                &path,
-                &date,
-                &content_hash,
-                &signature,
-                &body,
-            );
-            push_later(id, outcome);
+        std::thread::spawn({
+            let inbound = code_native::inbound_here();
+            move || {
+                let _inbound = code_native::InboundScope::enter(inbound);
+                let outcome = send_request(
+                    &endpoint,
+                    &host,
+                    &path,
+                    &date,
+                    &content_hash,
+                    &signature,
+                    &body,
+                );
+                push_later(id, outcome);
+            }
         });
         make_result(out, c"Sent", |slot| number(slot, id as f64));
         return Ok(());

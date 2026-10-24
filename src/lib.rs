@@ -7,7 +7,6 @@ pub mod codegen;
 pub mod diagnostics;
 pub mod flows;
 pub mod format;
-pub mod handlers;
 pub mod infer;
 pub mod interpreter;
 pub mod introspection;
@@ -178,7 +177,7 @@ mod compile {
 
     use crate::ast::{NativeFormat, Program, Stmt};
     use crate::codegen::{self, BuildTarget};
-    use crate::loader::{self, FilesystemResolver};
+    use crate::loader;
 
     /// Runtime support functions (`code_number`, `code_array`, ...) that
     /// every compiled program links against — embedded so `code build`
@@ -259,6 +258,10 @@ mod compile {
             include_str!("../crates/modules/http_client/page.mjs"),
         ),
         ("media", include_str!("../crates/modules/media/page.mjs")),
+        (
+            "objects",
+            include_str!("../crates/modules/objects/page.mjs"),
+        ),
         ("router", include_str!("../crates/modules/router/page.mjs")),
         (
             "storage",
@@ -338,8 +341,9 @@ mod compile {
         release: bool,
         tracing: bool,
     ) -> Result<(), String> {
+        let resolver = loader::PolicyResolver(loader::LinkPolicy::for_target(target));
         let program: Program = crate::timings::measure("load and parse", || {
-            loader::load(&source_path.display().to_string(), &FilesystemResolver)
+            loader::load(&source_path.display().to_string(), &resolver)
         })?;
         compile_program(&program, target, out_path, release, tracing)
     }
@@ -514,10 +518,37 @@ mod compile {
             for stmt in &program.statements {
                 if let Stmt::ImportNative {
                     path,
-                    format: NativeFormat::Static { prefix, .. },
+                    alias,
+                    format:
+                        NativeFormat::Static {
+                            prefix,
+                            has_instances,
+                            stateless,
+                            ..
+                        },
                     ..
                 } = stmt
                 {
+                    // One archive under two names is one module's statics
+                    // in one binary: the second alias's `Config` would change
+                    // the first's. Linked dynamically each name gets its own
+                    // copy; linked in, only an instance per alias (code_abi.h
+                    // item 13) or a module that keeps no state (item 12)
+                    // keeps them apart (ticket 141). A browser build keeps
+                    // today's behaviour: its archives declare neither.
+                    if !wasm
+                        && !has_instances
+                        && !stateless
+                        && static_modules.contains(&path.as_str())
+                    {
+                        return Err(format!(
+                            "cannot link '{path}' as '{alias}' too: it is already linked under \
+                             another name, and linked into the program both names would share \
+                             one module's settings. It offers no instance per link \
+                             (code_module_instance_new) and does not declare that it keeps no \
+                             state (code_module_stateless) — link it once, or as a .so"
+                        ));
+                    }
                     // Two *different* archives answering to the same prefix
                     // define the same symbols, and one would win silently.
                     // The linker used to catch that on its own; a wasm link
@@ -579,6 +610,25 @@ mod compile {
         result
     }
 
+    /// The system libraries each static module archive says it needs at the
+    /// final link: `<archive>.libs` beside it, one linker flag per line, as
+    /// `scripts/build-module-static.sh` writes (ticket 141). An archive
+    /// without one needs nothing beyond what every program links.
+    fn static_module_libs(static_modules: &[&str]) -> Vec<String> {
+        let mut flags: Vec<String> = Vec::new();
+        for archive in static_modules {
+            let Ok(text) = fs::read_to_string(format!("{archive}.libs")) else {
+                continue;
+            };
+            for flag in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+                if !flags.iter().any(|f| f == flag) {
+                    flags.push(flag.to_string());
+                }
+            }
+        }
+        flags
+    }
+
     /// Links a standalone executable: the program object plus the embedded
     /// C runtime, any statically `link`ed modules, and the usual system
     /// libraries.
@@ -591,6 +641,11 @@ mod compile {
             Command::new("cc")
                 .args(obj_paths)
                 .args(static_modules)
+                .args(static_module_libs(static_modules))
+                // A module archive carries its whole standard library
+                // (`scripts/build-module-static.sh`); what the program does
+                // not reach is dropped here instead of shipped.
+                .arg("-Wl,--gc-sections")
                 .arg("-lm")
                 .arg("-ldl")
                 // The runtime locks each module's inbound ring, because a
@@ -624,6 +679,7 @@ mod compile {
                 .arg("-fPIC")
                 .args(obj_paths)
                 .args(static_modules)
+                .args(static_module_libs(static_modules))
                 .arg("-lm")
                 .arg("-ldl")
                 // See `cc_link`.
@@ -841,7 +897,8 @@ mod compile {
                 // defaults to 64 KiB, which ordinary nested render handlers
                 // exhaust. Keep the stack below data so overflow traps instead
                 // of overwriting globals and the runtime heap.
-                .args(["-z", "stack-size=1048576"])
+                .arg("-z")
+                .arg(format!("stack-size={}", codegen::WASM_STACK_BYTES))
                 .arg("--stack-first")
                 .arg("--export=main")
                 // How a page calls back in. A program that draws nothing

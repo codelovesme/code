@@ -132,6 +132,46 @@
  *      Optional and additive: a module without it simply has no queues worth
  *      emptying, and the ABI version does not move.
  *
+ *  12. *Optionally* export `int code_module_stateless(void)`, returning
+ *      non-zero, to say this module keeps no state: no settings, no
+ *      connection, nothing a call leaves behind for the next one.
+ *
+ *      Every link of a module normally gets its own copy of it (a name is a
+ *      module — see `runtime.c` `module_image`), and the whole file is paid
+ *      for in memory once per link. A module that keeps nothing has nothing
+ *      to keep apart, so every link of its file then shares one instance
+ *      (ticket 177). Declare it only when it is true: two links of a module
+ *      that does keep something would then change each other's.
+ *
+ *      Not honoured for a module that also exports `code_module_set_inbound`,
+ *      `code_module_serving`, `code_module_release` or `code_module_drain`.
+ *      Optional and additive: a module without it is loaded per link as
+ *      before, and the ABI version does not move.
+ *
+ *  13. *Optionally* export `void *code_module_instance_new(void)` and
+ *      `void code_module_instance_dispatch(void *instance, CodeValue *out,
+ *      const CodeValue *particle)`, to keep state per link without a copy
+ *      of the module per link.
+ *
+ *      The host then opens the file once for every link, asks for a new
+ *      instance per link, and sends that link's particles to
+ *      `code_module_instance_dispatch` with its instance; settings and
+ *      connections live in the instance, not in globals. An instance is
+ *      never freed (a module is not unloaded). The module still exports
+ *      `code_module_dispatch`, working on an instance of its own, for a
+ *      host that predates this — which then copies the module per link as
+ *      it always did (ticket 178: mongodb was 16 copies on one host).
+ *
+ *      Not honoured for a module that exports `code_module_serving`,
+ *      `code_module_release` or `code_module_drain`. A module that pushes
+ *      (`code_module_set_inbound`) is honoured only when it also exports
+ *      `void code_module_instance_set_inbound(void *instance, void *queue,
+ *      CodeEmitFn emit)`: each link's queue is then handed to that link's
+ *      instance, and what a thread started by a dispatch pushes goes to the
+ *      link that asked (ticket 178; `code-native`'s `inbound_here` and
+ *      `InboundScope`). `code_module_inbound_reply` stays module-wide.
+ *      Optional and additive; the ABI version does not move.
+ *
  * Why `emit` is a function *pointer* the host supplies, rather than a
  * `code_emit_inbound` a module could call directly: a `.so` carries its own
  * copy of this runtime (see below), so a direct call would push onto the
@@ -401,7 +441,25 @@ void code_module_set_host(const CodeHostVtable *host, void *host_ctx);
  * `<prefix>_code_module_abi_version`, `<prefix>_code_module_vars`. `code
  * build` finds them by running `nm` on the archive at link time (see
  * `loader.rs`), so `link "libfoo.a" as m` needs no syntax to name the
- * prefix — it just has to be unique. */
+ * prefix — it just has to be unique.
+ *
+ * The optional entry points take the prefix the same way:
+ * `<prefix>_code_module_set_inbound`, `_inbound_reply`, `_serving` (which
+ * holds the program open, as a `.so`'s does), `_stateless` (item 12) and
+ * `_instance_new` / `_instance_dispatch` (item 13). With instances, every
+ * alias linking the archive gets one of its own where its `link` runs; a
+ * module that keeps state and offers none is refused under a second alias
+ * in a native build, since both names would share its statics.
+ *
+ * A first-party module is not written twice for this. It exports its
+ * `code_module_*` names once, for its `.so`; `scripts/build-module-static.sh`
+ * builds it as a `staticlib` with no runtime (`code-native/static-module`),
+ * renames those exports to `<module>_code_module_*` and makes every other
+ * symbol it defines local — each Rust module carries its own standard
+ * library, and two in one program would otherwise collide. The system
+ * libraries the archive needs at the final link are written beside it,
+ * `<archive>.libs`, one linker flag per line, and `code build` adds them
+ * (ticket 141). */
 
 /* ---- Events: a whole particle, from where the event happens --------------
  *

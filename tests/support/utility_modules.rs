@@ -11,10 +11,12 @@ pub fn fixture(module: &str, file: &str) {
     ));
     fs::create_dir_all(dir.join("native_modules")).unwrap();
     let text = fs::read_to_string(modules::repo().join("tests").join(file)).unwrap();
-    let linked: Vec<_> = ["math", "strings", "arrays", "time"]
-        .into_iter()
-        .filter(|name| text.contains(&format!("native_modules/{name}.so")))
-        .collect();
+    let linked: Vec<_> = [
+        "math", "strings", "arrays", "time", "objects", "xml", "regex", "csv",
+    ]
+    .into_iter()
+    .filter(|name| text.contains(&format!("native_modules/{name}.so")))
+    .collect();
     for name in &linked {
         let so = modules::build_so(name);
         fs::copy(so, dir.join(format!("native_modules/{name}.so"))).unwrap();
@@ -36,6 +38,15 @@ pub fn fixture(module: &str, file: &str) {
         .args(["--print", "sysroot"])
         .output()
         .unwrap();
+    // A module with no browser half (no page.mjs) is native-only.
+    if let Some(name) = linked.iter().find(|name| {
+        !modules::repo()
+            .join(format!("crates/modules/{name}/page.mjs"))
+            .is_file()
+    }) {
+        eprintln!("skipped browser utility check: {name} has no browser half");
+        return;
+    }
     if Command::new("node").arg("--version").output().is_err()
         || !Path::new(String::from_utf8_lossy(&sysroot.stdout).trim())
             .join("lib/rustlib/wasm32-unknown-unknown")

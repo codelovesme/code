@@ -1,0 +1,45 @@
+link "native_modules/regex.so" as regex
+| Text by pattern (ticket 103): the same answers interpreted, compiled and
+| --release (native only: no browser half).
+
+emit Match { value = "Order 1234", pattern = "\\d+" } to regex get has_digits
+assert has_digits ∈ MatchResult
+assert has_digits.value
+emit Match { value = "Order 1234", pattern = "^\\d+\$" } to regex get all_digits
+assert not all_digits.value
+emit Match { value = "HELLO", pattern = "(?i)hello" } to regex get folded
+assert folded.value
+
+| Find: every match, with its groups; positions count characters, not bytes.
+emit Find { value = "é 2026-10-24 and 2027-01-02", pattern = "(?P<year>\\d{4})-(\\d{2})-(\\d{2})" } to regex get dates
+assert dates ∈ FindResult
+assert dates.value[0] = { text = "2026-10-24", start = 2, end = 12, groups = ["2026", "10", "24"], named = { year = "2026" } }
+assert dates.value[1].start = 17
+assert dates.value[1].groups = ["2027", "01", "02"]
+| A group the match went around is null.
+emit Find { value = "b", pattern = "(a)|b" } to regex get around
+assert around.value[0].groups = [null]
+emit Find { value = "none here", pattern = "\\d" } to regex get none
+assert none.value = []
+
+| Replace: every match; $1 and ${name} bring a group in, $$ is a dollar.
+emit Replace { value = "iPhone 15 Pro (Black)  128GB", pattern = "\\s*\\(.*?\\)\\s*|\\s+", replacement = " " } to regex get squeezed
+assert squeezed.value = "iPhone 15 Pro 128GB"
+emit Replace { value = "2026-10-24", pattern = "(?P<y>\\d+)-(\\d+)-(\\d+)", replacement = "\$3/\$2/\${y}" } to regex get swapped
+assert swapped.value = "24/10/2026"
+emit Replace { value = "5", pattern = "(\\d)", replacement = "\$\$\$1" } to regex get priced
+assert priced.value = "\$5"
+
+emit Split { value = "a, b;c ,d", pattern = "\\s*[,;]\\s*" } to regex get parts
+assert parts ∈ SplitResult
+assert parts.value = ["a", "b", "c", "d"]
+
+| A pattern that does not compile, or a missing text: an Exception.
+emit Match { value = "x", pattern = "(" } to regex get bad
+assert bad ∈ Exception
+emit Find { value = 3, pattern = "x" } to regex get not_text
+assert not_text ∈ Exception
+assert not_text.message = "Find requires a text 'value'"
+emit Replace { value = "x", pattern = "x" } to regex get no_replacement
+assert no_replacement ∈ Exception
+assert no_replacement.message = "Replace requires a text 'replacement'"

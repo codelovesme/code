@@ -12,6 +12,9 @@
 #   - every file of crates/code-native, which every module links, and the
 #     files directly in crates/modules (browser_half.rs, which every
 #     module's wasm half includes);
+#   - scripts/build-module-linux.sh and scripts/build-module-static.sh, how
+#     a module's .so and its native .a are built (stripped since ticket 176;
+#     the .a since ticket 141);
 #   - src/ and the root Cargo.toml, for the modules that depend on the
 #     compiler itself (`path = "../../.."` — interpreter, syntax).
 #
@@ -61,7 +64,7 @@ fingerprint() {
   done | sha256sum | cut -d' ' -f1
 }
 
-native="$( (files crates/code-native; git ls-files --cached --others --exclude-standard -- ':(glob)crates/modules/*.rs' | sort) | fingerprint)"
+native="$( (files crates/code-native scripts/build-module-linux.sh scripts/build-module-static.sh; git ls-files --cached --others --exclude-standard -- ':(glob)crates/modules/*.rs' | sort) | fingerprint)"
 compiler="$(files src Cargo.toml | fingerprint)"
 
 for dir in crates/modules/*/; do

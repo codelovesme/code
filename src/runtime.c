@@ -650,7 +650,12 @@ void code_object_literal(CodeValue *out, const char **keys, void *values, long l
 
 /* A hot literal's key run is a compiler-built template: u32 character
  * offsets, then [hash][characters\0] for every key. Copy the run once and
- * relocate its pointers; neither strlen nor hashing is needed per object. */
+ * relocate its pointers; neither strlen nor hashing is needed per object.
+ *
+ * The values are taken, not copied: `values` is the literal's own scratch,
+ * which the compiler fills and does not clear afterwards, so each value's
+ * reference moves into the object and its scratch slot is left zeroed
+ * (ticket 126: a retain here and a release of the scratch per field). */
 void code_object_template(CodeValue *out, const char **shape, void *values, long long len,
                           const unsigned char *data, long long bytes) {
     CodeList *list = NULL;
@@ -666,9 +671,9 @@ void code_object_template(CodeValue *out, const char **shape, void *values, long
             unsigned int offset;
             memcpy(&offset, data + (size_t)i * sizeof offset, sizeof offset);
             list->keys[i] = chars + offset;
-            const CodeValue *src = slot_at(values, i);
-            code_retain(src);
+            CodeValue *src = slot_at(values, i);
             *slot_at(items, i) = *src;
+            memset(src, 0, sizeof *src);
         }
         header_of(list)->text_length = (long long)(size_t)shape;
     }
@@ -1323,6 +1328,11 @@ typedef struct {
      * instead of the `dlsym`'d pointers above, which are all NULL then. */
     int from_host;
     CodeHostModule host;
+    /* `code_abi.h` item 13: a module opened once and instantiated per link.
+     * Set, every call goes to `instance_dispatch` with this link's
+     * `instance` instead of to `dispatch`. NULL for every other module. */
+    void *instance;
+    void (*instance_dispatch)(void *instance, CodeValue *out, const CodeValue *particle);
     /* Optional `code_module_release` — `code_abi.h` item 9, the point at
      * which the module gives up the top-level values it otherwise owns for
      * its whole lifetime. NULL for every module that has none, which is all
@@ -1431,8 +1441,20 @@ static NativeHandle *host_native(const CodeHostModule *supplied, char *err, size
  * applications.)
  *
  * Returns -1 where this is not available, and the caller falls back to an
- * ordinary open — one instance, shared, as before. */
-static int module_image(const char *path) {
+ * ordinary open — one instance, shared, as before.
+ *
+ * While copying it looks for the names `code_module_stateless` (`code_abi.h`
+ * item 12, ticket 177) and `code_module_instance_new` (item 13, ticket 178)
+ * in the file and says which it found in `*marked`: such a module can be
+ * opened once and shared by every link — as it is, or with an instance of
+ * its own per link — which `open_native` then checks properly. Looked for
+ * in the bytes rather than by opening the file first, because opening a
+ * `.code` library runs its top level. */
+#define STATELESS_EXPORT "code_module_stateless"
+#define INSTANCE_EXPORT "code_module_instance_new"
+enum { MARKED_STATELESS = 1, MARKED_INSTANCES = 2 };
+static int module_image(const char *path, int *marked) {
+    *marked = 0;
 #if defined(__linux__) && !defined(CODE_WASM)
     int src = open(path, O_RDONLY | O_CLOEXEC);
     if (src < 0) {
@@ -1443,17 +1465,33 @@ static int module_image(const char *path) {
         close(src);
         return -1;
     }
-    char buf[65536];
+    /* The tail of the previous read goes in front of the next, so a name
+     * that straddles two reads is still found. */
+    enum {
+        CARRY = sizeof INSTANCE_EXPORT > sizeof STATELESS_EXPORT ? sizeof INSTANCE_EXPORT - 1
+                                                                 : sizeof STATELESS_EXPORT - 1
+    };
+    char buf[CARRY + 65536];
+    size_t carried = 0;
     for (;;) {
-        ssize_t n = read(src, buf, sizeof buf);
+        ssize_t n = read(src, buf + carried, sizeof buf - carried);
         if (n == 0) {
             break;
         }
-        if (n < 0 || write(image, buf, (size_t)n) != n) {
+        if (n < 0 || write(image, buf + carried, (size_t)n) != n) {
             close(src);
             close(image);
             return -1;
         }
+        size_t have = carried + (size_t)n;
+        if (memmem(buf, have, STATELESS_EXPORT, sizeof STATELESS_EXPORT - 1)) {
+            *marked |= MARKED_STATELESS;
+        }
+        if (memmem(buf, have, INSTANCE_EXPORT, sizeof INSTANCE_EXPORT - 1)) {
+            *marked |= MARKED_INSTANCES;
+        }
+        carried = have < CARRY ? have : CARRY;
+        memmove(buf, buf + have - carried, carried);
     }
     close(src);
     return image;
@@ -1462,6 +1500,34 @@ static int module_image(const char *path) {
     return -1;
 #endif
 }
+
+#ifndef CODE_WASM
+/* Whether the library `lib` declares that it keeps no state and has nothing
+ * that would make one instance per link matter: no queue it pushes into,
+ * nothing holding the program open, no top-level values to give up. Only
+ * then is one instance shared (`code_abi.h` item 12). */
+static int has_no_life_of_its_own(void *lib) {
+    return !dlsym(lib, "code_module_set_inbound") && !dlsym(lib, "code_module_serving")
+           && !dlsym(lib, "code_module_release") && !dlsym(lib, "code_module_drain");
+}
+
+static int shares_one_instance(void *lib) {
+    int (*stateless)(void) = (int (*)(void))dlsym(lib, STATELESS_EXPORT);
+    return stateless && stateless() && has_no_life_of_its_own(lib);
+}
+
+/* Whether `lib` offers an instance per link (`code_abi.h` item 13), with
+ * nothing that would tie it to one: no serving, release or drain, and a
+ * module that pushes takes its queue per instance
+ * (`code_module_instance_set_inbound`, ticket 178). */
+static int offers_instances(void *lib) {
+    int pushes = dlsym(lib, "code_module_set_inbound") != NULL;
+    return dlsym(lib, INSTANCE_EXPORT) && dlsym(lib, "code_module_instance_dispatch")
+           && (!pushes || dlsym(lib, "code_module_instance_set_inbound"))
+           && !dlsym(lib, "code_module_serving") && !dlsym(lib, "code_module_release")
+           && !dlsym(lib, "code_module_drain");
+}
+#endif
 
 static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     /* A host, once installed, is the only way out. Not a fallback to opening
@@ -1485,9 +1551,26 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     /* Its own image, so this instance is nobody else's — see
      * `module_image`. A failure there is not fatal: the ordinary open still
      * works, it just shares with any other link of the same file. */
-    int image = module_image(path);
+    int marked = 0;
+    int image = module_image(path, &marked);
     void *handle = NULL;
-    if (image >= 0) {
+    if (marked) {
+        /* The ordinary open, which the loader shares between every link of
+         * the file — what a module that keeps no state wants. */
+        void *shared = dlopen(path, RTLD_NOW);
+        int fits = shared && (((marked & MARKED_INSTANCES) && offers_instances(shared))
+                              || ((marked & MARKED_STATELESS) && shares_one_instance(shared)));
+        if (fits) {
+            handle = shared;
+            if (image >= 0) {
+                close(image);
+                image = -1;
+            }
+        } else if (shared) {
+            dlclose(shared);
+        }
+    }
+    if (!handle && image >= 0) {
         char proc[64];
         snprintf(proc, sizeof proc, "/proc/self/fd/%d", image);
         handle = dlopen(proc, RTLD_NOW);
@@ -1560,6 +1643,21 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
      * Only a `.code` library has one, and only a host ever calls it. */
     nh->module_drain = (void (*)(void))dlsym(handle, "code_module_drain");
 
+    /* Opened once for every link (above), so this link gets an instance of
+     * its own: its own settings, its own connection (`code_abi.h` item 13).
+     * Never freed, like the handle: a module is not unloaded. */
+    if (image < 0 && offers_instances(handle)) {
+        void *(*make)(void) = (void *(*)(void))dlsym(handle, INSTANCE_EXPORT);
+        nh->instance = make();
+        nh->instance_dispatch = (void (*)(void *, CodeValue *, const CodeValue *))dlsym(
+            handle, "code_module_instance_dispatch");
+        if (!nh->instance) {
+            snprintf(err, errlen, "native module '%s' could not make an instance", path);
+            free(nh);
+            return NULL;
+        }
+    }
+
     /* Also optional: a module that never speaks first doesn't export it.
      * The pusher handed across is *this* runtime's, not the module's own
      * copy — see code_abi.h for why that distinction matters. */
@@ -1571,7 +1669,16 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     void (*set_inbound)(void *, CodeEmitFn) =
         (void (*)(void *, CodeEmitFn))dlsym(handle, "code_module_set_inbound");
     nh->has_inbound = set_inbound != NULL;
-    if (set_inbound) {
+    /* A link with an instance of its own gets a queue of its own: handed to
+     * that instance, never to the module-wide export another link's queue
+     * would replace (ticket 178). */
+    void (*instance_set_inbound)(void *, void *, CodeEmitFn) =
+        nh->instance ? (void (*)(void *, void *, CodeEmitFn))dlsym(
+                           handle, "code_module_instance_set_inbound")
+                     : NULL;
+    if (instance_set_inbound) {
+        instance_set_inbound(nh->instance, nh, code_emit_inbound);
+    } else if (set_inbound) {
         set_inbound(nh, code_emit_inbound);
     }
     return nh;
@@ -1949,7 +2056,11 @@ void code_native_dispatch(void *handle, CodeValue *out, const CodeValue *particl
     }
     NativeHandle *nh = (NativeHandle *)handle;
     CodeValue result = {0};
-    nh->dispatch(&result, particle);
+    if (nh->instance_dispatch) {
+        nh->instance_dispatch(nh->instance, &result, particle);
+    } else {
+        nh->dispatch(&result, particle);
+    }
     code_native_copy_in(out, &result);
     nh->release(&result);
 }
@@ -4660,6 +4771,31 @@ void code_add_into(CodeValue *dst, const CodeValue *b) {
         }
     }
     code_add(dst, dst, b);
+}
+
+/* `name += part` where `part` is a temporary of this statement and nothing
+ * else holds it: what `code_add_into` then clearing the temporary does,
+ * except that one element appended to a list held alone moves in, so
+ * neither the retain nor the temporary's release is paid (ticket 126:
+ * binary_trees' `level += { … }` and `stack += node.l`). `part` is left
+ * zeroed either way. */
+void code_add_take(CodeValue *dst, CodeValue *part) {
+    if (part != dst && dst->tag == CODE_ARRAY && part->tag != CODE_ARRAY
+        && (held_alone(dst) || !dst->heap)) {
+        long long had = LEN(dst);
+        long long total = had + 1;
+        CodeList *list = dst->heap
+            ? room_for(dst->list, sizeof(CodeList) + (size_t)total * CODE_VALUE_SLOT_SIZE)
+            : list_alloc(4, 0);
+        *slot_at(list + 1, had) = *part;
+        memset(part, 0, sizeof *part);
+        list->len = total;
+        dst->list = list;
+        dst->heap = 1;
+        return;
+    }
+    code_add_into(dst, part);
+    code_clear(part);
 }
 
 /* Fused `name += "...$part..."`. Every borrowed part must stay readable

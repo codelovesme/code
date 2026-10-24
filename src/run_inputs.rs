@@ -1,5 +1,5 @@
 //! Records the real loader inputs, including locks and resolution candidates.
-use crate::loader::{FilesystemResolver, ModuleResolver, ResolvedModule};
+use crate::loader::{FilesystemResolver, LinkPolicy, ModuleResolver, ResolvedModule};
 use crate::run_cache::{absolute, context, stamp, Inputs};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -95,13 +95,25 @@ impl ModuleResolver for Resolver {
     fn resolve(&self, from: &str, reference: &str) -> Result<ResolvedModule, String> {
         let base = Path::new(from).parent().ok_or("source has no parent")?;
         self.guards(base, Some(reference))?;
-        let resolved = FilesystemResolver.resolve(from, reference)?;
+        // What `code run` builds is an executable, so a module identity is
+        // what an executable links it as (ticket 142) — and every file it
+        // could resolve to is a candidate whose appearing changes the build.
+        let policy = LinkPolicy::for_target(crate::BuildTarget::Exe);
+        if crate::loader::is_identity(reference) {
+            for candidate in policy.candidates(reference) {
+                self.guards(base, Some(&candidate))?;
+            }
+        }
+        let resolved = FilesystemResolver::resolve_with(from, reference, policy)?;
         if let ResolvedModule::Native { path, .. } = &resolved {
             // A pin's asset path is known only after resolving its lock. Guard
             // it before the verification/symbol scan used by this build, then
             // check it again afterwards. A reinstall during loading is a miss.
             self.watch(Path::new(path))?;
-            self.resolved(FilesystemResolver.resolve(from, reference)?)
+            // An archive's link flags are part of what the program is made
+            // of: a changed `.libs` is a different link (ticket 142).
+            self.watch(Path::new(&format!("{path}.libs")))?;
+            self.resolved(FilesystemResolver::resolve_with(from, reference, policy)?)
         } else {
             self.resolved(resolved)
         }

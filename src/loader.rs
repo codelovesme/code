@@ -60,6 +60,110 @@ pub trait ModuleResolver {
 /// at the script, its lockfile, and those four fixed places.
 pub struct FilesystemResolver;
 
+/// Which artifact a module *identity* — `link "math"`, no extension, no
+/// path — resolves to (ticket 142). A `.code` file of that name always
+/// wins; only when there is none is the name a native module, and then the
+/// kind of build decides which file of it is meant. Literal `.so` / `.a`
+/// paths are never touched by this: they are exactly what they say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkPolicy {
+    /// Linked into the program: `<name>-linux-x86_64.a` (and its `.libs`).
+    /// A native executable's default.
+    Static,
+    /// Opened beside the program: `<name>-linux-x86_64.so`. The
+    /// interpreter's, a held application's (its modules are the host's),
+    /// and any build asked for it.
+    Dynamic,
+    /// The browser half: `<name>-wasm32.a`.
+    Wasm,
+    /// Whichever is there, static first — for reading a program
+    /// (`code check`) rather than building one.
+    Any,
+}
+
+impl LinkPolicy {
+    /// What a build of `target` links module identities as, unless
+    /// `CODE_LINK=static|dynamic` (what `code build --link` sets) says
+    /// otherwise for a native build. A shared library is dynamic by
+    /// default: one held by a host uses the host's modules (ticket 143).
+    #[cfg(feature = "llvm")]
+    pub fn for_target(target: crate::BuildTarget) -> LinkPolicy {
+        use crate::BuildTarget;
+        match target {
+            BuildTarget::Wasm => LinkPolicy::Wasm,
+            _ => match std::env::var("CODE_LINK").as_deref() {
+                Ok("static") => LinkPolicy::Static,
+                Ok("dynamic") => LinkPolicy::Dynamic,
+                _ => match target {
+                    BuildTarget::Shared => LinkPolicy::Dynamic,
+                    _ => LinkPolicy::Static,
+                },
+            },
+        }
+    }
+
+    /// The file names an identity may be installed or vendored as, in the
+    /// order they are tried.
+    pub(crate) fn candidates(self, name: &str) -> Vec<String> {
+        let platform = native_platform();
+        let statik = vec![format!("{name}-{platform}.a"), format!("{name}.a")];
+        let shared = vec![format!("{name}-{platform}.so"), format!("{name}.so")];
+        match self {
+            LinkPolicy::Static => statik,
+            LinkPolicy::Dynamic => shared,
+            LinkPolicy::Wasm => vec![format!("{name}-wasm32.a")],
+            LinkPolicy::Any => statik.into_iter().chain(shared).collect(),
+        }
+    }
+
+    fn describe(self) -> &'static str {
+        match self {
+            LinkPolicy::Static => "a native archive (.a)",
+            LinkPolicy::Dynamic => "a shared library (.so)",
+            LinkPolicy::Wasm => "a browser archive (wasm32 .a)",
+            LinkPolicy::Any => "a native archive or shared library",
+        }
+    }
+
+    fn hint(self, name: &str) -> String {
+        match self {
+            LinkPolicy::Static => format!(
+                "install a release that carries native archives (`code install {name}`; \
+                 releases before they existed have only the .so), or link it dynamically \
+                 (`code build --link dynamic`)"
+            ),
+            LinkPolicy::Dynamic | LinkPolicy::Any => format!("install it: `code install {name}`"),
+            LinkPolicy::Wasm => {
+                format!("install it for the page: `code install {name} --platform wasm32`")
+            }
+        }
+    }
+}
+
+/// This machine's platform name, as release assets spell it.
+fn native_platform() -> &'static str {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => "linux-x86_64",
+        ("linux", "aarch64") => "linux-aarch64",
+        ("macos", "x86_64") => "macos-x86_64",
+        ("macos", "aarch64") => "macos-aarch64",
+        _ => "unknown",
+    }
+}
+
+/// [`FilesystemResolver`], with module identities linked as `policy` says.
+pub struct PolicyResolver(pub LinkPolicy);
+
+impl ModuleResolver for PolicyResolver {
+    fn resolve_entry(&self, entry: &str) -> Result<ResolvedModule, String> {
+        FilesystemResolver.resolve_entry(entry)
+    }
+
+    fn resolve(&self, from_identity: &str, module_ref: &str) -> Result<ResolvedModule, String> {
+        FilesystemResolver::resolve_with(from_identity, module_ref, self.0)
+    }
+}
+
 /// The directory installed modules live in under a `.code` directory.
 pub const MODULES_DIR: &str = "modules";
 
@@ -177,9 +281,18 @@ impl FilesystemResolver {
                 .and_then(|e| e.to_str())
                 .unwrap_or_default();
             let by_module_name = format!("{}.{asset_ext}", entry.name);
-            if entry.asset != file_name && by_module_name != file_name {
+            // Or its native archive, pinned beside it (ticket 142): by its
+            // asset name, or `<module>.a` for a native build.
+            let archive = entry.static_archive.as_ref().map(|a| a.asset.as_str());
+            let is_archive = archive == Some(file_name)
+                || (archive.is_some() && format!("{}.a", entry.name) == file_name);
+            let asset = if is_archive {
+                archive.expect("checked just above")
+            } else if entry.asset == file_name || by_module_name == file_name {
+                entry.asset.as_str()
+            } else {
                 continue;
-            }
+            };
             for root in [
                 Some(code_dir.join(MODULES_DIR)),
                 crate::module_install::global_code_dir().map(|g| g.join(MODULES_DIR)),
@@ -187,10 +300,7 @@ impl FilesystemResolver {
             .into_iter()
             .flatten()
             {
-                let candidate = root
-                    .join(&entry.name)
-                    .join(&entry.version)
-                    .join(&entry.asset);
+                let candidate = root.join(&entry.name).join(&entry.version).join(asset);
                 if let Ok(canonical) = fs::canonicalize(&candidate) {
                     return Some(canonical);
                 }
@@ -237,9 +347,18 @@ impl FilesystemResolver {
 
         let file_name = resolved.file_name().and_then(|n| n.to_str()).unwrap_or("");
         for entry in lock.modules.values() {
-            if entry.asset != file_name {
+            // The `.so`, or the native archive pinned beside it (ticket 142).
+            let pinned = if entry.asset == file_name {
+                entry.sha256.as_str()
+            } else if let Some(archive) = entry
+                .static_archive
+                .as_ref()
+                .filter(|archive| archive.asset == file_name)
+            {
+                archive.sha256.as_str()
+            } else {
                 continue;
-            }
+            };
             // Enforce only for bytes that actually sit in an install
             // location for this entry — a same-named file elsewhere (a
             // vendored copy next to the script) is deliberate and unpinned.
@@ -259,7 +378,7 @@ impl FilesystemResolver {
             if !under_install {
                 continue;
             }
-            if !crate::module_install::verify_sha256(resolved, &entry.sha256)? {
+            if !crate::module_install::verify_sha256(resolved, pinned)? {
                 return Err(format!(
                     "refusing to load '{}': it does not match the sha256 pinned in '{}' — \
                      re-run `code install {}`",
@@ -279,7 +398,19 @@ impl ModuleResolver for FilesystemResolver {
         Self::read(Path::new(entry))
     }
 
+    /// The interpreter's view: a module identity is the `.so`.
     fn resolve(&self, from_identity: &str, module_ref: &str) -> Result<ResolvedModule, String> {
+        FilesystemResolver::resolve_with(from_identity, module_ref, LinkPolicy::Dynamic)
+    }
+}
+
+impl FilesystemResolver {
+    /// `resolve`, with module identities linked as `policy` says.
+    pub fn resolve_with(
+        from_identity: &str,
+        module_ref: &str,
+        policy: LinkPolicy,
+    ) -> Result<ResolvedModule, String> {
         let base = Path::new(from_identity)
             .parent()
             .unwrap_or_else(|| Path::new("."));
@@ -319,15 +450,19 @@ impl ModuleResolver for FilesystemResolver {
                 #[cfg(feature = "install")]
                 Self::verify_locked_module(base, &canonical)?;
                 let path = canonical.display().to_string();
-                let (prefix, has_vars, has_inbound, has_reply) = static_module_symbols(&path)?;
+                let symbols = static_module_symbols(&path)?;
                 return Ok(ResolvedModule::Native {
                     identity: path.clone(),
                     path,
                     format: NativeFormat::Static {
-                        prefix,
-                        has_vars,
-                        has_inbound,
-                        has_reply,
+                        prefix: symbols.prefix,
+                        has_vars: symbols.has_vars,
+                        has_inbound: symbols.has_inbound,
+                        has_reply: symbols.has_reply,
+                        has_instances: symbols.has_instances,
+                        has_instance_inbound: symbols.has_instance_inbound,
+                        stateless: symbols.stateless,
+                        has_serving: symbols.has_serving,
                     },
                 });
             }
@@ -351,11 +486,52 @@ impl ModuleResolver for FilesystemResolver {
                 return Self::read(&suffixed);
             }
         }
+        // No source of that name: a bare name is a native module's
+        // identity, and the build decides which of its files is meant.
+        if is_identity(module_ref) {
+            return Self::resolve_identity(from_identity, base, module_ref, policy);
+        }
         Err(format!(
             "cannot resolve module '{module_ref}' from '{from_identity}' (looked in: {})",
             Self::searched_list(base)
         ))
     }
+
+    /// `link "math"` with no `math.code` anywhere: the first of the files
+    /// `policy` names that is vendored, installed (through the lock) or
+    /// global, resolved exactly as if its path had been written. Never a
+    /// different kind than asked for — a static build with only the `.so`
+    /// installed is an error that says so, not a quiet dynamic link.
+    fn resolve_identity(
+        from_identity: &str,
+        base: &Path,
+        name: &str,
+        policy: LinkPolicy,
+    ) -> Result<ResolvedModule, String> {
+        let candidates = policy.candidates(name);
+        for candidate in &candidates {
+            if let Some(found) = Self::locate_native(base, candidate) {
+                return Self::resolve_with(from_identity, &found.display().to_string(), policy);
+            }
+        }
+        Err(format!(
+            "cannot link module '{name}' from '{from_identity}': this build links it as {} \
+             and none is there (looked for {} in: {}) — {}",
+            policy.describe(),
+            candidates.join(", "),
+            Self::searched_list(base),
+            policy.hint(name)
+        ))
+    }
+}
+
+/// Whether `module_ref` is a module identity — a plain name such as
+/// `math` or `json_store` — rather than a path or a file name.
+pub(crate) fn is_identity(module_ref: &str) -> bool {
+    !module_ref.is_empty()
+        && module_ref
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 /// The nearest ancestor of `dir` (including itself) containing a `.code`
@@ -526,7 +702,19 @@ fn read_defined_symbols(path: &str) -> Result<String, String> {
     ))
 }
 
-fn static_module_symbols(path: &str) -> Result<(String, bool, bool, bool), String> {
+/// What `nm` says a `.a` module exports, beyond its prefix.
+struct StaticSymbols {
+    prefix: String,
+    has_vars: bool,
+    has_inbound: bool,
+    has_reply: bool,
+    has_instances: bool,
+    has_instance_inbound: bool,
+    stateless: bool,
+    has_serving: bool,
+}
+
+fn static_module_symbols(path: &str) -> Result<StaticSymbols, String> {
     let text = read_defined_symbols(path)?;
     let names: Vec<&str> = text
         .lines()
@@ -563,11 +751,17 @@ fn static_module_symbols(path: &str) -> Result<(String, bool, bool, bool), Strin
              .a module needs both)"
         ));
     }
-    let has_vars = names.contains(&format!("{prefix}_code_module_vars").as_str());
-    let has_inbound = names.contains(&format!("{prefix}_code_module_set_inbound").as_str());
-    let has_reply = names.contains(&format!("{prefix}_code_module_inbound_reply").as_str());
-
-    Ok((prefix, has_vars, has_inbound, has_reply))
+    let has = |entry: &str| names.contains(&format!("{prefix}_code_module_{entry}").as_str());
+    Ok(StaticSymbols {
+        has_vars: has("vars"),
+        has_inbound: has("set_inbound"),
+        has_reply: has("inbound_reply"),
+        has_instances: has("instance_new") && has("instance_dispatch"),
+        has_instance_inbound: has("instance_set_inbound"),
+        stateless: has("stateless"),
+        has_serving: has("serving"),
+        prefix,
+    })
 }
 
 /// A resolver for hosts with no module story at all — the wasm playground.
