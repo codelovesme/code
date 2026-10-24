@@ -573,6 +573,21 @@ jobs:
               # read back with their time — proof the artifact loads and routes.
               printf 'emit V7 {} to mod get a\nemit V7 {} to mod get b\nassert a.value ≠ b.value\nemit Parse { value = a.value } to mod get pa\nemit Parse { value = b.value } to mod get pb\nassert pa.version = 7\nassert pb.unix_ms ≥ pa.unix_ms\n' >> dogfood/demo.code
               ;;
+            xml)
+              # A small feed read into its tree, and text that is not XML
+              # answered with an Exception — proof the artifact loads and routes.
+              printf 'emit Parse { value = "<rss version=\\"2.0\\"><title>A &amp; B</title></rss>" } to mod get f\nassert f.value.attrs = { version = "2.0" }\nassert f.value.children[0].children = ["A & B"]\nemit Parse { value = "<a>" } to mod get bad\nassert bad ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            regex)
+              # A pattern matched, found and replaced, and one that does not
+              # compile answered with an Exception — proof the artifact loads and routes.
+              printf 'emit Match { value = "Order 1234", pattern = "[0-9]+" } to mod get m\nassert m.value\nemit Find { value = "a1b22", pattern = "[0-9]+" } to mod get f\nassert f.value[1].text = "22"\nemit Replace { value = "a1b22", pattern = "[0-9]+", replacement = "#" } to mod get r\nassert r.value = "a#b#"\nemit Match { value = "x", pattern = "(" } to mod get bad\nassert bad ∈ Exception\n' >> dogfood/demo.code
+              ;;
+            csv)
+              # Rows written and read back, and a ragged row answered with an
+              # Exception — proof the artifact loads and routes.
+              printf 'emit Stringify { value = [{ a = 1, b = "x, y" }] } to mod get w\nemit Parse { value = w.value } to mod get p\nassert p.value = [{ a = "1", b = "x, y" }]\nemit Parse { value = "a,b\\n1,2,3" } to mod get bad\nassert bad ∈ Exception\n' >> dogfood/demo.code
+              ;;
             pty)
               # A program on a pseudo-terminal: opened, its screen read, closed.
               # The runner has no terminal of its own, and this needs none.
@@ -693,6 +708,9 @@ jobs:
               api_registry) handlers='["Config", "Warm", "Search", "Stop"]' ;;
               crypto) handlers='["Hash", "Verify", "RandomCode"]' ;;
               uuid) handlers='["V7", "Parse"]' ;;
+              xml) handlers='["Parse"]' ;;
+              regex) handlers='["Match", "Find", "Replace", "Split"]' ;;
+              csv) handlers='["Parse", "Stringify"]' ;;
               jwt) handlers='["Config", "Sign", "Decode"]' ;;
               markdown) handlers='["RenderMarkdown", "SplitByHeading"]' ;;
               fs) handlers='["Config", "ReadFile", "WriteFile", "DeleteFile", "CreateDir", "RemoveDir", "ListDir", "Exists"]' ;;

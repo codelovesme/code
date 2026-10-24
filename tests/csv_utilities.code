@@ -1,0 +1,44 @@
+link "native_modules/csv.so" as csv
+| Rows of text in and out (ticket 103): the same answers interpreted,
+| compiled and --release (native only: no browser half).
+
+sheet = "name,price,note\nWidget,007,\"small, blue\"\n\"Gadget \"\"Pro\"\"\",12.50,\"two\nlines\"\n"
+emit Parse { value = sheet } to csv get parsed
+assert parsed ∈ ParseResult
+| Every field stays text: 007 is a code, not a seven.
+assert parsed.value[0] = { name = "Widget", price = "007", note = "small, blue" }
+assert parsed.value[1] = { name = "Gadget \"Pro\"", price = "12.50", note = "two\nlines" }
+assert parsed.value[2] = null
+
+emit Parse { value = "a;b\n1;2", header = false, separator = ";" } to csv get plain
+assert plain.value = [["a", "b"], ["1", "2"]]
+emit Parse { value = "" } to csv get empty
+assert empty.value = []
+
+| Stringify: a header naming every key in the order it first appears; a
+| field is quoted only when it has to be; a number as the language writes it.
+emit Stringify { value = [{ name = "Widget", price = 7 }, { name = "Gadget, \"Pro\"", stock = true, price = 12.5 }, { name = null }] } to csv get written
+assert written ∈ StringifyResult
+assert written.value = "name,price,stock\nWidget,7,\n\"Gadget, \"\"Pro\"\"\",12.5,true\n,,\n"
+emit Stringify { value = [["a", "b"], [1, "c\nd"]], separator = "\t" } to csv get tabs
+assert tabs.value = "a\tb\n1\t\"c\nd\"\n"
+emit Stringify { value = [{ a = 1 }], header = false } to csv get bare
+assert bare.value = "1\n"
+
+| What Stringify writes, Parse reads back.
+emit Parse { value = written.value } to csv get again
+assert again.value[1] = { name = "Gadget, \"Pro\"", price = "12.5", stock = "true" }
+
+| Malformed or unwritable: an Exception, never a crash.
+emit Parse { value = "a,b\n1,2,3\n" } to csv get ragged
+assert ragged ∈ Exception
+assert ragged.message = "line 2 has 3 fields, the first has 2"
+emit Parse { value = "a\n1", separator = "ab" } to csv get two_chars
+assert two_chars ∈ Exception
+emit Stringify { value = [{ a = [1] }] } to csv get nested
+assert nested ∈ Exception
+assert nested.message = "row 1, a: a list or an object cannot be one field"
+emit Stringify { value = [{ a = 1 }, [2]] } to csv get mixed
+assert mixed ∈ Exception
+emit Stringify { value = "a,b" } to csv get not_rows
+assert not_rows ∈ Exception

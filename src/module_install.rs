@@ -310,6 +310,9 @@ pub const FIRST_PARTY: &[&str] = &[
     "pty",
     "window",
     "uuid",
+    "xml",
+    "regex",
+    "csv",
 ];
 
 /// Where this repository's releases live. Overridable for offline work and

@@ -1807,6 +1807,11 @@ version-7 UUIDs, and reading one back — see
 HS256 JSON Web Tokens — see [its README](crates/modules/jwt/README.md)),
 `markdown` (CommonMark + GFM to HTML, with a table of contents and a
 split-by-heading — see [its README](crates/modules/markdown/README.md)),
+`xml` (XML text, such as an RSS or Atom feed, into a tree of elements — see
+[its README](crates/modules/xml/README.md)), `regex` (match, find, replace
+and split by pattern, in linear time — see
+[its README](crates/modules/regex/README.md)), `csv` (rows of text in and
+out — see [its README](crates/modules/csv/README.md)),
 `fs` (files and directories under a sandboxed base directory — see
 [its README](crates/modules/fs/README.md)), `json_store` (a file-backed
 key-value store, one readable JSON file per key — see
@@ -2039,7 +2044,7 @@ crates/
   code-lsp/     diagnostics, semantic tokens and formatting, over the real
                 lexer/parser and the same `code format` the CLI runs
   modules/      first-party modules: console, canvas, dom, guest, math, strings, arrays, time, env, json,
-                json_store, crypto, uuid, jwt, markdown, fs, process, git, mailer,
+                json_store, crypto, uuid, jwt, markdown, xml, regex, csv, fs, process, git, mailer,
                 azure_mailer,
                 oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,
                 searchxng, api_registry, media, clipboard, interpreter, mqtt, ntfy, tty, syntax, pty,
