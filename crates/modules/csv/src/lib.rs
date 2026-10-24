@@ -58,7 +58,11 @@ fn options(particle: &CodeValue, class: &str) -> Result<(bool, u8), String> {
         None => b',',
         Some(v) => match read_str(v).map(str::as_bytes) {
             Some([one]) if one.is_ascii() && !matches!(one, b'"' | b'\n' | b'\r') => *one,
-            _ => return Err(format!("{class} 'separator' must be one character, not a quote or a line break")),
+            _ => {
+                return Err(format!(
+                    "{class} 'separator' must be one character, not a quote or a line break"
+                ))
+            }
         },
     };
     Ok((header, separator))
@@ -189,7 +193,12 @@ fn cell(v: &CodeValue, row: usize, column: &str) -> Result<String, String> {
     match v.tag {
         CodeTag::Str => Ok(read_str(v).unwrap_or("").to_string()),
         CodeTag::Number => Ok(format!("{}", v.number())),
-        CodeTag::Bool => Ok(if read_bool(v) == Some(true) { "true" } else { "false" }.to_string()),
+        CodeTag::Bool => Ok(if read_bool(v) == Some(true) {
+            "true"
+        } else {
+            "false"
+        }
+        .to_string()),
         CodeTag::Null => Ok(String::new()),
         _ => Err(format!(
             "row {row}, {column}: a list or an object cannot be one field"

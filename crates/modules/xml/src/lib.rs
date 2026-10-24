@@ -84,9 +84,9 @@ fn read_tree(text: &str) -> Result<Element, String> {
                 place(&mut open, &mut root, done, at(&reader))?;
             }
             Event::End(_) => {
-                let done = open
-                    .pop()
-                    .ok_or_else(|| format!("a closing tag with nothing open, at byte {}", at(&reader)))?;
+                let done = open.pop().ok_or_else(|| {
+                    format!("a closing tag with nothing open, at byte {}", at(&reader))
+                })?;
                 place(&mut open, &mut root, done, at(&reader))?;
             }
             Event::Text(bytes) => {
