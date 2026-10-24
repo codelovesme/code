@@ -7,7 +7,7 @@
 
 [package]
 name = "objects"
-version = "2.18.0"
+version = "2.18.1"
 edition = "2021"
 description = "Object (map) utilities for Code — Keys, Values, Has, Delete — with native and browser implementations."
 license = "GPL-3.0"
