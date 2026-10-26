@@ -256,16 +256,22 @@ jobs:
           if [[ "${{ contains(fromJSON(needs.plan.outputs.wasm), matrix.module) }}" == true ]]; then
             gh release download "$prev" --repo "$GITHUB_REPOSITORY" -D dist -p "${m}-wasm32.a"
           fi
+      # The same files a build uploads: the .so, and the static archive with
+      # its .libs (2.18.2 uploaded only the .so here, and the attach step
+      # found no archive for a reused module).
       - uses: actions/upload-artifact@v4
         with:
           name: module-${{ matrix.module }}-linux-x86_64
-          path: "dist/*.so"
+          path: |
+            dist/*.so
+            dist/*-linux-x86_64.a
+            dist/*-linux-x86_64.a.libs
           if-no-files-found: error
       - if: contains(fromJSON(needs.plan.outputs.wasm), matrix.module)
         uses: actions/upload-artifact@v4
         with:
           name: module-${{ matrix.module }}-wasm32
-          path: "dist/*.a"
+          path: "dist/*-wasm32.a"
           if-no-files-found: error
 
   # The `code` binary every dogfood job below needs — built once here rather

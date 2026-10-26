@@ -3,7 +3,7 @@
 
 [package]
 name = "xml"
-version = "2.18.2"
+version = "2.18.3"
 edition = "2021"
 description = "The `xml` native module for Code — Parse XML (an RSS or Atom feed, an OpenAPI document) into the element shape the language uses for a tree."
 license = "GPL-3.0"

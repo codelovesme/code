@@ -14,14 +14,14 @@ dependencies = [
 
 [[package]]
 name = "clipboard"
-version = "2.18.2"
+version = "2.18.3"
 dependencies = [
  "code-native",
 ]
 
 [[package]]
 name = "code-native"
-version = "2.18.2"
+version = "2.18.3"
 dependencies = [
  "cc",
 ]
