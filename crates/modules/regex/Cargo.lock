@@ -23,7 +23,7 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "2.18.1"
+version = "2.18.2"
 dependencies = [
  "cc",
 ]
@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "2.18.1"
+version = "2.18.2"
 dependencies = [
  "code-native",
  "regex 1.13.1",
