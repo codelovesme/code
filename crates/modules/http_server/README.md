@@ -111,6 +111,7 @@ Request { method, path } => {
 | Returned | Sent |
 |---|---|
 | `Response { status?, body?, content_type? }` | as written; `status` defaults to 200, `content_type` to `text/plain; charset=utf-8` |
+| `Response { status?, body_base64, content_type? }` | the bytes `body_base64` holds, decoded — for audio, an image, anything a text cannot carry (a text ends at its first zero byte). Not base64: 500, and a `Log` |
 | any other particle | 200 with an empty body — returning something is the program saying it handled the request |
 | null, or no `Request` handler at all | **404** — nobody claimed it |
 | nothing, for `response_timeout_seconds` | **504**, sent by the module |

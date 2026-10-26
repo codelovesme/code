@@ -442,3 +442,55 @@ assert l.ok
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// One request, its whole response as bytes — for a body that is not text.
+fn request_bytes(port: u16, path: &str) -> Vec<u8> {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        match TcpStream::connect(("127.0.0.1", port)) {
+            Ok(mut stream) => {
+                let request =
+                    format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+                stream.write_all(request.as_bytes()).expect("write request");
+                let mut response = Vec::new();
+                stream.read_to_end(&mut response).expect("read response");
+                return response;
+            }
+            Err(_) if Instant::now() < deadline => thread::sleep(Duration::from_millis(25)),
+            Err(e) => panic!("could not reach the program's server on {port}: {e}"),
+        }
+    }
+}
+
+#[test]
+fn a_body_base64_answer_is_sent_as_its_bytes() {
+    // Audio, an image: bytes a text cannot hold (a text ends at its first
+    // zero byte). `body_base64` is decoded and sent exactly; text that is
+    // not base64 is the program's mistake, answered 500 and logged.
+    let program = r#"link "http_server.so" as srv
+
+Request { path } =>
+    if path = "/bad"
+        return Response { body_base64 = "not base64!" }
+    return Response { content_type = "audio/wav", body_base64 = "UklGRgAAAf/+LWVuZA==" }
+
+emit Config { port = PORT } to srv get c
+emit Listen { } to srv get l
+assert l.ok
+
+loop, assert true
+"#;
+    serving("binary", program, |port, _pid| {
+        let r = request_bytes(port, "/sound");
+        let split = r.windows(4).position(|w| w == b"\r\n\r\n").expect("a head") + 4;
+        let head = String::from_utf8_lossy(&r[..split]);
+        assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+        assert!(head.contains("Content-Type: audio/wav"), "{head}");
+        assert!(head.contains("Content-Length: 13"), "{head}");
+        assert_eq!(&r[split..], b"RIFF\x00\x00\x01\xff\xfe-end");
+
+        let r = request(port, "GET", "/bad", "");
+        assert_eq!(status_of(&r), 500);
+        assert!(body_of(&r).contains("not base64"), "{r}");
+    });
+}

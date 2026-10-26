@@ -78,6 +78,8 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
+use base64::engine::general_purpose::STANDARD as B64;
+use base64::Engine;
 use code_native::*;
 
 /// Response body cap when `Listen` doesn't say — 1 MiB, the same default
@@ -139,7 +141,7 @@ impl Default for ServerConfig {
 
 struct Reply {
     status: u16,
-    body: String,
+    body: Vec<u8>,
     content_type: String,
 }
 
@@ -155,7 +157,9 @@ declare_inbound_reply!(answered);
 /// return value, or a null value when no handler matched.
 ///
 /// This is the whole response path. A `Response { status?, body?,
-/// content_type? }` is answered as written; anything else that is a particle
+/// body_base64?, content_type? }` is answered as written — `body_base64`,
+/// when there, is decoded and sent as the bytes it holds, for what a text
+/// cannot carry (audio, an image: a text ends at its first zero byte); anything else that is a particle
 /// still counts as an answer (200, empty body), since returning *something*
 /// is the program saying it handled the request. Null is not an answer, and
 /// becomes a 404 — that is what "no handler for this class" looks like from
@@ -179,18 +183,37 @@ fn answered(particle: &CodeValue, result: &CodeValue) {
     let reply = if result.tag == CodeTag::Null {
         Reply {
             status: 404,
-            body: String::new(),
+            body: Vec::new(),
             content_type: "text/plain; charset=utf-8".to_string(),
         }
     } else {
-        Reply {
-            status: optional_number(result, "status", 200.0) as u16,
-            body: find_field(result, "body")
-                .map(value_text)
-                .unwrap_or_default(),
-            content_type: match find_field(result, "content_type").map(value_text) {
-                Some(ct) if !ct.is_empty() => ct,
-                _ => "text/plain; charset=utf-8".to_string(),
+        let content_type = match find_field(result, "content_type").map(value_text) {
+            Some(ct) if !ct.is_empty() => ct,
+            _ => "text/plain; charset=utf-8".to_string(),
+        };
+        let encoded = find_field(result, "body_base64").and_then(read_str);
+        match encoded.map(|text| B64.decode(text.trim())) {
+            Some(Ok(bytes)) => Reply {
+                status: optional_number(result, "status", 200.0) as u16,
+                body: bytes,
+                content_type,
+            },
+            Some(Err(e)) => {
+                let message = format!("the answer's body_base64 is not base64: {e}");
+                report_log("Warn", &message);
+                Reply {
+                    status: 500,
+                    body: message.into_bytes(),
+                    content_type: "text/plain; charset=utf-8".to_string(),
+                }
+            }
+            None => Reply {
+                status: optional_number(result, "status", 200.0) as u16,
+                body: find_field(result, "body")
+                    .map(value_text)
+                    .unwrap_or_default()
+                    .into_bytes(),
+                content_type,
             },
         }
     };
@@ -404,7 +427,12 @@ fn serve(mut stream: TcpStream, max_body: usize, response_timeout: f64) {
         Ok(request) => request,
         Err(message) => {
             report_log("Warn", &format!("bad request: {message}"));
-            write_response(&mut stream, 400, "text/plain; charset=utf-8", &message);
+            write_response(
+                &mut stream,
+                400,
+                "text/plain; charset=utf-8",
+                message.as_bytes(),
+            );
             return;
         }
     };
@@ -427,7 +455,7 @@ fn serve(mut stream: TcpStream, max_body: usize, response_timeout: f64) {
                 &mut stream,
                 504,
                 "text/plain; charset=utf-8",
-                "the program did not answer in time",
+                b"the program did not answer in time",
             );
         }
     }
@@ -513,7 +541,7 @@ fn read_request(stream: &mut TcpStream, max_body: usize) -> Result<Request, Stri
     })
 }
 
-fn write_response(stream: &mut TcpStream, status: u16, content_type: &str, body: &str) {
+fn write_response(stream: &mut TcpStream, status: u16, content_type: &str, body: &[u8]) {
     let reason = match status {
         200 => "OK",
         201 => "Created",
@@ -526,11 +554,12 @@ fn write_response(stream: &mut TcpStream, status: u16, content_type: &str, body:
     };
     // `Connection: close` because there is no keep-alive here: one request
     // per connection is what a serial accept loop can honestly promise.
-    let response = format!(
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+    let head = format!(
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()
     );
-    let _ = stream.write_all(response.as_bytes());
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body);
     let _ = stream.flush();
 }
 
