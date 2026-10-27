@@ -3,7 +3,7 @@
 
 [package]
 name = "csv"
-version = "2.18.3"
+version = "2.19.0"
 edition = "2021"
 description = "The `csv` native module for Code — Parse CSV text into rows and Stringify rows back, quoting as RFC 4180 does."
 license = "GPL-3.0"
