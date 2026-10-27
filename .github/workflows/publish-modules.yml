@@ -711,7 +711,7 @@ jobs:
               strings) handlers='["Shout", "Echo", "Split", "Join", "Trim", "Upper", "Lower", "Length", "Contains", "StartsWith", "EndsWith", "IndexOf", "Replace", "Slice", "Pad"]' ;;
               math) handlers='["Double", "Sum", "Floor", "Ceil", "Round", "Trunc", "Div", "Mod", "Abs", "Min", "Max", "Parse", "Sqrt", "Pow", "Sin", "Cos", "Ln", "Exp"]' ;;
               objects) handlers='["Keys", "Values", "Has", "Delete"]' ;;
-            env) handlers='["Get", "Require"]' ;;
+            env) handlers='["Get", "Require", "Config"]' ;;
               http_client) handlers='["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"]' ;;
               http_server) handlers='["Config", "Listen"]' ;;
               json) handlers='["Parse", "Stringify"]' ;;
@@ -773,7 +773,7 @@ jobs:
               http_server) setup='"setup": "Config",' ;;
               net_client|net_server) setup='"setup": "Config",' ;;
               membrane) setup='"setup": "Config",' ;;
-              jwt|fs|json_store|git|mailer|azure_mailer|oauth|mongodb|azure_blob|blob_storage|cloud_drive|localai|searchxng|api_registry|mqtt|ntfy|*_mock) setup='"setup": "Config",' ;;
+              env|jwt|fs|json_store|git|mailer|azure_mailer|oauth|mongodb|azure_blob|blob_storage|cloud_drive|localai|searchxng|api_registry|mqtt|ntfy|*_mock) setup='"setup": "Config",' ;;
               *) setup='' ;;
             esac
             # The browser archive, for the few modules that have one. Absent

@@ -19,6 +19,7 @@ assert l.ok
 ```
 Get     { name, default? } → EnvResult { name, value, found }
 Require { name }           → EnvResult, or an Exception when it is unset
+Config  { file }           → ConfigResult { ok, file, names } — optional, see below
 ```
 
 | Case | `value` | `found` |
@@ -93,3 +94,23 @@ worth saying out loud in the module that exists to touch secrets.
 ```sh
 cargo build --release        # -> target/release/libenv.so
 ```
+
+## One link, one environment
+
+Unconfigured, a link reads the process environment. `Config { file }` points
+it at a `.env` file instead, and from then on that link answers from the
+file and nothing else — read as euglena reads `.env`: `KEY=VALUE` lines, blank
+lines and `#` comments skipped, one pair of quotes taken off a value.
+
+```code
+link "env.so" as env
+emit Config { file = "/srv/todo-api/.env" } to env get c
+emit Require { name = "MONGO_URI" } to env get uri   | todo-api's, not the process's
+```
+
+This is for an application held inside a host. It shares the host's
+process, so the process environment is the host's: two held applications
+that each want their own `MAIL_FROM` cannot both have it there. Each link of
+this module is its own instance (`code_abi.h` item 13), so each one's file is
+its own, and nothing an application reads comes from another's. A file that
+cannot be read is an `Exception`, and the link stays as it was.

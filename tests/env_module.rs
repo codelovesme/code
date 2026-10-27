@@ -25,9 +25,23 @@ fn build_module() -> PathBuf {
 /// module and runs it both ways with `vars` set. Passing on both is the
 /// assertion — the programs `assert` for themselves.
 fn run_both_ways(tag: &str, program: &str, vars: &[(&str, &str)], expect_success: bool) {
+    run_both_ways_with(tag, program, vars, &[], expect_success)
+}
+
+/// `run_both_ways`, with `files` (name, text) written beside the program.
+fn run_both_ways_with(
+    tag: &str,
+    program: &str,
+    vars: &[(&str, &str)],
+    files: &[(&str, &str)],
+    expect_success: bool,
+) {
     let dir = std::env::temp_dir().join(format!("code-env-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("create test directory");
+    for (name, text) in files {
+        fs::write(dir.join(name), text).expect("write a file beside the program");
+    }
     fs::copy(build_module(), dir.join("env.so")).expect("copy env.so");
     let source = dir.join("main.code");
     fs::write(&source, program).expect("write program");
@@ -117,6 +131,64 @@ assert port.source = "env"
 assert 1 + 1 = 2
 "#,
         &[("CODE_TEST_PORT", "banana")],
+        true,
+    );
+}
+
+#[test]
+fn a_configured_link_reads_its_own_file_and_nothing_else() {
+    // Two applications held in one host share one process, so one process
+    // environment: each link of env is its own instance, and one configured
+    // with a file answers from that file only (ticket 180). An unconfigured
+    // link still reads the process environment.
+    run_both_ways_with(
+        "own-file",
+        r#"link "env.so" as todo
+link "env.so" as auth
+link "env.so" as host
+
+emit Config { file = "todo.env" } to todo get t
+assert t.ok
+assert t.names = 3
+emit Config { file = "auth.env" } to auth get a
+assert a.ok
+
+emit Require { name = "MAIL_FROM" } to todo get todo_from
+assert todo_from.value = "todo@example.org"
+emit Require { name = "MAIL_FROM" } to auth get auth_from
+assert auth_from.value = "auth@example.org"
+emit Require { name = "MAIL_FROM" } to host get host_from
+assert host_from.value = "host@example.org"
+
+| Quotes come off, a number reads as one, a comment is not a value.
+emit Get { name = "TODO_PORT", default = 0 } to todo get port
+assert port.value = 8080
+emit Get { name = "SECRET" } to todo get secret
+assert secret.value = "a b=c"
+
+| Its file is all a configured link sees: the process's own variables are
+| not there, and a name only the other file has is unset.
+emit Get { name = "CODE_TEST_PROCESS_ONLY" } to todo get process_only
+assert not process_only.found
+emit Require { name = "AUTH_ONLY" } to todo get leaked
+assert leaked ∈ Exception
+emit Get { name = "CODE_TEST_PROCESS_ONLY" } to host get seen
+assert seen.value = "here"
+
+emit Config { file = "missing.env" } to todo get missing
+assert missing ∈ Exception
+"#,
+        &[
+            ("MAIL_FROM", "host@example.org"),
+            ("CODE_TEST_PROCESS_ONLY", "here"),
+        ],
+        &[
+            (
+                "todo.env",
+                "# todo-api\nMAIL_FROM=todo@example.org\nTODO_PORT = 8080\nSECRET=\"a b=c\"\n",
+            ),
+            ("auth.env", "MAIL_FROM='auth@example.org'\nAUTH_ONLY=1\n"),
+        ],
         true,
     );
 }

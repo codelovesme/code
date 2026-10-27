@@ -14,7 +14,7 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "2.18.3"
+version = "2.19.0"
 dependencies = [
  "cc",
 ]
@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "csv"
-version = "2.18.3"
+version = "2.19.0"
 dependencies = [
  "code-native",
  "csv 1.4.0",

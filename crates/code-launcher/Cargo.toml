@@ -1,6 +1,6 @@
 [package]
 name = "code-launcher"
-version = "2.18.3"
+version = "2.19.0"
 edition = "2021"
 license = "GPL-3.0"
 description = "The lightweight frontend shipped as code beside code-driver"
