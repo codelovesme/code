@@ -57,6 +57,28 @@ assert badlist ∈ Exception
 emit Send { recipient = { a = 1 } } to mail get badkind
 assert badkind ∈ Exception
 
+| An attachment is refused by the field it gets wrong, before the network.
+emit Send { recipient = "a@b.com", attachments = [{ content_type = "application/pdf", base64 = "JVBERi0xLjQK" }] } to mail get noname
+assert noname ∈ Exception
+assert noname.message = "attachments[0] needs a non-empty string 'name'"
+
+emit Send { recipient = "a@b.com", attachments = [{ name = "a.pdf", content_type = "application/pdf", base64 = "not base64!" }] } to mail get badpdf
+assert badpdf.message = "attachments[0].base64 is not valid base64"
+
+emit Send { recipient = "a@b.com", attachments = "a.pdf" } to mail get notalist
+assert notalist ∈ Exception
+
+| A header value on two lines would start a second header of the caller's
+| choosing; a name with a colon or a space is no header name.
+emit Send { recipient = "a@b.com", headers = { "X-Tag" = "a\nBcc: x@y.com" } } to mail get injected
+assert injected.message = "headers.X-Tag must be one line"
+
+emit Send { recipient = "a@b.com", headers = { "Bad Name" = "x" } } to mail get badname
+assert badname.message = "headers: 'Bad Name' is not a header name"
+
+emit Send { recipient = "a@b.com", reply_to = [1] } to mail get badreply
+assert badreply ∈ Exception
+
 | A well-formed Send with nothing listening: an Exception, not a hang or a
 | crash — the whole point of a module.
 emit Send { recipient = "to@example.com", subject = "hi", text = "body" } to mail get refused

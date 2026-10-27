@@ -26,8 +26,12 @@ Outbox { clear? } → Outbox { messages, count }
 ```
 
 Every message `Send` has captured since the module loaded, oldest first.
-Each is `SentMessage { from, recipient, cc, bcc, subject, body }` —
-`recipient`/`cc`/`bcc` are comma-joined when an array was passed.
+Each is `SentMessage { from, recipient, cc, bcc, reply_to, subject, body,
+attachments, headers }` — `recipient`/`cc`/`bcc`/`reply_to` are comma-joined
+when an array was passed, `attachments` is `[{ name, content_type, size }]`
+with `size` in decoded bytes, and `headers` is the object as sent. A broken
+attachment or header is refused as `mailer` and `azure_mailer` refuse it, and
+never reaches the outbox.
 `Outbox { clear = true }` empties the outbox after returning it.
 
 The outbox is process-global (one copy per euglena cell), so a test drives

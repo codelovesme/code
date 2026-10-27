@@ -155,3 +155,47 @@ assert s.ok
         );
     });
 }
+
+/// A newsletter: the attachment is a part of its own, replies go elsewhere,
+/// and the two headers bulk senders need are on the message as written.
+#[test]
+fn attachments_reply_to_and_headers_reach_the_server() {
+    let program = r#"link "mailer.so" as mail
+
+emit Config { host = "127.0.0.1", port = PORT, from = "sender@example.com", tls = "none" } to mail get c
+assert c.ok
+
+emit Send {
+    recipient = "donor@example.com"
+    subject = "July"
+    html = "<p>news</p>"
+    reply_to = "team@example.com"
+    attachments = [{ name = "july.pdf", content_type = "application/pdf", base64 = "JVBERi0xLjQK" }]
+    headers = {
+        "List-Unsubscribe" = "<https://example.com/u/abc>"
+        "List-Unsubscribe-Post" = "List-Unsubscribe=One-Click"
+    }
+} to mail get s
+assert s ∈ SendResult
+assert s.ok
+"#;
+    with_smtp("newsletter", program, |transcript| {
+        for expected in [
+            "Reply-To: team@example.com",
+            "List-Unsubscribe: <https://example.com/u/abc>",
+            "List-Unsubscribe-Post: List-Unsubscribe=One-Click",
+            "Content-Type: multipart/mixed",
+            "Content-Disposition: attachment; filename=\"july.pdf\"",
+            "Content-Type: application/pdf",
+            // The decoded bytes: lettre picks the transfer encoding, and
+            // for these nine ASCII bytes it is 7bit.
+            "%PDF-1.4",
+            "<p>news</p>",
+        ] {
+            assert!(
+                transcript.contains(expected),
+                "the message should carry `{expected}`:\n{transcript}"
+            );
+        }
+    });
+}

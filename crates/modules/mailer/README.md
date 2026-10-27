@@ -26,7 +26,7 @@ emit Send {
 
 ```
 Config { host, port?, username?, password?, from, tls? } → ConfigResult { ok }
-Send   { recipient, subject?, text?, html?, from?, cc?, bcc? } → SendResult { ok }
+Send   { recipient, subject?, text?, html?, from?, cc?, bcc?, reply_to?, attachments?, headers? } → SendResult { ok }
 ```
 
 `Config` is the setup particle — `Send` is an `Exception` until it has run.
@@ -45,6 +45,26 @@ Send   { recipient, subject?, text?, html?, from?, cc?, bcc? } → SendResult { 
 | `subject` | defaults to `""` |
 | `text` / `html` | the body. Give `html` and it's sent as HTML; `text` otherwise; neither sends an empty body |
 | `from` | overrides the `Config` default for this one message |
+| `reply_to` | a string, or an array of strings: where replies go, when not to `from` |
+| `attachments` | `[{ name, content_type, base64 }]`: each a part of its own, sent as the bytes the base64 decodes to. A missing field, a `content_type` that is not a media type, or base64 that does not decode is an `Exception` naming it |
+| `headers` | `{ "List-Unsubscribe" = "<https://…>" }`: headers added as written. A name must be printable with no colon or space, and a value one line, so a value cannot smuggle in a header of its own |
+
+A newsletter to a list needs both of the headers Gmail and Yahoo ask of bulk
+senders, and an attachment if that is how it goes out:
+
+```code
+emit Send {
+    recipient = donor.email
+    subject = "July"
+    html = page
+    reply_to = "team@example.org"
+    attachments = [{ name = "july.pdf", content_type = "application/pdf", base64 = pdf }]
+    headers = {
+        "List-Unsubscribe" = "<https://example.org/unsubscribe/$token>"
+        "List-Unsubscribe-Post" = "List-Unsubscribe=One-Click"
+    }
+} to mail get sent
+```
 
 ## Errors
 

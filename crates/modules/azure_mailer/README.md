@@ -30,7 +30,7 @@ or `Exception { source, message, _request_id }` through the inbound ring.
 
 ```
 Config { connection_string, from }                             → ConfigResult { ok }
-Send   { recipient, subject?, text?, html?, from?, cc?, bcc?, later? }  → SendResult   { ok, operation }
+Send   { recipient, subject?, text?, html?, from?, cc?, bcc?, reply_to?, attachments?, headers?, later? }  → SendResult   { ok, operation }
 ```
 
 `Config` is the setup particle — `Send` is an `Exception` until it has run.
@@ -45,6 +45,16 @@ request to a worker thread.
 `Send`'s fields are [`mailer`](../mailer)'s, and that is the point — see
 below. `operation` on the result is Azure's id for the send, which is how a
 delivery is followed up afterwards.
+
+`reply_to`, `attachments` and `headers` go to Azure as `replyTo`,
+`attachments` (`contentInBase64`, passed as written once it is checked to
+decode) and `headers`, and are refused the way `mailer` refuses them, before
+anything is sent. Azure takes **about 10 MB per message**, attachments
+included, and its own list of attachment types; a message over the limit or
+of a type it will not carry comes back as its refusal. A newsletter's PDF is
+well inside it. The headers bulk senders need (`List-Unsubscribe`, and
+`List-Unsubscribe-Post = "List-Unsubscribe=One-Click"`) are the program's to
+send; this module adds none of its own.
 
 ## `Send` is `mailer`'s, field for field
 

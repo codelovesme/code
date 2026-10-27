@@ -39,6 +39,35 @@ assert drained.count = 2
 emit Outbox {} to mailer get after
 assert after.count = 0
 
+| A newsletter: the PDF attached, replies to a real mailbox, and the two
+| headers bulk senders need. The outbox keeps what a test asserts on.
+emit Send {
+    recipient = "donor@x.test"
+    subject = "July"
+    html = "<p>news</p>"
+    reply_to = "team@x.test"
+    attachments = [{ name = "july.pdf", content_type = "application/pdf", base64 = "JVBERi0xLjQK" }]
+    headers = {
+        "List-Unsubscribe" = "<https://x.test/u/abc>"
+        "List-Unsubscribe-Post" = "List-Unsubscribe=One-Click"
+    }
+} to mailer get news
+assert news.ok
+emit Outbox { clear = true } to mailer get sent
+assert sent.messages[0].reply_to = "team@x.test"
+assert sent.messages[0].attachments = [{ name = "july.pdf", content_type = "application/pdf", size = 9 }]
+assert sent.messages[0].headers["List-Unsubscribe"] = "<https://x.test/u/abc>"
+assert sent.messages[0].headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+
+| A broken attachment or header is refused, as the real modules refuse it,
+| and nothing reaches the outbox.
+emit Send { recipient = "a@x.test", attachments = [{ name = "a.pdf", content_type = "application/pdf" }] } to mailer get nobytes
+assert nobytes.message = "attachments[0] needs a non-empty string 'base64'"
+emit Send { recipient = "a@x.test", headers = { "X-Tag" = "a\nBcc: x@y.test" } } to mailer get injected
+assert injected.message = "headers.X-Tag must be one line"
+emit Outbox {} to mailer get none
+assert none.count = 0
+
 | A class this module does not handle is null.
 emit Verify {} to mailer get u
 assert u = null

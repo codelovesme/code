@@ -3,20 +3,26 @@
 //! Rust on [`code-native`].
 //!
 //! Same particles as `mailer` — `Config { host, from, … }` → `ConfigResult
-//! { ok }`, `Send { recipient, subject?, text?, html?, cc?, bcc? }` →
-//! `SendResult { ok }` — but `Send` files the message into an in-memory
-//! outbox rather than delivering it. Every SMTP field on `Config` is
-//! accepted and ignored.
+//! { ok }`, `Send { recipient, subject?, text?, html?, cc?, bcc?, reply_to?,
+//! attachments?, headers? }` → `SendResult { ok }` — but `Send` files the
+//! message into an in-memory outbox rather than delivering it. Every SMTP
+//! field on `Config` is accepted and ignored. Attachments and headers are
+//! checked as `mailer` and `azure_mailer` check them, so a broken one fails
+//! here too.
 //!
 //! One handler beyond `mailer`'s surface, for tests:
 //!
 //! - `Outbox {}` → `Outbox { messages, count }` — everything `Send` has
-//!   captured since load, newest last. `Outbox { clear = true }` empties it
+//!   captured since load, newest last. A message is `SentMessage { from,
+//!   recipient, cc, bcc, reply_to, subject, body, attachments, headers }`;
+//!   `attachments` is `[{ name, content_type, size }]` (`size` in decoded
+//!   bytes), `headers` the object as sent. `Outbox { clear = true }` empties it
 //!   after reading.
 //!
 //! `code_release` needs no code here — `code-native` links the vendored
 //! `runtime.c` into the cdylib and re-exports it.
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use code_native::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -27,9 +33,13 @@ struct Sent {
     recipient: String,
     cc: String,
     bcc: String,
+    reply_to: String,
     subject: String,
     body: String,
     html: bool,
+    /// `(name, content_type, decoded size)`.
+    attachments: Vec<(String, String, usize)>,
+    headers: Vec<(String, String)>,
 }
 
 static CONFIGURED: Mutex<Option<String>> = Mutex::new(None); // the `from` address
@@ -103,9 +113,12 @@ fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         recipient,
         cc: joined(particle, "cc"),
         bcc: joined(particle, "bcc"),
+        reply_to: joined(particle, "reply_to"),
         subject: opt(particle, "subject").unwrap_or_default(),
         body: html.or(text).unwrap_or("").to_string(),
         html: html.is_some(),
+        attachments: attachment_list(particle)?,
+        headers: header_list(particle)?,
     };
 
     if read_field_bool(particle, "later") == Some(true) {
@@ -187,14 +200,40 @@ fn outbox(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 }
 
 fn message_value(out: &mut CodeValue, m: &Sent) {
-    let mut b = SlotBuffer::new(7);
+    let mut b = SlotBuffer::new(10);
     borrowed_str(b.slot_mut(0), c"SentMessage");
     owned_str(b.slot_mut(1), &m.from);
     owned_str(b.slot_mut(2), &m.recipient);
     owned_str(b.slot_mut(3), &m.cc);
     owned_str(b.slot_mut(4), &m.bcc);
-    owned_str(b.slot_mut(5), &m.subject);
-    owned_str(b.slot_mut(6), &m.body);
+    owned_str(b.slot_mut(5), &m.reply_to);
+    owned_str(b.slot_mut(6), &m.subject);
+    owned_str(b.slot_mut(7), &m.body);
+
+    let mut files = SlotBuffer::new(m.attachments.len());
+    for (i, (name, content_type, size)) in m.attachments.iter().enumerate() {
+        let mut f = SlotBuffer::new(3);
+        owned_str(f.slot_mut(0), name);
+        owned_str(f.slot_mut(1), content_type);
+        number(f.slot_mut(2), *size as f64);
+        object(
+            files.slot_mut(i as i64),
+            &[c"name", c"content_type", c"size"],
+            &mut f,
+        );
+        f.release_all();
+    }
+    array(b.slot_mut(8), &mut files);
+    files.release_all();
+
+    let names: Vec<&str> = m.headers.iter().map(|(n, _)| n.as_str()).collect();
+    let mut values = SlotBuffer::new(m.headers.len());
+    for (i, (_, value)) in m.headers.iter().enumerate() {
+        owned_str(values.slot_mut(i as i64), value);
+    }
+    object_dyn(b.slot_mut(9), &names, &mut values);
+    values.release_all();
+
     object(
         out,
         &[
@@ -203,8 +242,11 @@ fn message_value(out: &mut CodeValue, m: &Sent) {
             c"recipient",
             c"cc",
             c"bcc",
+            c"reply_to",
             c"subject",
             c"body",
+            c"attachments",
+            c"headers",
         ],
         &mut b,
     );
@@ -228,6 +270,65 @@ fn opt(particle: &CodeValue, name: &str) -> Option<String> {
         .and_then(read_str)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+}
+
+/// `attachments = [{ name, content_type, base64 }]`, or absent — checked as
+/// the real modules check it, and kept as name, type and decoded size.
+fn attachment_list(particle: &CodeValue) -> Result<Vec<(String, String, usize)>, String> {
+    let list = match find_field(particle, "attachments") {
+        None => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Null => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Array => v,
+        Some(_) => {
+            return Err(
+                "'attachments' must be an array of { name, content_type, base64 }".to_string(),
+            )
+        }
+    };
+    array_elems(list)
+        .enumerate()
+        .map(|(i, item)| {
+            let field = |name: &str| {
+                (item.tag == CodeTag::Object)
+                    .then(|| find_field(item, name).and_then(read_str))
+                    .flatten()
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .ok_or_else(|| format!("attachments[{i}] needs a non-empty string '{name}'"))
+            };
+            let (name, content_type, base64) =
+                (field("name")?, field("content_type")?, field("base64")?);
+            let bytes = BASE64
+                .decode(base64.trim())
+                .map_err(|_| format!("attachments[{i}].base64 is not valid base64"))?;
+            Ok((name, content_type, bytes.len()))
+        })
+        .collect()
+}
+
+/// `headers = { "List-Unsubscribe" = "<…>" }`, or absent — names as RFC 5322
+/// has them, values on one line, as the real modules require.
+fn header_list(particle: &CodeValue) -> Result<Vec<(String, String)>, String> {
+    let headers = match find_field(particle, "headers") {
+        None => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Null => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Object => v,
+        Some(_) => return Err("'headers' must be an object of string values".to_string()),
+    };
+    object_entries(headers)
+        .filter(|(name, _)| *name != "_class")
+        .map(|(name, value)| {
+            if name.is_empty() || !name.bytes().all(|b| (33..=126).contains(&b) && b != b':') {
+                return Err(format!("headers: '{name}' is not a header name"));
+            }
+            let value =
+                read_str(value).ok_or_else(|| format!("headers.{name} must be a string"))?;
+            if value.contains(['\r', '\n']) {
+                return Err(format!("headers.{name} must be one line"));
+            }
+            Ok((name.to_string(), value.to_string()))
+        })
+        .collect()
 }
 
 /// A `recipient`/`cc`/`bcc` field — a string, or an array of strings —
