@@ -11,10 +11,13 @@
 //!   `{auth_url}?state=…&redirect_uri=…&scope=…`, pointing at whatever
 //!   `auth_url` was configured (a local mock-provider page, typically).
 //! - `ExchangeCode { code }` → `Identity { sub, email, name, picture,
-//!   access_token, refresh_token }` — the identity comes **from the code**:
-//!   a URL-safe base64 of JSON `{ sub, email, name?, picture? }` if the code
-//!   is one, otherwise a deterministic identity derived from the code
-//!   string. No HTTP either way.
+//!   access_token, refresh_token, id_token, claims }` — the identity comes
+//!   **from the code**: a URL-safe base64 of a JSON object with a `sub` if
+//!   the code is one, otherwise a deterministic identity derived from the
+//!   code string. No HTTP either way. `claims` is that whole object (so a
+//!   test can sign in with `roles`, or with `preferred_username` and no
+//!   `email`, as Entra ID does), or `{ sub, email }` for a plain code;
+//!   `id_token` is an unsigned JWT (`alg: none`) carrying it.
 //!
 //! `code_release` needs no code here — `code-native` links the vendored
 //! `runtime.c` into the cdylib and re-exports it.
@@ -137,9 +140,14 @@ fn exchange_code(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String
         .as_ref()
         .ok_or(NOT_CONFIGURED)?;
 
-    let (sub, email, name, picture) = identity_from_code(code);
+    let (sub, email, name, picture, claims) = identity_from_code(code);
+    let id_token = format!(
+        "{}.{}.",
+        URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#),
+        URL_SAFE_NO_PAD.encode(claims.to_string())
+    );
 
-    let mut b = SlotBuffer::new(7);
+    let mut b = SlotBuffer::new(9);
     borrowed_str(b.slot_mut(0), c"Identity");
     owned_str(b.slot_mut(1), &sub);
     owned_str(b.slot_mut(2), &email);
@@ -147,6 +155,8 @@ fn exchange_code(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String
     owned_str(b.slot_mut(4), &picture);
     owned_str(b.slot_mut(5), &format!("mock-access-{sub}"));
     owned_str(b.slot_mut(6), &format!("mock-refresh-{sub}"));
+    owned_str(b.slot_mut(7), &id_token);
+    from_json(b.slot_mut(8), &claims);
     object(
         out,
         &[
@@ -157,6 +167,8 @@ fn exchange_code(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String
             c"picture",
             c"access_token",
             c"refresh_token",
+            c"id_token",
+            c"claims",
         ],
         &mut b,
     );
@@ -164,17 +176,17 @@ fn exchange_code(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String
     Ok(())
 }
 
-/// `(sub, email, name, picture)` recovered from the code: a base64-JSON
-/// blob if the code is one, otherwise synthesised from the code string so
-/// any code works in a test.
-fn identity_from_code(code: &str) -> (String, String, String, String) {
+/// `(sub, email, name, picture, claims)` recovered from the code: a
+/// base64-JSON blob if the code is one, otherwise synthesised from the code
+/// string so any code works in a test.
+fn identity_from_code(code: &str) -> (String, String, String, String, Json) {
     for engine in [URL_SAFE_NO_PAD, URL_SAFE, STANDARD] {
         if let Ok(bytes) = engine.decode(code.trim()) {
             if let Ok(json) = serde_json::from_slice::<Json>(&bytes) {
                 let s = |k: &str| json.get(k).and_then(Json::as_str).unwrap_or("").to_string();
-                let (sub, email) = (s("sub"), s("email"));
-                if !sub.is_empty() && !email.is_empty() {
-                    return (sub, email, s("name"), s("picture"));
+                let sub = s("sub");
+                if json.is_object() && !sub.is_empty() {
+                    return (sub, s("email"), s("name"), s("picture"), json);
                 }
             }
         }
@@ -183,12 +195,35 @@ fn identity_from_code(code: &str) -> (String, String, String, String) {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
-    (
-        format!("mock|{slug}"),
-        format!("{slug}@mock.test"),
-        String::new(),
-        String::new(),
-    )
+    let (sub, email) = (format!("mock|{slug}"), format!("{slug}@mock.test"));
+    let claims = serde_json::json!({ "sub": sub, "email": email });
+    (sub, email, String::new(), String::new(), claims)
+}
+
+fn from_json(out: &mut CodeValue, v: &Json) {
+    match v {
+        Json::Null => null(out),
+        Json::Bool(b) => boolean(out, *b),
+        Json::Number(n) => number(out, n.as_f64().unwrap_or(0.0)),
+        Json::String(s) => owned_str(out, s),
+        Json::Array(items) => {
+            let mut buf = SlotBuffer::new(items.len());
+            for (i, item) in items.iter().enumerate() {
+                from_json(buf.slot_mut(i as i64), item);
+            }
+            array(out, &mut buf);
+            buf.release_all();
+        }
+        Json::Object(map) => {
+            let keys: Vec<&str> = map.keys().map(String::as_str).collect();
+            let mut buf = SlotBuffer::new(map.len());
+            for (i, value) in map.values().enumerate() {
+                from_json(buf.slot_mut(i as i64), value);
+            }
+            object_dyn(out, &keys, &mut buf);
+            buf.release_all();
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

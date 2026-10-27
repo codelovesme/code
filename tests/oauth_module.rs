@@ -22,8 +22,29 @@ fn build_module() -> PathBuf {
     modules::build_so("oauth")
 }
 
-/// Serve exactly two requests — `POST /token`, then `GET /userinfo` — with
-/// canned JSON, and hang up. Enough of HTTP/1.1 for `ureq` to be happy.
+/// The two answers a provider with a userinfo endpoint gives.
+const GOOGLE_LIKE: [(&str, &str); 2] = [
+    (
+        "POST /token",
+        r#"{"access_token":"at-123","refresh_token":"rt-456","token_type":"Bearer"}"#,
+    ),
+    (
+        "GET /userinfo",
+        r#"{"sub":"user-9","email":"u@example.com","name":"Ada L","picture":"https://img/u.png"}"#,
+    ),
+];
+
+/// Entra ID's shape: no userinfo asked for, and the roles only in the
+/// id_token. Its payload is
+/// `{"sub":"e-1","name":"Karla","preferred_username":"karla@hfc.example","roles":["hfc_admin"],"tid":"t-7"}`,
+/// with no `email`, as Entra sends for some accounts.
+const ENTRA_LIKE: [(&str, &str); 1] = [(
+    "POST /token",
+    r#"{"access_token":"at-e","token_type":"Bearer","id_token":"eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJlLTEiLCJuYW1lIjoiS2FybGEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJrYXJsYUBoZmMuZXhhbXBsZSIsInJvbGVzIjpbImhmY19hZG1pbiJdLCJ0aWQiOiJ0LTcifQ.c2lnbmF0dXJl"}"#,
+)];
+
+/// Serve exactly the requests given — `POST /token`, then `GET /userinfo`
+/// when there is one — with canned JSON, and hang up. Enough of HTTP/1.1 for `ureq` to be happy.
 ///
 /// Each request is read whole before the answer goes out, and the answer is
 /// ended with a half-close rather than by dropping the socket. Hanging up
@@ -33,20 +54,11 @@ fn build_module() -> PathBuf {
 /// (2026-10-24). A connection that never comes no longer blocks forever
 /// either; after a deadline the server gives up, and the test fails on the
 /// program's own answer instead of hanging.
-fn fake_provider(listener: TcpListener) {
+fn fake_provider(listener: TcpListener, answers: &[(&str, &str)]) {
     listener
         .set_nonblocking(true)
         .expect("nonblocking listener");
-    for (path_check, json) in [
-        (
-            "POST /token",
-            r#"{"access_token":"at-123","refresh_token":"rt-456","token_type":"Bearer"}"#,
-        ),
-        (
-            "GET /userinfo",
-            r#"{"sub":"user-9","email":"u@example.com","name":"Ada L","picture":"https://img/u.png"}"#,
-        ),
-    ] {
+    for &(path_check, json) in answers {
         let Some(mut stream) = accept_within(&listener, Duration::from_secs(20)) else {
             return;
         };
@@ -123,7 +135,12 @@ fn respond(stream: &mut TcpStream, body: &str) {
     let _ = stream.flush();
 }
 
-fn with_provider(tag: &str, program: &str, check: impl Fn(bool)) {
+fn with_provider(
+    tag: &str,
+    answers: &'static [(&'static str, &'static str)],
+    program: &str,
+    check: impl Fn(bool),
+) {
     let dir = std::env::temp_dir().join(format!("code-oauth-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("create test directory");
@@ -132,7 +149,7 @@ fn with_provider(tag: &str, program: &str, check: impl Fn(bool)) {
     for mode in ["run", "build"] {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
         let port = listener.local_addr().unwrap().port();
-        let server = thread::spawn(move || fake_provider(listener));
+        let server = thread::spawn(move || fake_provider(listener, answers));
 
         let source = dir.join(format!("{mode}.code"));
         fs::write(&source, program.replace("PORT", &port.to_string())).expect("write program");
@@ -184,7 +201,42 @@ assert id.picture = "https://img/u.png"
 assert id.access_token = "at-123"
 assert id.refresh_token = "rt-456"
 "#;
-    with_provider("exchange", program, |ok| {
+    with_provider("exchange", &GOOGLE_LIKE, program, |ok| {
         assert!(ok, "the program should exit zero — ExchangeCode round trip");
+    });
+}
+
+/// Entra ID: the id_token comes back raw and decoded, its roles readable,
+/// and with no userinfo endpoint the identity is read from its claims —
+/// `email` empty where Entra left it out, the address in
+/// `preferred_username` for the caller to take.
+#[test]
+fn exchange_code_returns_the_id_token_and_its_claims() {
+    let program = r#"link "oauth.so" as oauth
+
+emit Config {
+    client_id = "cid"
+    client_secret = "sec"
+    redirect_uri = "https://app/cb"
+    auth_url = "http://127.0.0.1:PORT/auth"
+    token_url = "http://127.0.0.1:PORT/token"
+    scope = "openid email profile"
+} to oauth get c
+assert c.ok
+
+emit ExchangeCode { code = "auth-code-here" } to oauth get id
+assert id ∈ Identity
+assert id.access_token = "at-e"
+assert id.refresh_token = ""
+assert id.sub = "e-1"
+assert id.name = "Karla"
+assert id.email = ""
+assert id.claims.preferred_username = "karla@hfc.example"
+assert id.claims.roles = ["hfc_admin"]
+assert id.claims.tid = "t-7"
+assert id.id_token[0, 20) = "eyJhbGciOiJSUzI1NiIs"
+"#;
+    with_provider("entra", &ENTRA_LIKE, program, |ok| {
+        assert!(ok, "the program should exit zero — id_token claims read");
     });
 }

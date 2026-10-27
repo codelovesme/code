@@ -25,15 +25,21 @@ emit ExchangeCode { code = "the-code" } to oauth get id
 `ExchangeCode` never calls a token endpoint. The identity comes **from the
 code**:
 
-- If `code` is a base64 (URL-safe or standard) of JSON with `sub` and
-  `email` — `{ "sub": "u-1", "email": "u@x.com", "name": "…", "picture": "…" }`
-  — those fields are returned. This is what a mock-provider page produces:
+- If `code` is a base64 (URL-safe or standard) of a JSON object with a
+  `sub` — `{ "sub": "u-1", "email": "u@x.com", "name": "…", "picture": "…" }`
+  — those fields are returned, `email` empty if it has none. This is what a mock-provider page produces:
   it lets the tester pick an identity, then encodes it into the redirect.
 - Otherwise the identity is synthesised from the code string:
   `sub = "mock|<code>"`, `email = "<code>@mock.test"`.
 
 `access_token` / `refresh_token` are `"mock-access-<sub>"` /
 `"mock-refresh-<sub>"`.
+
+`claims` is the decoded object whole, or `{ sub, email }` for a plain
+code, so a test signs in with whatever the real provider's id_token would
+carry: Entra ID's `{ "sub": …, "preferred_username": …, "roles": ["hfc_admin"] }`
+gives `claims.roles`, and an empty `email`, as Entra does. `id_token` is an
+unsigned JWT (`alg: none`) of the same claims.
 
 ## Build
 

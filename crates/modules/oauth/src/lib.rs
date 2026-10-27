@@ -16,12 +16,28 @@
 //!   authorization URL to redirect the user to. `extra` is `{ key = "value" }`
 //!   for provider-specific parameters (`access_type = "offline"` for Google).
 //! - `ExchangeCode { code }` → `Identity { sub, email, name, picture,
-//!   access_token, refresh_token }` — trade the code for tokens, then fetch
-//!   userinfo if `userinfo_url` is set (otherwise `sub`/`email`/… are empty).
+//!   access_token, refresh_token, id_token, claims }` — trade the code for
+//!   tokens, then fetch userinfo if `userinfo_url` is set. Without it,
+//!   `sub`/`email`/`name`/`picture` come from the id_token's claims, or are
+//!   empty when there is none.
+//!
+//! `id_token` is the raw token the provider returned (`null` when it sent
+//! none) and `claims` its decoded payload, whole: `roles`, `tid`, `oid`,
+//! `preferred_username` are the caller's to read. Microsoft Entra ID puts a
+//! user's app roles there and nowhere else, and leaves `email` empty for some
+//! accounts, with the address in `preferred_username`.
+//!
+//! **The id_token's signature is not checked.** That is safe here and only
+//! here: it came straight from the token endpoint, over TLS, in answer to
+//! this client's own secret (OpenID Connect Core §3.1.3.7). A token that
+//! arrived any other way — from a browser, a header, a query string — must be
+//! verified against the provider's keys before a single claim is believed.
 //!
 //! `code_release` needs no code here — `code-native` links the vendored
 //! `runtime.c` into the cdylib and re-exports it.
 
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use code_native::*;
 use serde_json::Value as Json;
 use std::sync::Mutex;
@@ -167,20 +183,21 @@ fn exchange_code(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String
         .unwrap_or("")
         .to_string();
 
-    let (sub, email, name, picture) = match &cfg.userinfo_url {
-        Some(url) => {
-            let info = get_bearer(url, &access_token)?;
-            (
-                claim(&info, "sub"),
-                claim(&info, "email"),
-                claim(&info, "name"),
-                claim(&info, "picture"),
-            )
-        }
-        None => (String::new(), String::new(), String::new(), String::new()),
-    };
+    let id_token = token.get("id_token").and_then(Json::as_str);
+    let claims = id_token.map(payload).transpose()?;
 
-    let mut b = SlotBuffer::new(7);
+    let info = match &cfg.userinfo_url {
+        Some(url) => get_bearer(url, &access_token)?,
+        None => claims.clone().unwrap_or(Json::Null),
+    };
+    let (sub, email, name, picture) = (
+        claim(&info, "sub"),
+        claim(&info, "email"),
+        claim(&info, "name"),
+        claim(&info, "picture"),
+    );
+
+    let mut b = SlotBuffer::new(9);
     borrowed_str(b.slot_mut(0), c"Identity");
     owned_str(b.slot_mut(1), &sub);
     owned_str(b.slot_mut(2), &email);
@@ -188,6 +205,14 @@ fn exchange_code(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String
     owned_str(b.slot_mut(4), &picture);
     owned_str(b.slot_mut(5), &access_token);
     owned_str(b.slot_mut(6), &refresh_token);
+    match id_token {
+        Some(t) => owned_str(b.slot_mut(7), t),
+        None => null(b.slot_mut(7)),
+    }
+    match &claims {
+        Some(c) => from_json(b.slot_mut(8), c),
+        None => null(b.slot_mut(8)),
+    }
     object(
         out,
         &[
@@ -198,6 +223,8 @@ fn exchange_code(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String
             c"picture",
             c"access_token",
             c"refresh_token",
+            c"id_token",
+            c"claims",
         ],
         &mut b,
     );
@@ -281,6 +308,51 @@ fn claim(info: &Json, key: &str) -> String {
         .to_string()
 }
 
+/// The claims of a JWT: its middle segment, base64url JSON. The signature is
+/// not looked at — see the module docs for why that is safe for a token from
+/// the token endpoint, and only for one.
+fn payload(token: &str) -> Result<Json, String> {
+    let middle = token
+        .split('.')
+        .nth(1)
+        .ok_or("the id_token is not a JWT: it has no payload segment")?;
+    let bytes = URL_SAFE_NO_PAD
+        .decode(middle.trim_end_matches('='))
+        .map_err(|_| "the id_token's payload is not base64url".to_string())?;
+    let claims: Json = serde_json::from_slice(&bytes)
+        .map_err(|_| "the id_token's payload is not JSON".to_string())?;
+    if !claims.is_object() {
+        return Err("the id_token's payload is not a JSON object".to_string());
+    }
+    Ok(claims)
+}
+
+fn from_json(out: &mut CodeValue, v: &Json) {
+    match v {
+        Json::Null => null(out),
+        Json::Bool(b) => boolean(out, *b),
+        Json::Number(n) => number(out, n.as_f64().unwrap_or(0.0)),
+        Json::String(s) => owned_str(out, s),
+        Json::Array(items) => {
+            let mut buf = SlotBuffer::new(items.len());
+            for (i, item) in items.iter().enumerate() {
+                from_json(buf.slot_mut(i as i64), item);
+            }
+            array(out, &mut buf);
+            buf.release_all();
+        }
+        Json::Object(map) => {
+            let keys: Vec<&str> = map.keys().map(String::as_str).collect();
+            let mut buf = SlotBuffer::new(map.len());
+            for (i, value) in map.values().enumerate() {
+                from_json(buf.slot_mut(i as i64), value);
+            }
+            object_dyn(out, &keys, &mut buf);
+            buf.release_all();
+        }
+    }
+}
+
 /// Percent-encode per RFC 3986: only unreserved characters pass through.
 fn encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -297,7 +369,7 @@ fn encode(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::encode;
+    use super::{encode, payload};
 
     #[test]
     fn encode_leaves_unreserved_and_escapes_the_rest() {
@@ -306,6 +378,21 @@ mod tests {
         assert_eq!(
             encode("https://app/cb?x=1"),
             "https%3A%2F%2Fapp%2Fcb%3Fx%3D1"
+        );
+    }
+
+    #[test]
+    fn payload_reads_the_middle_segment_and_refuses_what_is_not_a_jwt() {
+        // {"sub":"u1","roles":["hfc_admin"]} — no padding, as JWTs are sent.
+        let token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1MSIsInJvbGVzIjpbImhmY19hZG1pbiJdfQ.c2ln";
+        let claims = payload(token).unwrap();
+        assert_eq!(claims["sub"], "u1");
+        assert_eq!(claims["roles"][0], "hfc_admin");
+        assert!(payload("no-dots").is_err());
+        assert!(payload("a.!!!.c").is_err());
+        assert!(
+            payload("a.WzFd.c").is_err(),
+            "[1] is JSON but not an object"
         );
     }
 }
