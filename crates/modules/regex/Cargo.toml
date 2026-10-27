@@ -3,7 +3,7 @@
 
 [package]
 name = "regex"
-version = "2.19.0"
+version = "2.20.0"
 edition = "2021"
 description = "The `regex` native module for Code — Match, Find, Replace and Split by pattern, on a linear-time engine."
 license = "GPL-3.0"
