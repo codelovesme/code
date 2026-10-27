@@ -18,3 +18,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 code-native = { path = "../../code-native" }
+# To refuse an attachment that does not decode, as the real modules do.
+base64 = "0.22"

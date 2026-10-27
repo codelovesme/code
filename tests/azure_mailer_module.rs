@@ -113,6 +113,12 @@ emit Send {{
     cc = ["one@example.com", "two@example.com"]
     subject = "Welcome"
     html = "<p>hi</p>"
+    reply_to = "team@example.com"
+    attachments = [{{ name = "july.pdf", content_type = "application/pdf", base64 = "JVBERi0xLjQK" }}]
+    headers = {{
+        "List-Unsubscribe" = "<https://example.com/u/abc>"
+        "List-Unsubscribe-Post" = "List-Unsubscribe=One-Click"
+    }}
 }} to mail get r
 assert r ∈ SendResult
 assert r.ok
@@ -178,6 +184,18 @@ assert arrived[0].id = sent.value
         assert_eq!(sent["content"]["html"], "<p>hi</p>");
         assert_eq!(sent["recipients"]["to"][0]["address"], "reader@example.com");
         assert_eq!(sent["recipients"]["cC"][1]["address"], "two@example.com");
+        assert_eq!(sent["replyTo"][0]["address"], "team@example.com");
+        assert_eq!(sent["attachments"][0]["name"], "july.pdf");
+        assert_eq!(sent["attachments"][0]["contentType"], "application/pdf");
+        assert_eq!(sent["attachments"][0]["contentInBase64"], "JVBERi0xLjQK");
+        assert_eq!(
+            sent["headers"]["List-Unsubscribe"],
+            "<https://example.com/u/abc>"
+        );
+        assert_eq!(
+            sent["headers"]["List-Unsubscribe-Post"],
+            "List-Unsubscribe=One-Click"
+        );
 
         // The signature, recomputed from the same key. This is what a real
         // service checks, and the only thing here that a local run can prove.

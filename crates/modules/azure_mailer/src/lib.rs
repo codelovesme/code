@@ -17,8 +17,11 @@
 //!   particle. `connection_string` is the one Azure hands out,
 //!   `endpoint=https://….communication.azure.com/;accesskey=…`; `from` is a
 //!   sender on a domain linked to that resource.
-//! - `Send { recipient, subject?, text?, html?, from?, cc?, bcc? }` →
-//!   `SendResult { ok, operation }`.
+//! - `Send { recipient, subject?, text?, html?, from?, cc?, bcc?, reply_to?,
+//!   attachments?, headers?, later? }` → `SendResult { ok, operation }`.
+//!   `attachments` is `[{ name, content_type, base64 }]`, `headers` is
+//!   `{ "List-Unsubscribe" = "<…>" }`, `reply_to` an address or a list. A
+//!   malformed one is an `Exception` naming it, before anything is sent.
 //!
 //! Requests are signed with Azure's HMAC-SHA256 scheme: the access key signs
 //! the method, the path, the date, the host and a hash of the body, so a
@@ -299,12 +302,40 @@ fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         recipients["bCC"] = addresses(&bcc);
     }
 
-    let body = json!({
+    let mut message = json!({
         "senderAddress": from,
         "content": content,
         "recipients": recipients,
-    })
-    .to_string();
+    });
+    let reply_to = address_list(particle, "reply_to")?;
+    if !reply_to.is_empty() {
+        message["replyTo"] = addresses(&reply_to);
+    }
+    let attachments = attachment_list(particle)?;
+    if !attachments.is_empty() {
+        message["attachments"] = Json::Array(
+            attachments
+                .iter()
+                .map(|a| {
+                    json!({
+                        "name": a.name,
+                        "contentType": a.content_type,
+                        "contentInBase64": a.base64,
+                    })
+                })
+                .collect(),
+        );
+    }
+    let headers = header_list(particle)?;
+    if !headers.is_empty() {
+        message["headers"] = Json::Object(
+            headers
+                .into_iter()
+                .map(|(name, value)| (name, Json::String(value)))
+                .collect(),
+        );
+    }
+    let body = message.to_string();
 
     let path = format!("/emails:send?api-version={API_VERSION}");
     let date = httpdate::fmt_http_date(SystemTime::now());
@@ -507,6 +538,77 @@ fn address_list(particle: &CodeValue, field: &str) -> Result<Vec<String>, String
             .collect(),
         Some(_) => Err(format!("'{field}' must be a string or an array of strings")),
     }
+}
+
+struct Attachment {
+    name: String,
+    content_type: String,
+    /// Checked to decode, and sent as written: Azure wants base64 too.
+    base64: String,
+}
+
+/// `attachments = [{ name, content_type, base64 }]`, or absent. Each field is
+/// required and the content must decode, so a broken attachment is refused
+/// here, by name, rather than by Azure or by the reader's mail program.
+fn attachment_list(particle: &CodeValue) -> Result<Vec<Attachment>, String> {
+    let list = match find_field(particle, "attachments") {
+        None => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Null => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Array => v,
+        Some(_) => {
+            return Err(
+                "'attachments' must be an array of { name, content_type, base64 }".to_string(),
+            )
+        }
+    };
+    array_elems(list)
+        .enumerate()
+        .map(|(i, item)| {
+            let field = |name: &str| {
+                (item.tag == CodeTag::Object)
+                    .then(|| find_field(item, name).and_then(read_str))
+                    .flatten()
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .ok_or_else(|| format!("attachments[{i}] needs a non-empty string '{name}'"))
+            };
+            let attachment = Attachment {
+                name: field("name")?,
+                content_type: field("content_type")?,
+                base64: field("base64")?,
+            };
+            BASE64
+                .decode(attachment.base64.trim())
+                .map_err(|_| format!("attachments[{i}].base64 is not valid base64"))?;
+            Ok(attachment)
+        })
+        .collect()
+}
+
+/// `headers = { "List-Unsubscribe" = "<…>" }`, or absent: header names as
+/// RFC 5322 has them (printable, no colon or space) and values on one line.
+/// A line break in a value would start a header of the caller's choosing.
+fn header_list(particle: &CodeValue) -> Result<Vec<(String, String)>, String> {
+    let headers = match find_field(particle, "headers") {
+        None => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Null => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Object => v,
+        Some(_) => return Err("'headers' must be an object of string values".to_string()),
+    };
+    object_entries(headers)
+        .filter(|(name, _)| *name != "_class")
+        .map(|(name, value)| {
+            if name.is_empty() || !name.bytes().all(|b| (33..=126).contains(&b) && b != b':') {
+                return Err(format!("headers: '{name}' is not a header name"));
+            }
+            let value =
+                read_str(value).ok_or_else(|| format!("headers.{name} must be a string"))?;
+            if value.contains(['\r', '\n']) {
+                return Err(format!("headers.{name} must be one line"));
+            }
+            Ok((name.to_string(), value.to_string()))
+        })
+        .collect()
 }
 
 fn addresses(list: &[String]) -> Json {

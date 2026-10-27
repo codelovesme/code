@@ -34,6 +34,16 @@ emit ExchangeCode { code = "eyJzdWIiOiJ1LTkiLCJlbWFpbCI6ImFkYUBleC5jb20iLCJuYW1l
 assert id2.sub = "u-9"
 assert id2.email = "ada@ex.com"
 assert id2.name = "Ada"
+assert id2.claims.name = "Ada"
+
+| Entra's shape: roles, and the address in preferred_username rather than
+| email. The claims come back whole, and inside an unsigned id_token too.
+emit ExchangeCode { code = "eyJzdWIiOiJlLTEiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJrQGhmYy5leGFtcGxlIiwicm9sZXMiOlsiaGZjX2FkbWluIl19" } to oauth get entra
+assert entra.sub = "e-1"
+assert entra.email = ""
+assert entra.claims.preferred_username = "k@hfc.example"
+assert entra.claims.roles = ["hfc_admin"]
+assert entra.id_token[0, 20) = "eyJhbGciOiJub25lIn0."
 
 emit Revoke {} to oauth get u
 assert u = null

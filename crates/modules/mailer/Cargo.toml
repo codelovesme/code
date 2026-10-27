@@ -23,3 +23,5 @@ lettre = { version = "0.11", default-features = false, features = [
     "rustls-tls",
     "hostname",
 ] }
+# An attachment arrives as base64 and goes into the message as bytes.
+base64 = "0.22"

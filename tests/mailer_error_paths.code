@@ -32,6 +32,15 @@ assert c.ok
 emit Send { recipient = "definitely not an email" } to mail get badrcpt
 assert badrcpt ∈ Exception
 
+| So is a broken attachment, by the field it gets wrong, and a header that
+| would smuggle in a second one.
+emit Send { recipient = "to@example.com", attachments = [{ name = "a.pdf", content_type = "application/pdf", base64 = "not base64!" }] } to mail get badpdf
+assert badpdf.message = "attachments[0].base64 is not valid base64"
+emit Send { recipient = "to@example.com", attachments = [{ name = "a.pdf", content_type = "no slash", base64 = "JVBERi0xLjQK" }] } to mail get badtype
+assert badtype.message = "attachments[0].content_type is not a media type"
+emit Send { recipient = "to@example.com", headers = { "X-Tag" = "a\nBcc: x@y.com" } } to mail get injected
+assert injected.message = "headers.X-Tag must be one line"
+
 | A well-formed Send with nothing listening: an Exception, not a hang or a
 | crash — the whole point of a module.
 emit Send { recipient = "to@example.com", subject = "hi", text = "body" } to mail get refused

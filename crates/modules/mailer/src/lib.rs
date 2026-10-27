@@ -11,16 +11,21 @@
 //! - `Config { host, port?, username?, password?, from, tls? }` →
 //!   `ConfigResult { ok }` — the setup particle: the SMTP transport. `Send`
 //!   is an `Exception` until it has run.
-//! - `Send { recipient, subject?, text?, html?, from?, cc?, bcc? }` →
-//!   `SendResult { ok }` — one message. `recipient`/`cc`/`bcc` are a string or an
-//!   array of strings. A message the server rejects is an `Exception`
-//!   carrying its reply.
+//! - `Send { recipient, subject?, text?, html?, from?, cc?, bcc?, reply_to?,
+//!   attachments?, headers? }` → `SendResult { ok }` — one message.
+//!   `recipient`/`cc`/`bcc`/`reply_to` are a string or an array of strings.
+//!   `attachments` is `[{ name, content_type, base64 }]` and `headers` an
+//!   object of one-line strings (`"List-Unsubscribe" = "<…>"`), the same
+//!   fields `azure_mailer` takes. A malformed one is an `Exception` naming
+//!   it; so is a message the server rejects, carrying its reply.
 //!
 //! `code_release` needs no code here — `code-native` links the vendored
 //! `runtime.c` into the cdylib and re-exports it.
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use code_native::*;
-use lettre::message::{header::ContentType, Mailbox, MessageBuilder};
+use lettre::message::header::{ContentType, HeaderName, HeaderValue};
+use lettre::message::{Attachment, Mailbox, MessageBuilder, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::transport::smtp::client::{Tls, TlsParameters};
 use lettre::{Message, SmtpTransport, Transport};
@@ -76,7 +81,9 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     from.parse::<Mailbox>()
         .map_err(|e| format!("'from' is not an email address: {e}"))?;
 
-    let tls_mode = find_field(particle, "tls").and_then(read_str).unwrap_or("starttls");
+    let tls_mode = find_field(particle, "tls")
+        .and_then(read_str)
+        .unwrap_or("starttls");
     let default_port = match tls_mode {
         "wrapper" => 465,
         _ => 587,
@@ -141,8 +148,8 @@ fn tls_params(host: &str) -> Result<TlsParameters, String> {
 // Send
 // ---------------------------------------------------------------------------
 
-/// `Send { recipient, subject?, text?, html?, from?, cc?, bcc? }` →
-/// `SendResult { ok }`.
+/// `Send { recipient, subject?, text?, html?, from?, cc?, bcc?, reply_to?,
+/// attachments?, headers? }` → `SendResult { ok }`.
 fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let guard = TRANSPORT.lock().unwrap_or_else(|e| e.into_inner());
     let transport = guard
@@ -158,9 +165,11 @@ fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
             .ok_or("mailer has no transport — send Config { host, from } first")?,
     };
 
-    let mut builder: MessageBuilder = Message::builder()
-        .from(mailbox(&from, "from")?)
-        .subject(find_field(particle, "subject").and_then(read_str).unwrap_or(""));
+    let mut builder: MessageBuilder = Message::builder().from(mailbox(&from, "from")?).subject(
+        find_field(particle, "subject")
+            .and_then(read_str)
+            .unwrap_or(""),
+    );
 
     for addr in address_list(particle, "recipient")? {
         builder = builder.to(addr);
@@ -171,15 +180,39 @@ fn send(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     for addr in address_list(particle, "bcc")? {
         builder = builder.bcc(addr);
     }
+    for addr in address_list(particle, "reply_to")? {
+        builder = builder.reply_to(addr);
+    }
+    for (name, value) in header_list(particle)? {
+        let name = HeaderName::new_from_ascii(name.clone())
+            .map_err(|_| format!("headers: '{name}' is not a header name"))?;
+        builder = builder.raw_header(HeaderValue::new(name, value));
+    }
+    let attachments = attachment_list(particle)?;
 
     let text = find_field(particle, "text").and_then(read_str);
     let html = find_field(particle, "html").and_then(read_str);
-    let message = match (text, html) {
-        (_, Some(html)) => builder
-            .header(ContentType::TEXT_HTML)
-            .body(html.to_string()),
-        (Some(text), None) => builder.body(text.to_string()),
-        (None, None) => builder.body(String::new()),
+    let message = if attachments.is_empty() {
+        match (text, html) {
+            (_, Some(html)) => builder
+                .header(ContentType::TEXT_HTML)
+                .body(html.to_string()),
+            (Some(text), None) => builder.body(text.to_string()),
+            (None, None) => builder.body(String::new()),
+        }
+    } else {
+        // The same body, as the first part of a mixed message, and each
+        // attachment after it.
+        let body = match (text, html) {
+            (_, Some(html)) => SinglePart::html(html.to_string()),
+            (Some(text), None) => SinglePart::plain(text.to_string()),
+            (None, None) => SinglePart::plain(String::new()),
+        };
+        let mut parts = MultiPart::mixed().singlepart(body);
+        for (name, content_type, bytes) in attachments {
+            parts = parts.singlepart(Attachment::new(name).body(bytes, content_type));
+        }
+        builder.multipart(parts)
     }
     .map_err(|e| format!("cannot build the message: {e}"))?;
 
@@ -206,6 +239,69 @@ fn require_str<'a>(particle: &'a CodeValue, name: &str, class: &str) -> Result<&
         .ok_or_else(|| format!("{class} requires a non-empty string '{name}'"))
 }
 
+/// `attachments = [{ name, content_type, base64 }]`, or absent. Each field is
+/// required and the content must decode, so a broken attachment is refused
+/// here, by name, rather than by the reader's mail program.
+fn attachment_list(particle: &CodeValue) -> Result<Vec<(String, ContentType, Vec<u8>)>, String> {
+    let list = match find_field(particle, "attachments") {
+        None => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Null => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Array => v,
+        Some(_) => {
+            return Err(
+                "'attachments' must be an array of { name, content_type, base64 }".to_string(),
+            )
+        }
+    };
+    array_elems(list)
+        .enumerate()
+        .map(|(i, item)| {
+            let field = |name: &str| {
+                (item.tag == CodeTag::Object)
+                    .then(|| find_field(item, name).and_then(read_str))
+                    .flatten()
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .ok_or_else(|| format!("attachments[{i}] needs a non-empty string '{name}'"))
+            };
+            let (name, content_type, base64) =
+                (field("name")?, field("content_type")?, field("base64")?);
+            let content_type = ContentType::parse(&content_type)
+                .map_err(|_| format!("attachments[{i}].content_type is not a media type"))?;
+            let bytes = BASE64
+                .decode(base64.trim())
+                .map_err(|_| format!("attachments[{i}].base64 is not valid base64"))?;
+            Ok((name, content_type, bytes))
+        })
+        .collect()
+}
+
+/// `headers = { "List-Unsubscribe" = "<…>" }`, or absent: header names as
+/// RFC 5322 has them (printable, no colon or space) and values on one line.
+/// A line break in a value would start a header of the caller's choosing.
+fn header_list(particle: &CodeValue) -> Result<Vec<(String, String)>, String> {
+    let headers = match find_field(particle, "headers") {
+        None => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Null => return Ok(Vec::new()),
+        Some(v) if v.tag == CodeTag::Object => v,
+        Some(_) => return Err("'headers' must be an object of string values".to_string()),
+    };
+    object_entries(headers)
+        .filter(|(name, _)| *name != "_class")
+        .map(|(name, value)| {
+            if name.is_empty() || !name.bytes().all(|b| (33..=126).contains(&b) && b != b':') {
+                return Err(format!("headers: '{name}' is not a header name"));
+            }
+            let value =
+                read_str(value).ok_or_else(|| format!("headers.{name} must be a string"))?;
+            if value.contains(['\r', '\n']) {
+                return Err(format!("headers.{name} must be one line"));
+            }
+            Ok((name.to_string(), value.to_string()))
+        })
+        .collect()
+}
+
 fn mailbox(addr: &str, field: &str) -> Result<Mailbox, String> {
     addr.parse()
         .map_err(|e| format!("'{field}' has a bad address '{addr}': {e}"))
@@ -219,7 +315,13 @@ fn address_list(particle: &CodeValue, field: &str) -> Result<Vec<Mailbox>, Strin
         None => Ok(Vec::new()),
         Some(v) if v.tag == CodeTag::Str => Ok(vec![mailbox(read_str(v).unwrap_or(""), field)?]),
         Some(v) if v.tag == CodeTag::Array => array_elems(v)
-            .map(|e| mailbox(read_str(e).ok_or_else(|| format!("every '{field}' address must be a string"))?, field))
+            .map(|e| {
+                mailbox(
+                    read_str(e)
+                        .ok_or_else(|| format!("every '{field}' address must be a string"))?,
+                    field,
+                )
+            })
             .collect(),
         Some(_) => Err(format!("'{field}' must be a string or an array of strings")),
     }

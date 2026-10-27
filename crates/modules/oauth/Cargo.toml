@@ -19,3 +19,5 @@ crate-type = ["cdylib"]
 code-native = { path = "../../code-native" }
 ureq = "3"
 serde_json = "1"
+# The id_token's payload is base64url JSON; reading it needs no more than this.
+base64 = "0.22"
