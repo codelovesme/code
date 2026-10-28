@@ -371,3 +371,59 @@ assert second.who = "two"
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A `.so` whose top level fails does not end whoever linked it (ticket 181
+/// in my-euglena-apps: one held application's failed `assert` took the whole
+/// host down). The failure is still said on stderr; then every particle sent
+/// to the module is answered with it as an Exception, and the linker carries
+/// on — in both output modes, and with the linker's own blocks balanced.
+#[test]
+fn a_shared_library_whose_top_level_fails_answers_with_the_failure() {
+    let dir = temp_dir("failed_start");
+    build(
+        &dir,
+        "bad",
+        "Hello { } =>\n    return Hi\n\nassert false\n",
+        code::BuildTarget::Shared,
+        "bad.so",
+    );
+    fs::write(
+        dir.join("main.code"),
+        r#"link "bad.so" as m
+emit Hello { } to m get first
+assert first ∈ Exception
+assert first.source = "core"
+assert first.message[0, 15) = "did not start: "
+emit Hello { } to m get again
+assert again ∈ Exception
+assert again.message = first.message
+"#,
+    )
+    .expect("write consumer");
+
+    let interpreted = Command::new(env!("CARGO_BIN_EXE_code"))
+        .arg("run")
+        .arg("main.code")
+        .current_dir(&dir)
+        .output()
+        .expect("spawn code run");
+    assert!(
+        interpreted.status.success(),
+        "interpreted: the module's failure ended the linker:\n{}",
+        stderr_of(&interpreted)
+    );
+    assert!(
+        stderr_of(&interpreted).contains("assertion failed"),
+        "the failure should still be said:\n{}",
+        stderr_of(&interpreted)
+    );
+
+    let compiled = run_compiled(&dir, true);
+    assert!(
+        compiled.status.success(),
+        "compiled: the module's failure ended the linker:\n{}",
+        stderr_of(&compiled)
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}

@@ -6849,7 +6849,14 @@ impl<'a, 'm> Gen<'a, 'm> {
 
         // First, because all three entry points below call it and it defines
         // the guard global they share.
-        let lazy_init = self.lazy_init_fn()?;
+        let lazy_init = self.lazy_init_fn(matches!(lib_mode, LibraryMode::Shared))?;
+        // A `.so` whose top level failed answers every particle with that
+        // failure (`runtime.c`'s `code_run_start`), so the one holding it
+        // hears about it instead of being ended by it.
+        let start_failure = match lib_mode {
+            LibraryMode::Shared => Some(self.start_failure_fn()),
+            LibraryMode::Static { .. } => None,
+        };
 
         // Required: the ABI generation. A constant — the host compares it
         // against its own `CODE_ABI_VERSION` at open time and refuses a
@@ -6891,6 +6898,17 @@ impl<'a, 'm> Gen<'a, 'm> {
             .map_err(|e| e.to_string())?;
         let out = dispatch.get_nth_param(0).unwrap().into_pointer_value();
         let particle = dispatch.get_nth_param(1).unwrap().into_pointer_value();
+        if let Some(start_failure) = start_failure {
+            let failed = self.call_start_failure(start_failure, out)?;
+            let refused = self.context.append_basic_block(dispatch, "did_not_start");
+            let started = self.context.append_basic_block(dispatch, "started");
+            self.builder
+                .build_conditional_branch(failed, refused, started)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(refused);
+            self.builder.build_return(None).map_err(|e| e.to_string())?;
+            self.builder.position_at_end(started);
+        }
         match self.dispatch_fn {
             Some(chain) => {
                 let chain_ptr = chain.as_global_value().as_pointer_value();
@@ -7051,12 +7069,58 @@ impl<'a, 'm> Gen<'a, 'm> {
             self.builder
                 .build_call(lazy_init, &[], "")
                 .map_err(|e| e.to_string())?;
+            // Run on its own, a `.so` whose top level failed still ends
+            // with a non-zero status, as a program would.
+            let status = match start_failure {
+                Some(start_failure) => {
+                    let failed =
+                        self.call_start_failure(start_failure, self.i8_ptr_ty.const_null())?;
+                    self.builder
+                        .build_int_z_extend(failed, self.i32_ty, "status")
+                        .map_err(|e| e.to_string())?
+                }
+                None => self.i32_ty.const_int(0, false),
+            };
             self.builder
-                .build_return(Some(&self.i32_ty.const_int(0, false)))
+                .build_return(Some(&status))
                 .map_err(|e| e.to_string())?;
         }
 
         Ok(())
+    }
+
+    /// `runtime.c`'s `code_start_failure`: whether the top level failed,
+    /// writing the failure into `out` as an Exception when `out` is not null.
+    fn start_failure_fn(&self) -> FunctionValue<'a> {
+        self.module.add_function(
+            "code_start_failure",
+            self.i32_ty.fn_type(&[self.i8_ptr_ty.into()], false),
+            None,
+        )
+    }
+
+    /// Calls `code_start_failure` and answers its result as an `i1`.
+    fn call_start_failure(
+        &self,
+        start_failure: FunctionValue<'a>,
+        out: PointerValue<'a>,
+    ) -> Result<inkwell::values::IntValue<'a>, String> {
+        let answer = self
+            .builder
+            .build_call(start_failure, &[out.into()], "start_failure")
+            .map_err(|e| e.to_string())?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| "code_start_failure returned nothing".to_string())?
+            .into_int_value();
+        self.builder
+            .build_int_compare(
+                IntPredicate::NE,
+                answer,
+                self.i32_ty.const_zero(),
+                "did_not_start",
+            )
+            .map_err(|e| e.to_string())
     }
 
     /// The lazy-init trampoline: run the top-level stream once, guarded by
@@ -7072,7 +7136,11 @@ impl<'a, 'm> Gen<'a, 'm> {
     ///
     /// Defines the guard global itself, so no call site has to have created
     /// it first.
-    fn lazy_init_fn(&mut self) -> Result<FunctionValue<'a>, String> {
+    ///
+    /// `guarded` runs the stream through `code_run_start`, so a failure at
+    /// the top level comes back here instead of ending the process — a
+    /// `.so`'s, which runs inside whoever opened it.
+    fn lazy_init_fn(&mut self, guarded: bool) -> Result<FunctionValue<'a>, String> {
         if let Some(existing) = self.module.get_function("_code_lazy_init") {
             return Ok(existing);
         }
@@ -7124,9 +7192,21 @@ impl<'a, 'm> Gen<'a, 'm> {
         self.builder
             .build_call(self.fn_set_linked, &[], "")
             .map_err(|e| e.to_string())?;
-        self.builder
-            .build_call(self.stream_fn, &[], "")
-            .map_err(|e| e.to_string())?;
+        if guarded {
+            let run_start = self.module.add_function(
+                "code_run_start",
+                self.i32_ty.fn_type(&[self.i8_ptr_ty.into()], false),
+                None,
+            );
+            let stream = self.stream_fn.as_global_value().as_pointer_value();
+            self.builder
+                .build_call(run_start, &[stream.into()], "")
+                .map_err(|e| e.to_string())?;
+        } else {
+            self.builder
+                .build_call(self.stream_fn, &[], "")
+                .map_err(|e| e.to_string())?;
+        }
         self.builder
             .build_unconditional_branch(done_bb)
             .map_err(|e| e.to_string())?;
