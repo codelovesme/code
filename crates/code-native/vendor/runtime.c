@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <math.h>
 #include <pthread.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -65,15 +66,75 @@ static CodeValue *slot_at(void *base, long long index) {
  * below) links directly against the host's own copy of this runtime rather
  * than bringing its own, so it needs this externally visible to raise its
  * own fatal errors the same way `core`'s handlers do. */
+#ifndef CODE_WASM
+/* Armed only while a `--target shared` build runs its top level (see
+ * `code_run_start` below), and only on the thread running it. */
+static _Thread_local jmp_buf *start_guard = NULL;
+static char start_failure[1280];
+static int start_failed = 0;
+extern int code_failed;
+#endif
+
 _Noreturn void code_runtime_error(const char *message) {
 #ifdef CODE_WASM
     code_host_error(message, (unsigned int)strlen(message));
     __builtin_trap();
 #else
     fprintf(stderr, "error: %s\n", message);
+    if (start_guard) {
+        jmp_buf *guard = start_guard;
+        snprintf(start_failure, sizeof start_failure, "%s", message);
+        start_failed = 1;
+        longjmp(*guard, 1);
+    }
     exit(1);
 #endif
 }
+
+#ifndef CODE_WASM
+/* A held application's top level, run so that its failure is not the end of
+ * whoever holds it (ticket 181 in my-euglena-apps).
+ *
+ * A program whose top level fails ends with a non-zero status, and that is
+ * right for a program: nothing is left to carry on. A `.so` is not one. Its
+ * top level runs inside the process that opened it, on that process's
+ * thread, so ending the process ends every other application held beside
+ * it. Here the failure is reported on stderr exactly as before and then
+ * comes back to this call instead: the stream is abandoned where it stopped,
+ * and every later `code_module_dispatch` answers with the failure as an
+ * Exception (`code_start_failure`). The module is not usable after that;
+ * whoever opened it is expected to unlink it.
+ *
+ * Abandoned, not unwound: frames the stream was in are skipped, so slots
+ * they held are not released. The release point still sweeps the module's
+ * globals, and the module is unloaded right after, so what is lost is what
+ * an `exit` would have lost too. */
+int code_run_start(void (*stream)(void)) {
+    jmp_buf here;
+    jmp_buf *outer = start_guard;
+    start_guard = &here;
+    if (setjmp(here) == 0) {
+        stream();
+        start_guard = outer;
+        return 0;
+    }
+    start_guard = outer;
+    code_failed = 0;
+    return 1;
+}
+
+/* Whether this module's top level failed; when it did and `out` is given,
+ * the failure as the Exception every dispatch answers with. */
+int code_start_failure(CodeValue *out) {
+    if (!start_failed) return 0;
+    if (out) {
+        char message[sizeof start_failure + 32];
+        snprintf(message, sizeof message, "did not start: %s", start_failure);
+        code_make_exception(out, "core", message, NULL);
+    }
+    return 1;
+}
+#endif
 
 /* ---- The failure channel -------------------------------------------------
  *
