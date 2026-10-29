@@ -2,7 +2,7 @@
 
 [package]
 name = "time"
-version = "2.21.0"
+version = "2.21.1"
 edition = "2021"
 description = "Stateless clock queries for Code: Unix seconds and local UTC offset."
 license = "GPL-3.0"
