@@ -29,6 +29,26 @@
 #include <time.h>
 #ifdef __GLIBC__
 #include <malloc.h>
+#include <spawn.h>
+#endif
+#endif
+
+#if defined(__GLIBC__) && !defined(CODE_WASM)
+#if __GLIBC_PREREQ(2, 29)
+/* A linked-in module that starts a child process (`process`) reaches for
+ * `posix_spawn_file_actions_addchdir`, which glibc only spells that way from
+ * 2.42; before, it is `..._np`. Rust's standard library refers to it weakly,
+ * so alone it links, but the archives of modules built beside it can carry
+ * the same name as a strong undefined reference, and then a release build
+ * that links `process` with any of them fails. Weak, so a libc that has the
+ * real one is not overridden in behaviour: both do the same thing. */
+int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *actions,
+                                         const char *path);
+__attribute__((weak)) int
+posix_spawn_file_actions_addchdir(posix_spawn_file_actions_t *actions,
+                                  const char *path) {
+    return posix_spawn_file_actions_addchdir_np(actions, path);
+}
 #endif
 #endif
 

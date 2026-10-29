@@ -10,8 +10,9 @@
 //! state linked under two names keeping both settings (jwt, through an
 //! instance per alias — `code_abi.h` item 13); a module that pushes from a
 //! thread of its own and holds the program open until it has (timer); and
-//! the refusal of a module with state but no instances under a second name
-//! (process). The executables need no `.so` beside them: the modules are in
+//! a module that starts a child process (process, whose spawn symbol glibc
+//! before 2.42 spells only `_np`); and the refusal of a module with state but
+//! no instances under a second name (process again). The executables need no `.so` beside them: the modules are in
 //! them.
 #![cfg(feature = "llvm")]
 #[path = "support/modules.rs"]
@@ -49,6 +50,7 @@ link "console.a" as term
 link "http_client.a" as web
 link "http_client.a" as web2
 link "arrays.a" as arrays
+link "process.a" as shell
 
 emit Floor { value = 3.7 } to math get f
 assert f.value = 3
@@ -93,6 +95,12 @@ loop
         break
 emit Length { value = arrived } to arrays get landed
 assert landed.value = 2
+
+| A module that starts a child process, beside modules that never do. Their
+| copies of the standard library leave its spawn symbols behind as strong
+| undefined names, and glibc before 2.42 has only the `_np` spelling of one.
+emit Run { command = "/bin/sh", args = ["-c", "exit 0"] } to shell get ran
+assert ran.success
 
 Refresh { what } =>
     emit Print { value = "fired $what" } to term
