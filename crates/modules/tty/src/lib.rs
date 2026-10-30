@@ -2,13 +2,18 @@
 //!
 //! Handlers:
 //!
-//! - `Start { key?, resize? }` — takes the terminal over: the alternate
+//! - `Start { key?, resize?, mouse? }` — takes the terminal over: the alternate
 //!   screen, raw mode (so `ctrl+c` and `ctrl+q` are keys, not signals), the
 //!   cursor hidden until a `Draw` places it. Answers `StartResult { cols,
 //!   rows }`. From then on every key pressed arrives as `Key { name, text }`
 //!   and every change of the window's size as `Resize { cols, rows }` —
 //!   pushed in from this module's own thread. `key` and `resize` rename the
 //!   two classes, the way `timer` lets a program name what it is sent.
+//!   `mouse` (a class name) asks for the mouse too: each click, release,
+//!   drag and wheel turn arrives as `<mouse> { kind, button, row, col,
+//!   shift, alt, ctrl, clicks }` (see `keys::Mouse`; `clicks` is 2 for a
+//!   double click, 3 for a triple — the same cell and button within 400 ms).
+//!   Without it the terminal keeps the mouse (its own selection works).
 //!   While started, the program stays up (`code_module_serving`).
 //! - `Draw { rows?, overlays?, cursor_row?, cursor_col? }` — puts a whole
 //!   screen up. `rows` is laid from the top at column 0, one entry per
@@ -74,7 +79,9 @@ fn state() -> std::sync::MutexGuard<'static, State> {
 }
 
 const ENTER: &[u8] = b"\x1b[?1049h\x1b[?25l\x1b[>4;2m\x1b[>1u\x1b[6 q\x1b[2J";
-const LEAVE: &[u8] = b"\x1b[<u\x1b[>4m\x1b[0 q\x1b[0m\x1b[?25h\x1b[?1049l";
+/// Mouse reports: with a button held, moves too (1002), in SGR form (1006).
+const MOUSE_ON: &[u8] = b"\x1b[?1002h\x1b[?1006h";
+const LEAVE: &[u8] = b"\x1b[?1006l\x1b[?1002l\x1b[<u\x1b[>4m\x1b[0 q\x1b[0m\x1b[?25h\x1b[?1049l";
 
 fn write_raw(bytes: &[u8]) {
     let mut rest = bytes;
@@ -153,6 +160,7 @@ fn push(class: &str, fields: &[(&str, Field)]) {
         match v {
             Field::Str(s) => owned_str(slot, s),
             Field::Num(n) => number(slot, *n),
+            Field::Bool(b) => boolean(slot, *b),
         }
     }
     let mut particle = CodeValue::zeroed();
@@ -165,13 +173,16 @@ fn push(class: &str, fields: &[(&str, Field)]) {
 enum Field {
     Str(String),
     Num(f64),
+    Bool(bool),
 }
 
 /// The reader thread: bytes in, keys out, until `Stop`. `read` waits at
 /// most a tenth of a second (`VTIME`), which is how often it looks at the
 /// resize flag and at whether it has been told to go.
-fn read_keys(key_class: String, resize_class: String) {
+fn read_keys(key_class: String, resize_class: String, mouse_class: Option<String>) {
     let mut buf = [0u8; 4096];
+    // The last press, for counting double and triple clicks.
+    let mut last_press: Option<(u32, u32, &'static str, std::time::Instant, u32)> = None;
     while RUNNING.load(Ordering::SeqCst) {
         if RESIZED.swap(false, Ordering::SeqCst) {
             if let Some((cols, rows)) = size() {
@@ -183,8 +194,38 @@ fn read_keys(key_class: String, resize_class: String) {
         if n <= 0 {
             continue;
         }
-        for key in keys::decode(&buf[..n as usize]) {
-            push(&key_class, &[("name", Field::Str(key.name)), ("text", Field::Str(key.text))]);
+        for event in keys::decode_events(&buf[..n as usize]) {
+            match event {
+                keys::Event::Key(key) => {
+                    push(&key_class, &[("name", Field::Str(key.name)), ("text", Field::Str(key.text))]);
+                }
+                keys::Event::Mouse(m) => {
+                    let Some(class) = &mouse_class else { continue };
+                    let mut clicks = 1;
+                    if m.kind == "press" {
+                        let now = std::time::Instant::now();
+                        if let Some((row, col, button, at, count)) = last_press {
+                            if row == m.row && col == m.col && button == m.button && now.duration_since(at).as_millis() < 400 {
+                                clicks = count % 3 + 1;
+                            }
+                        }
+                        last_press = Some((m.row, m.col, m.button, now, clicks));
+                    }
+                    push(
+                        class,
+                        &[
+                            ("kind", Field::Str(m.kind.to_string())),
+                            ("button", Field::Str(m.button.to_string())),
+                            ("row", Field::Num(m.row as f64)),
+                            ("col", Field::Num(m.col as f64)),
+                            ("shift", Field::Bool(m.shift)),
+                            ("alt", Field::Bool(m.alt)),
+                            ("ctrl", Field::Bool(m.ctrl)),
+                            ("clicks", Field::Num(clicks as f64)),
+                        ],
+                    );
+                }
+            }
         }
     }
 }
@@ -198,6 +239,7 @@ fn start(out: &mut CodeValue, particle: &CodeValue) {
     }
     let key_class = read_field_str(particle, "key").unwrap_or("Key").to_string();
     let resize_class = read_field_str(particle, "resize").unwrap_or("Resize").to_string();
+    let mouse_class = read_field_str(particle, "mouse").map(str::to_string);
     let Some((cols, rows)) = size() else {
         return exception(out, NAME, "Start: the terminal did not say its size");
     };
@@ -223,11 +265,14 @@ fn start(out: &mut CodeValue, particle: &CodeValue) {
         }
     }
     write_raw(ENTER);
+    if mouse_class.is_some() {
+        write_raw(MOUSE_ON);
+    }
     RUNNING.store(true, Ordering::SeqCst);
     {
         let mut st = state();
         st.previous = None;
-        st.reader = Some(thread::spawn(move || read_keys(key_class, resize_class)));
+        st.reader = Some(thread::spawn(move || read_keys(key_class, resize_class, mouse_class)));
     }
     size_result(out, c"StartResult", cols, rows);
 }

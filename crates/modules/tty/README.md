@@ -17,7 +17,7 @@ Key { name, text } =>
 ## Handlers
 
 ```
-Start { key?, resize? }                     → StartResult { cols, rows }
+Start { key?, resize?, mouse? }             → StartResult { cols, rows }
 Draw  { rows?, overlays?, cursor_row?, cursor_col? }
                                             → DrawResult  { rows }      rows written
 Size  {}                                    → SizeResult  { cols, rows }
@@ -29,11 +29,19 @@ Pushed in, from the module's own thread, after `Start`:
 ```
 Key    { name, text }
 Resize { cols, rows }
+Mouse  { kind, button, row, col, shift, alt, ctrl, clicks }   only with `mouse`
 ```
 
 - **`Start`** takes the terminal over: the alternate screen, raw mode (so
   `ctrl+c` is a key, not a signal), the cursor hidden. The program stays up
-  while started. `key` / `resize` rename the two pushed classes.
+  while started. `key` / `resize` rename the two pushed classes. `mouse`
+  (a class name, e.g. `"Mouse"`) asks for the mouse as well — without it
+  the terminal keeps the mouse and its own selection.
+- **The mouse** (xterm's SGR reports): `kind` is `press`, `release`,
+  `drag` (moved with a button down), `move` or `wheel`; `button` is
+  `left`, `middle`, `right`, `none`, or for the wheel `up` / `down` /
+  `left` / `right`; `row` / `col` are zero-based cells; `clicks` is 2 for a
+  double click and 3 for a triple (same cell and button within 400 ms).
 - **Key names** are VS Code's: `a`, `shift+a`, `ctrl+s`, `ctrl+shift+e`,
   `alt+f`, `enter`, `escape`, `backspace`, `delete`, `tab`, `shift+tab`,
   `up`/`down`/`left`/`right` (with `ctrl+`/`shift+`), `home`, `end`,

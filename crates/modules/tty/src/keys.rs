@@ -13,6 +13,29 @@
 //! code ~`) and kitty's (`ESC [ code ; m u`). `Start` asks for both; a
 //! terminal that knows neither ignores the request and sends legacy.
 
+/// A mouse report (xterm's SGR form, `ESC [ < b ; x ; y M|m`): what
+/// happened, with which button, where (zero-based), and the modifiers held.
+/// `kind` is "press", "release", "drag" (moved with a button down), "move"
+/// or "wheel"; `button` "left", "middle", "right", "none", or for the wheel
+/// "up", "down", "left", "right".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Mouse {
+    pub kind: &'static str,
+    pub button: &'static str,
+    pub row: u32,
+    pub col: u32,
+    pub shift: bool,
+    pub alt: bool,
+    pub ctrl: bool,
+}
+
+/// What the terminal sent: a key, or the mouse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Event {
+    Key(Key),
+    Mouse(Mouse),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Key {
     pub name: String,
@@ -167,9 +190,39 @@ fn utf8_len(b: u8) -> usize {
     }
 }
 
-/// `ESC [ params final` starting at `bytes[0] == ESC`. Answers the key (if
-/// it is one) and how many bytes it took.
-fn csi(bytes: &[u8]) -> (Option<Key>, usize) {
+/// An SGR mouse report's body (after `<`) and final byte, as a `Mouse`.
+fn mouse(body: &str, fin: u8) -> Option<Mouse> {
+    let mut parts = body.split(';').map(|p| p.parse::<u32>().ok());
+    let b = parts.next()??;
+    let x = parts.next()??;
+    let y = parts.next()??;
+    let low = b & 3;
+    let (kind, button) = if b & 64 != 0 {
+        ("wheel", ["up", "down", "left", "right"][low as usize])
+    } else {
+        let button = ["left", "middle", "right", "none"][low as usize];
+        if fin == b'm' {
+            ("release", button)
+        } else if b & 32 != 0 {
+            (if low == 3 { "move" } else { "drag" }, button)
+        } else {
+            ("press", button)
+        }
+    };
+    Some(Mouse {
+        kind,
+        button,
+        row: y.saturating_sub(1),
+        col: x.saturating_sub(1),
+        shift: b & 4 != 0,
+        alt: b & 8 != 0,
+        ctrl: b & 16 != 0,
+    })
+}
+
+/// `ESC [ params final` starting at `bytes[0] == ESC`. Answers the event
+/// (if it is one) and how many bytes it took.
+fn csi(bytes: &[u8]) -> (Option<Event>, usize) {
     let mut i = 2;
     while i < bytes.len() && !(0x40..=0x7e).contains(&bytes[i]) {
         i += 1;
@@ -181,8 +234,14 @@ fn csi(bytes: &[u8]) -> (Option<Key>, usize) {
     let fin = bytes[i];
     let body = std::str::from_utf8(&bytes[2..i]).unwrap_or("");
     let taken = i + 1;
-    // A private marker (`<`, `>`, `?`) is a report or a mouse event, not a key.
-    if body.starts_with(['<', '>', '?', '=']) {
+    // `<` and M / m: the mouse. Any other private marker is a report.
+    if let Some(rest) = body.strip_prefix('<') {
+        if fin == b'M' || fin == b'm' {
+            return (mouse(rest, fin).map(Event::Mouse), taken);
+        }
+        return (None, taken);
+    }
+    if body.starts_with(['>', '?', '=']) {
         return (None, taken);
     }
     let params: Vec<Option<u32>> = body
@@ -197,7 +256,7 @@ fn csi(bytes: &[u8]) -> (Option<Key>, usize) {
         b'u' => p(0).and_then(|code| by_code(mods_of(p(1)), code)),
         f => letter_final(mods_of(p(1)), f),
     };
-    (key, taken)
+    (key.map(Event::Key), taken)
 }
 
 /// Every key in `bytes`, in order. A lone `ESC` at the end is the escape
@@ -205,16 +264,27 @@ fn csi(bytes: &[u8]) -> (Option<Key>, usize) {
 /// writes a whole sequence at once, so a sequence split across two reads
 /// is rare enough to cost at most one lost key.
 pub fn decode(bytes: &[u8]) -> Vec<Key> {
-    let mut keys = Vec::new();
+    decode_events(bytes)
+        .into_iter()
+        .filter_map(|e| match e {
+            Event::Key(k) => Some(k),
+            Event::Mouse(_) => None,
+        })
+        .collect()
+}
+
+/// Every key and mouse report in `bytes`, in order.
+pub fn decode_events(bytes: &[u8]) -> Vec<Event> {
+    let mut events = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
         let rest = &bytes[i..];
         let (key, taken) = if rest[0] == 0x1b {
             match rest.get(1) {
-                None => (Some(named(0, "escape")), 1),
+                None => (Some(Event::Key(named(0, "escape"))), 1),
                 Some(b'[') => csi(rest),
-                Some(b'O') if rest.len() >= 3 => (letter_final(0, rest[2]), 3),
-                Some(0x1b) => (Some(named(0, "escape")), 1),
+                Some(b'O') if rest.len() >= 3 => (letter_final(0, rest[2]).map(Event::Key), 3),
+                Some(0x1b) => (Some(Event::Key(named(0, "escape"))), 1),
                 Some(_) => {
                     let (inner, n) = plain(&rest[1..]);
                     let key = inner.map(|k| {
@@ -225,20 +295,21 @@ pub fn decode(bytes: &[u8]) -> Vec<Key> {
                         } else {
                             format!("alt+{}", k.name)
                         };
-                        Key { name, text: String::new() }
+                        Event::Key(Key { name, text: String::new() })
                     });
                     (key, 1 + n)
                 }
             }
         } else {
-            plain(rest)
+            let (key, n) = plain(rest);
+            (key.map(Event::Key), n)
         };
-        if let Some(k) = key {
-            keys.push(k);
+        if let Some(e) = key {
+            events.push(e);
         }
         i += taken.max(1);
     }
-    keys
+    events
 }
 
 #[cfg(test)]
@@ -247,6 +318,30 @@ mod tests {
 
     fn names(bytes: &[u8]) -> Vec<String> {
         decode(bytes).into_iter().map(|k| k.name).collect()
+    }
+
+    #[test]
+    fn mouse_reports() {
+        let m = |b: &[u8]| match decode_events(b).into_iter().next() {
+            Some(Event::Mouse(m)) => m,
+            other => panic!("not a mouse report: {other:?}"),
+        };
+        let press = m(b"\x1b[<0;10;5M");
+        assert_eq!((press.kind, press.button, press.row, press.col), ("press", "left", 4, 9));
+        assert!(!press.shift && !press.alt && !press.ctrl);
+        let release = m(b"\x1b[<0;10;5m");
+        assert_eq!((release.kind, release.button), ("release", "left"));
+        assert_eq!(m(b"\x1b[<32;11;5M").kind, "drag");
+        assert_eq!(m(b"\x1b[<35;11;5M").kind, "move");
+        let up = m(b"\x1b[<64;3;3M");
+        assert_eq!((up.kind, up.button), ("wheel", "up"));
+        assert_eq!(m(b"\x1b[<65;3;3M").button, "down");
+        let alt_click = m(b"\x1b[<8;1;1M");
+        assert!(alt_click.alt && alt_click.kind == "press");
+        assert!(m(b"\x1b[<4;1;1M").shift && m(b"\x1b[<16;1;1M").ctrl);
+        assert_eq!(m(b"\x1b[<2;1;1M").button, "right");
+        // Mouse reports are not keys, and keys around them still are.
+        assert_eq!(decode(b"a\x1b[<0;1;1Mb").len(), 2);
     }
 
     #[test]
