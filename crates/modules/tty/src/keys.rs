@@ -263,6 +263,7 @@ fn csi(bytes: &[u8]) -> (Option<Event>, usize) {
 /// key; the reader hands over whatever one `read` returned, and a terminal
 /// writes a whole sequence at once, so a sequence split across two reads
 /// is rare enough to cost at most one lost key.
+#[cfg(test)]
 pub fn decode(bytes: &[u8]) -> Vec<Key> {
     decode_events(bytes)
         .into_iter()
