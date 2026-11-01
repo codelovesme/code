@@ -163,6 +163,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
     guarded(&mut *out, "localai", |out| {
         let outcome = match read_field_str(particle, "_class").unwrap_or("") {
             "Config" => config(out, particle),
+            "ValidateImages" => validate_images(out, particle),
             "Chat" => chat(out, particle, false),
             "ChatJson" => chat(out, particle, true),
             "Transcribe" | "TranscribeWithOptions" => transcribe(out, particle),
@@ -216,11 +217,12 @@ fn config(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 }
 
 fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<(), String> {
-    let (url, body, timeout, api_key) = {
+    let (url, mut body, timeout, api_key) = {
         let guard = current().config.lock().unwrap_or_else(|e| e.into_inner());
         let cfg = guard.as_ref().ok_or(NOT_CONFIGURED)?;
 
-        let messages = build_messages(particle)?;
+        let mut messages = build_messages(particle)?;
+        append_images(&mut messages, particle)?;
         if messages.is_empty() {
             return Err("Chat needs 'system', 'user' or a non-empty 'messages'".to_string());
         }
@@ -245,6 +247,15 @@ fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<()
             cfg.api_key.clone(),
         )
     };
+
+    if let Some(effort) = find_field(particle, "thinking") {
+        let effort = read_str(effort).ok_or("thinking must be off, low, medium or high")?;
+        if !["off", "low", "medium", "high"].contains(&effort) {
+            return Err("thinking must be off, low, medium or high".into());
+        }
+        body["reasoning_effort"] = json!(if effort == "off" { "none" } else { effort });
+        body["chat_template_kwargs"] = json!({"enable_thinking": effort != "off"});
+    }
 
     // `later = true`: the model is asked on a thread of its own, this
     // answers `Sent { id }` at once, and the `ChatResult` — or the
@@ -280,6 +291,9 @@ fn chat_perform(
     api_key: &str,
     json_mode: bool,
 ) -> Result<String, String> {
+    let image_request = body["messages"]
+        .as_array()
+        .is_some_and(|messages| messages.iter().any(|message| message["content"].is_array()));
     let mut resp = authorized(agent(timeout).post(url), api_key)
         .header("Content-Type", "application/json")
         .send(body.to_string())
@@ -292,6 +306,11 @@ fn chat_perform(
         .read_to_string()
         .map_err(|e| format!("reading the chat response failed: {e}"))?;
     if !(200..300).contains(&status) {
+        if image_request {
+            return Err(format!(
+                "chat rejected: HTTP {status} (image response details omitted)"
+            ));
+        }
         return Err(format!("chat rejected: HTTP {status}: {}", trim(&text)));
     }
     let parsed: Json =
@@ -305,6 +324,9 @@ fn chat_perform(
     if json_mode {
         let content = strip_fence(&content);
         let value: Json = serde_json::from_str(&content).map_err(|_| {
+            if image_request {
+                return "ChatJson: the model did not return valid JSON".to_string();
+            }
             format!(
                 "ChatJson: the model did not return valid JSON: {}",
                 trim(&content)
@@ -484,6 +506,89 @@ fn build_messages(particle: &CodeValue) -> Result<Vec<Json>, String> {
         out.push(json!({ "role": "user", "content": user }));
     }
     Ok(out)
+}
+
+// Images are bounded data, never URLs fetched by the module. Validating is
+// also exposed separately so an app can reject bad attachments before a turn.
+const IMAGE_MAX_BYTES: usize = 2 * 1024 * 1024;
+const IMAGE_MAX_COUNT: usize = 3;
+
+fn image_parts(particle: &CodeValue) -> Result<Vec<Json>, String> {
+    let Some(images) = find_field(particle, "images") else {
+        return Ok(Vec::new());
+    };
+    if images.tag != CodeTag::Array {
+        return Err("images must be an array".into());
+    }
+    let mut parts = Vec::new();
+    let mut total = 0;
+    for image in array_elems(images) {
+        if parts.len() >= IMAGE_MAX_COUNT {
+            return Err("at most three images are accepted".into());
+        }
+        let mime = read_field_str(image, "mime_type").ok_or("image needs mime_type")?;
+        let format = match mime {
+            "image/png" => image::ImageFormat::Png,
+            "image/jpeg" => image::ImageFormat::Jpeg,
+            _ => return Err("images must be PNG or JPEG".into()),
+        };
+        let encoded = read_field_str(image, "data_base64").ok_or("image needs data_base64")?;
+        if encoded.len() > IMAGE_MAX_BYTES.div_ceil(3) * 4 {
+            return Err("image exceeds 2 MiB".into());
+        }
+        let bytes = B64
+            .decode(encoded)
+            .map_err(|_| "image is not valid base64")?;
+        if bytes.is_empty() || bytes.len() > IMAGE_MAX_BYTES {
+            return Err("image must contain 1 byte to 2 MiB".into());
+        }
+        total += bytes.len();
+        if total > 4 * 1024 * 1024 {
+            return Err("images together exceed 4 MiB".into());
+        }
+        if image::guess_format(&bytes).ok() != Some(format) {
+            return Err("image content does not match mime_type".into());
+        }
+        let mut reader = image::ImageReader::with_format(std::io::Cursor::new(bytes), format);
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(8192);
+        limits.max_image_height = Some(8192);
+        limits.max_alloc = Some(64 * 1024 * 1024);
+        reader.limits(limits);
+        reader
+            .decode()
+            .map_err(|_| "image is damaged or exceeds decoded size limits")?;
+        parts.push(json!({"type":"image_url", "image_url":{"url":format!("data:{mime};base64,{encoded}")}}));
+    }
+    Ok(parts)
+}
+
+fn validate_images(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let parts = image_parts(particle)?;
+    make_result(out, c"ImagesValidated", |slot| {
+        number(slot, parts.len() as f64)
+    });
+    Ok(())
+}
+
+fn append_images(messages: &mut [Json], particle: &CodeValue) -> Result<(), String> {
+    let images = image_parts(particle)?;
+    if images.is_empty() {
+        return Ok(());
+    }
+    let user = messages
+        .iter_mut()
+        .rev()
+        .find(|m| m["role"] == "user")
+        .ok_or("images require a user message")?;
+    let text = user["content"]
+        .as_str()
+        .ok_or("image user message must have text content")?
+        .to_owned();
+    let mut parts = vec![json!({"type":"text", "text":text})];
+    parts.extend(images);
+    user["content"] = json!(parts);
+    Ok(())
 }
 
 fn part_file(body: &mut Vec<u8>, boundary: &str, format: &str, bytes: &[u8]) {

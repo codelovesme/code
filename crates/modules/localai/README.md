@@ -94,7 +94,7 @@ changes:
   from plain `Chat` too, which mangled any reply that legitimately contained
   a code block.
 
-**No streaming, no function calling, no embeddings, no image input.** Each is
+**No streaming, no function calling, no embeddings.** Each is
 a real feature to add when asked; the euglena apps needed a completion and a
 transcript.
 
@@ -111,3 +111,20 @@ own and answers `Sent { value = id }` at once; the `ChatResult { content }`
 — or the `Exception` — arrives afterwards carrying `_request_id = id`. A
 minute of model time then never holds the program's thread.
 
+
+## Bounded images and thinking (ticket 185, unreleased)
+
+Chat/ChatJson accept `images = [{ mime_type, data_base64 }]`: at most three
+PNG/JPEG files, 2 MiB decoded each and 4 MiB total. Images must decode with the declared format,
+within 8192x8192 and a 64 MiB decode allocation limit. They are attached to the
+last user message as OpenAI-compatible text/image_url parts. No remote image
+URL is fetched. `ValidateImages { images }` performs the same checks without
+configuration or a model request, returning `ImagesValidated { value = count }`.
+Apps must separately check whether their selected model accepts images.
+
+Optional `thinking` is off/low/medium/high. It sends `reasoning_effort`
+(none/low/medium/high) and `chat_template_kwargs.enable_thinking` (false/true).
+Absent means no new fields, preserving the provider default. These are request
+controls, not guarantees for an arbitrary model/backend: advertise them only
+for configured compatible models. Replies still arrive whole; no streaming
+support is added. Public module assets require a later explicit release.

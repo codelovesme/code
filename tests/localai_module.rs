@@ -103,7 +103,40 @@ fn fake_openai(listener: TcpListener) {
         if path == "/v1/chat/completions" {
             // A multi-turn request carries a prior assistant turn; answer it
             // distinctly so the test can prove `messages` reached the wire.
-            let content = if req_body.contains(r#""role":"assistant""#) {
+            let request: serde_json::Value = serde_json::from_str(&req_body).unwrap();
+            if request["model"] == "vision-error" {
+                let reflected = request.to_string();
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 400 Bad Request\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    reflected.len(),
+                    reflected
+                );
+                let _ = stream.flush();
+                continue;
+            }
+            let content = if request["model"] == "vision-test" {
+                let valid = request["reasoning_effort"] == "low"
+                    && request["chat_template_kwargs"]["enable_thinking"] == true
+                    && request["messages"][1]["content"][0]["type"] == "text"
+                    && request["messages"][1]["content"][1]["type"] == "image_url"
+                    && request["messages"][1]["content"][1]["image_url"]["url"]
+                        .as_str()
+                        .is_some_and(|s| s.starts_with("data:image/png;base64,"));
+                if valid {
+                    "vision thinking ok".to_string()
+                } else {
+                    "bad vision request".to_string()
+                }
+            } else if request["model"] == "thinking-off" {
+                if request["reasoning_effort"] == "none"
+                    && request["chat_template_kwargs"]["enable_thinking"] == false
+                {
+                    "thinking disabled".to_string()
+                } else {
+                    "bad thinking request".to_string()
+                }
+            } else if req_body.contains(r#""role":"assistant""#) {
                 "multi-turn ok".to_string()
             } else {
                 REPLY.to_string()
@@ -155,6 +188,29 @@ emit Chat {{ messages = [
     {{ role = "user", content = "still there?" }}
 ] }} to ai get multi
 assert multi.content = "multi-turn ok"
+
+| A decoded attachment becomes a multimodal user message; settings reach the wire.
+images = [{{ mime_type = "image/png", data_base64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==" }}]
+emit ValidateImages {{ images = images }} to ai get checked
+assert checked ∈ ImagesValidated
+assert checked.value = 1
+emit Chat {{ model = "vision-test", thinking = "low", system = "look", user = "what color?", images = images }} to ai get vision
+assert vision.content = "vision thinking ok"
+emit Chat {{ model = "vision-error", user = "look", images = images }} to ai get image_error
+assert image_error ∈ Exception
+assert image_error.message = "chat rejected: HTTP 400 (image response details omitted)"
+emit Chat {{ model = "thinking-off", thinking = "off", user = "hi" }} to ai get off
+assert off.content = "thinking disabled"
+emit Chat {{ user = "hi", thinking = "lots" }} to ai get invalid_thinking
+assert invalid_thinking ∈ Exception
+emit ValidateImages {{ images = [{{ mime_type = "image/jpeg", data_base64 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==" }}] }} to ai get mismatch
+assert mismatch ∈ Exception
+emit ValidateImages {{ images = [{{ mime_type = "image/png", data_base64 = "aGVsbG8=" }}] }} to ai get corrupt
+assert corrupt ∈ Exception
+emit ValidateImages {{ images = [{{ mime_type = "image/png", data_base64 = "%%%" }}] }} to ai get bad_base64
+assert bad_base64 ∈ Exception
+emit ValidateImages {{ images = images + images + images + images }} to ai get too_many
+assert too_many ∈ Exception
 
 emit Transcribe {{ audio_base64 = "aGVsbG8=", language = "en" }} to ai get t
 assert t ∈ TranscribeResult

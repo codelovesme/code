@@ -736,7 +736,7 @@ jobs:
               media) handlers='["Record", "StopRecording", "StartCamera", "TakePhoto", "StopCamera", "Play", "StopPlaying"]' ;;
               blob_storage) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
               cloud_drive) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode", "RefreshToken", "GetQuota", "ListFiles", "UploadFile", "DownloadFile", "DeleteFile"]' ;;
-              localai) handlers='["Config", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions", "Speak"]' ;;
+              localai) handlers='["Config", "ValidateImages", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions", "Speak"]' ;;
               interpreter) handlers='["Load", "Send", "Unload", "Loaded"]' ;;
               mailer_mock) handlers='["Config", "Send", "Outbox"]' ;;
               net_server) handlers='["Config", "Listen", "Stop"]' ;;
