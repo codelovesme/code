@@ -73,7 +73,7 @@ fn state() -> std::sync::MutexGuard<'static, State> {
     STATE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-const ENTER: &[u8] = b"\x1b[?1049h\x1b[?25l\x1b[>4;2m\x1b[>1u\x1b[6 q\x1b[2J";
+const ENTER: &[u8] = b"\x1b[?1049h\x1b[?25l\x1b[>4;2m\x1b[>11u\x1b[6 q\x1b[2J";
 const LEAVE: &[u8] = b"\x1b[<u\x1b[>4m\x1b[0 q\x1b[0m\x1b[?25h\x1b[?1049l";
 
 fn write_raw(bytes: &[u8]) {
@@ -172,6 +172,7 @@ enum Field {
 /// resize flag and at whether it has been told to go.
 fn read_keys(key_class: String, resize_class: String) {
     let mut buf = [0u8; 4096];
+    let mut decoder = keys::Decoder::default();
     while RUNNING.load(Ordering::SeqCst) {
         if RESIZED.swap(false, Ordering::SeqCst) {
             if let Some((cols, rows)) = size() {
@@ -180,11 +181,11 @@ fn read_keys(key_class: String, resize_class: String) {
             }
         }
         let n = unsafe { libc::read(0, buf.as_mut_ptr().cast(), buf.len()) };
-        if n <= 0 {
-            continue;
-        }
-        for key in keys::decode(&buf[..n as usize]) {
-            push(&key_class, &[("name", Field::Str(key.name)), ("text", Field::Str(key.text))]);
+        if n < 0 { continue; }
+        for key in decoder.feed(&buf[..n as usize], n == 0) {
+            let class = if key.event == 3 { "KeyReleased" } else { &key_class };
+            let event = match key.event { 2 => "repeat", 3 => "release", _ => "press" };
+            push(class, &[("name", Field::Str(key.name)), ("text", Field::Str(key.text)), ("event", Field::Str(event.into()))]);
         }
     }
 }

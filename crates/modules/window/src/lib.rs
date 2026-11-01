@@ -607,6 +607,9 @@ impl App {
 
 fn named(key: &NamedKey) -> Option<&'static str> {
     Some(match key {
+        NamedKey::Control => "left_control",
+        NamedKey::Shift => "left_shift",
+        NamedKey::Alt => "left_alt",
         NamedKey::Tab => "tab",
         NamedKey::Enter => "enter",
         NamedKey::Escape => "escape",
@@ -697,9 +700,6 @@ impl ApplicationHandler<Cmd> for App {
             WindowEvent::ModifiersChanged(m) => self.mods = m.state(),
             WindowEvent::Focused(focused) => push(particle("Focus", vec![("id", Val::Num(id as f64)), ("focused", Val::Bool(focused))])),
             WindowEvent::KeyboardInput { event, .. } => {
-                if event.state != ElementState::Pressed {
-                    return;
-                }
                 let pressed = match &event.logical_key {
                     WKey::Named(NamedKey::Space) => Some(keys::Pressed::Char { base: ' ', shown: ' ' }),
                     WKey::Named(n) => named(n).map(keys::Pressed::Named),
@@ -718,7 +718,9 @@ impl ApplicationHandler<Cmd> for App {
                 };
                 if let Some(pressed) = pressed {
                     let (name, text) = keys::name(&pressed, self.mods());
-                    push(particle("Key", vec![("id", Val::Num(id as f64)), ("name", Val::Str(name)), ("text", Val::Str(text))]));
+                    let class = if event.state == ElementState::Released { "KeyReleased" } else { "Key" };
+                    let kind = if event.state == ElementState::Released { "release" } else if event.repeat { "repeat" } else { "press" };
+                    push(particle(class, vec![("id", Val::Num(id as f64)), ("name", Val::Str(name)), ("text", Val::Str(text)), ("event", Val::Str(kind.into()))]));
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {

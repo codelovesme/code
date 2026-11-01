@@ -15,6 +15,7 @@
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Key {
+    pub event: u8,
     pub name: String,
     pub text: String,
 }
@@ -39,7 +40,7 @@ fn with_mods(mods: u32, base: &str) -> String {
 }
 
 fn named(mods: u32, base: &str) -> Key {
-    Key { name: with_mods(mods, base), text: String::new() }
+    Key { event: 1, name: with_mods(mods, base), text: String::new() }
 }
 
 /// A character pressed with `mods`. Shift on a letter becomes part of the
@@ -48,7 +49,7 @@ fn named(mods: u32, base: &str) -> Key {
 fn character(mods: u32, c: char) -> Key {
     if c == ' ' {
         let text = if mods & (CTRL | ALT) == 0 { " " } else { "" };
-        return Key { name: with_mods(mods, "space"), text: text.to_string() };
+        return Key { event: 1, name: with_mods(mods, "space"), text: text.to_string() };
     }
     let mut mods = mods;
     let mut base = c;
@@ -69,12 +70,18 @@ fn character(mods: u32, c: char) -> Key {
     } else {
         String::new()
     };
-    Key { name: with_mods(mods, &base.to_string()), text }
+    Key { event: 1, name: with_mods(mods, &base.to_string()), text }
 }
 
 /// A key by its unicode code point, as the two modern encodings send it.
 fn by_code(mods: u32, code: u32) -> Option<Key> {
     Some(match code {
+        57442 => named(mods, "left_control"),
+        57448 => named(mods, "right_control"),
+        57441 => named(mods, "left_shift"),
+        57447 => named(mods, "right_shift"),
+        57443 => named(mods, "left_alt"),
+        57449 => named(mods, "right_alt"),
         9 => named(mods, "tab"),
         13 => named(mods, "enter"),
         27 => named(mods, "escape"),
@@ -197,7 +204,48 @@ fn csi(bytes: &[u8]) -> (Option<Key>, usize) {
         b'u' => p(0).and_then(|code| by_code(mods_of(p(1)), code)),
         f => letter_final(mods_of(p(1)), f),
     };
+    let event = body.split(';').nth(1).and_then(|p| p.split(':').nth(1)).and_then(|n| n.parse::<u8>().ok()).unwrap_or(1);
+    let key = key.map(|mut k| { k.event = event; if event == 3 { k.text.clear(); } k });
     (key, taken)
+}
+
+/// Retain fragmented escape sequences/UTF-8 between terminal reads. In
+/// particular a split key-up must not leave a held action running forever.
+#[derive(Default)]
+pub struct Decoder { pending: Vec<u8> }
+
+impl Decoder {
+    pub fn feed(&mut self, bytes: &[u8], idle: bool) -> Vec<Key> {
+        self.pending.extend_from_slice(bytes);
+        let mut i = 0;
+        while i < self.pending.len() {
+            let rest = &self.pending[i..];
+            if rest[0] == 0x1b {
+                if rest.len() == 1 {
+                    if idle { i += 1; }
+                    break;
+                }
+                if rest[1] == b'[' {
+                    if let Some(end) = rest[2..].iter().position(|b| (0x40..=0x7e).contains(b)) { i += end+3; continue; }
+                    break;
+                }
+                if rest[1] == b'O' && rest.len() < 3 { break; }
+                if rest[1] == b'O' { i += 3; continue; }
+                let n = utf8_len(rest[1])+1;
+                if rest.len() < n { break; }
+                i += n;
+            } else {
+                let n = utf8_len(rest[0]);
+                if rest.len() < n { break; }
+                i += n;
+            }
+        }
+        let events = decode(&self.pending[..i]);
+        self.pending.drain(..i);
+        // Malformed input cannot accumulate unbounded storage.
+        if self.pending.len() > 4096 { self.pending.clear(); }
+        events
+    }
 }
 
 /// Every key in `bytes`, in order. A lone `ESC` at the end is the escape
@@ -225,7 +273,7 @@ pub fn decode(bytes: &[u8]) -> Vec<Key> {
                         } else {
                             format!("alt+{}", k.name)
                         };
-                        Key { name, text: String::new() }
+                        Key { event: 1, name, text: String::new() }
                     });
                     (key, 1 + n)
                 }
@@ -250,12 +298,35 @@ mod tests {
     }
 
     #[test]
+    fn fragmented_release_and_unicode_survive_reads() {
+        let mut decoder = Decoder::default();
+        assert!(decoder.feed(b"\x1b[32;5:", false).is_empty());
+        let events = decoder.feed(b"3u", false);
+        assert_eq!(events[0].event, 3);
+        assert_eq!(events[0].name, "ctrl+space");
+        assert!(decoder.feed(&[0xc3], false).is_empty());
+        assert_eq!(decoder.feed(&[0xa9], false)[0].text, "é");
+        assert!(decoder.feed(b"\x1b", false).is_empty());
+        assert_eq!(decoder.feed(b"", true)[0].name, "escape");
+    }
+
+    #[test]
+    fn keyboard_lifecycle_does_not_turn_releases_into_typed_text() {
+        let keys = decode(b"\x1b[32;5u\x1b[32;5:2u\x1b[32;1:3u\x1b[57442;1:3u");
+        assert_eq!(keys.iter().map(|k| k.event).collect::<Vec<_>>(), [1, 2, 3, 3]);
+        assert_eq!(keys[0].name, "ctrl+space");
+        assert_eq!(keys[2].name, "space");
+        assert_eq!(keys[3].name, "left_control");
+        assert!(keys[2].text.is_empty());
+    }
+
+    #[test]
     fn printable_keys_type_themselves() {
         let keys = decode(b"aZ!");
-        assert_eq!(keys[0], Key { name: "a".into(), text: "a".into() });
-        assert_eq!(keys[1], Key { name: "shift+z".into(), text: "Z".into() });
-        assert_eq!(keys[2], Key { name: "!".into(), text: "!".into() });
-        assert_eq!(decode(" ".as_bytes())[0], Key { name: "space".into(), text: " ".into() });
+        assert_eq!(keys[0], Key { event: 1, name: "a".into(), text: "a".into() });
+        assert_eq!(keys[1], Key { event: 1, name: "shift+z".into(), text: "Z".into() });
+        assert_eq!(keys[2], Key { event: 1, name: "!".into(), text: "!".into() });
+        assert_eq!(decode(" ".as_bytes())[0], Key { event: 1, name: "space".into(), text: " ".into() });
         assert_eq!(decode("é∈".as_bytes())[1].text, "∈");
     }
 
@@ -287,7 +358,7 @@ mod tests {
         // kitty: ctrl+1, ctrl+shift+e, escape
         assert_eq!(names(b"\x1b[49;5u\x1b[101;6u\x1b[27u"), ["ctrl+1", "ctrl+shift+e", "escape"]);
         // kitty: a shifted letter reported by its lowercase code
-        assert_eq!(decode(b"\x1b[97;2u")[0], Key { name: "shift+a".into(), text: "A".into() });
+        assert_eq!(decode(b"\x1b[97;2u")[0], Key { event: 1, name: "shift+a".into(), text: "A".into() });
     }
 
     #[test]

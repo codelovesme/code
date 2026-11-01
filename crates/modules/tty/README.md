@@ -67,3 +67,9 @@ Resize { cols, rows }
   exiting without it, and `SIGTERM`/`SIGHUP`.
 - Before `Start`, `Draw` is an `Exception`; `Start` without a terminal on
   stdin and stdout is an `Exception`.
+
+Start requests Kitty flags 11 (disambiguation, event types and all keys) when
+the terminal supports them. `Key` carries `event = "press" | "repeat"`;
+releases are separate `KeyReleased { name, text = "", event }` particles.
+Fragmented CSI/UTF-8 input is retained across reads. Legacy terminals keep
+their existing byte behavior.

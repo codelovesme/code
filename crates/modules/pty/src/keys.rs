@@ -80,6 +80,41 @@ fn lost_in_legacy(mods: u32, base: &str) -> bool {
     }
 }
 
+/// Key lifecycle events are opt-in: a shell must never see release bytes.
+pub fn event_bytes(name: &str, text: &str, app_cursor: bool, modes: Modes, event: &str) -> Vec<u8> {
+    let (mods, base) = split(name);
+    let report = modes.kitty & 2 != 0;
+    if event == "release" && !report { return Vec::new(); }
+    let all = modes.kitty & 8 != 0;
+    let modifier = matches!(base, "left_control" | "right_control" | "left_shift" | "right_shift" | "left_alt" | "right_alt");
+    if modifier && !all { return Vec::new(); }
+    let event_code = if report { match event { "release" => 3, "repeat" => 2, _ => 1 } } else { 1 };
+    let code = match base {
+        "left_control" => Some(57442), "right_control" => Some(57448),
+        "left_shift" => Some(57441), "right_shift" => Some(57447),
+        "left_alt" => Some(57443), "right_alt" => Some(57449),
+        _ => code_of(base),
+    };
+    if let Some(code) = code {
+        let enhanced = modes.kitty & 1 != 0 && (all || lost_in_legacy(mods, base) || base == "escape");
+        if enhanced {
+            if event_code == 1 { return format!("\x1b[{code};{}u", param(mods)).into_bytes(); }
+            return format!("\x1b[{code};{}:{event_code}u", param(mods)).into_bytes();
+        }
+        if event == "release" { return Vec::new(); }
+    }
+    let ordinary = bytes(name, text, app_cursor, modes);
+    if event_code == 1 { return ordinary; }
+    // Navigation/function keys keep the protocol's CSI final-letter/~ forms.
+    if ordinary.starts_with(b"\x1b[") || ordinary.starts_with(b"\x1bO") {
+        let end = *ordinary.last().unwrap() as char;
+        let body = std::str::from_utf8(&ordinary[2..ordinary.len()-1]).unwrap_or("");
+        let first = body.split(';').next().filter(|s| !s.is_empty()).unwrap_or("1");
+        return format!("\x1b[{first};{}:{event_code}{end}", param(mods)).into_bytes();
+    }
+    if event == "release" { Vec::new() } else { ordinary }
+}
+
 /// `name` and `text` (see `tty`'s `Key`) as bytes. `app_cursor` is the
 /// terminal's application-cursor mode, in which the arrows say `ESC O`;
 /// `modes` what the program asked keys to be sent as (see `Modes`).
@@ -185,7 +220,7 @@ fn out_or_char(mut out: Vec<u8>, c: char, mods: u32) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{bytes, Modes};
+    use super::{bytes, event_bytes, Modes};
 
     fn bytes_(name: &str, text: &str, app_cursor: bool) -> Vec<u8> {
         bytes(name, text, app_cursor, Modes::default())
@@ -193,6 +228,19 @@ mod tests {
 
     const KITTY: Modes = Modes { kitty: 1, modify_other: 0 };
     const XTERM: Modes = Modes { kitty: 0, modify_other: 2 };
+
+    #[test]
+    fn lifecycle_events_are_opt_in_and_preserve_control_releases() {
+        let modes = Modes { kitty: 11, modify_other: 0 };
+        assert_eq!(event_bytes("ctrl+space", "", false, modes, "press"), b"\x1b[32;5u");
+        assert_eq!(event_bytes("ctrl+space", "", false, modes, "repeat"), b"\x1b[32;5:2u");
+        assert_eq!(event_bytes("space", " ", false, modes, "release"), b"\x1b[32;1:3u");
+        assert_eq!(event_bytes("left_control", "", false, modes, "release"), b"\x1b[57442;1:3u");
+        assert_eq!(event_bytes("a", "a", false, modes, "press"), b"\x1b[97;1u");
+        assert_eq!(event_bytes("up", "", false, modes, "release"), b"\x1b[1;1:3A");
+        assert!(event_bytes("space", "", false, Modes::default(), "release").is_empty());
+        assert!(event_bytes("left_control", "", false, KITTY, "press").is_empty());
+    }
 
     #[test]
     fn asked_for_more_keys_come_whole() {

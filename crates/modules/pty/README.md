@@ -52,3 +52,10 @@ TerminalExited { id, code }   the program ended
 - `Close` hangs up on the program (SIGHUP), and kills it half a second later
   if it is still there. The program stays up while a terminal's thread runs.
 - Not yet: scrollback, the window title, mouse reporting.
+
+`Type` also accepts optional `event = "press" | "repeat" | "release"`
+(default press). Releases are silent for legacy programs. With Kitty report
+events (flag 2), repeat/release types are encoded; report-all (flag 8) also
+allows modifier events and ordinary text as escape codes. Applications must
+forward releases separately from command/shortcut dispatch. See the
+[Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/).

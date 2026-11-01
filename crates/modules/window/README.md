@@ -35,7 +35,8 @@ Close  { id }                          → Closed { id }
 Pushed to the program, from the window's own thread:
 
 ```
-Key            { id, name, text }
+Key            { id, name, text, event }
+KeyReleased    { id, name, text, event }
 Resize         { id, cols, rows }
 Mouse          { id, kind, button, row, col, mods, lines? }   kind: press release drag move wheel
 Focus          { id, focused }
@@ -64,3 +65,8 @@ thread of its own (allowed on Linux), so the program's own thread stays
 the program's. The loop can be made once per program: when its last window
 closes the thread ends — so the program can end — and a program cannot
 open windows again after.
+
+Key presses carry `event = "press"` or `"repeat"`. Releases are separate
+`KeyReleased` particles, so existing Key handlers cannot accidentally execute
+a release as a second press. Modifier keys have names such as `left_control`.
+A terminal application can forward these to pty Type's optional event field.

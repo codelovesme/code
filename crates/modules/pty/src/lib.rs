@@ -339,12 +339,13 @@ fn send(out: &mut CodeValue, id: u64, term: &mut Terminal, bytes: &[u8], class: 
 fn type_key(out: &mut CodeValue, p: &CodeValue) {
     let name = read_field_str(p, "name").unwrap_or("").to_string();
     let text = read_field_str(p, "text").unwrap_or("").to_string();
+    let event = read_field_str(p, "event").unwrap_or("press").to_string();
     on(out, p, "Type", |out, id, term| {
         let (app_cursor, modes) = {
             let emulator = term.parser.lock().unwrap_or_else(|e| e.into_inner());
             (emulator.screen().application_cursor(), emulator.callbacks().modes())
         };
-        let bytes = keys::bytes(&name, &text, app_cursor, modes);
+        let bytes = keys::event_bytes(&name, &text, app_cursor, modes, &event);
         send(out, id, term, &bytes, "Typed");
     });
 }
