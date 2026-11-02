@@ -16,6 +16,15 @@
 //!   → `ChatResult { content }` — one completion. `messages` is an array of
 //!   `{ role, content }` for multi-turn; without it, `system` + `user` are
 //!   the conversation.
+//!
+//!   **Tools.** `tools` is the OpenAI-shaped list of functions the model may
+//!   call (`[{ type = "function", function = { name, description,
+//!   parameters } }]`) and `tool_choice` is passed through (`"auto"`,
+//!   `"none"`, `"required"`). When the model calls one, the result carries
+//!   `tool_calls = [{ id, name, arguments }]` (`arguments` is the model's
+//!   JSON text, unparsed) beside `content`. In `messages`, an assistant entry
+//!   may carry `tool_calls` (OpenAI shape, passed through) and a `tool` entry
+//!   its `tool_call_id`; `content` may then be empty.
 //! - `ChatJson { … same … }` → `ChatResult { content }` — `content` is the
 //!   model's reply with a surrounding ```-fence stripped, validated as JSON.
 //!   Not valid JSON → `Exception`.
@@ -235,17 +244,22 @@ fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<()
             .filter(|n| *n > 0)
             .unwrap_or(cfg.max_tokens);
 
-        (
-            format!("{}/chat/completions", cfg.base),
-            json!({
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            }),
-            cfg.timeout,
-            cfg.api_key.clone(),
-        )
+        let mut body = json!({
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        });
+        if let Some(tools) = find_field(particle, "tools") {
+            if tools.tag != CodeTag::Array {
+                return Err("'tools' must be an array of functions".to_string());
+            }
+            body["tools"] = to_json(tools);
+        }
+        if let Some(choice) = opt_str(particle, "tool_choice") {
+            body["tool_choice"] = json!(choice);
+        }
+        (format!("{}/chat/completions", cfg.base), body, cfg.timeout, cfg.api_key.clone())
     };
 
     if let Some(effort) = find_field(particle, "thinking") {
@@ -269,16 +283,81 @@ fn chat(out: &mut CodeValue, particle: &CodeValue, json_mode: bool) -> Result<()
             move || {
                 let _inbound = code_native::InboundScope::enter(inbound);
                 let outcome = chat_perform(&url, body, timeout, &api_key, json_mode);
-                push_later(id, c"ChatResult", c"content", outcome);
+                push_chat_later(id, outcome);
             }
         });
         make_result(out, c"Sent", |slot| number(slot, id as f64));
         return Ok(());
     }
 
-    let content = chat_perform(&url, body, timeout, &api_key, json_mode)?;
-    one_str(out, c"ChatResult", c"content", &content);
+    let answer = chat_perform(&url, body, timeout, &api_key, json_mode)?;
+    chat_result(out, &answer, None);
     Ok(())
+}
+
+/// What a chat answered: the text, and the tools the model called (if any).
+struct ChatAnswer {
+    content: String,
+    tool_calls: Vec<Json>,
+}
+
+/// `ChatResult { content, tool_calls? }`, with `_request_id` for a `later`
+/// answer. `tool_calls` only when the model called a tool, so an app that
+/// never offers tools sees exactly the particle it always did.
+fn chat_result(out: &mut CodeValue, answer: &ChatAnswer, request_id: Option<u64>) {
+    let mut keys: Vec<&std::ffi::CStr> = vec![c"_class", c"content"];
+    let mut values: Vec<Json> = vec![json!("ChatResult"), json!(answer.content)];
+    if !answer.tool_calls.is_empty() {
+        keys.push(c"tool_calls");
+        values.push(Json::Array(answer.tool_calls.clone()));
+    }
+    if let Some(id) = request_id {
+        keys.push(c"_request_id");
+        values.push(json!(id));
+    }
+    let mut b = SlotBuffer::new(values.len());
+    for (i, value) in values.iter().enumerate() {
+        from_json(b.slot_mut(i as i64), value);
+    }
+    object(out, &keys, &mut b);
+    b.release_all();
+}
+
+fn push_chat_later(id: u64, outcome: Result<ChatAnswer, String>) {
+    match outcome {
+        Ok(answer) => {
+            let mut particle = CodeValue::zeroed();
+            chat_result(&mut particle, &answer, Some(id));
+            emit_inbound(&particle);
+            release(&mut particle);
+        }
+        Err(message) => push_later(id, c"ChatResult", c"content", Err(message)),
+    }
+}
+
+/// The model's tool calls as `{ id, name, arguments }`, arguments as text.
+fn read_tool_calls(message: &Json) -> Vec<Json> {
+    message["tool_calls"]
+        .as_array()
+        .map(|calls| {
+            calls
+                .iter()
+                .filter_map(|call| {
+                    let name = call.pointer("/function/name")?.as_str()?;
+                    let arguments = match call.pointer("/function/arguments") {
+                        Some(Json::String(text)) => text.clone(),
+                        Some(other) => other.to_string(),
+                        None => "{}".to_string(),
+                    };
+                    Some(json!({
+                        "id": call["id"].as_str().unwrap_or(""),
+                        "name": name,
+                        "arguments": arguments,
+                    }))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The one exchange with the model: the request, the read, the checks —
@@ -290,7 +369,7 @@ fn chat_perform(
     timeout: Duration,
     api_key: &str,
     json_mode: bool,
-) -> Result<String, String> {
+) -> Result<ChatAnswer, String> {
     let image_request = body["messages"]
         .as_array()
         .is_some_and(|messages| messages.iter().any(|message| message["content"].is_array()));
@@ -315,12 +394,22 @@ fn chat_perform(
     }
     let parsed: Json =
         serde_json::from_str(&text).map_err(|e| format!("chat response was not JSON: {e}"))?;
-    let raw = parsed
-        .pointer("/choices/0/message/content")
-        .and_then(Json::as_str)
-        .ok_or("chat response carried no choices/0/message/content")?;
+    let message = parsed
+        .pointer("/choices/0/message")
+        .ok_or("chat response carried no choices/0/message")?;
+    let tool_calls = read_tool_calls(message);
+    let raw = match message["content"].as_str() {
+        Some(text) => text,
+        None if !tool_calls.is_empty() => "",
+        None => return Err("chat response carried no choices/0/message/content".to_string()),
+    };
 
     let content = strip_think(raw);
+    // A tool call answers in its arguments; the text beside it (often none)
+    // is not held to ChatJson's one-object rule.
+    if !tool_calls.is_empty() {
+        return Ok(ChatAnswer { content: content.trim().to_string(), tool_calls });
+    }
     if json_mode {
         let content = strip_fence(&content);
         let value: Json = serde_json::from_str(&content).map_err(|_| {
@@ -335,9 +424,9 @@ fn chat_perform(
         // Re-serialise so `content` is canonical text, not the model's
         // whitespace — the euglena apps carry it as a string and parse it
         // downstream.
-        Ok(serde_json::to_string(&value).unwrap_or(content))
+        Ok(ChatAnswer { content: serde_json::to_string(&value).unwrap_or(content), tool_calls })
     } else {
-        Ok(content.trim().to_string())
+        Ok(ChatAnswer { content: content.trim().to_string(), tool_calls })
     }
 }
 
@@ -490,10 +579,20 @@ fn build_messages(particle: &CodeValue) -> Result<Vec<Json>, String> {
                 .and_then(read_str)
                 .filter(|s| !s.is_empty())
                 .ok_or("every 'messages' entry needs a 'role'")?;
-            let content = find_field(m, "content")
-                .and_then(read_str)
-                .ok_or("every 'messages' entry needs a string 'content'")?;
-            out.push(json!({ "role": role, "content": content }));
+            let calls = find_field(m, "tool_calls").filter(|c| c.tag == CodeTag::Array);
+            let content = match find_field(m, "content").and_then(read_str) {
+                Some(text) => text,
+                None if calls.is_some() => "",
+                None => return Err("every 'messages' entry needs a string 'content'".to_string()),
+            };
+            let mut entry = json!({ "role": role, "content": content });
+            if let Some(calls) = calls {
+                entry["tool_calls"] = to_json(calls);
+            }
+            if let Some(id) = find_field(m, "tool_call_id").and_then(read_str) {
+                entry["tool_call_id"] = json!(id);
+            }
+            out.push(entry);
         }
         return Ok(out);
     }
@@ -723,6 +822,63 @@ fn speak_perform(
 
 /// Remove `<think>…</think>` blocks — reasoning models (Qwen3, R1) emit them
 /// ahead of the answer, and they are never what the caller wants.
+// CodeValue <-> serde_json, the rules of the `json` module (`_class` is
+// dropped, whole numbers write without a fractional part).
+fn to_json(v: &CodeValue) -> Json {
+    match v.tag {
+        CodeTag::Number => number_to_json(v.number()),
+        CodeTag::Str => Json::String(read_str(v).unwrap_or_default().to_owned()),
+        CodeTag::Bool => Json::Bool(read_bool(v).unwrap_or(false)),
+        CodeTag::Null => Json::Null,
+        CodeTag::Array => Json::Array(array_elems(v).map(to_json).collect()),
+        CodeTag::Object => {
+            let mut map = serde_json::Map::new();
+            for (key, value) in object_entries(v) {
+                if key != "_class" {
+                    map.insert(key.to_owned(), to_json(value));
+                }
+            }
+            Json::Object(map)
+        }
+    }
+}
+
+fn from_json(out: &mut CodeValue, v: &Json) {
+    match v {
+        Json::Null => null(out),
+        Json::Bool(b) => boolean(out, *b),
+        Json::Number(n) => number(out, n.as_f64().unwrap_or(0.0)),
+        Json::String(s) => owned_str(out, s),
+        Json::Array(items) => {
+            let mut buf = SlotBuffer::new(items.len());
+            for (i, item) in items.iter().enumerate() {
+                from_json(buf.slot_mut(i as i64), item);
+            }
+            array(out, &mut buf);
+            buf.release_all();
+        }
+        Json::Object(map) => {
+            let keys: Vec<&str> = map.keys().map(String::as_str).collect();
+            let mut buf = SlotBuffer::new(map.len());
+            for (i, value) in map.values().enumerate() {
+                from_json(buf.slot_mut(i as i64), value);
+            }
+            object_dyn(out, &keys, &mut buf);
+            buf.release_all();
+        }
+    }
+}
+
+fn number_to_json(n: f64) -> Json {
+    if !n.is_finite() {
+        Json::Null
+    } else if n.fract() == 0.0 && n.abs() < i64::MAX as f64 {
+        Json::Number((n as i64).into())
+    } else {
+        serde_json::Number::from_f64(n).map_or(Json::Null, Json::Number)
+    }
+}
+
 fn strip_think(s: &str) -> String {
     let mut out = s.to_string();
     while let Some(start) = out.find("<think>") {
@@ -804,19 +960,6 @@ fn opt_str(particle: &CodeValue, name: &str) -> Option<String> {
 
 fn opt_number(particle: &CodeValue, name: &str) -> Option<f64> {
     find_field(particle, name).and_then(read_number)
-}
-
-fn one_str(
-    out: &mut CodeValue,
-    class: &'static std::ffi::CStr,
-    key: &'static std::ffi::CStr,
-    value: &str,
-) {
-    let mut b = SlotBuffer::new(2);
-    borrowed_str(b.slot_mut(0), class);
-    owned_str(b.slot_mut(1), value);
-    object(out, &[c"_class", key], &mut b);
-    b.release_all();
 }
 
 fn trim(s: &str) -> &str {

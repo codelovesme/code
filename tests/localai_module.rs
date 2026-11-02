@@ -115,6 +115,25 @@ fn fake_openai(listener: TcpListener) {
                 let _ = stream.flush();
                 continue;
             }
+            // Tools: a request offering them is answered with a call; the
+            // follow-up carrying the call and its result gets plain text.
+            if request["model"] == "tools-test" {
+                let offered = request["tools"][0]["function"]["name"] == "run_step"
+                    && request["tool_choice"] == "auto";
+                let followed = request["messages"][2]["tool_calls"][0]["id"] == "call-1"
+                    && request["messages"][3]["role"] == "tool"
+                    && request["messages"][3]["tool_call_id"] == "call-1";
+                let body = if followed {
+                    r#"{"choices":[{"message":{"content":"listed","tool_calls":null}}]}"#
+                        .to_string()
+                } else if offered {
+                    r#"{"choices":[{"message":{"content":null,"tool_calls":[{"id":"call-1","type":"function","function":{"name":"run_step","arguments":"{\"command\":\"ls ~/Music\"}"}}]}}]}"#.to_string()
+                } else {
+                    r#"{"choices":[{"message":{"content":"bad tools request"}}]}"#.to_string()
+                };
+                respond(&mut stream, &body);
+                continue;
+            }
             let content = if request["model"] == "vision-test" {
                 let valid = request["reasoning_effort"] == "low"
                     && request["chat_template_kwargs"]["enable_thinking"] == true
@@ -211,6 +230,25 @@ emit ValidateImages {{ images = [{{ mime_type = "image/png", data_base64 = "%%%"
 assert bad_base64 ∈ Exception
 emit ValidateImages {{ images = images + images + images + images }} to ai get too_many
 assert too_many ∈ Exception
+
+| Tools: the model's call comes back as tool_calls, arguments as its text;
+| the call and its result go back as assistant/tool messages.
+tools = [{{ type = "function", function = {{ name = "run_step", description = "run", parameters = {{ type = "object", properties = {{ command = {{ type = "string" }} }}, required = ["command"] }} }} }}]
+emit ChatJson {{ model = "tools-test", user = "ls in music", tools = tools, tool_choice = "auto" }} to ai get called
+assert called ∈ ChatResult
+assert called.content = ""
+assert called.tool_calls[0].id = "call-1"
+assert called.tool_calls[0].name = "run_step"
+assert called.tool_calls[0].arguments = "{{\"command\":\"ls ~/Music\"}}"
+emit Chat {{ model = "tools-test", tools = tools, messages = [
+    {{ role = "system", content = "act" }}
+    {{ role = "user", content = "ls in music" }}
+    {{ role = "assistant", tool_calls = [{{ id = "call-1", type = "function", function = {{ name = "run_step", arguments = "{{}}" }} }}] }}
+    {{ role = "tool", tool_call_id = "call-1", content = "a.mp3" }}
+] }} to ai get followed
+assert followed.content = "listed"
+emit Chat {{ user = "hi", tools = "nope" }} to ai get bad_tools
+assert bad_tools ∈ Exception
 
 emit Transcribe {{ audio_base64 = "aGVsbG8=", language = "en" }} to ai get t
 assert t ∈ TranscribeResult
