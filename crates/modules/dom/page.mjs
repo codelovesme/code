@@ -590,6 +590,13 @@
         // A key event says which key, since "a key was pressed" is never
         // what an application wanted to know.
         if (typeof e.key === "string" && !("key" in sent)) sent = { ...sent, key: e.key };
+        // And which modifiers were held, so Shift+Enter can mean a new line
+        // where Enter alone sends. Only for key events, and only when held.
+        if (typeof e.key === "string") {
+          for (const [name, held] of [["shift", e.shiftKey], ["ctrl", e.ctrlKey], ["alt", e.altKey], ["meta", e.metaKey]]) {
+            if (held && !(name in sent)) sent = { ...sent, [name]: true };
+          }
+        }
         fire(sent);
       });
     }

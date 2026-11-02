@@ -134,6 +134,12 @@ typing.value = "x";
 typing.send("keydown", {{ key: "Escape" }});
 told.send("keyup", {{ key: "Enter" }});
 check("a key event did not say its key", fired, [{{ _class: "Pressed", value: "x", key: "Escape" }}, {{ _class: "Told", key: "mine" }}]);
+fired.length = 0;
+// Held modifiers come along, and only those held.
+typing.send("keydown", {{ key: "Enter", shiftKey: true }});
+typing.send("keydown", {{ key: "s", ctrlKey: true, metaKey: false }});
+check("a key event did not say which modifiers were held", fired, [{{ _class: "Pressed", value: "x", key: "Enter", shift: true }}, {{ _class: "Pressed", value: "x", key: "s", ctrl: true }}]);
+fired.length = 0;
 
 // The caret survives a render: the box at the same place in the new tree,
 // of the same kind, stays alive and keeps its selection; a different kind
