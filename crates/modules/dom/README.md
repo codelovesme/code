@@ -90,6 +90,12 @@ one that cannot be read, arrives with `data_base64 = ""` and `refused`
 saying why — the program is told rather than left waiting. One file per
 change; a box with `multiple` sends its first.
 
+A **paste** — `on = { paste = "Pasted" }`, on a text box or any element —
+fires only when the clipboard carries a file (a copied screenshot, say): the
+first one arrives as `file` exactly as from a file box, and the browser does
+not paste it as text. Pasted text fires nothing here; it changes the box,
+and the box's `input` says so.
+
 A **key event** — `on = { keydown = "Pressed" }` — adds `key` to the
 particle (`"Escape"`, `"Enter"`, `"a"`), since "a key was pressed" is never
 what an application wanted to know.
