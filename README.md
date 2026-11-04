@@ -1187,7 +1187,11 @@ after a program has already had effects.
 ## Modules
 
 **Code modules** are `.code` files. **A module's names are its own** — all of
-them. What a link reaches is the module's *handlers*, and nothing else:
+them. What a link reaches is the module's *handlers*, and nothing else.
+
+If an unavailable variable is declared at the top level of another linked
+source file, the pre-run error names the declaring file. This is a visibility
+hint; it does not make the binding accessible across module boundaries.
 
 ```code
 | greeter.code

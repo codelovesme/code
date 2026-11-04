@@ -18,7 +18,7 @@
 //! `codegen` does not exist at all. Owner's call, 2026-08-28: an error before
 //! the program starts is acceptable, and preferable to one halfway through.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use crate::ast::{EmitResult, EmitTarget, Expr, FieldKey, Program, Stmt};
 
@@ -54,6 +54,66 @@ pub fn verify_defined(program: &Program) -> Result<(), String> {
     let mut scopes = vec![HashSet::new()];
     let mut natives = HashSet::new();
     verify_stmts(&program.statements, &mut scopes, &mut natives, 0)
+        .map_err(|message| explain_inaccessible_binding(program, message))
+}
+
+/// Locate top-level declarations in the loaded program, not arbitrary files
+/// beside it or locals in another handler. This explains a visibility error
+/// without exposing a module's bindings to a caller (or its siblings).
+fn explain_inaccessible_binding(program: &Program, message: String) -> String {
+    let Some(name) = message
+        .strip_prefix("undefined variable '")
+        .and_then(|rest| rest.strip_suffix("'"))
+    else {
+        return message;
+    };
+    fn owners(
+        stmts: &[Stmt],
+        origin: Option<&crate::span::Origin>,
+        name: &str,
+        found: &mut BTreeSet<String>,
+    ) {
+        for stmt in stmts {
+            let declares = match stmt {
+                Stmt::Assign { name: declared, .. }
+                | Stmt::ImportNative {
+                    alias: declared, ..
+                } => declared == name,
+                Stmt::Import { alias, .. } => alias.as_deref() == Some(name),
+                Stmt::Emit {
+                    result: Some(EmitResult::Whole(declared)),
+                    ..
+                } => declared == name,
+                Stmt::Emit {
+                    result: Some(EmitResult::Fields(fields)),
+                    ..
+                } => fields.iter().any(|field| field.name == name),
+                _ => false,
+            };
+            if declares {
+                if let Some(origin) = origin {
+                    found.insert(origin.file.clone());
+                }
+            }
+            if let Stmt::Import { body, origin, .. } = stmt {
+                owners(body, Some(origin), name, found);
+            }
+        }
+    }
+    let mut found = BTreeSet::new();
+    owners(
+        &program.statements,
+        program.origin.as_ref(),
+        name,
+        &mut found,
+    );
+    if found.is_empty() {
+        return message;
+    }
+    format!(
+        "{message} — a top-level binding with this name is declared in {}; this use cannot see it",
+        found.into_iter().collect::<Vec<_>>().join(", ")
+    )
 }
 
 fn verify_stmts(
