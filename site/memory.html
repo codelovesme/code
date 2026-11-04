@@ -1,0 +1,55 @@
+<header class="page-intro">
+  <p class="breadcrumb"><a href="docs.html">Docs</a> / Memory and values</p>
+  <div class="overline">Keep the data you meant to keep</div>
+  <h1>Change one. Keep the other.</h1>
+  <p>Keep an original value while editing a copy. Code handles memory sharing and cleanup automatically.</p>
+  <div class="section-links"><a href="#example">See it work</a><a href="#sharing">How sharing works</a><a href="#details">Under the hood</a></div>
+</header>
+
+<section class="module-section" id="example">
+  <h2>A copy that stays independent.</h2>
+  <div class="module-pair">
+    <figure class="module-panel"><figcaption class="module-filename">snapshot.code · complete program</figcaption><pre class="codeblock"><code>__MEMORY_CODE__</code></pre></figure>
+    <div class="module-panel memory-result"><h3>Update the copy</h3><p><code>updated.name</code> becomes <code>"Lin"</code>. The original keeps <code>"Ada"</code>. The assertions check both results.</p><pre class="module-output"><span>Output</span>__MEMORY_OUTPUT__</pre><a class="btn btn-primary" href="playground.html?example=value_snapshot#playground">Try this example →</a></div>
+  </div>
+  <p class="module-note">The example is checked in this playground’s published interpreter and the native CLI. <a href="execution.html">Choose how to run Code →</a></p>
+</section>
+
+<section class="module-section" id="sharing">
+  <h2>Share storage. Preserve the value.</h2>
+  <p class="module-intro">Arrays, objects and text can share their underlying storage. An update preserves the old value for other holders through copy-on-write.</p>
+  <div class="module-pair">
+    <figure class="module-panel"><figcaption class="module-filename">Before the update · storage can be shared</figcaption><div class="memory-shared"><div><code>original</code><code>updated</code></div><span aria-hidden="true">→</span><code>{ name = "Ada" }</code></div></figure>
+    <figure class="module-panel"><figcaption class="module-filename">After the update · both values are preserved</figcaption><div class="memory-split"><code>original</code><span aria-hidden="true">→</span><code>{ name = "Ada" }</code><code>updated</code><span aria-hidden="true">→</span><code>{ name = "Lin" }</code></div></figure>
+  </div>
+  <div class="module-steps">
+    <article class="module-panel"><h3>Copy when needed</h3><p>Updating shared data copies affected containers as needed. In a nested update, unchanged branches can stay shared.</p></article>
+    <article class="module-panel"><h3>Reuse unique storage</h3><p>When storage has one holder, supported updates can happen in place. The observable value behavior stays the same.</p></article>
+    <article class="module-panel"><h3>Release automatically</h3><p>Reference counts track counted heap storage. Releasing its last holder releases the block and any children no longer held.</p></article>
+  </div>
+  <p class="module-note">Handlers update bindings in their own file. Other files communicate through handlers and particles while those bindings stay private. <a href="modules.html#reuse">See private state in a reusable module →</a></p>
+</section>
+
+<section class="module-section" id="details">
+  <h2>The details, when you need them.</h2>
+  <details class="module-details"><summary>Reference counts and cycles</summary>
+    <p>Code’s language-level values form an acyclic graph. Putting a value inside an updated version preserves an earlier snapshot; it does not create a mutable back-reference to the changing container. That lets reference counting reclaim these values without a tracing cycle collector.</p>
+    <p>Counted heap blocks are reclaimed as part of releasing their final reference. Counting, allocation, copying and releasing a large graph still take runtime work. The allocator can retain freed storage for reuse, so process RSS need not drop immediately. Native modules and JavaScript hosts have their own resource-lifetime contracts.</p>
+    <p><a href="https://github.com/codelovesme/code/blob/v2.23.0/src/value.rs">Interpreter value model ↗</a> · <a href="https://github.com/codelovesme/code/blob/v2.23.0/src/runtime.c">Native runtime ↗</a></p>
+  </details>
+  <details class="module-details"><summary>Nested updates and module boundaries</summary>
+    <p>For <code>updated.user.name = "Lin"</code>, shared containers along the changed path are copied as needed. Unchanged branches can retain shared storage. Uniquely held containers can be reused where the update supports it.</p>
+    <p>Native ABI calls and JSON/JavaScript bridges can marshal, allocate and copy values. Sharing inside a language engine does not guarantee a zero-copy transfer across these boundaries. <a href="docs.html#embedding">Embedding reference →</a></p>
+  </details>
+  <details class="module-details"><summary>The ABI slot and total memory</summary>
+    <p>The current native module ABI (version 2) uses a <strong>16-byte <code>CodeValue</code> slot</strong>:</p>
+    <div class="memory-slot" aria-label="16-byte ABI value slot"><span>Type + storage flag<br><b>8 bytes</b></span><span>Value or pointer<br><b>8 bytes</b></span></div>
+    <p>Container elements, keys, text, allocation headers, stacks, the interpreter and the host add their own costs. This slot size is not total memory per variable or application, and it is not the Rust interpreter’s <code>Value</code> layout. The compiler can also keep proven scalar values unboxed.</p>
+    <p><a href="https://github.com/codelovesme/code/blob/v2.23.0/src/code_abi.h">Versioned ABI definition ↗</a> · <a href="compare.html#memory">Read the scope of memory measurements →</a></p>
+  </details>
+  <details class="module-details"><summary>Code and Rust choose different ergonomics</summary>
+    <p>Rust checks ownership and borrowing at compile time. Code handles ordinary value sharing and reclamation with runtime reference counts and copy-on-write updates, so snapshot-style edits stay direct.</p>
+    <p>Rust also provides runtime-counted sharing through types such as <code>Rc</code> and <code>Arc</code>. The guarantees, allocation choices and runtime costs differ. Performance and RAM comparisons need matching programs, targets and measurements.</p>
+    <p><a href="https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html">Rust ownership ↗</a> · <a href="https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html">Borrowing ↗</a> · <a href="https://doc.rust-lang.org/std/rc/index.html">Rust reference-counted sharing ↗</a> · <a href="compare.html#memory">Measurements and their limits →</a></p>
+  </details>
+</section>

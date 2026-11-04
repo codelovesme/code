@@ -15,13 +15,14 @@ release or replace the engine with a source build.
 | `docs.html` | Reference, CLI, modules, embedding and authoring | `docs.html` content fragment |
 | `modules.html` | Install, link, reuse and target support | `modules.html`, `module-examples/` |
 | `execution.html` | Run/cache/interpret/native and the two WASM paths | `execution.html`, `execution-examples/` |
+| `memory.html` | Independent value updates, sharing and reclamation | `memory.html`, `examples/value_snapshot.code` |
 | `compare.html` | Existing comparisons, measurements and methodology | Standalone comparison template |
 
 `layout.html` wraps the content fragments. Every page, including Compare, uses
 `navigation.html`, `footer.html`, `navigation.css` and `navigation.js`.
 `site.css` supplies the common content styles; Compare retains its chart/content
 styles so the navigation split does not redesign its measurements.
-Modules and Execution are Docs destinations and keep Docs selected in the shared navigation.
+Modules, Execution and Memory are Docs destinations and keep Docs selected in the shared navigation.
 
 Preview generated output rather than serving the source fragments directly.
 There is no router/server framework, new package manager or client build step.
@@ -55,8 +56,8 @@ separate from the playground engine pin.
 
 The gallery still comes from the real `tests/*.code` fixtures plus
 `site/examples/*.code`. Existing native-link, stress and intentionally invalid
-fixture exclusions remain. `demos.json` names the source example used for the
-static Home/Learn preview and its expected output; the build writes the full
+fixture exclusions remain. `demos.json` names the source examples used for the
+static Home/Learn/Memory previews and their expected output; the build writes the full
 preview manifest for the same engine check as the gallery. Rendering a preview
 never requires loading WASM on the home page.
 
@@ -115,6 +116,21 @@ These native/compiler checks are distinct from executing source through the
 site's separately pinned published 2.16.0 interpreter. No release/runtime pin
 is upgraded by building or verifying either website guide.
 
+Memory's `value_snapshot` is both a runnable gallery example and a checked
+preview. Verify the same source using the actual published Linux CLI/modules:
+
+```sh
+python3 site/check_memory.py /absolute/path/to/code-v2.23.0-x86_64-linux/code
+```
+
+The checker uses temporary projects/cache, native leak checks and the public
+v2.23.0 console module. It checks visible snapshots plus nested path updates,
+array/text growth and self-containing snapshots interpreted and compiled. It
+also compiles a small C probe against the published tag's ABI header to check
+the 16-byte slot and ABI version 2. This is layout/semantic evidence, not an
+RSS or performance benchmark. The site keeps total memory, module/JSON
+transport costs and Rust ownership trade-offs separate from that slot size.
+
 ## Build and check
 
 From the repository root, use the **exact workflow pin** for `code-wasm`:
@@ -159,7 +175,7 @@ This split establishes usable routes; it does not complete the later roadmap.
 | 211 | Home positioning and first-screen composition in `index.html` |
 | 212 | `modules.html`, linked from Home and `docs.html#modules`; checked native snippets in `module-examples/` |
 | 213 | `execution.html`, reached from Home/Docs; interpreter embedding stays at `docs.html#embedding` |
-| 214 | Memory/value explanation, linked from Docs |
+| 214 | `memory.html`, reached from Home/Docs; checked preview in `examples/value_snapshot.code` |
 | 215–216 | Benchmark evidence, then a focused Performance view; preserve Compare links |
 | 217 | Playground first-use examples and gallery presentation |
 | 218–222 | Expand the Learn starter into a hub, lesson layout and four actual tutorials |

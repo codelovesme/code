@@ -170,6 +170,7 @@ def main() -> None:
         for demo in json.loads((site_dir / "demos.json").read_text())
     ]
     home = previews[0]
+    memory = next(preview for preview in previews if preview["name"] == "value_snapshot")
     layout = (site_dir / "layout.html").read_text()
     navigation = (site_dir / "navigation.html").read_text()
     footer = (site_dir / "footer.html").read_text()
@@ -197,6 +198,10 @@ def main() -> None:
         "execution": (
             "docs", "How Code runs — interpreter, native builds and WebAssembly",
             "Choose cached native execution, bytecode interpretation or a compiled application. See the two ways Code runs with WebAssembly.",
+        ),
+        "memory": (
+            "docs", "Code memory and values — share storage, preserve snapshots",
+            "See independent value updates, automatic reference counting and copy-on-write in a short runnable Code example.",
         ),
         "compare": ("compare", "", ""),
     }
@@ -226,6 +231,8 @@ def main() -> None:
             "__ENGINE_VERSION__": html.escape(version),
             "__HOME_CODE__": html.escape(home["code"].strip()),
             "__HOME_OUTPUT__": html.escape(home["output"]),
+            "__MEMORY_CODE__": html.escape(memory["code"].strip()),
+            "__MEMORY_OUTPUT__": html.escape(memory["output"]),
         }
         if filename == "modules":
             replacements.update({

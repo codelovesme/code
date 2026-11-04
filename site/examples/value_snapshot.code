@@ -1,0 +1,8 @@
+link "console" as out
+original = { name = "Ada" }
+updated = original
+updated.name = "Lin"
+assert original.name = "Ada"
+assert updated.name = "Lin"
+emit Print { value = "original: $original.name" } to out
+emit Print { value = "updated: $updated.name" } to out

@@ -39,7 +39,7 @@ const consoleModule = {
 };
 
 const examples = JSON.parse(readFileSync(`${dist}/examples.json`, "utf8"));
-// Home/Learn previews are generated from the same checked source files.
+// Home/Learn/Memory previews are generated from the same checked source files.
 examples.push(...JSON.parse(readFileSync(`${dist}/demos.json`, "utf8")));
 const failures = [];
 for (const example of examples) {

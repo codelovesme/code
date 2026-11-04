@@ -477,3 +477,18 @@
   .execution-cache [aria-hidden] { display: none; }
   .execution-cache span:last-child { color: var(--teal); }
 }
+
+.memory-result .btn { margin-top: 1.5rem; }
+.memory-shared, .memory-split { display: grid; align-items: center; grid-template-columns: auto auto 1fr; gap: .8rem; font-size: .85rem; }
+.memory-shared > div { display: grid; gap: .8rem; }
+.memory-shared code, .memory-split code { padding: .6rem .7rem; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); overflow-wrap: anywhere; }
+.memory-shared [aria-hidden], .memory-split [aria-hidden] { color: var(--teal); }
+.memory-split code:last-child { color: var(--green); border-color: rgba(134,239,172,.35); }
+.memory-slot { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); max-width: 500px; margin-block: 1rem; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.memory-slot span { padding: .8rem 1rem; color: var(--muted); font-size: .85rem; background: var(--panel); }
+.memory-slot span + span { border-left: 1px solid var(--border); }
+.memory-slot b { color: var(--teal); }
+@media (max-width: 560px) {
+  .memory-shared, .memory-split { font-size: .78rem; gap: .5rem; }
+  .memory-shared code, .memory-split code { padding: .5rem; }
+}
