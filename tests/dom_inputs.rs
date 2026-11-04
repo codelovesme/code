@@ -123,6 +123,23 @@ text.send("change", {{}});
 check("a text box stopped carrying its text", fired, [{{ _class: "Typed", value: "hi" }}]);
 fired.length = 0;
 
+// A paste that carries a file sends it like a file box; pasted text does not
+// fire (the box's own input says it), and the image is not pasted as text.
+dom({{ _class: "Render", into: "body", tree: {{ tag: "textarea", on: {{ paste: "Pasted" }} }} }});
+const area = body.children[0];
+let stopped = 0;
+area.send("paste", {{ preventDefault() {{ stopped++; }}, clipboardData: {{ files: [], items: [
+  {{ kind: "string", getAsFile: () => null }},
+  {{ kind: "file", getAsFile: () => ({{ name: "image.png", type: "image/png", size: 4, b64: "iVBO" }}) }},
+] }} }});
+check("a pasted image was not carried", fired, [{{ _class: "Pasted", value: "image.png",
+  file: {{ name: "image.png", type: "image/png", size: 4, data_base64: "iVBO" }} }}]);
+check("a pasted image was also pasted as text", stopped, 1);
+fired.length = 0;
+area.send("paste", {{ preventDefault() {{ stopped++; }}, clipboardData: {{ files: [], items: [{{ kind: "string", getAsFile: () => null }}] }} }});
+check("pasted text fired a paste", fired, []);
+check("pasted text was stopped", stopped, 1);
+
 // A key event says which key; one the application already named is kept.
 dom({{ _class: "Render", into: "body", tree: {{ tag: "div", children: [
   {{ tag: "input", attrs: {{ type: "text", autofocus: "" }}, on: {{ keydown: "Pressed" }} }},

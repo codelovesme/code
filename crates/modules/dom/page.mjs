@@ -31,6 +31,42 @@
   const FILE_CAP = 12 * 1024 * 1024;
   const FILE_CAP_SAID = "12 MB";
 
+  // A file goes to the application as `file` — name, type, size and the
+  // bytes as base64 — with `value` its name. Too large to carry, or
+  // unreadable, the data is empty and `refused` says why.
+  const sendFile = (particle, chosen) => {
+    const name = chosen.name || "pasted";
+    const said = { name, type: chosen.type || "", size: chosen.size };
+    if (chosen.size > FILE_CAP) {
+      fire({ ...particle, value: name, file: { ...said, data_base64: "", refused: `larger than ${FILE_CAP_SAID}` } });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = String(reader.result || "");
+      const data_base64 = url.slice(url.indexOf(",") + 1);
+      fire({ ...particle, value: name, file: { ...said, data_base64 } });
+    };
+    reader.onerror = () => {
+      fire({ ...particle, value: name, file: { ...said, data_base64: "", refused: "could not be read" } });
+    };
+    reader.readAsDataURL(chosen);
+  };
+
+  // The first file a paste carries, if it carries one.
+  const pastedFile = (e) => {
+    const data = e && e.clipboardData;
+    if (!data) return null;
+    if (data.files && data.files.length) return data.files[0];
+    for (const item of Array.from(data.items || [])) {
+      if (item && item.kind === "file" && typeof item.getAsFile === "function") {
+        const got = item.getAsFile();
+        if (got) return got;
+      }
+    }
+    return null;
+  };
+
   // The particle a gesture on `el` means, with what the element holds — the
   // same rule an ordinary event follows.
   const meant = (el, particle) => {
@@ -566,21 +602,18 @@
         if (isFileBox(target)) {
           const chosen = target.files && target.files[0];
           if (!chosen) return;
-          const said = { name: chosen.name, type: chosen.type || "", size: chosen.size };
-          if (chosen.size > FILE_CAP) {
-            fire({ ...particle, value: chosen.name, file: { ...said, data_base64: "", refused: `larger than ${FILE_CAP_SAID}` } });
-            return;
-          }
-          const reader = new FileReader();
-          reader.onload = () => {
-            const url = String(reader.result || "");
-            const data_base64 = url.slice(url.indexOf(",") + 1);
-            fire({ ...particle, value: chosen.name, file: { ...said, data_base64 } });
-          };
-          reader.onerror = () => {
-            fire({ ...particle, value: chosen.name, file: { ...said, data_base64: "", refused: "could not be read" } });
-          };
-          reader.readAsDataURL(chosen);
+          sendFile(particle, chosen);
+          return;
+        }
+        // A paste carries a file when something like a screenshot was
+        // copied: it is read and sent as `file`, exactly as a file box sends
+        // one. Pasted text is not an event here — it changes the box, and
+        // the box's own `input` says so.
+        if (event === "paste") {
+          const pasted = pastedFile(e);
+          if (!pasted) return;
+          e.preventDefault();
+          sendFile(particle, pasted);
           return;
         }
         const value = eventValue(target);
