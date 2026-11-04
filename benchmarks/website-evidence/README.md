@@ -127,6 +127,7 @@ Compare page's October date/version and mixed numeric/broader evidence must be
 revisited in 216. Different hosts, supervisors, compilers and source revisions
 prevent interpreting this rerun as a release-to-release speedup percentage.
 
-Final raw results and a concrete claim/evidence table will be linked here after
-the fresh hosted measurement completes. The live website is not rewritten by
+The [4 November public-release report and claim table](RESULTS.md) links all
+485 raw samples from the successful fresh hosted run. It preserves wins and
+losses, including typed COW baselines. The live website is not rewritten by
 215; 216 consumes the verified evidence.
