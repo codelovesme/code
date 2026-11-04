@@ -1,5 +1,8 @@
 """Static artifact checks: direct routes, anchors, assets and example preservation."""
+import csv
 import json
+from collections import defaultdict
+from statistics import median
 import os
 from html.parser import HTMLParser
 from pathlib import Path
@@ -62,8 +65,7 @@ class SiteBuild(unittest.TestCase):
             self.assertEqual(page.navigation, expected, name)
             self.assertEqual(len(page.ids), len(set(page.ids)), name)
             self.assertIn('main', page.ids)
-            if name != 'compare.html':
-                self.assertEqual(page.current, ['docs.html' if name in ('modules.html', 'execution.html', 'memory.html') else name], name)
+            self.assertEqual(page.current, ['docs.html' if name in ('modules.html', 'execution.html', 'memory.html', 'compare.html') else name], name)
 
     def test_local_links_and_assets_exist_at_github_pages_subpath(self):
         for name, page in self.pages.items():
@@ -110,6 +112,43 @@ class SiteBuild(unittest.TestCase):
                            check=True, capture_output=True)
             future = json.loads((Path(directory) / 'examples.json').read_text())
             self.assertIn('handler_recursion', {example['name'] for example in future})
+
+    def test_performance_numbers_match_raw_samples(self):
+        # Verify against raw launches, independently of the JSON summaries used
+        # by the renderer. A scale/unit error or stale edited number must fail.
+        class Numbers(HTMLParser):
+            def __init__(self, source):
+                super().__init__()
+                self.key = None
+                self.values = {}
+                self.feed(source)
+
+            def handle_starttag(self, tag, attrs):
+                if tag == 'span':
+                    self.key = dict(attrs).get('data-evidence')
+
+            def handle_data(self, data):
+                if self.key:
+                    self.values[tuple(self.key.split('|'))] = data
+
+            def handle_endtag(self, tag):
+                if tag == 'span':
+                    self.key = None
+
+        groups = defaultdict(list)
+        raw = ROOT / 'benchmarks/website-evidence/results/2026-11-04-v2.23.0/samples.csv'
+        with raw.open() as source:
+            for row in csv.DictReader(source):
+                groups[row['group'], row['workload'], row['mode']].append(row)
+        page = Numbers((self.dist / 'compare.html').read_text())
+        self.assertGreater(len(page.values), 40)
+        for (group, workload, mode, metric), displayed in page.values.items():
+            samples = groups[group, workload, mode]
+            field, scale = ('elapsed_seconds', 1000) if metric == 'time' else ('peak_rss_kib', 1 / 1024)
+            expected = median(float(row[field]) for row in samples) * scale
+            self.assertEqual(displayed, f'{expected:.3f}', (group, workload, mode, metric))
+        self.assertIn(('prebuilt', 'snapshots', 'Rust Rc COW', 'rss'), page.values)
+        self.assertIn(('compile', 'sum_squares', 'Code release', 'rss'), page.values)
 
     def test_rebuilding_is_deterministic(self):
         before = {str(p.relative_to(self.dist)): p.read_bytes() for p in self.dist.rglob('*') if p.is_file()}

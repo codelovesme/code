@@ -16,6 +16,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from performance import render as render_performance
+
 # Ordered: first matching prefix wins. `fail_`/`emit_`/`particle_` are the
 # most specific and must be checked before the generic value prefixes.
 CATEGORY_BY_PREFIX = [
@@ -203,14 +205,14 @@ def main() -> None:
             "docs", "Code memory and values — share storage, preserve snapshots",
             "See independent value updates, automatic reference counting and copy-on-write in a short runnable Code example.",
         ),
-        "compare": ("compare", "", ""),
+        "compare": (
+            "docs", "Code performance — native speed, cached runs and shared memory",
+            "Measured native runtime, cold and cached runs, and snapshot memory for public Code v2.23.0, with reproducible evidence.",
+        ),
     }
     for filename, (page, title, description) in pages.items():
         content = (site_dir / f"{filename}.html").read_text()
-        if page == "compare":
-            output = content
-        else:
-            output = layout.replace("__CONTENT__", content)
+        output = layout.replace("__CONTENT__", content)
         nav = navigation
         for key in ["home", "learn", "playground", "docs"]:
             nav = nav.replace(
@@ -234,6 +236,8 @@ def main() -> None:
             "__MEMORY_CODE__": html.escape(memory["code"].strip()),
             "__MEMORY_OUTPUT__": html.escape(memory["output"]),
         }
+        if filename == "compare":
+            replacements.update(render_performance(repo_root))
         if filename == "modules":
             replacements.update({
                 f"__MODULE_{name}__": html.escape((site_dir / "module-examples" / path).read_text().strip())

@@ -492,3 +492,38 @@
   .memory-shared, .memory-split { font-size: .78rem; gap: .5rem; }
   .memory-shared code, .memory-split code { padding: .5rem; }
 }
+
+/* Measured performance: readable numbers first, deeper evidence on demand. */
+.home-proof { max-width: 1120px; margin: 0 auto 2.5rem; padding: 0 1.5rem; font-size: .9rem; }
+.perf-chart { max-width: 760px; }
+.perf-chart figcaption { margin-bottom: 1rem; color: var(--muted); font-size: .88rem; }
+.perf-scale { display: flex; justify-content: space-between; margin: 0 7.4rem .4rem 5.5rem; color: var(--muted); font: .75rem var(--mono); }
+.perf-bar-row { display: grid; grid-template-columns: 4.7rem minmax(0, 1fr) 6.6rem; align-items: center; gap: .8rem; margin-block: .8rem; font-size: .9rem; }
+.perf-track { height: 18px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
+.perf-bar { display: block; height: 100%; border-radius: inherit; }
+.perf-bar.code { background: var(--teal); }
+.perf-bar.rust { background: var(--violet); }
+.perf-bar.c { background: var(--amber); }
+.perf-bar-row strong { text-align: right; font: .85rem var(--mono); white-space: nowrap; }
+.perf-paths { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+.module-panel .perf-value { color: var(--teal); font: 1.65rem var(--mono); margin-block: .7rem; }
+.perf-value small { color: var(--muted); font-size: .8rem; }
+.module-panel .perf-rss { font-size: .8rem; }
+.perf-table { min-width: 0; font-size: .85rem; }
+.perf-table tbody th { font-family: var(--sans); }
+.perf-table td { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.perf-table tbody tr:has([data-evidence*="Code"]) { background: rgba(94,234,212,.035); }
+@media (max-width: 1000px) { .perf-paths { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .perf-chart { padding: 1rem; }
+  .perf-bar-row { grid-template-columns: 1fr auto; gap: .4rem; }
+  .perf-track { grid-column: 1 / -1; grid-row: 2; }
+  .perf-bar-row strong { grid-column: 2; grid-row: 1; }
+  .perf-scale { margin-inline: 0; }
+  .perf-paths { gap: .75rem; }
+  .perf-paths .module-panel { padding: .85rem; }
+  .module-panel .perf-value { font-size: 1.25rem; }
+  .perf-table { font-size: .75rem; }
+  .perf-table caption, .perf-table th, .perf-table td { padding: .65rem .45rem; }
+  .home-proof { padding-inline: 1rem; }
+}

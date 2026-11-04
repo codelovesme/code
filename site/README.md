@@ -16,13 +16,12 @@ release or replace the engine with a source build.
 | `modules.html` | Install, link, reuse and target support | `modules.html`, `module-examples/` |
 | `execution.html` | Run/cache/interpret/native and the two WASM paths | `execution.html`, `execution-examples/` |
 | `memory.html` | Independent value updates, sharing and reclamation | `memory.html`, `examples/value_snapshot.code` |
-| `compare.html` | Existing comparisons, measurements and methodology | Standalone comparison template |
+| `compare.html` | Concise native speed, run modes, snapshot RSS and reproducible evidence | `compare.html`, `performance.py` |
 
 `layout.html` wraps the content fragments. Every page, including Compare, uses
 `navigation.html`, `footer.html`, `navigation.css` and `navigation.js`.
-`site.css` supplies the common content styles; Compare retains its chart/content
-styles so the navigation split does not redesign its measurements.
-Modules, Execution and Memory are Docs destinations and keep Docs selected in the shared navigation.
+`site.css` supplies common content and chart styles. Modules, Execution, Memory
+and Performance are Docs destinations and keep Docs selected in the navigation.
 
 Preview generated output rather than serving the source fragments directly.
 There is no router/server framework, new package manager or client build step.
@@ -176,7 +175,7 @@ This split establishes usable routes; it does not complete the later roadmap.
 | 212 | `modules.html`, linked from Home and `docs.html#modules`; checked native snippets in `module-examples/` |
 | 213 | `execution.html`, reached from Home/Docs; interpreter embedding stays at `docs.html#embedding` |
 | 214 | `memory.html`, reached from Home/Docs; checked preview in `examples/value_snapshot.code` |
-| 215–216 | Benchmark evidence, then a focused Performance view; preserve Compare links |
+| 215–216 | Verified evidence in `benchmarks/website-evidence/`; focused Performance view on the existing `compare.html` route |
 | 217 | Playground first-use examples and gallery presentation |
 | 218–222 | Expand the Learn starter into a hub, lesson layout and four actual tutorials |
 | 223 | Real-application proof on Home and project details |
@@ -187,3 +186,29 @@ This split establishes usable routes; it does not complete the later roadmap.
 Add routes only when they contain usable content. Keep navigation/footer shared,
 relative links valid, executable previews checked and old public destinations
 working when pages move again.
+
+
+## Performance evidence (216)
+
+`performance.py` renders the medians directly from the retained, reviewed public
+v2.23.0 JSON in `benchmarks/website-evidence/results/2026-11-04-v2.23.0/`. It does
+not benchmark during a site build or follow a floating/latest release. Report,
+raw-data and reproduction links pin the reviewed evidence commit `65403bd`.
+`test_build.py` independently checks displayed values against medians of the
+raw CSV, with milliseconds and MiB kept separate. Updating a dataset requires
+reviewing the copy, representations, claims and scope too.
+
+The first view includes numeric native runtime, four Code launch paths and
+all five snapshot representations (ordinary eager clones and equivalent COW).
+Broader native workloads and compiler measurements expand on demand. The
+existing Compare route and every previous fragment ID remain useful. The long
+seven-language essay and mixed-host October ranking are replaced; original
+October artifacts remain unchanged and linked through the historical inventory.
+
+Check native HTML details, all numbers, source links, old anchors, phone widths
+and keyboard interaction in a real browser (no WASM load on this page):
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
+  node site/check_performance.mjs http://localhost:8955/code/
+```
