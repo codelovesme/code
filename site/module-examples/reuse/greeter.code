@@ -1,0 +1,4 @@
+greeting = "hello"
+
+Greet { who } =>
+    return Reply { text = "$greeting, $who" }

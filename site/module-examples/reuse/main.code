@@ -1,0 +1,7 @@
+link "greeter"
+link "console.so" as out
+
+greeting = "from main"
+emit Greet { who = "Ada" } to this get reply
+emit Print { value = reply.text } to out
+assert greeting = "from main"

@@ -56,14 +56,14 @@ class SiteBuild(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_direct_pages_share_working_navigation(self):
-        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html'})
+        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html'})
         expected = ['index.html', 'learn.html', 'playground.html', 'docs.html', 'https://github.com/codelovesme/code']
         for name, page in self.pages.items():
             self.assertEqual(page.navigation, expected, name)
             self.assertEqual(len(page.ids), len(set(page.ids)), name)
             self.assertIn('main', page.ids)
             if name != 'compare.html':
-                self.assertEqual(page.current, [name], name)
+                self.assertEqual(page.current, ['docs.html' if name == 'modules.html' else name], name)
 
     def test_local_links_and_assets_exist_at_github_pages_subpath(self):
         for name, page in self.pages.items():
@@ -112,10 +112,10 @@ class SiteBuild(unittest.TestCase):
             self.assertIn('handler_recursion', {example['name'] for example in future})
 
     def test_rebuilding_is_deterministic(self):
-        before = {p.name: p.read_bytes() for p in self.dist.iterdir() if p.is_file()}
+        before = {str(p.relative_to(self.dist)): p.read_bytes() for p in self.dist.rglob('*') if p.is_file()}
         subprocess.run(['python3', str(ROOT / 'site/build.py'), str(ROOT), str(self.dist)],
                        env=self.environment, check=True, capture_output=True)
-        self.assertEqual(before, {p.name: p.read_bytes() for p in self.dist.iterdir() if p.is_file()})
+        self.assertEqual(before, {str(p.relative_to(self.dist)): p.read_bytes() for p in self.dist.rglob('*') if p.is_file()})
 
 
 if __name__ == '__main__':

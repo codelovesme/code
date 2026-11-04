@@ -1,0 +1,2 @@
+link "console.so" as out
+emit Print { value = "hello, modules" } to out

@@ -1,0 +1,5 @@
+link "libgreeter.so" as greeter
+link "console.so" as out
+
+emit Greet { who = "Ada" } to greeter get reply
+emit Print { value = reply.text } to out

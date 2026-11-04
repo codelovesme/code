@@ -13,12 +13,14 @@ release or replace the engine with a source build.
 | `learn.html` | Working first example and orientation | `learn.html` content fragment |
 | `playground.html` | Editor, results and complete browser-compatible gallery | `playground.html`, `playground.mjs` |
 | `docs.html` | Reference, CLI, modules, embedding and authoring | `docs.html` content fragment |
+| `modules.html` | Install, link, reuse and target support | `modules.html`, `module-examples/` |
 | `compare.html` | Existing comparisons, measurements and methodology | Standalone comparison template |
 
 `layout.html` wraps the content fragments. Every page, including Compare, uses
 `navigation.html`, `footer.html`, `navigation.css` and `navigation.js`.
 `site.css` supplies the common content styles; Compare retains its chart/content
 styles so the navigation split does not redesign its measurements.
+Modules is a Docs destination and keeps Docs selected in the shared navigation.
 
 Preview generated output rather than serving the source fragments directly.
 There is no router/server framework, new package manager or client build step.
@@ -65,6 +67,27 @@ in the language suite. A different engine pin automatically includes it again
 and must pass the runtime check; do not turn the exception into a permanent
 exclusion or silently filter any other failing example.
 
+The Modules page's CLI-only snippets come from `module-examples/`, not the
+playground gallery. The build renders those exact files and copies them as
+downloadable assets. It does not send a multi-file native example to the
+console-only browser interpreter. Target availability is scoped to published
+v2.23.0 release manifests, with DOM's native stub distinguished from browser
+operations; future source APIs do not imply new release availability.
+
+Verify the native examples with the actual published **Linux v2.23.0 CLI**:
+
+```sh
+python3 site/check_module_examples.py /absolute/path/to/code-v2.23.0-x86_64-linux/code
+```
+
+The checker needs network access, `curl` and `cc`. In a temporary project it
+installs the public release's console module, verifies its lock version/source/
+hash, runs the displayed source and compiled-library callers interpreted and
+compiled, proves private-name access is refused, and builds shared/static
+libraries. It refuses a different CLI version and never uses source-built
+module assets. This explicit native check is separate from the Pages workflow's
+published-browser-engine check. Run it when changing these versioned examples.
+
 ## Build and check
 
 From the repository root, use the **exact workflow pin** for `code-wasm`:
@@ -107,7 +130,7 @@ This split establishes usable routes; it does not complete the later roadmap.
 | Tickets | Content destination |
 |---|---|
 | 211 | Home positioning and first-screen composition in `index.html` |
-| 212 | Modules preview/reference from `docs.html#modules`; a focused page when ready |
+| 212 | `modules.html`, linked from Home and `docs.html#modules`; checked native snippets in `module-examples/` |
 | 213 | Execution explanation from `docs.html#cli`; a focused page when ready |
 | 214 | Memory/value explanation, linked from Docs |
 | 215–216 | Benchmark evidence, then a focused Performance view; preserve Compare links |

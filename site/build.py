@@ -50,6 +50,14 @@ CATEGORY_BY_PREFIX = [
     ("self_", "Values & Expressions"),
 ]
 DEFAULT_CATEGORY = "Values & Expressions"
+MODULE_SNIPPETS = {
+    "SETUP": "get-cli.sh",
+    "HELLO": "hello/main.code",
+    "GREETER": "reuse/greeter.code",
+    "CALLER": "reuse/main.code",
+    "SECOND": "reuse/team.code",
+    "COMPILED": "reuse/compiled.code",
+}
 
 
 def category_for(name: str) -> str:
@@ -182,6 +190,10 @@ def main() -> None:
             "docs", "Code documentation — reference and integration",
             "Language reference, modules, CLI commands, WebAssembly embedding and native module authoring.",
         ),
+        "modules": (
+            "docs", "Code modules — install, link and reuse",
+            "Install a published module, reuse your own handlers with private state, and choose native or browser capabilities.",
+        ),
         "compare": ("compare", "", ""),
     }
     for filename, (page, title, description) in pages.items():
@@ -211,6 +223,11 @@ def main() -> None:
             "__HOME_CODE__": html.escape(home["code"].strip()),
             "__HOME_OUTPUT__": html.escape(home["output"]),
         }
+        if filename == "modules":
+            replacements.update({
+                f"__MODULE_{name}__": html.escape((site_dir / "module-examples" / path).read_text().strip())
+                for name, path in MODULE_SNIPPETS.items()
+            })
         for placeholder, value in replacements.items():
             output = output.replace(placeholder, value)
         (dist_dir / f"{filename}.html").write_text(output)
@@ -226,6 +243,7 @@ def main() -> None:
         shutil.copyfile(site_dir / name, dist_dir / name)
     for asset in sorted(site_dir.glob("*.png")):
         shutil.copyfile(asset, dist_dir / asset.name)
+    shutil.copytree(site_dir / "module-examples", dist_dir / "module-examples", dirs_exist_ok=True)
     print(f"Built {len(pages)} pages and {len(examples)} examples")
 
 

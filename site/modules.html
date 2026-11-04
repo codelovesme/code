@@ -1,0 +1,100 @@
+<header class="page-intro">
+  <p class="breadcrumb"><a href="docs.html">Docs</a> / Modules</p>
+  <div class="overline">Compose. Reuse. Build.</div>
+  <h1>Put modules to work.</h1>
+  <p>Install a capability, link it, and send it a particle. Write your own module once, then reuse its handlers in another program.</p>
+  <div class="section-links"><a href="#install">Install and use</a><a href="#reuse">Write and reuse</a><a href="#targets">Choose a target</a><a href="#libraries">Compile a library</a></div>
+</header>
+
+<section class="module-section" id="install">
+  <h2>Install → link → use.</h2>
+  <p class="module-intro">A complete native example, using the published <a href="https://github.com/codelovesme/code/releases/tag/v2.23.0">Code v2.23.0 release</a> on Linux x86_64. You need <code>curl</code> and a C compiler (<code>cc</code>) for the native build.</p>
+  <details class="module-details">
+    <summary>Download the CLI and start in a fresh directory</summary>
+    <pre class="codeblock"><code>__MODULE_SETUP__</code></pre>
+    <p>Keep this terminal open. <code>$code_cli</code> is the full path to the language CLI, so these commands also work when your <code>code</code> command opens Visual Studio Code. Keep the extracted <code>code</code> and <code>code-driver</code> files together.</p>
+  </details>
+  <div class="module-steps">
+    <article class="module-panel"><h3><span class="module-number">1</span> Install</h3>
+      <pre class="codeblock"><code>"$code_cli" init hello
+cd hello
+"$code_cli" install console</code></pre>
+      <p>The CLI downloads its own release’s <code>console</code> module into this project.</p>
+    </article>
+    <article class="module-panel"><h3><span class="module-number">2</span> Link</h3>
+      <p class="module-filename">Save as <a href="module-examples/hello/main.code" download="main.code">main.code ↓</a></p>
+      <pre class="codeblock"><code>__MODULE_HELLO__</code></pre>
+      <p><code>out</code> names the module. <code>Print</code> is the particle it handles.</p>
+    </article>
+    <article class="module-panel"><h3><span class="module-number">3</span> Use</h3>
+      <pre class="codeblock"><code>"$code_cli" run --interpret
+"$code_cli" build --release
+./build/hello</code></pre>
+      <p>Both runs print:</p><pre class="module-output">hello, modules</pre>
+    </article>
+  </div>
+  <details class="module-details">
+    <summary>What is pinned?</summary>
+    <p><code>.code/lock.json</code> records the installed version, release URL and SHA-256 fingerprint. The fingerprint is checked when downloading and loading the module. Keep the lockfile with your source; downloaded binaries live under <code>.code/modules/</code>.</p>
+    <p>These instructions use CLI and modules v2.23.0 together. Installing by name uses the CLI’s release, rather than silently following a newer module release. <a href="https://github.com/codelovesme/code/blob/v2.23.0/README.md#native-modules-by-name">Module resolution reference ↗</a></p>
+  </details>
+  <p class="module-note">Prefer the browser first? The <a href="playground.html?example=hello_home#playground">three-line playground example</a> uses a supplied <code>console</code> callback, with no installation.</p>
+</section>
+
+<section class="module-section" id="reuse">
+  <div class="overline">Write it once</div>
+  <h2>Same module. Another caller.</h2>
+  <p class="module-intro">In the <code>hello</code> project above, add <code>greeter.code</code> and replace <code>main.code</code> with this caller. These are separate files, run with the CLI.</p>
+  <div class="module-pair">
+    <figure class="module-panel"><figcaption class="module-filename"><a href="module-examples/reuse/greeter.code" download="greeter.code">greeter.code ↓</a> · reusable module</figcaption><pre class="codeblock"><code>__MODULE_GREETER__</code></pre></figure>
+    <figure class="module-panel"><figcaption class="module-filename"><a href="module-examples/reuse/main.code" download="main.code">main.code ↓</a> · caller</figcaption><pre class="codeblock"><code>__MODULE_CALLER__</code></pre></figure>
+  </div>
+  <p class="module-intro">Each file owns its <code>greeting</code>. The handler reads <code>"hello"</code> from its module; the caller keeps <code>"from main"</code>. They communicate through <code>Greet</code> and the returned <code>Reply</code>.</p>
+  <div class="module-result"><pre class="codeblock"><code>"$code_cli" run main.code --interpret</code></pre><pre class="module-output"><span>Output</span>hello, Ada</pre></div>
+  <details class="module-details">
+    <summary>Reuse the unchanged module from a second program</summary>
+    <p class="module-filename">Save beside it as <a href="module-examples/reuse/team.code" download="team.code">team.code ↓</a></p>
+    <pre class="codeblock"><code>__MODULE_SECOND__</code></pre>
+    <p>Run <code>"$code_cli" run team.code --interpret</code> to print <code>hello, Lin</code>. The same <code>greeter.code</code> supplies the behavior; each caller keeps its own variables.</p>
+  </details>
+  <p class="module-note">A source <code>link</code> makes handlers reachable through <code>this</code>. A native library uses an alias and receives particles at that alias. <a href="https://github.com/codelovesme/code/blob/v2.23.0/README.md#modules">Read the module boundary rules ↗</a></p>
+</section>
+
+<section class="module-section" id="targets">
+  <h2>Choose capabilities for your target.</h2>
+  <p class="module-intro">A few of the modules available in v2.23.0. Compiled browser apps use released WASM archives plus their generated JavaScript host. The playground is a separate interpreter host: it currently supplies <strong>console only</strong>.</p>
+  <div class="module-table-wrap" tabindex="0" role="region" aria-label="Module target support">
+    <table class="module-table">
+      <caption>Published v2.23.0 module targets</caption>
+      <thead><tr><th scope="col">Module</th><th scope="col">Native Linux x86_64</th><th scope="col">Compiled browser app</th><th scope="col">This playground</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/tree/v2.23.0/crates/modules/console">console</a><span>Print output</span></th><td>Yes</td><td>Yes</td><td>Supplied callback</td></tr>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.23.0/crates/modules/math/README.md">math</a><span>Numeric utilities</span></th><td>Yes</td><td>Yes</td><td>Not supplied</td></tr>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.23.0/crates/modules/json/README.md">json</a><span>Parse and stringify</span></th><td>Yes</td><td>Yes</td><td>Not supplied</td></tr>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.23.0/crates/modules/http_client/README.md">http_client</a><span>HTTP requests</span></th><td>Yes</td><td>Yes · browser fetch rules</td><td>Not supplied</td></tr>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.23.0/crates/modules/fs/README.md">fs</a><span>Local files</span></th><td>Yes</td><td>No</td><td>Not supplied</td></tr>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.23.0/crates/modules/dom/README.md">dom</a><span>Render a page</span></th><td>Browser-only operations</td><td>Yes</td><td>Not supplied</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="module-table-hint">Scroll the table to compare targets →</p>
+  <details class="module-details">
+    <summary>Installing a browser build’s module</summary>
+    <p>Use <code>"$code_cli" install console --platform wasm32</code> in a separate browser project, then build with <code>--target wasm</code>. Serve the generated <code>.wasm</code> and <code>host.mjs</code> together. A target’s module APIs and host permissions still apply.</p>
+    <p>The multi-file examples above are CLI examples; the playground does not fetch local files or load <code>.so</code> libraries. <a href="docs.html#embedding">Browser interpreter embedding →</a></p>
+  </details>
+</section>
+
+<section class="module-section" id="libraries">
+  <div class="overline">Reuse beyond source</div>
+  <h2>Ship the module as a library.</h2>
+  <p class="module-intro">Compile a Code module to a shared library or static archive. Its handlers remain the interface, and its variables remain private. C and Rust modules use the native ABI to provide handlers through the same particle model.</p>
+  <details class="module-details">
+    <summary>Build and call the same greeter as a native library</summary>
+    <pre class="codeblock"><code>"$code_cli" build greeter.code --target shared -o libgreeter.so</code></pre>
+    <p class="module-filename">Save as <a href="module-examples/reuse/compiled.code" download="compiled.code">compiled.code ↓</a></p>
+    <pre class="codeblock"><code>__MODULE_COMPILED__</code></pre>
+    <p>Run <code>"$code_cli" run compiled.code --interpret</code> to print <code>hello, Ada</code>. Use <code>--target static -o libgreeter.a</code> to produce an archive for compiled consumers instead.</p>
+  </details>
+  <div class="section-links"><a href="docs.html#code-modules">Compiled Code libraries →</a><a href="https://github.com/codelovesme/code/blob/v2.23.0/crates/code-native/README.md">Rust module guide ↗</a><a href="https://github.com/codelovesme/code/blob/v2.23.0/src/code_abi.h">C ABI ↗</a><a href="docs.html#publishing">Publish your own module →</a></div>
+</section>
