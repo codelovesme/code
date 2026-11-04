@@ -1,10 +1,12 @@
-<header class="page-intro"><div class="overline">Playground</div><h1>Write it. Run it.</h1><p>Try the browser interpreter, or <a href="learn.html">start with a short introduction</a>. For native builds and embedding, visit <a href="docs.html">Docs</a>.</p></header>
+<header class="page-intro playground-intro"><div class="overline">Playground</div><h1>Try a change.</h1><p>Code in your browser. No installation needed.</p></header>
   <section id="playground">
-    <p class="section-sub">Press <b>Run</b> (or <b>Ctrl/⌘ + Enter</b>), or turn on <b>auto-run</b> to run as you type. Press <b>Escape</b> to leave the editor.</p>
-    <div class="reveal">
+    <div id="featured-examples" class="pg-featured" role="group" aria-label="Featured examples"></div>
+    <div class="pg-context"><div><h2 id="example-title">Say hello</h2><p id="example-description">Change world to your name, then press Run.</p></div><div id="expected-panel"><span class="pg-expected-label">Original example output</span><pre id="expected-output">hello, world</pre></div></div>
+    <p class="pg-help" id="editor-help"><b>Ctrl/⌘ + Enter</b> runs. <b>Escape</b> leaves the editor.</p>
+    <div class="pg-workspace">
       <div class="pg-toolbar">
         <div class="row">
-          <div class="badge"><span class="dot"></span> live in your browser · code __ENGINE_VERSION__ · WebAssembly</div>
+          <div class="badge"><span class="dot"></span> Browser interpreter · __ENGINE_VERSION__</div>
           <span class="spacer"></span>
           <button class="tool-btn pill" id="reset" title="Restore the current example">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>
@@ -12,25 +14,9 @@
           </button>
         </div>
       </div>
-      <div class="pg-grid">
-        <div class="pane">
-          <div class="pane-head"><span class="t">Source</span><span class="t" id="line-count"></span></div>
-          <div class="editor-wrap">
-            <pre aria-hidden="true"><code id="hl"></code></pre>
-            <textarea id="source" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" aria-label="code source"></textarea>
-          </div>
-        </div>
-        <div class="pane">
-          <div class="pane-head">
-            <span class="t">Result</span>
-            <button class="mini" id="copy-out" title="Copy result">copy</button>
-          </div>
-          <pre id="output"></pre>
-        </div>
-      </div>
       <div class="pg-actions">
         <label class="switch" title="Run automatically as you type">
-          <input type="checkbox" id="live" />
+          <input type="checkbox" id="live" disabled />
           <span class="track"></span>
           <span class="switch-label">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
@@ -38,23 +24,39 @@
           </span>
         </label>
         <span class="spacer"></span>
-        <span class="status" id="status"></span>
+        <span class="status" id="status" role="status">loading…</span>
         <button class="tool-btn run" id="run" disabled>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
           Run
         </button>
       </div>
+      <div class="pg-grid">
+        <div class="pane">
+          <div class="pane-head"><span class="t">Source</span><span class="t" id="line-count"></span></div>
+          <div class="editor-wrap">
+            <pre aria-hidden="true"><code id="hl"></code></pre>
+            <textarea id="source" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" aria-label="code source" aria-describedby="editor-help"></textarea>
+          </div>
+        </div>
+        <div class="pane">
+          <div class="pane-head">
+            <span class="t">Result</span>
+            <button class="mini" id="copy-out" title="Copy result">copy</button>
+          </div>
+          <pre id="output" tabindex="0" aria-label="Program output" aria-live="polite">Loading the browser interpreter…</pre>
+        </div>
+      </div>
+
     </div>
   </section>
-  <section id="examples">
-    <div class="reveal">
-      <div class="overline">examples</div>
-      <h2>Explore the examples</h2>
-      <p class="section-sub">
-        The language examples are real test fixtures, run against both backends
-        in CI. Printing examples use the console supplied by this page. Click any card to load it into the playground.
-      </p>
-    </div>
-    <div class="chips reveal" id="chips" role="group" aria-label="filter examples by category"></div>
-    <div class="ex-grid" id="ex-grid"></div>
+  <section id="examples" class="pg-library-section">
+    <p class="module-note">This page supplies the <code>console</code> module for browser interpretation. <a href="modules.html">Installing native modules and reusing separate files →</a> · <a href="learn.html">Start learning →</a></p>
+    <details id="all-examples" class="module-details pg-library">
+      <summary>All __EXAMPLE_COUNT__ language examples · advanced collection</summary>
+      <p>Explore the complete browser-compatible collection. Language fixtures check assertions and are usually silent; printing examples use this page’s console.</p>
+      <label class="pg-search">Find an example<input id="example-search" type="search" placeholder="Name or description" /></label>
+      <div class="chips" id="chips" role="group" aria-label="filter examples by category"></div>
+      <div class="pg-pagination"><button class="tool-btn" id="previous-examples">Previous</button><span id="example-range" role="status"></span><button class="tool-btn" id="next-examples">Next</button></div>
+      <div class="ex-grid" id="ex-grid"></div>
+    </details>
   </section>

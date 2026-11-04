@@ -95,7 +95,12 @@ class SiteBuild(unittest.TestCase):
         examples = json.loads((self.dist / 'examples.json').read_text())
         self.assertGreater(len(examples), 100)
         by_name = {example['name']: example for example in examples}
-        for preview in json.loads((self.dist / 'demos.json').read_text()):
+        previews = json.loads((self.dist / 'demos.json').read_text())
+        self.assertTrue(3 <= len(previews) <= 6)
+        self.assertEqual(len({preview['name'] for preview in previews}), len(previews))
+        for preview in previews:
+            self.assertTrue(preview['title'])
+            self.assertTrue(preview['description'])
             self.assertEqual(preview['code'], by_name[preview['name']]['code'])
             self.assertIn('output', preview)
         self.assertIn('fail_undefined_variable', by_name)

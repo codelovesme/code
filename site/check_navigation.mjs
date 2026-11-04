@@ -33,7 +33,11 @@ try {
       for (const link of await page.locator('.site-nav .nav-links a').all()) assert.equal(await link.isVisible(), true);
     }
     if (file === 'index.html') assert.equal(await page.locator('.ex-card').count(), 0);
-    if (file === 'playground.html') assert.ok(await page.locator('.ex-card').count() > 100);
+    if (file === 'playground.html') {
+      assert.equal(await page.locator('.pg-feature').count(), 4);
+      assert.equal(await page.locator('.ex-card').count(), 0);
+      assert.equal(await page.locator('#all-examples').getAttribute('open'), null);
+    }
     checks++;
   }
 
@@ -99,7 +103,7 @@ try {
   await blocked.route('**/*.wasm', route => route.abort());
   await blocked.goto(url('playground.html'), { waitUntil: 'networkidle' });
   await blocked.locator('#status.err').waitFor();
-  assert.equal(await blocked.locator('#status').innerText(), 'failed to load wasm');
+  assert.equal(await blocked.locator('#status').innerText(), 'failed to load engine');
   assert.equal(await blocked.locator('#run').isDisabled(), true);
   assert.ok((await blocked.locator('#output').innerText()).startsWith('error:'));
   await blocked.close();

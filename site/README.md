@@ -11,7 +11,7 @@ release or replace the engine with a source build.
 |---|---|---|
 | `index.html` | Short introduction and next steps | `index.html` content fragment |
 | `learn.html` | Working first example and orientation | `learn.html` content fragment |
-| `playground.html` | Editor, results and complete browser-compatible gallery | `playground.html`, `playground.mjs` |
+| `playground.html` | Four featured programs, editor/results and an expandable paged collection | `playground.html`, `playground.mjs` |
 | `docs.html` | Reference, CLI, modules, embedding and authoring | `docs.html` content fragment |
 | `modules.html` | Install, link, reuse and target support | `modules.html`, `module-examples/` |
 | `execution.html` | Run/cache/interpret/native and the two WASM paths | `execution.html`, `execution-examples/` |
@@ -43,7 +43,9 @@ so Back does not return to a redirect loop:
 Both the directory URL and `index.html` accept these fragments, including later
 hash changes. The playground keeps the existing `code-playground-src` storage
 key, so drafts survive the split. A source share wins over a draft; a named
-`?example=hello_home` link opens that example intentionally.
+`?example=hello_home` link opens that example intentionally. Choosing another
+example clears that incoming source selector, so reload restores subsequent
+edits. The legacy `#examples` fragment opens the advanced collection.
 
 Compare retains its public route and existing performance/memory/fit anchors.
 Docs keeps the old `packages`/`features` anchors and gives individual integration
@@ -55,8 +57,8 @@ separate from the playground engine pin.
 
 The gallery still comes from the real `tests/*.code` fixtures plus
 `site/examples/*.code`. Existing native-link, stress and intentionally invalid
-fixture exclusions remain. `demos.json` names the source examples used for the
-static Home/Learn/Memory previews and their expected output; the build writes the full
+fixture exclusions remain. `demos.json` names the four featured programs, with titles, explanations and
+expected output. Home/Learn/Memory render previews from those same sources; the build writes the full
 preview manifest for the same engine check as the gallery. Rendering a preview
 never requires loading WASM on the home page.
 
@@ -211,4 +213,37 @@ and keyboard interaction in a real browser (no WASM load on this page):
 ```sh
 PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
   node site/check_performance.mjs http://localhost:8955/code/
+```
+
+
+## Featured playground experience (217)
+
+A fresh visit opens `hello_home`, matching Home and Learn, rather than whichever
+fixture sorts first. Four buttons load short complete programs: console
+greeting, a reusable local handler, an independent value update and a returned
+failure. The current example's explanation and original output sit beside the
+editor; actual Result is separate. Drafts/shared source have their own context
+and do not inherit a misleading expected-output panel. Reset restores the
+selected example, or the greeting for a custom draft.
+
+The full browser-compatible collection stays embedded/validated, but its cards
+are created only when the advanced details opens. Category and name/description
+search combine; pagination renders at most 12 cards. Named example URLs still
+load every program directly. Home renders no gallery.
+
+Source selection, reset and editing work while the engine is loading. Run,
+keyboard execution and auto-run are guarded until ready; the latest source
+runs when initialization finishes. An engine JS/WASM download failure keeps
+execution disabled and displays connection/reload guidance. Tab indentation
+saves through the same input path as typing; Escape leaves the editor. Scrolling
+respects reduced motion. The page supplies only console, and links native
+installation/multi-file reuse to the Modules guide.
+
+The pinned-engine gate checks all gallery programs and every featured output.
+For real-browser verification, including all pages of the collection, pending
+WASM and blocked JS/WASM downloads:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
+  node site/check_playground.mjs http://localhost:8955/code/
 ```

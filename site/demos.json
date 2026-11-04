@@ -1,1 +1,26 @@
-[{"name":"hello_home","output":"hello, world"},{"name":"value_snapshot","output":"original: Ada\nupdated: Lin"}]
+[
+  {
+    "name": "hello_home",
+    "title": "Say hello",
+    "description": "Link the console module and send it a greeting; change world to your name.",
+    "output": "hello, world"
+  },
+  {
+    "name": "reusable_greeting",
+    "title": "Reuse a handler",
+    "description": "Send two particles to the same handler and print the greetings it returns.",
+    "output": "hello, Ada\nhello, Lin"
+  },
+  {
+    "name": "value_snapshot",
+    "title": "Keep the original",
+    "description": "Update a copy while the saved original keeps its own value.",
+    "output": "original: Ada\nupdated: Lin"
+  },
+  {
+    "name": "returned_failure",
+    "title": "Handle a returned failure",
+    "description": "Check an Exception returned by a handler and print its message.",
+    "output": "Choose a non-zero divisor."
+  }
+]

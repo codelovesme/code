@@ -1,0 +1,7 @@
+link "console" as out
+Greet { name } =>
+    return Greeting { text = "hello, $name" }
+emit Greet { name = "Ada" } to this get first
+emit Greet { name = "Lin" } to this get second
+emit Print { value = first.text } to out
+emit Print { value = second.text } to out

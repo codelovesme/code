@@ -1,0 +1,9 @@
+link "console" as out
+Divide { left, right } =>
+    if right = 0, return Exception { message = "Choose a non-zero divisor." }
+    return Answer { value = left / right }
+emit Divide { left = 12, right = 0 } to this get result
+if result ∈ Exception
+    emit Print { value = result.message } to out
+if result ∈ Answer
+    emit Print { value = result.value } to out

@@ -168,7 +168,7 @@ def main() -> None:
     dist_dir.mkdir(parents=True, exist_ok=True)
     by_name = {example["name"]: example for example in examples}
     previews = [
-        {**by_name[demo["name"]], "output": demo["output"]}
+        {**by_name[demo["name"]], **demo}
         for demo in json.loads((site_dir / "demos.json").read_text())
     ]
     home = previews[0]
@@ -224,6 +224,8 @@ def main() -> None:
             scripts = (
                 '<script id="examples-data" type="application/json">'
                 + examples_json
+                + '</script>\n<script id="featured-data" type="application/json">'
+                + json.dumps(previews).replace("</", "<\\/")
                 + '</script>\n<script type="module" src="playground.mjs"></script>'
             )
         replacements = {
@@ -231,6 +233,7 @@ def main() -> None:
             "__TITLE__": html.escape(title), "__DESCRIPTION__": html.escape(description),
             "__PAGE__": page, "__SCRIPTS__": scripts,
             "__ENGINE_VERSION__": html.escape(version),
+            "__EXAMPLE_COUNT__": str(len(examples)),
             "__HOME_CODE__": html.escape(home["code"].strip()),
             "__HOME_OUTPUT__": html.escape(home["output"]),
             "__MEMORY_CODE__": html.escape(memory["code"].strip()),

@@ -1,7 +1,9 @@
-  import init, { run_with_modules } from "./pkg/code_wasm.js";
-
   const EXAMPLES = JSON.parse(document.getElementById("examples-data").textContent);
   const byName = Object.fromEntries(EXAMPLES.map((e) => [e.name, e]));
+  const FEATURED = JSON.parse(document.getElementById("featured-data").textContent);
+  const defaultExample = FEATURED[0].name;
+  let engineState = "loading";
+  let runEngine = null;
 
   const source = document.getElementById("source");
   const hl = document.getElementById("hl");
@@ -60,6 +62,7 @@
   source.addEventListener("input", () => {
     syncEditor();
     try { localStorage.setItem(STORE_KEY, source.value); } catch {}
+    updateExampleContext();
     if (liveChk.checked) {
       clearTimeout(liveTimer);
       liveTimer = setTimeout(doRun, 380);
@@ -77,7 +80,7 @@
       const s = source.selectionStart, en = source.selectionEnd;
       source.value = source.value.slice(0, s) + "    " + source.value.slice(en);
       source.selectionStart = source.selectionEnd = s + 4;
-      syncEditor();
+      source.dispatchEvent(new Event("input", { bubbles: true }));
     }
   });
 
@@ -117,11 +120,13 @@
 
   /* ---------- run ---------- */
   function doRun() {
+    clearTimeout(liveTimer);
+    if (engineState !== "ready") return;
     const t0 = performance.now();
     let result;
     printed = [];
     try {
-      result = run_with_modules(source.value, { console: consoleModule });
+      result = runEngine(source.value, { console: consoleModule });
     } catch (e) {
       result = "error: " + e;
     }
@@ -152,17 +157,27 @@
     const ex = byName[name];
     if (!ex) return;
     currentExample = name;
+    clearTimeout(liveTimer);
     source.value = ex.code;
     syncEditor();
+    updateExampleContext();
+    // A deliberate selection replaces an incoming shared/named source. Reload
+    // can then restore later edits from the existing draft storage key.
+    const selectedURL = new URL(location.href);
+    selectedURL.searchParams.delete("example");
+    if (selectedURL.hash.startsWith("#src=")) selectedURL.hash = "#playground";
+    history.replaceState(null, "", selectedURL);
     try { localStorage.setItem(STORE_KEY, ex.code); } catch {}
     doRun();
-    if (scroll) document.getElementById("playground").scrollIntoView({ behavior: "smooth" });
+    if (scroll) document.getElementById("playground").scrollIntoView({
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+    });
   }
   resetBtn.addEventListener("click", () => {
     // A saved draft is not an example, but Reset must never strand the
     // editor blank — the fallback is the same example a fresh visit opens.
     if (!EXAMPLES.length) { source.value = ""; syncEditor(); doRun(); return; }
-    loadExample(currentExample || EXAMPLES[0].name);
+    loadExample(currentExample || defaultExample);
   });
   copyOutBtn.addEventListener("click", async () => {
     const text = output.textContent;
@@ -177,56 +192,101 @@
     setTimeout(() => { btn.innerHTML = old; }, 1200);
   }
 
-  /* ---------- examples gallery ---------- */
+  /* ---------- featured examples ---------- */
+  const featuredEl = document.getElementById("featured-examples");
+  for (const example of FEATURED) {
+    const button = document.createElement("button");
+    button.className = "pg-feature";
+    button.dataset.example = example.name;
+    button.setAttribute("aria-pressed", "false");
+    button.textContent = example.title;
+    button.addEventListener("click", () => loadExample(example.name));
+    featuredEl.appendChild(button);
+  }
+  function updateExampleContext() {
+    const example = byName[currentExample];
+    const featured = FEATURED.find(item => item.name === currentExample);
+    const edited = example && source.value !== example.code;
+    document.getElementById("example-title").textContent = example
+      ? (featured?.title ?? example.name) + (edited ? " · edited" : "")
+      : "Your program";
+    document.getElementById("example-description").textContent = featured?.description
+      ?? example?.description ?? "Your saved draft or shared source. Run it, or choose a featured example.";
+    document.getElementById("expected-panel").hidden = !featured;
+    document.getElementById("expected-output").textContent = featured?.output ?? "";
+    for (const button of featuredEl.children) {
+      button.setAttribute("aria-pressed", String(button.dataset.example === currentExample));
+    }
+  }
+
+  /* ---------- advanced collection: lazy, filtered and paged ---------- */
   const CAT_COLORS = {
-    "Values & Expressions": "#5eead4",
-    "Conditionals": "#a78bfa",
-    "Loops": "#f472b6",
-    "Scoping": "#fbbf24",
-    "Assertions": "#86efac",
-    "Particles": "#f87171",
-    "Errors": "#f87171",
-    "Printing": "#60a5fa",
+    "Values & Expressions": "#5eead4", "Conditionals": "#a78bfa",
+    "Loops": "#f472b6", "Scoping": "#fbbf24", "Assertions": "#86efac",
+    "Particles": "#f87171", "Errors": "#f87171", "Printing": "#60a5fa",
   };
-  const catColor = (c) => CAT_COLORS[c] || "#9aa3b5";
-  const cats = [...new Set(EXAMPLES.map((e) => e.category))];
+  const library = document.getElementById("all-examples");
   const chipsEl = document.getElementById("chips");
   const gridEl = document.getElementById("ex-grid");
-
-  function makeChip(label, cat) {
-    const b = document.createElement("button");
-    b.className = "chip" + (cat === "all" ? " active" : "");
-    b.textContent = label;
-    b.dataset.cat = cat;
-    b.addEventListener("click", () => {
-      chipsEl.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c === b));
-      filterGrid(cat);
+  const searchEl = document.getElementById("example-search");
+  const previous = document.getElementById("previous-examples");
+  const next = document.getElementById("next-examples");
+  const PAGE_SIZE = 12;
+  let category = "all", pageIndex = 0;
+  function renderGallery() {
+    if (!library.open) return;
+    const query = searchEl.value.trim().toLowerCase();
+    const matches = EXAMPLES.filter(example =>
+      (category === "all" || example.category === category) &&
+      `${example.name} ${example.description}`.toLowerCase().includes(query));
+    pageIndex = Math.min(pageIndex, Math.max(0, Math.ceil(matches.length / PAGE_SIZE) - 1));
+    const start = pageIndex * PAGE_SIZE;
+    gridEl.replaceChildren();
+    for (const example of matches.slice(start, start + PAGE_SIZE)) {
+      const card = document.createElement("button");
+      card.className = "ex-card";
+      card.dataset.cat = example.category;
+      card.dataset.example = example.name;
+      card.innerHTML = `<span class="ex-top"><span class="ex-dot" style="background:${CAT_COLORS[example.category] ?? "#9aa3b5"}"></span><span class="ex-name">${esc(example.name)}</span></span>
+        <span class="ex-desc">${esc(example.description || example.name)}</span>
+        <code class="ex-code">${highlight(example.code.split("\n").slice(0, 6).join("\n"))}</code>
+        <span class="try">Load and run →</span>`;
+      card.addEventListener("click", () => {
+        loadExample(example.name, { scroll: true });
+        source.focus({ preventScroll: true });
+      });
+      gridEl.appendChild(card);
+    }
+    document.getElementById("example-range").textContent = matches.length
+      ? `${start + 1}–${Math.min(start + PAGE_SIZE, matches.length)} of ${matches.length}`
+      : "No matching examples. Try another name or category.";
+    previous.disabled = pageIndex === 0;
+    next.disabled = start + PAGE_SIZE >= matches.length;
+  }
+  for (const cat of ["all", ...new Set(EXAMPLES.map(example => example.category))]) {
+    const button = document.createElement("button");
+    button.className = "chip" + (cat === "all" ? " active" : "");
+    button.textContent = cat === "all" ? "All" : cat;
+    button.setAttribute("aria-pressed", String(cat === category));
+    button.addEventListener("click", () => {
+      category = cat; pageIndex = 0;
+      for (const chip of chipsEl.children) {
+        chip.classList.toggle("active", chip === button);
+        chip.setAttribute("aria-pressed", String(chip === button));
+      }
+      renderGallery();
     });
-    chipsEl.appendChild(b);
+    chipsEl.appendChild(button);
   }
-  function filterGrid(cat) {
-    gridEl.querySelectorAll(".ex-card").forEach((card) => {
-      card.style.display = cat === "all" || card.dataset.cat === cat ? "" : "none";
-    });
+  searchEl.addEventListener("input", () => { pageIndex = 0; renderGallery(); });
+  previous.addEventListener("click", () => { pageIndex--; renderGallery(); });
+  next.addEventListener("click", () => { pageIndex++; renderGallery(); });
+  library.addEventListener("toggle", renderGallery);
+  function openLegacyCollection() {
+    if (location.hash === "#examples") { library.open = true; renderGallery(); }
   }
-  makeChip("All", "all");
-  cats.forEach((c) => makeChip(c, c));
-
-  for (const ex of EXAMPLES) {
-    const card = document.createElement("button");
-    card.className = "ex-card reveal";
-    card.dataset.cat = ex.category;
-    card.innerHTML = `
-      <div class="ex-top">
-        <span class="ex-dot" style="background:${catColor(ex.category)}"></span>
-        <span class="ex-name">${esc(ex.name)}</span>
-      </div>
-      <p class="ex-desc">${esc(ex.description || ex.name)}</p>
-      <pre class="ex-code">${highlight(ex.code.split("\n").slice(0, 6).join("\n"))}</pre>
-      <span class="try">try it in the playground →</span>`;
-    card.addEventListener("click", () => loadExample(ex.name, { scroll: true }));
-    gridEl.appendChild(card);
-  }
+  window.addEventListener("hashchange", openLegacyCollection);
+  openLegacyCollection();
 
   /* ---------- boot ---------- */
   function initialSource() {
@@ -242,9 +302,9 @@
     if (requested) return requested.code;
     try {
       const saved = localStorage.getItem(STORE_KEY);
-      if (saved) return saved;
+      if (saved !== null) return saved;
     } catch {}
-    return EXAMPLES.length ? EXAMPLES[0].code : "";
+    return byName[defaultExample].code;
   }
   // When a restored draft happens to be an unchanged example, remember it,
   // so Reset ("restore the current example") means what its label says.
@@ -253,18 +313,24 @@
   const bootedExample = EXAMPLES.find((e) => e.code === bootSource);
   if (bootedExample) currentExample = bootedExample.name;
   syncEditor();
+  updateExampleContext();
 
-  status.textContent = "loading…";
-  init()
-    .then(() => {
+  async function loadEngine() {
+    try {
+      const engine = await import("./pkg/code_wasm.js");
+      await engine.default();
+      runEngine = engine.run_with_modules;
+      engineState = "ready";
       status.textContent = "";
       runBtn.disabled = false;
+      liveChk.disabled = false;
       doRun();
-    })
-    .catch((e) => {
-      status.textContent = "failed to load wasm";
+    } catch (error) {
+      engineState = "failed";
+      status.textContent = "failed to load engine";
       status.classList.add("err");
-      output.textContent = "error: " + e;
+      output.textContent = "error: Could not load the browser interpreter. Check your connection and reload the page.\n" + error;
       output.classList.add("error");
-    });
-  runBtn.disabled = true;
+    }
+  }
+  loadEngine();
