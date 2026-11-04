@@ -9,14 +9,14 @@ speed; it interprets where it cannot build.
 ```
 user = { name = "ada", wins = [1, 2, 3] }
 
-link "native_modules/arrays.so" as arrays
+link "arrays.so" as arrays
 emit Length { value = user.wins } to arrays get n
 assert n.value = 3
 
 name = user.name
 rounds = n.value
 
-link "native_modules/console.so" as term
+link "console.so" as term
 emit Print { value = "$name won $rounds rounds" } to term
 ```
 
@@ -41,6 +41,7 @@ emit Print { value = "$name won $rounds rounds" } to term
   - [Equality](#equality) · [Reading members](#reading-members) · [Setting a part](#setting-a-part) · [assert](#assert)
   - [if and blocks](#if-and-blocks) · [loop](#loop)
   - [Particles](#particles) · [emit](#emit) · [∈](#-1)
+  - [Optional type contracts](#optional-type-contracts) · [Data types](#data-types)
 - [Handlers](#handlers)
 - [Errors](#errors)
 - [Modules](#modules)
@@ -53,12 +54,58 @@ emit Print { value = "$name won $rounds rounds" } to term
 ## Running it
 
 Prebuilt Linux x86_64 tarballs are attached to each [release](https://github.com/codelovesme/code/releases).
-To build from source you need Rust and LLVM 17:
+Keep the extracted `code` launcher and `code-driver` together. Native compilation
+needs a system C compiler (`cc`); downloading modules needs `curl`.
+
+This README describes the source on `main`. The quick start below uses the
+published **v2.23.0** release; newer source-only features are marked where they
+are described.
+
+### First program on Linux x86_64
+
+The following downloads that release into a new directory, creates a project,
+installs its output module, and runs the same program interpreted and compiled:
+
+```sh
+mkdir code-language-demo
+cd code-language-demo
+curl -fL https://github.com/codelovesme/code/releases/download/v2.23.0/code-v2.23.0-x86_64-linux.tar.gz -o code.tar.gz
+tar -xzf code.tar.gz
+code_cli="$PWD/code-v2.23.0-x86_64-linux/code"
+"$code_cli" --version
+"$code_cli" init hello
+cd hello
+"$code_cli" install console
+cat > main.code <<'CODE'
+link "console.so" as term
+emit Print { value = "Hello, Code!" } to term
+CODE
+"$code_cli" check
+"$code_cli" run --interpret
+"$code_cli" run
+"$code_cli" build --release
+./build/hello
+```
+
+Each run prints `Hello, Code!`; a successful check prints an empty diagnostics
+array. The opening example additionally needs `"$code_cli" install arrays`.
+
+The language CLI and Visual Studio Code both use the command name `code`.
+The explicit `code_cli` path above selects the language without changing your
+editor command. In the reference commands below, `code` means the language CLI;
+use `"$code_cli"` instead when your `code` command opens the editor. To install
+the editor extension, see [its README](editor/vscode/README.md).
+
+### Build from source
+
+You need Rust and LLVM 17:
 
 ```sh
 cargo build --release --workspace # target/release/code-launcher + code
 cargo test --workspace       # runs every tests/*.code fixture in both modes
 ```
+
+### Command reference
 
 ```sh
 code init                                  # scaffold here; `code init demo` in ./demo
@@ -171,7 +218,8 @@ The value model is still exactly JSON's, but the *syntax* is no longer JSON's:
 longer what this parser reads. That was the trade — an object literal reads
 like the record it is rather than like a wire format quoted into source.
 
-Objects keep **insertion order** — iteration and equality both depend on it.
+Objects keep **insertion order** for iteration and printing. Equality compares
+by field name and value, regardless of field order (see [Equality](#equality)).
 Literals may span lines:
 
 ```
@@ -202,12 +250,13 @@ Greet { who ∈ String } =>
     return Greeting { text ∈ String = "hello, $who" }
 ```
 
-**Nothing checks it.** `port ∈ Number = "8080"` runs, and `port` is a
-String — the annotation is read, required to be a name, and dropped, and the
-value's own type is the only one that decides anything (owner's call,
-2026-08-29). It is there for whoever reads the line, which means it can be
-wrong the way a comment can be wrong, and nothing will ever say so. Use `∈`
-as an *expression* when you want an answer:
+Annotations are [static contracts](#optional-type-contracts), not conversions
+or runtime checks. `code check` diagnoses a statically known mismatch such as
+`port ∈ Number = "8080"`; `code run --strict` and `code build --strict` refuse
+it before execution or artifact creation. Without `--strict`, that assignment
+runs and `port` holds a String. This differs from changing a binding's inferred
+type later, which ordinary run/build also refuse (see [Data types](#data-types)).
+Use `∈` as an *expression* when you want to test the actual value:
 
 ```
 assert port ∈ Number
@@ -755,8 +804,8 @@ assert n.value = 3
   than a program of its own). Every
   core result comes back as a *particle*, never a bare value.
 - **Length** belongs to `arrays` and `strings` (Unicode characters).
-  Install/link the appropriate module. `core.Length` is removed in unreleased
-  source; old calls answer null as an unhandled class. Index-context `length`
+  Install/link the appropriate module. Core does not handle `Length`;
+  old calls answer null as an unhandled class. Index-context `length`
   remains a language operation.
 - **`to this`** dispatches to a handler the program
   [defines itself](#handlers).
@@ -942,9 +991,10 @@ ys += ["three"]
 
 `code check` validates annotations when the value is statically knowable. It
 also checks statically known local emits for unknown fields and field type
-mismatches. A field an emit leaves out arrives as null, which fits every label. Dynamic expressions remain valid and are
-checked at runtime. The interpreter and compiler do not change behavior based
-on an annotation, so existing dynamic programs remain compatible.
+mismatches. A field an emit leaves out arrives as null, which fits every label.
+Annotations do not insert runtime checks or coerce values. A dynamic particle
+still dispatches normally; operators and explicit `∈` tests act on its actual
+values.
 
 `code run --strict` and `code build --strict` run that same analysis before
 execution or artifact creation. A proven error is reported with the same JSON
@@ -955,7 +1005,7 @@ is supplied as null. Dynamic particles remain valid in either mode.
 ## Handlers
 
 A handler is the only thing in the language that resembles a function, and
-`emit` is the only way to reach one. Core provides two; a native module
+`emit` is the only way to reach one. Core provides three; a native module
 provides its own; and a program can define its own with `=>`:
 
 ```
@@ -1087,8 +1137,9 @@ Both output modes behave the same. A compiled executable without `Trace`
 carries none of the recording; a shared library carries it switched off
 until a host asks.
 
-**In the browser**, defining `Trace` also opts a wasm program in. Page
-callbacks are roots (`from = "page"`); a host asking a guest uses `"host"`.
+**Browser tracing (source after v2.23.0).** Defining `Trace` also opts a wasm
+program in. Page callbacks are roots (`from = "page"`); a host asking a guest
+uses `"host"`.
 The guest bridge shares a live tree with its shell: a furnished module's
 host callback is a child of the guest emit that asked it. `program` is the
 guest's app name, or null for the shell. A shell defining `Trace` receives
@@ -1189,9 +1240,10 @@ after a program has already had effects.
 **Code modules** are `.code` files. **A module's names are its own** — all of
 them. What a link reaches is the module's *handlers*, and nothing else.
 
-If an unavailable variable is declared at the top level of another linked
-source file, the pre-run error names the declaring file. This is a visibility
-hint; it does not make the binding accessible across module boundaries.
+**Source after v2.23.0:** if an unavailable variable is declared at the top
+level of another linked source file, the pre-run error names the declaring file.
+This is a visibility hint; it does not make the binding accessible across
+module boundaries.
 
 ```code
 | greeter.code
@@ -1670,10 +1722,11 @@ as any other, by returning one. A module that wants the answer exports
 error: the module chose to speak, so a message nobody asked to hear is not a
 mistake by the program. That is what lets a module report a problem without
 every program that links it having to care — `http_client` pushes `Exception` and
-`Log`, and [`net_unreachable.code`](tests/net_unreachable.code) handles
-neither and passes. Since 2026-08-28 the outbound direction gives the same
-answer — `emit` with no matching handler is null — so the two agree rather
-than contrast. The cost, accepted deliberately: a module pushing a
+`Log`. The fixture
+[`inbound_unhandled_dropped.code`](tests/inbound_unhandled_dropped.code)
+checks that an unhandled pushed particle is dropped and the program continues.
+Since 2026-08-28 the outbound direction gives the same answer — `emit` with no
+matching handler is null — so the two agree rather than contrast. The cost, accepted deliberately: a module pushing a
 *mistyped* class now goes unnoticed.
 
 The queue is bounded at 256 per module, dropping the oldest — a module that
