@@ -194,6 +194,10 @@ def main() -> None:
             "docs", "Code modules — install, link and reuse",
             "Install a published module, reuse your own handlers with private state, and choose native or browser capabilities.",
         ),
+        "execution": (
+            "docs", "How Code runs — interpreter, native builds and WebAssembly",
+            "Choose cached native execution, bytecode interpretation or a compiled application. See the two ways Code runs with WebAssembly.",
+        ),
         "compare": ("compare", "", ""),
     }
     for filename, (page, title, description) in pages.items():
@@ -244,6 +248,7 @@ def main() -> None:
     for asset in sorted(site_dir.glob("*.png")):
         shutil.copyfile(asset, dist_dir / asset.name)
     shutil.copytree(site_dir / "module-examples", dist_dir / "module-examples", dirs_exist_ok=True)
+    shutil.copytree(site_dir / "execution-examples", dist_dir / "execution-examples", dirs_exist_ok=True)
     print(f"Built {len(pages)} pages and {len(examples)} examples")
 
 

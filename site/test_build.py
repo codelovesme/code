@@ -56,14 +56,14 @@ class SiteBuild(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_direct_pages_share_working_navigation(self):
-        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html'})
+        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html'})
         expected = ['index.html', 'learn.html', 'playground.html', 'docs.html', 'https://github.com/codelovesme/code']
         for name, page in self.pages.items():
             self.assertEqual(page.navigation, expected, name)
             self.assertEqual(len(page.ids), len(set(page.ids)), name)
             self.assertIn('main', page.ids)
             if name != 'compare.html':
-                self.assertEqual(page.current, ['docs.html' if name == 'modules.html' else name], name)
+                self.assertEqual(page.current, ['docs.html' if name in ('modules.html', 'execution.html') else name], name)
 
     def test_local_links_and_assets_exist_at_github_pages_subpath(self):
         for name, page in self.pages.items():

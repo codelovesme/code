@@ -14,13 +14,14 @@ release or replace the engine with a source build.
 | `playground.html` | Editor, results and complete browser-compatible gallery | `playground.html`, `playground.mjs` |
 | `docs.html` | Reference, CLI, modules, embedding and authoring | `docs.html` content fragment |
 | `modules.html` | Install, link, reuse and target support | `modules.html`, `module-examples/` |
+| `execution.html` | Run/cache/interpret/native and the two WASM paths | `execution.html`, `execution-examples/` |
 | `compare.html` | Existing comparisons, measurements and methodology | Standalone comparison template |
 
 `layout.html` wraps the content fragments. Every page, including Compare, uses
 `navigation.html`, `footer.html`, `navigation.css` and `navigation.js`.
 `site.css` supplies the common content styles; Compare retains its chart/content
 styles so the navigation split does not redesign its measurements.
-Modules is a Docs destination and keeps Docs selected in the shared navigation.
+Modules and Execution are Docs destinations and keep Docs selected in the shared navigation.
 
 Preview generated output rather than serving the source fragments directly.
 There is no router/server framework, new package manager or client build step.
@@ -88,6 +89,32 @@ libraries. It refuses a different CLI version and never uses source-built
 module assets. This explicit native check is separate from the Pages workflow's
 published-browser-engine check. Run it when changing these versioned examples.
 
+The execution guide reuses the exact Home/Playground greeting across native
+and compiled-WASM checks. To verify with the **published v2.23.0 CLI**, use a
+new browser-output directory:
+
+```sh
+python3 site/check_execution.py /absolute/path/to/code-v2.23.0-x86_64-linux/code /tmp/code-execution-web
+python3 -m http.server 8956 --directory /tmp/code-execution-web
+```
+
+This checks cold/warm executable reuse (inode/bytes; access updates mtime),
+source/lock invalidation, interpreted/native output and O0/background-O2 tiers
+in an isolated cache, then builds with the public console WASM archive.
+`execution-examples/index.html.txt` is a downloadable host-page template, not
+a published binary. The checker saves it as `index.html` beside the generated
+`hello.wasm` and `host.mjs`. With the Playwright setup below, verify the actual
+compiled program and its missing-artifact state:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
+  node site/check_compiled_browser.mjs http://localhost:8956/
+```
+
+These native/compiler checks are distinct from executing source through the
+site's separately pinned published 2.16.0 interpreter. No release/runtime pin
+is upgraded by building or verifying either website guide.
+
 ## Build and check
 
 From the repository root, use the **exact workflow pin** for `code-wasm`:
@@ -131,7 +158,7 @@ This split establishes usable routes; it does not complete the later roadmap.
 |---|---|
 | 211 | Home positioning and first-screen composition in `index.html` |
 | 212 | `modules.html`, linked from Home and `docs.html#modules`; checked native snippets in `module-examples/` |
-| 213 | Execution explanation from `docs.html#cli`; a focused page when ready |
+| 213 | `execution.html`, reached from Home/Docs; interpreter embedding stays at `docs.html#embedding` |
 | 214 | Memory/value explanation, linked from Docs |
 | 215–216 | Benchmark evidence, then a focused Performance view; preserve Compare links |
 | 217 | Playground first-use examples and gallery presentation |

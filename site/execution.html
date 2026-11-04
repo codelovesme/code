@@ -1,0 +1,70 @@
+<header class="page-intro">
+  <p class="breadcrumb"><a href="docs.html">Docs</a> / Execution</p>
+  <div class="overline">Your program. Your choice.</div>
+  <h1>Choose how Code runs.</h1>
+  <p>Run with a cached native build, use the interpreter, or compile an application for your target.</p>
+  <div class="section-links"><a href="#native">On your machine</a><a href="#cache">What gets cached</a><a href="#browser">In the browser</a></div>
+</header>
+
+<section class="module-section" id="native">
+  <h2>Run, interpret or build.</h2>
+  <p class="module-intro">Use the <a href="modules.html#install">published Linux x86_64 CLI v2.23.0</a>. Keep its full path in <code>$code_cli</code>, as in the module guide.</p>
+  <details class="module-details"><summary>Create a local project</summary>
+    <pre class="codeblock"><code>"$code_cli" init hello
+cd hello
+"$code_cli" install console</code></pre>
+    <p>Save the program below as <code>main.code</code>. Native compilation needs a C compiler (<code>cc</code>).</p>
+  </details>
+  <figure class="module-panel execution-source"><figcaption class="module-filename">main.code · the same greeting used in the playground</figcaption><pre class="codeblock"><code>__HOME_CODE__</code></pre></figure>
+  <div class="module-steps">
+    <article class="module-panel"><h3>Run normally</h3><pre class="codeblock"><code>"$code_cli" run</code></pre><p>Build a native executable and keep it in the cache. Run it again to reuse a valid build.</p><pre class="module-output"><span>Output</span>__HOME_OUTPUT__</pre></article>
+    <article class="module-panel"><h3>Interpret</h3><pre class="codeblock"><code>"$code_cli" run --interpret</code></pre><p>Prepare register bytecode and execute it with the interpreter.</p><pre class="module-output"><span>Output</span>__HOME_OUTPUT__</pre></article>
+    <article class="module-panel"><h3>Build an application</h3><pre class="codeblock"><code>"$code_cli" build --release
+./build/hello</code></pre><p>Produce an optimized native executable you can run directly.</p><pre class="module-output"><span>Output</span>__HOME_OUTPUT__</pre></article>
+  </div>
+</section>
+
+<section class="module-section" id="cache">
+  <h2>Build once. Reuse a valid build.</h2>
+  <p class="module-intro">The run cache keeps your program’s native executable. Each run checks whether the inputs still match.</p>
+  <ol class="execution-cache" aria-label="Native run cache behavior">
+    <li><strong>First run</strong><span aria-hidden="true">→</span><span>Build and cache</span><span aria-hidden="true">→</span><span>Run</span></li>
+    <li><strong>Unchanged inputs</strong><span aria-hidden="true">→</span><span>Validate and reuse</span><span aria-hidden="true">→</span><span>Run</span></li>
+    <li><strong>Changed inputs</strong><span aria-hidden="true">→</span><span>Rebuild as needed</span><span aria-hidden="true">→</span><span>Run updated program</span></li>
+  </ol>
+  <p class="module-note">Source files, linked modules, lockfiles, the compiler, target and optimization tier affect validity. A missing or invalid cache takes the build path again. <code>"$code_cli" cache</code> shows where the cache lives.</p>
+  <details class="module-details"><summary>Launcher, optimization and interpreter fallback</summary>
+    <p>The Linux release contains <code>code</code>, a lightweight launcher, and <code>code-driver</code>, the compiler/full CLI. Keep them together. A valid ordinary warm run starts the executable through the launcher; other commands and cache misses reach the driver.</p>
+    <p>Small programs get an optimized build before the first run. Larger programs can start on a quick build while an optimized build is prepared in the background for later runs. Your program still runs once per invocation.</p>
+    <p>When a native build is unavailable, such as without the required compiler/linker, <code>code run</code> can use the interpreter. <code>--interpret</code> selects it explicitly; <code>code build</code> requests a compiled artifact. <a href="https://github.com/codelovesme/code/blob/v2.23.0/README.md#the-two-output-modes">Versioned execution reference ↗</a></p>
+  </details>
+</section>
+
+<section class="module-section" id="browser">
+  <h2>Two ways to use WebAssembly.</h2>
+  <p class="module-intro">Compile your application, or embed the language interpreter. Each path has its own host and module requirements.</p>
+  <div class="module-pair">
+    <article class="module-panel execution-browser"><h3>Compile your program</h3>
+      <ol class="execution-flow" aria-label="Compiled browser application"><li>Your Code source</li><li><code>code build --target wasm</code></li><li>Application <code>.wasm</code> + generated <code>host.mjs</code></li><li>Browser runs the compiled program</li></ol>
+      <p>The compiled application carries its program logic. Supply the matching browser modules and serve the generated host beside it.</p>
+      <details class="module-details"><summary>Build and serve this greeting</summary>
+        <p>The browser build needs the WebAssembly linker (<code>wasm-ld</code>). From a separate working directory, create a browser project and save the same <code>main.code</code> above:</p>
+        <pre class="codeblock"><code>"$code_cli" init browser-hello
+cd browser-hello
+"$code_cli" install console --platform wasm32
+"$code_cli" build main.code --target wasm -o web/hello.wasm</code></pre>
+        <p>Download the <a href="execution-examples/index.html.txt" download="index.html">example host page ↓</a> into <code>web/index.html</code>, beside the generated <code>hello.wasm</code> and <code>host.mjs</code>.</p>
+        <pre class="codeblock"><code>python3 -m http.server 8000 --directory web</code></pre>
+        <p>Open <code>http://localhost:8000/</code>. The page’s output is <code>hello, world</code>. Keep native and browser projects separate here: their module installs select different target assets.</p>
+      </details>
+    </article>
+    <article class="module-panel execution-browser"><h3>Run the interpreter in WASM</h3>
+      <ol class="execution-flow" aria-label="Browser interpreter"><li>Your Code source</li><li>The prebuilt <code>code-wasm</code> interpreter</li><li>Prepare and execute bytecode</li><li>Browser displays the result</li></ol>
+      <p>The interpreter engine is already compiled to WASM. It accepts source when you run a program. This site’s playground uses published <code>code-wasm@__ENGINE_VERSION__</code> and supplies a <code>console</code> callback.</p>
+      <a class="btn btn-primary" href="playground.html?example=hello_home#playground">Try the interpreter →</a>
+      <pre class="module-output"><span>Example output</span>__HOME_OUTPUT__</pre>
+    </article>
+  </div>
+  <p class="module-note">Native binaries target their built platform. Browser applications need WASM-compatible modules and their JavaScript host; the playground supplies its own module set. <a href="modules.html#targets">Check module support →</a></p>
+  <div class="section-links"><a href="modules.html">Install and reuse modules →</a><a href="docs.html#embedding">Embed the browser interpreter →</a><a href="https://github.com/codelovesme/code/blob/v2.23.0/README.md#modules">Browser module and hosting reference ↗</a></div>
+</section>

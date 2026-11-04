@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compiled Code example</title>
+<h1>A compiled Code program</h1>
+<p id="status" role="status">Starting hello.wasm…</p>
+<pre id="output" aria-label="Program output"></pre>
+<p>Keep hello.wasm and its generated host.mjs beside this page.</p>
+<script type="module">
+const output = document.querySelector('#output');
+const status = document.querySelector('#status');
+try {
+  const { createHost } = await import('./host.mjs');
+  const host = createHost({ log: line => { output.textContent += line + '\n'; } });
+  const response = await fetch('./hello.wasm');
+  if (!response.ok) throw new Error(`hello.wasm: HTTP ${response.status}`);
+  const { instance } = await WebAssembly.instantiate(await response.arrayBuffer(), { env: host.env });
+  if (host.start(instance) !== 0) throw new Error('The compiled program failed');
+  status.textContent = 'Compiled program finished.';
+} catch (error) {
+  status.textContent = 'Could not run the compiled program: ' + error.message;
+}
+</script>
+</html>
