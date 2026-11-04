@@ -1,17 +1,33 @@
-<header class="hero" id="top">
-  <div>
-    <div class="overline">The Code programming language</div>
-    <h1><img class="char-pair" src="logo.png" alt="" />code</h1>
-    <p class="tagline">A modular language with <b>native compilation</b>, a bytecode interpreter, and WebAssembly support.</p>
-    <div class="cta"><a class="btn btn-primary" href="playground.html">Try Code in your browser →</a><a class="btn btn-ghost" href="learn.html">Start learning</a></div>
+<header class="hero home-hero" id="top">
+  <div class="home-intro">
+    <div class="home-brand"><img src="logo.png" alt="" width="38" height="38" /><span class="overline">The Code programming language</span></div>
+    <h1>Built for reuse.<span>Compiled for performance.</span></h1>
+    <p class="tagline">Compose programs with <b>reusable modules</b>. Use the interpreter, compile to native code, or target WebAssembly.</p>
+    <div class="cta"><a class="btn btn-primary" href="playground.html">Try Code →</a><a class="btn btn-ghost" href="learn.html">Start learning</a></div>
   </div>
-  <div class="demo-window">
+  <figure class="demo-window home-demo" aria-label="A complete Code program and its output">
     <div class="demo-bar"><span class="demo-file">hello.code</span></div>
-    <div class="demo-body"><pre class="demo-code">__HOME_CODE__</pre><div class="demo-out show"><span class="lbl">Output</span>__HOME_OUTPUT__</div></div>
-  </div>
+    <div class="demo-body"><pre class="demo-code"><code>__HOME_CODE__</code></pre><div class="demo-out show"><span class="lbl">Output</span>__HOME_OUTPUT__</div></div>
+    <figcaption class="home-demo-caption"><span>The <code>console</code> module handles <code>Print</code>.</span><a href="playground.html?example=hello_home#playground">Edit this example →</a></figcaption>
+  </figure>
 </header>
-<div class="route-grid">
-  <article class="route-card" id="features"><h2>Learn the language</h2><p>Start with a working program, then explore values, handlers and reusable modules.</p><a href="learn.html">Find your starting point →</a></article>
-  <article class="route-card" id="playground"><h2>Write and run</h2><p>Edit code and see its output in the browser. Explore the full example collection when you are ready.</p><a href="playground.html">Open the playground →</a><p id="examples"><a href="playground.html#examples">Browse all examples →</a></p></article>
-  <article class="route-card" id="packages"><h2>Build and integrate</h2><p>Install the CLI, work with modules, or embed Code in an application.</p><a href="docs.html">Open the documentation →</a></article>
-</div>
+<section class="home-capabilities" aria-label="What you can build on">
+  <article class="home-capability">
+    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/><path d="M14 6h4v4M6 14v4h4M10 6h4M6 10v4"/></svg>
+    <h2>Compose, then reuse.</h2>
+    <p>Link modules and send particles to their handlers. Each module keeps its own state.</p>
+    <a href="docs.html#modules">Explore modules →</a>
+  </article>
+  <article class="home-capability">
+    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 5 6 7-6 7M13 19h6M15 3h6v6"/><path d="m21 3-7 7"/></svg>
+    <h2>Choose how you run.</h2>
+    <p>Interpret as you work. Build native executables or WebAssembly. Reuse cached native builds with <code>code run</code>.</p>
+    <a href="docs.html#cli">Install and run →</a>
+  </article>
+  <article class="home-capability">
+    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="12" height="12" rx="2"/><path d="M9 19v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V10a1 1 0 0 0-1-1h-1M7 9l2 2 3-4"/></svg>
+    <h2>Values stay yours.</h2>
+    <p>Update a value without changing a saved copy. Automatic memory management handles the sharing.</p>
+    <a href="docs.html#language-reference">Explore values →</a>
+  </article>
+</section>

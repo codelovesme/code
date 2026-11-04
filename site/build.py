@@ -167,8 +167,8 @@ def main() -> None:
     footer = (site_dir / "footer.html").read_text()
     pages = {
         "index": (
-            "home", "Code — a modular programming language",
-            "Compose programs with reusable modules, native compilation and WebAssembly.",
+            "home", "Code — built for reuse, compiled for performance",
+            "Compose programs with reusable modules. Use the interpreter, compile to native code, or target WebAssembly.",
         ),
         "learn": (
             "learn", "Learn Code — start with a working program",

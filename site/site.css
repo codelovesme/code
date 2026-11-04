@@ -374,3 +374,50 @@
   .hero { padding-top: 2.5rem; gap: 1.5rem; }
   .page-intro { padding-top: 2.5rem; }
 }
+
+/* Home: one promise, a visible result, then three brief capability previews. */
+.home-hero { grid-template-columns: 1.1fr 1fr; gap: 3rem; padding-block: 3.5rem; }
+.home-brand { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.1rem; }
+.home-brand img { object-fit: contain; filter: brightness(1.4); }
+.home-brand .overline { margin: 0; font-size: .72rem; }
+.home-hero h1 { display: block; font-size: clamp(2.2rem, 4.2vw, 3.45rem); line-height: 1.08; letter-spacing: -.04em; text-wrap: balance; }
+.home-hero h1 span { display: block; color: var(--teal); }
+.home-hero .tagline { font-size: 1.05rem; max-width: 43ch; margin-bottom: 1.4rem; }
+.home-hero .cta { margin-bottom: 0; gap: .65rem; }
+.home-demo { margin: 0; }
+.home-demo .demo-body { min-height: 0; padding: 1.25rem; }
+.home-demo .demo-file, .home-demo .lbl { color: var(--muted); }
+.home-demo .demo-code { font-size: .82rem; }
+.home-demo .demo-out { color: var(--green); }
+.home-demo-caption { border-top: 1px solid var(--border); padding: .85rem 1.25rem; display: flex; flex-wrap: wrap; gap: .5rem 1rem; font-size: .8rem; color: var(--muted); }
+.home-demo-caption a { margin-left: auto; }
+.home-capabilities { padding: 0 1.5rem 2.5rem; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.home-capability { min-width: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); padding: 1.4rem; display: flex; flex-direction: column; align-items: flex-start; }
+.home-capability svg { color: var(--teal); margin-bottom: 1rem; }
+.home-capability:nth-child(2) svg { color: var(--violet); }
+.home-capability:nth-child(3) svg { color: var(--pink); }
+.home-capability h2 { font-size: 1.12rem; margin: 0 0 .65rem; letter-spacing: -.015em; }
+.home-capability p { color: var(--muted); font-size: .92rem; margin: 0 0 1.2rem; }
+.home-capability a { font-size: .88rem; margin-top: auto; }
+@media (max-width: 900px) {
+  .home-hero { grid-template-columns: 1fr; gap: 1.5rem; padding-block: 2rem; }
+  .home-hero h1 { max-width: 22ch; }
+  .home-demo { max-width: 640px; }
+  .home-capabilities { grid-template-columns: 1fr; }
+  .home-capability { padding: 1.2rem; }
+  .home-capability svg { margin-bottom: .75rem; }
+}
+@media (max-width: 560px) {
+  .home-brand { gap: .55rem; margin-bottom: .9rem; }
+  .home-brand img { width: 30px; height: 30px; }
+  .home-brand .overline { font-size: .63rem; letter-spacing: .1em; }
+  .home-hero { padding: 1.5rem 1rem 2rem; gap: 1.25rem; }
+  .home-hero h1 { margin-bottom: .9rem; }
+  .home-hero .tagline { font-size: .95rem; margin-bottom: 1rem; }
+  .home-hero .btn { font-size: .9rem; padding: .65rem 1rem; }
+  .home-demo .demo-body { padding: 1rem; }
+  .home-demo .demo-code { font-size: .76rem; }
+  .home-demo-caption { padding: .75rem 1rem; }
+  .home-demo-caption a { margin-left: 0; }
+  .home-capabilities { padding-inline: 1rem; }
+}
