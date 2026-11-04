@@ -73,6 +73,9 @@ jobs:
           or point the pin at a version that exists."
           exit 1
 
+      - name: Check site routes and generated links
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s site -p 'test_*.py'
+
       - name: Assemble site
         run: |
           set -euo pipefail

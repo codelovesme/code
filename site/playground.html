@@ -1,0 +1,60 @@
+<header class="page-intro"><div class="overline">Playground</div><h1>Write it. Run it.</h1><p>Try the browser interpreter, or <a href="learn.html">start with a short introduction</a>. For native builds and embedding, visit <a href="docs.html">Docs</a>.</p></header>
+  <section id="playground">
+    <p class="section-sub">Press <b>Run</b> (or <b>Ctrl/⌘ + Enter</b>), or turn on <b>auto-run</b> to run as you type. Press <b>Escape</b> to leave the editor.</p>
+    <div class="reveal">
+      <div class="pg-toolbar">
+        <div class="row">
+          <div class="badge"><span class="dot"></span> live in your browser · code __ENGINE_VERSION__ · WebAssembly</div>
+          <span class="spacer"></span>
+          <button class="tool-btn pill" id="reset" title="Restore the current example">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>
+            Reset
+          </button>
+        </div>
+      </div>
+      <div class="pg-grid">
+        <div class="pane">
+          <div class="pane-head"><span class="t">Source</span><span class="t" id="line-count"></span></div>
+          <div class="editor-wrap">
+            <pre aria-hidden="true"><code id="hl"></code></pre>
+            <textarea id="source" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" aria-label="code source"></textarea>
+          </div>
+        </div>
+        <div class="pane">
+          <div class="pane-head">
+            <span class="t">Result</span>
+            <button class="mini" id="copy-out" title="Copy result">copy</button>
+          </div>
+          <pre id="output"></pre>
+        </div>
+      </div>
+      <div class="pg-actions">
+        <label class="switch" title="Run automatically as you type">
+          <input type="checkbox" id="live" />
+          <span class="track"></span>
+          <span class="switch-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
+            auto-run
+          </span>
+        </label>
+        <span class="spacer"></span>
+        <span class="status" id="status"></span>
+        <button class="tool-btn run" id="run" disabled>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          Run
+        </button>
+      </div>
+    </div>
+  </section>
+  <section id="examples">
+    <div class="reveal">
+      <div class="overline">examples</div>
+      <h2>Explore the examples</h2>
+      <p class="section-sub">
+        The language examples are real test fixtures, run against both backends
+        in CI. Printing examples use the console supplied by this page. Click any card to load it into the playground.
+      </p>
+    </div>
+    <div class="chips reveal" id="chips" role="group" aria-label="filter examples by category"></div>
+    <div class="ex-grid" id="ex-grid"></div>
+  </section>

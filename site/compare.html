@@ -167,28 +167,21 @@
     .benchmark-row .bar-track { grid-column: 1 / -1; grid-row: 2; }
     .benchmark-row .bar-value { grid-column: 2; grid-row: 1; }
   }
+  .comparison-toc { display: flex; flex-wrap: wrap; gap: .7rem 1.2rem; margin: 1.5rem 0; }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .button:hover { transform: none; } }
 </style>
+<link rel="stylesheet" href="navigation.css" />
+<script src="navigation.js" defer></script>
 </head>
-<body>
+<body data-page="compare">
 <div class="bg-grid" aria-hidden="true"></div>
 <div class="glow one" aria-hidden="true"></div>
 <div class="glow two" aria-hidden="true"></div>
 
-<nav>
-  <div class="wrap nav-inner">
-    <a class="logo" href="index.html"><img src="logo.png" alt="" />code</a>
-    <div class="nav-links">
-      <a href="#at-a-glance">At a glance</a>
-      <a href="#performance">Performance</a>
-      <a href="#memory">Memory</a>
-      <a href="#fit">Choose a fit</a>
-      <a href="index.html#playground">Playground</a>
-    </div>
-  </div>
-</nav>
+__NAVIGATION__
 
-<main class="wrap">
+<main class="wrap" id="main">
+<p class="breadcrumb"><a href="docs.html">Docs</a> / Comparison and benchmarks</p>
   <header>
     <div class="eyebrow">A practical language comparison · reviewed 14 October 2026</div>
     <h1>Where does <span class="accent">code</span> fit next to C, Java, Python, JavaScript, Rust, and Go?</h1>
@@ -204,8 +197,12 @@
       This guide compares the current designs so you can judge the trade-offs for your work.
     </p>
     <div class="hero-actions">
-      <a class="button primary" href="index.html#playground">Try code in the browser</a>
+      <a class="button primary" href="playground.html#playground">Try code in the browser</a>
       <a class="button" href="https://github.com/codelovesme/code">Read the source</a>
+    </div>
+    <div class="comparison-toc" role="navigation" aria-label="On this page">
+      <a href="#at-a-glance">At a glance</a><a href="#performance">Performance</a>
+      <a href="#memory">Memory</a><a href="#fit">Choose a fit</a>
     </div>
     <aside class="notice">
       <strong>About performance claims:</strong> the performance section includes
@@ -834,11 +831,6 @@
   </section>
 </main>
 
-<footer>
-  <div class="wrap foot">
-    <span><a href="index.html">Back to code</a> · <a href="index.html#playground">Open the playground</a></span>
-    <span>Comparison based on public specifications and the current implementation</span>
-  </div>
-</footer>
+__FOOTER__
 </body>
 </html>

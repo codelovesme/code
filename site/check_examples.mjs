@@ -16,7 +16,6 @@
 // what their output panels show.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { runInNewContext } from "node:vm";
 
 const dist = resolve(process.argv[2] ?? "dist");
 const { default: init, run_with_modules } = await import(`${dist}/pkg/code_wasm.js`);
@@ -40,12 +39,8 @@ const consoleModule = {
 };
 
 const examples = JSON.parse(readFileSync(`${dist}/examples.json`, "utf8"));
-// The animated landing-page programs must produce the output they advertise.
-const page = readFileSync(`${dist}/index.html`, "utf8");
-const demos = runInNewContext(page.match(/const DEMOS = (\[[\s\S]*?\n  \]);/)[1]);
-for (const demo of demos) {
-  examples.push({ name: demo.file, code: demo.code, output: demo.out });
-}
+// Home/Learn previews are generated from the same checked source files.
+examples.push(...JSON.parse(readFileSync(`${dist}/demos.json`, "utf8")));
 const failures = [];
 for (const example of examples) {
   try {

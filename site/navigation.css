@@ -1,0 +1,27 @@
+/* Shared navigation/footer only, also used by the comparison page. */
+.site-nav {
+  position: sticky; top: 0; z-index: 50; width: 100%; max-width: 1120px;
+  margin: 0 auto; padding: .85rem 1.5rem; border-bottom: 1px solid var(--border);
+  background: rgba(7,9,15,.88); backdrop-filter: blur(14px);
+  font-family: var(--sans); line-height: 1.6;
+}
+.site-nav .nav-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; width: 100%; gap: .7rem 1.2rem; padding: 0; }
+.site-nav .logo { display: inline-flex; align-items: center; gap: .6rem; color: var(--text); font-size: 1.1rem; font-weight: 700; text-decoration: none; }
+.site-nav .logo img { width: 34px; height: 34px; object-fit: contain; }
+.site-nav .nav-links { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem 1.3rem; font-size: .92rem; }
+.site-nav .nav-links a { display: inline-flex; color: var(--muted); text-decoration: none; }
+.site-nav .nav-links a:hover, .site-nav a[aria-current="page"] { color: var(--text); }
+.site-nav .nav-links a[aria-current="page"] { text-decoration: underline; text-underline-offset: .4em; text-decoration-color: var(--teal); }
+.site-footer { border-top: 1px solid var(--border); margin-top: 2rem; }
+.site-footer .foot-inner { max-width: 1120px; margin: 0 auto; padding: 2rem 1.5rem; display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between; color: var(--muted); font: .88rem/1.6 var(--sans); }
+.site-footer .footer-links { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
+.site-footer a { color: var(--muted); }
+.site-footer a:hover { color: var(--text); }
+.skip-link { position: fixed; top: -100px; left: 1rem; z-index: 100; padding: .7rem 1rem; background: #07090f; color: #5eead4; border: 2px solid currentColor; border-radius: 8px; }
+.skip-link:focus { top: .5rem; }
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--teal); outline-offset: 4px; }
+@media (max-width: 560px) {
+  .site-nav { padding: .7rem 1rem; }
+  .site-nav .nav-links { gap: .7rem 1rem; font-size: .85rem; }
+  .site-nav .nav-links a { display: inline-flex; }
+}

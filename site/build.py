@@ -1,25 +1,16 @@
 #!/usr/bin/env python3
-"""Assembles the playground's dist/index.html from the real tests/*.code
-fixtures — so the examples shown can never drift from what the language
-actually does; run_language_tests.rs already proves every one of them
-either runs or fails as claimed.
+"""Build the static Code site with a shared shell and the real fixture gallery.
 
-Two prefixes are held back. `fail_*` because a page of error messages is
-not an introduction to the language (one is kept, to show what an error
-looks like). `stress_*` because those fixtures are generated, thousands of
-lines of `a = a + a`, and exist to prove things about the *native* backend
-— stack growth, teardown depth — which is exactly what a wasm playground
-cannot demonstrate.
-
-Fixtures that `link` are held back too, by content rather than by name:
-the playground runs through `crates/code-wasm`, which has no filesystem and
-only gets the console module supplied by the page. Testing the source makes
-this precise — it holds back exactly the examples that would fail to run,
-and stays right no matter what the fixtures are called.
+The playground uses a pinned published engine, not a source-built runtime.
+Native-link, stress and intentionally invalid fixtures remain excluded as
+before; check_examples.mjs checks the generated collection and visible previews
+against the exact engine included in the Pages artifact.
 
 Usage: build.py <repo-root> <dist-dir>
 """
+import html
 import json
+import os
 import re
 import shutil
 import sys
@@ -87,6 +78,27 @@ def truncate(text: str, limit: int = 110) -> str:
     return cut.rstrip(",;: ") + "…"
 
 
+# A new language fixture may require capabilities absent from the published
+# playground engine. This is deliberately version-specific, not a permanent
+# exclusion: upgrading the pin makes the full fixture run through the gate.
+BROWSER_INCOMPATIBILITIES = {
+    "2.16.0": {
+        "handler_recursion": "This engine refuses handler re-entry; the fixture remains in the language suite.",
+    },
+}
+
+
+def engine_version(repo_root: Path) -> str:
+    configured = os.environ.get("PLAYGROUND_CODE_WASM_VERSION")
+    if configured:
+        return configured
+    workflow = (repo_root / ".github/workflows/pages.yml").read_text()
+    match = re.search(r'PLAYGROUND_CODE_WASM_VERSION:\s*"([^"]+)"', workflow)
+    if not match:
+        raise ValueError("The Pages workflow must declare its published browser-engine pin")
+    return match.group(1)
+
+
 def main() -> None:
     repo_root = Path(sys.argv[1])
     dist_dir = Path(sys.argv[2])
@@ -94,11 +106,14 @@ def main() -> None:
     site_dir = repo_root / "site"
 
     examples = []
+    version = engine_version(repo_root)
+    incompatibilities = BROWSER_INCOMPATIBILITIES.get(version, {})
+    omitted = []
 
     # The playground's own examples come first, because they are the only
     # ones that *say* anything: every fixture in tests/ is silent, since
     # printing needs a module and a fixture that links one is held back
-    # below. These link `console`, which the page supplies (see index.html's
+    # below. These link `console`, which the page supplies (see playground.mjs's
     # `consoleModule`) — so they are playground-only by nature, not by
     # exception, and `site/check_examples.mjs` runs them like the rest.
     for path in sorted(site_dir.glob("examples/*.code")):
@@ -117,6 +132,9 @@ def main() -> None:
         if name.startswith("fail_") and name != "fail_undefined_variable":
             continue
         if name.startswith("stress_"):
+            continue
+        if name in incompatibilities:
+            omitted.append({"name": name, "reason": incompatibilities[name]})
             continue
         source = path.read_text()
         # Native links can also occur inside handlers. The browser supplies
@@ -137,26 +155,79 @@ def main() -> None:
     # early and corrupt the page.
     examples_json = json.dumps(examples).replace("</", "<\\/")
 
-    template = (site_dir / "index.html").read_text()
-    page = template.replace("__EXAMPLES__", examples_json)
-
     dist_dir.mkdir(parents=True, exist_ok=True)
-    (dist_dir / "index.html").write_text(page)
+    by_name = {example["name"]: example for example in examples}
+    previews = [
+        {**by_name[demo["name"]], "output": demo["output"]}
+        for demo in json.loads((site_dir / "demos.json").read_text())
+    ]
+    home = previews[0]
+    layout = (site_dir / "layout.html").read_text()
+    navigation = (site_dir / "navigation.html").read_text()
+    footer = (site_dir / "footer.html").read_text()
+    pages = {
+        "index": (
+            "home", "Code — a modular programming language",
+            "Compose programs with reusable modules, native compilation and WebAssembly.",
+        ),
+        "learn": (
+            "learn", "Learn Code — start with a working program",
+            "Run your first Code program in the browser, then explore the language and native CLI.",
+        ),
+        "playground": (
+            "playground", "Code playground — write and run",
+            "Edit and run Code in your browser, with the complete collection of language examples.",
+        ),
+        "docs": (
+            "docs", "Code documentation — reference and integration",
+            "Language reference, modules, CLI commands, WebAssembly embedding and native module authoring.",
+        ),
+        "compare": ("compare", "", ""),
+    }
+    for filename, (page, title, description) in pages.items():
+        content = (site_dir / f"{filename}.html").read_text()
+        if page == "compare":
+            output = content
+        else:
+            output = layout.replace("__CONTENT__", content)
+        nav = navigation
+        for key in ["home", "learn", "playground", "docs"]:
+            nav = nav.replace(
+                f"__CURRENT_{key.upper()}__",
+                'aria-current="page"' if page == key else "",
+            )
+        scripts = ""
+        if page == "playground":
+            scripts = (
+                '<script id="examples-data" type="application/json">'
+                + examples_json
+                + '</script>\n<script type="module" src="playground.mjs"></script>'
+            )
+        replacements = {
+            "__NAVIGATION__": nav, "__FOOTER__": footer,
+            "__TITLE__": html.escape(title), "__DESCRIPTION__": html.escape(description),
+            "__PAGE__": page, "__SCRIPTS__": scripts,
+            "__ENGINE_VERSION__": html.escape(version),
+            "__HOME_CODE__": html.escape(home["code"].strip()),
+            "__HOME_OUTPUT__": html.escape(home["output"]),
+        }
+        for placeholder, value in replacements.items():
+            output = output.replace(placeholder, value)
+        (dist_dir / f"{filename}.html").write_text(output)
 
-    # The comparison page is hand-authored content, independent of the
-    # generated playground examples, but belongs in the same Pages artifact.
-    shutil.copy2(site_dir / "compare.html", dist_dir / "compare.html")
-
-    # The same list, on its own, for `site/check_examples.mjs` to run through
-    # the engine the page will actually load. The page embeds it rather than
-    # fetching it, so this file is for the deploy's own check — not something
-    # the playground reads.
     (dist_dir / "examples.json").write_text(json.dumps(examples, indent=2) + "\n")
-
-    # Static assets (logo, favicon) live next to index.html in site/ and are
-    # copied through verbatim — the page references them by relative path.
+    (dist_dir / "demos.json").write_text(json.dumps(previews, indent=2) + "\n")
+    (dist_dir / "browser-compatibility.json").write_text(
+        json.dumps({"engine": version, "omitted": omitted}, indent=2) + "\n"
+    )
+    for item in omitted:
+        print(f"Browser {version} omits {item['name']}: {item['reason']}")
+    for name in ["site.css", "navigation.css", "navigation.js", "playground.mjs"]:
+        shutil.copyfile(site_dir / name, dist_dir / name)
     for asset in sorted(site_dir.glob("*.png")):
-        shutil.copy2(asset, dist_dir / asset.name)
+        shutil.copyfile(asset, dist_dir / asset.name)
+    print(f"Built {len(pages)} pages and {len(examples)} examples")
+
 
 if __name__ == "__main__":
     main()

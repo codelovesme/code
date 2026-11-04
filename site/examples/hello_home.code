@@ -1,0 +1,3 @@
+link "console" as out
+name = "world"
+emit Print { value = "hello, $name" } to out
