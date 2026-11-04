@@ -1,0 +1,28 @@
+name: Verify public-release website evidence
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: website-evidence
+  cancel-in-progress: false
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the actual public Linux release
+        run: |
+          mkdir -p "$RUNNER_TEMP/code-evidence-release"
+          curl -fL --retry 3 https://github.com/codelovesme/code/releases/download/v2.23.0/code-v2.23.0-x86_64-linux.tar.gz -o "$RUNNER_TEMP/code-evidence-release/code.tar.gz"
+          tar -xzf "$RUNNER_TEMP/code-evidence-release/code.tar.gz" -C "$RUNNER_TEMP/code-evidence-release"
+      - name: Prepare, validate, then measure serially on this fresh VM
+        run: |
+          python3 benchmarks/website-evidence/run.py --code "$RUNNER_TEMP/code-evidence-release/code-v2.23.0-x86_64-linux/code" --output-dir "$RUNNER_TEMP/code-evidence-results" --runs 15 --compile-runs 5
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-v2.23.0-website-evidence
+          path: ${{ runner.temp }}/code-evidence-results
+          retention-days: 30

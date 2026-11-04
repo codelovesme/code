@@ -1,0 +1,36 @@
+| 128 x 4096 float64 cells; retain 64 pre-update versions. Each update
+| changes one diagonal cell. Every retained matrix is summed afterwards.
+rows = 128
+cols = 4096
+versions = 64
+current = []
+r = 0
+loop
+    if r = rows, break
+    row = []
+    c = 0
+    loop
+        if c = cols, break
+        row += r * cols + c
+        c += 1
+    current += [row]
+    r += 1
+snapshots = []
+s = 0
+loop
+    if s = versions, break
+    snapshots += [current]
+    current[s][s] += 1
+    s += 1
+n = rows * cols
+initial_sum = n * (n - 1) / 2
+snapshots += [current]
+v = 0
+loop matrix over snapshots
+    total = 0
+    loop values over matrix
+        loop x over values
+            total += x
+    assert total = initial_sum + v
+    v += 1
+assert v = versions + 1
