@@ -1,6 +1,6 @@
 # Code Language — VS Code extension
 
-Syntax highlighting, inline syntax diagnostics, semantic tokens, and document
+Syntax highlighting, inline diagnostics, semantic tokens, and document
 formatting for the [Code](../../README.md) programming language's `.code`
 files.
 
@@ -35,12 +35,26 @@ its server-bundling steps.
 
 ## Diagnostics
 
-The current server reports lexer and parser errors. It does not yet display
-`code check`'s type or local-handler diagnostics, or undefined-variable errors.
-Run the language CLI's `code check` and `code run --strict` to check static
-contracts and local messages; run/build also refuse undefined variables.
-Completion, hover, go-to-definition, references and rename are not implemented.
-The server does not execute your program while you edit it.
+**Source after v2.23.0:** the server reports lexer/parser errors, undefined
+variables and scope errors, type mismatches and inferred type changes, and
+statically known local handler/field typos. It uses the same verifier and static
+checker as the language CLI. The released v2.23.0 extension still reports only
+lexer/parser errors; use the updated server through `codelanguage.server.path`
+until a matching extension release is published.
+
+Open buffers take precedence over files on disk. For an imported source file,
+the server uses a containing `main.code` that links it, or another open entry
+that reaches it, to check the complete program's handler table. Otherwise the
+file is checked on its own. Each file keeps its own variable scope. Errors in
+an imported file are attached to that file, and changing an open dependency
+refreshes the other open files too. Saving an entry re-reads closed dependencies.
+
+Native modules remain opaque message targets: the server neither loads them
+nor checks their availability or native message contracts. Use the CLI for
+module resolution/build validation. Dynamic messages retain normal dispatch
+semantics. Formatting and semantic tokens remain available; completion, hover,
+go-to-definition, references and rename are not implemented. The server never
+executes your program while you edit it.
 
 ## Settings
 

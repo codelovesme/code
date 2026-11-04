@@ -1,15 +1,8 @@
-//! Turning a `code::span::Located` parse/lex error into an LSP `Diagnostic`.
-//!
-//! Deliberately does not run the interpreter: the only static errors this
-//! language has are lex and parse errors (it is dynamically typed, and
-//! every type/undefined-name check happens at `run` time — see
-//! `docs/todo/runtime-error-locations.md`). Executing a program just
-//! because the user is editing it would mean side effects (a linked
-//! module's `Print`, an infinite `loop {}`) firing on every keystroke, so
-//! that's out of scope on purpose, not an oversight.
+//! Map shared non-executing checker results into UTF-16 LSP diagnostics.
 
+use code::ast::Span;
 use code::span::Located;
-use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
 
 /// `at` is a **char** offset (see `Located`'s doc comment); LSP `Position`
 /// columns are UTF-16 code units, so this walks `src` counting UTF-16 units
@@ -49,4 +42,29 @@ pub fn from_located(text: &str, err: &Located) -> Diagnostic {
         message: err.msg.clone(),
         ..Default::default()
     }
+}
+
+pub fn message(text: &str, span: Option<Span>, code: &str, message: &str) -> Diagnostic {
+    let chars: Vec<char> = text.chars().collect();
+    let span = span.unwrap_or(Span::new(0, 1));
+    Diagnostic {
+        range: Range::new(
+            offset_to_position(&chars, span.start as usize),
+            offset_to_position(&chars, span.end as usize),
+        ),
+        severity: Some(DiagnosticSeverity::ERROR),
+        source: Some("code-lsp".into()),
+        code: Some(NumberOrString::String(code.to_string())),
+        message: message.to_string(),
+        ..Default::default()
+    }
+}
+
+pub fn from_static(diagnostic: &code::diagnostics::Diagnostic, text: &str) -> Diagnostic {
+    let mut result = message(text, diagnostic.span, diagnostic.code, &diagnostic.message);
+    result.severity = Some(match diagnostic.severity {
+        code::diagnostics::Severity::Error => DiagnosticSeverity::ERROR,
+        code::diagnostics::Severity::Warning => DiagnosticSeverity::WARNING,
+    });
+    result
 }

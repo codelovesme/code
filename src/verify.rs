@@ -20,7 +20,8 @@
 
 use std::collections::{BTreeSet, HashSet};
 
-use crate::ast::{EmitResult, EmitTarget, Expr, FieldKey, Program, Stmt};
+use crate::ast::{EmitResult, EmitTarget, Expr, FieldKey, Program, Span, Stmt};
+use crate::span::Origin;
 
 /// Checks every `Expr::Ident` is reachable from an earlier assignment,
 /// mirroring the interpreter's runtime "undefined variable" error as a
@@ -51,10 +52,44 @@ pub fn verify_defined(program: &Program) -> Result<(), String> {
             None => change.message,
         });
     }
+    check_bindings(program).map_err(|error| error.message)
+}
+
+/// A binding refusal with its source context, for non-executing editor analysis.
+/// Ordinary run/build keep their existing message contract via `verify_defined`.
+#[derive(Debug)]
+pub struct BindingError {
+    pub message: String,
+    pub origin: Option<Origin>,
+    pub span: Option<Span>,
+}
+
+type BindingLocation = (Option<Origin>, Option<Span>);
+
+/// Check names/scopes without evaluating code or requiring type checking first.
+/// The full static diagnostic checker supplies type and message diagnostics;
+/// this complements it with the same binding rules used by both backends.
+pub fn check_bindings(program: &Program) -> Result<(), BindingError> {
     let mut scopes = vec![HashSet::new()];
     let mut natives = HashSet::new();
-    verify_stmts(&program.statements, &mut scopes, &mut natives, 0)
-        .map_err(|message| explain_inaccessible_binding(program, message))
+    let mut failure = None;
+    verify_stmts(
+        &program.statements,
+        &mut scopes,
+        &mut natives,
+        0,
+        program.origin.as_ref(),
+        &program.starts,
+        &mut failure,
+    )
+    .map_err(|message| {
+        let (origin, span) = failure.unwrap_or_default();
+        BindingError {
+            message: explain_inaccessible_binding(program, message),
+            origin,
+            span,
+        }
+    })
 }
 
 /// Locate top-level declarations in the loaded program, not arbitrary files
@@ -121,190 +156,235 @@ fn verify_stmts(
     scopes: &mut Vec<HashSet<String>>,
     natives: &mut HashSet<String>,
     depth: usize,
+    origin: Option<&Origin>,
+    starts: &[u32],
+    failure: &mut Option<BindingLocation>,
 ) -> Result<(), String> {
-    for stmt in stmts {
-        match stmt {
-            Stmt::HandlerDef { fields, body, .. } => {
-                // The bound name, not the wire field: `{ current as pw }`
-                // puts `pw` in scope and nothing else (see `ast::Field`).
-                let mut scope: HashSet<String> = HashSet::new();
-                for field in fields {
-                    bind_fresh(scopes, &field.name, "a handler's field list")?;
-                    scope.insert(field.name.clone());
+    for (index, stmt) in stmts.iter().enumerate() {
+        let checked = (|| {
+            match stmt {
+                Stmt::HandlerDef { fields, body, .. } => {
+                    // The bound name, not the wire field: `{ current as pw }`
+                    // puts `pw` in scope and nothing else (see `ast::Field`).
+                    let mut scope: HashSet<String> = HashSet::new();
+                    for field in fields {
+                        bind_fresh(scopes, &field.name, "a handler's field list")?;
+                        scope.insert(field.name.clone());
+                    }
+                    // Only the top level is visible, matching what the body will
+                    // actually close over — not whatever scopes happen to be open
+                    // where the definition sits (it is top-level only anyway).
+                    let enclosing = std::mem::replace(scopes, vec![scope]);
+                    scopes.insert(0, enclosing[0].clone());
+                    // A handler keeps the depth of the level it is defined at:
+                    // a `to base` inside its body means *its* parent, matching
+                    // `interpreter::HandlerBody::defining_depth`.
+                    let verified = verify_stmts(body, scopes, natives, depth, origin, &[], failure);
+                    *scopes = enclosing;
+                    verified?;
                 }
-                // Only the top level is visible, matching what the body will
-                // actually close over — not whatever scopes happen to be open
-                // where the definition sits (it is top-level only anyway).
-                let enclosing = std::mem::replace(scopes, vec![scope]);
-                scopes.insert(0, enclosing[0].clone());
-                // A handler keeps the depth of the level it is defined at:
-                // a `to base` inside its body means *its* parent, matching
-                // `interpreter::HandlerBody::defining_depth`.
-                let verified = verify_stmts(body, scopes, natives, depth);
-                *scopes = enclosing;
-                verified?;
-            }
-            Stmt::Return { value, .. } => verify_expr(value, scopes)?,
+                Stmt::Return { value, .. } => verify_expr(value, scopes)?,
 
-            Stmt::Link { path, .. } => {
-                return Err(format!(
-                    "internal error: link \"{path}\" reached codegen unresolved"
-                ))
-            }
-            Stmt::Import { alias, body, .. } => {
-                // A linked file is a world of its own, and the link has a
-                // *direction*: nothing travels down, and since `export` was
-                // removed nothing travels up either. So the body is checked
-                // against a fresh stack rather than one stacked on this
-                // file's — a module cannot see the names of a program that
-                // links it, and does not know it was linked at all. Its one
-                // way back is `emit ... to base`, which reaches handlers,
-                // not names.
-                let enclosing = std::mem::replace(scopes, vec![HashSet::new()]);
-                // One level further out in the module graph — where `to
-                // base` becomes legal, and where its parent lives.
-                let result = verify_stmts(body, scopes, natives, depth + 1);
-                let module_scope = std::mem::replace(scopes, enclosing);
-                result?;
-                let _ = module_scope;
-                // The module's own scope is gone. An alias still names
-                // something — an empty object — so it is defined here; a
-                // link without one introduces no names at all.
-                if let Some(alias) = alias {
-                    scopes.last_mut().unwrap().insert(alias.clone());
-                }
-            }
-            Stmt::ImportNative { alias, .. } => {
-                // **The name is the module.** Linking twice under one name
-                // is refused, whichever files they are.
-                //
-                // Not a matter of taste. Until this check existed, a second
-                // link silently shadowed the first: `link "math.so" as m`
-                // followed by `link "jwt.so" as m` compiled, ran, and sent
-                // `m`'s particles to whichever won — answering null for
-                // every class the other one handled, with nothing said. And
-                // linking the *same* file twice was worse, because it looked
-                // like two modules and was one: configuring the second
-                // changed the first's settings underneath it.
-                //
-                // Both readings of a repeated name are mistakes, and neither
-                // has a sensible meaning to preserve. Refusing before the
-                // program starts is the whole of the fix for the first, and
-                // half of it for the second — see `Stmt::ImportNative`'s doc
-                // comment for the other half.
-                if !natives.insert(alias.clone()) {
+                Stmt::Link { path, .. } => {
                     return Err(format!(
-                        "'{alias}' is already linked — a name is one module, and linking \
-                         another under the same name would silently replace it"
-                    ));
+                        "internal error: link \"{path}\" reached codegen unresolved"
+                    ))
                 }
-                // The alias serves two roles, so it is recorded in both
-                // namespaces: in `natives` (a separate namespace from
-                // `scopes`, matching `interpreter::Environment::native_modules`)
-                // so `emit ... to <alias>` can dispatch to the module, and in
-                // `scopes` so `alias.name` — the module's exported variables,
-                // bound as an object — resolves as an ordinary field access.
-                scopes.last_mut().unwrap().insert(alias.clone());
-            }
-            Stmt::Assign { name, value, .. } => {
-                verify_expr(value, scopes)?;
-                // Assigns the visible binding, or introduces one here. No
-                // check to make: the two readings are never both available,
-                // because nothing may shadow a visible name (`bind_fresh`).
-                if !is_defined(scopes, name) {
-                    scopes.last_mut().unwrap().insert(name.clone());
-                }
-            }
-            Stmt::Assert(expr) => verify_expr(expr, scopes)?,
-            Stmt::If { condition, body } => {
-                verify_expr(condition, scopes)?;
-                scopes.push(HashSet::new());
-                let result = verify_stmts(body, scopes, natives, depth);
-                scopes.pop();
-                result?
-            }
-            Stmt::Loop { over, body } => {
-                // Both the iterable and the accumulator's initial value are
-                // evaluated in the *enclosing* scope, before the loop
-                // variables exist — so `loop x over x` correctly resolves
-                // the right-hand `x` to an outer binding, or errors if there
-                // isn't one.
-                if let Some(over) = over {
-                    verify_expr(&over.iterable, scopes)?;
-                }
-                let mut scope = HashSet::new();
-                if let Some(over) = over {
-                    bind_fresh(scopes, &over.value, "a loop")?;
-                    scope.insert(over.value.clone());
-                    if let Some(key) = &over.key {
-                        bind_fresh(scopes, key, "a loop")?;
-                        scope.insert(key.clone());
+                Stmt::Import {
+                    alias,
+                    body,
+                    origin: module_origin,
+                    ..
+                } => {
+                    // A linked file is a world of its own, and the link has a
+                    // *direction*: nothing travels down, and since `export` was
+                    // removed nothing travels up either. So the body is checked
+                    // against a fresh stack rather than one stacked on this
+                    // file's — a module cannot see the names of a program that
+                    // links it, and does not know it was linked at all. Its one
+                    // way back is `emit ... to base`, which reaches handlers,
+                    // not names.
+                    let enclosing = std::mem::replace(scopes, vec![HashSet::new()]);
+                    // One level further out in the module graph — where `to
+                    // base` becomes legal, and where its parent lives.
+                    let result = verify_stmts(
+                        body,
+                        scopes,
+                        natives,
+                        depth + 1,
+                        Some(module_origin),
+                        &[],
+                        failure,
+                    );
+                    let module_scope = std::mem::replace(scopes, enclosing);
+                    result?;
+                    let _ = module_scope;
+                    // The module's own scope is gone. An alias still names
+                    // something — an empty object — so it is defined here; a
+                    // link without one introduces no names at all.
+                    if let Some(alias) = alias {
+                        scopes.last_mut().unwrap().insert(alias.clone());
                     }
                 }
-                scopes.push(scope);
-                let verified = verify_stmts(body, scopes, natives, depth);
-                scopes.pop();
-                verified?;
-            }
-            Stmt::Emit {
-                particle,
-                target,
-                result,
-                ..
-            } => {
-                verify_expr(particle, scopes)?;
-                if let EmitTarget::Module(alias) = target {
-                    // A statically linked alias is the common case and keeps
-                    // its check exactly as it was. Otherwise the name may be
-                    // an ordinary binding holding an address from a `link`
-                    // that ran inside a handler (`Stmt::LinkRuntime`) — which
-                    // cannot be checked further here, since whether it really
-                    // holds an address is only knowable at runtime.
+                Stmt::ImportNative { alias, .. } => {
+                    // **The name is the module.** Linking twice under one name
+                    // is refused, whichever files they are.
                     //
-                    // What survives is the check that actually catches
-                    // mistakes: a name that is neither is still refused
-                    // before the program starts, so a typo'd alias never
-                    // becomes a runtime failure.
-                    if !natives.contains(alias) && !is_defined(scopes, alias) {
+                    // Not a matter of taste. Until this check existed, a second
+                    // link silently shadowed the first: `link "math.so" as m`
+                    // followed by `link "jwt.so" as m` compiled, ran, and sent
+                    // `m`'s particles to whichever won — answering null for
+                    // every class the other one handled, with nothing said. And
+                    // linking the *same* file twice was worse, because it looked
+                    // like two modules and was one: configuring the second
+                    // changed the first's settings underneath it.
+                    //
+                    // Both readings of a repeated name are mistakes, and neither
+                    // has a sensible meaning to preserve. Refusing before the
+                    // program starts is the whole of the fix for the first, and
+                    // half of it for the second — see `Stmt::ImportNative`'s doc
+                    // comment for the other half.
+                    if !natives.insert(alias.clone()) {
                         return Err(format!(
+                            "'{alias}' is already linked — a name is one module, and linking \
+                         another under the same name would silently replace it"
+                        ));
+                    }
+                    // The alias serves two roles, so it is recorded in both
+                    // namespaces: in `natives` (a separate namespace from
+                    // `scopes`, matching `interpreter::Environment::native_modules`)
+                    // so `emit ... to <alias>` can dispatch to the module, and in
+                    // `scopes` so `alias.name` — the module's exported variables,
+                    // bound as an object — resolves as an ordinary field access.
+                    scopes.last_mut().unwrap().insert(alias.clone());
+                }
+                Stmt::Assign { name, value, .. } => {
+                    verify_expr(value, scopes)?;
+                    // Assigns the visible binding, or introduces one here. No
+                    // check to make: the two readings are never both available,
+                    // because nothing may shadow a visible name (`bind_fresh`).
+                    if !is_defined(scopes, name) {
+                        scopes.last_mut().unwrap().insert(name.clone());
+                    }
+                }
+                Stmt::Assert(expr) => verify_expr(expr, scopes)?,
+                Stmt::If { condition, body } => {
+                    verify_expr(condition, scopes)?;
+                    scopes.push(HashSet::new());
+                    let result = verify_stmts(body, scopes, natives, depth, origin, &[], failure);
+                    scopes.pop();
+                    result?
+                }
+                Stmt::Loop { over, body } => {
+                    // Both the iterable and the accumulator's initial value are
+                    // evaluated in the *enclosing* scope, before the loop
+                    // variables exist — so `loop x over x` correctly resolves
+                    // the right-hand `x` to an outer binding, or errors if there
+                    // isn't one.
+                    if let Some(over) = over {
+                        verify_expr(&over.iterable, scopes)?;
+                    }
+                    let mut scope = HashSet::new();
+                    if let Some(over) = over {
+                        bind_fresh(scopes, &over.value, "a loop")?;
+                        scope.insert(over.value.clone());
+                        if let Some(key) = &over.key {
+                            bind_fresh(scopes, key, "a loop")?;
+                            scope.insert(key.clone());
+                        }
+                    }
+                    scopes.push(scope);
+                    let verified = verify_stmts(body, scopes, natives, depth, origin, &[], failure);
+                    scopes.pop();
+                    verified?;
+                }
+                Stmt::Emit {
+                    particle,
+                    target,
+                    result,
+                    ..
+                } => {
+                    verify_expr(particle, scopes)?;
+                    if let EmitTarget::Module(alias) = target {
+                        // A statically linked alias is the common case and keeps
+                        // its check exactly as it was. Otherwise the name may be
+                        // an ordinary binding holding an address from a `link`
+                        // that ran inside a handler (`Stmt::LinkRuntime`) — which
+                        // cannot be checked further here, since whether it really
+                        // holds an address is only knowable at runtime.
+                        //
+                        // What survives is the check that actually catches
+                        // mistakes: a name that is neither is still refused
+                        // before the program starts, so a typo'd alias never
+                        // becomes a runtime failure.
+                        if !natives.contains(alias) && !is_defined(scopes, alias) {
+                            return Err(format!(
                             "'emit ... to {alias}' but no native module is linked as '{alias}' \
                              and no variable of that name is in scope"
                         ));
-                    }
-                }
-                if matches!(target, EmitTarget::Base) && depth == 0 {
-                    return Err("'emit ... to base' outside a linked module — there is no \
-                         parent to send it to"
-                        .to_string());
-                }
-                match result {
-                    Some(EmitResult::Whole(name)) => {
-                        bind_fresh(scopes, name, "`get`")?;
-                        scopes.last_mut().unwrap().insert(name.clone());
-                    }
-                    Some(EmitResult::Fields(fields)) => {
-                        for entry in fields {
-                            bind_fresh(scopes, &entry.name, "`get`")?;
-                            scopes.last_mut().unwrap().insert(entry.name.clone());
                         }
                     }
-                    None => {}
+                    if matches!(target, EmitTarget::Base) && depth == 0 {
+                        return Err("'emit ... to base' outside a linked module — there is no \
+                         parent to send it to"
+                            .to_string());
+                    }
+                    match result {
+                        Some(EmitResult::Whole(name)) => {
+                            bind_fresh(scopes, name, "`get`")?;
+                            scopes.last_mut().unwrap().insert(name.clone());
+                        }
+                        Some(EmitResult::Fields(fields)) => {
+                            for entry in fields {
+                                bind_fresh(scopes, &entry.name, "`get`")?;
+                                scopes.last_mut().unwrap().insert(entry.name.clone());
+                            }
+                        }
+                        None => {}
+                    }
                 }
+                Stmt::LinkRuntime { alias, path } => {
+                    verify_expr(path, scopes)?;
+                    // An ordinary binding in the current scope, not a native
+                    // alias: what it holds is an address value, and `emit ... to
+                    // <alias>` reaches it through the variable lookup above, not
+                    // through `natives`. Registering it here would claim a
+                    // compile-time guarantee this form cannot make.
+                    scopes.last_mut().unwrap().insert(alias.clone());
+                }
+                Stmt::Unlink(address) => verify_expr(address, scopes)?,
+                // Nothing to check — the parser already rejected any `break`
+                // or `continue` that isn't inside a loop.
+                Stmt::Break | Stmt::Continue | Stmt::TypeDef { .. } => {}
             }
-            Stmt::LinkRuntime { alias, path } => {
-                verify_expr(path, scopes)?;
-                // An ordinary binding in the current scope, not a native
-                // alias: what it holds is an address value, and `emit ... to
-                // <alias>` reaches it through the variable lookup above, not
-                // through `natives`. Registering it here would claim a
-                // compile-time guarantee this form cannot make.
-                scopes.last_mut().unwrap().insert(alias.clone());
+            Ok(())
+        })();
+        if checked.is_err() {
+            let span = match stmt {
+                Stmt::Assign { span, .. } | Stmt::Emit { span, .. } | Stmt::Return { span, .. } => {
+                    *span
+                }
+                _ => None,
             }
-            Stmt::Unlink(address) => verify_expr(address, scopes)?,
-            // Nothing to check — the parser already rejected any `break`
-            // or `continue` that isn't inside a loop.
-            Stmt::Break | Stmt::Continue | Stmt::TypeDef { .. } => {}
+            .or_else(|| {
+                starts.get(index).map(|start| {
+                    Span::new(
+                        *start,
+                        starts.get(index + 1).copied().unwrap_or_else(|| {
+                            origin.map_or(*start + 1, |o| o.source.chars().count() as u32)
+                        }),
+                    )
+                })
+            });
+            match failure {
+                None => *failure = Some((origin.cloned(), span)),
+                Some((file, missing)) if file.as_ref() == origin && missing.is_none() => {
+                    *missing = span
+                }
+                _ => {}
+            }
         }
+        checked?;
     }
     Ok(())
 }

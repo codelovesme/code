@@ -1,56 +1,86 @@
-//! `code-lsp` — stdio Language Server Protocol server for `.code` source.
-//!
-//! Three things, matching what's actually load-bearing for editing this
-//! language today: diagnostics from the real lexer/parser (`diagnostics.rs`),
-//! semantic-token-based highlighting (`tokens.rs`), since there is no
-//! TextMate grammar for it anywhere and syntax coloring has to come from
-//! somewhere, and whole-document formatting, which is `code format` reached
-//! from an editor rather than the command line. Deliberately not: completion,
-//! hover, go-to-definition,
-//! references, rename. Those need actual name resolution — a symbol table
-//! respecting this language's block scoping (`let` shadowing rules the
-//! interpreter enforces at runtime, in `interpreter.rs`) — which is a
-//! separate, larger feature, not a natural extension of lexing and parsing.
+//! Stdio LSP: shared non-executing source checks, semantic tokens and formatting.
+//! Open buffers override disk. No program or native module is executed.
+//! Completion, hover, definitions, references and rename remain separate work.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
+mod analysis;
 mod diagnostics;
 mod tokens;
 
-/// The document text keyed by URI. Whole-document `TextDocumentSyncKind::FULL`
-/// (see `initialize` below) means `did_change` always hands back the
-/// complete new text, so there's nothing incremental to reconcile here.
+#[derive(Default)]
+struct State {
+    documents: HashMap<Url, analysis::Document>,
+    published: HashSet<Url>,
+    revision: u64,
+}
+
 struct Backend {
     client: Client,
-    documents: Mutex<HashMap<Url, String>>,
+    state: Mutex<State>,
 }
 
 impl Backend {
     fn new(client: Client) -> Self {
         Self {
             client,
-            documents: Mutex::new(HashMap::new()),
+            state: Mutex::new(State::default()),
         }
     }
 
-    /// Re-analyze one document and push fresh diagnostics for it — the only
-    /// side effect of a document changing (semantic tokens are pulled by
-    /// the client on demand instead, via `semantic_tokens_full`).
-    async fn on_change(&self, uri: Url, text: String) {
-        let diags = match code::lexer::tokenize(&text) {
-            Err(err) => vec![diagnostics::from_located(&text, &err)],
-            Ok(lexed) => match code::parser::parse(&lexed) {
-                Err(err) => vec![diagnostics::from_located(&text, &err)],
-                Ok(_program) => Vec::new(),
-            },
+    async fn refresh(&self) {
+        let (revision, publications) = {
+            let mut state = self.state.lock().unwrap();
+            let mut report = analysis::analyze(&state.documents);
+            let next: HashSet<_> = report
+                .keys()
+                .chain(state.documents.keys())
+                .cloned()
+                .collect();
+            let mut uris: Vec<_> = next.union(&state.published).cloned().collect();
+            uris.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+            let publications: Vec<_> = uris
+                .into_iter()
+                .map(|uri| {
+                    let version = state.documents.get(&uri).map(|doc| doc.version);
+                    let diagnostics = report.remove(&uri).unwrap_or_default();
+                    (uri, diagnostics, version)
+                })
+                .collect();
+            state.published = next;
+            (state.revision, publications)
         };
-        self.documents.lock().unwrap().insert(uri.clone(), text);
-        self.client.publish_diagnostics(uri, diags, None).await;
+        for (uri, diagnostics, version) in publications {
+            if self.state.lock().unwrap().revision != revision {
+                break;
+            }
+            self.client
+                .publish_diagnostics(uri, diagnostics, version)
+                .await;
+        }
+    }
+
+    async fn on_change(&self, uri: Url, text: String, version: i32) {
+        {
+            let mut state = self.state.lock().unwrap();
+            if state
+                .documents
+                .get(&uri)
+                .is_some_and(|doc| doc.version > version)
+            {
+                return;
+            }
+            state
+                .documents
+                .insert(uri, analysis::Document { text, version });
+            state.revision += 1;
+        }
+        self.refresh().await;
     }
 }
 
@@ -59,8 +89,13 @@ impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
+                text_document_sync: Some(TextDocumentSyncCapability::Options(
+                    TextDocumentSyncOptions {
+                        open_close: Some(true),
+                        change: Some(TextDocumentSyncKind::FULL),
+                        save: Some(TextDocumentSyncSaveOptions::Supported(true)),
+                        ..Default::default()
+                    },
                 )),
                 semantic_tokens_provider: Some(
                     SemanticTokensServerCapabilities::SemanticTokensOptions(
@@ -99,22 +134,39 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.on_change(params.text_document.uri, params.text_document.text)
-            .await;
+        self.on_change(
+            params.text_document.uri,
+            params.text_document.text,
+            params.text_document.version,
+        )
+        .await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         // FULL sync: the client always sends exactly one change event
         // holding the entire new document text.
         if let Some(change) = params.content_changes.into_iter().last() {
-            self.on_change(params.text_document.uri, change.text).await;
+            self.on_change(
+                params.text_document.uri,
+                change.text,
+                params.text_document.version,
+            )
+            .await;
         }
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        let uri = params.text_document.uri;
-        self.documents.lock().unwrap().remove(&uri);
-        self.client.publish_diagnostics(uri, Vec::new(), None).await;
+        {
+            let mut state = self.state.lock().unwrap();
+            state.documents.remove(&params.text_document.uri);
+            state.revision += 1;
+        }
+        self.refresh().await;
+    }
+
+    async fn did_save(&self, _: DidSaveTextDocumentParams) {
+        self.state.lock().unwrap().revision += 1;
+        self.refresh().await;
     }
 
     /// `textDocument/formatting` — the whole document, as one edit.
@@ -134,12 +186,13 @@ impl LanguageServer for Backend {
     /// doing nothing. The diagnostic for the parse error is already showing.
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let text = match self
-            .documents
+            .state
             .lock()
             .unwrap()
+            .documents
             .get(&params.text_document.uri)
         {
-            Some(t) => t.clone(),
+            Some(doc) => doc.text.clone(),
             None => return Ok(None),
         };
         let Ok(formatted) = code::format::format(&text) else {
@@ -159,12 +212,13 @@ impl LanguageServer for Backend {
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         let text = match self
-            .documents
+            .state
             .lock()
             .unwrap()
+            .documents
             .get(&params.text_document.uri)
         {
-            Some(t) => t.clone(),
+            Some(doc) => doc.text.clone(),
             None => return Ok(None),
         };
 

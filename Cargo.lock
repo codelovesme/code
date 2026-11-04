@@ -110,6 +110,7 @@ name = "code-lsp"
 version = "2.23.0"
 dependencies = [
  "code",
+ "serde_json",
  "tokio",
  "tower-lsp",
 ]
