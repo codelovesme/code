@@ -358,6 +358,8 @@
               (off) => leaving.push(off)
             ),
             guard: guardFor(app),
+            flowParent: ctx.flows,
+            program: app,
           });
           const held = { host, container, sheet, leaving, started: false };
           // Held before it exists, so that a second `Load` of the same name

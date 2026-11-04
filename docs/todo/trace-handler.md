@@ -1,7 +1,7 @@
 # A `Trace` handler: what one interaction did, handed to the program
 
 > **Designed 2026-09-30 with the owner.** Stages A, B and C shipped the
-> same day; D is open.
+> same day; D is implemented (2026-11-04, unreleased).
 
 ## The problem
 
@@ -151,7 +151,38 @@ Trace {
   that reached the membrane. The host cannot know that step until the guest
   returns. Timings and contents are right; only that one parent link is
   coarser than it could be.
-- **D — browser (`--target wasm`).** Not planned yet.
+- **D — browser (`--target wasm`). Implemented, unreleased.**
+  `Trace` opts a wasm program in; no handler means no flow calls or imports
+  in that binary. Existing codegen boundaries call thin wasm runtime wrappers;
+  the JavaScript host owns one live call tree across the shell and its guests.
+  Only a top-level root's particle is serialized by these wrappers; other
+  emits send target and class names, and finish with an ok flag.
+  - Incoming page callbacks are roots from `page`; a host asking a guest
+    uses `host`. Events the traced program does not handle are ignored.
+  - A traced shell receives its guests' finished interactions. A guest that
+    defines `Trace` contributes internal emits; a guest without it contributes
+    only the incoming event boundary. Native libraries' automatic interior
+    recording is intentionally not applied to wasm: it would add calls to
+    every untraced build. A standalone traced guest receives its own traces.
+  - `program` is the guest app name, null for the shell. Host callbacks made
+    through furnished modules attach live beneath the guest's current emit,
+    avoiding stage C's coarser parent relationship. Deferred `Tell`, timer and
+    network callbacks start new synchronous interactions; waiting is not
+    included in handler timings.
+  - Unanswered browser module calls retain their null result and mark the
+    active step `answered = false`. A failure returning `Exception` sets `ok`
+    false. Trace delivery suppresses recording throughout the shared tree,
+    including its synchronous callbacks into other instances.
+  - The 500-step cap, dropped count and failure unwinding match native.
+    Answer buffers grow for large trace values, and JavaScript rereads the
+    event-buffer address after dispatch, since nested calls may move it.
+  - `tests/trace_wasm.rs` runs the existing native Trace fixture in dev and
+    release wasm, checks page events, cap, failure/unhandled behavior, large
+    root/answer growth and absent tracing imports in quiet builds. Chromium
+    hosting and failure-report cases live in my-euglena-apps ticket 105.
+  - Older quiet wasm still runs on the new host. Traced wasm uses new optional
+    imports and requires a rebuilt `host.mjs`, including the shell when hosted.
+
 
 ## Relation to `code trace`
 

@@ -1085,7 +1085,23 @@ library records too, and the host's `Trace` gets it:
 
 Both output modes behave the same. A compiled executable without `Trace`
 carries none of the recording; a shared library carries it switched off
-until a host asks. The browser build does not record yet. See
+until a host asks.
+
+**In the browser**, defining `Trace` also opts a wasm program in. Page
+callbacks are roots (`from = "page"`); a host asking a guest uses `"host"`.
+The guest bridge shares a live tree with its shell: a furnished module's
+host callback is a child of the guest emit that asked it. `program` is the
+guest's app name, or null for the shell. A shell defining `Trace` receives
+its guests' traces; a standalone traced program receives its own.
+
+Each wasm program must define `Trace` to include its internal emits.
+Untraced guests still contribute their incoming event boundary when hosted
+by a traced shell, but their internals are absent. This differs from native
+shared libraries: an untraced wasm carries no recording calls or tracing
+imports. An unanswered browser module call adds `answered = false` to its
+step; a null result remains null. Deferred callbacks start new interactions,
+with no trace held open while waiting. Rebuild the wasm and its shell's
+`host.mjs` together to get the new optional tracing imports. See
 [`docs/todo/trace-handler.md`](docs/todo/trace-handler.md).
 
 ## Errors

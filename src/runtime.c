@@ -2686,6 +2686,41 @@ void code_flow_finish(long long id, const CodeValue *answer) {
 }
 #endif
 
+#ifdef CODE_WASM
+/* The browser owns the live call tree across wasm instances. These wrappers
+ * are linked only when codegen emits flow calls (a program defining Trace).
+ * Only a root crosses with its contents; ordinary steps carry names only. */
+extern void code_host_flow_on(void);
+extern void code_host_flow_handles(const char *, unsigned int);
+extern long long code_host_flow_begin(const char *, unsigned int,
+    const char *, unsigned int, const char *, unsigned int,
+    const char *, unsigned int);
+extern void code_host_flow_finish(long long, int);
+void code_to_text(CodeValue *out, const CodeValue *v);
+void code_flow_on(void) { code_host_flow_on(); }
+void code_flow_handles(const char *name) {
+    code_host_flow_handles(name, (unsigned int)strlen(name));
+}
+long long code_flow_begin(const char *target, const CodeValue *particle, const char *from) {
+    const CodeValue *c = particle->tag == CODE_OBJECT ? find_field(particle, "_class") : NULL;
+    const char *name = c && c->tag == CODE_STR && c->str ? c->str : "";
+    CodeValue text = {0};
+    if (from) code_to_text(&text, particle);
+    long long id = code_host_flow_begin(target, (unsigned int)strlen(target),
+        name, (unsigned int)strlen(name), from, from ? (unsigned int)strlen(from) : 0,
+        text.str, text.tag == CODE_STR ? (unsigned int)strlen(text.str) : 0);
+    code_release(&text);
+    return id;
+}
+long long code_flow_begin_push(const char *from, const CodeValue *particle) {
+    return code_flow_begin("this", particle, from);
+}
+void code_flow_finish(long long id, const CodeValue *answer) {
+    const CodeValue *c = answer->tag == CODE_OBJECT ? find_field(answer, "_class") : NULL;
+    code_host_flow_finish(id, !(c && c->tag == CODE_STR && c->str && strcmp(c->str, "Exception") == 0));
+}
+#endif
+
 /* ---- Events — a whole particle, built where the event happens ------------
  *
  * What a browser needs and a socket does not: the page fires back. While it
@@ -3192,11 +3227,12 @@ void code_event_fire(long long len) {
  * hosting another application can be *asked* whether the guest may draw
  * there, or store that, and answer in the language rather than in the page.
  *
- * One at a time, like `code_event_fire`, and for a sharper reason: the answer
- * is written into the same buffer the question came in on. A handler that
- * caused another question before returning would be overwriting the one it
- * was still being asked — which cannot happen, because dispatch is one
- * thread and a handler cannot re-enter one that is already running. */
+ * The particle is owned before dispatch, and the answer is written only
+ * after dispatch returns. A synchronous guest/host callback may therefore
+ * reuse or grow the buffer while this call is running. The JavaScript host
+ * must reread its address after the call, never keep the incoming pointer. */
+void code_to_text(CodeValue *out, const CodeValue *v);
+
 long long code_event_ask(long long len) {
     CodeValue particle = {0};
     if (!code_event_read(len, &particle)) {
@@ -3204,7 +3240,17 @@ long long code_event_ask(long long len) {
     }
     CodeValue answer = {0};
     code_program_dispatch(&answer, &particle);
-    long long written = code_json_write(&answer, code_event_buf, code_event_cap);
+    /* A trace may be larger than the event that caused it. Serialize once,
+     * then reserve the answer's room instead of silently dropping it. */
+    CodeValue text = {0};
+    code_to_text(&text, &answer);
+    long long written = text.tag == CODE_STR && text.str ? (long long)strlen(text.str) : 0;
+    if (written > 0) {
+        code_event_text_reserve(written);
+        if (written <= code_event_cap) memcpy(code_event_buf, text.str, (size_t)written);
+        else written = 0;
+    }
+    code_release(&text);
     code_release(&answer);
     code_release(&particle);
     return written > 0 ? written : 0;

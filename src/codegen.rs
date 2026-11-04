@@ -1128,15 +1128,15 @@ pub(crate) fn compile_to_object_traced(
     gen.layouts = crate::infer::field_layouts(program);
     gen.types = crate::types::Types::of(program);
     gen.scalar_names = gen.kinds.top.clone();
-    // Decided now that every handler is known, and only for an executable:
-    // a library cannot know whether its host will want its steps (see
-    // docs/todo/trace-handler.md), and the browser has no clock for it yet.
+    // Decide opt-in after all handlers are known. Executable and wasm
+    // programs define Trace themselves; a shared library cannot know
+    // whether its host will want its steps (docs/todo/trace-handler.md).
     //
     // A shared library is the exception: whether it records is its host's
     // choice (`code_module_flows`), not its own, so it always carries the
     // calls and they stay off until asked.
-    gen.flows_self =
-        target == BuildTarget::Exe && gen.handler_fns.contains_key(crate::flows::HANDLER);
+    gen.flows_self = matches!(target, BuildTarget::Exe | BuildTarget::Wasm)
+        && gen.handler_fns.contains_key(crate::flows::HANDLER);
     gen.flows = gen.flows_self || target == BuildTarget::Shared;
     // After the declarations above (every handler function must exist for
     // the chains to branch to) and before any body below (a module's

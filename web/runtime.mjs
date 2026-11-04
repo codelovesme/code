@@ -78,15 +78,70 @@ export function createHost({
   store = null,
   address = null,
   guard = null,
+  flowParent = null,
+  program = null,
 } = {}) {
   const dec = new TextDecoder();
   const enc = new TextEncoder();
   let memory;
   let exports = null;
+  let eventAt = 0;
   let fire = () => {};
   let ask = () => null;
 
   const str = (ptr, len) => dec.decode(new Uint8Array(memory.buffer, ptr, len));
+
+  // Only instrumented wasm calls flow_on. Quiet programs keep their original
+  // event path; no clocks, steps or root copies are used for them.
+  let flowsOn = false;
+  let enableFlowEvents = () => {};
+  const handled = new Set();
+  const graph = flowParent?.graph ?? { active: null, delivering: false };
+  const owner = () => flowParent?.owner() ?? (flowsOn ? deliverTrace : null);
+  const flows = { graph, owner };
+  const mono = () => performance.now();
+  const round = (n) => Math.round(n * 1000) / 1000;
+  const beginFlow = (target, name, particle, from) => {
+    if (graph.delivering) return -1;
+    let flow = graph.active;
+    if (!flow) {
+      const deliver = owner();
+      if (!from || !deliver) return -1;
+      flow = graph.active = {
+        root: { from, class: name, particle, program },
+        started: Date.now(), clock: mono(), steps: [], open: [], dropped: 0, deliver,
+      };
+    }
+    if (flow.steps.length >= 500) { flow.dropped++; return -2; }
+    const id = flow.steps.length;
+    flow.steps.push({ id, parent: flow.open.at(-1) ?? null, target, class: name,
+      at: mono() - flow.clock, ms: 0, ok: true, program });
+    flow.open.push(id);
+    return id;
+  };
+  const finishFlow = (id, ok) => {
+    const flow = graph.active;
+    if (id < 0 || !flow) return;
+    const now = mono() - flow.clock;
+    while (flow.open.length) {
+      const top = flow.open.pop();
+      const step = flow.steps[top];
+      step.ms = round(now - step.at);
+      step.at = round(step.at);
+      step.ok = top === id ? ok : false;
+      if (top === id) break;
+    }
+    if (id !== 0) return;
+    graph.active = null;
+    const trace = { _class: "Trace", root: flow.root, started: flow.started,
+      ms: flow.steps[0].ms, ok: flow.steps[0].ok, steps: flow.steps, dropped: flow.dropped };
+    graph.delivering = true;
+    try { flow.deliver(trace); } finally { graph.delivering = false; }
+  };
+  // Called directly rather than through ask's event wrapper: Trace cannot
+  // trace itself, even when its handler calls a guest or a furnished module.
+  const deliverTrace = (trace) => rawAsk(trace);
+  let rawAsk = () => null;
 
   /// Writes `text` into a buffer the module owns and says how much landed.
   /// Cut rather than refused: the caller was told the capacity, and a
@@ -111,7 +166,8 @@ export function createHost({
     const cap = Number(e.code_event_text_capacity());
     const n = Math.min(b.length, cap);
     new Uint8Array(memory.buffer).set(b.subarray(0, n), at);
-    return { at, n };
+    eventAt = at;
+    return { at, n, cap };
   };
 
   const env = {
@@ -122,6 +178,13 @@ export function createHost({
       throw new Error("wasm error: " + str(ptr, len));
     },
     code_host_now: () => Math.floor(Date.now() / 1000),
+    code_host_flow_on: () => { flowsOn = true; enableFlowEvents(); },
+    code_host_flow_handles: (ptr, len) => handled.add(str(ptr, len)),
+    code_host_flow_begin(target, targetLen, name, nameLen, from, fromLen, json, jsonLen) {
+      return BigInt(beginFlow(str(target, targetLen), str(name, nameLen),
+        jsonLen ? JSON.parse(str(json, jsonLen)) : null, fromLen ? str(from, fromLen) : null));
+    },
+    code_host_flow_finish: (id, ok) => finishFlow(Number(id), !!ok),
     // Minutes to add to UTC to get this page's clock. `getTimezoneOffset`
     // counts the other way round — minutes to add to local to get UTC — so
     // the sign is flipped here, once, rather than in every caller.
@@ -151,6 +214,7 @@ export function createHost({
     log,
     store,
     address,
+    flows,
     fire: (particle) => fire(particle),
     ask: (particle) => ask(particle),
   };
@@ -205,6 +269,10 @@ export function createHost({
     // to say to this class. The module reads a negative length as that, and
     // hands the program null.
     if (result === null || result === undefined) {
+      const flow = graph.active;
+      if (flow && !graph.delivering && flow.open.length) {
+        flow.steps[flow.open.at(-1)].answered = false;
+      }
       if (DEBUG_MODULE_CALLS) console.warn(`[code] unanswered module call: ${name} / ${typeof particle?._class === "string" ? particle._class : "<no class>"}`);
       return -1n;
     }
@@ -253,13 +321,38 @@ export function createHost({
       // the program has an opinion. This asks, and cannot go on without the
       // answer: it is what lets a page put the program in the middle of
       // something. Null when nothing answered.
-      ask = (particle) => {
-        const { at, n } = writeEvent(e, JSON.stringify(particle));
+      rawAsk = (particle) => {
+        const { n, cap } = writeEvent(e, JSON.stringify(particle));
         const back = Number(e.code_event_ask(BigInt(n)));
-        return back === 0 ? null : JSON.parse(str(at, back));
+        // Nested events update eventAt themselves. Only an answer larger
+        // than the incoming capacity can move it without a JS writeEvent.
+        // Avoid an extra wasm call on every quiet, ordinary-sized answer.
+        if (back > cap) eventAt = e.code_event_text();
+        return back === 0 ? null : JSON.parse(str(eventAt, back));
       };
 
-      return e.main();
+      // An incoming page event is a root. A guest asking its host while
+      // already running is a child under the guest's currently open step.
+      const tracedAsk = (particle, from = program ? "host" : "page") => {
+        if (graph.delivering || (!flowsOn && !flowParent?.owner() && !graph.active)) return rawAsk(particle);
+        if (flowsOn && !handled.has(particle?._class)) return rawAsk(particle);
+        const id = beginFlow("this", particle?._class ?? "", particle, from);
+        try {
+          const answer = rawAsk(particle);
+          finishFlow(id, answer?._class !== "Exception");
+          return answer;
+        } catch (e) { finishFlow(id, false); throw e; }
+      };
+      enableFlowEvents = () => {
+        ask = tracedAsk;
+        fire = (particle) => { tracedAsk(particle, "page"); };
+      };
+      // A quiet standalone program uses the original raw paths. main's
+      // flow_on import installs the traced paths before any statements run.
+      ask = rawAsk;
+      if (flowParent?.owner()) enableFlowEvents();
+      const started = e.main();
+      return started;
     },
 
     /// Lets the instance go. Nothing told or asked of it afterwards reaches
@@ -272,7 +365,10 @@ export function createHost({
     /// application that is no longer there.
     stop() {
       fire = () => {};
-      ask = () => null;
+      ask = rawAsk = () => null;
+      flowsOn = false;
+      enableFlowEvents = () => {};
+      handled.clear();
       memory = undefined;
       currentInstance = () => 0;
       answering.clear();
