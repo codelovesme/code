@@ -61,7 +61,7 @@ class SiteBuild(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_direct_pages_share_working_navigation(self):
-        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html', 'learn/first-program.html', 'learn/values.html', 'learn/messages.html'})
+        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html', 'learn/first-program.html', 'learn/values.html', 'learn/messages.html', 'learn/small-program.html'})
         expected = ['index.html', 'learn.html', 'playground.html', 'docs.html', 'https://github.com/codelovesme/code']
         for name, page in self.pages.items():
             prefix = '../' if name.startswith('learn/') else ''
@@ -203,10 +203,15 @@ class SiteBuild(unittest.TestCase):
                 self.assertNotIn(f'href="../{following["route"]}"', published)
             else:
                 self.assertNotIn('rel="next"', published)
+            for asset, example in plan[upcoming].get('downloads', {}).items():
+                self.assertEqual((dist / 'lesson-examples' / asset).read_bytes(),
+                                 (repo / 'site/examples' / f'{example}.code').read_bytes())
             plan[upcoming]['ready'] = False
             manifest.write_text(json.dumps(plan))
             subprocess.run(command, env=self.environment, check=True, capture_output=True)
             self.assertFalse((dist / plan[upcoming]['route']).exists())
+            for asset in plan[upcoming].get('downloads', {}):
+                self.assertFalse((dist / 'lesson-examples' / asset).exists())
             self.assertNotIn(f'href="../{plan[upcoming]["route"]}"', (dist / previous['route']).read_text())
             # Withdrawing lesson 1 also withdraws its generated command bundle.
             plan[1]['ready'] = False

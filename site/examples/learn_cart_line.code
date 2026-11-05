@@ -1,0 +1,6 @@
+link "console" as out
+LineTotal { item } =>
+    return Line { name = item.name, value = item.count * item.price }
+item = { name = "apples", count = 2, price = 3 }
+emit LineTotal { item = item } to this get line
+emit Print { value = "$line.name: $line.value" } to out

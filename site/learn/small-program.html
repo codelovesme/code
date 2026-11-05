@@ -1,0 +1,46 @@
+<section aria-labelledby="cart-goal">
+  <h2 id="cart-goal">Make a readable receipt.</h2>
+  <p>Use the sample whole-number prices below. Each item has a name, a count and a unit price. Print its subtotal, then the cart total.</p>
+  <div class="lesson-result"><span>Your finished output</span><pre>__STEP_FINAL_OUTPUT__</pre></div>
+  <p>You’ll reuse records, a loop, a handler and returned results from the earlier lessons.</p>
+</section>
+<section aria-labelledby="cart-line">
+  <h2 id="cart-line">1. Calculate one line.</h2>
+  <p>Send the item as a field in a <code>LineTotal</code> request. The handler multiplies count by price and returns a <code>Line</code> result.</p>
+  __STEP_LINE__
+</section>
+<section aria-labelledby="cart-loop">
+  <h2 id="cart-loop">2. Apply it to the cart.</h2>
+  <p>Start <code>total</code> at zero. The loop calls the same handler for each item, adds the returned value and prints a readable line.</p>
+  __STEP_RECEIPT__
+</section>
+<section aria-labelledby="cart-final">
+  <h2 id="cart-final">3. Handle an invalid entry.</h2>
+  <p>Add a check for negative counts and prices. The caller prints a message for an Exception; it adds only successful Line results to the total.</p>
+  __STEP_FINAL__
+  <p>Change the apples count from <code>2</code> to <code>3</code>. Its line becomes <code>apples: 9</code> and the cart ends with <code>total: 11</code>.</p>
+  <a href="__ROOT__lesson-examples/cart/receipt.code" download>Download the complete program →</a>
+  <details class="module-details" id="cart-invalid"><summary>Try a negative quantity</summary>
+    <p>This version sets the apples count to <code>-1</code>. It prints the failure message, continues to bread, and totals the valid lines.</p>
+    __STEP_INVALID__
+    <p>A negative price follows the same path with <code>Price must be zero or more.</code> Zero quantity is allowed and contributes zero.</p>
+  </details>
+</section>
+<section aria-labelledby="cart-local">
+  <h2 id="cart-local">4. Reuse the calculator locally.</h2>
+  <p>The complete browser program uses one file and the supplied console. For a separate source module, use the local CLI/console project from <a href="__ROOT__learn/first-program.html#linux-setup">lesson 1</a>.</p>
+  <details class="module-details" id="cart-module"><summary>Two files · local CLI version</summary>
+    <p>In the <code>hello</code> project, save the calculation as <code>cart.code</code> and replace <code>main.code</code> with the caller. Keep the same <code>code_cli</code> setup.</p>
+    <figure class="module-panel lesson-example"><figcaption>cart.code · reusable handler</figcaption><pre class="codeblock" id="cart-module-code" tabindex="0">__LESSON_CALCULATOR__</pre><button class="tool-btn" data-copy="cart-module-code" data-copy-type="file" hidden>Copy cart.code</button><p role="status"></p></figure>
+    <figure class="module-panel lesson-example"><figcaption>main.code · cart and output</figcaption><pre class="codeblock" id="cart-caller-code" tabindex="0">__LESSON_CALLER__</pre><button class="tool-btn" data-copy="cart-caller-code" data-copy-type="file" hidden>Copy main.code</button><p role="status"></p></figure>
+    <figure class="module-panel lesson-example"><figcaption>Run in that project and terminal</figcaption><pre class="codeblock" id="cart-run" tabindex="0">__LESSON_RUN__</pre><button class="tool-btn" data-copy="cart-run" data-copy-type="shell" hidden>Copy local commands</button><p role="status"></p></figure>
+    <p>Each run prints the finished receipt shown above. The caller owns the cart and total; the linked handler receives each item through a particle and returns the result.</p>
+    <div class="section-links"><a href="__ROOT__lesson-examples/cart/cart.code" download>Download cart.code</a><a href="__ROOT__lesson-examples/cart/main.code" download>Download main.code</a><a href="__ROOT__lesson-examples/cart/run.sh" download>Download commands</a></div>
+  </details>
+</section>
+<section aria-labelledby="cart-next">
+  <h2 id="cart-next">Make it yours.</h2>
+  <p>Add another item or change a count and run again. You now have a complete program with data, reusable behavior, checked results and output.</p>
+  <div class="section-links"><a href="__ROOT__modules.html">Explore modules and reuse →</a><a href="__ROOT__docs.html#language-reference">Language reference →</a><a href="__ROOT__execution.html">Choose how to run it →</a></div>
+  <p><a href="__ROOT__learn.html">Return to the full learning path →</a></p>
+</section>

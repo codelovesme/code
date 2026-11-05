@@ -165,9 +165,60 @@
     "id": "small-program",
     "route": "learn/small-program.html",
     "source": "learn/small-program.html",
-    "ready": false,
-    "title": "Build a small program",
-    "goal": "Put values, handlers and modules together.",
-    "outcome": "Finish a useful program you can change and extend."
+    "ready": true,
+    "title": "Build a cart receipt",
+    "goal": "List items, calculate totals and handle an invalid cart entry.",
+    "outcome": "Run and adapt a reusable cart calculator.",
+    "steps": [
+      {
+        "id": "line",
+        "example": "learn_cart_line",
+        "title": "Calculate one line",
+        "output": "apples: 6"
+      },
+      {
+        "id": "receipt",
+        "example": "learn_cart_receipt",
+        "title": "List the cart and total",
+        "output": "apples: 6\nbread: 2\ntotal: 8"
+      },
+      {
+        "id": "final",
+        "example": "learn_cart_final",
+        "title": "Complete cart program",
+        "output": "apples: 6\nbread: 2\ntotal: 8",
+        "edits": [
+          {
+            "find": "count = 2, price = 3",
+            "replace": "count = 3, price = 3",
+            "output": "apples: 9\nbread: 2\ntotal: 11"
+          },
+          {
+            "find": "count = 2, price = 3",
+            "replace": "count = 2, price = -1",
+            "output": "skipped: Price must be zero or more.\nbread: 2\ntotal: 2"
+          },
+          {
+            "find": "count = 2, price = 3",
+            "replace": "count = 0, price = 3",
+            "output": "apples: 0\nbread: 2\ntotal: 2"
+          }
+        ]
+      },
+      {
+        "id": "invalid",
+        "example": "learn_cart_invalid",
+        "title": "A handled invalid quantity",
+        "output": "skipped: Count must be zero or more.\nbread: 2\ntotal: 2"
+      }
+    ],
+    "snippets": {
+      "CALCULATOR": "cart/cart.code",
+      "CALLER": "cart/main.code",
+      "RUN": "cart/run.sh"
+    },
+    "downloads": {
+      "cart/receipt.code": "learn_cart_final"
+    }
   }
 ]

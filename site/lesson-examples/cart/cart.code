@@ -1,0 +1,4 @@
+LineTotal { item } =>
+    if item.count < 0, return Exception { source = "cart", message = "Count must be zero or more." }
+    if item.price < 0, return Exception { source = "cart", message = "Price must be zero or more." }
+    return Line { name = item.name, value = item.count * item.price }

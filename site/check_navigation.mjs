@@ -17,7 +17,7 @@ async function waitFor(test, label) {
   throw Error(label);
 }
 try {
-  for (const file of ['index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html', 'learn/first-program.html', 'learn/values.html', 'learn/messages.html']) {
+  for (const file of ['index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html', 'learn/first-program.html', 'learn/values.html', 'learn/messages.html', 'learn/small-program.html']) {
     await page.goto(url(file), { waitUntil: 'networkidle' });
     assert.equal(await page.locator('.site-nav a').count(), 5, file);
     for (const label of ['Learn', 'Playground', 'Docs', 'GitHub']) {
@@ -110,7 +110,7 @@ try {
   checks++;
 
   assert.deepEqual(errors, []);
-  console.log(`${checks} browser journeys passed; 12 pages checked at 4 viewport widths`);
+  console.log(`${checks} browser journeys passed; 13 pages checked at 4 viewport widths`);
 } finally {
   await browser.close();
 }

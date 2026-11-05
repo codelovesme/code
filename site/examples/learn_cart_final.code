@@ -1,0 +1,18 @@
+link "console" as out
+LineTotal { item } =>
+    if item.count < 0, return Exception { source = "cart", message = "Count must be zero or more." }
+    if item.price < 0, return Exception { source = "cart", message = "Price must be zero or more." }
+    return Line { name = item.name, value = item.count * item.price }
+items = [
+    { name = "apples", count = 2, price = 3 }
+    { name = "bread", count = 1, price = 2 }
+]
+total = 0
+loop item over items
+    emit LineTotal { item = item } to this get line
+    if line ∈ Exception
+        emit Print { value = "skipped: $line.message" } to out
+    if line ∈ Line
+        total += line.value
+        emit Print { value = "$line.name: $line.value" } to out
+emit Print { value = "total: $total" } to out

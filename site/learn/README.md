@@ -66,3 +66,12 @@ expected successes. Keep browser programs in the console-only host, and use
 explicitly local snippets for source-file imports. `data-copy-type="file"`
 provides save-to-file feedback. The messages native checker verifies those
 exact emitted files, binding privacy and error boundaries with public v2.23.0.
+
+
+Lesson 4 completes the course with a cart receipt. Optional `downloads` maps
+relative lesson-asset paths to canonical example names, e.g.
+`"cart/receipt.code": "learn_cart_final"`. The builder copies the complete
+program byte-for-byte and withdraws it with lesson readiness. Use snippets
+for explicitly local multi-file versions, and verify their emitted run script
+with the published CLI. Finish the course with Modules/Docs links rather than
+an empty next lesson.

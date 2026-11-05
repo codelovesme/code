@@ -22,7 +22,7 @@ try {
   assert.equal(await page.locator('.site-nav [aria-current="page"]').innerText(), 'Learn');
   assert.equal(await page.locator('#messages-solution').evaluate(el => el.open), false);
   assert.equal(await page.locator('.lesson-neighbors a[rel="prev"]').getAttribute('href'), '../learn/values.html');
-  assert.equal(await page.locator('.lesson-neighbors a[rel="next"]').count(), 0);
+  assert.equal(await page.locator('.lesson-neighbors a[rel="next"]').getAttribute('href'), '../learn/small-program.html');
   for (const step of lesson.steps) {
     if (step.id === 'solution') { await page.locator('#messages-solution summary').focus(); await page.keyboard.press('Enter'); }
     const code = readFileSync(new URL(`examples/${step.example}.code`, import.meta.url), 'utf8');
@@ -72,9 +72,9 @@ try {
       const box = await pre.boundingBox(); if (box) assert.ok(box.x >= 0 && box.x + box.width <= width + 1);
     }
   }
-  await page.getByRole('link', { name: 'See the final learning step →', exact: true }).click();
-  await page.waitForURL('**/learn.html#path-small-program');
-  assert.equal(await page.locator('#path-small-program a').count(), 0);
+  await page.locator('.lesson-neighbors a[rel="next"]').click();
+  await page.waitForURL('**/learn/small-program.html');
+  await page.goto(url('learn.html'));
   await page.getByRole('link', { name: lesson.title, exact: true }).click();
   await page.locator('.lesson-neighbors a[rel="prev"]').click();
   await page.waitForURL('**/learn/values.html');

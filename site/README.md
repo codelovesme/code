@@ -355,7 +355,7 @@ This runs all five programs and both suggested edits through their real
 Playground links, verifies the exercise solution and unchanged original, checks
 copy, ready neighbors, four widths, keyboard interaction and no-JS reading.
 Run clipboard-writing checks separately. The actual pinned-engine gate now
-checks 166 cases: 142 gallery programs, four featured previews and 20 lesson
+checks 177 cases: 146 gallery programs, four featured previews and 27 lesson
 program/output and error-boundary variants. No extra browser module or engine version is added.
 
 
@@ -394,5 +394,27 @@ in the appropriate interpreted/compiled paths. No source-build CLI is assumed.
 The browser checker exercises actual run links, edits, handled failure and
 continued exercise, local downloads/copy feedback, neighbors/overview, four
 widths and no-JS content. Run clipboard-writing checks separately. The pinned
-engine gate checks 166 cases: 142 gallery programs, four featured previews and
-20 lesson programs/edits/error-boundary checks. Lesson 4 remains gated.
+engine gate checks 177 cases: 146 gallery programs, four featured previews and
+27 lesson programs/edits/error-boundary checks. Lesson 4 remains gated.
+
+
+## Cart receipt lesson (222)
+
+`learn/small-program.html` completes the four-lesson course. Four console-only
+programs progress from one line to a cart receipt with checked negative counts
+and prices. Three edits cover an updated count, invalid price and zero count.
+Whole-number prices are sample arithmetic. No new input service is required.
+
+The complete download is generated from `learn_cart_final.code`; optional
+`downloads` entries in a ready lesson map asset paths to canonical example names.
+Withdrawing the lesson removes its route and downloads. The two-file local
+version separates `cart.code` from its caller and reuses lesson 1's CLI setup.
+
+`check_cart.py PUBLIC_CODE BUILT_SITE` verifies every browser source/edit and
+the exact local files/commands using public v2.23.0, interpreted and compiled,
+with a fresh project/cache and verified console provenance/hash.
+`check_cart.mjs BASE_URL` uses PLAYWRIGHT_MODULE like the other lesson checks;
+it covers actual browser runs, clipboard/downloads, finish links, keyboard,
+no-JS reading and four widths. All four lessons are ready; application proof
+and the remaining website polish tasks are separate. The pinned engine gate
+checks 177 cases: 146 gallery programs, four previews and 27 lesson variants.

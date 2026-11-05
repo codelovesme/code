@@ -45,6 +45,10 @@ def lesson_assets(site_dir, greeting, plan):
              for path in lesson.get('snippets', {}).values()}
     assets = {path: (site_dir / 'lesson-examples' / path).read_text().replace('__HOME_CODE__', greeting.strip())
               for path in paths}
+    for lesson in plan:
+        if lesson['ready']:
+            for path, example in lesson.get('downloads', {}).items():
+                assets[path] = (site_dir / 'examples' / f'{example}.code').read_text()
     if not any(lesson['id'] == 'first-program' and lesson['ready'] for lesson in plan):
         return assets
     assets['first-program/start.sh'] = '#!/bin/sh\nset -eu\n' + '\n'.join(
