@@ -66,7 +66,16 @@ def render(repo_root):
         ('Rust Vec clone', 'Rust · full copies', 'Vec clone'), ('C explicit COW', 'C · shared', 'Explicit COW'),
         ('Rust Rc COW', 'Rust · shared', 'Rc copy-on-write')]]
     broad = []
-    for workload, label in [('binary_trees', 'Binary trees'), ('dictionary', 'Dictionary'), ('points', 'Point records'), ('spectral_norm', 'Spectral norm'), ('string_build', 'Build text')]:
+    workloads = [('binary_trees', 'Binary trees'), ('dictionary', 'Dictionary'), ('points', 'Point records'), ('spectral_norm', 'Spectral norm'), ('string_build', 'Build text')]
+    # Normalize against the faster competitor: different workloads have different sizes.
+    def relative_result(entry):
+        workload, label = entry
+        code = rows['prebuilt', workload, 'Code release']['median_seconds']
+        fastest = min(rows['prebuilt', workload, mode]['median_seconds']
+                      for mode in ['C O2', 'Rust O3'])
+        return code / fastest, label
+
+    for workload, label in sorted(workloads, key=relative_result):
         cells = ''.join(f'<td>{number("prebuilt", workload, mode)}</td>' for mode in ['Code release', 'C O2', 'Rust O3'])
         broad.append(f'<tr><th scope="row">{label}</th>{cells}</tr>')
     all_results = []

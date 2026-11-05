@@ -577,3 +577,10 @@ legacy anchors, no runtime requests, keyboard/no-JS and four viewport widths.
 It allows half a displayed rounding unit when comparing Python's half-even
 formatting with numeric JS values; raw CSV checks retain exact Python format
 comparison. Review captures: `/var/tmp/code-229-comparison-{390,1440}.png`.
+
+
+Follow-up 230 orders the five broader native workloads by Code's median
+time divided by the faster of C O2/Rust O3, ascending. This compares relative
+results across different-sized workloads; all values/rows stay unchanged.
+The on-page note declares the ordering, and the existing static raw-CSV and
+browser report checks verify it independently.

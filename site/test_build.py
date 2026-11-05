@@ -161,17 +161,27 @@ class SiteBuild(unittest.TestCase):
                 super().__init__()
                 self.key = None
                 self.values = {}
+                self.in_broader = False
+                self.broad_order = []
                 self.feed(source)
 
             def handle_starttag(self, tag, attrs):
+                if tag == 'table' and dict(attrs).get('id') == 'broader-native-results':
+                    self.in_broader = True
                 if tag == 'span':
                     self.key = dict(attrs).get('data-evidence')
+                    if self.in_broader and self.key:
+                        parts = self.key.split('|')
+                        if parts[2] == 'Code release':
+                            self.broad_order.append(parts[1])
 
             def handle_data(self, data):
                 if self.key:
                     self.values[tuple(self.key.split('|'))] = data
 
             def handle_endtag(self, tag):
+                if tag == 'table':
+                    self.in_broader = False
                 if tag == 'span':
                     self.key = None
 
@@ -191,6 +201,14 @@ class SiteBuild(unittest.TestCase):
             self.assertEqual(displayed, f'{expected:.3f}', (group, workload, mode, metric))
         self.assertIn(('prebuilt', 'snapshots', 'Rust Rc COW', 'rss'), page.values)
         self.assertIn(('compile', 'sum_squares', 'Code release', 'rss'), page.values)
+        workloads = {'binary_trees', 'dictionary', 'points', 'spectral_norm', 'string_build'}
+
+        def measured_ratio(workload):
+            times = {mode: median(float(row['elapsed_seconds']) for row in groups['prebuilt', workload, mode])
+                     for mode in ['Code release', 'C O2', 'Rust O3']}
+            return times['Code release'] / min(times['C O2'], times['Rust O3'])
+
+        self.assertEqual(page.broad_order, sorted(workloads, key=measured_ratio))
 
     def test_only_ready_lessons_are_published_and_linked(self):
         plan = json.loads((ROOT / 'site/lessons.json').read_text())

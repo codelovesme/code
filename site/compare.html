@@ -12,8 +12,8 @@
   __PERF_NATIVE__
   <p class="module-note">Code is close to C and Rust on this loop. Results vary by program: Code is slower than Rust in all five broader workloads below.</p>
   <div class="comparison-context"><h3>Beyond the numeric loop</h3><p>Same measured host, five additional programs. Median milliseconds; lower is better.</p>
-    <div class="module-table-wrap" tabindex="0" role="region" aria-label="Broader native workload times"><table class="module-table perf-table"><caption>Prebuilt program runtime · 15 launches per entry</caption><thead><tr><th scope="col">Program</th><th scope="col">Code</th><th scope="col">C O2</th><th scope="col">Rust O3</th></tr></thead><tbody>__PERF_BROADER__</tbody></table></div>
-    <p class="module-note">The implementations use different data layouts and algorithms. They check matching results, not identical machine instructions.</p>
+    <div class="module-table-wrap" tabindex="0" role="region" aria-label="Broader native workload times"><table id="broader-native-results" class="module-table perf-table"><caption>Prebuilt program runtime · 15 launches per entry</caption><thead><tr><th scope="col">Program</th><th scope="col">Code</th><th scope="col">C O2</th><th scope="col">Rust O3</th></tr></thead><tbody>__PERF_BROADER__</tbody></table></div>
+    <p class="module-note">Rows rank Code against the faster C/Rust result, strongest first. The implementations use different data layouts and algorithms. They check matching results, not identical machine instructions.</p>
   </div>
 </section>
 

@@ -28,6 +28,11 @@ try {
  }
  for(const span of await p.locator('[data-evidence]').all()){const key=await span.getAttribute('data-evidence');assert.ok(Math.abs(Number(await span.textContent())-expected(key))<=0.000500001,`rounding/value mismatch: ${key}`)}
  assert.equal(await p.locator('.comparison-all tbody tr').count(),35);
+ const broadOrder=await p.locator('#broader-native-results tbody tr').evaluateAll(rows=>rows.map(row=>row.querySelector('[data-evidence]').dataset.evidence.split('|')[1]));
+ const ratio=workload=>summaries.get(`prebuilt|${workload}|Code release`).median_seconds/Math.min(...['C O2','Rust O3'].map(mode=>summaries.get(`prebuilt|${workload}|${mode}`).median_seconds));
+ const workloads=['binary_trees','dictionary','points','spectral_norm','string_build'];
+ assert.deepEqual(broadOrder,workloads.sort((a,b)=>ratio(a)-ratio(b)));
+ assert.ok((await p.locator('.comparison-context').innerText()).includes('strongest first'));
  assert.ok((await p.locator('#execution').innerText()).includes('Cached Code executes native code'));
  assert.ok(!(await p.locator('main').innerText()).includes('Four ways to run'));
  const old=['at-a-glance','matrix-title','performance','compiled-runtime-chart-title','source-runtime-chart-title','compile-chart-title','memory','memory-chart-title','types-title','structure-title','errors-title','concurrency-title','fit','sources-title'];
