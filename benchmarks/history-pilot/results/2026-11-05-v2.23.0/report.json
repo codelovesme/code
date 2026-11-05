@@ -1,0 +1,3308 @@
+{
+  "status": "complete",
+  "source_revision": "28d14b14a4a26a37ff7856dcde60f9b8c25349b3",
+  "release": {
+    "tag": "v2.23.0",
+    "source": "e7436b70ba337f706a9761a9380dd49118818c71",
+    "launcher": {
+      "path": "/home/runner/work/_temp/history-release/code-v2.23.0-x86_64-linux/code",
+      "sha256": "531adc3dbdf413f1f625ee7df2f2271cdfa3ee19f082c00ef4cf3ef49e1d698d",
+      "bytes": 558872
+    },
+    "driver": {
+      "path": "/home/runner/work/_temp/history-release/code-v2.23.0-x86_64-linux/code-driver",
+      "sha256": "784519bd5dffe7ed8c448ad73c9c96c000c7a16bb45f4068d84b5324ac594363",
+      "bytes": 59478416
+    }
+  },
+  "environment": {
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "lscpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               AuthenticAMD\nModel name:                              AMD EPYC 9V74 80-Core Processor\nCPU family:                              25\nModel:                                   17\nThread(s) per core:                      2\nCore(s) per socket:                      2\nSocket(s):                               1\nStepping:                                1\nBogoMIPS:                                5192.26\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology tsc_reliable nonstop_tsc cpuid extd_apicid aperfmperf tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy svm cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves user_shstk avx512_bf16 clzero xsaveerptr rdpru arat npt nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold v_vmsave_vmload avx512vbmi umip avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid fsrm\nVirtualization:                          AMD-V\nHypervisor vendor:                       Microsoft\nVirtualization type:                     full\nL1d cache:                               64 KiB (2 instances)\nL1i cache:                               64 KiB (2 instances)\nL2 cache:                                2 MiB (2 instances)\nL3 cache:                                32 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Vulnerable: Safe RET, no microcode\nVulnerability Spec store bypass:         Vulnerable\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Vulnerable: No microcode\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Not affected\n",
+    "github_run_id": "42099367294",
+    "runner_image": "20261101.360.1",
+    "tools": {
+      "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+      "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+    },
+    "rust_verbose": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+    "load_before_preparation": "0.68 0.23 0.08 1/259 2158\n",
+    "os_release": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+    "tool_executables": {
+      "gcc": {
+        "path": "/usr/bin/x86_64-linux-gnu-gcc-13",
+        "sha256": "1b99826121ae6682a634e5efe09bd3e3df58ce58e0b28f849114ab5b89139c26",
+        "bytes": 1023032
+      },
+      "rustc": {
+        "path": "/home/runner/.cargo/bin/rustup",
+        "sha256": "5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4",
+        "bytes": 21139856
+      }
+    },
+    "actual_rustc": {
+      "path": "/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc",
+      "sha256": "b53b780f77f952062f8ca8a3b70aef2390b1e45ad91939be94afdc9543026853",
+      "bytes": 648536
+    },
+    "allowed_cpus": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "pinned_cpu": 0,
+    "pressure_before": "some avg10=0.00 avg60=0.13 avg300=0.20 total=1257067\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+    "pressure_after": "some avg10=0.00 avg60=0.10 avg300=0.19 total=1342649\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+  },
+  "protocol": {
+    "runs": 15,
+    "seed": 20261105,
+    "versions_retained": 65,
+    "cases": [
+      [
+        "config_4k",
+        4096,
+        64,
+        false
+      ],
+      [
+        "config_64k",
+        65536,
+        64,
+        false
+      ],
+      [
+        "document_64k",
+        65536,
+        1,
+        true
+      ],
+      [
+        "document_1m",
+        1048576,
+        1,
+        true
+      ]
+    ],
+    "includes": "startup, construction, retaining, edits, full-value checks and cleanup",
+    "rss": "Linux wait4 largest process resident peak; not live heap or allocation count",
+    "boundary": "separate fresh-host pilot; never merge with the old host report"
+  },
+  "sources": {
+    "benchmarks/history-pilot/history.code": {
+      "path": "/home/runner/work/code/code/benchmarks/history-pilot/history.code",
+      "sha256": "66ec625992546f837aff8fca0fa40f974c5cc8465e147bab636dcb4b09fb0bf1",
+      "bytes": 1152
+    },
+    "benchmarks/history-pilot/history.c": {
+      "path": "/home/runner/work/code/code/benchmarks/history-pilot/history.c",
+      "sha256": "c31a1df85d97f5b2b1be8c7b4934d22ee933f829953380d0cb375d819b7398f4",
+      "bytes": 3709
+    },
+    "benchmarks/history-pilot/history.rs": {
+      "path": "/home/runner/work/code/code/benchmarks/history-pilot/history.rs",
+      "sha256": "8e6b413ea581ea24de5726b4762b8987eba0eb345baa9196b8f5b7330072ec40",
+      "bytes": 2397
+    },
+    "benchmarks/history-pilot/run.py": {
+      "path": "/home/runner/work/code/code/benchmarks/history-pilot/run.py",
+      "sha256": "e7b8888ab099de968ebdf4f0a84da8c922d86277215a7888511766140c0eddbc",
+      "bytes": 8892
+    },
+    "benchmarks/website-evidence/run.py": {
+      "path": "/home/runner/work/code/code/benchmarks/website-evidence/run.py",
+      "sha256": "e5b17f8c79094472f83fc49862ab7c97a2cda3e3b5b3f35ea7dda3357090c587",
+      "bytes": 18859
+    },
+    "benchmarks/language-comparison/peak.c": {
+      "path": "/home/runner/work/code/code/benchmarks/language-comparison/peak.c",
+      "sha256": "59019e0946ae15f3b8f33b9c7507e504821050b1461d8bc0645d11ac744d1611",
+      "bytes": 1553
+    }
+  },
+  "builds": [
+    {
+      "workload": "config_4k",
+      "mode": "Code automatic",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/config_4k.code",
+        "sha256": "28f71be7c2663414048add0d434f05ab0d7dad53fee14af3b48e7d6c112689db",
+        "bytes": 1128
+      },
+      "command": [
+        "/home/runner/work/_temp/history-release/code-v2.23.0-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/history-results/sources/config_4k.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/config_4k-Code-automatic"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/config_4k-Code-automatic",
+        "sha256": "89ae6bca6601c9db621da82525d221998ddeec7fd7df01e480581c438e206b07",
+        "bytes": 107360
+      }
+    },
+    {
+      "workload": "config_4k",
+      "mode": "C eager",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/config_4k.c",
+        "sha256": "edcba6107605aedbb9aff3a639ad84badd4ee6fdfc869c32f34b3efadd1a09b6",
+        "bytes": 3681
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "/home/runner/work/_temp/history-results/sources/config_4k.c",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/config_4k-C-eager"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/config_4k-C-eager",
+        "sha256": "fab51dfc120d914f2d91d29ce790ca46c300e9d350a6a0cf701039f2610e1f53",
+        "bytes": 16536
+      }
+    },
+    {
+      "workload": "config_4k",
+      "mode": "C shared",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/config_4k.c",
+        "sha256": "edcba6107605aedbb9aff3a639ad84badd4ee6fdfc869c32f34b3efadd1a09b6",
+        "bytes": 3681
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "-DCOW=1",
+        "/home/runner/work/_temp/history-results/sources/config_4k.c",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/config_4k-C-shared"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/config_4k-C-shared",
+        "sha256": "4a208c5ba7aef9a877832847e831daae657fdc9cb3f6339b2923820fe4285183",
+        "bytes": 16536
+      }
+    },
+    {
+      "workload": "config_4k",
+      "mode": "Rust eager",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/config_4k.rs",
+        "sha256": "53506571504dac6396dbb076c596f25d8760d27e5d0cef55d55a5abc474a5545",
+        "bytes": 2373
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/history-results/sources/config_4k.rs",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/config_4k-Rust-eager"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/config_4k-Rust-eager",
+        "sha256": "e58fac2f674bc8fdebb77ac30bb561c5e48182e54d8c3ad51c0bd0794fbcf896",
+        "bytes": 4534344
+      }
+    },
+    {
+      "workload": "config_4k",
+      "mode": "Rust shared",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/config_4k.rs",
+        "sha256": "53506571504dac6396dbb076c596f25d8760d27e5d0cef55d55a5abc474a5545",
+        "bytes": 2373
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "--cfg",
+        "cow",
+        "/home/runner/work/_temp/history-results/sources/config_4k.rs",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/config_4k-Rust-shared"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/config_4k-Rust-shared",
+        "sha256": "dca86e886c734c231187ab20c27fd47c52f55d5e0aacd19e5bafaf32ca18e0bb",
+        "bytes": 4537064
+      }
+    },
+    {
+      "workload": "config_64k",
+      "mode": "Code automatic",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/config_64k.code",
+        "sha256": "f1ffa672fced7804fe37a9b9cbf1fcdbe52ead1a56f3cb352eef9d24ee83cc08",
+        "bytes": 1129
+      },
+      "command": [
+        "/home/runner/work/_temp/history-release/code-v2.23.0-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/history-results/sources/config_64k.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/config_64k-Code-automatic"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/config_64k-Code-automatic",
+        "sha256": "1383f8f5f400c762b44628f6e396d8d84168d4a3b7740a832727d613ada89eba",
+        "bytes": 107360
+      }
+    },
+    {
+      "workload": "config_64k",
+      "mode": "C eager",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/config_64k.c",
+        "sha256": "eaed4f0eac4211fce606ee9cead20c66570cf7cff69262c3c5ee97841941a296",
+        "bytes": 3682
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "/home/runner/work/_temp/history-results/sources/config_64k.c",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/config_64k-C-eager"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/config_64k-C-eager",
+        "sha256": "bde2915eaf6d15d909152127ac5c1e66e6b9cf3cb7d60abc45efc3e3b87ce004",
+        "bytes": 16536
+      }
+    },
+    {
+      "workload": "config_64k",
+      "mode": "C shared",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/config_64k.c",
+        "sha256": "eaed4f0eac4211fce606ee9cead20c66570cf7cff69262c3c5ee97841941a296",
+        "bytes": 3682
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "-DCOW=1",
+        "/home/runner/work/_temp/history-results/sources/config_64k.c",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/config_64k-C-shared"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/config_64k-C-shared",
+        "sha256": "a3c56ac5a8b1960ce439541f6545615411ea4e7490634c976020245b8e323a7d",
+        "bytes": 16536
+      }
+    },
+    {
+      "workload": "config_64k",
+      "mode": "Rust eager",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/config_64k.rs",
+        "sha256": "994837aecfa7c6d4ff378cf6a713c2371f8c47478ed4e535953d159a1e92919d",
+        "bytes": 2374
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/history-results/sources/config_64k.rs",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/config_64k-Rust-eager"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/config_64k-Rust-eager",
+        "sha256": "3494397c2198f60902163b136370fc319d2c5d67c77f13497be0b89a9b92dca8",
+        "bytes": 4534432
+      }
+    },
+    {
+      "workload": "config_64k",
+      "mode": "Rust shared",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/config_64k.rs",
+        "sha256": "994837aecfa7c6d4ff378cf6a713c2371f8c47478ed4e535953d159a1e92919d",
+        "bytes": 2374
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "--cfg",
+        "cow",
+        "/home/runner/work/_temp/history-results/sources/config_64k.rs",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/config_64k-Rust-shared"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/config_64k-Rust-shared",
+        "sha256": "42812df72af127e04a14afebf14835bd339d3b14ae8c50684fae7975dc825893",
+        "bytes": 4537152
+      }
+    },
+    {
+      "workload": "document_64k",
+      "mode": "Code automatic",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/document_64k.code",
+        "sha256": "dcda703bd673135defcd8d2d322a3551b89db8bc4b8a3f66c74f2018982931d7",
+        "bytes": 1127
+      },
+      "command": [
+        "/home/runner/work/_temp/history-release/code-v2.23.0-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/history-results/sources/document_64k.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/document_64k-Code-automatic"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/document_64k-Code-automatic",
+        "sha256": "55dc7fb8b876b4ba43ceb56ee3ad8d558760e9b6b2618e3d62ff386333c8de2e",
+        "bytes": 107360
+      }
+    },
+    {
+      "workload": "document_64k",
+      "mode": "C eager",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/document_64k.c",
+        "sha256": "7a6872e9baf153285192e492e3ec23e0e7ef1f6495385df50be933cfe3911281",
+        "bytes": 3681
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "/home/runner/work/_temp/history-results/sources/document_64k.c",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/document_64k-C-eager"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/document_64k-C-eager",
+        "sha256": "b97d2e83b273e6debbbcc2f363f1dadbbac9a5d9b012c0a8b1bf7b05d62b3eb0",
+        "bytes": 16568
+      }
+    },
+    {
+      "workload": "document_64k",
+      "mode": "C shared",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/document_64k.c",
+        "sha256": "7a6872e9baf153285192e492e3ec23e0e7ef1f6495385df50be933cfe3911281",
+        "bytes": 3681
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "-DCOW=1",
+        "/home/runner/work/_temp/history-results/sources/document_64k.c",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/document_64k-C-shared"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/document_64k-C-shared",
+        "sha256": "e44d825691b92d91aafadf643e4c252d20aace2f16b6f2f524bd5829f000a3d2",
+        "bytes": 16568
+      }
+    },
+    {
+      "workload": "document_64k",
+      "mode": "Rust eager",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/document_64k.rs",
+        "sha256": "2ade993cda5c9910e6270d16e573116000c8ff9dd21513cb7c62b339c61f7a37",
+        "bytes": 2372
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/history-results/sources/document_64k.rs",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/document_64k-Rust-eager"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/document_64k-Rust-eager",
+        "sha256": "5b8cd28839c230af92752462fb47cb674ba50c65912c0ee90de3c051fe6fb876",
+        "bytes": 4536192
+      }
+    },
+    {
+      "workload": "document_64k",
+      "mode": "Rust shared",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/document_64k.rs",
+        "sha256": "2ade993cda5c9910e6270d16e573116000c8ff9dd21513cb7c62b339c61f7a37",
+        "bytes": 2372
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "--cfg",
+        "cow",
+        "/home/runner/work/_temp/history-results/sources/document_64k.rs",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/document_64k-Rust-shared"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/document_64k-Rust-shared",
+        "sha256": "ca24c3a20d0a0c199dab07943283989dc2842e59b7a617bc32a727f4535dd0fe",
+        "bytes": 4539392
+      }
+    },
+    {
+      "workload": "document_1m",
+      "mode": "Code automatic",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/document_1m.code",
+        "sha256": "4ecb470c008dc8d1cf6b044e04c7f7b48626c47d6ad789cd8fe38c0152a7c2ce",
+        "bytes": 1129
+      },
+      "command": [
+        "/home/runner/work/_temp/history-release/code-v2.23.0-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/history-results/sources/document_1m.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/document_1m-Code-automatic"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/document_1m-Code-automatic",
+        "sha256": "f6295e9b2e512951c77c45c57542fb7d532f2f303a24d29de611e064ec4e94f6",
+        "bytes": 107360
+      }
+    },
+    {
+      "workload": "document_1m",
+      "mode": "C eager",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/document_1m.c",
+        "sha256": "d8a8ac5ad40a15798be7bf55d83c4ebfbfb420c7dd45bf430f9e74564ffe50bd",
+        "bytes": 3683
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "/home/runner/work/_temp/history-results/sources/document_1m.c",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/document_1m-C-eager"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/document_1m-C-eager",
+        "sha256": "da8018c3ef47cedf9e7a6a0b6fa05a167fe2c1632c410a4a2ef17f67460da353",
+        "bytes": 16568
+      }
+    },
+    {
+      "workload": "document_1m",
+      "mode": "C shared",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/document_1m.c",
+        "sha256": "d8a8ac5ad40a15798be7bf55d83c4ebfbfb420c7dd45bf430f9e74564ffe50bd",
+        "bytes": 3683
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "-DCOW=1",
+        "/home/runner/work/_temp/history-results/sources/document_1m.c",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/document_1m-C-shared"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/document_1m-C-shared",
+        "sha256": "977bd3f833fd0d857565062d77d1ec3ffe1ecdd23a9f03393a959f33ca02a51c",
+        "bytes": 16568
+      }
+    },
+    {
+      "workload": "document_1m",
+      "mode": "Rust eager",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/document_1m.rs",
+        "sha256": "03de51e45b0344b3e9eca23da2449e00b4871d0c17e622e42d752a09f067a58e",
+        "bytes": 2374
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/history-results/sources/document_1m.rs",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/document_1m-Rust-eager"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/document_1m-Rust-eager",
+        "sha256": "c091dce6f00b9cdf5e0d21c0bb5b7ad48c58d43388665358a5920caca0314827",
+        "bytes": 4536248
+      }
+    },
+    {
+      "workload": "document_1m",
+      "mode": "Rust shared",
+      "source": {
+        "path": "/home/runner/work/_temp/history-results/sources/document_1m.rs",
+        "sha256": "03de51e45b0344b3e9eca23da2449e00b4871d0c17e622e42d752a09f067a58e",
+        "bytes": 2374
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "--cfg",
+        "cow",
+        "/home/runner/work/_temp/history-results/sources/document_1m.rs",
+        "-o",
+        "/home/runner/work/_temp/history-results/binaries/document_1m-Rust-shared"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/history-results/binaries/document_1m-Rust-shared",
+        "sha256": "a4ed6a61f7e75f72f3e0be5e3915d832f72d41f08e7aac0cb31d6d4f97745119",
+        "bytes": 4539440
+      }
+    }
+  ],
+  "samples": [
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 1,
+      "elapsed_seconds": 0.036874102,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 1,
+      "elapsed_seconds": 0.156757956,
+      "peak_rss_kib": 268448
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 1,
+      "elapsed_seconds": 0.003184643,
+      "peak_rss_kib": 6152
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 1,
+      "elapsed_seconds": 0.002871873,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 1,
+      "elapsed_seconds": 0.00084364,
+      "peak_rss_kib": 2404
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 1,
+      "elapsed_seconds": 0.000835228,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 1,
+      "elapsed_seconds": 0.010186308,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 1,
+      "elapsed_seconds": 0.002833176,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 1,
+      "elapsed_seconds": 0.444048995,
+      "peak_rss_kib": 72156
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 1,
+      "elapsed_seconds": 0.00061209,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 1,
+      "elapsed_seconds": 0.026543491,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 1,
+      "elapsed_seconds": 0.000572342,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 1,
+      "elapsed_seconds": 0.03462149,
+      "peak_rss_kib": 70952
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 1,
+      "elapsed_seconds": 0.034628009,
+      "peak_rss_kib": 70116
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 1,
+      "elapsed_seconds": 0.151855668,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 1,
+      "elapsed_seconds": 0.003425056,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 1,
+      "elapsed_seconds": 0.003217631,
+      "peak_rss_kib": 6252
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 1,
+      "elapsed_seconds": 0.009676348,
+      "peak_rss_kib": 18796
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 1,
+      "elapsed_seconds": 0.035563635,
+      "peak_rss_kib": 69824
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 1,
+      "elapsed_seconds": 0.000822359,
+      "peak_rss_kib": 2116
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 2,
+      "elapsed_seconds": 0.026695505,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 2,
+      "elapsed_seconds": 0.000866745,
+      "peak_rss_kib": 2264
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 2,
+      "elapsed_seconds": 0.003138786,
+      "peak_rss_kib": 6316
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 2,
+      "elapsed_seconds": 0.010119159,
+      "peak_rss_kib": 18752
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 2,
+      "elapsed_seconds": 0.003057726,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 2,
+      "elapsed_seconds": 0.035206039,
+      "peak_rss_kib": 70052
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 2,
+      "elapsed_seconds": 0.000944398,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 2,
+      "elapsed_seconds": 0.004369605,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 2,
+      "elapsed_seconds": 0.000758064,
+      "peak_rss_kib": 2252
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 2,
+      "elapsed_seconds": 0.000599361,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 2,
+      "elapsed_seconds": 0.009918505,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 2,
+      "elapsed_seconds": 0.154474098,
+      "peak_rss_kib": 267940
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 2,
+      "elapsed_seconds": 0.152621984,
+      "peak_rss_kib": 268436
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 2,
+      "elapsed_seconds": 0.003141049,
+      "peak_rss_kib": 6252
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 2,
+      "elapsed_seconds": 0.03603643,
+      "peak_rss_kib": 70888
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 2,
+      "elapsed_seconds": 0.035790939,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 2,
+      "elapsed_seconds": 0.003566865,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 2,
+      "elapsed_seconds": 0.035855604,
+      "peak_rss_kib": 69872
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 2,
+      "elapsed_seconds": 0.000635475,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 2,
+      "elapsed_seconds": 0.44433149,
+      "peak_rss_kib": 72164
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 3,
+      "elapsed_seconds": 0.154748651,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 3,
+      "elapsed_seconds": 0.00346164,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 3,
+      "elapsed_seconds": 0.035536815,
+      "peak_rss_kib": 69028
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 3,
+      "elapsed_seconds": 0.000568636,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 3,
+      "elapsed_seconds": 0.000601604,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 3,
+      "elapsed_seconds": 0.026563381,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 3,
+      "elapsed_seconds": 0.035290343,
+      "peak_rss_kib": 69808
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 3,
+      "elapsed_seconds": 0.003085637,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 3,
+      "elapsed_seconds": 0.035929683,
+      "peak_rss_kib": 70116
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 3,
+      "elapsed_seconds": 0.153181537,
+      "peak_rss_kib": 268584
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 3,
+      "elapsed_seconds": 0.000818634,
+      "peak_rss_kib": 2372
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 3,
+      "elapsed_seconds": 0.000833927,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 3,
+      "elapsed_seconds": 0.035960659,
+      "peak_rss_kib": 70888
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 3,
+      "elapsed_seconds": 0.010436757,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 3,
+      "elapsed_seconds": 0.010093032,
+      "peak_rss_kib": 18740
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 3,
+      "elapsed_seconds": 0.000799796,
+      "peak_rss_kib": 2124
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 3,
+      "elapsed_seconds": 0.003027221,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 3,
+      "elapsed_seconds": 0.003163081,
+      "peak_rss_kib": 6208
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 3,
+      "elapsed_seconds": 0.002999551,
+      "peak_rss_kib": 6256
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 3,
+      "elapsed_seconds": 0.445073893,
+      "peak_rss_kib": 72164
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 4,
+      "elapsed_seconds": 0.454111103,
+      "peak_rss_kib": 72160
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 4,
+      "elapsed_seconds": 0.000534066,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 4,
+      "elapsed_seconds": 0.003050107,
+      "peak_rss_kib": 6248
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 4,
+      "elapsed_seconds": 0.036035551,
+      "peak_rss_kib": 70888
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 4,
+      "elapsed_seconds": 0.000617448,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 4,
+      "elapsed_seconds": 0.003066601,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 4,
+      "elapsed_seconds": 0.000866955,
+      "peak_rss_kib": 1644
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 4,
+      "elapsed_seconds": 0.009887005,
+      "peak_rss_kib": 18796
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 4,
+      "elapsed_seconds": 0.00995819,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 4,
+      "elapsed_seconds": 0.00307258,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 4,
+      "elapsed_seconds": 0.15516513,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 4,
+      "elapsed_seconds": 0.036001301,
+      "peak_rss_kib": 69872
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 4,
+      "elapsed_seconds": 0.026630796,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 4,
+      "elapsed_seconds": 0.000919873,
+      "peak_rss_kib": 2252
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 4,
+      "elapsed_seconds": 0.003462003,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 4,
+      "elapsed_seconds": 0.036425004,
+      "peak_rss_kib": 70116
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 4,
+      "elapsed_seconds": 0.154091951,
+      "peak_rss_kib": 268412
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 4,
+      "elapsed_seconds": 0.034507023,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 4,
+      "elapsed_seconds": 0.003314696,
+      "peak_rss_kib": 6180
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 4,
+      "elapsed_seconds": 0.000779226,
+      "peak_rss_kib": 2124
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 5,
+      "elapsed_seconds": 0.003124616,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 5,
+      "elapsed_seconds": 0.036338376,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 5,
+      "elapsed_seconds": 0.449416417,
+      "peak_rss_kib": 72160
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 5,
+      "elapsed_seconds": 0.000833767,
+      "peak_rss_kib": 2268
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 5,
+      "elapsed_seconds": 0.003009156,
+      "peak_rss_kib": 6196
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 5,
+      "elapsed_seconds": 0.009099886,
+      "peak_rss_kib": 18796
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 5,
+      "elapsed_seconds": 0.000577469,
+      "peak_rss_kib": 1504
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 5,
+      "elapsed_seconds": 0.002703087,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 5,
+      "elapsed_seconds": 0.00336458,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 5,
+      "elapsed_seconds": 0.035352336,
+      "peak_rss_kib": 70052
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 5,
+      "elapsed_seconds": 0.009678759,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 5,
+      "elapsed_seconds": 0.00082944,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 5,
+      "elapsed_seconds": 0.000736414,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 5,
+      "elapsed_seconds": 0.153090458,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 5,
+      "elapsed_seconds": 0.036403613,
+      "peak_rss_kib": 69872
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 5,
+      "elapsed_seconds": 0.026807796,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 5,
+      "elapsed_seconds": 0.003280996,
+      "peak_rss_kib": 6164
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 5,
+      "elapsed_seconds": 0.157621865,
+      "peak_rss_kib": 268456
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 5,
+      "elapsed_seconds": 0.036433357,
+      "peak_rss_kib": 70888
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 5,
+      "elapsed_seconds": 0.000533405,
+      "peak_rss_kib": 1504
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 6,
+      "elapsed_seconds": 0.035943195,
+      "peak_rss_kib": 70948
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 6,
+      "elapsed_seconds": 0.003032181,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 6,
+      "elapsed_seconds": 0.156295133,
+      "peak_rss_kib": 268456
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 6,
+      "elapsed_seconds": 0.036766266,
+      "peak_rss_kib": 70052
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 6,
+      "elapsed_seconds": 0.036365376,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 6,
+      "elapsed_seconds": 0.003547959,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 6,
+      "elapsed_seconds": 0.003272955,
+      "peak_rss_kib": 6316
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 6,
+      "elapsed_seconds": 0.003322308,
+      "peak_rss_kib": 6252
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 6,
+      "elapsed_seconds": 0.000784424,
+      "peak_rss_kib": 2120
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 6,
+      "elapsed_seconds": 0.000588385,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 6,
+      "elapsed_seconds": 0.026582826,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 6,
+      "elapsed_seconds": 0.000872964,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 6,
+      "elapsed_seconds": 0.010097374,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 6,
+      "elapsed_seconds": 0.000860246,
+      "peak_rss_kib": 2356
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 6,
+      "elapsed_seconds": 0.15621866,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 6,
+      "elapsed_seconds": 0.444385977,
+      "peak_rss_kib": 72160
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 6,
+      "elapsed_seconds": 0.000579473,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 6,
+      "elapsed_seconds": 0.009524551,
+      "peak_rss_kib": 18740
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 6,
+      "elapsed_seconds": 0.00288874,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 6,
+      "elapsed_seconds": 0.035743752,
+      "peak_rss_kib": 69872
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 7,
+      "elapsed_seconds": 0.000658018,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 7,
+      "elapsed_seconds": 0.444105624,
+      "peak_rss_kib": 72160
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 7,
+      "elapsed_seconds": 0.000532964,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 7,
+      "elapsed_seconds": 0.002862401,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 7,
+      "elapsed_seconds": 0.000814959,
+      "peak_rss_kib": 2396
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 7,
+      "elapsed_seconds": 0.000704546,
+      "peak_rss_kib": 2132
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 7,
+      "elapsed_seconds": 0.035970225,
+      "peak_rss_kib": 70116
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 7,
+      "elapsed_seconds": 0.036285448,
+      "peak_rss_kib": 70888
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 7,
+      "elapsed_seconds": 0.000865133,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 7,
+      "elapsed_seconds": 0.009954524,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 7,
+      "elapsed_seconds": 0.039482892,
+      "peak_rss_kib": 69088
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 7,
+      "elapsed_seconds": 0.003509352,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 7,
+      "elapsed_seconds": 0.010213075,
+      "peak_rss_kib": 18736
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 7,
+      "elapsed_seconds": 0.026752264,
+      "peak_rss_kib": 5864
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 7,
+      "elapsed_seconds": 0.155968232,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 7,
+      "elapsed_seconds": 0.036031795,
+      "peak_rss_kib": 69824
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 7,
+      "elapsed_seconds": 0.003561128,
+      "peak_rss_kib": 6256
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 7,
+      "elapsed_seconds": 0.003557954,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 7,
+      "elapsed_seconds": 0.155704273,
+      "peak_rss_kib": 268432
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 7,
+      "elapsed_seconds": 0.003083216,
+      "peak_rss_kib": 6196
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 8,
+      "elapsed_seconds": 0.44306253,
+      "peak_rss_kib": 72160
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 8,
+      "elapsed_seconds": 0.002961647,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 8,
+      "elapsed_seconds": 0.000553634,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 8,
+      "elapsed_seconds": 0.03598022,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 8,
+      "elapsed_seconds": 0.010095962,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 8,
+      "elapsed_seconds": 0.000588757,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 8,
+      "elapsed_seconds": 0.155786574,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 8,
+      "elapsed_seconds": 0.000768731,
+      "peak_rss_kib": 2124
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 8,
+      "elapsed_seconds": 0.003207548,
+      "peak_rss_kib": 6252
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 8,
+      "elapsed_seconds": 0.003437187,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 8,
+      "elapsed_seconds": 0.00087033,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 8,
+      "elapsed_seconds": 0.160751468,
+      "peak_rss_kib": 268580
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 8,
+      "elapsed_seconds": 0.010286673,
+      "peak_rss_kib": 18796
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 8,
+      "elapsed_seconds": 0.002993434,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 8,
+      "elapsed_seconds": 0.000851022,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 8,
+      "elapsed_seconds": 0.026654752,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 8,
+      "elapsed_seconds": 0.036683885,
+      "peak_rss_kib": 70888
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 8,
+      "elapsed_seconds": 0.036311427,
+      "peak_rss_kib": 70116
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 8,
+      "elapsed_seconds": 0.003142593,
+      "peak_rss_kib": 6164
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 8,
+      "elapsed_seconds": 0.036042301,
+      "peak_rss_kib": 69812
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 9,
+      "elapsed_seconds": 0.000674622,
+      "peak_rss_kib": 1504
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 9,
+      "elapsed_seconds": 0.003070206,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 9,
+      "elapsed_seconds": 0.036081699,
+      "peak_rss_kib": 69872
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 9,
+      "elapsed_seconds": 0.157310386,
+      "peak_rss_kib": 268584
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 9,
+      "elapsed_seconds": 0.010266413,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 9,
+      "elapsed_seconds": 0.003061804,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 9,
+      "elapsed_seconds": 0.00079545,
+      "peak_rss_kib": 2272
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 9,
+      "elapsed_seconds": 0.003219026,
+      "peak_rss_kib": 6164
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 9,
+      "elapsed_seconds": 0.003141441,
+      "peak_rss_kib": 6252
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 9,
+      "elapsed_seconds": 0.03664664,
+      "peak_rss_kib": 70116
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 9,
+      "elapsed_seconds": 0.003464877,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 9,
+      "elapsed_seconds": 0.000589477,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 9,
+      "elapsed_seconds": 0.443392408,
+      "peak_rss_kib": 72160
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 9,
+      "elapsed_seconds": 0.035616897,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 9,
+      "elapsed_seconds": 0.000814628,
+      "peak_rss_kib": 2244
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 9,
+      "elapsed_seconds": 0.009461791,
+      "peak_rss_kib": 18796
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 9,
+      "elapsed_seconds": 0.000853795,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 9,
+      "elapsed_seconds": 0.155704919,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 9,
+      "elapsed_seconds": 0.03602082,
+      "peak_rss_kib": 70888
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 9,
+      "elapsed_seconds": 0.02645106,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 10,
+      "elapsed_seconds": 0.000830521,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 10,
+      "elapsed_seconds": 0.035463542,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 10,
+      "elapsed_seconds": 0.009794771,
+      "peak_rss_kib": 18796
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 10,
+      "elapsed_seconds": 0.002964799,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 10,
+      "elapsed_seconds": 0.003398137,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 10,
+      "elapsed_seconds": 0.03574855,
+      "peak_rss_kib": 70116
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 10,
+      "elapsed_seconds": 0.035974863,
+      "peak_rss_kib": 69808
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 10,
+      "elapsed_seconds": 0.000609466,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 10,
+      "elapsed_seconds": 0.003266894,
+      "peak_rss_kib": 6220
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 10,
+      "elapsed_seconds": 0.000803942,
+      "peak_rss_kib": 2284
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 10,
+      "elapsed_seconds": 0.01048817,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 10,
+      "elapsed_seconds": 0.000631108,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 10,
+      "elapsed_seconds": 0.155933956,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 10,
+      "elapsed_seconds": 0.000772766,
+      "peak_rss_kib": 2120
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 10,
+      "elapsed_seconds": 0.003039259,
+      "peak_rss_kib": 6316
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 10,
+      "elapsed_seconds": 0.036070583,
+      "peak_rss_kib": 70944
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 10,
+      "elapsed_seconds": 0.443488451,
+      "peak_rss_kib": 72156
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 10,
+      "elapsed_seconds": 0.026448751,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 10,
+      "elapsed_seconds": 0.154802865,
+      "peak_rss_kib": 268424
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 10,
+      "elapsed_seconds": 0.002848749,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 11,
+      "elapsed_seconds": 0.002925913,
+      "peak_rss_kib": 6256
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 11,
+      "elapsed_seconds": 0.009629169,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 11,
+      "elapsed_seconds": 0.000838123,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 11,
+      "elapsed_seconds": 0.02648954,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 11,
+      "elapsed_seconds": 0.009180158,
+      "peak_rss_kib": 18800
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 11,
+      "elapsed_seconds": 0.035708286,
+      "peak_rss_kib": 70116
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 11,
+      "elapsed_seconds": 0.155963322,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 11,
+      "elapsed_seconds": 0.155596983,
+      "peak_rss_kib": 268580
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 11,
+      "elapsed_seconds": 0.002900215,
+      "peak_rss_kib": 5600
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 11,
+      "elapsed_seconds": 0.000553364,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 11,
+      "elapsed_seconds": 0.035385061,
+      "peak_rss_kib": 69872
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 11,
+      "elapsed_seconds": 0.000887485,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 11,
+      "elapsed_seconds": 0.036045342,
+      "peak_rss_kib": 70864
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 11,
+      "elapsed_seconds": 0.035861381,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 11,
+      "elapsed_seconds": 0.444244506,
+      "peak_rss_kib": 72160
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 11,
+      "elapsed_seconds": 0.003411887,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 11,
+      "elapsed_seconds": 0.003176561,
+      "peak_rss_kib": 6252
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 11,
+      "elapsed_seconds": 0.000584369,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 11,
+      "elapsed_seconds": 0.002990708,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 11,
+      "elapsed_seconds": 0.000777032,
+      "peak_rss_kib": 2232
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 12,
+      "elapsed_seconds": 0.002948656,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 12,
+      "elapsed_seconds": 0.009680345,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 12,
+      "elapsed_seconds": 0.003417615,
+      "peak_rss_kib": 1772
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 12,
+      "elapsed_seconds": 0.000820717,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 12,
+      "elapsed_seconds": 0.000555938,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 12,
+      "elapsed_seconds": 0.000722563,
+      "peak_rss_kib": 2128
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 12,
+      "elapsed_seconds": 0.036305274,
+      "peak_rss_kib": 70052
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 12,
+      "elapsed_seconds": 0.443061126,
+      "peak_rss_kib": 72160
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 12,
+      "elapsed_seconds": 0.00312778,
+      "peak_rss_kib": 6292
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 12,
+      "elapsed_seconds": 0.002934976,
+      "peak_rss_kib": 6252
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 12,
+      "elapsed_seconds": 0.002775521,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 12,
+      "elapsed_seconds": 0.009718531,
+      "peak_rss_kib": 18792
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 12,
+      "elapsed_seconds": 0.037069167,
+      "peak_rss_kib": 70864
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 12,
+      "elapsed_seconds": 0.026609247,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 12,
+      "elapsed_seconds": 0.000578541,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 12,
+      "elapsed_seconds": 0.035986756,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 12,
+      "elapsed_seconds": 0.158101195,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 12,
+      "elapsed_seconds": 0.000864721,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 12,
+      "elapsed_seconds": 0.15696826,
+      "peak_rss_kib": 268584
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 12,
+      "elapsed_seconds": 0.0359014,
+      "peak_rss_kib": 69872
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 13,
+      "elapsed_seconds": 0.036601259,
+      "peak_rss_kib": 69820
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 13,
+      "elapsed_seconds": 0.003300814,
+      "peak_rss_kib": 6252
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 13,
+      "elapsed_seconds": 0.036464998,
+      "peak_rss_kib": 70844
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 13,
+      "elapsed_seconds": 0.002870712,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 13,
+      "elapsed_seconds": 0.443649201,
+      "peak_rss_kib": 72164
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 13,
+      "elapsed_seconds": 0.000582136,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 13,
+      "elapsed_seconds": 0.036384009,
+      "peak_rss_kib": 70116
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 13,
+      "elapsed_seconds": 0.003091436,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 13,
+      "elapsed_seconds": 0.000824723,
+      "peak_rss_kib": 2376
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 13,
+      "elapsed_seconds": 0.000550779,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 13,
+      "elapsed_seconds": 0.000819925,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 13,
+      "elapsed_seconds": 0.154903664,
+      "peak_rss_kib": 268424
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 13,
+      "elapsed_seconds": 0.035587358,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 13,
+      "elapsed_seconds": 0.009763076,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 13,
+      "elapsed_seconds": 0.003450503,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 13,
+      "elapsed_seconds": 0.003113198,
+      "peak_rss_kib": 6180
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 13,
+      "elapsed_seconds": 0.000753418,
+      "peak_rss_kib": 2128
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 13,
+      "elapsed_seconds": 0.02659123,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 13,
+      "elapsed_seconds": 0.158143788,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 13,
+      "elapsed_seconds": 0.009704269,
+      "peak_rss_kib": 18796
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 14,
+      "elapsed_seconds": 0.000780117,
+      "peak_rss_kib": 2256
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 14,
+      "elapsed_seconds": 0.035891946,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 14,
+      "elapsed_seconds": 0.036518478,
+      "peak_rss_kib": 69820
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 14,
+      "elapsed_seconds": 0.009846088,
+      "peak_rss_kib": 18796
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 14,
+      "elapsed_seconds": 0.000604669,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 14,
+      "elapsed_seconds": 0.15590091,
+      "peak_rss_kib": 268460
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 14,
+      "elapsed_seconds": 0.003437475,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 14,
+      "elapsed_seconds": 0.156490297,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 14,
+      "elapsed_seconds": 0.03609146,
+      "peak_rss_kib": 70952
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 14,
+      "elapsed_seconds": 0.00305329,
+      "peak_rss_kib": 5472
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 14,
+      "elapsed_seconds": 0.003118375,
+      "peak_rss_kib": 6252
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 14,
+      "elapsed_seconds": 0.000569307,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 14,
+      "elapsed_seconds": 0.036366384,
+      "peak_rss_kib": 70116
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 14,
+      "elapsed_seconds": 0.002974714,
+      "peak_rss_kib": 5604
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 14,
+      "elapsed_seconds": 0.000842328,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 14,
+      "elapsed_seconds": 0.026567715,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 14,
+      "elapsed_seconds": 0.003015665,
+      "peak_rss_kib": 6164
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 14,
+      "elapsed_seconds": 0.009920578,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 14,
+      "elapsed_seconds": 0.442168404,
+      "peak_rss_kib": 72160
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 14,
+      "elapsed_seconds": 0.000846445,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 15,
+      "elapsed_seconds": 0.009342258,
+      "peak_rss_kib": 18796
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 15,
+      "elapsed_seconds": 0.000543819,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 15,
+      "elapsed_seconds": 0.000817492,
+      "peak_rss_kib": 1648
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 15,
+      "elapsed_seconds": 0.003391577,
+      "peak_rss_kib": 1776
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 15,
+      "elapsed_seconds": 0.00057809,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 15,
+      "elapsed_seconds": 0.002822691,
+      "peak_rss_kib": 5600
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 15,
+      "elapsed_seconds": 0.441522073,
+      "peak_rss_kib": 72156
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 15,
+      "elapsed_seconds": 0.003168469,
+      "peak_rss_kib": 6316
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 15,
+      "elapsed_seconds": 0.036836726,
+      "peak_rss_kib": 70888
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 15,
+      "elapsed_seconds": 0.0357785,
+      "peak_rss_kib": 69092
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 15,
+      "elapsed_seconds": 0.156201842,
+      "peak_rss_kib": 268584
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 15,
+      "elapsed_seconds": 0.036937834,
+      "peak_rss_kib": 70116
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "sample": 15,
+      "elapsed_seconds": 0.02652943,
+      "peak_rss_kib": 5872
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 15,
+      "elapsed_seconds": 0.036358942,
+      "peak_rss_kib": 69872
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "sample": 15,
+      "elapsed_seconds": 0.003137994,
+      "peak_rss_kib": 5476
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 15,
+      "elapsed_seconds": 0.000754379,
+      "peak_rss_kib": 2132
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "sample": 15,
+      "elapsed_seconds": 0.000837432,
+      "peak_rss_kib": 2272
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 15,
+      "elapsed_seconds": 0.010184135,
+      "peak_rss_kib": 18404
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "sample": 15,
+      "elapsed_seconds": 0.157944886,
+      "peak_rss_kib": 268004
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "sample": 15,
+      "elapsed_seconds": 0.003180547,
+      "peak_rss_kib": 6268
+    }
+  ],
+  "summary": [
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "n": 15,
+      "median_seconds": 0.00995819,
+      "min_seconds": 0.009629169,
+      "max_seconds": 0.01048817,
+      "mad_seconds": 0.00022594499999999997,
+      "median_peak_rss_kib": 18404,
+      "min_peak_rss_kib": 18404,
+      "max_peak_rss_kib": 18404,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "n": 15,
+      "median_seconds": 0.000572342,
+      "min_seconds": 0.000532964,
+      "max_seconds": 0.000635475,
+      "mad_seconds": 1.7135000000000045e-05,
+      "median_peak_rss_kib": 1508,
+      "min_peak_rss_kib": 1504,
+      "max_peak_rss_kib": 1508,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "n": 15,
+      "median_seconds": 0.000838123,
+      "min_seconds": 0.000817492,
+      "max_seconds": 0.000944398,
+      "mad_seconds": 1.5671999999999995e-05,
+      "median_peak_rss_kib": 1648,
+      "min_peak_rss_kib": 1644,
+      "max_peak_rss_kib": 1648,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "n": 15,
+      "median_seconds": 0.009718531,
+      "min_seconds": 0.009099886,
+      "max_seconds": 0.010286673,
+      "mad_seconds": 0.0002567400000000001,
+      "median_peak_rss_kib": 18796,
+      "min_peak_rss_kib": 18736,
+      "max_peak_rss_kib": 18800,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "config_4k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "n": 15,
+      "median_seconds": 0.000772766,
+      "min_seconds": 0.000704546,
+      "max_seconds": 0.000822359,
+      "mad_seconds": 1.8387000000000026e-05,
+      "median_peak_rss_kib": 2128,
+      "min_peak_rss_kib": 2116,
+      "max_peak_rss_kib": 2272,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "n": 15,
+      "median_seconds": 0.155933956,
+      "min_seconds": 0.151855668,
+      "max_seconds": 0.158143788,
+      "mad_seconds": 0.0007688260000000002,
+      "median_peak_rss_kib": 268004,
+      "min_peak_rss_kib": 267940,
+      "max_peak_rss_kib": 268004,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "n": 15,
+      "median_seconds": 0.000599361,
+      "min_seconds": 0.000553364,
+      "max_seconds": 0.000674622,
+      "mad_seconds": 2.1271000000000007e-05,
+      "median_peak_rss_kib": 1508,
+      "min_peak_rss_kib": 1504,
+      "max_peak_rss_kib": 1508,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "n": 15,
+      "median_seconds": 0.003437475,
+      "min_seconds": 0.00336458,
+      "max_seconds": 0.003566865,
+      "mad_seconds": 2.5588e-05,
+      "median_peak_rss_kib": 1776,
+      "min_peak_rss_kib": 1772,
+      "max_peak_rss_kib": 1776,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "n": 15,
+      "median_seconds": 0.15590091,
+      "min_seconds": 0.152621984,
+      "max_seconds": 0.160751468,
+      "mad_seconds": 0.0010673499999999947,
+      "median_peak_rss_kib": 268456,
+      "min_peak_rss_kib": 268412,
+      "max_peak_rss_kib": 268584,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "config_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "n": 15,
+      "median_seconds": 0.000842328,
+      "min_seconds": 0.000803942,
+      "max_seconds": 0.000919873,
+      "mad_seconds": 2.3693999999999994e-05,
+      "median_peak_rss_kib": 2276,
+      "min_peak_rss_kib": 2244,
+      "max_peak_rss_kib": 2404,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "n": 15,
+      "median_seconds": 0.036305274,
+      "min_seconds": 0.034628009,
+      "max_seconds": 0.036937834,
+      "mad_seconds": 0.0003755910000000015,
+      "median_peak_rss_kib": 70116,
+      "min_peak_rss_kib": 70052,
+      "max_peak_rss_kib": 70116,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "n": 15,
+      "median_seconds": 0.035861381,
+      "min_seconds": 0.034507023,
+      "max_seconds": 0.039482892,
+      "mad_seconds": 0.00027402299999999824,
+      "median_peak_rss_kib": 69092,
+      "min_peak_rss_kib": 69028,
+      "max_peak_rss_kib": 69092,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "n": 15,
+      "median_seconds": 0.444048995,
+      "min_seconds": 0.441522073,
+      "max_seconds": 0.454111103,
+      "mad_seconds": 0.0006565869999999863,
+      "median_peak_rss_kib": 72160,
+      "min_peak_rss_kib": 72156,
+      "max_peak_rss_kib": 72164,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "n": 15,
+      "median_seconds": 0.036070583,
+      "min_seconds": 0.03462149,
+      "max_seconds": 0.037069167,
+      "mad_seconds": 0.00012738800000000605,
+      "median_peak_rss_kib": 70888,
+      "min_peak_rss_kib": 70844,
+      "max_peak_rss_kib": 70952,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "document_1m",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "n": 15,
+      "median_seconds": 0.036001301,
+      "min_seconds": 0.035290343,
+      "max_seconds": 0.036601259,
+      "mad_seconds": 0.00025754900000000275,
+      "median_peak_rss_kib": 69872,
+      "min_peak_rss_kib": 69808,
+      "max_peak_rss_kib": 69872,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C eager",
+      "n": 15,
+      "median_seconds": 0.002900215,
+      "min_seconds": 0.002703087,
+      "max_seconds": 0.004369605,
+      "mad_seconds": 9.321900000000029e-05,
+      "median_peak_rss_kib": 5604,
+      "min_peak_rss_kib": 5600,
+      "max_peak_rss_kib": 5604,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "C shared",
+      "n": 15,
+      "median_seconds": 0.00305329,
+      "min_seconds": 0.002862401,
+      "max_seconds": 0.003137994,
+      "mad_seconds": 6.258200000000026e-05,
+      "median_peak_rss_kib": 5476,
+      "min_peak_rss_kib": 5472,
+      "max_peak_rss_kib": 5476,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Code automatic",
+      "n": 15,
+      "median_seconds": 0.026582826,
+      "min_seconds": 0.026448751,
+      "max_seconds": 0.026807796,
+      "mad_seconds": 5.339600000000069e-05,
+      "median_peak_rss_kib": 5872,
+      "min_peak_rss_kib": 5864,
+      "max_peak_rss_kib": 5872,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust eager",
+      "n": 15,
+      "median_seconds": 0.003163081,
+      "min_seconds": 0.002934976,
+      "max_seconds": 0.003322308,
+      "mad_seconds": 5.455e-05,
+      "median_peak_rss_kib": 6252,
+      "min_peak_rss_kib": 6196,
+      "max_peak_rss_kib": 6268,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "document_64k",
+      "group": "prebuilt",
+      "mode": "Rust shared",
+      "n": 15,
+      "median_seconds": 0.003142593,
+      "min_seconds": 0.002925913,
+      "max_seconds": 0.003561128,
+      "mad_seconds": 0.00010333400000000006,
+      "median_peak_rss_kib": 6256,
+      "min_peak_rss_kib": 6152,
+      "max_peak_rss_kib": 6316,
+      "zero_rss_samples": 0
+    }
+  ],
+  "wrapper": {
+    "path": "/home/runner/work/_temp/history-results/binaries/peak",
+    "sha256": "25a267817da30174783afaab1f7500d49fedd86d3310de4b86aa08a0d4f8accf",
+    "bytes": 16408
+  },
+  "sampling_started": "2026-11-05T20:01:25+00:00",
+  "sampling_finished": "2026-11-05T20:01:42+00:00"
+}

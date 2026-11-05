@@ -69,3 +69,20 @@ workflow and a clean tracked checkout. Existing published-memory evidence
 already shows lower Code peak RSS in dictionary/points/spectral-norm on that
 specific short-program set; small process-floor differences alone do not prove
 lower application heap use. This pilot tests a larger retained-data regime.
+
+
+## Recorded outcome
+
+[The complete 5 November report](RESULTS.md) retains all 300 samples from
+[hosted run 42099367294](https://github.com/codelovesme/code/actions/runs/42099367294).
+Sparse configuration histories favor automatic Code sharing over eager full
+copies; explicitly shared C/Rust remain faster. Document revisions are a
+clear Code slowdown and are retained as the counterexample. No website
+comparison/claim was changed by this pilot.
+
+Verify retained sample/statistic integrity without rerunning the benchmark:
+
+```sh
+python3 benchmarks/history-pilot/verify.py benchmarks/history-pilot/results/2026-11-05-v2.23.0
+# Add --artifacts /path/to/downloaded-bundle to check its prepared source/binary bytes too.
+```
