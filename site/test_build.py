@@ -184,8 +184,10 @@ class SiteBuild(unittest.TestCase):
         self.assertGreater(len(page.values), 40)
         for (group, workload, mode, metric), displayed in page.values.items():
             samples = groups[group, workload, mode]
+            metric, _, statistic = metric.partition('-')
             field, scale = ('elapsed_seconds', 1000) if metric == 'time' else ('peak_rss_kib', 1 / 1024)
-            expected = median(float(row[field]) for row in samples) * scale
+            aggregate = {'min': min, 'max': max}.get(statistic, median)
+            expected = aggregate(float(row[field]) for row in samples) * scale
             self.assertEqual(displayed, f'{expected:.3f}', (group, workload, mode, metric))
         self.assertIn(('prebuilt', 'snapshots', 'Rust Rc COW', 'rss'), page.values)
         self.assertIn(('compile', 'sum_squares', 'Code release', 'rss'), page.values)

@@ -207,8 +207,8 @@ def main() -> None:
             "See independent value updates, automatic reference counting and copy-on-write in a short runnable Code example.",
         ),
         "compare": (
-            "performance", "Code performance — native speed, cached runs and shared memory",
-            "Measured native runtime, cold and cached runs, and snapshot memory for public Code v2.23.0, with reproducible evidence.",
+            "performance", "Code comparison — runtime, compilation and memory",
+            "Compare Code v2.23.0 with C, Rust, JavaScript and Python through runtime, compile-time and memory charts, with complete measured results.",
         ),
     }
     plan = load_plan(site_dir)

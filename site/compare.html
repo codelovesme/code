@@ -1,73 +1,73 @@
-<header class="page-intro" id="at-a-glance">
-  <p class="breadcrumb"><a href="docs.html">Docs</a> / Performance</p>
-  <div class="overline">Public Code v2.23.0 · measured 4 November 2026</div>
-  <h1>Native speed.<br>Automatic sharing.</h1>
-  <p>See what compilation, cached runs and shared values deliver on measured programs.</p>
-  <div class="section-links"><a href="#performance">Native speed</a><a href="#execution">Run modes</a><a href="#memory">Memory</a><a href="#methodology">How we measured</a></div>
+<header class="page-intro comparison-intro" id="at-a-glance">
+  <div class="overline">Comparison · public Code v2.23.0</div>
+  <h1>See the numbers.</h1>
+  <p>Code alongside C, Rust, JavaScript and Python. Compare runtime, build time and memory on measured programs.</p>
+  <nav class="section-links comparison-jumps" aria-label="Comparison sections"><a href="#performance">Native speed</a><a href="#execution">Source-run speed</a><a href="#compilation">Build time</a><a href="#memory">Memory</a><a href="#snapshots">Snapshots</a><a href="#full-results">All results</a></nav>
+  <p class="module-note">Measured 4 November 2026 on one Linux VM. Each chart states its workload and what the timing includes.</p>
 </header>
 
 <section class="module-section" id="performance">
-  <h2>Close to C and Rust on a numeric loop.</h2>
-  <p class="module-intro">Ten million float64 sum-of-squares iterations. Prebuilt executables, including process startup; compilation happens before timing.</p>
-  <figure class="module-panel perf-chart" aria-labelledby="compiled-runtime-chart-title">
-    <figcaption id="compiled-runtime-chart-title">Native runtime · median milliseconds · lower is better</figcaption>
-    <div class="perf-scale" aria-hidden="true"><span>0</span><span>15 ms</span></div>
-    __PERF_NATIVE__
-  </figure>
-  <p class="module-note">This loop is a strong case, not a language-wide ranking. Across the five broader programs below, Code takes <strong>1.02–2.68× C’s time</strong> and is slower than Rust in all five.</p>
-  <details class="module-details"><summary>Five broader workloads · show all native times</summary>
-    <div class="module-table-wrap" tabindex="0" role="region" aria-label="Broader native workload times">
-      <table class="module-table perf-table"><caption>Median milliseconds · lower is better · 15 launches per cell</caption><thead><tr><th scope="col">Program</th><th scope="col">Code</th><th scope="col">C O2</th><th scope="col">Rust O3</th></tr></thead><tbody>__PERF_BROADER__</tbody></table>
-    </div>
-    <p>These use different data layouts and algorithms: Code values, C typed storage and Rust typed collections. They check matching results, not identical machine instructions. Short programs include a large startup component. <a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/README.md">Source and representation audit ↗</a></p>
-  </details>
+  <h2>1. Compiled program speed.</h2>
+  <p class="module-intro">Ten million numeric-loop iterations. Programs are built before timing; these launches include startup and execution.</p>
+  __PERF_NATIVE__
+  <p class="module-note">Code is close to C and Rust on this loop. Results vary by program: Code is slower than Rust in all five broader workloads below.</p>
+  <div class="comparison-context"><h3>Beyond the numeric loop</h3><p>Same measured host, five additional programs. Median milliseconds; lower is better.</p>
+    <div class="module-table-wrap" tabindex="0" role="region" aria-label="Broader native workload times"><table class="module-table perf-table"><caption>Prebuilt program runtime · 15 launches per entry</caption><thead><tr><th scope="col">Program</th><th scope="col">Code</th><th scope="col">C O2</th><th scope="col">Rust O3</th></tr></thead><tbody>__PERF_BROADER__</tbody></table></div>
+    <p class="module-note">The implementations use different data layouts and algorithms. They check matching results, not identical machine instructions.</p>
+  </div>
 </section>
 
 <section class="module-section" id="execution">
-  <h2>One program. Four ways to run.</h2>
-  <p class="module-intro" id="source-runtime-chart-title">The same numeric loop, through different Code execution paths. Median elapsed time and peak resident memory are separate measurements.</p>
-  <div class="perf-paths">__PERF_PATHS__</div>
-  <p class="module-note">Cold-run RSS includes compilation; it is not the native application’s memory footprint. OS caches remain warm. Browser execution is not measured here. <a href="execution.html">See commands and execution paths →</a></p>
+  <h2>2. Source-run and interpreter speed.</h2>
+  <p class="module-intro">The same numeric loop, launched from source. Code’s forced interpreter, cached native run and cold compile-and-run appear as separate entries beside Node/V8 and CPython.</p>
+  __PERF_SOURCE__
+  <p class="module-note">Cached Code executes native code; Node/V8 uses a JIT. These are source-launch timings, not identical interpreter strategies. Cold Code includes compilation. The separately pinned browser interpreter is not measured here.</p>
+</section>
+
+<section class="module-section" id="compilation">
+  <h2>3. Compile time.</h2>
+  <p class="module-intro">Build the numeric program into a native executable. Timings include the compiler and linker; running the finished program is measured separately above.</p>
+  __PERF_COMPILE__
+  <p class="module-note">Five builds per entry. Compiler artifact caching is disabled; operating-system caches remain warm. Rust is measured with rustc directly, without Cargo startup.</p>
 </section>
 
 <section class="module-section" id="memory">
-  <h2>Keep versions. Share unchanged data.</h2>
-  <p class="module-intro" id="memory-chart-title">A matrix with 65 retained versions, changing one cell at each step. Code shares unchanged storage automatically; eager clones copy every row. This is copy-on-write (COW).</p>
-  <div class="module-table-wrap" tabindex="0" role="region" aria-label="Snapshot elapsed time and peak memory">
-    <table class="module-table perf-table"><caption>Full snapshot program · median elapsed time and application peak RSS · lower is better</caption><thead><tr><th scope="col">Representation</th><th scope="col">Time</th><th scope="col">Peak RSS</th></tr></thead><tbody>__PERF_SNAPSHOTS__</tbody></table>
-  </div>
-  <p class="module-note"><strong>Less memory than eager cloning; more runtime work.</strong> Code’s automatic sharing reduces this program’s peak RSS by 94.7% versus Rust Vec clones, while taking 1.81× the time. Explicit sharing in Rust and C is faster and leaner here.</p>
-  <details class="module-details"><summary>What this memory comparison measures</summary>
-    <p>Each program initializes 128 × 4096 float64 cells, retains 64 pre-update versions plus the final matrix, and checks every version’s full checksum. Initialization, scans and cleanup are timed too; this is not an isolated copy-on-write update benchmark.</p>
-    <p>C/Rust use dense 8-byte cells. Code uses generic containers with their own headers and counting costs. The ordinary Rust baseline clones <code>Vec&lt;Vec&lt;f64&gt;&gt;</code>; the shared baseline uses <code>Rc</code> and <code>Rc::make_mut</code> at matrix and row levels. C’s explicit COW uses reference counts at the same two levels.</p>
-    <p>Peak RSS is process memory, not bytes per value, allocation counts or pause time. These results support automatic snapshot sharing, not universal memory superiority over Rust. <a href="memory.html">See how Code preserves values →</a></p>
-  </details>
+  <h2>4. Application memory.</h2>
+  <p class="module-intro">Peak resident memory for the same numeric-loop program. Native executables and source runtimes are labeled separately.</p>
+  __PERF_MEMORY__
+  <p class="module-note">RSS measures the process footprint, not just live values or allocations. Cold Code and compiler-process memory are excluded from this chart; their measurements remain in All results.</p>
+</section>
+
+<section class="module-section" id="snapshots">
+  <h2>5. Memory when keeping copies.</h2>
+  <p class="module-intro">Keep 65 versions of a matrix while changing one cell per version. Compare automatic sharing with full copies and explicitly shared C/Rust representations.</p>
+  __PERF_SNAPSHOTS__
+  <p class="module-note">Code uses 94.7% less peak RSS than Rust Vec clones on this program, but takes 1.81× the time. Explicit C/Rust copy-on-write is faster and leaner here. Complete-program times are in All results.</p>
+  <details class="module-details"><summary>What the snapshot comparison includes</summary><p>Each program initializes 128 × 4096 float64 cells, retains 64 pre-update versions plus the final matrix, and validates every full checksum. Initialization, scanning and cleanup are included.</p><p>C/Rust use dense 8-byte cells; Code uses generic containers. Rust’s shared version uses Rc::make_mut; C’s shared version uses explicit reference counts. This is a full-program comparison, not an isolated copy-on-write operation.</p></details>
+</section>
+
+<section class="module-section" id="full-results">
+  <h2>The complete measurements, here.</h2>
+  <p class="module-intro">Every recorded program and execution entry is available below, including the broader workloads and compiler memory. The five charts above use the same results.</p>
+  <details class="module-details"><summary>All 35 results · time and memory</summary><div class="module-table-wrap" tabindex="0" role="region" aria-label="All measured comparison results"><table class="module-table perf-table comparison-all"><caption>Median with minimum–maximum ranges · ms and MiB · compiler memory is build-process memory</caption><thead><tr><th scope="col">Program / entry</th><th scope="col">Time ms</th><th scope="col">Peak MiB</th></tr></thead><tbody>__PERF_ALL__</tbody></table></div></details>
 </section>
 
 <section class="module-section" id="methodology">
-  <h2>Every number has a source.</h2>
-  <p class="module-intro">485 retained samples on one fresh Linux VM. Medians shown here; all samples, full ranges, commands and fingerprints are in the report.</p>
-  <div class="section-links"><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/RESULTS.md">Full report ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/results/2026-11-04-v2.23.0/samples.csv">Raw CSV ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/results/2026-11-04-v2.23.0/report.json">Raw JSON &amp; identities ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/README.md">Reproduce the suite ↗</a></div>
-  <details class="module-details"><summary>Versions, machine and sampling</summary>
-    <p>Measured 4 November 2026, 22:23:35–22:24:24 UTC. The actual public Linux <a href="https://github.com/codelovesme/code/releases/tag/v2.23.0">Code v2.23.0 release</a> points to source <code>e7436b70ba33</code>. Harness/workloads: <code>1dd7741880c4</code>. Launcher, driver, workload and prepared-binary SHA256s are in the JSON.</p>
-    <p>Ubuntu 24.04.5, AMD EPYC 7763 model, four virtual CPUs, pinned to logical CPU 0. Fresh GitHub-hosted VM; no concurrent builds, tests or profiling in the timing job. Virtualization does not guarantee dedicated physical hardware or fixed frequency.</p>
-    <p>Code’s public <code>--release</code> pipeline; GCC 13.3.0 at O2 (also O3 for the numeric loop); Rust 1.99.1 at O3, LLVM 23.1.1. C/Rust enable native CPU targeting. Code’s exact LLVM patch is not recorded; its release source pins the LLVM 17 family. Python 3.12.3 and Node 22.23.4/V8 12.4.254.21-node.57 source-run results are in the full report.</p>
-    <p>31 runtime groups × 15 launches and four compiler groups × five launches, serially in seeded shuffled order. Assertions passed; no samples dropped. Cold runs produced native artifacts; warm artifact inode/hash stayed unchanged. The timing wrapper includes target startup and waited children, excluding its own startup. Linux peak RSS is the largest resident peak, not summed process-tree memory.</p>
-    <p><a href="https://github.com/codelovesme/code/actions/runs/41924830382">Successful measurement run ↗</a> · <a href="https://github.com/codelovesme/code/blob/65403bd/.github/workflows/website-evidence.yml">Reproduction workflow ↗</a></p>
+  <h2>How these comparisons were measured.</h2>
+  <p class="module-intro">485 retained samples on one fresh Linux VM. No samples dropped. Medians, exact ranges and the complete results stay on this page; raw evidence is available too.</p>
+  <details class="module-details"><summary>Machine, versions and timing boundaries</summary>
+    <p>Measured 4 November 2026, 22:23:35–22:24:24 UTC. Ubuntu 24.04.5, AMD EPYC 7763 model, four virtual CPUs, pinned to CPU 0. A hosted VM does not guarantee dedicated hardware or fixed frequency.</p>
+    <p>Public Code v2.23.0 (release source e7436b70ba33), GCC 13.3.0 at O2/O3, Rust 1.99.1 at O3, Python 3.12.3 and Node 22.23.4 / V8 12.4.254.21-node.57. C/Rust target the host CPU; Code uses its public release build pipeline.</p>
+    <p>Runtime groups have 15 launches; build groups have five. Groups run serially in seeded shuffled order. Prebuilt launches exclude compilation; source launches include preparation where required. Warm Code preserves its cached native artifact. RSS is the largest resident peak, not summed process-tree memory.</p>
+    <p>All targets validate their results. Representations differ, so this is a measured workload comparison rather than a language-wide ranking. Allocation counts and pause distributions were not measured.</p>
   </details>
-  <details class="module-details"><summary id="compile-chart-title">Compilation · separate from application runtime</summary>
-    <div class="module-table-wrap" tabindex="0" role="region" aria-label="Compiler time and peak memory">
-      <table class="module-table perf-table"><caption>Build the numeric program · no compiler artifact cache · OS caches warm · five launches per cell</caption><thead><tr><th scope="col">Compiler</th><th scope="col">Time</th><th scope="col">Peak RSS</th></tr></thead><tbody>__PERF_COMPILERS__</tbody></table>
-    </div>
-    <p>These explicit build commands include waited compiler/linker processes. Their RSS is not application RAM. Cold <code>code run</code> above includes its own build and subsequent execution.</p>
-  </details>
-  <details class="module-details"><summary id="sources-title">Scope and historical results</summary>
-    <p>This is one machine and a selected workload suite. It is not an application-wide ranking, an allocation/pause study or a browser benchmark. The playground’s separately published interpreter stays at v__ENGINE_VERSION__; these native measurements do not describe it.</p>
-    <p>Earlier October measurements used development revisions and different machines, tools and timer boundaries. They remain unchanged in the <a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/README.md#historical-inventory-and-claim-gate">historical inventory</a>; Java/Go numbers from those runs are not combined with this dataset. No release-to-release speedup follows from comparing them.</p>
+  <details class="module-details"><summary id="sources-title">Raw evidence and earlier measurements</summary>
+    <p>All graphs use the same November public-release dataset. Older Java/Go measurements came from different hosts and development revisions; mixing them into these rankings would give a misleading comparison. They remain in the historical audit.</p>
+    <div class="section-links"><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/RESULTS.md">Full report ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/results/2026-11-04-v2.23.0/samples.csv">Raw CSV ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/results/2026-11-04-v2.23.0/report.json">Raw JSON ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/README.md">Method and historical audit ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/.github/workflows/website-evidence.yml">Measurement workflow ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/README.md#historical-inventory-and-claim-gate">Earlier results ↗</a></div>
   </details>
 </section>
 
 <section class="module-section" id="fit">
-  <h2>Explore the model behind the numbers.</h2>
-  <div class="section-links" id="matrix-title"><a href="modules.html" id="structure-title">Modules and reuse →</a><a href="memory.html" id="types-title">Values and memory →</a><a href="execution.html" id="concurrency-title">Execution and hosts →</a><a href="docs.html#features" id="errors-title">Language reference →</a></div>
+  <h2>Explore Code beyond the comparison.</h2>
+  <div class="section-links" id="matrix-title"><a href="modules.html" id="structure-title">Modules and reuse →</a><a href="memory.html" id="types-title">Values and memory →</a><a href="execution.html" id="concurrency-title">Execution guide →</a><a href="docs.html#features" id="errors-title">Language reference →</a></div>
 </section>

@@ -30,7 +30,7 @@ try{
   assert.equal(await meta('meta[name="twitter:image:alt"]'),alt);
   if(route==='index.html') {assert.match(title,/reuse.*performance/i);assert.match(description,/native.*WebAssembly/i)}
   if(route==='learn.html') assert.match(title,/Learn Code/);
-  if(route==='compare.html') {assert.match(title,/performance/);assert.match(description,/v2.23.0/)}
+  if(route==='compare.html') {assert.match(title,/comparison/);assert.match(description,/v2.23.0/)}
  }
  const response=await context.request.get(new URL('share-code.png',base).href);assert.equal(response.status(),200);
  assert.match(response.headers()['content-type'],/^image\/png/);

@@ -22,10 +22,10 @@ release or replace the engine with a source build.
 `layout.html` wraps the content fragments. Every page, including Compare, uses
 `navigation.html`, `footer.html`, `navigation.css` and `navigation.js`.
 `site.css` supplies common content and chart styles. Modules, Execution and Memory keep Docs selected in the navigation.
-Performance is a top-level destination with its own current-page state. The
-shared menu is Learn, Playground, Docs, Performance; GitHub remains in the
-footer. The comparison graphs, run modes, measurements and order are unchanged
-by this navigation follow-up (228).
+Comparison is a top-level destination with its own current-page state. The
+shared menu is Learn, Playground, Docs, Comparison; GitHub remains in the
+footer. Follow-up 229 restores the chart-led comparison after the initial
+navigation-only change (228).
 
 Preview generated output rather than serving the source fragments directly.
 There is no router/server framework, new package manager or client build step.
@@ -201,13 +201,14 @@ working when pages move again.
 v2.23.0 JSON in `benchmarks/website-evidence/results/2026-11-04-v2.23.0/`. It does
 not benchmark during a site build or follow a floating/latest release. Report,
 raw-data and reproduction links pin the reviewed evidence commit `65403bd`.
-`test_build.py` independently checks displayed values against medians of the
+`test_build.py` independently checks displayed medians and ranges against the
 raw CSV, with milliseconds and MiB kept separate. Updating a dataset requires
 reviewing the copy, representations, claims and scope too.
 
-The first view includes numeric native runtime, four Code launch paths and
-all five snapshot representations (ordinary eager clones and equivalent COW).
-Broader native workloads and compiler measurements expand on demand. The
+The current view (229) restores five visible charts: native runtime, source-run
+runtime, compiler time, application RSS and snapshot RSS. Broader native
+workloads are visible, with exact ranges and all 35 measurements expandable
+on the same page. All eager-clone and equivalent-COW representations remain. The
 existing Compare route and every previous fragment ID remain useful. The long
 seven-language essay and mixed-host October ranking are replaced; original
 October artifacts remain unchanged and linked through the historical inventory.
@@ -545,3 +546,34 @@ Metadata follows https://ogp.me/. LinkedIn's optional inspection entry point is
 https://www.linkedin.com/post-inspector/; inability to access its UI does not
 constitute a verified LinkedIn-rendered preview. Website work never posts a
 message or publishes to a social account.
+
+
+## Chart-led Comparison (229)
+
+Historical inspection found four main chart categories in the pre-216 page:
+prebuilt runtime, source-run runtime, compile time and process memory. Those
+are again visible charts on `compare.html`, using the verified November
+v2.23.0 data. A fifth chart retains the newer snapshot-sharing comparison.
+No historical Java/Go measurements are mixed into this host's rankings.
+
+`performance.py` builds 25 ascending rows across five zero-based linear
+charts, with exact units and values. Cold compilation/native run, cached
+native, forced bytecode, Node/V8 JIT and CPython are explicitly distinguished.
+Application RSS excludes cold/compile measurements; those stay in the full
+results. Each chart has same-page exact medians/ranges. All 35 report entries
+with time/RSS medians, full ranges, sample counts and process contexts are
+also on the page. Broader native workloads stay visible, including Code's
+slower cases, and equivalent-COW baselines stay beside eager clones.
+
+Comparison supplies its own measurement/machine/version context; external
+links are raw evidence or optional language guides, not a replacement for
+comparison content. Execution-choice explanations live on Home and the
+execution guide; the four-path number-card presentation was removed here.
+
+The static CSV check now validates minima/maxima as well as medians for all
+210 unique evidence keys. `check_performance.mjs` verifies all displayed
+numbers, all 25 bar widths/rankings, five visible charts, all 35 result rows,
+legacy anchors, no runtime requests, keyboard/no-JS and four viewport widths.
+It allows half a displayed rounding unit when comparing Python's half-even
+formatting with numeric JS values; raw CSV checks retain exact Python format
+comparison. Review captures: `/var/tmp/code-229-comparison-{390,1440}.png`.
