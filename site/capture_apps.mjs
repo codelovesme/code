@@ -1,0 +1,42 @@
+// Capture real applications in clean contexts; no authentication or server records.
+import assert from 'node:assert/strict';
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
+if (process.argv.length !== 3) throw Error('Usage: capture_apps.mjs AQUARIUM_STANDALONE_URL (existing build; writes preview PNGs)');
+const browser=await chromium.launch({headless:true,channel:'chromium'});
+try {
+ const context=await browser.newContext({viewport:{width:800,height:500}}); const page=await context.newPage();
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(process.argv[2]);
+ await page.getByRole('button',{name:/Play/}).click();
+ await page.getByRole('button',{name:'Mute sound',exact:true}).click();
+ for (let n=0;n<6;n++) await page.getByRole('button',{name:'Add fish',exact:true}).click();
+ for (const label of ['Add seagrass','Add coral','Add kelp','Add shell','Add rock','Add treasure chest']) await page.getByRole('button',{name:label,exact:true}).click();
+ assert.match(await page.locator('.scene-stats').innerText(),/Fish\s+6\b/);
+ const canvas=page.locator('#aquarium-canvas');
+ const frame=()=>canvas.evaluate(el=>el.toDataURL());
+ const a=await frame(); await page.waitForTimeout(500);assert.notEqual(await frame(),a);
+ await page.getByRole('button',{name:'Show movement diagnostics',exact:true}).click();
+ await canvas.click({position:{x:400,y:200}});
+ assert.match(await page.locator('.scene-stats').innerText(),/Startles\s+1/);
+ await page.getByRole('button',{name:'Hide movement diagnostics',exact:true}).click();
+ await page.mouse.move(5,5); await page.waitForTimeout(3400);
+ await page.screenshot({path:new URL('app-aquarium.png', import.meta.url).pathname});
+ assert.deepEqual(errors,[]);
+ await context.close();
+ const game=await browser.newContext({viewport:{width:600,height:500}}); const p=await game.newPage();
+ p.on('pageerror',e=>errors.push(e.message));
+ await p.goto('https://apps.codeloves.me/tictac');
+ const panel=p.locator('#guest-panel'); await panel.locator('.cell').first().waitFor();
+ for (const n of [0,3,1,4,2]) await panel.locator('.cell').nth(n).click();
+ assert.equal(await panel.locator('.status').innerText(),'X wins!');
+ assert.match(await panel.locator('.score').innerText(),/X: 1/);
+ await panel.locator('.game').screenshot({style:'#host-header { visibility: hidden !important; }', path:new URL('app-tictac.png', import.meta.url).pathname});
+ await p.reload();await panel.locator('.cell').first().waitFor();
+ assert.match(await panel.locator('.score').innerText(),/X: 1/);
+ await panel.getByRole('button',{name:'New game',exact:true}).click();
+ assert.equal(await panel.locator('.status').innerText(),"X's turn");
+ assert.equal(await panel.locator('.cell').filter({hasText:/[XO]/}).count(),0);
+ assert.deepEqual(errors,[]);
+ console.log('Aquarium existing standalone build: six fish, reef controls, advancing canvas and startle passed. Public Tic-Tac-Toe: X win, persisted score/reload, reset passed. Fresh anonymous contexts, no server records changed.');
+ await game.close();
+} finally {await browser.close()}

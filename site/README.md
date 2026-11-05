@@ -418,3 +418,53 @@ it covers actual browser runs, clipboard/downloads, finish links, keyboard,
 no-JS reading and four widths. All four lessons are ready; application proof
 and the remaining website polish tasks are separate. The pinned engine gate
 checks 177 cases: 146 gallery programs, four previews and 27 lesson variants.
+
+## Real applications on Home (223)
+
+`index.html#built-with-code` shows two bounded static previews, each with one
+sentence about Code's role, a live destination and native HTML build details.
+The shared introduction credits Euglena assembly/hosting. Aquarium uses canvas
+and timer; Tic-Tac-Toe uses dom and storage. Those are linked modules, not core
+language UI or persistence. Home loads no application, engine, audio or video.
+The images have fixed dimensions, descriptive alt text and lazy loading; their
+combined size is under 200 KB. Details and links work without JavaScript.
+
+Live destinations checked on 2026-11-05:
+
+- `https://aqua.codeloves.me` returns the Aquarium sign-in page; the card says
+  sign-in required. Its scene preview is explicitly a standalone-build capture.
+- `https://apps.codeloves.me/tictac` opens the game anonymously. The capture
+  checker plays an X win, verifies persisted score on reload, then resets.
+- `https://github.com/codelovesme/euglena` is the public framework source.
+
+The application source repository is private. Source and manifests were reviewed
+internally; no app-source link or open-source claim is shown to visitors, and
+no private source is copied into the site. Source revisions inspected:
+Aquarium `bf43e77bec7339930dbaa1915300f974ea95a933`, Tic-Tac-Toe
+`fd2e87a3900925a4dd4e7886429224d6d6d24b12`. These identify source review,
+not a reproducible binary attestation. The existing standalone Aquarium artifact
+used for the capture had SHA-256
+`94314a4fe56c79e6d47b2bdb951574faa71063afaaecf9e8a5bc24b2533ddd8d`;
+its existing host.mjs had
+`de678eb589802adb039eb8279920cde108c4379dd6ecdde17ce9f565812bce1a`.
+No application was rebuilt, modified or deployed for this work.
+
+To refresh previews, serve an existing Aquarium web build on loopback, then:
+
+```sh
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+  node site/capture_apps.mjs http://127.0.0.1:8961/
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+  node site/check_apps.mjs http://127.0.0.1:8955/code/
+```
+
+The capture script writes both PNGs using fresh anonymous browser contexts.
+Aquarium checks six fish, add controls, advancing frames and pointer startle;
+its audio is muted and controls fade normally before capture. Tic-Tac-Toe's
+shell header is hidden only during the element screenshot to keep the board's
+score unobscured; the game itself is unchanged. All state is throwaway browser
+state; no accounts, messages or server records are created. The screenshots
+contain no personal information. The website checker verifies exact image bytes,
+size/dimensions, links, responsive layout at four widths, keyboard/no-JS build
+details and absence of application/engine requests. It saves local review
+screenshots under `/var/tmp/code-223-showcase-{390,1440}.png`.

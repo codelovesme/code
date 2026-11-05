@@ -33,3 +33,32 @@
 </section>
 
 <p class="home-proof"><a href="compare.html#performance">Native speed, cached runs and memory — see the measured results →</a><a href="learn/first-program.html">Write your first program →</a></p>
+
+<section class="home-apps" id="built-with-code" aria-labelledby="built-with-code-title">
+  <div class="home-apps-heading">
+    <div><span class="overline">Built with Code</span><h2 id="built-with-code-title">See Code in action.</h2></div>
+    <p>Interactive applications compiled to WebAssembly, assembled and hosted with <a href="https://github.com/codelovesme/euglena">Euglena ↗</a>.</p>
+  </div>
+  <div class="home-app-grid">
+    <article class="home-app" aria-labelledby="aquarium-title">
+      <img src="app-aquarium.png" width="800" height="500" loading="lazy" decoding="async" alt="Colorful fish swimming above layered sand, plants and coral in Aquarium." />
+      <div class="home-app-body">
+        <span class="home-app-kind">Animation · Canvas</span>
+        <h3 id="aquarium-title">Aquarium</h3>
+        <p>Code drives the fish, scene updates and reactions as you build an underwater world.</p>
+        <div class="home-app-action"><a href="https://aqua.codeloves.me">Open Aquarium ↗</a><span>Sign-in required</span></div>
+        <details id="aquarium-details"><summary>How Aquarium is built</summary><p>Code handlers maintain the scene and respond to controls. The canvas module draws it; timer schedules updates. Euglena assembles the application and provides its browser host.</p><p class="home-app-caption">Preview captured from the standalone application.</p></details>
+      </div>
+    </article>
+    <article class="home-app" aria-labelledby="tictac-title">
+      <img src="app-tictac.png" width="600" height="471" loading="lazy" decoding="async" alt="Tic-Tac-Toe with three X marks across the top row and an X wins result." />
+      <div class="home-app-body">
+        <span class="home-app-kind">Game · DOM &amp; storage</span>
+        <h3 id="tictac-title">Tic-Tac-Toe</h3>
+        <p>Code handles turns, detects wins and keeps the score between games and reloads.</p>
+        <div class="home-app-action"><a href="https://apps.codeloves.me/tictac">Play Tic-Tac-Toe ↗</a><span>No account needed</span></div>
+        <details id="tictac-details"><summary>How Tic-Tac-Toe is built</summary><p>The game’s rules are Code handlers. The dom module renders the board and storage saves scores in the browser. Euglena assembles the application and provides its browser host.</p></details>
+      </div>
+    </article>
+  </div>
+</section>
