@@ -21,8 +21,11 @@ release or replace the engine with a source build.
 
 `layout.html` wraps the content fragments. Every page, including Compare, uses
 `navigation.html`, `footer.html`, `navigation.css` and `navigation.js`.
-`site.css` supplies common content and chart styles. Modules, Execution, Memory
-and Performance are Docs destinations and keep Docs selected in the navigation.
+`site.css` supplies common content and chart styles. Modules, Execution and Memory keep Docs selected in the navigation.
+Performance is a top-level destination with its own current-page state. The
+shared menu is Learn, Playground, Docs, Performance; GitHub remains in the
+footer. The comparison graphs, run modes, measurements and order are unchanged
+by this navigation follow-up (228).
 
 Preview generated output rather than serving the source fragments directly.
 There is no router/server framework, new package manager or client build step.

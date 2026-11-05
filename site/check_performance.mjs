@@ -16,7 +16,7 @@ try {
   await page.goto(new URL('index.html', base).href, { waitUntil: 'networkidle' });
   await page.getByRole('link', { name: 'Native speed, cached runs and memory' }).click();
   await page.waitForURL('**/compare.html#performance');
-  assert.equal(await page.locator('.site-nav [aria-current="page"]').innerText(), 'Docs');
+  assert.equal(await page.locator('.site-nav [aria-current="page"]').innerText(), 'Performance');
   assert.equal(await page.locator('details[open]').count(), 0);
   for (const number of await page.locator('[data-evidence]').all()) {
     const parts = (await number.getAttribute('data-evidence')).split('|');

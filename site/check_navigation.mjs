@@ -20,8 +20,8 @@ try {
   for (const file of ['index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html', 'learn/first-program.html', 'learn/values.html', 'learn/messages.html', 'learn/small-program.html']) {
     await page.goto(url(file), { waitUntil: 'networkidle' });
     assert.equal(await page.locator('.site-nav a').count(), 5, file);
-    for (const label of ['Learn', 'Playground', 'Docs', 'GitHub']) {
-      assert.equal(await page.locator('.site-nav').getByRole('link', { name: label, exact: label !== 'GitHub' }).count(), 1);
+    for (const label of ['Learn', 'Playground', 'Docs', 'Performance']) {
+      assert.equal(await page.locator('.site-nav').getByRole('link', { name: label, exact: true }).count(), 1);
     }
     await page.keyboard.press('Tab');
     assert.equal(await page.locator('.skip-link').evaluate(el => el === document.activeElement), true, file);
@@ -38,6 +38,14 @@ try {
       assert.equal(await page.locator('.ex-card').count(), 0);
       assert.equal(await page.locator('#all-examples').getAttribute('open'), null);
     }
+    assert.equal(await page.locator('.site-nav a[href*="github.com"]').count(), 0);
+    assert.equal(await page.locator('.site-footer').getByRole('link', { name: 'Source on GitHub ↗', exact: true }).getAttribute('href'), 'https://github.com/codelovesme/code');
+    const performance = page.locator('.site-nav').getByRole('link', { name: 'Performance', exact: true });
+    assert.equal(await performance.getAttribute('href'), file.startsWith('learn/') ? '../compare.html' : 'compare.html');
+    await performance.focus(); await page.keyboard.press('Enter');
+    await page.waitForURL(url('compare.html'), { waitUntil: 'networkidle' });
+    assert.equal(await page.locator('.site-nav [aria-current="page"]').count(), 1);
+    assert.equal(await page.locator('.site-nav [aria-current="page"]').innerText(), 'Performance');
     checks++;
   }
 

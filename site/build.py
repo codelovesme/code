@@ -207,7 +207,7 @@ def main() -> None:
             "See independent value updates, automatic reference counting and copy-on-write in a short runnable Code example.",
         ),
         "compare": (
-            "docs", "Code performance — native speed, cached runs and shared memory",
+            "performance", "Code performance — native speed, cached runs and shared memory",
             "Measured native runtime, cold and cached runs, and snapshot memory for public Code v2.23.0, with reproducible evidence.",
         ),
     }
@@ -229,7 +229,7 @@ def main() -> None:
             content = (site_dir / f"{filename}.html").read_text()
         output = layout.replace("__CONTENT__", content)
         nav = navigation
-        for key in ["home", "learn", "playground", "docs"]:
+        for key in ["home", "learn", "playground", "docs", "performance"]:
             nav = nav.replace(
                 f"__CURRENT_{key.upper()}__",
                 'aria-current="page"' if page == key else "",

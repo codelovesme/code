@@ -62,13 +62,13 @@ class SiteBuild(unittest.TestCase):
 
     def test_direct_pages_share_working_navigation(self):
         self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html', 'learn/first-program.html', 'learn/values.html', 'learn/messages.html', 'learn/small-program.html'})
-        expected = ['index.html', 'learn.html', 'playground.html', 'docs.html', 'https://github.com/codelovesme/code']
+        expected = ['index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html']
         for name, page in self.pages.items():
             prefix = '../' if name.startswith('learn/') else ''
             self.assertEqual(page.navigation, [prefix + href if not href.startswith('https:') else href for href in expected], name)
             self.assertEqual(len(page.ids), len(set(page.ids)), name)
             self.assertIn('main', page.ids)
-            current = 'learn.html' if name.startswith('learn/') else ('docs.html' if name in ('modules.html', 'execution.html', 'memory.html', 'compare.html') else name)
+            current = 'learn.html' if name.startswith('learn/') else ('docs.html' if name in ('modules.html', 'execution.html', 'memory.html') else name)
             self.assertEqual(page.current, [prefix + current], name)
 
     def test_local_links_and_assets_exist_at_github_pages_subpath(self):
