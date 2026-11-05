@@ -1,0 +1,3004 @@
+{
+  "status": "complete",
+  "source_revision": "a86e19df1a3347355176fa87d59cfc38b236cfb7",
+  "release": {
+    "tag": "v2.23.0",
+    "source": "e7436b70ba337f706a9761a9380dd49118818c71",
+    "launcher": {
+      "path": "/home/runner/work/_temp/algorithm-release/code-v2.23.0-x86_64-linux/code",
+      "sha256": "531adc3dbdf413f1f625ee7df2f2271cdfa3ee19f082c00ef4cf3ef49e1d698d",
+      "bytes": 558872
+    },
+    "driver": {
+      "path": "/home/runner/work/_temp/algorithm-release/code-v2.23.0-x86_64-linux/code-driver",
+      "sha256": "784519bd5dffe7ed8c448ad73c9c96c000c7a16bb45f4068d84b5324ac594363",
+      "bytes": 59478416
+    }
+  },
+  "environment": {
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "lscpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               AuthenticAMD\nModel name:                              AMD EPYC 9V74 80-Core Processor\nCPU family:                              25\nModel:                                   17\nThread(s) per core:                      2\nCore(s) per socket:                      2\nSocket(s):                               1\nStepping:                                1\nBogoMIPS:                                5192.27\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology tsc_reliable nonstop_tsc cpuid extd_apicid aperfmperf tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy svm cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves user_shstk avx512_bf16 clzero xsaveerptr rdpru arat npt nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold v_vmsave_vmload avx512vbmi umip avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq rdpid fsrm\nVirtualization:                          AMD-V\nHypervisor vendor:                       Microsoft\nVirtualization type:                     full\nL1d cache:                               64 KiB (2 instances)\nL1i cache:                               64 KiB (2 instances)\nL2 cache:                                2 MiB (2 instances)\nL3 cache:                                32 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Vulnerable: Safe RET, no microcode\nVulnerability Spec store bypass:         Vulnerable\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Vulnerable: No microcode\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Not affected\n",
+    "github_run_id": "42110102608",
+    "runner_image": "20261101.360.1",
+    "tools": {
+      "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+      "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+    },
+    "rust_verbose": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+    "load_before_preparation": "0.43 0.10 0.03 1/268 2133\n",
+    "os_release": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+    "tool_executables": {
+      "gcc": {
+        "path": "/usr/bin/x86_64-linux-gnu-gcc-13",
+        "sha256": "1b99826121ae6682a634e5efe09bd3e3df58ce58e0b28f849114ab5b89139c26",
+        "bytes": 1023032
+      },
+      "rustc": {
+        "path": "/home/runner/.cargo/bin/rustup",
+        "sha256": "5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4",
+        "bytes": 21139856
+      }
+    },
+    "actual_rustc": {
+      "path": "/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc",
+      "sha256": "b53b780f77f952062f8ca8a3b70aef2390b1e45ad91939be94afdc9543026853",
+      "bytes": 648536
+    },
+    "allowed_cpus": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "pinned_cpu": 0,
+    "pressure_before": "some avg10=2.86 avg60=1.48 avg300=0.37 total=1252179\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+    "pressure_after": "some avg10=2.25 avg60=1.45 avg300=0.37 total=1299496\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+  },
+  "protocol": {
+    "runs": 15,
+    "seed": 20261105,
+    "algorithms": "flat i/k/j matrix multiply; inclusive Eratosthenes; bottom-up stable merge sort",
+    "cases": [
+      [
+        "matrix",
+        64
+      ],
+      [
+        "matrix",
+        128
+      ],
+      [
+        "sieve",
+        100000
+      ],
+      [
+        "sieve",
+        1000000
+      ],
+      [
+        "merge",
+        16384
+      ],
+      [
+        "merge",
+        65536
+      ]
+    ],
+    "includes": "startup, input construction, algorithm, result checks and cleanup",
+    "rss": "Linux wait4 largest process resident peak; not live heap or allocation count",
+    "boundary": "separate fresh-host pilot; never merge with the old host report"
+  },
+  "sources": {
+    "benchmarks/compiled-algorithms/matrix.code": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-algorithms/matrix.code",
+      "sha256": "f780f9c28a61adc7d86d4d638073dcb0bc752763e5a7f6c99e15c6f24bdde70a",
+      "bytes": 956
+    },
+    "benchmarks/compiled-algorithms/matrix.c": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-algorithms/matrix.c",
+      "sha256": "dcbcbffa049e6b2400d64feeec39c8027820619c6324050c19bb31faa3d4a4d1",
+      "bytes": 887
+    },
+    "benchmarks/compiled-algorithms/matrix.rs": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-algorithms/matrix.rs",
+      "sha256": "2fa599079c3b0dd2b2f559a82212401e298bbccc7e44e3b3e8510abf02b70c29",
+      "bytes": 993
+    },
+    "benchmarks/compiled-algorithms/sieve.code": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-algorithms/sieve.code",
+      "sha256": "ed9975e96b0a445d7af3dce4f279ecb522a08e8430bedd8a21070c0c5eb8912e",
+      "bytes": 582
+    },
+    "benchmarks/compiled-algorithms/sieve.c": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-algorithms/sieve.c",
+      "sha256": "feccd057716f750d88d49443c86b6c2c541eaca96b6bb4eb7b1d9eee855a6ce9",
+      "bytes": 561
+    },
+    "benchmarks/compiled-algorithms/sieve.rs": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-algorithms/sieve.rs",
+      "sha256": "ebd4cdbb319bf28313a653692c8ca8a5a207a1e38dec96a97ed8cf6c27b83c97",
+      "bytes": 608
+    },
+    "benchmarks/compiled-algorithms/merge.code": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-algorithms/merge.code",
+      "sha256": "de7a6c13bf0dbfb2875a7ad611aeb93b8df84fcc2ec04a057e836df77ee44228",
+      "bytes": 1293
+    },
+    "benchmarks/compiled-algorithms/merge.c": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-algorithms/merge.c",
+      "sha256": "96334ab54df8e524983f07a5af1b1dcbf1b37a87a6a3382553179eb0d2430998",
+      "bytes": 1049
+    },
+    "benchmarks/compiled-algorithms/merge.rs": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-algorithms/merge.rs",
+      "sha256": "d231f1f30f77ccc6c11c54a851e61d7c3610f7905fe0f94f26561ca3900a2cf6",
+      "bytes": 1362
+    },
+    "benchmarks/compiled-algorithms/run.py": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-algorithms/run.py",
+      "sha256": "237862b832f0f375f90ea5eb0a4f55c3e3c6043bd52dbf693ffc0903ad0533a6",
+      "bytes": 9162
+    },
+    "benchmarks/website-evidence/run.py": {
+      "path": "/home/runner/work/code/code/benchmarks/website-evidence/run.py",
+      "sha256": "e5b17f8c79094472f83fc49862ab7c97a2cda3e3b5b3f35ea7dda3357090c587",
+      "bytes": 18859
+    },
+    "benchmarks/language-comparison/peak.c": {
+      "path": "/home/runner/work/code/code/benchmarks/language-comparison/peak.c",
+      "sha256": "59019e0946ae15f3b8f33b9c7507e504821050b1461d8bc0645d11ac744d1611",
+      "bytes": 1553
+    }
+  },
+  "builds": [
+    {
+      "workload": "matrix_64",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/matrix_64.code",
+        "sha256": "cbb84d9ca59dd1e6decce79faddea91a71a5693604ae2cc1210dfdd3fd70fde2",
+        "bytes": 950
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.23.0-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/matrix_64.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/matrix_64-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/matrix_64-Code-release",
+        "sha256": "e50ceff781b4f1b38f6a1dc80624bde5ea54c1ec4f7b0490d2c3a9866990432d",
+        "bytes": 102400
+      }
+    },
+    {
+      "workload": "matrix_64",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/matrix_64.c",
+        "sha256": "018b1ddaaf07780472579fdce8c09c4c6113e54dd0b7f0d91e5598c9a1c255c8",
+        "bytes": 881
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "/home/runner/work/_temp/algorithm-results/sources/matrix_64.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/matrix_64-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/matrix_64-C-O2",
+        "sha256": "6558dfe5e28b5125dfdf376adce1f9edbcd41d58b5c350ae38605dc3c232fadf",
+        "bytes": 16144
+      }
+    },
+    {
+      "workload": "matrix_64",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/matrix_64.rs",
+        "sha256": "3328d5d82d5f8cb3864954bfa616551477fdb0b65f182058fbac4974b4786e62",
+        "bytes": 987
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/matrix_64.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/matrix_64-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/matrix_64-Rust-O3",
+        "sha256": "4b0b11ca1e253fca4ec4af315a5e893a0a65d4c78ca3eb6fe3740daf77c44571",
+        "bytes": 4532376
+      }
+    },
+    {
+      "workload": "matrix_128",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/matrix_128.code",
+        "sha256": "8be8b20277bbf1dbf7549bf487b3c981bc6b8b48eb452d20a2a42082442e0b25",
+        "bytes": 951
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.23.0-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/matrix_128.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/matrix_128-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/matrix_128-Code-release",
+        "sha256": "b3135d876127d6b154e01e4ad0c563f06a0f84bd602e76e6a0c7d91b17845130",
+        "bytes": 102400
+      }
+    },
+    {
+      "workload": "matrix_128",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/matrix_128.c",
+        "sha256": "f41859b4c78234b28b17665b9413b63841e357f02b1b8b1589e320e75d5dc724",
+        "bytes": 882
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "/home/runner/work/_temp/algorithm-results/sources/matrix_128.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/matrix_128-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/matrix_128-C-O2",
+        "sha256": "7e6f1ba14b9e4104874dfc1c135881f7b7de301b36d6689ef25a22693c2b5852",
+        "bytes": 16144
+      }
+    },
+    {
+      "workload": "matrix_128",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/matrix_128.rs",
+        "sha256": "fdfe8d4b78ec17f34c02c6d1c37133b5d4baf5d3acbeace8035ababf1494560a",
+        "bytes": 988
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/matrix_128.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/matrix_128-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/matrix_128-Rust-O3",
+        "sha256": "1bdf25bf088bbf027cab512c8ebcb7e64704761d7613361765f55a39b3798bd5",
+        "bytes": 4533536
+      }
+    },
+    {
+      "workload": "sieve_100000",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/sieve_100000.code",
+        "sha256": "cbb3e5061bbb444f4fdfa09e3cc3ae6fdb0bb696ef50c26a491afd6159bc030c",
+        "bytes": 577
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.23.0-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/sieve_100000.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/sieve_100000-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/sieve_100000-Code-release",
+        "sha256": "28d0a1626e271d4707e8150355867432605e18a3e9932b1dcb770e719959d530",
+        "bytes": 102152
+      }
+    },
+    {
+      "workload": "sieve_100000",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/sieve_100000.c",
+        "sha256": "65793d55092c0ac204a251a94406a5c4c4a64c7e8ce9490d82234350a900de3b",
+        "bytes": 556
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "/home/runner/work/_temp/algorithm-results/sources/sieve_100000.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/sieve_100000-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/sieve_100000-C-O2",
+        "sha256": "1f4df02ec8d632e6e5cb49c4305237b91fb65a01d8eac6de63aa9e3ce3a99ac9",
+        "bytes": 16152
+      }
+    },
+    {
+      "workload": "sieve_100000",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/sieve_100000.rs",
+        "sha256": "9326257bc255f14d7b7fdf3b34b880b1befe6258b7373a4fdc8dd6ff3514da38",
+        "bytes": 603
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/sieve_100000.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/sieve_100000-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/sieve_100000-Rust-O3",
+        "sha256": "f76f266545d10a058ec768218bdbbe66239f14baed055751d859015cf83803d7",
+        "bytes": 4531488
+      }
+    },
+    {
+      "workload": "sieve_1000000",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/sieve_1000000.code",
+        "sha256": "c4a255629e1b63effa08c6e017e9d9065e59a0253ec2396033915550bc7315e8",
+        "bytes": 581
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.23.0-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/sieve_1000000.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/sieve_1000000-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/sieve_1000000-Code-release",
+        "sha256": "10f2f1e0d6825d7f3cd64249a041309beea9ce679c6fc074f26911fc93519626",
+        "bytes": 102152
+      }
+    },
+    {
+      "workload": "sieve_1000000",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/sieve_1000000.c",
+        "sha256": "40dcaf702ca251f6e7bb5f2a3f1f604176f1bf06bbc308c89754bb981c997b4a",
+        "bytes": 560
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "/home/runner/work/_temp/algorithm-results/sources/sieve_1000000.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/sieve_1000000-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/sieve_1000000-C-O2",
+        "sha256": "6280a5055ea60174d045a1470d373b290fdbaa3856e06e256292a0b3dd6adfed",
+        "bytes": 16152
+      }
+    },
+    {
+      "workload": "sieve_1000000",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/sieve_1000000.rs",
+        "sha256": "890808b7be32803ed6e4a96f995ead3d38232013873df2c1a692c6f4a7f645da",
+        "bytes": 607
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/sieve_1000000.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/sieve_1000000-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/sieve_1000000-Rust-O3",
+        "sha256": "0bf4598895423b38b976f6b2177fa7bf279b559093f50e08b140dc02aa39bd78",
+        "bytes": 4531000
+      }
+    },
+    {
+      "workload": "merge_16384",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/merge_16384.code",
+        "sha256": "7ad420109abf313eb5ae7ea13cd410eaad809fa1e07feaebe3f82b9329cfe07c",
+        "bytes": 1290
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.23.0-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/merge_16384.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/merge_16384-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/merge_16384-Code-release",
+        "sha256": "2ba7d3bc21f238a798b237a2ae10b12c299071d5e0320c923aa02b94b584dd8c",
+        "bytes": 102360
+      }
+    },
+    {
+      "workload": "merge_16384",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/merge_16384.c",
+        "sha256": "7df0573a315ff0177c6fab8b9b7b09a91ca02d6a1bcc647235ce3af0284e9111",
+        "bytes": 1046
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "/home/runner/work/_temp/algorithm-results/sources/merge_16384.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/merge_16384-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/merge_16384-C-O2",
+        "sha256": "474429224a1199f2b6aa5359596e02a46bfa854139c54063c97a0d65a0181a70",
+        "bytes": 16152
+      }
+    },
+    {
+      "workload": "merge_16384",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/merge_16384.rs",
+        "sha256": "0bd6cfcbb9410574eaafc068c918e0b47eba275d88151a960a16f4f4e9964dcc",
+        "bytes": 1359
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/merge_16384.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/merge_16384-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/merge_16384-Rust-O3",
+        "sha256": "da1a688895253d2a8a6486b911e597446fec4d57df1b1deac1205fbee8fb82cf",
+        "bytes": 4560216
+      }
+    },
+    {
+      "workload": "merge_65536",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/merge_65536.code",
+        "sha256": "fbdb4d94e79c8b10f4097ff9186da9d1e9cead1f8d94210ce288ff9316524979",
+        "bytes": 1290
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.23.0-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/merge_65536.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/merge_65536-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/merge_65536-Code-release",
+        "sha256": "75e987855d594c29972ab3f5e32a79f74e3485edc3ccc9aa634039d5f7903b73",
+        "bytes": 102360
+      }
+    },
+    {
+      "workload": "merge_65536",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/merge_65536.c",
+        "sha256": "1c9fb1cb6909ceab3378ec924c3fa76848429d91311f1627aa2552e1974fa2e4",
+        "bytes": 1046
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "/home/runner/work/_temp/algorithm-results/sources/merge_65536.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/merge_65536-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/merge_65536-C-O2",
+        "sha256": "e06406b4eb9c9f5ad3afa720454913e87617a22ecbace7a659ecc69dbddf8678",
+        "bytes": 16152
+      }
+    },
+    {
+      "workload": "merge_65536",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/merge_65536.rs",
+        "sha256": "1c93203f6820219742cfc2980878fe2ad96d9cd1bdb3f36d7e3a3321db7deb6a",
+        "bytes": 1359
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/merge_65536.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/merge_65536-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/merge_65536-Rust-O3",
+        "sha256": "c930a3aa776f7c70cb3af238fb920c7530fb86a5d93513768ac1a2e02df4c0b8",
+        "bytes": 4560216
+      }
+    }
+  ],
+  "samples": [
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.001118699,
+      "peak_rss_kib": 2336
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.012970403,
+      "peak_rss_kib": 3612
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.001677413,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.003493042,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.000599905,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.000919582,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.000758842,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.000735417,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.002757013,
+      "peak_rss_kib": 2968
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.001678604,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.00106579,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.000772473,
+      "peak_rss_kib": 2220
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.002759507,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.045880127,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.005263343,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.008430299,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.002281054,
+      "peak_rss_kib": 2968
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.001014353,
+      "peak_rss_kib": 1572
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.001109936,
+      "peak_rss_kib": 2332
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.002321163,
+      "peak_rss_kib": 2960
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.003714022,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.001723272,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.008515025,
+      "peak_rss_kib": 2356
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.001054313,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.00483217,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.001639466,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.002731576,
+      "peak_rss_kib": 2876
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.000779383,
+      "peak_rss_kib": 2180
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.045775501,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.00109219,
+      "peak_rss_kib": 2268
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.013060998,
+      "peak_rss_kib": 3616
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.00077066,
+      "peak_rss_kib": 1572
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.000741466,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.000592764,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.002809092,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.000926072,
+      "peak_rss_kib": 2144
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.01298846,
+      "peak_rss_kib": 3616
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.001064949,
+      "peak_rss_kib": 2380
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.001090948,
+      "peak_rss_kib": 2364
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.000721907,
+      "peak_rss_kib": 2152
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.001014433,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.004856907,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.008472552,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.002793067,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.001701198,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.000741116,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.045888589,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.001641349,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.000923428,
+      "peak_rss_kib": 2144
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.002729282,
+      "peak_rss_kib": 2980
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.003453122,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.000563862,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.00077744,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.002339541,
+      "peak_rss_kib": 2976
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.013353334,
+      "peak_rss_kib": 3612
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.001079371,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.002795742,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.001110827,
+      "peak_rss_kib": 2472
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.000748387,
+      "peak_rss_kib": 2240
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.003487504,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.004824749,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.000590041,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.000775477,
+      "peak_rss_kib": 1572
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.001685805,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.001109516,
+      "peak_rss_kib": 2240
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.000906983,
+      "peak_rss_kib": 2232
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.045708501,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.002809102,
+      "peak_rss_kib": 2912
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.00173587,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.002287423,
+      "peak_rss_kib": 2968
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.008483839,
+      "peak_rss_kib": 2356
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.000698723,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.012986697,
+      "peak_rss_kib": 3612
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.000775918,
+      "peak_rss_kib": 2156
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.00074375,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.002241875,
+      "peak_rss_kib": 3028
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.000781996,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.003438861,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.001672666,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.008423949,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.000550361,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.002695973,
+      "peak_rss_kib": 2896
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.004791659,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.001023387,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.002784184,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.046318401,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.001175805,
+      "peak_rss_kib": 2364
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.00171633,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.000891881,
+      "peak_rss_kib": 2252
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.001045,
+      "peak_rss_kib": 2320
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.002746939,
+      "peak_rss_kib": 2976
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.001631143,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.045296035,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.000738021,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.008601985,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.00347151,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.002746128,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.012902842,
+      "peak_rss_kib": 3612
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.000767165,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.000593005,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.001666196,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.001014483,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.004819872,
+      "peak_rss_kib": 2968
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.00230558,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.001085249,
+      "peak_rss_kib": 2316
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.001050087,
+      "peak_rss_kib": 2396
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.000875396,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.000741376,
+      "peak_rss_kib": 2256
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.001020483,
+      "peak_rss_kib": 2244
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.045445057,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.002356636,
+      "peak_rss_kib": 3052
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.000719955,
+      "peak_rss_kib": 2180
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.001019591,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.000892842,
+      "peak_rss_kib": 2232
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.001079461,
+      "peak_rss_kib": 2348
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.001712956,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.000599555,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.004848745,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.000720174,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.013537009,
+      "peak_rss_kib": 3608
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.002784085,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.003421706,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.001593037,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.008408136,
+      "peak_rss_kib": 2356
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.002707329,
+      "peak_rss_kib": 2904
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.000780986,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.000592084,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.002299391,
+      "peak_rss_kib": 2960
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.001618545,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.001030517,
+      "peak_rss_kib": 2268
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.001661479,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.000715347,
+      "peak_rss_kib": 2152
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.002681901,
+      "peak_rss_kib": 2876
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.012946788,
+      "peak_rss_kib": 3616
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.008471691,
+      "peak_rss_kib": 2356
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.003447114,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.00481185,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.00071695,
+      "peak_rss_kib": 1504
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.002735652,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.001089245,
+      "peak_rss_kib": 2448
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.00103218,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.000767836,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.000891219,
+      "peak_rss_kib": 2184
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.045494441,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.00109923,
+      "peak_rss_kib": 2228
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.004850357,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.008453102,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.000765522,
+      "peak_rss_kib": 2240
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.001028975,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.000589419,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.002325329,
+      "peak_rss_kib": 2964
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.001673628,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.001059251,
+      "peak_rss_kib": 2336
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.003462226,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.002696874,
+      "peak_rss_kib": 2980
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.000889377,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.000689219,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.002764074,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.012967578,
+      "peak_rss_kib": 3616
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.04503154,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.00167595,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.000781275,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.0130486,
+      "peak_rss_kib": 3612
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.000824861,
+      "peak_rss_kib": 2152
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.002719568,
+      "peak_rss_kib": 2892
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.000895046,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.001046551,
+      "peak_rss_kib": 2396
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.00069734,
+      "peak_rss_kib": 1504
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.004799171,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.001700417,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.003479411,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.000756589,
+      "peak_rss_kib": 1572
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.001118028,
+      "peak_rss_kib": 2472
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.002773067,
+      "peak_rss_kib": 2212
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.008448205,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.002286751,
+      "peak_rss_kib": 2940
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.001578145,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.000559094,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.001023397,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.045549394,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.001097137,
+      "peak_rss_kib": 2304
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.001032551,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.001656501,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.013007929,
+      "peak_rss_kib": 3612
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.002752087,
+      "peak_rss_kib": 2896
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.004797388,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.002276196,
+      "peak_rss_kib": 2960
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.000756418,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.045998603,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.001146541,
+      "peak_rss_kib": 2316
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.000739674,
+      "peak_rss_kib": 2212
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.008472182,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.000714166,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.000898331,
+      "peak_rss_kib": 2196
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.001710141,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.003463007,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.000557762,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.002769232,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.00058982,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.001088394,
+      "peak_rss_kib": 2348
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.002728972,
+      "peak_rss_kib": 2868
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.004844499,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.001688179,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.002742261,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.008473573,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.002344569,
+      "peak_rss_kib": 2976
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.000738321,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.013035731,
+      "peak_rss_kib": 3612
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.000798682,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.003464078,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.050165451,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.001064919,
+      "peak_rss_kib": 1572
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.001623422,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.000905721,
+      "peak_rss_kib": 2248
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.000747535,
+      "peak_rss_kib": 2228
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.001042526,
+      "peak_rss_kib": 2224
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.008425832,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.001694959,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.002787249,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.001083056,
+      "peak_rss_kib": 2424
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.045481091,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.000812583,
+      "peak_rss_kib": 2152
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.000565954,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.013104603,
+      "peak_rss_kib": 3612
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.004767854,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.001636452,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.00106563,
+      "peak_rss_kib": 2464
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.002268235,
+      "peak_rss_kib": 2984
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.000761396,
+      "peak_rss_kib": 1504
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.000693414,
+      "peak_rss_kib": 1504
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.003462236,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.001030378,
+      "peak_rss_kib": 2180
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.001043758,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.002768711,
+      "peak_rss_kib": 2916
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.002762713,
+      "peak_rss_kib": 2980
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.000601968,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.001687588,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.001718073,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.000699975,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.001013051,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.013054018,
+      "peak_rss_kib": 3612
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.000792683,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.000929096,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.002788511,
+      "peak_rss_kib": 2212
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.002322875,
+      "peak_rss_kib": 3064
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.000771871,
+      "peak_rss_kib": 2256
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.001060362,
+      "peak_rss_kib": 2400
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.003619531,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.008582266,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.004866031,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.001137678,
+      "peak_rss_kib": 2364
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.045697014,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.00349867,
+      "peak_rss_kib": 2288
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.00165538,
+      "peak_rss_kib": 2148
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.002303126,
+      "peak_rss_kib": 2960
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.002732708,
+      "peak_rss_kib": 2916
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.001024118,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.001069005,
+      "peak_rss_kib": 2260
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.012993688,
+      "peak_rss_kib": 3616
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.000768617,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.001720387,
+      "peak_rss_kib": 1900
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.000931319,
+      "peak_rss_kib": 2200
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.000561108,
+      "peak_rss_kib": 1512
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.0010788,
+      "peak_rss_kib": 2364
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.000731021,
+      "peak_rss_kib": 1508
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.000735367,
+      "peak_rss_kib": 2152
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.045409524,
+      "peak_rss_kib": 17052
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.002860007,
+      "peak_rss_kib": 2276
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.00485854,
+      "peak_rss_kib": 2972
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.008448866,
+      "peak_rss_kib": 2352
+    }
+  ],
+  "summary": [
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.001024118,
+      "min_seconds": 0.001013051,
+      "max_seconds": 0.001079371,
+      "mad_seconds": 9.635000000000025e-06,
+      "median_peak_rss_kib": 1508,
+      "min_peak_rss_kib": 1508,
+      "max_peak_rss_kib": 1572,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.008471691,
+      "min_seconds": 0.008408136,
+      "max_seconds": 0.008601985,
+      "mad_seconds": 2.3485999999999646e-05,
+      "median_peak_rss_kib": 2352,
+      "min_peak_rss_kib": 2352,
+      "max_peak_rss_kib": 2356,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "matrix_128",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.001090948,
+      "min_seconds": 0.001059251,
+      "max_seconds": 0.001175805,
+      "mad_seconds": 1.8987999999999948e-05,
+      "median_peak_rss_kib": 2364,
+      "min_peak_rss_kib": 2316,
+      "max_peak_rss_kib": 2472,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.00058982,
+      "min_seconds": 0.000550361,
+      "max_seconds": 0.000601968,
+      "mad_seconds": 1.0084999999999955e-05,
+      "median_peak_rss_kib": 1512,
+      "min_peak_rss_kib": 1508,
+      "max_peak_rss_kib": 1512,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.001700417,
+      "min_seconds": 0.001661479,
+      "max_seconds": 0.00173587,
+      "mad_seconds": 1.9970000000000014e-05,
+      "median_peak_rss_kib": 1904,
+      "min_peak_rss_kib": 1900,
+      "max_peak_rss_kib": 1904,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "matrix_64",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.000748387,
+      "min_seconds": 0.000715347,
+      "max_seconds": 0.000824861,
+      "mad_seconds": 2.4085999999999986e-05,
+      "median_peak_rss_kib": 2180,
+      "min_peak_rss_kib": 2152,
+      "max_peak_rss_kib": 2256,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.000768617,
+      "min_seconds": 0.00074375,
+      "max_seconds": 0.000798682,
+      "mad_seconds": 9.774999999999953e-06,
+      "median_peak_rss_kib": 1508,
+      "min_peak_rss_kib": 1504,
+      "max_peak_rss_kib": 1572,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.003464078,
+      "min_seconds": 0.003421706,
+      "max_seconds": 0.003714022,
+      "mad_seconds": 1.696400000000039e-05,
+      "median_peak_rss_kib": 2288,
+      "min_peak_rss_kib": 2288,
+      "max_peak_rss_kib": 2288,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "merge_16384",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.001064949,
+      "min_seconds": 0.001020483,
+      "max_seconds": 0.001109516,
+      "mad_seconds": 1.994900000000001e-05,
+      "median_peak_rss_kib": 2276,
+      "min_peak_rss_kib": 2224,
+      "max_peak_rss_kib": 2464,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.001641349,
+      "min_seconds": 0.001578145,
+      "max_seconds": 0.00171633,
+      "mad_seconds": 2.2803999999999967e-05,
+      "median_peak_rss_kib": 2148,
+      "min_peak_rss_kib": 2148,
+      "max_peak_rss_kib": 2148,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.013007929,
+      "min_seconds": 0.012902842,
+      "max_seconds": 0.013537009,
+      "mad_seconds": 4.0671000000000804e-05,
+      "median_peak_rss_kib": 3612,
+      "min_peak_rss_kib": 3608,
+      "max_peak_rss_kib": 3616,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "merge_65536",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.002303126,
+      "min_seconds": 0.002241875,
+      "max_seconds": 0.002356636,
+      "mad_seconds": 2.207200000000015e-05,
+      "median_peak_rss_kib": 2968,
+      "min_peak_rss_kib": 2940,
+      "max_peak_rss_kib": 3064,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.000720174,
+      "min_seconds": 0.000689219,
+      "max_seconds": 0.000781996,
+      "mad_seconds": 2.0198999999999933e-05,
+      "median_peak_rss_kib": 1508,
+      "min_peak_rss_kib": 1504,
+      "max_peak_rss_kib": 1508,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.00483217,
+      "min_seconds": 0.004767854,
+      "max_seconds": 0.005263343,
+      "mad_seconds": 2.4736999999999502e-05,
+      "median_peak_rss_kib": 2972,
+      "min_peak_rss_kib": 2968,
+      "max_peak_rss_kib": 2972,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "sieve_100000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.000905721,
+      "min_seconds": 0.000875396,
+      "max_seconds": 0.001030378,
+      "mad_seconds": 1.4502000000000004e-05,
+      "median_peak_rss_kib": 2180,
+      "min_peak_rss_kib": 2144,
+      "max_peak_rss_kib": 2252,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.002784085,
+      "min_seconds": 0.002735652,
+      "max_seconds": 0.002860007,
+      "mad_seconds": 1.4853000000000002e-05,
+      "median_peak_rss_kib": 2276,
+      "min_peak_rss_kib": 2212,
+      "max_peak_rss_kib": 2276,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.045697014,
+      "min_seconds": 0.04503154,
+      "max_seconds": 0.050165451,
+      "mad_seconds": 0.0002159229999999998,
+      "median_peak_rss_kib": 17052,
+      "min_peak_rss_kib": 17052,
+      "max_peak_rss_kib": 17052,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "sieve_1000000",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.002731576,
+      "min_seconds": 0.002681901,
+      "max_seconds": 0.002809102,
+      "mad_seconds": 2.424699999999981e-05,
+      "median_peak_rss_kib": 2912,
+      "min_peak_rss_kib": 2868,
+      "max_peak_rss_kib": 2980,
+      "zero_rss_samples": 0
+    }
+  ],
+  "wrapper": {
+    "path": "/home/runner/work/_temp/algorithm-results/binaries/peak",
+    "sha256": "25a267817da30174783afaab1f7500d49fedd86d3310de4b86aa08a0d4f8accf",
+    "bytes": 16408
+  },
+  "sampling_started": "2026-11-05T21:10:05+00:00",
+  "sampling_finished": "2026-11-05T21:10:08+00:00"
+}

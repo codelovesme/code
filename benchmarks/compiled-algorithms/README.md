@@ -71,3 +71,17 @@ process-tree footprint. Small programs can sit near startup/accounting floors.
 Exact source/binary/tool hashes, versions, runner image, CPU/affinity/pressure
 and timing boundaries are recorded. Use `verify.py RESULTS [--artifacts DIR]`
 to independently recompute every summary and verify downloaded artifacts.
+
+
+## Recorded outcome
+
+[The complete results](RESULTS.md) retain all 270 samples from hosted run
+42110102608. Code is slower than both C/Rust in all six fixed cases. Process
+RSS is not a consistent Code advantage. These are complete-program results,
+not a profiler attribution or general language ranking. The website remains
+unchanged. Use the independent audit:
+
+```
+python3 benchmarks/compiled-algorithms/verify.py \
+  benchmarks/compiled-algorithms/results/2026-11-05-v2.23.0
+```
