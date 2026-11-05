@@ -43,7 +43,7 @@
   </details>
   <details class="module-details"><summary>The ABI slot and total memory</summary>
     <p>The current native module ABI (version 2) uses a <strong>16-byte <code>CodeValue</code> slot</strong>:</p>
-    <div class="memory-slot" aria-label="16-byte ABI value slot"><span>Type + storage flag<br><b>8 bytes</b></span><span>Value or pointer<br><b>8 bytes</b></span></div>
+    <div class="memory-slot" role="img" aria-label="16-byte ABI value slot: 8 bytes for type and storage flag, 8 bytes for value or pointer."><span>Type + storage flag<br><b>8 bytes</b></span><span>Value or pointer<br><b>8 bytes</b></span></div>
     <p>Container elements, keys, text, allocation headers, stacks, the interpreter and the host add their own costs. This slot size is not total memory per variable or application, and it is not the Rust interpreter’s <code>Value</code> layout. The compiler can also keep proven scalar values unboxed.</p>
     <p><a href="https://github.com/codelovesme/code/blob/v2.23.0/src/code_abi.h">Versioned ABI definition ↗</a> · <a href="compare.html#memory">Read the scope of memory measurements →</a></p>
   </details>

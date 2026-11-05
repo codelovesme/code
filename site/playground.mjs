@@ -75,7 +75,7 @@
       return;
     }
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); doRun(); return; }
-    if (e.key === "Tab") {
+    if (e.key === "Tab" && !e.shiftKey) {
       e.preventDefault();
       const s = source.selectionStart, en = source.selectionEnd;
       source.value = source.value.slice(0, s) + "    " + source.value.slice(en);
@@ -146,6 +146,8 @@
     ]
       .filter((part) => part.length)
       .join("\n");
+    copyOutBtn.disabled = false;
+    document.getElementById("result-copy-status").textContent = "";
     output.classList.toggle("error", isError);
     status.textContent = isError ? "error" : `ran in ${ms} ms`;
     status.classList.toggle("err", isError);
@@ -183,14 +185,16 @@
     const text = output.textContent;
     try {
       await navigator.clipboard.writeText(text);
-      flash(copyOutBtn, "copied");
-    } catch {}
+      document.getElementById("result-copy-status").textContent = "Result copied.";
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents(output);
+      const selection = window.getSelection();
+      selection.removeAllRanges(); selection.addRange(range);
+      output.focus();
+      document.getElementById("result-copy-status").textContent = "Result selected. Use your device’s copy command.";
+    }
   });
-  function flash(btn, label) {
-    const old = btn.innerHTML;
-    btn.textContent = label;
-    setTimeout(() => { btn.innerHTML = old; }, 1200);
-  }
 
   /* ---------- featured examples ---------- */
   const featuredEl = document.getElementById("featured-examples");
@@ -231,6 +235,8 @@
   const searchEl = document.getElementById("example-search");
   const previous = document.getElementById("previous-examples");
   const next = document.getElementById("next-examples");
+  searchEl.disabled = false;
+  document.getElementById("collection-static-note").hidden = true;
   const PAGE_SIZE = 12;
   let category = "all", pageIndex = 0;
   function renderGallery() {
@@ -306,6 +312,9 @@
     } catch {}
     return byName[defaultExample].code;
   }
+  document.getElementById("playground-static-note").hidden = true;
+  source.readOnly = false;
+  source.classList.add("highlighted");
   // When a restored draft happens to be an unchanged example, remember it,
   // so Reset ("restore the current example") means what its label says.
   const bootSource = initialSource();
@@ -315,6 +324,8 @@
   syncEditor();
   updateExampleContext();
 
+  status.textContent = "loading…";
+  output.textContent = "Loading the browser interpreter…";
   async function loadEngine() {
     try {
       const engine = await import("./pkg/code_wasm.js");
@@ -331,6 +342,7 @@
       status.classList.add("err");
       output.textContent = "error: Could not load the browser interpreter. Check your connection and reload the page.\n" + error;
       output.classList.add("error");
+      copyOutBtn.disabled = false;
     }
   }
   loadEngine();

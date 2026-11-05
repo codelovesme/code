@@ -97,7 +97,7 @@ def render_lesson(site_dir, plan, lesson, previews, assets, examples):
         panel = (f'<figure class="module-panel lesson-example"><figcaption>{html.escape(step["title"])}</figcaption>'
                  f'<pre class="codeblock" id="{code_id}" tabindex="0">{html.escape(example["code"].strip())}</pre>'
                  f'<div class="lesson-example-actions"><button class="tool-btn" data-copy="{code_id}" hidden>Copy code</button>'
-                 f'<a class="btn btn-primary" aria-label="Run example: {html.escape(step["title"])}" '
+                 f'<a class="btn btn-primary" aria-label="Run this example → {html.escape(step["title"])}" '
                  f'href="__ROOT__playground.html?example={step["example"]}#playground">Run this example →</a></div>'
                  '<p role="status"></p></figure>'
                  f'<div class="lesson-result"><span>Expected output</span><pre>{html.escape(step["output"])}</pre></div>')

@@ -468,3 +468,50 @@ contain no personal information. The website checker verifies exact image bytes,
 size/dimensions, links, responsive layout at four widths, keyboard/no-JS build
 details and absence of application/engine requests. It saves local review
 screenshots under `/var/tmp/code-223-showcase-{390,1440}.png`.
+
+## Mobile and accessibility review (224)
+
+The shared theme now uses readable secondary text for status, pane labels,
+comments and installation notes. Inline prose/caption links are underlined.
+Lesson run-link names contain their visible wording; expanded course outlines
+have a level-two heading before their lesson headings. Memory's ABI diagram has
+an image role and a name describing both halves. Long headings and course cards
+wrap when text is enlarged; code previews stay inside their cards.
+
+On phones the editor/search controls use 16 px type, the editor is shorter and
+static code is larger. Touch controls/nav links provide 44 px height, and touch
+anchor offsets account for wrapped sticky navigation. The first example's
+expected result is visible before editing; View result jumps directly to actual
+output. Shift+Tab and Escape leave the editor; ordinary Tab still indents.
+Output is a named focusable region. Result copying has live feedback and a
+selection/manual-copy fallback, without putting feedback inside program output.
+
+Progressive markup contains the canonical greeting and expected result before
+scripts load. It is read-only with disabled execution/search controls and a
+visible explanation; boot enables editing and hides the explanation. The same
+fallback works when script execution is blocked (not just native noscript).
+Pending/failed WASM keeps source readable and Run/auto-run disabled. Forced
+colors show native textarea text over a system background and hide the syntax
+layer. Reduced motion retains static content and stops decorative animation.
+
+The audit uses external development tools only; no dependency ships on the
+site. Install axe-core 4.14.0 in a temporary directory and use existing Playwright:
+
+```sh
+npm install --prefix /var/tmp/code-site-a11y --no-audit --no-fund axe-core@4.14.0
+AXE_PATH=/var/tmp/code-site-a11y/node_modules/axe-core/axe.min.js \
+  PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
+  node site/check_accessibility.mjs http://127.0.0.1:8955/code/
+```
+
+The checker audits all 13 pages at four widths, opens details, runs 26 axe scans
+on phone/desktop, visits all 146 phone gallery cards, tests 200% text, keyboard,
+copy fallback, no-JS, forced colors and touch. It saves the full automated
+review list to `/var/tmp/code-224-accessibility.json` and Home/Learn/lesson/
+Playground review screenshots under `/var/tmp/code-224-{page}-{width}.png`.
+Axe's uncertain contrast items on gradients/composited backgrounds are retained
+for visual review; a zero-violation scan is not a conformance certification or
+proof of every assistive-technology/browser combination. Checks here use real
+Chromium keyboard/DOM access and visual review, not a spoken screen-reader test.
+`check_playground.mjs` additionally gates engine download to check slow loading,
+then aborts WASM and JS engine requests separately to check failure states.

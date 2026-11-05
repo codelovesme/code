@@ -30,7 +30,7 @@ try {
     await panel.locator('[role="status"]').filter({ hasText: 'Code copied' }).waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), code.trim());
     staticPage = false;
-    await panel.getByRole('link', { name: `Run example: ${step.title}`, exact: true }).click();
+    await panel.getByRole('link', { name: `Run this example → ${step.title}`, exact: true }).click();
     await page.locator('#run:enabled').waitFor();
     assert.equal(await page.locator('#output').textContent(), step.output);
     assert.equal(await page.locator('#status').evaluate(el => el.classList.contains('err')), false);

@@ -8,7 +8,7 @@
     --border-2: rgba(255, 255, 255, 0.16);
     --text: #e8ecf4;
     --muted: #9aa3b5;
-    --muted-2: #6b7385;
+    --muted-2: #9aa3b5;
     --teal: #5eead4;
     --violet: #a78bfa;
     --pink: #f472b6;
@@ -214,10 +214,11 @@
   .editor-wrap pre { pointer-events: none; color: var(--text); z-index: 1; overflow: hidden; }
   .editor-wrap pre code { font: inherit; }
   .editor-wrap textarea {
-    z-index: 2; color: transparent; caret-color: var(--teal);
+    z-index: 2; color: var(--text); caret-color: var(--teal);
     resize: none; outline: none;
   }
-  .editor-wrap textarea::selection { background: rgba(167,139,250,0.3); color: transparent; }
+  .editor-wrap textarea.highlighted { color: transparent; }
+  .editor-wrap textarea.highlighted::selection { background: rgba(167,139,250,0.3); color: transparent; }
 
   pre#output {
     flex: 1; margin: 0; padding: 0.95rem 1.05rem;
@@ -416,7 +417,7 @@
   .home-hero .tagline { font-size: .95rem; margin-bottom: 1rem; }
   .home-hero .btn { font-size: .9rem; padding: .65rem 1rem; }
   .home-demo .demo-body { padding: 1rem; }
-  .home-demo .demo-code { font-size: .76rem; }
+  .home-demo .demo-code { font-size: .85rem; }
   .home-demo-caption { padding: .75rem 1rem; }
   .home-demo-caption a { margin-left: 0; }
   .home-capabilities { padding-inline: 1rem; }
@@ -645,3 +646,43 @@
   .home-apps-heading, .home-app-grid { grid-template-columns: 1fr; }
   .home-app-body { padding: 1.1rem; }
 }
+
+
+/* Readable controls and text, including native and forced-color use. */
+p a, li a, figcaption a { text-decoration: underline; text-underline-offset: .2em; }
+pre.codeblock { font-size: .875rem; }
+summary { scroll-margin-top: 110px; }
+summary:focus-visible { outline: 2px solid var(--teal); outline-offset: 4px; }
+.pg-result-copy-status:empty { display: none; }
+.pg-result-copy-status { margin: 0; padding: .6rem 1rem; font-size: .85rem; color: var(--muted); }
+.pg-library .ex-code { min-width: 0; max-width: 100%; font-size: .8rem; }
+.pg-library .ex-top { min-width: 0; }
+.pg-feature, .tool-btn, .pane-head .mini, .chip { min-height: 36px; }
+@media (pointer: coarse) {
+  .pg-feature, .tool-btn, .pane-head .mini, .chip, .site-nav .nav-links a, .switch { min-height: 44px; align-items: center; }
+}
+@media (max-width: 560px) {
+  .playground-intro { padding-top: 1rem; }
+  .playground-intro h1 { font-size: 2rem; }
+  .pg-featured { margin-bottom: .8rem; }
+  .pg-workspace .editor-wrap { height: 200px; }
+  .editor-wrap pre, .editor-wrap textarea, .pg-search input { font-size: 16px; }
+  .lesson-content .codeblock { font-size: .875rem; }
+}
+@media (forced-colors: active) {
+  .editor-wrap textarea.highlighted { color: CanvasText; caret-color: CanvasText; background: Canvas; }
+  .editor-wrap textarea.highlighted::selection { color: HighlightText; background: Highlight; }
+  .editor-wrap pre { visibility: hidden; }
+  .switch .track { border-color: ButtonText; }
+  .switch .track::after { background: ButtonText; }
+  .switch input:checked + .track::after { background: Highlight; }
+  .overline { background: none; color: CanvasText; }
+}
+
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+/* Enlarged text must wrap within the same cards and reading column. */
+h1, h2, h3, p, .learning-path li > div { overflow-wrap: anywhere; }
+.learning-path li > div { min-width: 0; }
+.lesson-example-actions .btn { max-width: 100%; overflow-wrap: anywhere; }
+
+@media (pointer: coarse) { :target, summary { scroll-margin-top: 140px; } }
