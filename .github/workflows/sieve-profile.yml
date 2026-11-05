@@ -28,10 +28,10 @@ jobs:
           set -euo pipefail
           git worktree add --detach "$RUNNER_TEMP/bool-before-source" e742d5ba4c59dc4b88c4a90351cb72d8ae31ca4f
           mkdir -p "$RUNNER_TEMP/bool-compilers"
-          CARGO_TARGET_DIR="$RUNNER_TEMP/bool-build" cargo build --manifest-path "$RUNNER_TEMP/bool-before-source/Cargo.toml" --workspace --release
-          cp "$RUNNER_TEMP/bool-build/release/code" "$RUNNER_TEMP/bool-compilers/before"
-          CARGO_TARGET_DIR="$RUNNER_TEMP/bool-build" cargo build --workspace --release
-          cp "$RUNNER_TEMP/bool-build/release/code" "$RUNNER_TEMP/bool-compilers/after"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/bool-build-before" cargo build --manifest-path "$RUNNER_TEMP/bool-before-source/Cargo.toml" --workspace --release
+          cp "$RUNNER_TEMP/bool-build-before/release/code" "$RUNNER_TEMP/bool-compilers/before"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/bool-build-after" cargo build --workspace --release
+          cp "$RUNNER_TEMP/bool-build-after/release/code" "$RUNNER_TEMP/bool-compilers/after"
       - name: Validate and sample all before/after entries serially
         run: |
           PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/sieve-profile/run.py --before "$RUNNER_TEMP/bool-compilers/before" --after "$RUNNER_TEMP/bool-compilers/after" --output-dir "$RUNNER_TEMP/bool-results" --runs 15
