@@ -743,16 +743,19 @@
       }
     }
 
+    // What went goes first. Left in place while the rest is put in order,
+    // a child that went makes every kept child after it move — and a moved
+    // node loses focus, so a dialog after a notice that went lost its caret.
+    for (const slot of slots) {
+      if ((!slot.used || slot.replaced) && slot.dom.parentNode === parent && typeof parent.removeChild === "function") {
+        parent.removeChild(slot.dom);
+      }
+    }
     for (let index = 0; index < wanted.length; index += 1) {
       const currentAt = childNodesOf(parent)[index] || null;
       if (currentAt === wanted[index]) continue;
       if (typeof parent.insertBefore === "function") parent.insertBefore(wanted[index], currentAt);
       else if (!wanted[index].parentNode || wanted[index].parentNode !== parent) parent.appendChild(wanted[index]);
-    }
-    for (const slot of slots) {
-      if ((!slot.used || slot.replaced) && slot.dom.parentNode === parent && typeof parent.removeChild === "function") {
-        parent.removeChild(slot.dom);
-      }
     }
   }
 
