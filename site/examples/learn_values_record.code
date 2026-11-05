@@ -1,0 +1,3 @@
+link "console" as out
+item = { name = "apples", count = 2 }
+emit Print { value = "$item.count $item.name" } to out

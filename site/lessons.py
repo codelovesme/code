@@ -53,7 +53,7 @@ def lesson_assets(site_dir, greeting, plan):
     return assets
 
 
-def render_lesson(site_dir, plan, lesson, previews, assets):
+def render_lesson(site_dir, plan, lesson, previews, assets, examples):
     index = plan.index(lesson)
     content = (site_dir / lesson['source']).read_text()
     neighbors = []
@@ -80,6 +80,25 @@ def render_lesson(site_dir, plan, lesson, previews, assets):
             raise ValueError('A lesson edit must match exactly once')
         variants.append({'name': lesson['id'] + '-edit', 'code': example['code'].replace(edit['find'], edit['replace']), 'output': edit['output']})
         replacements.update({'__LESSON_EDIT__': html.escape(edit['replace']), '__LESSON_EDIT_OUTPUT__': html.escape(edit['output'])})
+    for step in lesson.get('steps', []):
+        example = examples[step['example']]
+        variants.append({'name': lesson['id'] + '-' + step['id'], 'code': example['code'], 'output': step['output']})
+        for edit_index, edit in enumerate(step.get('edits', [])):
+            if example['code'].count(edit['find']) != 1:
+                raise ValueError('A step edit must match exactly once')
+            variants.append({'name': lesson['id'] + '-' + step['id'] + f'-edit-{edit_index}',
+                             'code': example['code'].replace(edit['find'], edit['replace']),
+                             'output': edit['output']})
+        code_id = f'{lesson["id"]}-{step["id"]}-code'
+        panel = (f'<figure class="module-panel lesson-example"><figcaption>{html.escape(step["title"])}</figcaption>'
+                 f'<pre class="codeblock" id="{code_id}" tabindex="0">{html.escape(example["code"].strip())}</pre>'
+                 f'<div class="lesson-example-actions"><button class="tool-btn" data-copy="{code_id}" hidden>Copy code</button>'
+                 f'<a class="btn btn-primary" aria-label="Run example: {html.escape(step["title"])}" '
+                 f'href="__ROOT__playground.html?example={step["example"]}#playground">Run this example →</a></div>'
+                 '<p role="status"></p></figure>'
+                 f'<div class="lesson-result"><span>Expected output</span><pre>{html.escape(step["output"])}</pre></div>')
+        replacements[f'__STEP_{step["id"].upper()}__'] = panel
+        replacements[f'__STEP_{step["id"].upper()}_OUTPUT__'] = html.escape(step['output'])
     replacements.update({f'__LESSON_{name}__': html.escape(assets[path].strip())
                          for name, path in lesson.get('snippets', {}).items()})
     result = (site_dir / 'lesson.html').read_text()

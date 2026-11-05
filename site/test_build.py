@@ -61,7 +61,7 @@ class SiteBuild(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_direct_pages_share_working_navigation(self):
-        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html', 'learn/first-program.html'})
+        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html', 'learn/first-program.html', 'learn/values.html'})
         expected = ['index.html', 'learn.html', 'playground.html', 'docs.html', 'https://github.com/codelovesme/code']
         for name, page in self.pages.items():
             prefix = '../' if name.startswith('learn/') else ''
@@ -169,7 +169,8 @@ class SiteBuild(unittest.TestCase):
         self.assertIn('hello, world', (self.dist / 'learn.html').read_text())
         self.assertIn('hello, Ada', (self.dist / 'learn/quick-start.html').read_text())
         variants = json.loads((self.dist / 'lesson-examples.json').read_text())
-        self.assertEqual({row['output'] for row in variants}, {'hello, world', 'hello, Ada'})
+        self.assertTrue({'hello, world', 'hello, Ada'} <= {row['output'] for row in variants})
+        self.assertEqual(next(row['output'] for row in variants if row['name'] == 'values-solution'), '4 apples\n3 milk\nsaved: 2 apples')
 
     def test_lesson_navigation_follows_readiness_and_withdraws_old_pages(self):
         # Simulate the next task's publication, without shipping a draft lesson.
@@ -184,7 +185,7 @@ class SiteBuild(unittest.TestCase):
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / filename, destination)
             plan = json.loads((repo / 'site/lessons.json').read_text())
-            upcoming = next(index for index, lesson in enumerate(plan) if not lesson['ready'])
+            upcoming = next((index for index, lesson in enumerate(plan) if not lesson['ready']), len(plan) - 1)
             plan[upcoming]['ready'] = True
             (repo / 'site' / plan[upcoming]['source']).write_text('<section><h2>A ready lesson fixture</h2></section>')
             manifest = repo / 'site/lessons.json'
@@ -193,12 +194,15 @@ class SiteBuild(unittest.TestCase):
             command = ['python3', str(repo / 'site/build.py'), str(repo), str(dist)]
             subprocess.run(command, env=self.environment, check=True, capture_output=True)
             previous = plan[upcoming - 1]
-            following = plan[upcoming + 1]
+            following = plan[upcoming + 1] if upcoming + 1 < len(plan) else None
             published = (dist / plan[upcoming]['route']).read_text()
             neighbor = (dist / previous['route']).read_text()
             self.assertIn(f'href="../{previous["route"]}" rel="prev"', published)
             self.assertIn(f'href="../{plan[upcoming]["route"]}" rel="next"', neighbor)
-            self.assertNotIn(f'href="../{following["route"]}"', published)
+            if following:
+                self.assertNotIn(f'href="../{following["route"]}"', published)
+            else:
+                self.assertNotIn('rel="next"', published)
             plan[upcoming]['ready'] = False
             manifest.write_text(json.dumps(plan))
             subprocess.run(command, env=self.environment, check=True, capture_output=True)

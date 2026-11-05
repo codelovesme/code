@@ -1,0 +1,8 @@
+link "console" as out
+items = [
+    { name = "apples", count = 2 }
+    { name = "bread", count = 1 }
+    { name = "milk", count = 3 }
+]
+loop item over items
+    emit Print { value = "$item.count $item.name" } to out

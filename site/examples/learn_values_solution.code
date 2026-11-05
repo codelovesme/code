@@ -1,0 +1,13 @@
+link "console" as out
+items = [
+    { name = "apples", count = 2 }
+    { name = "bread", count = 1 }
+    { name = "milk", count = 3 }
+]
+updated = items
+updated[0].count = 4
+loop item over updated
+    if item.count ≥ 3
+        emit Print { value = "$item.count $item.name" } to out
+saved = items[0]
+emit Print { value = "saved: $saved.count $saved.name" } to out

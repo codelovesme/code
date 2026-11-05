@@ -283,7 +283,7 @@ PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
 This checks Home → Learn → nested Quick start → Playground, edited output,
 copy/clipboard refusal, reference/back links, readiness, keyboard/skip targets,
 four widths and the readable no-JS lesson. Use `check_navigation.mjs` for the
-complete site flows, including all ten published routes.
+complete site flows, including all eleven published routes.
 
 
 ## First program lesson (219)
@@ -292,8 +292,8 @@ complete site flows, including all ten published routes.
 existing console greeting and an Ada edit, checked both in the pinned 2.16.0
 browser interpreter and the public v2.23.0 Linux x86_64 CLI. Local setup is
 optional/expandable; source-building is an advanced link to that release's
-README, with native platform limitations stated. Lesson 2 links only to its
-ready learning-path overview until its actual content is ready.
+README, with native platform limitations stated. Lesson 1 now links directly to the ready values lesson; later lessons stay
+gated until their content is ready.
 
 The three displayed command blocks come from `lesson-examples/first-program/`.
 The build injects the canonical greeting into `project.sh`, emits the exact
@@ -327,3 +327,34 @@ widths and no-JS reading. Run it separately from other clipboard-writing
 browser checks. `check_learn.mjs` and `check_navigation.mjs` retain shared
 Learn/site coverage. The additional lesson variants join the actual-engine
 gate (`lesson-examples.json`); no native setup is offered as a browser module.
+
+
+## Values and control flow lesson (220)
+
+`learn/values.html` teaches one shopping-list example progressively: a named
+record, an independent updated copy, a list loop, a condition and a short
+exercise combining a copied list/nested record update with filtering. The
+solution is expandable and its target output is generated from the same
+expected-output record used in engine checks. Full type rules stay in an
+optional reference link. Lesson 1 links forward; the messages lesson's ready
+overview remains available while its actual lesson is pending.
+
+The five programs live in `examples/learn_values_*.code` and join the validated
+advanced gallery. A lesson's optional `steps` records name those canonical
+examples, titles, outputs and optional single-match edits. `lessons.py` renders
+the complete copy/run/output panels from that data and includes all originals
+and edits in `lesson-examples.json`. Source is never duplicated in lesson HTML.
+The same `steps` contract can be reused for later lessons. The four featured
+Playground choices and its saved-draft behavior are unchanged.
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
+  node site/check_values.mjs http://localhost:8955/code/
+```
+
+This runs all five programs and both suggested edits through their real
+Playground links, verifies the exercise solution and unchanged original, checks
+copy, ready neighbors, four widths, keyboard interaction and no-JS reading.
+Run clipboard-writing checks separately. The actual pinned-engine gate now
+checks 154 cases: 139 gallery programs, four featured previews and 11 lesson
+program/output variants. No extra browser module or engine version is added.

@@ -223,7 +223,7 @@ def main() -> None:
     assets = lesson_assets(site_dir, home["code"], plan)
     for filename, (page, title, description) in pages.items():
         if filename in lesson_pages:
-            content, variants = render_lesson(site_dir, plan, lesson_pages[filename], previews, assets)
+            content, variants = render_lesson(site_dir, plan, lesson_pages[filename], previews, assets, by_name)
             lesson_examples.extend(variants)
         else:
             content = (site_dir / f"{filename}.html").read_text()

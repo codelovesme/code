@@ -38,10 +38,56 @@
     "id": "values",
     "route": "learn/values.html",
     "source": "learn/values.html",
-    "ready": false,
+    "ready": true,
     "title": "Values and control flow",
     "goal": "Work with values, updates, conditions and loops.",
-    "outcome": "Transform a short list and print the result."
+    "outcome": "Transform a short list and print the result.",
+    "steps": [
+      {
+        "id": "record",
+        "example": "learn_values_record",
+        "title": "One item",
+        "output": "2 apples",
+        "edits": [
+          {
+            "find": "count = 2",
+            "replace": "count = 5",
+            "output": "5 apples"
+          }
+        ]
+      },
+      {
+        "id": "copy",
+        "example": "learn_values_copy",
+        "title": "An independent copy",
+        "output": "original: 2 apples\nupdated: 4 apples"
+      },
+      {
+        "id": "list",
+        "example": "learn_values_list",
+        "title": "Walk through a list",
+        "output": "2 apples\n1 bread\n3 milk"
+      },
+      {
+        "id": "filter",
+        "example": "learn_values_filter",
+        "title": "Choose by a condition",
+        "output": "2 apples\n3 milk",
+        "edits": [
+          {
+            "find": "\u2265 2",
+            "replace": "\u2265 3",
+            "output": "3 milk"
+          }
+        ]
+      },
+      {
+        "id": "solution",
+        "example": "learn_values_solution",
+        "title": "Exercise solution",
+        "output": "4 apples\n3 milk\nsaved: 2 apples"
+      }
+    ]
   },
   {
     "id": "messages",

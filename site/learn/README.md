@@ -45,3 +45,14 @@ region; `data-copy-type="shell"` gives terminal-specific feedback. Keep copy
 buttons hidden in source markup; `lesson.mjs` enables them when available.
 The lesson 1 native checker verifies the assembled scripts with the actual
 public release rather than maintaining a second command implementation.
+
+
+Lesson 2 uses `steps`: each entry has an `id`, canonical `example` name, title
+and expected `output`. `__STEP_ID__` renders its full copy/run/output panel;
+`__STEP_ID_OUTPUT__` renders only the same expected output (e.g. an exercise
+target). Optional `edits` contain a unique `find`, `replace` and expected
+`output`; each edited full program joins the published-engine gate. Programs
+come from the validated `site/examples/` collection, not unchecked HTML text.
+A solution panel can live inside native HTML details and still be checked.
+Use the lesson's current engine syntax; separate-line array items need no
+commas, and comparisons use the language's canonical ≥/≤ symbols.

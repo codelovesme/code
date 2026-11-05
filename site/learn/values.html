@@ -1,0 +1,40 @@
+<section aria-labelledby="one-record">
+  <h2 id="one-record">1. Describe one item.</h2>
+  <p>A record groups named fields. Here, <code>name</code> holds text and <code>count</code> holds a number. A dot reads a field; <code>$item.count</code> inserts it into the printed text.</p>
+  __STEP_RECORD__
+  <p>Try changing <code>2</code> to <code>5</code>. The output becomes <code>5 apples</code>.</p>
+</section>
+<section aria-labelledby="safe-copy">
+  <h2 id="safe-copy">2. Change a copy. Keep the original.</h2>
+  <p>Assign the record to <code>updated</code>, then change its count. The original value stays independent.</p>
+  __STEP_COPY__
+  <p>Changing <code>updated.count</code> changes the second line only. Code handles the underlying storage sharing automatically.</p>
+</section>
+<section aria-labelledby="walk-list">
+  <h2 id="walk-list">3. Walk through a list.</h2>
+  <p>A list groups values in order. <code>loop item over items</code> takes each record in turn. The indented line runs for each item.</p>
+  __STEP_LIST__
+</section>
+<section aria-labelledby="choose-items">
+  <h2 id="choose-items">4. Choose which items to print.</h2>
+  <p>The <code>if</code> line checks a condition. Its indented body runs when the count is at least two, so bread is left out of this output.</p>
+  __STEP_FILTER__
+  <p>Change the threshold from <code>2</code> to <code>3</code> and only <code>3 milk</code> is printed. The loop keeps visiting the list in order.</p>
+</section>
+<section aria-labelledby="values-exercise">
+  <h2 id="values-exercise">Your turn: update tomorrow’s list.</h2>
+  <p>Start from the filtered-list example. Make an <code>updated</code> copy of <code>items</code>, set its first item’s count to <code>4</code>, and print items with a count of at least <code>3</code>. Keep <code>items</code> unchanged.</p>
+  <p>List positions start at zero: <code>updated[0].count = 4</code> updates the first record in the copied list. At the end, read <code>items[0]</code> as <code>saved</code> and print its count and name to check the original.</p>
+  <div class="lesson-result"><span>Your target output</span><pre>__STEP_SOLUTION_OUTPUT__</pre></div>
+  <a class="btn btn-primary" href="__ROOT__playground.html?example=learn_values_filter#playground">Start the exercise →</a>
+  <details class="module-details" id="values-solution"><summary>Show a working solution</summary>
+    __STEP_SOLUTION__
+    <p>Updating the copied list also preserves the original nested record. The first item in <code>items</code> still has count two.</p>
+  </details>
+</section>
+<section aria-labelledby="values-next">
+  <h2 id="values-next">Build on these values.</h2>
+  <p>You grouped data, changed a copy, walked a list and chose values with a condition. Next comes reusable behavior through handlers and messages.</p>
+  <p><a href="__ROOT__learn.html#path-messages">See the next learning step →</a> · <a href="__ROOT__memory.html">More about independent values →</a></p>
+  <details class="module-details"><summary>Optional reference: types and exact language rules</summary><p>The <a href="__ROOT__docs.html#language-reference">language reference</a> covers all value kinds, optional type annotations and detailed condition/loop rules. You can continue the lessons with the forms used here.</p></details>
+</section>

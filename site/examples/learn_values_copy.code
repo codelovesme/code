@@ -1,0 +1,6 @@
+link "console" as out
+original = { name = "apples", count = 2 }
+updated = original
+updated.count = 4
+emit Print { value = "original: $original.count $original.name" } to out
+emit Print { value = "updated: $updated.count $updated.name" } to out

@@ -22,7 +22,7 @@ try {
   assert.equal(await page.locator('.site-nav [aria-current="page"]').innerText(), 'Learn');
   assert.equal(await page.locator('#linux-setup').evaluate(el => el.open), false);
   assert.equal(await page.locator('.lesson-neighbors a[rel="prev"]').getAttribute('href'), '../learn/quick-start.html');
-  assert.equal(await page.locator('.lesson-neighbors a[rel="next"]').count(), 0);
+  assert.equal(await page.locator('.lesson-neighbors a[rel="next"]').getAttribute('href'), '../learn/values.html');
   await page.getByRole('button', { name: 'Copy code', exact: true }).click();
   await page.locator('#lesson-copy-status').filter({ hasText: 'Code copied' }).waitFor();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), source);
@@ -65,9 +65,11 @@ try {
       if (box) assert.ok(box.x >= 0 && box.x + box.width <= width + 1);
     }
   }
-  await page.getByRole('link', { name: 'See the next step: values and control flow →', exact: true }).click();
-  await page.waitForURL('**/learn.html#path-values');
-  assert.equal(await page.locator('#path-values a').count(), 0);
+  await page.getByRole('link', { name: 'Continue: values and control flow →', exact: true }).click();
+  await page.waitForURL('**/learn/values.html');
+  await page.getByRole('link', { name: '← Back to Learn', exact: true }).click();
+  await page.waitForURL('**/learn.html');
+  assert.equal(await page.locator('#path-values a').count(), 1);
   await page.getByRole('link', { name: 'Your first program', exact: true }).click();
   await page.waitForURL('**/learn/first-program.html');
   await page.locator('.lesson-neighbors a[rel="prev"]').click();
