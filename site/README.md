@@ -515,3 +515,30 @@ proof of every assistive-technology/browser combination. Checks here use real
 Chromium keyboard/DOM access and visual review, not a spoken screen-reader test.
 `check_playground.mjs` additionally gates engine download to check slow loading,
 then aborts WASM and JS engine requests separately to check failure states.
+
+## Share previews (225)
+
+Every generated page has a unique absolute canonical/og:url (Home uses `/code/`),
+its own existing title/description, and OG plus large-image social-card tags.
+The shared `share-code.png` uses the current logo, palette and approved slogan:
+Built for reuse. Compiled for performance. It adds interpreter/native compiler/
+WebAssembly without a language-wide benchmark claim. The 1200×630 PNG has
+explicit type/dimensions and descriptive OG/social alt text; all URLs are public
+HTTPS URLs under the actual Pages prefix. This does not change engine pins.
+
+`share-card/index.html` is a native HTML/CSS authoring source, not a public site
+route; `render_share.mjs` renders the committed PNG and a 600×315 review capture
+at `/var/tmp/code-225-share-feed.png`. No external fonts or image service are
+used. Run with the same PLAYWRIGHT_MODULE setup as the other browser tools.
+`check_sharing.mjs BASE_URL` verifies all 13 crawler-visible pages without
+JavaScript, canonical/title/description/social agreement and the exact PNG's
+public response, bytes, dimensions and type. The static suite also guards this
+contract in Pages CI. Metadata is present in the original HTML, not injected by
+browser scripts. Home's modularity/native positioning and Learn/Performance's
+specific titles remain intact. A locally rendered card/valid public metadata
+cannot guarantee when a third-party crawler refreshes its own cache.
+
+Metadata follows https://ogp.me/. LinkedIn's optional inspection entry point is
+https://www.linkedin.com/post-inspector/; inability to access its UI does not
+constitute a verified LinkedIn-rendered preview. Website work never posts a
+message or publishes to a social account.

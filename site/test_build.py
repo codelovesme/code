@@ -83,6 +83,37 @@ class SiteBuild(unittest.TestCase):
                 if url.fragment and target in self.pages:
                     self.assertIn(unquote(url.fragment), self.pages[target].ids, (name, link))
 
+    def test_crawler_metadata_and_share_image(self):
+        class Head(HTMLParser):
+            def __init__(self, source):
+                super().__init__()
+                self.meta = defaultdict(list)
+                self.canonical = []
+                self.feed(source)
+
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if tag == 'meta':
+                    self.meta[attrs.get('property', attrs.get('name'))].append(attrs.get('content'))
+                if tag == 'link' and attrs.get('rel') == 'canonical':
+                    self.canonical.append(attrs['href'])
+
+        base = 'https://codelovesme.github.io/code/'
+        for route in self.pages:
+            head = Head((self.dist / route).read_text())
+            canonical = base + ('' if route == 'index.html' else route)
+            self.assertEqual(head.canonical, [canonical])
+            self.assertEqual(head.meta['og:url'], [canonical])
+            self.assertEqual(head.meta['og:title'], head.meta['twitter:title'])
+            self.assertEqual(head.meta['og:description'], head.meta['description'])
+            self.assertEqual(head.meta['og:image'], [base + 'share-code.png'])
+            self.assertEqual(head.meta['og:image:alt'], head.meta['twitter:image:alt'])
+            self.assertEqual(head.meta['twitter:card'], ['summary_large_image'])
+        image = (self.dist / 'share-code.png').read_bytes()
+        self.assertEqual(image[:8], b'\x89PNG\r\n\x1a\n')
+        self.assertEqual((int.from_bytes(image[16:20], 'big'), int.from_bytes(image[20:24], 'big')), (1200, 630))
+        self.assertLess(len(image), 1_000_000)
+
     def test_reference_and_gallery_are_not_rendered_on_homepage(self):
         home = (self.dist / 'index.html').read_text()
         self.assertNotIn('id="examples-data"', home)

@@ -249,6 +249,7 @@ def main() -> None:
             "__NAVIGATION__": nav, "__FOOTER__": footer,
             "__TITLE__": html.escape(title), "__DESCRIPTION__": html.escape(description),
             "__PAGE__": page, "__SCRIPTS__": scripts,
+            "__CANONICAL__": "https://codelovesme.github.io/code/" + ("" if filename == "index" else filename + ".html"),
             "__ENGINE_VERSION__": html.escape(version),
             "__EXAMPLE_COUNT__": str(len(examples)),
             "__HOME_CODE__": html.escape(home["code"].strip()),
