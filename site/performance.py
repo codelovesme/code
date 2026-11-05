@@ -12,6 +12,11 @@ def render(repo_root):
         raise ValueError('Comparison requires the reviewed public v2.23.0 dataset')
     rows = {(r['group'], r['workload'], r['mode']): r for r in report['summary']}
 
+    pilot = json.loads((repo_root / 'benchmarks/history-pilot/results/2026-11-05-v2.23.0/report.json').read_text())
+    if pilot['status'] != 'complete' or pilot['release']['tag'] != 'v2.23.0':
+        raise ValueError('Sharing comparison requires the reviewed public v2.23.0 pilot')
+    rows.update({('history', r['workload'], r['mode']): r for r in pilot['summary']})
+
     def value(row, metric, statistic='median'):
         return row[f'{statistic}_seconds'] * 1000 if metric == 'time' else row[f'{statistic}_peak_rss_kib'] / 1024
 
@@ -86,7 +91,28 @@ def render(repo_root):
                            f'<small>{contexts[group]} · n={row["n"]}</small></th>'
                            f'<td>{number(group, workload, mode)}<small class="comparison-range">{number(group, workload, mode, "time", "min")}–{number(group, workload, mode, "time", "max")}</small></td>'
                            f'<td>{number(group, workload, mode, "rss")}<small class="comparison-range">{number(group, workload, mode, "rss", "min")}–{number(group, workload, mode, "rss", "max")}</small></td></tr>')
+    sharing = [('history', 'config_64k', mode, label, detail) for mode, label, detail in [
+        ('Code automatic', 'Code', 'Automatic sharing'),
+        ('C eager', 'C · full copies', 'Deep copy every version'),
+        ('Rust eager', 'Rust · full copies', 'Deep clone every version'),
+        ('C shared', 'C · shared', 'Explicit reference counting'),
+        ('Rust shared', 'Rust · shared', 'Explicit Rc sharing')]]
+    history_results = []
+    cases = [('config_64k', 'Configuration · 64 × 64 KiB'),
+             ('config_4k', 'Configuration · 64 × 4 KiB'),
+             ('document_64k', 'Text document · 64 KiB'),
+             ('document_1m', 'Text document · 1 MiB')]
+    for workload, label in cases:
+        for entry in sharing:
+            mode = entry[2]
+            history_results.append(f'<tr><th scope="row">{label} · {html.escape(entry[3])}'
+                                   f'<small>{html.escape(entry[4])} · n=15</small></th>'
+                                   f'<td>{number("history", workload, mode)}<small class="comparison-range">{number("history", workload, mode, "time", "min")}–{number("history", workload, mode, "time", "max")}</small></td>'
+                                   f'<td>{number("history", workload, mode, "rss")}<small class="comparison-range">{number("history", workload, mode, "rss", "min")}–{number("history", workload, mode, "rss", "max")}</small></td></tr>')
     return {
+        '__HISTORY_TIME__': chart('configuration-runtime', 'Configuration history runtime', sharing, 'time', 170),
+        '__HISTORY_MEMORY__': chart('configuration-memory', 'Configuration history peak resident memory', sharing, 'rss', 280),
+        '__HISTORY_ALL__': ''.join(history_results),
         '__PERF_NATIVE__': chart('compiled-runtime', 'Prebuilt program runtime', native, 'time', 15),
         '__PERF_SOURCE__': chart('source-runtime', 'Source-run program runtime', source, 'time', 1200),
         '__PERF_COMPILE__': chart('compile', 'Compile and link time', compilers, 'time', 80),

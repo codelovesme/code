@@ -2,8 +2,8 @@
   <div class="overline">Comparison · public Code v2.23.0</div>
   <h1>See the numbers.</h1>
   <p>Code alongside C, Rust, JavaScript and Python. Compare runtime, build time and memory on measured programs.</p>
-  <nav class="section-links comparison-jumps" aria-label="Comparison sections"><a href="#performance">Native speed</a><a href="#execution">Source-run speed</a><a href="#compilation">Build time</a><a href="#memory">Memory</a><a href="#snapshots">Snapshots</a><a href="#full-results">All results</a></nav>
-  <p class="module-note">Measured 4 November 2026 on one Linux VM. Each chart states its workload and what the timing includes.</p>
+  <nav class="section-links comparison-jumps" aria-label="Comparison sections"><a href="#performance">Native speed</a><a href="#execution">Source-run speed</a><a href="#compilation">Build time</a><a href="#memory">Memory</a><a href="#snapshots">Snapshots</a><a href="#sharing">Automatic sharing</a><a href="#full-results">All results</a></nav>
+  <p class="module-note">Main comparisons: 4 November 2026. The automatic-sharing study uses a separate VM on 5 November. Each chart states its workload and timing boundaries.</p>
 </header>
 
 <section class="module-section" id="performance">
@@ -46,14 +46,31 @@
   <details class="module-details"><summary>What the snapshot comparison includes</summary><p>Each program initializes 128 × 4096 float64 cells, retains 64 pre-update versions plus the final matrix, and validates every full checksum. Initialization, scanning and cleanup are included.</p><p>C/Rust use dense 8-byte cells; Code uses generic containers. Rust’s shared version uses Rc::make_mut; C’s shared version uses explicit reference counts. This is a full-program comparison, not an isolated copy-on-write operation.</p></details>
 </section>
 
+<section class="module-section" id="sharing">
+  <h2>6. Keep versions. Share unchanged data.</h2>
+  <p class="module-intro">A configuration history: 64 sections of 64 KiB each, 65 saved versions, one flag changed per version. Code keeps each version independent and automatically shares unchanged data.</p>
+  <p class="module-note">Separate study · 5 November 2026 · public Code v2.23.0 · 15 launches per entry. Compare within this study; its VM is separate from the charts above.</p>
+  __HISTORY_TIME__
+  __HISTORY_MEMORY__
+  <p>On this program, Code is <strong>45.35× faster and uses 99.34% less peak RSS</strong> than Rust deep clones. Explicitly shared Rust is 4.08× faster than Code; explicitly shared C is faster too. Code provides sharing automatically rather than requiring a shared representation in application code.</p>
+  <div class="comparison-context"><h3>Where this helps—and where it does not</h3><p>The smaller configuration history also benefits from automatic sharing versus full copies. Editing the text itself is different: for 1 MiB document revisions, Code takes 444.049 ms versus 36.001 ms for explicitly shared Rust—Code is 12.33× slower. Both document sizes and every baseline remain below.</p></div>
+  <details class="module-details"><summary>All 20 sharing-study results · time and memory</summary><div class="module-table-wrap" tabindex="0" role="region" aria-label="All configuration and document history results"><table class="module-table perf-table history-all"><caption>Separate 5 November study · median and minimum–maximum · ms and MiB</caption><thead><tr><th scope="col">Program / entry</th><th scope="col">Time ms</th><th scope="col">Peak MiB</th></tr></thead><tbody>__HISTORY_ALL__</tbody></table></div></details>
+  <details class="module-details"><summary>Sharing-study method and evidence</summary>
+    <p>300 samples, none dropped. Each native program builds its input, retains 65 versions, verifies all values and releases them. Startup, construction, edits, validation and cleanup are timed; compilation is excluded. Configuration payloads stay unchanged while flags change. Text revisions replace one character per version.</p>
+    <p>C/Rust full-copy versions duplicate the payloads; shared versions explicitly manage references (C) or use Rc (Rust). Code uses generic values and automatic sharing. Document editing and validation use slices and concatenation in Code, private mutable buffers in C/Rust. Representations and validation costs differ: this measures complete programs, not an isolated sharing operation or a language-wide ranking.</p>
+    <p>Fresh Ubuntu 24.04 hosted VM, GCC 13.3.0 O2 and Rust 1.99.1 O3 with native CPU targeting; Code uses the public v2.23.0 release pipeline. Serial seeded launches on one allowed logical CPU, 20:01:25–20:01:42 UTC. Shared hardware and fixed CPU frequency are not guaranteed. RSS is peak process resident memory; small differences between shared variants can reflect process overhead.</p>
+    <div class="section-links"><a href="https://github.com/codelovesme/code/blob/8d0656a/benchmarks/history-pilot/RESULTS.md">Sharing-study report ↗</a><a href="https://github.com/codelovesme/code/blob/8d0656a/benchmarks/history-pilot/results/2026-11-05-v2.23.0/samples.csv">All 300 samples ↗</a><a href="https://github.com/codelovesme/code/blob/8d0656a/benchmarks/history-pilot/results/2026-11-05-v2.23.0/report.json">Full identities and results ↗</a><a href="https://github.com/codelovesme/code/blob/8d0656a/benchmarks/history-pilot/README.md">Protocol and source programs ↗</a></div>
+  </details>
+</section>
+
 <section class="module-section" id="full-results">
-  <h2>The complete measurements, here.</h2>
-  <p class="module-intro">Every recorded program and execution entry is available below, including the broader workloads and compiler memory. The five charts above use the same results.</p>
+  <h2>The original comparison measurements, here.</h2>
+  <p class="module-intro">All 35 entries from the 4 November study, including broader workloads and compiler memory. The first five charts use these results. The separate sharing study has its own complete table above.</p>
   <details class="module-details"><summary>All 35 results · time and memory</summary><div class="module-table-wrap" tabindex="0" role="region" aria-label="All measured comparison results"><table class="module-table perf-table comparison-all"><caption>Median with minimum–maximum ranges · ms and MiB · compiler memory is build-process memory</caption><thead><tr><th scope="col">Program / entry</th><th scope="col">Time ms</th><th scope="col">Peak MiB</th></tr></thead><tbody>__PERF_ALL__</tbody></table></div></details>
 </section>
 
 <section class="module-section" id="methodology">
-  <h2>How these comparisons were measured.</h2>
+  <h2>How the original comparisons were measured.</h2>
   <p class="module-intro">485 retained samples on one fresh Linux VM. No samples dropped. Medians, exact ranges and the complete results stay on this page; raw evidence is available too.</p>
   <details class="module-details"><summary>Machine, versions and timing boundaries</summary>
     <p>Measured 4 November 2026, 22:23:35–22:24:24 UTC. Ubuntu 24.04.5, AMD EPYC 7763 model, four virtual CPUs, pinned to CPU 0. A hosted VM does not guarantee dedicated hardware or fixed frequency.</p>
@@ -62,7 +79,7 @@
     <p>All targets validate their results. Representations differ, so this is a measured workload comparison rather than a language-wide ranking. Allocation counts and pause distributions were not measured.</p>
   </details>
   <details class="module-details"><summary id="sources-title">Raw evidence and earlier measurements</summary>
-    <p>All graphs use the same November public-release dataset. Older Java/Go measurements came from different hosts and development revisions; mixing them into these rankings would give a misleading comparison. They remain in the historical audit.</p>
+    <p>The first five graphs use the same 4 November public-release dataset. The sharing-study graphs use their separately labeled 5 November dataset. Older Java/Go measurements came from different hosts and development revisions; mixing them into these rankings would give a misleading comparison. They remain in the historical audit.</p>
     <div class="section-links"><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/RESULTS.md">Full report ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/results/2026-11-04-v2.23.0/samples.csv">Raw CSV ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/results/2026-11-04-v2.23.0/report.json">Raw JSON ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/README.md">Method and historical audit ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/.github/workflows/website-evidence.yml">Measurement workflow ↗</a><a href="https://github.com/codelovesme/code/blob/65403bd/benchmarks/website-evidence/README.md#historical-inventory-and-claim-gate">Earlier results ↗</a></div>
   </details>
 </section>

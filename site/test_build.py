@@ -190,6 +190,10 @@ class SiteBuild(unittest.TestCase):
         with raw.open() as source:
             for row in csv.DictReader(source):
                 groups[row['group'], row['workload'], row['mode']].append(row)
+        pilot_raw = ROOT / 'benchmarks/history-pilot/results/2026-11-05-v2.23.0/samples.csv'
+        with pilot_raw.open() as source:
+            for row in csv.DictReader(source):
+                groups['history', row['workload'], row['mode']].append(row)
         page = Numbers((self.dist / 'compare.html').read_text())
         self.assertGreater(len(page.values), 40)
         for (group, workload, mode, metric), displayed in page.values.items():
@@ -231,7 +235,7 @@ class SiteBuild(unittest.TestCase):
             (repo / 'tests').mkdir()
             for fixture in (ROOT / 'tests').glob('*.code'):
                 shutil.copyfile(fixture, repo / 'tests' / fixture.name)
-            for filename in ['.github/workflows/pages.yml', 'benchmarks/website-evidence/results/2026-11-04-v2.23.0/report.json']:
+            for filename in ['.github/workflows/pages.yml', 'benchmarks/website-evidence/results/2026-11-04-v2.23.0/report.json', 'benchmarks/history-pilot/results/2026-11-05-v2.23.0/report.json']:
                 destination = repo / filename
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / filename, destination)

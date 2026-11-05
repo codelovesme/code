@@ -584,3 +584,21 @@ time divided by the faster of C O2/Rust O3, ascending. This compares relative
 results across different-sized workloads; all values/rows stay unchanged.
 The on-page note declares the ordering, and the existing static raw-CSV and
 browser report checks verify it independently.
+
+
+## Automatic-sharing comparison (232)
+
+Comparison preserves the original five November 4 charts and all 35 results.
+Two additional visible charts use only the separately measured November 5
+retained-history pilot: large-configuration runtime and process peak RSS.
+Both rank all five implementations on linear scales. Code automatic sharing,
+eager C/Rust deep copies and explicitly shared C/Rust are always shown together.
+All 20 pilot entries (including smaller configuration and both document-edit
+counterexamples) and ranges remain on the same page. Pilot sources/raw samples
+are pinned to reviewed commit 8d0656a; different-host results never share a ranking.
+
+`performance.py` generates charts/tables from both checked-in reports, tagging
+pilot evidence with the distinct `history` namespace. Static tests independently
+check every displayed value against its raw CSV. `check_performance.mjs` checks
+seven visible charts, all 55 results, all bar widths/rankings, responsive tables,
+keyboard and no-JavaScript access. Existing comparison anchors remain valid.
