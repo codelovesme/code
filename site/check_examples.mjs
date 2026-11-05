@@ -41,6 +41,7 @@ const consoleModule = {
 const examples = JSON.parse(readFileSync(`${dist}/examples.json`, "utf8"));
 // Home/Learn/Memory previews are generated from the same checked source files.
 examples.push(...JSON.parse(readFileSync(`${dist}/demos.json`, "utf8")));
+examples.push(...JSON.parse(readFileSync(`${dist}/lesson-examples.json`, "utf8")));
 const failures = [];
 for (const example of examples) {
   try {

@@ -574,3 +574,49 @@
   .pg-context #expected-panel { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: baseline; }
   .pg-context #expected-panel[hidden] { display: none; }
 }
+
+/* Learn: a useful first result, a clear path, and one shared lesson shell. */
+.learn-starter { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start; }
+.learn-starter h2 { margin-top: .6rem; }
+.learn-starter p, .learn-reference p { color: var(--muted); max-width: 70ch; }
+.learn-starter figcaption, .lesson-example figcaption { color: var(--muted); font: .8rem var(--mono); }
+.learn-starter .codeblock { padding: 1rem 0; background: none; border: 0; }
+.learning-path { list-style: none; margin: 0; padding: 0; display: grid; gap: .8rem; }
+.learning-path li { display: grid; grid-template-columns: 2.5rem 1fr auto; gap: 1rem; align-items: start; padding: 1.2rem; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.learning-path h3 { font-size: 1.05rem; margin: 0 0 .4rem; }
+.learning-path p { color: var(--muted); font-size: .88rem; margin: .2rem 0; }
+.learning-path .lesson-outcome { font-size: .82rem; }
+.lesson-number { color: var(--teal); font: .9rem var(--mono); padding-top: .2rem; }
+.lesson-state { color: var(--muted); font-size: .75rem; }
+.lesson-result { border-left: 2px solid var(--teal); padding: .6rem 1rem; margin-block: .7rem; }
+.lesson-result span { color: var(--muted); font-size: .75rem; }
+.lesson-result pre { color: var(--green); font: .9rem/1.65 var(--mono); white-space: pre-wrap; margin: .3rem 0; }
+.lesson-intro { max-width: 900px; }
+.lesson-goal strong { color: var(--text); }
+.lesson-outline { margin: 1.2rem 0 0; }
+.lesson-outline summary { cursor: pointer; color: var(--teal); font-size: .88rem; }
+.lesson-outline .learning-path { margin-top: 1rem; }
+.lesson-outline [aria-current="step"] { color: var(--teal); text-decoration: underline; text-underline-offset: .3rem; }
+.lesson-content section { max-width: 900px; padding-block: 1.5rem; }
+.lesson-content p { color: var(--muted); max-width: 70ch; }
+.lesson-content h2 { font-size: clamp(1.4rem, 3vw, 1.8rem); }
+.lesson-content .lesson-example { max-width: 740px; margin-block: 1.2rem; }
+.lesson-content .codeblock { font-size: .88rem; }
+.lesson-example-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; }
+#lesson-copy-status { font-size: .82rem; margin-bottom: 0; }
+.lesson-edit { max-width: 740px; }
+.lesson-navigation { max-width: 900px; padding: 1.5rem; margin: 1rem auto 2rem; border-top: 1px solid var(--border); }
+.lesson-back { display: inline-block; margin-bottom: 1rem; }
+.lesson-neighbors { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; font-size: .9rem; }
+.lesson-pending { color: var(--muted); }
+.lesson-content pre:focus-visible, .lesson-outline summary:focus-visible { outline: 2px solid var(--teal); outline-offset: 4px; }
+@media (max-width: 700px) {
+  .learn-starter { grid-template-columns: 1fr; }
+  .learning-path li { grid-template-columns: 1.6rem minmax(0,1fr); gap: .6rem; padding: 1rem; }
+  .learning-path .lesson-state { grid-column: 2; }
+  .lesson-outline .learning-path li { grid-template-columns: 2.7rem minmax(0,1fr); }
+  .lesson-content section { padding-inline: 1rem; }
+  .lesson-content .codeblock { font-size: .8rem; }
+}
+.learn-starter .codeblock, .lesson-content .codeblock { white-space: pre-wrap; overflow-wrap: anywhere; }
+.lesson-example [hidden] { display: none; }

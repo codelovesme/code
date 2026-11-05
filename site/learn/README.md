@@ -1,0 +1,36 @@
+# Learn page authoring
+
+`../lessons.json` is the ordered publication plan. Quick start is a short
+browser warm-up; the four full lessons are separate tickets 219–222. A planned
+lesson has a goal and outcome on the hub but no link or generated page. Do not
+mark one ready until its content and commands pass that ticket's checks.
+
+To publish a lesson:
+
+1. Write the content fragment at its `source` path under `site/learn/`.
+2. Use short `<section>` steps with IDs, headings, explanations, code and
+   expected results. The wrapper in `../lesson.html` provides the goal,
+   location in the path, previous/next and back-to-Learn navigation.
+3. Author site links as `__ROOT__playground.html`, `__ROOT__docs.html#cli`, etc.
+   The build inserts `../` on nested routes. Local `#step` anchors stay local;
+   do not use a `<base>` tag or root-absolute `/...` links.
+4. Copyable complete programs use a focusable `<pre id="unique-id"
+   tabindex="0">`, a button with `data-copy="unique-id"`, and the single
+   `lesson-copy-status` live region. `../lesson.mjs` handles clipboard failure
+   by selecting the code for manual copying. It does not load a language engine.
+5. Reuse canonical program files. The current optional `example`/`edit` fields
+   generate Quick start's original and edited program checks from the featured
+   greeting; `lesson-examples.json` joins the pinned-engine validation gate.
+   Extend the checked-source manifest for future lesson examples rather than
+   copying unchecked snippets into HTML. Native/module commands need their
+   lesson's published-CLI checks too; browser success does not prove those.
+6. Set `ready` only after verification. The shared hub/outline and neighbors
+   then link the route automatically. Withdrawing readiness also removes a
+   formerly generated page on a reused output directory.
+
+No login or progress database is needed. The current step uses `aria-current`;
+planned neighbors are plain text. Ready lessons provide native anchor links,
+including direct URLs under the GitHub Pages `/code/` prefix. Only ready
+content ships. Missing ready source, duplicate routes and unsafe routes fail
+the build. Static tests exercise publishing/withdrawing the next lesson in a
+temporary fixture, without putting a draft lesson on the public site.

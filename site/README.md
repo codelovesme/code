@@ -10,7 +10,8 @@ release or replace the engine with a source build.
 | Public route | Purpose | Source |
 |---|---|---|
 | `index.html` | Short introduction and next steps | `index.html` content fragment |
-| `learn.html` | Working first example and orientation | `learn.html` content fragment |
+| `learn.html` | Immediate greeting and the ordered four-lesson path | `learn.html`, `lessons.json` |
+| `learn/quick-start.html` | Ready browser warm-up using the shared lesson layout | `learn/quick-start.html`, `lesson.html`, `lessons.py` |
 | `playground.html` | Four featured programs, editor/results and an expandable paged collection | `playground.html`, `playground.mjs` |
 | `docs.html` | Reference, CLI, modules, embedding and authoring | `docs.html` content fragment |
 | `modules.html` | Install, link, reuse and target support | `modules.html`, `module-examples/` |
@@ -179,7 +180,8 @@ This split establishes usable routes; it does not complete the later roadmap.
 | 214 | `memory.html`, reached from Home/Docs; checked preview in `examples/value_snapshot.code` |
 | 215–216 | Verified evidence in `benchmarks/website-evidence/`; focused Performance view on the existing `compare.html` route |
 | 217 | Playground first-use examples and gallery presentation |
-| 218–222 | Expand the Learn starter into a hub, lesson layout and four actual tutorials |
+| 218 | Learn hub, shared nested lesson layout and the ready Quick start; authoring guide in `learn/README.md` |
+| 219–222 | Deliver the four individual lessons; publish through `lessons.json` only after each is checked |
 | 223 | Real-application proof on Home and project details |
 | 224 | Further responsive/accessibility polish across the shared shell and lessons |
 | 225 | Share image and metadata on the public pages |
@@ -247,3 +249,38 @@ WASM and blocked JS/WASM downloads:
 PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
   node site/check_playground.mjs http://localhost:8955/code/
 ```
+
+
+## Learn path and lesson shell (218)
+
+`lessons.json` is the single ordered publication plan: Quick start, first
+program, values/control flow, handlers/messages/reuse, small program. Only
+ready records receive links or generated pages. The hub stays useful through
+its greeting and Playground/Docs links while the four full lessons are pending.
+Quick start is the existing browser warm-up, not lesson 219's native setup.
+
+`lesson.html` wraps short content fragments with a goal, current position,
+expandable path, previous/next and back-to-Learn navigation. `__ROOT__` in the
+shared shell and lesson fragments resolves site links/assets under nested
+`learn/` routes without a base tag; local `#main` stays local. Root pages retain
+their existing relative URLs. A reused output drops withdrawn lesson pages.
+Static tests simulate publishing/withdrawing the next lesson and verify ready
+neighbors, rather than shipping an empty lesson as a template demonstration.
+
+See [lesson authoring](learn/README.md) for the shared contract with 219–222.
+`lesson.mjs` adds optional copy feedback and selects the source for manual copy
+when clipboard permission fails. Without JS, source and navigation remain
+usable and the inactive copy button stays hidden. Lessons load no runtime;
+Open and run goes to the existing Playground. The generated
+`lesson-examples.json` adds original/edited warm-up programs to the same
+published-engine check as gallery/featured programs.
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
+  node site/check_learn.mjs http://localhost:8955/code/
+```
+
+This checks Home → Learn → nested Quick start → Playground, edited output,
+copy/clipboard refusal, reference/back links, readiness, keyboard/skip targets,
+four widths and the readable no-JS lesson. Use `check_navigation.mjs` for the
+complete site flows, including all nine published routes.

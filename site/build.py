@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from performance import render as render_performance
+from lessons import load_plan, outline, render_lesson
 
 # Ordered: first matching prefix wins. `fail_`/`emit_`/`particle_` are the
 # most specific and must be checked before the generic value prefixes.
@@ -210,8 +211,21 @@ def main() -> None:
             "Measured native runtime, cold and cached runs, and snapshot memory for public Code v2.23.0, with reproducible evidence.",
         ),
     }
+    plan = load_plan(site_dir)
+    # A reused preview/output directory must not retain a withdrawn lesson.
+    for lesson in plan:
+        if not lesson['ready']:
+            (dist_dir / lesson['route']).unlink(missing_ok=True)
+    lesson_pages = {lesson['route'][:-5]: lesson for lesson in plan if lesson['ready']}
+    for name, lesson in lesson_pages.items():
+        pages[name] = ('learn', f'Learn Code — {lesson["title"]}', lesson['goal'])
+    lesson_examples = []
     for filename, (page, title, description) in pages.items():
-        content = (site_dir / f"{filename}.html").read_text()
+        if filename in lesson_pages:
+            content, variants = render_lesson(site_dir, plan, lesson_pages[filename], previews)
+            lesson_examples.extend(variants)
+        else:
+            content = (site_dir / f"{filename}.html").read_text()
         output = layout.replace("__CONTENT__", content)
         nav = navigation
         for key in ["home", "learn", "playground", "docs"]:
@@ -220,6 +234,8 @@ def main() -> None:
                 'aria-current="page"' if page == key else "",
             )
         scripts = ""
+        if filename in lesson_pages:
+            scripts = '<script type="module" src="__ROOT__lesson.mjs"></script>'
         if page == "playground":
             scripts = (
                 '<script id="examples-data" type="application/json">'
@@ -246,10 +262,15 @@ def main() -> None:
                 f"__MODULE_{name}__": html.escape((site_dir / "module-examples" / path).read_text().strip())
                 for name, path in MODULE_SNIPPETS.items()
             })
+        replacements['__LEARNING_PATH__'] = outline(plan, include_starter=False)
+        replacements['__ROOT__'] = '../' * len(Path(filename).parent.parts)
         for placeholder, value in replacements.items():
             output = output.replace(placeholder, value)
-        (dist_dir / f"{filename}.html").write_text(output)
+        destination = dist_dir / f'{filename}.html'
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(output)
 
+    (dist_dir / "lesson-examples.json").write_text(json.dumps(lesson_examples, indent=2) + "\n")
     (dist_dir / "examples.json").write_text(json.dumps(examples, indent=2) + "\n")
     (dist_dir / "demos.json").write_text(json.dumps(previews, indent=2) + "\n")
     (dist_dir / "browser-compatibility.json").write_text(
@@ -257,7 +278,7 @@ def main() -> None:
     )
     for item in omitted:
         print(f"Browser {version} omits {item['name']}: {item['reason']}")
-    for name in ["site.css", "navigation.css", "navigation.js", "playground.mjs"]:
+    for name in ["site.css", "navigation.css", "navigation.js", "playground.mjs", "lesson.mjs"]:
         shutil.copyfile(site_dir / name, dist_dir / name)
     for asset in sorted(site_dir.glob("*.png")):
         shutil.copyfile(asset, dist_dir / asset.name)

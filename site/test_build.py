@@ -4,6 +4,8 @@ import json
 from collections import defaultdict
 from statistics import median
 import os
+import posixpath
+import shutil
 from html.parser import HTMLParser
 from pathlib import Path
 import subprocess
@@ -28,7 +30,7 @@ class Page(HTMLParser):
         attrs = dict(attrs)
         if 'id' in attrs:
             self.ids.append(attrs['id'])
-        if tag == 'nav':
+        if tag == 'nav' and 'site-nav' in attrs.get('class', '').split():
             self.in_navigation = True
         for name in ('href', 'src'):
             if name in attrs:
@@ -52,20 +54,22 @@ class SiteBuild(unittest.TestCase):
         cls.environment.pop('PLAYGROUND_CODE_WASM_VERSION', None)
         subprocess.run(['python3', str(ROOT / 'site/build.py'), str(ROOT), str(cls.dist)],
                        env=cls.environment, check=True, capture_output=True)
-        cls.pages = {p.name: Page(p.read_text()) for p in cls.dist.glob('*.html')}
+        cls.pages = {p.relative_to(cls.dist).as_posix(): Page(p.read_text()) for p in cls.dist.rglob('*.html')}
 
     @classmethod
     def tearDownClass(cls):
         cls.temp.cleanup()
 
     def test_direct_pages_share_working_navigation(self):
-        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html'})
+        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html'})
         expected = ['index.html', 'learn.html', 'playground.html', 'docs.html', 'https://github.com/codelovesme/code']
         for name, page in self.pages.items():
-            self.assertEqual(page.navigation, expected, name)
+            prefix = '../' if name.startswith('learn/') else ''
+            self.assertEqual(page.navigation, [prefix + href if not href.startswith('https:') else href for href in expected], name)
             self.assertEqual(len(page.ids), len(set(page.ids)), name)
             self.assertIn('main', page.ids)
-            self.assertEqual(page.current, ['docs.html' if name in ('modules.html', 'execution.html', 'memory.html', 'compare.html') else name], name)
+            current = 'learn.html' if name.startswith('learn/') else ('docs.html' if name in ('modules.html', 'execution.html', 'memory.html', 'compare.html') else name)
+            self.assertEqual(page.current, [prefix + current], name)
 
     def test_local_links_and_assets_exist_at_github_pages_subpath(self):
         for name, page in self.pages.items():
@@ -74,8 +78,8 @@ class SiteBuild(unittest.TestCase):
                 if url.scheme or url.netloc:
                     continue
                 self.assertFalse(url.path.startswith('/'), (name, link))
-                target = url.path or name
-                self.assertTrue((self.dist / unquote(target)).is_file(), (name, link))
+                target = posixpath.normpath(posixpath.join(posixpath.dirname(name), unquote(url.path))) if url.path else name
+                self.assertTrue((self.dist / target).is_file(), (name, link))
                 if url.fragment and target in self.pages:
                     self.assertIn(unquote(url.fragment), self.pages[target].ids, (name, link))
 
@@ -154,6 +158,49 @@ class SiteBuild(unittest.TestCase):
             self.assertEqual(displayed, f'{expected:.3f}', (group, workload, mode, metric))
         self.assertIn(('prebuilt', 'snapshots', 'Rust Rc COW', 'rss'), page.values)
         self.assertIn(('compile', 'sum_squares', 'Code release', 'rss'), page.values)
+
+    def test_only_ready_lessons_are_published_and_linked(self):
+        plan = json.loads((ROOT / 'site/lessons.json').read_text())
+        for lesson in plan:
+            self.assertEqual((self.dist / lesson['route']).exists(), lesson['ready'])
+            if not lesson['ready']:
+                for page in self.pages.values():
+                    self.assertFalse(any(urlsplit(href).path.endswith(lesson['route']) for href in page.links))
+        self.assertIn('hello, world', (self.dist / 'learn.html').read_text())
+        self.assertIn('hello, Ada', (self.dist / 'learn/quick-start.html').read_text())
+        variants = json.loads((self.dist / 'lesson-examples.json').read_text())
+        self.assertEqual({row['output'] for row in variants}, {'hello, world', 'hello, Ada'})
+
+    def test_lesson_navigation_follows_readiness_and_withdraws_old_pages(self):
+        # Simulate the next task's publication, without shipping a draft lesson.
+        with tempfile.TemporaryDirectory(prefix='code-lessons-publish-') as directory:
+            repo = Path(directory) / 'repo'
+            shutil.copytree(ROOT / 'site', repo / 'site', ignore=shutil.ignore_patterns('__pycache__'))
+            (repo / 'tests').mkdir()
+            for fixture in (ROOT / 'tests').glob('*.code'):
+                shutil.copyfile(fixture, repo / 'tests' / fixture.name)
+            for filename in ['.github/workflows/pages.yml', 'benchmarks/website-evidence/results/2026-11-04-v2.23.0/report.json']:
+                destination = repo / filename
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / filename, destination)
+            plan = json.loads((repo / 'site/lessons.json').read_text())
+            plan[1]['ready'] = True
+            (repo / 'site' / plan[1]['source']).write_text('<section><h2>A ready lesson fixture</h2></section>')
+            manifest = repo / 'site/lessons.json'
+            manifest.write_text(json.dumps(plan))
+            dist = Path(directory) / 'dist'
+            command = ['python3', str(repo / 'site/build.py'), str(repo), str(dist)]
+            subprocess.run(command, env=self.environment, check=True, capture_output=True)
+            first = (dist / 'learn/first-program.html').read_text()
+            starter = (dist / 'learn/quick-start.html').read_text()
+            self.assertIn('href="../learn/quick-start.html" rel="prev"', first)
+            self.assertIn('href="../learn/first-program.html" rel="next"', starter)
+            self.assertNotIn('href="../learn/values.html"', first)
+            plan[1]['ready'] = False
+            manifest.write_text(json.dumps(plan))
+            subprocess.run(command, env=self.environment, check=True, capture_output=True)
+            self.assertFalse((dist / 'learn/first-program.html').exists())
+            self.assertNotIn('href="../learn/first-program.html"', (dist / 'learn/quick-start.html').read_text())
 
     def test_rebuilding_is_deterministic(self):
         before = {str(p.relative_to(self.dist)): p.read_bytes() for p in self.dist.rglob('*') if p.is_file()}
