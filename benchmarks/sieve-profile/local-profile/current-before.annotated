@@ -1,0 +1,36 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-234-profile/current-before.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 98022468
+Trigger: Program termination
+Profiled target:  /var/tmp/code-234-profile/current-before (PID 1380044, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+474,981,368 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                    file:function
+--------------------------------------------------------------------------------
+180,374,250 (37.98%)  ???:code_set_at [/var/tmp/code-234-profile/current-before]
+103,325,287 (21.75%)  ???:main [/var/tmp/code-234-profile/current-before]
+ 50,000,261 (10.53%)  ???:code_add_take [/var/tmp/code-234-profile/current-before]
+ 43,708,742 ( 9.20%)  ???:code_bool [/var/tmp/code-234-profile/current-before]
+ 42,441,000 ( 8.94%)  ???:own_level [/var/tmp/code-234-profile/current-before]
+ 23,342,550 ( 4.91%)  ???:code_number [/var/tmp/code-234-profile/current-before]
+  9,028,660 ( 1.90%)  ???:malloc_usable_size [/usr/lib/x86_64-linux-gnu/libc.so.6]
+  8,488,233 ( 1.79%)  ???:code_release [/var/tmp/code-234-profile/current-before]
+  7,006,986 ( 1.48%)  ???:code_bool_value [/var/tmp/code-234-profile/current-before]
+  7,000,069 ( 1.47%)  ???:code_release.part.0 [/var/tmp/code-234-profile/current-before]
+

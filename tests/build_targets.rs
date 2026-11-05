@@ -366,6 +366,44 @@ fn wasm_sets_parts_with_the_same_answers() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Bool payload writes must preserve aliases and the generic failure path in
+/// both native and wasm loops; keep this regression out of the public gallery.
+#[test]
+fn boolean_part_writes_preserve_fallbacks_and_snapshots() {
+    let dir = temp_dir("boolean-part-writes");
+    let source = dir.join("boolean.code");
+    fs::write(&source, include_str!("support/boolean_part_writes.code")).unwrap();
+    let interpreted = Command::new(env!("CARGO_BIN_EXE_code"))
+        .args(["run", "--interpret"])
+        .arg(&source)
+        .output()
+        .unwrap();
+    assert!(
+        interpreted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&interpreted.stderr)
+    );
+    for release in [false, true] {
+        let binary = dir.join(format!("boolean-{release}"));
+        code::compile_file(&source, code::BuildTarget::Exe, &binary, release).unwrap();
+        let output = Command::new(&binary)
+            .env("CODE_CHECK_LEAKS", "1")
+            .env("MALLOC_PERTURB_", "173")
+            .env("GLIBC_TUNABLES", "glibc.malloc.tcache_count=0")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "release={release}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let wasm = dir.join(format!("boolean-{release}.wasm"));
+        code::compile_file(&source, code::BuildTarget::Wasm, &wasm, release).unwrap();
+        run_wasm_under_node(&dir, &wasm);
+    }
+    let _ = fs::remove_dir_all(dir);
+}
+
 /// Reading a field or element without copying it (ticket 120) points into
 /// wasm's linear memory the same way; the cases where that could dangle,
 /// run there too.

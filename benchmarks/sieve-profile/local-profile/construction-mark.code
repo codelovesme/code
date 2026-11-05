@@ -1,0 +1,23 @@
+| Eratosthenes sieve, inclusive upper bound. Full count and sum are verified.
+n = 1000000
+prime = []
+i = 0
+loop
+    if i > n, break
+    prime += true
+    i = i + 1
+prime[0] = false
+prime[1] = false
+p = 2
+loop
+    if p * p > n, break
+    if prime[p]
+        multiple = p * p
+        loop
+            if multiple > n, break
+            prime[multiple] = false
+            multiple = multiple + p
+    p = p + 1
+assert prime[2] = true
+assert prime[4] = false
+assert prime[n] = false

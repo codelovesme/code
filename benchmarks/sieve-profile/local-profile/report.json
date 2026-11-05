@@ -1,0 +1,1014 @@
+{
+  "baseline_revision": "e742d5ba4c59dc4b88c4a90351cb72d8ae31ca4f",
+  "candidate_codegen": {
+    "sha256": "f172938d25101f3b6464e663c91881cda6bebdc7927ac70518378d846aa4b705",
+    "bytes": 324442
+  },
+  "before_compiler": {
+    "sha256": "8da182ad1c3c01ccf00568366ec6be3429f0b87968c0c39e5578f185aabf4f2a",
+    "bytes": 59758760
+  },
+  "after_compiler": {
+    "sha256": "567b8d4cf851072f425b1996f7fa6380c0d44d13b39b106edd76d6b037b5296a",
+    "bytes": 59759480
+  },
+  "environment": {
+    "uname": "Linux ds2 6.12.113+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.113-1 (2026-10-15) x86_64 GNU/Linux\n",
+    "gcc": "gcc (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+    "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6\n",
+    "valgrind": "valgrind-3.24.0\n",
+    "lscpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           46 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  12\nOn-line CPU(s) list:                     0-11\nVendor ID:                               GenuineIntel\nModel name:                              Intel(R) Core(TM) i7-5930K CPU @ 3.50GHz\nCPU family:                              6\nModel:                                   63\nThread(s) per core:                      2\nCore(s) per socket:                      6\nSocket(s):                               1\nStepping:                                2\nCPU(s) scaling MHz:                      97%\nCPU max MHz:                             3700.0000\nCPU min MHz:                             1200.0000\nBogoMIPS:                                6999.36\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 ds_cpl vmx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm cpuid_fault epb pti intel_ppin ssbd ibrs ibpb stibp tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm xsaveopt cqm_llc cqm_occup_llc dtherm ida arat pln pts vnmi md_clear flush_l1d\nVirtualization:                          VT-x\nL1d cache:                               192 KiB (6 instances)\nL1i cache:                               192 KiB (6 instances)\nL2 cache:                                1.5 MiB (6 instances)\nL3 cache:                                15 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-11\nVulnerability Gather data sampling:      Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             KVM: Mitigation: Split huge pages\nVulnerability L1tf:                      Mitigation; PTE Inversion; VMX conditional cache flushes, SMT vulnerable\nVulnerability Mds:                       Mitigation; Clear CPU buffers; SMT vulnerable\nVulnerability Meltdown:                  Mitigation; PTI\nVulnerability Mmio stale data:           Mitigation; Clear CPU buffers; SMT vulnerable\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; IBRS_FW; STIBP conditional; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace\n"
+  },
+  "profiles": {
+    "public": {
+      "instructions": 499233374,
+      "raw": {
+        "sha256": "1f6aaa229774122d311418905331ffb0a381dd97e3bddfd12036e624557392a3",
+        "bytes": 24226
+      },
+      "binary": {
+        "sha256": "10f2f1e0d6825d7f3cd64249a041309beea9ce679c6fc074f26911fc93519626",
+        "bytes": 102152
+      }
+    },
+    "current-before": {
+      "instructions": 474981368,
+      "raw": {
+        "sha256": "ca56c615d1ef7da1dabb502fc67777406557d496c15449109d904d312ed5833c",
+        "bytes": 24111
+      },
+      "binary": {
+        "sha256": "9c5a450e0354fd21b4becec2b4b24a9d4e5b01a7b13148fe94640b2a890c62b3",
+        "bytes": 102936
+      }
+    },
+    "current-after": {
+      "instructions": 187504221,
+      "raw": {
+        "sha256": "5016e0bc7b2d7c9800e0e8554c1d417e300233f7a0fe9471d79ee3e9c8433bc7",
+        "bytes": 23879
+      },
+      "binary": {
+        "sha256": "3f3f111cf5099ebcde74a717c47769f7dad18ca679740e596037da8165c61ec7",
+        "bytes": 102936
+      }
+    },
+    "construction": {
+      "instructions": 91294588,
+      "raw": {
+        "sha256": "61f6f49ea3e0b0aee903e002196170767625caad924e02746b4493418b622efe",
+        "bytes": 23601
+      },
+      "binary": {
+        "sha256": "72e00f4e0fb07e11d5d9878e0bb78f45dfc2ced0c8fb2b6018c50b73e6777edb",
+        "bytes": 98800
+      },
+      "source": {
+        "sha256": "1bdb2f0dd4e9d0bbcabf93aa2cc110c1a3f37314e8cb6ce9758a2011f95ea061",
+        "bytes": 210
+      }
+    },
+    "construction-scan": {
+      "instructions": 139294746,
+      "raw": {
+        "sha256": "fa8df050beab6d340c58aa8a4409fef903a09df491edba183cb86b22e370e2a9",
+        "bytes": 23653
+      },
+      "binary": {
+        "sha256": "d2278ceb6fa774a0b5ba6dc0c2ee6393ae050388e5078ba24e8b578552d1a051",
+        "bytes": 102848
+      },
+      "source": {
+        "sha256": "2e7714eb599658058ec8abdad13b844651da7b23df67dc46244245d3f1467984",
+        "bytes": 379
+      }
+    },
+    "construction-mark": {
+      "instructions": 429746128,
+      "raw": {
+        "sha256": "ef49056f79e3bcda4965544546222f0e709fc8b1c792e76c76908fd676083a49",
+        "bytes": 24306
+      },
+      "binary": {
+        "sha256": "b3613f699e92db2b6e6160c7afa57f3f33a633abb03fa77f818ccc2f24688e08",
+        "bytes": 102936
+      },
+      "source": {
+        "sha256": "ea6322a51fe8435ca4d9321964c9ddc33be5c74dcece89a5defd19e9b058cc3b",
+        "bytes": 479
+      }
+    },
+    "numeric-diagnostic": {
+      "instructions": 179734229,
+      "raw": {
+        "sha256": "e272c9fb2d42e3f91875fe8b3a3cb0cbb1672aa200225a71924313fd46bcc9ac",
+        "bytes": 23316
+      },
+      "binary": {
+        "sha256": "32a1de5d78c631006795c88cedc59a0c6a326a7cc2259859170050d3c3d3b13b",
+        "bytes": 102936
+      },
+      "source": {
+        "sha256": "5661760d1b70c6b6e597845e01da88266be3cbb9150e2084f7fcd897c78329bc",
+        "bytes": 574
+      }
+    }
+  },
+  "heap": {
+    "code-heap": {
+      "peak_useful_heap_bytes": 25183104,
+      "raw": {
+        "sha256": "381013c1f8f88635ed2d5c679002ef55954ffaf3ee43bb5b627549ead45c9c99",
+        "bytes": 3689
+      },
+      "binary": {
+        "sha256": "9c5a450e0354fd21b4becec2b4b24a9d4e5b01a7b13148fe94640b2a890c62b3",
+        "bytes": 102936
+      }
+    },
+    "c-heap": {
+      "peak_useful_heap_bytes": 1000001,
+      "raw": {
+        "sha256": "7d0954db7a538d73d9ebf058ce47f934fb8032536dc2d8720f303429f48542ac",
+        "bytes": 770
+      },
+      "binary": {
+        "sha256": "6280a5055ea60174d045a1470d373b290fdbaa3856e06e256292a0b3dd6adfed",
+        "bytes": 16152
+      },
+      "control_origin": "233 hosted run 42110102608, GCC 13.3.0 O2; allocation-layout control, not a same-host timing comparison"
+    }
+  },
+  "notes": [
+    "Callgrind instructions are not elapsed-time shares. Probe totals include common construction/cleanup and are not additive phase timings.",
+    "Public release profile is context only; matched current-before/current-after profiles define the experiment.",
+    "Massif logical live heap is not process peak RSS; growth can hold old/new buffers concurrently."
+  ],
+  "full_sieve_source": {
+    "sha256": "c4a255629e1b63effa08c6e017e9d9065e59a0253ec2396033915550bc7315e8",
+    "bytes": 581
+  },
+  "aquarium_wasm": {
+    "before": {
+      "bytes": 892707,
+      "sha256": "9aeaafafe98ffee8a6ade4198afdafc676f7be432844eb3ec01f0cc21919833f"
+    },
+    "after": {
+      "bytes": 892707,
+      "sha256": "9aeaafafe98ffee8a6ade4198afdafc676f7be432844eb3ec01f0cc21919833f"
+    }
+  },
+  "smoke_report": {
+    "status": "smoke-only; no timing samples",
+    "source_revision": "e742d5ba4c59dc4b88c4a90351cb72d8ae31ca4f",
+    "compilers": {
+      "Before": {
+        "path": "/var/tmp/code-234-before/code",
+        "sha256": "8da182ad1c3c01ccf00568366ec6be3429f0b87968c0c39e5578f185aabf4f2a",
+        "bytes": 59758760
+      },
+      "After": {
+        "path": "/var/tmp/code-234-after/code",
+        "sha256": "567b8d4cf851072f425b1996f7fa6380c0d44d13b39b106edd76d6b037b5296a",
+        "bytes": 59759480
+      }
+    },
+    "baseline_revision": "e742d5ba4c59dc4b88c4a90351cb72d8ae31ca4f",
+    "environment": {
+      "platform": "Linux-6.12.113+deb13-amd64-x86_64-with-glibc2.41",
+      "lscpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           46 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  12\nOn-line CPU(s) list:                     0-11\nVendor ID:                               GenuineIntel\nModel name:                              Intel(R) Core(TM) i7-5930K CPU @ 3.50GHz\nCPU family:                              6\nModel:                                   63\nThread(s) per core:                      2\nCore(s) per socket:                      6\nSocket(s):                               1\nStepping:                                2\nCPU(s) scaling MHz:                      95%\nCPU max MHz:                             3700.0000\nCPU min MHz:                             1200.0000\nBogoMIPS:                                6999.36\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 ds_cpl vmx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm cpuid_fault epb pti intel_ppin ssbd ibrs ibpb stibp tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm xsaveopt cqm_llc cqm_occup_llc dtherm ida arat pln pts vnmi md_clear flush_l1d\nVirtualization:                          VT-x\nL1d cache:                               192 KiB (6 instances)\nL1i cache:                               192 KiB (6 instances)\nL2 cache:                                1.5 MiB (6 instances)\nL3 cache:                                15 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-11\nVulnerability Gather data sampling:      Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             KVM: Mitigation: Split huge pages\nVulnerability L1tf:                      Mitigation; PTE Inversion; VMX conditional cache flushes, SMT vulnerable\nVulnerability Mds:                       Mitigation; Clear CPU buffers; SMT vulnerable\nVulnerability Meltdown:                  Mitigation; PTI\nVulnerability Mmio stale data:           Mitigation; Clear CPU buffers; SMT vulnerable\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; IBRS_FW; STIBP conditional; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace\n",
+      "github_run_id": null,
+      "runner_image": null,
+      "tools": {
+        "gcc": "gcc (Debian 14.2.0-19) 14.2.0",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)"
+      },
+      "rust_verbose": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6\n",
+      "load_before_preparation": "4.22 4.45 3.59 6/2884 1399125\n",
+      "os_release": "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"13\"\nVERSION=\"13 (trixie)\"\nVERSION_CODENAME=trixie\nDEBIAN_VERSION_FULL=13.7\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"\n",
+      "tool_executables": {
+        "gcc": {
+          "path": "/usr/bin/x86_64-linux-gnu-gcc-14",
+          "sha256": "a23ecab8ff08f09ad8c80602c2c5df7f49e09c25905cb8975902e101bf72635f",
+          "bytes": 1162264
+        },
+        "rustc": {
+          "path": "/home/cdlvsm/.cargo/bin/rustup",
+          "sha256": "4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10",
+          "bytes": 20838840
+        }
+      },
+      "actual_rustc": {
+        "path": "/home/cdlvsm/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc",
+        "sha256": "d3a664c970a9fd8361b64194861bebc1ae37b9054e5ee3400dc1c9e691797eea",
+        "bytes": 645000
+      }
+    },
+    "protocol": {
+      "runs": 15,
+      "seed": 20261106,
+      "experiment": "known Bool part writes only in versioned loops",
+      "cases": [
+        "matrix_64",
+        "matrix_128",
+        "sieve_100000",
+        "sieve_1000000",
+        "merge_16384",
+        "merge_65536",
+        "binary_trees",
+        "dictionary",
+        "points",
+        "spectral_norm",
+        "string_build",
+        "sum_squares",
+        "snapshots",
+        "config_4k",
+        "config_64k",
+        "document_64k",
+        "document_1m"
+      ],
+      "includes": "startup, input construction, algorithm, result checks and cleanup",
+      "rss": "Linux wait4 largest process resident peak; not live heap or allocation count",
+      "boundary": "matched source before/after; separate fresh host, not the public-release ranking"
+    },
+    "sources": {
+      "benchmarks/sieve-profile/run.py": {
+        "path": "/var/tmp/code-234-backend/benchmarks/sieve-profile/run.py",
+        "sha256": "3042d7dc4c6214f2f8e4e4d48b4540b24c219fd4c0ddbea1665a0035693ea682",
+        "bytes": 9564
+      },
+      "benchmarks/website-evidence/run.py": {
+        "path": "/var/tmp/code-234-backend/benchmarks/website-evidence/run.py",
+        "sha256": "e5b17f8c79094472f83fc49862ab7c97a2cda3e3b5b3f35ea7dda3357090c587",
+        "bytes": 18859
+      },
+      "benchmarks/compiled-algorithms/run.py": {
+        "path": "/var/tmp/code-234-backend/benchmarks/compiled-algorithms/run.py",
+        "sha256": "237862b832f0f375f90ea5eb0a4f55c3e3c6043bd52dbf693ffc0903ad0533a6",
+        "bytes": 9162
+      },
+      "benchmarks/language-comparison/peak.c": {
+        "path": "/var/tmp/code-234-backend/benchmarks/language-comparison/peak.c",
+        "sha256": "59019e0946ae15f3b8f33b9c7507e504821050b1461d8bc0645d11ac744d1611",
+        "bytes": 1553
+      },
+      "src/codegen.rs": {
+        "path": "/var/tmp/code-234-backend/src/codegen.rs",
+        "sha256": "f172938d25101f3b6464e663c91881cda6bebdc7927ac70518378d846aa4b705",
+        "bytes": 324442
+      }
+    },
+    "builds": [
+      {
+        "workload": "matrix_64",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/matrix_64.code",
+          "sha256": "cbb84d9ca59dd1e6decce79faddea91a71a5693604ae2cc1210dfdd3fd70fde2",
+          "bytes": 950
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/matrix_64.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/matrix_64-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/matrix_64-Before",
+          "sha256": "59071b7ff24d9bbea4fd933e575557de49a6636d0dabed6bd4c28162af79aaca",
+          "bytes": 103184
+        }
+      },
+      {
+        "workload": "matrix_64",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/matrix_64.code",
+          "sha256": "cbb84d9ca59dd1e6decce79faddea91a71a5693604ae2cc1210dfdd3fd70fde2",
+          "bytes": 950
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/matrix_64.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/matrix_64-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/matrix_64-After",
+          "sha256": "59071b7ff24d9bbea4fd933e575557de49a6636d0dabed6bd4c28162af79aaca",
+          "bytes": 103184
+        }
+      },
+      {
+        "workload": "matrix_128",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/matrix_128.code",
+          "sha256": "8be8b20277bbf1dbf7549bf487b3c981bc6b8b48eb452d20a2a42082442e0b25",
+          "bytes": 951
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/matrix_128.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/matrix_128-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/matrix_128-Before",
+          "sha256": "9ce045e4a564784deb4599e22fcd76d4efabdf0144cc50e04246ca74e882fb15",
+          "bytes": 103184
+        }
+      },
+      {
+        "workload": "matrix_128",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/matrix_128.code",
+          "sha256": "8be8b20277bbf1dbf7549bf487b3c981bc6b8b48eb452d20a2a42082442e0b25",
+          "bytes": 951
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/matrix_128.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/matrix_128-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/matrix_128-After",
+          "sha256": "9ce045e4a564784deb4599e22fcd76d4efabdf0144cc50e04246ca74e882fb15",
+          "bytes": 103184
+        }
+      },
+      {
+        "workload": "sieve_100000",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/sieve_100000.code",
+          "sha256": "cbb3e5061bbb444f4fdfa09e3cc3ae6fdb0bb696ef50c26a491afd6159bc030c",
+          "bytes": 577
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/sieve_100000.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/sieve_100000-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/sieve_100000-Before",
+          "sha256": "81af5c999eae2b57c4846c81fd7cc526ac79e11d6f9e89b6e983142e0e10947f",
+          "bytes": 102936
+        }
+      },
+      {
+        "workload": "sieve_100000",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/sieve_100000.code",
+          "sha256": "cbb3e5061bbb444f4fdfa09e3cc3ae6fdb0bb696ef50c26a491afd6159bc030c",
+          "bytes": 577
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/sieve_100000.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/sieve_100000-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/sieve_100000-After",
+          "sha256": "7a871807290fe88933ff883a25a8e5e75e911eb4bb02dd274b90d767ca53939f",
+          "bytes": 102936
+        }
+      },
+      {
+        "workload": "sieve_1000000",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/sieve_1000000.code",
+          "sha256": "c4a255629e1b63effa08c6e017e9d9065e59a0253ec2396033915550bc7315e8",
+          "bytes": 581
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/sieve_1000000.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/sieve_1000000-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/sieve_1000000-Before",
+          "sha256": "b508c841b31dc98973d533a3b8c8ed2537ea2edd379bddd6d5b913c2d41b4519",
+          "bytes": 102936
+        }
+      },
+      {
+        "workload": "sieve_1000000",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/sieve_1000000.code",
+          "sha256": "c4a255629e1b63effa08c6e017e9d9065e59a0253ec2396033915550bc7315e8",
+          "bytes": 581
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/sieve_1000000.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/sieve_1000000-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/sieve_1000000-After",
+          "sha256": "c675b8513490b3f73d08ea108a9b0d39b57bc6fdc8b5340e6db757ddfa8781d3",
+          "bytes": 102936
+        }
+      },
+      {
+        "workload": "merge_16384",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/merge_16384.code",
+          "sha256": "7ad420109abf313eb5ae7ea13cd410eaad809fa1e07feaebe3f82b9329cfe07c",
+          "bytes": 1290
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/merge_16384.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/merge_16384-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/merge_16384-Before",
+          "sha256": "75786c29bfdeb337304e1fa6f7e4a98d053f2ccac016a85f6aaf5f25ed4162f9",
+          "bytes": 107240
+        }
+      },
+      {
+        "workload": "merge_16384",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/merge_16384.code",
+          "sha256": "7ad420109abf313eb5ae7ea13cd410eaad809fa1e07feaebe3f82b9329cfe07c",
+          "bytes": 1290
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/merge_16384.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/merge_16384-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/merge_16384-After",
+          "sha256": "75786c29bfdeb337304e1fa6f7e4a98d053f2ccac016a85f6aaf5f25ed4162f9",
+          "bytes": 107240
+        }
+      },
+      {
+        "workload": "merge_65536",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/merge_65536.code",
+          "sha256": "fbdb4d94e79c8b10f4097ff9186da9d1e9cead1f8d94210ce288ff9316524979",
+          "bytes": 1290
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/merge_65536.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/merge_65536-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/merge_65536-Before",
+          "sha256": "ba58a2f2258da0757a657d4209bb7e2fec256e0c02bb15da22b3292cae68a359",
+          "bytes": 107240
+        }
+      },
+      {
+        "workload": "merge_65536",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/merge_65536.code",
+          "sha256": "fbdb4d94e79c8b10f4097ff9186da9d1e9cead1f8d94210ce288ff9316524979",
+          "bytes": 1290
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/merge_65536.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/merge_65536-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/merge_65536-After",
+          "sha256": "ba58a2f2258da0757a657d4209bb7e2fec256e0c02bb15da22b3292cae68a359",
+          "bytes": 107240
+        }
+      },
+      {
+        "workload": "binary_trees",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/binary_trees.code",
+          "sha256": "42010a7051ee702a9598b6eed25f10d8fa526861515edffb7cd0530d6d7da4a4",
+          "bytes": 1024
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/binary_trees.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/binary_trees-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/binary_trees-Before",
+          "sha256": "0c3caccdd8b07b0bfd52eda96a02b5891202146312f8302d5f0b276fee4c64d8",
+          "bytes": 98968
+        }
+      },
+      {
+        "workload": "binary_trees",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/binary_trees.code",
+          "sha256": "42010a7051ee702a9598b6eed25f10d8fa526861515edffb7cd0530d6d7da4a4",
+          "bytes": 1024
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/binary_trees.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/binary_trees-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/binary_trees-After",
+          "sha256": "0c3caccdd8b07b0bfd52eda96a02b5891202146312f8302d5f0b276fee4c64d8",
+          "bytes": 98968
+        }
+      },
+      {
+        "workload": "dictionary",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/dictionary.code",
+          "sha256": "07a8ecb6e3fcc0a9fb885bb3875311c9393c82914e103fe9bd160842399bc67e",
+          "bytes": 487
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/dictionary.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/dictionary-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/dictionary-Before",
+          "sha256": "047bbd7959cf7d11342b6b20cbe4234d241584f948991bf642ed4740fefdfa4c",
+          "bytes": 103160
+        }
+      },
+      {
+        "workload": "dictionary",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/dictionary.code",
+          "sha256": "07a8ecb6e3fcc0a9fb885bb3875311c9393c82914e103fe9bd160842399bc67e",
+          "bytes": 487
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/dictionary.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/dictionary-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/dictionary-After",
+          "sha256": "047bbd7959cf7d11342b6b20cbe4234d241584f948991bf642ed4740fefdfa4c",
+          "bytes": 103160
+        }
+      },
+      {
+        "workload": "points",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/points.code",
+          "sha256": "59a175493929b2480674c978bda7e3173558159ea6d893bd98ad9d1a82eb9aca",
+          "bytes": 799
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/points.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/points-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/points-Before",
+          "sha256": "bf6d623e9194c4d195cbb8ed75f9b5d9863a52fd6ca1bd5ae9f08b7cd4c7038b",
+          "bytes": 107352
+        }
+      },
+      {
+        "workload": "points",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/points.code",
+          "sha256": "59a175493929b2480674c978bda7e3173558159ea6d893bd98ad9d1a82eb9aca",
+          "bytes": 799
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/points.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/points-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/points-After",
+          "sha256": "bf6d623e9194c4d195cbb8ed75f9b5d9863a52fd6ca1bd5ae9f08b7cd4c7038b",
+          "bytes": 107352
+        }
+      },
+      {
+        "workload": "spectral_norm",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/spectral_norm.code",
+          "sha256": "821deabca84d03a4d014bc5d9066ce0efe16185181fc73c6d2d10b02733120a2",
+          "bytes": 1184
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/spectral_norm.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/spectral_norm-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/spectral_norm-Before",
+          "sha256": "6bd0806af6160a3ff80112720ca74c501e12f70423328755c9ca0642493b17c5",
+          "bytes": 107608
+        }
+      },
+      {
+        "workload": "spectral_norm",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/spectral_norm.code",
+          "sha256": "821deabca84d03a4d014bc5d9066ce0efe16185181fc73c6d2d10b02733120a2",
+          "bytes": 1184
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/spectral_norm.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/spectral_norm-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/spectral_norm-After",
+          "sha256": "6bd0806af6160a3ff80112720ca74c501e12f70423328755c9ca0642493b17c5",
+          "bytes": 107608
+        }
+      },
+      {
+        "workload": "string_build",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/string_build.code",
+          "sha256": "0b030560d39843bab01e76e2d6ad3f867c6de8678d2a562033a7b4e6c24dbf79",
+          "bytes": 196
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/string_build.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/string_build-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/string_build-Before",
+          "sha256": "3154dc74a38b31dcf69d13498caa8b77441018dde6202e559167852b0cc18d79",
+          "bytes": 98760
+        }
+      },
+      {
+        "workload": "string_build",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/string_build.code",
+          "sha256": "0b030560d39843bab01e76e2d6ad3f867c6de8678d2a562033a7b4e6c24dbf79",
+          "bytes": 196
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/string_build.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/string_build-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/string_build-After",
+          "sha256": "3154dc74a38b31dcf69d13498caa8b77441018dde6202e559167852b0cc18d79",
+          "bytes": 98760
+        }
+      },
+      {
+        "workload": "sum_squares",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/sum_squares.code",
+          "sha256": "2ebb24bb7a4668da42bc13f0ae764cc4e3614ce5ac24708fe05191d57680dd04",
+          "bytes": 304
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/sum_squares.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/sum_squares-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/sum_squares-Before",
+          "sha256": "ddab9d64167e10ed01a25c601a83b8175c676962fa1f527eb16eb2029dd3b8cb",
+          "bytes": 98632
+        }
+      },
+      {
+        "workload": "sum_squares",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/sum_squares.code",
+          "sha256": "2ebb24bb7a4668da42bc13f0ae764cc4e3614ce5ac24708fe05191d57680dd04",
+          "bytes": 304
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/sum_squares.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/sum_squares-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/sum_squares-After",
+          "sha256": "ddab9d64167e10ed01a25c601a83b8175c676962fa1f527eb16eb2029dd3b8cb",
+          "bytes": 98632
+        }
+      },
+      {
+        "workload": "snapshots",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/snapshots.code",
+          "sha256": "6d6e9bea7b697b8ee73b873b61e1cb52ab06b81535022b36720bc6b176c45fc4",
+          "bytes": 740
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/snapshots.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/snapshots-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/snapshots-Before",
+          "sha256": "cffd1e14ceb5dbcaeae57c08ddc0fca72a7d3490c7377993aaf2afeb90a51ccf",
+          "bytes": 103520
+        }
+      },
+      {
+        "workload": "snapshots",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/snapshots.code",
+          "sha256": "6d6e9bea7b697b8ee73b873b61e1cb52ab06b81535022b36720bc6b176c45fc4",
+          "bytes": 740
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/snapshots.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/snapshots-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/snapshots-After",
+          "sha256": "cffd1e14ceb5dbcaeae57c08ddc0fca72a7d3490c7377993aaf2afeb90a51ccf",
+          "bytes": 103520
+        }
+      },
+      {
+        "workload": "config_4k",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/config_4k.code",
+          "sha256": "28f71be7c2663414048add0d434f05ab0d7dad53fee14af3b48e7d6c112689db",
+          "bytes": 1128
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/config_4k.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/config_4k-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/config_4k-Before",
+          "sha256": "3e4f72055f7c0c48c11a04136e0cc7517fa823befc56058ea77317918a0b5637",
+          "bytes": 108144
+        }
+      },
+      {
+        "workload": "config_4k",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/config_4k.code",
+          "sha256": "28f71be7c2663414048add0d434f05ab0d7dad53fee14af3b48e7d6c112689db",
+          "bytes": 1128
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/config_4k.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/config_4k-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/config_4k-After",
+          "sha256": "890855ee76eb1ee429cb902947323daddbd968e61ee5f8b641af00a646047ecd",
+          "bytes": 108144
+        }
+      },
+      {
+        "workload": "config_64k",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/config_64k.code",
+          "sha256": "f1ffa672fced7804fe37a9b9cbf1fcdbe52ead1a56f3cb352eef9d24ee83cc08",
+          "bytes": 1129
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/config_64k.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/config_64k-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/config_64k-Before",
+          "sha256": "45f5fcdd6a4cbeb0061024f3811ce1d917f0ac3fbf1fd914a16f8be7344329f1",
+          "bytes": 108144
+        }
+      },
+      {
+        "workload": "config_64k",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/config_64k.code",
+          "sha256": "f1ffa672fced7804fe37a9b9cbf1fcdbe52ead1a56f3cb352eef9d24ee83cc08",
+          "bytes": 1129
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/config_64k.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/config_64k-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/config_64k-After",
+          "sha256": "3a15e4a2adaf36ac913ceebcfd4c0e0842478359b1cc7f3fb2cb1ac8b6aedff3",
+          "bytes": 108144
+        }
+      },
+      {
+        "workload": "document_64k",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/document_64k.code",
+          "sha256": "dcda703bd673135defcd8d2d322a3551b89db8bc4b8a3f66c74f2018982931d7",
+          "bytes": 1127
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/document_64k.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/document_64k-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/document_64k-Before",
+          "sha256": "76fa364e507bdaafe1caf3b265ea91dce076623e8864655ddf39dd9611a8f2f3",
+          "bytes": 108144
+        }
+      },
+      {
+        "workload": "document_64k",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/document_64k.code",
+          "sha256": "dcda703bd673135defcd8d2d322a3551b89db8bc4b8a3f66c74f2018982931d7",
+          "bytes": 1127
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/document_64k.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/document_64k-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/document_64k-After",
+          "sha256": "d66797b602d3c2188ee25dba6748371553a4f9ebd4ad7422d0387c3fcb035ecc",
+          "bytes": 108144
+        }
+      },
+      {
+        "workload": "document_1m",
+        "mode": "Before",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/document_1m.code",
+          "sha256": "4ecb470c008dc8d1cf6b044e04c7f7b48626c47d6ad789cd8fe38c0152a7c2ce",
+          "bytes": 1129
+        },
+        "command": [
+          "/var/tmp/code-234-before/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/document_1m.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/document_1m-Before"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/document_1m-Before",
+          "sha256": "3755d75957fed1ef2faf64db2745eb97b7034ea97881228b28512cea78285668",
+          "bytes": 108144
+        }
+      },
+      {
+        "workload": "document_1m",
+        "mode": "After",
+        "source": {
+          "path": "/var/tmp/code-234-smoke/sources/document_1m.code",
+          "sha256": "4ecb470c008dc8d1cf6b044e04c7f7b48626c47d6ad789cd8fe38c0152a7c2ce",
+          "bytes": 1129
+        },
+        "command": [
+          "/var/tmp/code-234-after/code",
+          "build",
+          "/var/tmp/code-234-smoke/sources/document_1m.code",
+          "--release",
+          "-o",
+          "/var/tmp/code-234-smoke/binaries/document_1m-After"
+        ],
+        "artifact": {
+          "path": "/var/tmp/code-234-smoke/binaries/document_1m-After",
+          "sha256": "68c975481cb737c38519f3fb5fcbb4cfea32f2b04ce664bf7790a2c90afa51a5",
+          "bytes": 108144
+        }
+      }
+    ],
+    "samples": [],
+    "summary": []
+  }
+}
