@@ -1,0 +1,57 @@
+| Bottom-up stable merge sort of a deterministic permutation, no recursion.
+n = __SIZE__
+values = []
+scratch = []
+seed = 17
+i = 0
+loop
+    if i = n, break
+    values += seed
+    scratch += 0
+    seed = seed + 8191
+    if seed ≥ n, seed = seed - n
+    i = i + 1
+width = 1
+loop
+    if width ≥ n, break
+    left = 0
+    loop
+        if left ≥ n, break
+        mid = left + width
+        if mid > n, mid = n
+        right = left + 2 * width
+        if right > n, right = n
+        a = left
+        b = mid
+        out = left
+        loop
+            if a ≥ mid or b ≥ right, break
+            if values[a] ≤ values[b]
+                scratch[out] = values[a]
+                a = a + 1
+                out = out + 1
+                continue
+            scratch[out] = values[b]
+            b = b + 1
+            out = out + 1
+        loop
+            if a ≥ mid, break
+            scratch[out] = values[a]
+            a = a + 1
+            out = out + 1
+        loop
+            if b ≥ right, break
+            scratch[out] = values[b]
+            b = b + 1
+            out = out + 1
+        left = left + 2 * width
+    swap = values
+    values = scratch
+    scratch = swap
+    swap = null
+    width = width * 2
+i = 0
+loop
+    if i = n, break
+    assert values[i] = i
+    i = i + 1
