@@ -620,3 +620,4 @@
 }
 .learn-starter .codeblock, .lesson-content .codeblock { white-space: pre-wrap; overflow-wrap: anywhere; }
 .lesson-example [hidden] { display: none; }
+.home-proof { display: flex; flex-wrap: wrap; gap: .7rem 2rem; }

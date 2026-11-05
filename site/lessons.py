@@ -33,14 +33,27 @@ def outline(plan, current=None, include_starter=True):
         heading = (f'<a href="__ROOT__{lesson["route"]}"{current_attr}>{title}</a>' if lesson['ready']
                    else f'<span{current_attr}>{title}</span>')
         state = 'Ready' if lesson['ready'] else 'Coming soon'
-        items.append(f'<li><span class="lesson-number">{index if index else "Start"}</span>'
+        items.append(f'<li id="path-{lesson["id"]}"><span class="lesson-number">{index if index else "Start"}</span>'
                      f'<div><h3>{heading}</h3><p>{html.escape(lesson["goal"])}</p>'
                      f'<p class="lesson-outcome">{html.escape(lesson["outcome"])}</p></div>'
                      f'<span class="lesson-state">{state}</span></li>')
     return '<ol class="learning-path">' + ''.join(items) + '</ol>'
 
 
-def render_lesson(site_dir, plan, lesson, previews):
+def lesson_assets(site_dir, greeting, plan):
+    paths = {path for lesson in plan if lesson['ready']
+             for path in lesson.get('snippets', {}).values()}
+    assets = {path: (site_dir / 'lesson-examples' / path).read_text().replace('__HOME_CODE__', greeting.strip())
+              for path in paths}
+    if not any(lesson['id'] == 'first-program' and lesson['ready'] for lesson in plan):
+        return assets
+    assets['first-program/start.sh'] = '#!/bin/sh\nset -eu\n' + '\n'.join(
+        assets[f'first-program/{name}.sh'] for name in ['install', 'project', 'run'])
+    assets['first-program/hello.code'] = greeting
+    return assets
+
+
+def render_lesson(site_dir, plan, lesson, previews, assets):
     index = plan.index(lesson)
     content = (site_dir / lesson['source']).read_text()
     neighbors = []
@@ -64,9 +77,11 @@ def render_lesson(site_dir, plan, lesson, previews):
         variants.append({'name': lesson['id'], 'code': example['code'], 'output': example['output']})
         edit = lesson['edit']
         if example['code'].count(edit['find']) != 1:
-            raise ValueError('The quick-start edit must match exactly once')
+            raise ValueError('A lesson edit must match exactly once')
         variants.append({'name': lesson['id'] + '-edit', 'code': example['code'].replace(edit['find'], edit['replace']), 'output': edit['output']})
         replacements.update({'__LESSON_EDIT__': html.escape(edit['replace']), '__LESSON_EDIT_OUTPUT__': html.escape(edit['output'])})
+    replacements.update({f'__LESSON_{name}__': html.escape(assets[path].strip())
+                         for name, path in lesson.get('snippets', {}).items()})
     result = (site_dir / 'lesson.html').read_text()
     for key, value in replacements.items():
         result = result.replace(key, value)

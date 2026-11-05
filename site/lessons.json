@@ -1,7 +1,64 @@
 [
-  {"id":"quick-start","route":"learn/quick-start.html","source":"learn/quick-start.html","ready":true,"title":"Try a change","goal":"Run a greeting, then make it your own.","outcome":"See your name in the output.","example":"hello_home","edit":{"find":"name = \"world\"","replace":"name = \"Ada\"","output":"hello, Ada"}},
-  {"id":"first-program","route":"learn/first-program.html","source":"learn/first-program.html","ready":false,"title":"Your first program","goal":"Run Code in the browser and on your machine.","outcome":"Build and run the same greeting locally."},
-  {"id":"values","route":"learn/values.html","source":"learn/values.html","ready":false,"title":"Values and control flow","goal":"Work with values, updates, conditions and loops.","outcome":"Transform a short list and print the result."},
-  {"id":"messages","route":"learn/messages.html","source":"learn/messages.html","ready":false,"title":"Handlers, messages and reuse","goal":"Send particles, handle returned values and reuse modules.","outcome":"Compose a program from reusable behavior."},
-  {"id":"small-program","route":"learn/small-program.html","source":"learn/small-program.html","ready":false,"title":"Build a small program","goal":"Put values, handlers and modules together.","outcome":"Finish a useful program you can change and extend."}
+  {
+    "id": "quick-start",
+    "route": "learn/quick-start.html",
+    "source": "learn/quick-start.html",
+    "ready": true,
+    "title": "Try a change",
+    "goal": "Run a greeting, then make it your own.",
+    "outcome": "See your name in the output.",
+    "example": "hello_home",
+    "edit": {
+      "find": "name = \"world\"",
+      "replace": "name = \"Ada\"",
+      "output": "hello, Ada"
+    }
+  },
+  {
+    "id": "first-program",
+    "route": "learn/first-program.html",
+    "source": "learn/first-program.html",
+    "ready": true,
+    "title": "Your first program",
+    "goal": "Run Code in the browser and on your machine.",
+    "outcome": "Build and run the same greeting locally.",
+    "example": "hello_home",
+    "edit": {
+      "find": "name = \"world\"",
+      "replace": "name = \"Ada\"",
+      "output": "hello, Ada"
+    },
+    "snippets": {
+      "INSTALL": "first-program/install.sh",
+      "PROJECT": "first-program/project.sh",
+      "RUN": "first-program/run.sh"
+    }
+  },
+  {
+    "id": "values",
+    "route": "learn/values.html",
+    "source": "learn/values.html",
+    "ready": false,
+    "title": "Values and control flow",
+    "goal": "Work with values, updates, conditions and loops.",
+    "outcome": "Transform a short list and print the result."
+  },
+  {
+    "id": "messages",
+    "route": "learn/messages.html",
+    "source": "learn/messages.html",
+    "ready": false,
+    "title": "Handlers, messages and reuse",
+    "goal": "Send particles, handle returned values and reuse modules.",
+    "outcome": "Compose a program from reusable behavior."
+  },
+  {
+    "id": "small-program",
+    "route": "learn/small-program.html",
+    "source": "learn/small-program.html",
+    "ready": false,
+    "title": "Build a small program",
+    "goal": "Put values, handlers and modules together.",
+    "outcome": "Finish a useful program you can change and extend."
+  }
 ]

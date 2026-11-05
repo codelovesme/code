@@ -20,7 +20,7 @@ try {
   await page.getByRole('link', { name: 'Start learning', exact: true }).click();
   await page.waitForURL('**/learn.html');
   assert.equal(await page.locator('#learning-path .learning-path li').count(), 4);
-  assert.equal(await page.locator('#learning-path a').count(), 0);
+  assert.equal(await page.locator('#learning-path a').count(), plan.slice(1).filter(lesson => lesson.ready).length);
   for (const lesson of plan.filter(item => !item.ready)) {
     assert.equal(await page.locator(`a[href$="${lesson.route}"]`).count(), 0);
   }
@@ -28,8 +28,7 @@ try {
   await page.waitForURL('**/learn/quick-start.html');
   assert.equal(await page.locator('#greeting-code').textContent(), source);
   assert.equal(await page.locator('.site-nav [aria-current="page"]').innerText(), 'Learn');
-  assert.equal(await page.locator('.lesson-neighbors a').count(), 0);
-  assert.ok((await page.locator('.lesson-neighbors').innerText()).includes('coming soon'));
+  assert.equal(await page.locator('.lesson-neighbors a[rel="next"]').getAttribute('href'), '../learn/first-program.html');
   await page.getByRole('button', { name: 'Copy code', exact: true }).click();
   await page.locator('#lesson-copy-status').filter({ hasText: 'Code copied' }).waitFor();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), source);
@@ -61,7 +60,7 @@ try {
         assert.ok(box.x >= 0 && box.x + box.width <= width);
         await page.locator('.lesson-outline summary').focus(); await page.keyboard.press('Enter');
         assert.equal(await page.locator('[aria-current="step"]').innerText(), 'Try a change');
-        assert.equal(await page.locator('.lesson-outline a').count(), 1);
+        assert.equal(await page.locator('.lesson-outline a').count(), plan.filter(lesson => lesson.ready).length);
         await page.keyboard.press('Space');
         assert.equal(await page.locator('.lesson-outline').evaluate(el => el.open), false);
         await page.locator('.skip-link').focus(); await page.keyboard.press('Enter');

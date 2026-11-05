@@ -34,3 +34,14 @@ including direct URLs under the GitHub Pages `/code/` prefix. Only ready
 content ships. Missing ready source, duplicate routes and unsafe routes fail
 the build. Static tests exercise publishing/withdrawing the next lesson in a
 temporary fixture, without putting a draft lesson on the public site.
+
+
+Lesson 1 adds optional `snippets` to its record. Those paths refer to source
+command templates under `site/lesson-examples/`; the builder renders the
+canonical greeting into them, displays those exact strings and generates the
+downloadable combined commands. Only ready lessons' assets are emitted.
+Copy controls can sit in individual `figure` panels with their own status
+region; `data-copy-type="shell"` gives terminal-specific feedback. Keep copy
+buttons hidden in source markup; `lesson.mjs` enables them when available.
+The lesson 1 native checker verifies the assembled scripts with the actual
+public release rather than maintaining a second command implementation.

@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from performance import render as render_performance
-from lessons import load_plan, outline, render_lesson
+from lessons import load_plan, outline, render_lesson, lesson_assets
 
 # Ordered: first matching prefix wins. `fail_`/`emit_`/`particle_` are the
 # most specific and must be checked before the generic value prefixes.
@@ -220,9 +220,10 @@ def main() -> None:
     for name, lesson in lesson_pages.items():
         pages[name] = ('learn', f'Learn Code — {lesson["title"]}', lesson['goal'])
     lesson_examples = []
+    assets = lesson_assets(site_dir, home["code"], plan)
     for filename, (page, title, description) in pages.items():
         if filename in lesson_pages:
-            content, variants = render_lesson(site_dir, plan, lesson_pages[filename], previews)
+            content, variants = render_lesson(site_dir, plan, lesson_pages[filename], previews, assets)
             lesson_examples.extend(variants)
         else:
             content = (site_dir / f"{filename}.html").read_text()
@@ -270,6 +271,14 @@ def main() -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(output)
 
+    asset_dir = dist_dir / 'lesson-examples'
+    for old in asset_dir.rglob('*'):
+        if old.is_file() and old.relative_to(asset_dir).as_posix() not in assets:
+            old.unlink()
+    for name, content in assets.items():
+        destination = dist_dir / 'lesson-examples' / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(content)
     (dist_dir / "lesson-examples.json").write_text(json.dumps(lesson_examples, indent=2) + "\n")
     (dist_dir / "examples.json").write_text(json.dumps(examples, indent=2) + "\n")
     (dist_dir / "demos.json").write_text(json.dumps(previews, indent=2) + "\n")

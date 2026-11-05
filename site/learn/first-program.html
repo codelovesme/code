@@ -1,0 +1,41 @@
+<section aria-labelledby="browser-first">
+  <h2 id="browser-first">1. Get a result in the browser.</h2>
+  <p>This complete program asks the console module to print a greeting. The playground supplies that module, so you can start without installing anything.</p>
+  <figure class="module-panel lesson-example"><figcaption>hello.code · complete program</figcaption><pre class="codeblock" id="first-program-code" tabindex="0">__HOME_CODE__</pre><div class="lesson-example-actions"><button class="tool-btn" data-copy="first-program-code" hidden>Copy code</button><a class="btn btn-primary" href="__ROOT__playground.html?example=hello_home#playground">Run this program →</a></div><p id="lesson-copy-status" role="status"></p></figure>
+  <div class="lesson-result"><span>Expected output</span><pre>__HOME_OUTPUT__</pre></div>
+  <p><code>link</code> makes console available as <code>out</code>. <code>name</code> holds the text <code>"world"</code>. The last line sends <code>Print</code> to console; <code>$name</code> inserts that text into the greeting.</p>
+</section>
+<section aria-labelledby="your-name">
+  <h2 id="your-name">2. Make one change.</h2>
+  <p>In the playground, replace <code>world</code> with <code>Ada</code>, then press <strong>Run</strong>.</p>
+  <pre class="codeblock">__LESSON_EDIT__</pre>
+  <div class="lesson-result"><span>Expected output after the change</span><pre>__LESSON_EDIT_OUTPUT__</pre></div>
+  <p>Try your own name too. Reset brings back the original program.</p>
+</section>
+<section aria-labelledby="native-first">
+  <h2 id="native-first">3. Run the same program on your machine.</h2>
+  <p>You can keep learning in the browser. When you want a local project and native executable, use the optional setup below.</p>
+  <details class="module-details" id="linux-setup"><summary>Local setup · Linux x86_64</summary>
+    <p>You need <code>curl</code>, <code>tar</code> and a C compiler available as <code>cc</code>. Use a terminal in a new working directory, and keep the same terminal open through all three steps.</p>
+    <h3>Download the language CLI</h3>
+    <figure class="module-panel lesson-example"><pre class="codeblock" id="cli-install" tabindex="0">__LESSON_INSTALL__</pre><button class="tool-btn" data-copy="cli-install" data-copy-type="shell" hidden>Copy download commands</button><p role="status"></p></figure>
+    <p>Version output: <code>Code v2.23.0</code>. Keep the extracted <code>code</code> and <code>code-driver</code> together. <code>code_cli</code> points to this language’s executable, so these commands work even when your usual <code>code</code> command opens Visual Studio Code.</p>
+    <h3>Create your project and install console</h3>
+    <figure class="module-panel lesson-example"><pre class="codeblock" id="cli-project" tabindex="0">__LESSON_PROJECT__</pre><button class="tool-btn" data-copy="cli-project" data-copy-type="shell" hidden>Copy project commands</button><p role="status"></p></figure>
+    <p>The file is the same greeting you ran in the browser. This tutorial pins the console module to the same v2.23.0 release.</p>
+    <h3>Check, run and build</h3>
+    <figure class="module-panel lesson-example"><pre class="codeblock" id="cli-run" tabindex="0">__LESSON_RUN__</pre><button class="tool-btn" data-copy="cli-run" data-copy-type="shell" hidden>Copy run commands</button><p role="status"></p></figure>
+    <p><code>check</code> returns a JSON report with <code>"diagnostics": []</code> when it finds no diagnostics. Each run prints <code>hello, world</code>. <code>run --interpret</code> uses the interpreter; <code>run</code> can reuse a cached native build. <code>build --release</code> creates <code>build/hello</code>, which you run on the final line.</p>
+    <p>Edit <code>name</code> in <code>main.code</code> to <code>"Ada"</code> and run again to see <code>hello, Ada</code>.</p>
+    <div class="section-links"><a href="__ROOT__lesson-examples/first-program/start.sh" download>Download all commands</a><a href="__ROOT__lesson-examples/first-program/hello.code" download>Download the program</a></div>
+  </details>
+  <details class="module-details"><summary>Other platforms and building from source</summary>
+    <p>The published native bundle used here is Linux x86_64. This release does not provide native CLI bundles for macOS, Windows or ARM. The browser playground remains an available starting point.</p>
+    <p>Building the language from source requires Rust, LLVM 17 and a system C compiler. Follow the <a href="https://github.com/codelovesme/code/blob/v2.23.0/README.md#running-it">versioned source-build instructions</a>. Native platform support and module availability need checking for your target.</p>
+  </details>
+</section>
+<section aria-labelledby="first-next">
+  <h2 id="first-next">You have a working program.</h2>
+  <p>You linked a module, changed a value and printed the result. Next you’ll work with values, conditions and loops.</p>
+  <p><a href="__ROOT__learn.html#path-values">See the next step: values and control flow →</a> · <a href="__ROOT__playground.html">Try more examples →</a> · <a href="__ROOT__docs.html#language-reference">Language reference →</a></p>
+</section>

@@ -61,7 +61,7 @@ class SiteBuild(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_direct_pages_share_working_navigation(self):
-        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html'})
+        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html', 'learn/first-program.html'})
         expected = ['index.html', 'learn.html', 'playground.html', 'docs.html', 'https://github.com/codelovesme/code']
         for name, page in self.pages.items():
             prefix = '../' if name.startswith('learn/') else ''
@@ -184,23 +184,32 @@ class SiteBuild(unittest.TestCase):
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / filename, destination)
             plan = json.loads((repo / 'site/lessons.json').read_text())
-            plan[1]['ready'] = True
-            (repo / 'site' / plan[1]['source']).write_text('<section><h2>A ready lesson fixture</h2></section>')
+            upcoming = next(index for index, lesson in enumerate(plan) if not lesson['ready'])
+            plan[upcoming]['ready'] = True
+            (repo / 'site' / plan[upcoming]['source']).write_text('<section><h2>A ready lesson fixture</h2></section>')
             manifest = repo / 'site/lessons.json'
             manifest.write_text(json.dumps(plan))
             dist = Path(directory) / 'dist'
             command = ['python3', str(repo / 'site/build.py'), str(repo), str(dist)]
             subprocess.run(command, env=self.environment, check=True, capture_output=True)
-            first = (dist / 'learn/first-program.html').read_text()
-            starter = (dist / 'learn/quick-start.html').read_text()
-            self.assertIn('href="../learn/quick-start.html" rel="prev"', first)
-            self.assertIn('href="../learn/first-program.html" rel="next"', starter)
-            self.assertNotIn('href="../learn/values.html"', first)
+            previous = plan[upcoming - 1]
+            following = plan[upcoming + 1]
+            published = (dist / plan[upcoming]['route']).read_text()
+            neighbor = (dist / previous['route']).read_text()
+            self.assertIn(f'href="../{previous["route"]}" rel="prev"', published)
+            self.assertIn(f'href="../{plan[upcoming]["route"]}" rel="next"', neighbor)
+            self.assertNotIn(f'href="../{following["route"]}"', published)
+            plan[upcoming]['ready'] = False
+            manifest.write_text(json.dumps(plan))
+            subprocess.run(command, env=self.environment, check=True, capture_output=True)
+            self.assertFalse((dist / plan[upcoming]['route']).exists())
+            self.assertNotIn(f'href="../{plan[upcoming]["route"]}"', (dist / previous['route']).read_text())
+            # Withdrawing lesson 1 also withdraws its generated command bundle.
             plan[1]['ready'] = False
             manifest.write_text(json.dumps(plan))
             subprocess.run(command, env=self.environment, check=True, capture_output=True)
+            self.assertFalse((dist / 'lesson-examples/first-program/start.sh').exists())
             self.assertFalse((dist / 'learn/first-program.html').exists())
-            self.assertNotIn('href="../learn/first-program.html"', (dist / 'learn/quick-start.html').read_text())
 
     def test_rebuilding_is_deterministic(self):
         before = {str(p.relative_to(self.dist)): p.read_bytes() for p in self.dist.rglob('*') if p.is_file()}

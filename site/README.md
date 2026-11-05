@@ -256,8 +256,8 @@ PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
 `lessons.json` is the single ordered publication plan: Quick start, first
 program, values/control flow, handlers/messages/reuse, small program. Only
 ready records receive links or generated pages. The hub stays useful through
-its greeting and Playground/Docs links while the four full lessons are pending.
-Quick start is the existing browser warm-up, not lesson 219's native setup.
+its greeting and Playground/Docs links while later lessons are pending.
+Quick start is the browser warm-up; lesson 1 adds the checked local setup.
 
 `lesson.html` wraps short content fragments with a goal, current position,
 expandable path, previous/next and back-to-Learn navigation. `__ROOT__` in the
@@ -283,4 +283,47 @@ PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
 This checks Home → Learn → nested Quick start → Playground, edited output,
 copy/clipboard refusal, reference/back links, readiness, keyboard/skip targets,
 four widths and the readable no-JS lesson. Use `check_navigation.mjs` for the
-complete site flows, including all nine published routes.
+complete site flows, including all ten published routes.
+
+
+## First program lesson (219)
+
+`learn/first-program.html` is lesson 1, linked from Home and Learn. It uses the
+existing console greeting and an Ada edit, checked both in the pinned 2.16.0
+browser interpreter and the public v2.23.0 Linux x86_64 CLI. Local setup is
+optional/expandable; source-building is an advanced link to that release's
+README, with native platform limitations stated. Lesson 2 links only to its
+ready learning-path overview until its actual content is ready.
+
+The three displayed command blocks come from `lesson-examples/first-program/`.
+The build injects the canonical greeting into `project.sh`, emits the exact
+snippets and combines them into downloadable `start.sh`. It also emits the
+canonical `hello.code`. Assets follow lesson readiness and are removed when
+withdrawn; raw placeholder templates are not copied to the public artifact.
+Console and the CLI are pinned to v2.23.0; an absolute `code_cli` variable
+selects the language while leaving the VS Code editor command alone.
+
+Check the real download/install/run/build flow in a new temporary directory:
+
+```sh
+python3 site/check_first_program.py /absolute/path/to/generated/site
+```
+
+This needs Linux x86_64, `sh`, `curl`, `tar`, `cc` and network access. It runs
+the actual assembled commands, downloads the published CLI, checks the console
+lock/version/hash and exact source, verifies the structured check report, and
+runs both original and edited programs interpreted, cached and prebuilt. It
+uses isolated cache/project directories, including a path containing spaces.
+No source-build success is inferred from this prebuilt-CLI check.
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
+  node site/check_first_program.mjs http://localhost:8955/code/
+```
+
+This checks the browser edit, Home/hub/direct lesson links, copied/downloaded
+command equality, optional setup, neighbors, upcoming-topic overview, four
+widths and no-JS reading. Run it separately from other clipboard-writing
+browser checks. `check_learn.mjs` and `check_navigation.mjs` retain shared
+Learn/site coverage. The additional lesson variants join the actual-engine
+gate (`lesson-examples.json`); no native setup is offered as a browser module.

@@ -3,10 +3,12 @@ for (const button of document.querySelectorAll('[data-copy]')) {
   button.hidden = false;
   button.addEventListener('click', async () => {
     const code = document.getElementById(button.dataset.copy);
-    const status = document.getElementById('lesson-copy-status');
+    const status = button.closest('figure')?.querySelector('[role="status"]') ?? document.getElementById('lesson-copy-status');
     try {
       await navigator.clipboard.writeText(code.textContent);
-      status.textContent = 'Code copied. Paste it into the playground.';
+      status.textContent = button.dataset.copyType === 'shell'
+        ? 'Commands copied. Paste them into your terminal.'
+        : 'Code copied. Paste it into the playground.';
     } catch {
       const range = document.createRange();
       range.selectNodeContents(code);
