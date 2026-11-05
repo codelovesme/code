@@ -1,0 +1,3 @@
+link "console" as out
+emit Print { value = "before" } to out
+value = missing_name

@@ -93,10 +93,73 @@
     "id": "messages",
     "route": "learn/messages.html",
     "source": "learn/messages.html",
-    "ready": false,
+    "ready": true,
     "title": "Handlers, messages and reuse",
     "goal": "Send particles, handle returned values and reuse modules.",
-    "outcome": "Compose a program from reusable behavior."
+    "outcome": "Compose a program from reusable behavior.",
+    "steps": [
+      {
+        "id": "handler",
+        "example": "learn_messages_handler",
+        "title": "A named handler",
+        "output": "hello, Ada",
+        "edits": [
+          {
+            "find": "name = \"Ada\"",
+            "replace": "name = \"Lin\"",
+            "output": "hello, Lin"
+          }
+        ]
+      },
+      {
+        "id": "failure",
+        "example": "learn_messages_failure",
+        "title": "Inspect the returned value",
+        "output": "Choose a name.",
+        "edits": [
+          {
+            "find": "emit Greet { name = \"\" }",
+            "replace": "emit Greet { name = \"Ada\" }",
+            "output": "hello, Ada"
+          }
+        ]
+      },
+      {
+        "id": "solution",
+        "example": "learn_messages_solution",
+        "title": "Exercise solution",
+        "output": "hello, Ada\nChoose a name.\nhello, Lin"
+      }
+    ],
+    "snippets": {
+      "GREETER": "messages/greeter.code",
+      "CALLER": "messages/main.code",
+      "RUN": "messages/run.sh"
+    },
+    "checks": [
+      {
+        "id": "ignored",
+        "source": "messages/ignored.code",
+        "output": "caller continued"
+      },
+      {
+        "id": "frame",
+        "source": "messages/frame.code",
+        "output": "division by zero\ncaller continued"
+      },
+      {
+        "id": "top-level",
+        "source": "messages/top-level.code",
+        "output": "before",
+        "error_prefix": "error: assertion failed"
+      },
+      {
+        "id": "pre-run",
+        "source": "messages/pre-run.code",
+        "output": "",
+        "error_prefix": "error: undefined variable"
+      }
+    ]
   },
   {
     "id": "small-program",

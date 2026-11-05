@@ -1,0 +1,4 @@
+link "console" as out
+emit Print { value = "before" } to out
+assert false
+emit Print { value = "after" } to out

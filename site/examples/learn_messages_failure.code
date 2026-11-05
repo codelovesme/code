@@ -1,0 +1,9 @@
+link "console" as out
+Greet { name } =>
+    if name = "", return Exception { source = "greeting", message = "Choose a name." }
+    return Greeting { text = "hello, $name" }
+emit Greet { name = "" } to this get reply
+if reply ∈ Exception
+    emit Print { value = reply.message } to out
+if reply ∈ Greeting
+    emit Print { value = reply.text } to out

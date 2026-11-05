@@ -56,3 +56,13 @@ come from the validated `site/examples/` collection, not unchecked HTML text.
 A solution panel can live inside native HTML details and still be checked.
 Use the lesson's current engine syntax; separate-line array items need no
 commas, and comparisons use the language's canonical ≥/≤ symbols.
+
+
+Lesson 3 also declares optional `checks` for documented error boundaries. Each
+references a canonical file under `site/lesson-checks/`, expected printed output
+and an optional `error_prefix`. The built manifest feeds those probes into the
+published-engine gate; it does not turn errors in ordinary examples into
+expected successes. Keep browser programs in the console-only host, and use
+explicitly local snippets for source-file imports. `data-copy-type="file"`
+provides save-to-file feedback. The messages native checker verifies those
+exact emitted files, binding privacy and error boundaries with public v2.23.0.

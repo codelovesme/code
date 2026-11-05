@@ -8,7 +8,9 @@ for (const button of document.querySelectorAll('[data-copy]')) {
       await navigator.clipboard.writeText(code.textContent);
       status.textContent = button.dataset.copyType === 'shell'
         ? 'Commands copied. Paste them into your terminal.'
-        : 'Code copied. Paste it into the playground.';
+        : button.dataset.copyType === 'file'
+          ? 'Code copied. Save it in the named file.'
+          : 'Code copied. Paste it into the playground.';
     } catch {
       const range = document.createRange();
       range.selectNodeContents(code);

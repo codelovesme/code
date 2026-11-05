@@ -1,0 +1,48 @@
+<section aria-labelledby="named-handler">
+  <h2 id="named-handler">1. Give behavior a name.</h2>
+  <p>A particle is a named value carrying fields. <code>Greet { name = "Ada" }</code> carries a request; the <code>Greet</code> handler answers it with a <code>Greeting</code> particle.</p>
+  __STEP_HANDLER__
+  <p><code>emit</code> sends the request. <code>to this</code> selects this program’s handlers. <code>get reply</code> keeps the answer, and <code>reply.text</code> reads its field. Change Ada to Lin to see <code>hello, Lin</code>.</p>
+</section>
+<section aria-labelledby="returned-value">
+  <h2 id="returned-value">2. Inspect the result.</h2>
+  <p>A handler can return an <code>Exception</code> particle when it cannot fulfill a request. The caller checks that returned value and decides what to do with it.</p>
+  __STEP_FAILURE__
+  <p><code>reply ∈ Exception</code> checks the particle’s class. Here, an empty name returns a message to print. Change the request to <code>name = "Ada"</code> and the successful <code>Greeting</code> branch prints <code>hello, Ada</code>.</p>
+  <details class="module-details"><summary>Returned failures, runtime failures and pre-run errors</summary>
+    <p>Receiving an Exception does not automatically stop or propagate through the caller. Ignoring a returned failure lets the caller continue, so check results where they matter.</p>
+    <p>A runtime failure inside a handler ends that handler’s frame and returns an Exception. A failure at the top level, such as a failed assertion, stops the run. Errors found before execution, such as an undefined name or invalid syntax, refuse the program before it starts.</p>
+    <p><code>message</code> is text for a person; <code>source</code> identifies the source of a failure. <a href="https://github.com/codelovesme/code/blob/v2.23.0/README.md#errors">Versioned error reference →</a></p>
+  </details>
+</section>
+<section aria-labelledby="messages-exercise">
+  <h2 id="messages-exercise">Your turn: reuse the handler.</h2>
+  <p>Use the checked handler above to greet <code>["Ada", "", "Lin"]</code> in order. Loop over the names, send each to Greet, and print either the greeting or the returned failure message.</p>
+  <div class="lesson-result"><span>Your target output</span><pre>__STEP_SOLUTION_OUTPUT__</pre></div>
+  <a class="btn btn-primary" href="__ROOT__playground.html?example=learn_messages_failure#playground">Start the exercise →</a>
+  <details class="module-details" id="messages-solution"><summary>Show a working solution</summary>
+    __STEP_SOLUTION__
+    <p>The same handler answers three requests. In <code>name = name</code>, the field on the left receives the loop value on the right. The middle request returns a failure value; the loop still reaches Lin.</p>
+  </details>
+</section>
+<section aria-labelledby="reuse-file">
+  <h2 id="reuse-file">3. Reuse behavior from another file.</h2>
+  <p>The browser examples use one file and the provided console module. For source-file reuse, use the local CLI project from <a href="__ROOT__learn/first-program.html#linux-setup">lesson 1</a>.</p>
+  <details class="module-details" id="local-reuse"><summary>Two files · local CLI extension</summary>
+    <p>In your <code>hello</code> project, save these as <code>greeter.code</code> and <code>main.code</code>. The second file replaces the greeting program from lesson 1. Keep its CLI/console setup and the <code>code_cli</code> variable.</p>
+    <figure class="module-panel lesson-example"><figcaption>greeter.code · local file</figcaption><pre class="codeblock" id="greeter-code" tabindex="0">__LESSON_GREETER__</pre><button class="tool-btn" data-copy="greeter-code" data-copy-type="file" hidden>Copy greeter.code</button><p role="status"></p></figure>
+    <figure class="module-panel lesson-example"><figcaption>main.code · local file</figcaption><pre class="codeblock" id="caller-code" tabindex="0">__LESSON_CALLER__</pre><button class="tool-btn" data-copy="caller-code" data-copy-type="file" hidden>Copy main.code</button><p role="status"></p></figure>
+    <p><code>link "greeter"</code> brings its handler into this program. Greet reads its own file’s <code>greeting</code>; main keeps its separate binding with the same name. Bindings stay private to their file, and callers ask handlers for results.</p>
+    <figure class="module-panel lesson-example"><figcaption>Run in the same terminal and project</figcaption><pre class="codeblock" id="messages-run" tabindex="0">__LESSON_RUN__</pre><button class="tool-btn" data-copy="messages-run" data-copy-type="shell" hidden>Copy local commands</button><p role="status"></p></figure>
+    <div class="lesson-result"><span>Each run prints</span><pre>hello, Ada
+hello, Lin
+caller: from main</pre></div>
+    <p>Try changing <code>"hello"</code> in greeter.code to <code>"welcome"</code>. The greetings change; main’s own binding stays <code>"from main"</code>.</p>
+    <div class="section-links"><a href="__ROOT__lesson-examples/messages/greeter.code" download>Download greeter.code</a><a href="__ROOT__lesson-examples/messages/main.code" download>Download main.code</a><a href="__ROOT__modules.html#reuse">More about reuse and private state →</a></div>
+  </details>
+</section>
+<section aria-labelledby="messages-next">
+  <h2 id="messages-next">Compose these pieces.</h2>
+  <p>Handlers implement behavior, particles carry requests and results, and modules let you reuse it. The next lesson brings these pieces into a small useful program.</p>
+  <p><a href="__ROOT__learn.html#path-small-program">See the final learning step →</a> · <a href="__ROOT__modules.html">Modules guide →</a> · <a href="__ROOT__docs.html#language-reference">Language reference →</a></p>
+</section>

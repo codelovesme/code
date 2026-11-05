@@ -47,9 +47,9 @@ for (const example of examples) {
   try {
     printed = [];
     const result = run_with_modules(example.code, { console: consoleModule });
-    const expectedError = example.name === "fail_undefined_variable";
-    if (expectedError ? !result.startsWith("error: undefined variable") : result !== "") {
-      throw new Error(result || "expected an undefined-variable error");
+    const expectedError = example.error_prefix ?? (example.name === "fail_undefined_variable" ? "error: undefined variable" : null);
+    if (expectedError ? !result.startsWith(expectedError) : result !== "") {
+      throw new Error(result || "expected the declared error");
     }
     if (example.output !== undefined && printed.join("\n") !== example.output) {
       throw new Error(`expected output ${JSON.stringify(example.output)}, got ${JSON.stringify(printed.join("\n"))}`);

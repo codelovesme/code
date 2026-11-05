@@ -1,0 +1,7 @@
+link "console" as out
+Divide { left, right } =>
+    return Quotient { value = left / right }
+emit Divide { left = 12, right = 0 } to this get reply
+if reply ∈ Exception
+    emit Print { value = reply.message } to out
+emit Print { value = "caller continued" } to out

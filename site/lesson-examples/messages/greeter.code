@@ -1,0 +1,4 @@
+greeting = "hello"
+Greet { name } =>
+    if name = "", return Exception { source = "greeter", message = "Choose a name." }
+    return Greeting { text = "$greeting, $name" }

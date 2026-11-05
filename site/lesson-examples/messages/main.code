@@ -1,0 +1,8 @@
+link "greeter"
+link "console" as out
+greeting = "from main"
+emit Greet { name = "Ada" } to this get first
+emit Greet { name = "Lin" } to this get second
+emit Print { value = first.text } to out
+emit Print { value = second.text } to out
+emit Print { value = "caller: $greeting" } to out

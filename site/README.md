@@ -283,7 +283,7 @@ PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
 This checks Home → Learn → nested Quick start → Playground, edited output,
 copy/clipboard refusal, reference/back links, readiness, keyboard/skip targets,
 four widths and the readable no-JS lesson. Use `check_navigation.mjs` for the
-complete site flows, including all eleven published routes.
+complete site flows, including all twelve published routes.
 
 
 ## First program lesson (219)
@@ -336,8 +336,7 @@ record, an independent updated copy, a list loop, a condition and a short
 exercise combining a copied list/nested record update with filtering. The
 solution is expandable and its target output is generated from the same
 expected-output record used in engine checks. Full type rules stay in an
-optional reference link. Lesson 1 links forward; the messages lesson's ready
-overview remains available while its actual lesson is pending.
+optional reference link. Lesson 1 links forward; lesson 2 now links forward to the ready messages lesson.
 
 The five programs live in `examples/learn_values_*.code` and join the validated
 advanced gallery. A lesson's optional `steps` records name those canonical
@@ -356,5 +355,44 @@ This runs all five programs and both suggested edits through their real
 Playground links, verifies the exercise solution and unchanged original, checks
 copy, ready neighbors, four widths, keyboard interaction and no-JS reading.
 Run clipboard-writing checks separately. The actual pinned-engine gate now
-checks 154 cases: 139 gallery programs, four featured previews and 11 lesson
-program/output variants. No extra browser module or engine version is added.
+checks 166 cases: 142 gallery programs, four featured previews and 20 lesson
+program/output and error-boundary variants. No extra browser module or engine version is added.
+
+
+## Handlers, messages and reuse lesson (221)
+
+`learn/messages.html` uses three small console-only programs for a named
+handler/returned particle, an explicitly returned Exception, and a loop exercise
+that handles an empty name and continues. Two suggested edits also have checked
+outputs. The actual published engine is unchanged; no browser source-file host
+or VFS is added. Local source reuse is an expandable two-file CLI extension
+with downloadable exact `greeter.code`/`main.code` and run commands. Copy actions
+for local files say to save them in the named file, rather than send them to the
+single-file playground. Bindings stay private to their source file.
+
+A ready lesson's optional `checks` names canonical probes under `lesson-checks/`
+with exact output and, for intentional failures, an explicit `error_prefix`.
+These join `lesson-examples.json` and the actual-engine gate. Ordinary gallery
+and lesson programs still must succeed; only declared checks can expect an
+error. Four probes cover ignored returned failure, a handler's runtime failure,
+a stopped top-level assertion and pre-run undefined-name refusal. The lesson
+distinguishes these instead of claiming every error can be handled as data.
+
+```sh
+python3 site/check_messages.py /absolute/path/to/public-v2.23.0/code /absolute/path/to/generated/site
+PLAYWRIGHT_MODULE=/tmp/code-site-tools/node_modules/playwright/index.mjs \
+  node site/check_messages.mjs http://localhost:8955/code/
+```
+
+The native checker requires curl/cc/network, the actual Linux public CLI and a
+new temporary project/cache. It installs/verifies console, runs the exact
+shown local files/commands interpreted and compiled, changes the module's
+greeting without changing its caller's same-named binding, checks a handled
+empty request, refuses private-name access, and verifies all four error probes
+in the appropriate interpreted/compiled paths. No source-build CLI is assumed.
+
+The browser checker exercises actual run links, edits, handled failure and
+continued exercise, local downloads/copy feedback, neighbors/overview, four
+widths and no-JS content. Run clipboard-writing checks separately. The pinned
+engine gate checks 166 cases: 142 gallery programs, four featured previews and
+20 lesson programs/edits/error-boundary checks. Lesson 4 remains gated.

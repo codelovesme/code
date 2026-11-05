@@ -1,0 +1,5 @@
+link "console" as out
+Reject {} =>
+    return Exception { source = "example", message = "Cannot do that." }
+emit Reject {} to this
+emit Print { value = "caller continued" } to out

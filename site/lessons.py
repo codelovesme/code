@@ -99,6 +99,9 @@ def render_lesson(site_dir, plan, lesson, previews, assets, examples):
                  f'<div class="lesson-result"><span>Expected output</span><pre>{html.escape(step["output"])}</pre></div>')
         replacements[f'__STEP_{step["id"].upper()}__'] = panel
         replacements[f'__STEP_{step["id"].upper()}_OUTPUT__'] = html.escape(step['output'])
+    for check in lesson.get('checks', []):
+        variants.append({**check, 'name': lesson['id'] + '-check-' + check['id'],
+                         'code': (site_dir / 'lesson-checks' / check['source']).read_text()})
     replacements.update({f'__LESSON_{name}__': html.escape(assets[path].strip())
                          for name, path in lesson.get('snippets', {}).items()})
     result = (site_dir / 'lesson.html').read_text()

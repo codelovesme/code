@@ -22,7 +22,7 @@ try {
   assert.equal(await page.locator('.site-nav [aria-current="page"]').innerText(), 'Learn');
   assert.equal(await page.locator('#values-solution').evaluate(el => el.open), false);
   assert.equal(await page.locator('.lesson-neighbors a[rel="prev"]').getAttribute('href'), '../learn/first-program.html');
-  assert.equal(await page.locator('.lesson-neighbors a[rel="next"]').count(), 0);
+  assert.equal(await page.locator('.lesson-neighbors a[rel="next"]').getAttribute('href'), '../learn/messages.html');
   assert.equal(await page.locator('section[aria-labelledby="values-exercise"] > .lesson-result pre').textContent(), lesson.steps.at(-1).output);
   assert.deepEqual(engineLoads, []);
   for (const step of lesson.steps) {
@@ -67,9 +67,11 @@ try {
       if (box) assert.ok(box.x >= 0 && box.x + box.width <= width + 1);
     }
   }
-  await page.getByRole('link', { name: 'See the next learning step →', exact: true }).click();
-  await page.waitForURL('**/learn.html#path-messages');
-  assert.equal(await page.locator('#path-messages a').count(), 0);
+  await page.getByRole('link', { name: 'Continue: handlers and messages →', exact: true }).click();
+  await page.waitForURL('**/learn/messages.html');
+  await page.getByRole('link', { name: '← Back to Learn', exact: true }).click();
+  await page.waitForURL('**/learn.html');
+  assert.equal(await page.locator('#path-messages a').count(), 1);
   await page.getByRole('link', { name: 'Values and control flow', exact: true }).click();
   await page.locator('.lesson-neighbors a[rel="prev"]').click();
   await page.waitForURL('**/learn/first-program.html');
