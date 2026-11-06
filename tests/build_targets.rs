@@ -98,6 +98,23 @@ fn wasm_character_counts_match_grown_unicode_snapshots() {
 }
 
 #[test]
+fn wasm_readonly_iteration_preserves_fallbacks_and_escaped_values() {
+    let dir = temp_dir("readonly-iteration");
+    let out = dir.join("readonly.wasm");
+    for release in [false, true] {
+        code::compile_file(
+            &fixture("stress_readonly_iteration.code"),
+            code::BuildTarget::Wasm,
+            &out,
+            release,
+        )
+        .expect("build readonly iteration regression for wasm");
+        run_wasm_under_node(&dir, &out);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn shared_target_produces_a_loadable_library() {
     let dir = temp_dir("shared");
     let out = dir.join("libarith.so");

@@ -1,0 +1,174 @@
+{
+  "source_revision": "f18461d9706406a484ded1955c1d6ce62c3f4c54",
+  "compiler": {
+    "path": "/var/tmp/code-262-build-after/release/code",
+    "sha256": "7f97384fa9e49a9ae780638f3d748045d12d14f81ff96462895cb01e054b41ad",
+    "bytes": 59800664
+  },
+  "valgrind": "valgrind-3.24.0",
+  "boundary": "Local instruction counts of cumulative complete programs; probes differ in checks/code generation. No wall-time ranking or exact phase subtraction. direct-read changes source, not compiler.",
+  "probes": {
+    "weighted-construct": {
+      "source": {
+        "path": "/var/tmp/code-262-profile-after/weighted-construct.code",
+        "sha256": "dbbe8c95fc35a8de7747f70bc6492ddfe799a1f548860ae8647ae549b0ff2361",
+        "bytes": 262
+      },
+      "binary": {
+        "path": "/var/tmp/code-262-profile-after/weighted-construct",
+        "sha256": "c303cee24766b6be07303243fe49a8b5befd102b0b55beb89095aadcafc758cf",
+        "bytes": 103264
+      },
+      "raw": {
+        "path": "/var/tmp/code-262-profile-after/weighted-construct.callgrind",
+        "sha256": "e96625a1f34cbe103bee5f5d9e08c27b9ec3ab01a44a45b0283bad0462f107e9",
+        "bytes": 25311
+      },
+      "instructions": 27289480
+    },
+    "weighted-full": {
+      "source": {
+        "path": "/var/tmp/code-262-profile-after/weighted-full.code",
+        "sha256": "4ebd0de3c0957e9b65a58d148042c9edbb2545010889019c609043c3606bad90",
+        "bytes": 497
+      },
+      "binary": {
+        "path": "/var/tmp/code-262-profile-after/weighted-full",
+        "sha256": "e19206c4a3f6c06ee2215a10a7b18e5152bd823e97ab952fdefc41a2b6e9e63f",
+        "bytes": 103232
+      },
+      "raw": {
+        "path": "/var/tmp/code-262-profile-after/weighted-full.callgrind",
+        "sha256": "28e0ec661315e72c21817f22d5fda0a1fcc90d5adfa00031dc0ada587836fca3",
+        "bytes": 24605
+      },
+      "instructions": 53503245
+    },
+    "weighted-direct-read": {
+      "source": {
+        "path": "/var/tmp/code-262-profile-after/weighted-direct-read.code",
+        "sha256": "5e8e2ea65dfd4229cf13cd49915c0ec758333e25df01d1d747685754ee518616",
+        "bytes": 499
+      },
+      "binary": {
+        "path": "/var/tmp/code-262-profile-after/weighted-direct-read",
+        "sha256": "854d50271e885af4c1f4d253c92c96e6d5d23c5c95037a8a2d6ae16eb0e6d688",
+        "bytes": 107456
+      },
+      "raw": {
+        "path": "/var/tmp/code-262-profile-after/weighted-direct-read.callgrind",
+        "sha256": "b9389325de76770c61f5a1cd6cc01a8396ce4c29f1262fcbd9c51142c09709a1",
+        "bytes": 24616
+      },
+      "instructions": 51405944
+    },
+    "threshold-construct": {
+      "source": {
+        "path": "/var/tmp/code-262-profile-after/threshold-construct.code",
+        "sha256": "3928a81069b28c11feccc9b2f953f313088ffb7c512724320ff9e99fc1258075",
+        "bytes": 217
+      },
+      "binary": {
+        "path": "/var/tmp/code-262-profile-after/threshold-construct",
+        "sha256": "286aacae3e3513e15466f8b2e20f49c2467d8e340c7e785880b5d59127a67e4e",
+        "bytes": 103224
+      },
+      "raw": {
+        "path": "/var/tmp/code-262-profile-after/threshold-construct.callgrind",
+        "sha256": "f54db3b39d299a5a45d729f067c82621626351f2aa0563c03c8f33b08b1219ac",
+        "bytes": 23713
+      },
+      "instructions": 3440241
+    },
+    "threshold-full": {
+      "source": {
+        "path": "/var/tmp/code-262-profile-after/threshold-full.code",
+        "sha256": "c7e3fc7c22172688b043b5a86dc055635610e2e31b37d18517757c92f6d7dcda",
+        "bytes": 439
+      },
+      "binary": {
+        "path": "/var/tmp/code-262-profile-after/threshold-full",
+        "sha256": "dfecc5b037549608d5eb9ce5a9ae5b7e97719122086678579954003db2f79a4f",
+        "bytes": 103272
+      },
+      "raw": {
+        "path": "/var/tmp/code-262-profile-after/threshold-full.callgrind",
+        "sha256": "c6dc97258c41a2882bc9163c1175a65686b96478f77c0f79e20c81ba64c1763e",
+        "bytes": 23651
+      },
+      "instructions": 36457868
+    },
+    "threshold-direct-read": {
+      "source": {
+        "path": "/var/tmp/code-262-profile-after/threshold-direct-read.code",
+        "sha256": "71e9c900e5516be5292b2e3dd528b9274033cb5003ff66780acdc64879669d1f",
+        "bytes": 433
+      },
+      "binary": {
+        "path": "/var/tmp/code-262-profile-after/threshold-direct-read",
+        "sha256": "da82ede6c37711424c9cb810cd86a3cdad84f662c15ebfcc5924a8eb279d0d64",
+        "bytes": 103304
+      },
+      "raw": {
+        "path": "/var/tmp/code-262-profile-after/threshold-direct-read.callgrind",
+        "sha256": "3bd08682334c28e8509f6313cc45a4de4cf2a738cd9970ed7c31b8ce10da381f",
+        "bytes": 23925
+      },
+      "instructions": 61653738
+    },
+    "nearest-construct": {
+      "source": {
+        "path": "/var/tmp/code-262-profile-after/nearest-construct.code",
+        "sha256": "ecf6aa9300a0ae9f0bc0307145d980139be2e0665dff875d1f9fd1531a4d3654",
+        "bytes": 247
+      },
+      "binary": {
+        "path": "/var/tmp/code-262-profile-after/nearest-construct",
+        "sha256": "d9c9a1c7a3ae885a1e3929c17498c3bc1190eeb2a723730d446aeacd42de5dee",
+        "bytes": 103264
+      },
+      "raw": {
+        "path": "/var/tmp/code-262-profile-after/nearest-construct.callgrind",
+        "sha256": "a5c8b6d7e6cb01280ed965c9983b9357992ccf96463564f78f747321104b142e",
+        "bytes": 25089
+      },
+      "instructions": 21841258
+    },
+    "nearest-full": {
+      "source": {
+        "path": "/var/tmp/code-262-profile-after/nearest-full.code",
+        "sha256": "418b2f8ff4ef0d1c2619558b07b3b318a2ca3449bcb916818e2c8c9cf9fb5c4d",
+        "bytes": 566
+      },
+      "binary": {
+        "path": "/var/tmp/code-262-profile-after/nearest-full",
+        "sha256": "d5feeeff294b9971186d41414787e3185b8732814c00f7624d45def0c602ffaf",
+        "bytes": 103232
+      },
+      "raw": {
+        "path": "/var/tmp/code-262-profile-after/nearest-full.callgrind",
+        "sha256": "9c88f7bce8a1054e6f844a27000e8a22f1831b24bf0b442477479bbe5aa98d4c",
+        "bytes": 24414
+      },
+      "instructions": 46482209
+    },
+    "nearest-direct-read": {
+      "source": {
+        "path": "/var/tmp/code-262-profile-after/nearest-direct-read.code",
+        "sha256": "a00846d14c9b5eb5311e3d46bff98bc9ec261179e8223193a7a33457c0fdce91",
+        "bytes": 560
+      },
+      "binary": {
+        "path": "/var/tmp/code-262-profile-after/nearest-direct-read",
+        "sha256": "69627232c8969aeea4713ffc1760880e093fbb228b3833080abffdedbc8bc901",
+        "bytes": 103184
+      },
+      "raw": {
+        "path": "/var/tmp/code-262-profile-after/nearest-direct-read.callgrind",
+        "sha256": "5d9ba8f83463349d445819bd5925870556224d92685c4872bc9459e503978a56",
+        "bytes": 24273
+      },
+      "instructions": 44352101
+    }
+  }
+}

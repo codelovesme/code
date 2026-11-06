@@ -1,0 +1,57 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-262-profile-after/nearest-construct.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 4805434
+Trigger: Program termination
+Profiled target:  /var/tmp/code-262-profile-after/nearest-construct (PID 3098931, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                  
+--------------------------------------------------------------------------------
+21,841,258 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                  file:function
+--------------------------------------------------------------------------------
+4,659,283 (21.33%)  ???:0x00000000000a0fe0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+3,276,808 (15.00%)  ???:code_object_template [/var/tmp/code-262-profile-after/nearest-construct]
+2,392,297 (10.95%)  ???:code_release.part.0 [/var/tmp/code-262-profile-after/nearest-construct]
+2,031,677 ( 9.30%)  ???:free [/usr/lib/x86_64-linux-gnu/libc.so.6]
+1,638,552 ( 7.50%)  ???:code_add_take [/var/tmp/code-262-profile-after/nearest-construct]
+1,540,608 ( 7.05%)  ???:0x00000000000a02e0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+1,409,116 ( 6.45%)  ???:malloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+1,245,338 ( 5.70%)  ???:main [/var/tmp/code-262-profile-after/nearest-construct]
+1,179,666 ( 5.40%)  ???:code_move [/var/tmp/code-262-profile-after/nearest-construct]
+  740,763 ( 3.39%)  ???:0x0000000000162880 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+  720,918 ( 3.30%)  ???:code_number [/var/tmp/code-262-profile-after/nearest-construct]
+  323,563 ( 1.48%)  ???:malloc_usable_size [/usr/lib/x86_64-linux-gnu/libc.so.6]
+  262,144 ( 1.20%)  ???:drop_object_index [/var/tmp/code-262-profile-after/nearest-construct]
+  131,117 ( 0.60%)  ???:code_release [/var/tmp/code-262-profile-after/nearest-construct]
+  131,076 ( 0.60%)  ???:0x000000000009e390 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   27,086 ( 0.12%)  ???:0x0000000000013780 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+   26,672 ( 0.12%)  ???:0x000000000000e870 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+   26,408 ( 0.12%)  ???:0x000000000000a220 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+   19,782 ( 0.09%)  ???:0x000000000000ae90 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    7,447 ( 0.03%)  ???:0x0000000000024740 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    5,668 ( 0.03%)  ???:0x000000000000a0a0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    5,366 ( 0.02%)  ???:0x0000000000015f00 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    4,665 ( 0.02%)  ???:0x0000000000013e00 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    3,286 ( 0.02%)  ???:0x00000000000a0530 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    2,478 ( 0.01%)  ???:0x0000000000007cb0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    1,839 ( 0.01%)  ???:realloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    1,656 ( 0.01%)  ???:0x00000000000a20c0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    1,628 ( 0.01%)  ???:0x000000000001e600 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      997 ( 0.00%)  ???:0x0000000000003680 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      858 ( 0.00%)  ???:0x000000000009eea0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      817 ( 0.00%)  ???:sbrk [/usr/lib/x86_64-linux-gnu/libc.so.6]
+

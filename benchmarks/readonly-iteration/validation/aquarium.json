@@ -1,0 +1,22 @@
+{
+  "before": {
+    "aquarium.wasm": {
+      "sha256": "9102706a6c65a49d963243026baac7c064e486619c441df81cff5e17d2505749",
+      "bytes": 892458
+    },
+    "host.mjs": {
+      "sha256": "6095ffece9f334f10f957fdf3c2dc381b10fd0623035f1e3da19d005a634793f",
+      "bytes": 95724
+    }
+  },
+  "after": {
+    "aquarium.wasm": {
+      "sha256": "9102706a6c65a49d963243026baac7c064e486619c441df81cff5e17d2505749",
+      "bytes": 892458
+    },
+    "host.mjs": {
+      "sha256": "6095ffece9f334f10f957fdf3c2dc381b10fd0623035f1e3da19d005a634793f",
+      "bytes": 95724
+    }
+  }
+}
