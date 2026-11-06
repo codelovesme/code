@@ -64,6 +64,23 @@ fn temp_dir(tag: &str) -> PathBuf {
 }
 
 #[test]
+fn wasm_text_slice_boundaries_match_the_character_oracle() {
+    let dir = temp_dir("text-slice-boundaries");
+    let out = dir.join("slices.wasm");
+    for release in [false, true] {
+        code::compile_file(
+            &fixture("stress_string_slice_boundaries.code"),
+            code::BuildTarget::Wasm,
+            &out,
+            release,
+        )
+        .expect("build text slice boundaries for wasm");
+        run_wasm_under_node(&dir, &out);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn shared_target_produces_a_loadable_library() {
     let dir = temp_dir("shared");
     let out = dir.join("libarith.so");
