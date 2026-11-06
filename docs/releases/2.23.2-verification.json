@@ -1,0 +1,125 @@
+{
+  "tag": "v2.23.2",
+  "release_url": "https://github.com/codelovesme/code/releases/tag/v2.23.2",
+  "release_assets": 244,
+  "cli_tar_sha256": "7ae21f0fd6bb11d3963b36f97fb505bb7da6d616d92ddbaa75aa6030fac7f40e",
+  "cli": {
+    "code": {
+      "sha256": "4be23b6c922b13507366c15afccd97ef42e4c070ac3839ba5120432a7705ad00",
+      "bytes": 558880
+    },
+    "code-driver": {
+      "sha256": "026058ab6023cfd8c83df81656bc5fcfb663d49f0aede289e60bf8b1103c498f",
+      "bytes": 59500312
+    }
+  },
+  "vsix": "code-language-2.23.2.vsix",
+  "module_lock": {
+    "modules": {
+      "arrays": {
+        "name": "arrays",
+        "version": "2.23.2",
+        "source": "https://github.com/codelovesme/code/releases/tag/v2.23.2",
+        "asset": "arrays-linux-x86_64.so",
+        "sha256": "ca6dda885d00d4050bfa017cb7fae88afdd7c05fab9cb1c6d0e7faaa8bb644f9",
+        "handlers": [
+          "Length",
+          "Contains",
+          "IndexOf",
+          "Reverse",
+          "Slice",
+          "Unique",
+          "Sort",
+          "Sum",
+          "Min",
+          "Max"
+        ],
+        "global": false,
+        "static_archive": {
+          "asset": "arrays-linux-x86_64.a",
+          "sha256": "a1c9e98abcb930a8bb527fd002559d86279fb372fad9d2a3f85de5ab527cf615",
+          "link": [
+            "-lgcc_s",
+            "-lutil",
+            "-lrt",
+            "-lpthread",
+            "-lm",
+            "-ldl",
+            "-lc"
+          ]
+        }
+      },
+      "console": {
+        "name": "console",
+        "version": "2.23.2",
+        "source": "https://github.com/codelovesme/code/releases/tag/v2.23.2",
+        "asset": "console-linux-x86_64.so",
+        "sha256": "bfbda799d5601e066339f919b5024782a654ffa8895035b6e9597128713be105",
+        "handlers": [
+          "Print"
+        ],
+        "global": false,
+        "static_archive": {
+          "asset": "console-linux-x86_64.a",
+          "sha256": "8c125f84fe48d49e6c4bd4e732ea68bc6bcb01101e447ee971313b23ee1c6213",
+          "link": [
+            "-lgcc_s",
+            "-lutil",
+            "-lrt",
+            "-lpthread",
+            "-lm",
+            "-ldl",
+            "-lc"
+          ]
+        }
+      }
+    }
+  },
+  "npm_integrity": "sha512-0IQX6Q6yr3YzV3sfxgK1SdcCaTjQu7WBZd7JAmsCCEUf39/untMhMlhji+SbTBuFAD+3ofT/vRG0YTt6sL1reA==",
+  "crate": {
+    "version": "2.23.2",
+    "source": "registry+https://github.com/rust-lang/crates.io-index"
+  },
+  "checks": [
+    "actual CLI launcher+driver versions",
+    "Bool regression interpret/dev/release/native leaks",
+    "console+arrays registry pins and static-linked application",
+    "VSIX manifest and both platform payloads",
+    "published npm smoke suite",
+    "registry code-native ABI consumer"
+  ],
+  "release_commit": "1e57f007eb002074640b6b33f6661dab84581923",
+  "verified_at_utc": "2026-11-06T00:38:30+00:00",
+  "workflows": [
+    {
+      "conclusion": "success",
+      "databaseId": 42137545924,
+      "name": "Release",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 42137545937,
+      "name": "Publish crates.io (code-native)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 42137545982,
+      "name": "Publish npm (code-wasm)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 42137545940,
+      "name": "Publish modules",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 42137545999,
+      "name": "Publish VSIX (editor extension)",
+      "status": "completed"
+    }
+  ]
+}
