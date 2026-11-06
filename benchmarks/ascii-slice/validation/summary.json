@@ -1,0 +1,164 @@
+{
+  "decision": "REJECT; Unicode-1m fails the preregistered material-regression gate; runtime candidate unmerged, main retains 239",
+  "material_regressions": [
+    {
+      "case": "document_1m_unicode",
+      "time_change_percent": 28.99243689281082,
+      "delta_seconds": 0.08087736400000001,
+      "absolute_gate_seconds": 0.003080187000000012
+    }
+  ],
+  "candidate_workspace": {
+    "passed": 344,
+    "failed": 0,
+    "ignored": 7,
+    "summaries": 69,
+    "log": {
+      "sha256": "09f735d704fe1276ff0ed519b8c2821fc9c22dfa0a14f85637366a0197db3665",
+      "bytes": 40692
+    }
+  },
+  "candidate_runtime": {
+    "sha256": "935e3f06855578dc7bda8feea7aa22fe2e19ee7b49a47e6bfce9c5309081a804",
+    "bytes": 232157
+  },
+  "active_baseline_runtime_sha256": "f436f9cbf030e20d44d65d706281ecc557c02b3ecc4ae55b3000057fbcd22c5e",
+  "abi_header": {
+    "sha256": "d40f2fa15062a675afe8c24501109d9940ba8ca47c358beefc228a0e0864d839",
+    "bytes": 32140
+  },
+  "candidate_ci": {
+    "run": 42205738512,
+    "status": "canceled after performance rejection; not claimed passed"
+  },
+  "clippy": "workspace all targets with warnings denied passed",
+  "format": "Rust workspace and valid Code fixtures pass; deliberate parse-failure fixtures skipped by formatter",
+  "wasm": "native interpreter/dev/release and compiled-WASM dev/release 400-slice regression pass; source-built WASM interpreter and 178 examples pass",
+  "wasm_existing_warnings": [
+    "RuntimeModule.drain unused",
+    "module_address unused"
+  ],
+  "applications": {
+    "collection": "frozen 102-fixture corpus from 238/234; scratch only, no newer app changes claimed",
+    "fixtures": 102,
+    "native_dev_release_checks": 204,
+    "full_interpreted_apps": "not run; interpreter unchanged, language/workspace parity checked"
+  },
+  "guard": {
+    "source": {
+      "sha256": "ba96817b0301e7a9f0e46aaba034188fb568a5e2fe9227456e1beef43a009785",
+      "bytes": 2349
+    },
+    "cases_per_run": 305280,
+    "slice_calls_per_run": 610560,
+    "byte_lengths": {
+      "min": 0,
+      "max": 529
+    },
+    "transition_bytes": [
+      0,
+      7,
+      8,
+      63,
+      64,
+      255,
+      256,
+      257,
+      10000
+    ],
+    "bounds": [
+      0,
+      1,
+      7,
+      8,
+      255,
+      256,
+      257,
+      1e+200
+    ],
+    "protected_following_page": true,
+    "borrowed_and_owned_output_aliases": true,
+    "candidate_normal": {
+      "sha256": "c0d0a9e3785164fd4d8007b269b607d72aa100c5a1d5076573551a2b77312fd3",
+      "bytes": 21728
+    },
+    "candidate_address_undefined_leak_sanitized": {
+      "sha256": "7e4a9cfa6bf3d7468afdc6bc79621a9b0889625e42a237a81e4a1835174c965e",
+      "bytes": 1292144
+    },
+    "baseline_address_undefined_leak_sanitized": {
+      "sha256": "b84b0efdf78e5ab1ad38c4eaf82a8e6418eebeb66f9ef924f182578760162d02",
+      "bytes": 1295672
+    },
+    "all_exit_codes": 0
+  },
+  "regression": {
+    "independent_scalar_list": 801,
+    "slices_checked": 400,
+    "native_leak_checks": true,
+    "word_chunk_unicode_transitions": true
+  },
+  "website": {
+    "byte_identical_generated_files": 46,
+    "gallery_examples": 147
+  },
+  "source_hash_match": {
+    "hosted_vs_local": 19,
+    "original_hosted_vs_frozen_239": 17
+  },
+  "preparation_issue": "First WASM identity assertion compared different embedded output filenames; with matched basename slices.wasm, dev/release bytes identical. No runtime fix or timing rerun.",
+  "matched_wasm_artifacts": {
+    "dev": {
+      "before": {
+        "sha256": "75d0ad62afaad4fd9b4cc99842ec2f007c619627068ab36428d64b7914113a4b",
+        "bytes": 48519
+      },
+      "after": {
+        "sha256": "75d0ad62afaad4fd9b4cc99842ec2f007c619627068ab36428d64b7914113a4b",
+        "bytes": 48519
+      }
+    },
+    "release": {
+      "before": {
+        "sha256": "966fe5c7f0d6e5ebf7e62544fb850269396943640f46ceaf25bf200768db12ef",
+        "bytes": 48230
+      },
+      "after": {
+        "sha256": "966fe5c7f0d6e5ebf7e62544fb850269396943640f46ceaf25bf200768db12ef",
+        "bytes": 48230
+      }
+    }
+  },
+  "logs": {
+    "clippy": {
+      "sha256": "7091b851e966b96aa057ae5073d462d246bd43dcd5d5ba723d5f4c9ccdfdb1bc",
+      "bytes": 3886
+    },
+    "wasm-build": {
+      "sha256": "1f7aa88cfb2f708c9ed212899dcdddbc53bd3a9a008c21bfe55dd850b8bd5ee1",
+      "bytes": 1319
+    },
+    "fresh-examples": {
+      "sha256": "0fbe7d04015fca36203d20ae9e300fd97bc00f7f227a5b93b3afb7fbbea6b9be",
+      "bytes": 65
+    },
+    "apps": {
+      "sha256": "a68a68d1e6a84628d2992d0b3b1b0139a1b767a9cd2e7a205a899e8cdaa1ef1a",
+      "bytes": 5199
+    },
+    "fixture-format": {
+      "sha256": "0c01cbe9d9d3f4b4308ab55152ed1bda4263115631ad2414e9c20346965ea7fa",
+      "bytes": 4680
+    }
+  },
+  "active_main_workspace_after_rejection": {
+    "summaries": 69,
+    "passed": 343,
+    "failed": 0,
+    "ignored": 7,
+    "log_sha256": "98a745555450de841e4909938d08ab6ba5ed4a432370199f01b91a1f86b89fe4",
+    "source_runtime_unchanged_from": "af3430d26dc7d577feffd756c3e9c444f57eec0b",
+    "candidate_worktree_removed": true,
+    "candidate_branch_retained_unmerged": true
+  }
+}

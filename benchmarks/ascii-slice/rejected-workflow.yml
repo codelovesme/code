@@ -1,0 +1,43 @@
+name: Measure bounded ASCII slice seeking
+on:
+  workflow_dispatch:
+  push:
+    branches: [ascii-slice-seek-240]
+    paths: ["src/runtime.c", ".github/workflows/ascii-slice.yml", "benchmarks/ascii-slice/run.py"]
+permissions:
+  contents: read
+concurrency:
+  group: ascii-slice
+  cancel-in-progress: false
+env:
+  LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install the LLVM backend used by both compilers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev
+      - name: Build the fixed source baseline and candidate identically
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$RUNNER_TEMP/seek-before-source" af3430d26dc7d577feffd756c3e9c444f57eec0b
+          mkdir -p "$RUNNER_TEMP/seek-compilers"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/seek-build-before" cargo build --manifest-path "$RUNNER_TEMP/seek-before-source/Cargo.toml" --workspace --release
+          cp "$RUNNER_TEMP/seek-build-before/release/code" "$RUNNER_TEMP/seek-compilers/before"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/seek-build-after" cargo build --workspace --release
+          cp "$RUNNER_TEMP/seek-build-after/release/code" "$RUNNER_TEMP/seek-compilers/after"
+      - name: Validate and sample all before/after entries serially
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/ascii-slice/run.py --before "$RUNNER_TEMP/seek-compilers/before" --after "$RUNNER_TEMP/seek-compilers/after" --output-dir "$RUNNER_TEMP/seek-results" --runs 15
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ascii-slice-seek
+          path: ${{ runner.temp }}/seek-results
+          retention-days: 30

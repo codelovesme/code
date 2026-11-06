@@ -1,0 +1,14 @@
+==2453340== Callgrind, a call-graph generating cache profiler
+==2453340== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==2453340== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==2453340== Command: /var/tmp/code-240-smoke/binaries/document_64k_unicode-Before
+==2453340== 
+==2453340== For interactive control, run 'callgrind_control -h'.
+==2453340== brk segment overflow in thread #1: can't grow to 0x4859000
+==2453340== (see section Limitations in user manual)
+==2453340== NOTE: further instances of this message will not be shown
+==2453340== 
+==2453340== Events    : Ir
+==2453340== Collected : 206488945
+==2453340== 
+==2453340== I   refs:      206,488,945

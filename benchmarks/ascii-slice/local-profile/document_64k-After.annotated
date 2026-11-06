@@ -1,0 +1,68 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-240-profiles/document_64k-After.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 21225972
+Trigger: Program termination
+Profiled target:  /var/tmp/code-240-smoke/binaries/document_64k-After (PID 2452922, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                  
+--------------------------------------------------------------------------------
+44,692,982 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                   file:function
+--------------------------------------------------------------------------------
+16,881,886 (37.77%)  ???:0x0000000000162880 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+12,589,184 (28.17%)  ???:code_length_of [/var/tmp/code-240-smoke/binaries/document_64k-After]
+10,355,510 (23.17%)  ???:native_slice_offset [/var/tmp/code-240-smoke/binaries/document_64k-After]
+ 2,097,320 ( 4.69%)  ???:0x00000000001671a0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,342,770 ( 3.00%)  ???:0x00000000001655c0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   794,898 ( 1.78%)  ???:0x0000000000164e30 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    93,542 ( 0.21%)  ???:0x00000000000a0fe0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    44,072 ( 0.10%)  ???:free [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    37,355 ( 0.08%)  ???:code_release.part.0 [/var/tmp/code-240-smoke/binaries/document_64k-After]
+    35,686 ( 0.08%)  ???:0x00000000000a02e0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    29,805 ( 0.07%)  ???:main [/var/tmp/code-240-smoke/binaries/document_64k-After]
+    29,799 ( 0.07%)  ???:malloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    26,889 ( 0.06%)  ???:0x000000000000a220 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    26,817 ( 0.06%)  ???:0x0000000000013780 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    26,752 ( 0.06%)  ???:0x000000000000e870 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    20,072 ( 0.04%)  ???:0x000000000000ae90 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    17,894 ( 0.04%)  ???:code_clear [/var/tmp/code-240-smoke/binaries/document_64k-After]
+    17,692 ( 0.04%)  ???:code_add [/var/tmp/code-240-smoke/binaries/document_64k-After]
+    15,836 ( 0.04%)  ???:code_slice [/var/tmp/code-240-smoke/binaries/document_64k-After]
+    14,486 ( 0.03%)  ???:code_copy [/var/tmp/code-240-smoke/binaries/document_64k-After]
+    11,642 ( 0.03%)  ???:0x000000000009eaf0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    11,463 ( 0.03%)  ???:0x000000000009ebd0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    10,441 ( 0.02%)  ???:code_add_into [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     9,600 ( 0.02%)  ???:build_object [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     8,890 ( 0.02%)  ???:str_owned_n [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     8,532 ( 0.02%)  ???:code_release [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     8,512 ( 0.02%)  ???:code_set_at [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     8,506 ( 0.02%)  ???:0x000000000009ed80 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+     7,848 ( 0.02%)  ???:code_array [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     7,744 ( 0.02%)  ???:code_number [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     7,494 ( 0.02%)  ???:code_field_ref [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     7,389 ( 0.02%)  ???:0x0000000000024740 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     5,790 ( 0.01%)  ???:0x000000000000a0a0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     5,760 ( 0.01%)  ???:code_index_ref [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     5,366 ( 0.01%)  ???:0x0000000000015f00 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     5,070 ( 0.01%)  ???:code_iter_at [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     4,992 ( 0.01%)  ???:own_level [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     4,665 ( 0.01%)  ???:0x0000000000013e00 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     3,997 ( 0.01%)  ???:text_push [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     2,934 ( 0.01%)  ???:code_values_equal [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     2,758 ( 0.01%)  ???:code_bool [/var/tmp/code-240-smoke/binaries/document_64k-After]
+     2,752 ( 0.01%)  ???:0x00000000000a0530 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+

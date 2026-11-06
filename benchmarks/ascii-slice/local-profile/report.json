@@ -1,0 +1,252 @@
+{
+  "baseline": "af3430d26dc7d577feffd756c3e9c444f57eec0b",
+  "candidate": "c0eb1676ebba69b6486d48c3a5e0c40fd03362e6",
+  "runtime": {
+    "sha256": "935e3f06855578dc7bda8feea7aa22fe2e19ee7b49a47e6bfce9c5309081a804",
+    "bytes": 232157
+  },
+  "environment": {
+    "platform": "Linux-6.12.113+deb13-amd64-x86_64-with-glibc2.41",
+    "lscpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           46 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  12\nOn-line CPU(s) list:                     0-11\nVendor ID:                               GenuineIntel\nModel name:                              Intel(R) Core(TM) i7-5930K CPU @ 3.50GHz\nCPU family:                              6\nModel:                                   63\nThread(s) per core:                      2\nCore(s) per socket:                      6\nSocket(s):                               1\nStepping:                                2\nCPU(s) scaling MHz:                      54%\nCPU max MHz:                             3700.0000\nCPU min MHz:                             1200.0000\nBogoMIPS:                                6999.36\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 ds_cpl vmx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm cpuid_fault epb pti intel_ppin ssbd ibrs ibpb stibp tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm xsaveopt cqm_llc cqm_occup_llc dtherm ida arat pln pts vnmi md_clear flush_l1d\nVirtualization:                          VT-x\nL1d cache:                               192 KiB (6 instances)\nL1i cache:                               192 KiB (6 instances)\nL2 cache:                                1.5 MiB (6 instances)\nL3 cache:                                15 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-11\nVulnerability Gather data sampling:      Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             KVM: Mitigation: Split huge pages\nVulnerability L1tf:                      Mitigation; PTE Inversion; VMX conditional cache flushes, SMT vulnerable\nVulnerability Mds:                       Mitigation; Clear CPU buffers; SMT vulnerable\nVulnerability Meltdown:                  Mitigation; PTI\nVulnerability Mmio stale data:           Mitigation; Clear CPU buffers; SMT vulnerable\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; IBRS_FW; STIBP conditional; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace\n",
+    "cpu": 0,
+    "valgrind": "valgrind-3.24.0\n",
+    "gcc": "gcc (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
+  },
+  "compilers": {
+    "Before": {
+      "sha256": "67029275825b4e6a7935fe365297d40ffeaf3c6e5894d40368c124d7d3073a89",
+      "bytes": 59764104
+    },
+    "After": {
+      "sha256": "9dd40738a24f56ab3d232276349b84c2ca28554facad64c2af1b68d1553df637",
+      "bytes": 59766392
+    }
+  },
+  "boundary": "Matched source full programs; local instruction counts only, not timing percentages or a C/Rust ranking. No heap/layout change.",
+  "profiles": {
+    "document_64k-Before": {
+      "instructions": 124571419,
+      "source": {
+        "sha256": "dcda703bd673135defcd8d2d322a3551b89db8bc4b8a3f66c74f2018982931d7",
+        "bytes": 1127
+      },
+      "binary": {
+        "sha256": "1aa2f9b711a9e84f5401ec7c93285047d4d2bfc1ef0b1c1ccc42717a2e00e611",
+        "bytes": 108176
+      },
+      "raw": {
+        "sha256": "a87aff3e9515bceb93c8f3e479bdad3e85df02f56e52ad6bdf893e18256301a9",
+        "bytes": 31517
+      },
+      "annotation": {
+        "sha256": "21e348d78c8308c6bb378f1299acb80d703fbdce77165b8531c924ff9a8cc0b8",
+        "bytes": 3296
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-240-profiles/document_64k-Before.callgrind",
+        "/var/tmp/code-240-smoke/binaries/document_64k-Before"
+      ]
+    },
+    "document_64k-After": {
+      "instructions": 44692982,
+      "source": {
+        "sha256": "dcda703bd673135defcd8d2d322a3551b89db8bc4b8a3f66c74f2018982931d7",
+        "bytes": 1127
+      },
+      "binary": {
+        "sha256": "b4d6b2d90de00108c307692d2870fd1858aac5a7c3152d465f212e86f62c5c1c",
+        "bytes": 108272
+      },
+      "raw": {
+        "sha256": "a59a458dc56ad132d705e584f7df212c76cfd36f3338b85cb7a4f2f996c0f05e",
+        "bytes": 31823
+      },
+      "annotation": {
+        "sha256": "ffbc84c09856bd1725d2f28df9f0a2379057d26694346fa7c71146679160383d",
+        "bytes": 4740
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-240-profiles/document_64k-After.callgrind",
+        "/var/tmp/code-240-smoke/binaries/document_64k-After"
+      ]
+    },
+    "document_1m-Before": {
+      "instructions": 1982412093,
+      "source": {
+        "sha256": "4ecb470c008dc8d1cf6b044e04c7f7b48626c47d6ad789cd8fe38c0152a7c2ce",
+        "bytes": 1129
+      },
+      "binary": {
+        "sha256": "ed0f199b35da83b0fc44aa07c6b137aff74c8f9ed4492f66e183e2bc7cefa120",
+        "bytes": 108176
+      },
+      "raw": {
+        "sha256": "a79667432e0dc8db31084f4d236844cc31634631b36147a6972d0aed506901dc",
+        "bytes": 32161
+      },
+      "annotation": {
+        "sha256": "1a5016cfe8bf47f5e1daebdca7480d8261ee4147add035e1a6568b5aba7a4b32",
+        "bytes": 1476
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-240-profiles/document_1m-Before.callgrind",
+        "/var/tmp/code-240-smoke/binaries/document_1m-Before"
+      ]
+    },
+    "document_1m-After": {
+      "instructions": 704623020,
+      "source": {
+        "sha256": "4ecb470c008dc8d1cf6b044e04c7f7b48626c47d6ad789cd8fe38c0152a7c2ce",
+        "bytes": 1129
+      },
+      "binary": {
+        "sha256": "491d7c3dcab058804c626b6e1a4bdf6248383a79540c228d8dea4f550f66f50b",
+        "bytes": 108272
+      },
+      "raw": {
+        "sha256": "6275a58d4ac097259567e7066bfebc19c4fa9168d68bc0c68943a3075fb036e4",
+        "bytes": 32473
+      },
+      "annotation": {
+        "sha256": "f1f27ab6d206c9cb106baa2367feff63952c5651f9609e368625948773faeaaf",
+        "bytes": 1548
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-240-profiles/document_1m-After.callgrind",
+        "/var/tmp/code-240-smoke/binaries/document_1m-After"
+      ]
+    },
+    "document_64k_unicode-Before": {
+      "instructions": 206488945,
+      "source": {
+        "sha256": "a2b0ad2afadbfbab7f63af00a8314bd81f7b92a4a8f7bc1125dbcb3fb56112d4",
+        "bytes": 1128
+      },
+      "binary": {
+        "sha256": "60acca77fb284b53d9bc56e11c2da12cb12b7bbf4a9adaa9384ab9a6ded15b23",
+        "bytes": 108176
+      },
+      "raw": {
+        "sha256": "59c748fab65014c3f92cd1fdb621df300ce92aebc88a52edf2ff2ebd304a09d9",
+        "bytes": 31990
+      },
+      "annotation": {
+        "sha256": "a3528e5b79ec15f499b3bb258aef543fdc709a7cd9b167346bcdb7199cd4155a",
+        "bytes": 2677
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-240-profiles/document_64k_unicode-Before.callgrind",
+        "/var/tmp/code-240-smoke/binaries/document_64k_unicode-Before"
+      ]
+    },
+    "document_64k_unicode-After": {
+      "instructions": 206455114,
+      "source": {
+        "sha256": "a2b0ad2afadbfbab7f63af00a8314bd81f7b92a4a8f7bc1125dbcb3fb56112d4",
+        "bytes": 1128
+      },
+      "binary": {
+        "sha256": "446dbc4d6fe9dbdd29a9b9d560c0204d2382dce3482fd6b2e89e23ba95943d97",
+        "bytes": 108272
+      },
+      "raw": {
+        "sha256": "829efa58b76c45375e92ec78db7ad19768be4bdd6fa3119e67bd0c1940ec42de",
+        "bytes": 32295
+      },
+      "annotation": {
+        "sha256": "e6a6bb202ee617021352d381995f88dabf1da9a668f634efd295cce6343bf81c",
+        "bytes": 2859
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-240-profiles/document_64k_unicode-After.callgrind",
+        "/var/tmp/code-240-smoke/binaries/document_64k_unicode-After"
+      ]
+    },
+    "document_1m_unicode-Before": {
+      "instructions": 2811754025,
+      "source": {
+        "sha256": "6a6df0f4af4852909d814a839d43b2ab71b44bfdcc55c3096731ee82d37e42e4",
+        "bytes": 1130
+      },
+      "binary": {
+        "sha256": "35bf652189880f96aa46424db1372019e1518d46152c4e5eed7ca33747c4455c",
+        "bytes": 108176
+      },
+      "raw": {
+        "sha256": "b1da5b1c5fc3d6f7a88be48fb979ace2f1662d772bc03045b9c67d3ebf218697",
+        "bytes": 32212
+      },
+      "annotation": {
+        "sha256": "198ca3fe2fe3cedd27d61dcbd903e466959a9afb67a5213597415d4eb9f36d3f",
+        "bytes": 1508
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-240-profiles/document_1m_unicode-Before.callgrind",
+        "/var/tmp/code-240-smoke/binaries/document_1m_unicode-Before"
+      ]
+    },
+    "document_1m_unicode-After": {
+      "instructions": 2811720139,
+      "source": {
+        "sha256": "6a6df0f4af4852909d814a839d43b2ab71b44bfdcc55c3096731ee82d37e42e4",
+        "bytes": 1130
+      },
+      "binary": {
+        "sha256": "2adc4aed8f0eb43d80c978fdb303dcd6bab269098e5bf637a274b29771a33296",
+        "bytes": 108272
+      },
+      "raw": {
+        "sha256": "c15c13c7c5c1f194b11059092516dd372d6d078193bd30f7940d844ab011549f",
+        "bytes": 32518
+      },
+      "annotation": {
+        "sha256": "9ac1626777fffc85f3c216738cd8fa3c039d40d78f11eb151fca772993f43858",
+        "bytes": 1513
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-240-profiles/document_1m_unicode-After.callgrind",
+        "/var/tmp/code-240-smoke/binaries/document_1m_unicode-After"
+      ]
+    }
+  }
+}

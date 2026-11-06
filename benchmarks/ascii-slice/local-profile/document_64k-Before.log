@@ -1,0 +1,11 @@
+==2452883== Callgrind, a call-graph generating cache profiler
+==2452883== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==2452883== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==2452883== Command: /var/tmp/code-240-smoke/binaries/document_64k-Before
+==2452883== 
+==2452883== For interactive control, run 'callgrind_control -h'.
+==2452883== 
+==2452883== Events    : Ir
+==2452883== Collected : 124571419
+==2452883== 
+==2452883== I   refs:      124,571,419

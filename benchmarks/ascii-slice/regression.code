@@ -1,0 +1,33 @@
+| ASCII runs cross word/chunk boundaries and then enter Unicode scalars.
+text = "!"
+characters = ["!"]
+position = 1
+loop
+    if position = 801, break
+    piece = "a"
+    if position = 7, piece = "é"
+    if position = 8, piece = "中"
+    if position = 255, piece = "🙂"
+    if position = 256, piece = "e"
+    if position = 257, piece = "́"
+    if position = 511, piece = "é"
+    if position = 512, piece = "中"
+    if position = 513, piece = "🙂"
+    text += piece
+    characters += [piece]
+    position += 1
+saved = text
+huge = 100000000000000000000000000000000000000000000000000
+bounds = [0 - huge, 0, 0.5, 1, 7, 7.9, 8, 9, 63, 64, 127, 255, 256, 257, 511, 512, 513, 799, 801, huge]
+loop lo over bounds
+    loop hi over bounds
+        expected = ""
+        loop index, character over characters
+            if index + 1 > lo and index + 1 ≤ hi
+                expected += character
+        assert text[lo, hi) = expected
+assert text = saved
+text = text[256, 514)
+assert saved[length - 801] = "!"
+assert text[0] = "e"
+assert text[length - 1] = "🙂"
