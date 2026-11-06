@@ -1,0 +1,35 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-234-profile/construction-mark.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 85944034
+Trigger: Program termination
+Profiled target:  /var/tmp/code-234-profile/construction-mark (PID 1394821, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+429,746,128 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                    file:function
+--------------------------------------------------------------------------------
+180,374,250 (41.97%)  ???:code_set_at [/var/tmp/code-234-profile/construction-mark]
+ 65,089,879 (15.15%)  ???:main [/var/tmp/code-234-profile/construction-mark]
+ 50,000,261 (11.63%)  ???:code_add_take [/var/tmp/code-234-profile/construction-mark]
+ 43,708,756 (10.17%)  ???:code_bool [/var/tmp/code-234-profile/construction-mark]
+ 42,441,000 ( 9.88%)  ???:own_level [/var/tmp/code-234-profile/construction-mark]
+ 23,342,583 ( 5.43%)  ???:code_number [/var/tmp/code-234-profile/construction-mark]
+  9,028,660 ( 2.10%)  ???:malloc_usable_size [/usr/lib/x86_64-linux-gnu/libc.so.6]
+  8,488,233 ( 1.98%)  ???:code_release [/var/tmp/code-234-profile/construction-mark]
+  7,000,069 ( 1.63%)  ???:code_release.part.0 [/var/tmp/code-234-profile/construction-mark]
+

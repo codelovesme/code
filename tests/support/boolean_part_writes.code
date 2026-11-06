@@ -1,0 +1,80 @@
+| Bool writes use the same ownership and fallback rules as any part write.
+flags = [true, false, true]
+i = 0
+loop
+    if i = 3, break
+    flags[i] = i = 1
+    i = i + 1
+assert flags = [false, true, false]
+
+saved = flags
+i = 0
+loop
+    if i = 3, break
+    flags[i] = i ≠ 1
+    i = i + 1
+assert flags = [true, false, true]
+assert saved = [false, true, false]
+
+nested = [{ flag = true }, { flag = false }]
+old_nested = nested
+same_child = nested[0]
+i = 0
+loop
+    if i = 2, break
+    nested[i].flag = i = 1
+    i = i + 1
+assert nested = [{ flag = false }, { flag = true }]
+assert old_nested = [{ flag = true }, { flag = false }]
+assert same_child = { flag = true }
+
+| The first write must release old heap values and change tags generically.
+| Later passes can write Bool payloads directly without changing their tags.
+mixed ∈ Array of Any = ["text", [1, 2], { inner = true }, null, 3]
+pass = 0
+loop
+    if pass = 3, break
+    i = 0
+    loop
+        if i = 5, break
+        mixed[i] = pass ≠ 1
+        i = i + 1
+    pass = pass + 1
+assert mixed = [true, true, true, true, true]
+
+| An unknown object shape/new field and a non-scalar RHS stay generic.
+objects = [{ flag = true }, { other = true }]
+i = 0
+loop
+    if i = 2, break
+    objects[i].flag = false
+    i = i + 1
+assert objects = [{ flag = false }, { other = true, flag = false }]
+
+r ∈ Array of Any = [true]
+i = 0
+loop
+    if i = 2, break
+    r[0] = r
+    i = i + 1
+assert r = [[[true]]]
+
+BadIndex { at } =>
+    local_flags = [true, false]
+    loop
+        local_flags[at] = false
+        break
+    return Unexpected
+
+emit BadIndex { at = -1 } to this get negative
+assert negative ∈ Exception
+assert negative.source = "core"
+emit BadIndex { at = 2 } to this get outside
+assert outside ∈ Exception
+assert outside.source = "core"
+emit BadIndex { at = 0.5 } to this get fractional
+assert fractional ∈ Exception
+assert fractional.source = "core"
+assert negative.message = "cannot set that element — an index to set is a whole number below the array's length, 2"
+assert outside.message = negative.message
+assert fractional.message = negative.message

@@ -1,0 +1,31 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-234-profile/construction.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 20147302
+Trigger: Program termination
+Profiled target:  /var/tmp/code-234-profile/construction (PID 1394741, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                  
+--------------------------------------------------------------------------------
+91,294,588 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                   file:function
+--------------------------------------------------------------------------------
+50,000,261 (54.77%)  ???:code_add_take [/var/tmp/code-234-profile/construction]
+14,000,042 (15.34%)  ???:code_bool [/var/tmp/code-234-profile/construction]
+11,000,106 (12.05%)  ???:main [/var/tmp/code-234-profile/construction]
+ 9,028,660 ( 9.89%)  ???:malloc_usable_size [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 7,000,069 ( 7.67%)  ???:code_release.part.0 [/var/tmp/code-234-profile/construction]
+

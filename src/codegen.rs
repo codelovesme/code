@@ -4414,7 +4414,7 @@ impl<'a, 'm> Gen<'a, 'm> {
         }
         let value_val = self.gen_val(value)?;
         let value_val = self.settle(value_val)?;
-        // A number written where every step is a list index or a field whose
+        // A scalar written where every step is a list index or a field whose
         // slot is known: straight in, when each level is held alone and the
         // slot holds nothing on the heap; `code_set_at` otherwise.
         let merge = match self.shaped_write(site, target, path, &key_vals, value_val)? {
@@ -4526,10 +4526,14 @@ impl<'a, 'm> Gen<'a, 'm> {
         keys: &[Val<'a>],
         value: Val<'a>,
     ) -> Result<Option<Written<'a>>, String> {
-        // A number, or a value that is one when the write runs.
+        // Numbers already use this path. A known Bool gets it only in a
+        // versioned loop: the generic statement remains the fallback, without
+        // adding another inline path to straight-line application handlers.
+        let boolean = matches!(value, Val::Bool(_));
         let boxed_number = match value {
             Val::Num(_) => None,
             Val::Boxed(ptr) | Val::Held(ptr) => Some(ptr),
+            Val::Bool(_) if self.bail.is_some() => None,
             Val::Bool(_) => return Ok(None),
         };
         let mut steps = Vec::with_capacity(path.len());
@@ -4636,14 +4640,11 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .map_err(|e| e.to_string())?
             };
         }
-        // The slot itself: nothing on the heap to let go of, so a number is
-        // its tag and its bytes.
+        // In a fast version the old scalar must have the same tag. Writing
+        // only its payload preserves the tag facts used by later reads.
         let b = self.builder;
-        // In a fast version the old value must be a number too, so only the
-        // number is written: a tag written would be a tag every later read
-        // of a tag has to look at again (`alias.rs`).
         let mut empty = if bail.is_some() {
-            self.has_tag(current, 0)?
+            self.has_tag(current, if boolean { 2 } else { 0 })?
         } else {
             let heap_at = self.value_field(current, 4)?;
             let heap = b
@@ -4665,18 +4666,23 @@ impl<'a, 'm> Gen<'a, 'm> {
         b.build_conditional_branch(empty, store, slow)
             .map_err(|e| e.to_string())?;
         b.position_at_end(store);
-        let number = match (value, boxed_number) {
-            (Val::Num(n), _) => n,
-            (_, Some(ptr)) => self.load_number(ptr)?,
-            _ => unreachable!("a number or a boxed value"),
+        let payload: inkwell::values::BasicValueEnum = match (value, boxed_number) {
+            (Val::Num(n), _) => n.into(),
+            (Val::Bool(flag), _) => self
+                .builder
+                .build_int_z_extend(flag, self.i32_ty, "flag")
+                .map_err(|e| e.to_string())?
+                .into(),
+            (_, Some(ptr)) => self.load_number(ptr)?.into(),
+            _ => unreachable!("a number, boxed number or loop Bool"),
         };
         let b = self.builder;
         if bail.is_none() {
             b.build_store(current, self.i32_ty.const_zero())
                 .map_err(|e| e.to_string())?;
         }
-        let number_at = self.value_field(current, 8)?;
-        b.build_store(number_at, number)
+        let payload_at = self.value_field(current, 8)?;
+        b.build_store(payload_at, payload)
             .map_err(|e| e.to_string())?;
         b.build_unconditional_branch(merge)
             .map_err(|e| e.to_string())?;
