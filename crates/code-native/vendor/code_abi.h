@@ -172,6 +172,21 @@
  *      `InboundScope`). `code_module_inbound_reply` stays module-wide.
  *      Optional and additive; the ABI version does not move.
  *
+ *  14. *Optionally* **ask the base**: `code_base_ask(out, particle)` sends
+ *      `particle` to the handlers of the program that linked this module
+ *      and writes their answer into `out` (null when nobody answers) —
+ *      `emit … to base`, from a module written in another language. The
+ *      call is nested: it runs on the dispatching thread, inside the
+ *      dispatch that reached the module, under the usual bound on live
+ *      handlers; it is never queued. `out` is in the module's own heap.
+ *
+ *      Nothing is exported for this either. The runtime every compiled
+ *      `.so` carries defines `code_module_set_base`, and a host that opens
+ *      a module hands its own answerer over with it; in a `.a` module there
+ *      is one runtime and the program's own dispatch chain answers. A
+ *      module built before this has no such symbol and is never asked to
+ *      use it. Optional and additive; the ABI version does not move.
+ *
  * Why `emit` is a function *pointer* the host supplies, rather than a
  * `code_emit_inbound` a module could call directly: a `.so` carries its own
  * copy of this runtime (see below), so a direct call would push onto the
@@ -416,6 +431,18 @@ typedef struct CodeHostVtable {
  * host afterwards would be too late for exactly the statements this exists
  * to intercept. */
 void code_module_set_host(const CodeHostVtable *host, void *host_ctx);
+
+/* ---- Asking the base: item 14 --------------------------------------------
+ *
+ * `code_base_ask` is what a module calls; `code_module_set_base` is what the
+ * opener calls on the module's copy of the runtime, right after opening it,
+ * with a function answering in the opener's own heap and the release that
+ * frees what it answered. A program with handlers of its own (and every
+ * `.a` module linked into it) answers from its own dispatch chain first,
+ * so an application that is itself hosted still answers its own modules. */
+void code_module_set_base(void (*ask)(CodeValue *out, const CodeValue *particle),
+                          void (*release)(CodeValue *v));
+void code_base_ask(CodeValue *out, const CodeValue *particle);
 
 /* ---- `.a` static modules — a different, simpler contract -----------------
  *

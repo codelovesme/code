@@ -1214,6 +1214,11 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                 #[cfg(feature = "native-modules")]
                 {
                     let module = NativeModule::open(path)?;
+                    // This program is the module's base (`code_abi.h` item
+                    // 14): what it asks with `code_base_ask` reaches these
+                    // handlers.
+                    let env_ptr: *const Environment = env;
+                    unsafe { module.be_base(env_ptr) };
                     // The module's exported variables (constants) become an
                     // object bound under `alias`, so `alias.name` is ordinary
                     // field access — the same binding `Import`'s alias uses.
@@ -1306,6 +1311,7 @@ fn exec(stmt: &Stmt, env: &Environment) -> Result<Flow, String> {
                 // what lets a guest share what the host already has rather
                 // than opening its own.
                 let env_ptr: *const Environment = env;
+                unsafe { module.be_base(env_ptr) };
                 let guest = unsafe { module.host(path, env_ptr) };
                 // How its modules wake this program: the same wakeup
                 // this program's own modules signal, so one park covers

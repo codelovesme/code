@@ -3,17 +3,27 @@
 //!
 //! Handlers:
 //!
-//! - `Load { source, name? }` → `Loaded { id }`. The text is parsed and put
-//!   through every check a file gets before it runs — handler cycles,
-//!   undefined names — and its top-level statements are executed. Any of
-//!   that failing is an `Exception { message }`: the source is bad, and
-//!   this is where it is said. A `link` inside the source is refused: a
+//! - `Load { source, name?, host? }` → `Loaded { id }`. The text is parsed
+//!   and put through every check a file gets before it runs — handler
+//!   cycles, undefined names — and its top-level statements are executed.
+//!   Any of that failing is an `Exception { message }`: the source is bad,
+//!   and this is where it is said. A `link` inside the source is refused: a
 //!   program loaded here links nothing.
+//!
+//!   With `host = true` the program may `emit … to <name>` its base's
+//!   modules without linking them (`code_abi.h` item 14). Every name it
+//!   emits to is asked of the base first, as a hosted guest's link is:
+//!   `Offer { app, name }`, answered `Offered` — and a name not offered
+//!   refuses the whole program before any of it runs. Each emit then
+//!   reaches the base as `Module { app, name, particle }`, nested, and its
+//!   answer is the emit's. `app` is the program's `name`. Without `host`
+//!   nothing changes.
 //! - `Send { id, particle }` → whatever the handler answered; `null` when
 //!   no handler takes the class; an `Exception` when the handler failed,
 //!   exactly as a runtime error answers anywhere.
 //! - `Unload { id }` → `Unloaded { existed }`.
-//! - `Loaded {}` → `Programs { items = [{ id, name }] }`.
+//! - `Loaded {}` → `Programs { items = [{ id, name, modules }] }`;
+//!   `modules` are the base's names a hosted program reaches.
 //!
 //! # What a loaded program is
 //!
@@ -37,8 +47,9 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use code::interpreter::{ask_program, prepare, Environment};
-use code::loader::{self, NoModules};
+use code::ast::NativeFormat;
+use code::interpreter::{ask_program, prepare, Environment, ModuleDispatch};
+use code::loader::{self, ModuleResolver, NoModules, ResolvedModule};
 use code::value::Value;
 use code_native::*;
 
@@ -48,6 +59,8 @@ const SOURCE_AT_MOST: usize = 256 * 1024;
 
 struct Loaded {
     name: String,
+    /// The base's modules this program reaches (`host = true`), sorted.
+    modules: Vec<String>,
     /// Boxed so the environment never moves once made — the same rule
     /// `interpreter::run_with` keeps, and for the same reason.
     env: Box<Environment>,
@@ -60,6 +73,9 @@ thread_local! {
     static PROGRAMS: RefCell<BTreeMap<u64, Loaded>> = const { RefCell::new(BTreeMap::new()) };
     static NEXT_ID: RefCell<u64> = const { RefCell::new(1) };
 }
+
+// Asked by a host that can be this module's base (`code_abi.h` item 14).
+declare_base!();
 
 #[no_mangle]
 pub extern "C" fn code_module_abi_version() -> u32 {
@@ -110,8 +126,66 @@ fn load(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         entry_identity: identity.clone(),
         entry_text: source.to_string(),
     };
-    let program = loader::load(&identity, &resolver)?;
+    let hosted = read_field_bool(particle, "host").unwrap_or(false);
+    let (program, modules) = if hosted {
+        // What it emits to, read off the source before anything runs, and
+        // every one of those asked of the base.
+        let alone = loader::load(&identity, &resolver)?;
+        let modules = code::introspection::module_targets(&alone);
+        let app = if name.is_empty() {
+            "loaded"
+        } else {
+            name.as_str()
+        };
+        let missing: Vec<&str> = modules
+            .iter()
+            .filter(|m| !offered(app, m))
+            .map(String::as_str)
+            .collect();
+        if !missing.is_empty() {
+            return Err(format!(
+                "the host does not offer {} to this program: {}",
+                if missing.len() == 1 {
+                    "a module"
+                } else {
+                    "modules"
+                },
+                missing.join(", ")
+            ));
+        }
+        // An entry of its own that links each of them under its own name,
+        // then the program as a file of its own — so its handlers and its
+        // line numbers are the source's, as a gene's are.
+        let mut entry = String::new();
+        for m in &modules {
+            entry.push_str(&format!("link \"{m}\" as {m}\n"));
+        }
+        entry.push_str(&format!("link \"{identity}\"\n"));
+        let furnished = Furnished {
+            entry_text: entry,
+            program_identity: identity.clone(),
+            program_text: source.to_string(),
+            modules: modules.clone(),
+        };
+        (loader::load("<base>", &furnished)?, modules)
+    } else {
+        (loader::load(&identity, &resolver)?, Vec::new())
+    };
     let env = Box::new(Environment::default());
+    if hosted {
+        let app: Rc<str> = Rc::from(if name.is_empty() {
+            "loaded"
+        } else {
+            name.as_str()
+        });
+        for m in &modules {
+            let app = Rc::clone(&app);
+            let module: Rc<str> = Rc::from(m.as_str());
+            let dispatch: ModuleDispatch =
+                Rc::new(move |sent: &Value| Ok(to_base(&app, &module, sent)));
+            env.provide_module(m, Value::Object(Rc::new(Vec::new().into())), dispatch);
+        }
+    }
     prepare(&program, &env)?;
     let id = NEXT_ID.with(|n| {
         let mut n = n.borrow_mut();
@@ -119,7 +193,7 @@ fn load(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         *n += 1;
         id
     });
-    PROGRAMS.with(|p| p.borrow_mut().insert(id, Loaded { name, env }));
+    PROGRAMS.with(|p| p.borrow_mut().insert(id, Loaded { name, modules, env }));
     one_number(out, c"Loaded", c"id", id as f64);
     Ok(())
 }
@@ -161,18 +235,28 @@ fn unload(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
 }
 
 fn loaded(out: &mut CodeValue) -> Result<(), String> {
-    let items: Vec<(u64, String)> = PROGRAMS.with(|p| {
+    let items: Vec<(u64, String, Vec<String>)> = PROGRAMS.with(|p| {
         p.borrow()
             .iter()
-            .map(|(id, l)| (*id, l.name.clone()))
+            .map(|(id, l)| (*id, l.name.clone(), l.modules.clone()))
             .collect()
     });
     let mut elems = SlotBuffer::new(items.len());
-    for (i, (id, name)) in items.iter().enumerate() {
-        let mut fields = SlotBuffer::new(2);
+    for (i, (id, name, modules)) in items.iter().enumerate() {
+        let mut fields = SlotBuffer::new(3);
         number(fields.slot_mut(0), *id as f64);
         owned_str(fields.slot_mut(1), name);
-        object(elems.slot_mut(i as i64), &[c"id", c"name"], &mut fields);
+        let mut names = SlotBuffer::new(modules.len());
+        for (j, m) in modules.iter().enumerate() {
+            owned_str(names.slot_mut(j as i64), m);
+        }
+        array(fields.slot_mut(2), &mut names);
+        names.release_all();
+        object(
+            elems.slot_mut(i as i64),
+            &[c"id", c"name", c"modules"],
+            &mut fields,
+        );
         fields.release_all();
     }
     let mut fields = SlotBuffer::new(2);
@@ -182,6 +266,98 @@ fn loaded(out: &mut CodeValue) -> Result<(), String> {
     object(out, &[c"_class", c"items"], &mut fields);
     fields.release_all();
     Ok(())
+}
+
+/// The module story of a hosted program: its entry links each furnished
+/// name (answered by the base, through `provide_module`) and then the
+/// program's own source; anything else is refused, as for every program
+/// loaded here.
+struct Furnished {
+    entry_text: String,
+    program_identity: String,
+    program_text: String,
+    modules: Vec<String>,
+}
+
+impl ModuleResolver for Furnished {
+    fn resolve_entry(&self, _entry: &str) -> Result<ResolvedModule, String> {
+        Ok(ResolvedModule::Source {
+            identity: "<base>".to_string(),
+            text: self.entry_text.clone(),
+        })
+    }
+
+    fn resolve(&self, _from: &str, module_ref: &str) -> Result<ResolvedModule, String> {
+        if module_ref == self.program_identity {
+            return Ok(ResolvedModule::Source {
+                identity: self.program_identity.clone(),
+                text: self.program_text.clone(),
+            });
+        }
+        if self.modules.iter().any(|m| m == module_ref) {
+            return Ok(ResolvedModule::Native {
+                identity: module_ref.to_string(),
+                path: module_ref.to_string(),
+                format: NativeFormat::JsBridge,
+            });
+        }
+        Err(format!(
+            "cannot link '{module_ref}': a program loaded here links nothing"
+        ))
+    }
+}
+
+/// Asks the base, and keeps its answer as this side's own value.
+fn ask(particle: &Value) -> Option<Value> {
+    let mut sent = CodeValue::zeroed();
+    from_value(&mut sent, particle);
+    let answer = ask_base(&sent, to_value);
+    release(&mut sent);
+    answer
+}
+
+fn hosting(class: &str, app: &str, name: &str, particle: Option<&Value>) -> Value {
+    let mut fields = vec![
+        ("_class".to_string(), Value::Str(class.into())),
+        ("app".to_string(), Value::Str(app.into())),
+        ("name".to_string(), Value::Str(name.into())),
+    ];
+    if let Some(particle) = particle {
+        fields.push(("particle".to_string(), particle.clone()));
+    }
+    Value::Object(Rc::new(fields.into()))
+}
+
+/// Whether the base offers `name` to the program `app`: only `Offered`
+/// counts. Silence is a refusal here — a loaded program has no files of its
+/// own to fall back to, unlike a guest.
+fn offered(app: &str, name: &str) -> bool {
+    matches!(
+        &ask(&hosting("Offer", app, name, None)),
+        Some(Value::Object(fields))
+            if fields.iter().any(|(k, v)| k == "_class" && matches!(v, Value::Str(c) if &**c == "Offered"))
+    )
+}
+
+/// One emit to a furnished name: the base's `Module` handler answers it.
+fn to_base(app: &str, name: &str, particle: &Value) -> Value {
+    match ask(&hosting("Module", app, name, Some(particle))) {
+        Some(answer) => answer,
+        None => exception_value(&format!(
+            "module '{name}' cannot be reached: this host cannot be asked"
+        )),
+    }
+}
+
+fn exception_value(message: &str) -> Value {
+    Value::Object(Rc::new(
+        vec![
+            ("_class".to_string(), Value::Str("Exception".into())),
+            ("source".to_string(), Value::Str("interpreter".into())),
+            ("message".to_string(), Value::Str(message.into())),
+        ]
+        .into(),
+    ))
 }
 
 fn one_number(

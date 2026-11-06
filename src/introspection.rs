@@ -253,6 +253,35 @@ fn literal_class(expr: &Expr) -> Option<String> {
     }
 }
 
+/// Every module name a program emits to (`emit … to <name>`, not `core`,
+/// `this` or `base`), sorted, each once — what a host has to furnish before
+/// the program can run. A name may also be an ordinary binding holding an
+/// address from a `link` that ran inside a handler; this cannot tell, and
+/// reports it too. `code_abi.h` item 14's loaded programs use it to refuse,
+/// before anything runs, a program asking for a module nobody offers.
+pub fn module_targets(program: &Program) -> Vec<String> {
+    fn walk(statements: &[Stmt], found: &mut std::collections::BTreeSet<String>) {
+        for statement in statements {
+            match statement {
+                Stmt::Emit {
+                    target: crate::ast::EmitTarget::Module(name),
+                    ..
+                } => {
+                    found.insert(name.clone());
+                }
+                Stmt::If { body, .. }
+                | Stmt::Loop { body, .. }
+                | Stmt::Import { body, .. }
+                | Stmt::HandlerDef { body, .. } => walk(body, found),
+                _ => {}
+            }
+        }
+    }
+    let mut found = std::collections::BTreeSet::new();
+    walk(&program.statements, &mut found);
+    found.into_iter().collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

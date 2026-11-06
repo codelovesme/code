@@ -1,0 +1,60 @@
+link "native_modules/arrays.so" as length_arrays
+| `interpreter` with `host = true` (`code_abi.h` item 14): a loaded program
+| emits to its base's modules by name, without linking them. The base says
+| what it offers (`Offer`) and answers each emit (`Module`), nested — the
+| same two questions a hosted guest asks its host.
+
+link "native_modules/interpreter.so" as plasmid
+
+offers = ["arrays", "failing"]
+asked = []
+
+Offer { app, name } =>
+    loop one over offers
+        if one = name, return Offered
+    return Refused
+
+Module { app, name, particle } =>
+    asked += [app + ":" + name]
+    if name = "arrays"
+        emit particle to length_arrays get answer
+        return answer
+    return Exception { source = "base", message = "failing on purpose" }
+
+| An emit to a base module, from a handler and from the top level.
+counter = "start = 0\nemit Length { value = [1, 2] } to arrays get first\nstart = first.value\n\nMeasure { items } =>\n    emit Length { value = items } to arrays get size\n    return Measured { size = size.value, start = start }\n"
+emit Load { source = counter, name = "measurer", host = true } to plasmid get loaded
+assert loaded ∈ Loaded
+emit Send { id = loaded.id, particle = Measure { items = [1, 2, 3] } } to plasmid get measured
+assert measured ∈ Measured
+assert measured.size = 3
+assert measured.start = 2
+assert asked = ["measurer:arrays", "measurer:arrays"]
+
+| The base's Exception is the emit's answer, as anywhere.
+emit Load { source = "Try {} =>\n    emit Anything {} to failing get answer\n    return Tried { failed = answer ∈ Exception, message = answer.message }\n", name = "trier", host = true } to plasmid get trier
+emit Send { id = trier.id, particle = Try {} } to plasmid get tried
+assert tried.failed
+assert tried.message = "failing on purpose"
+
+| A name the base does not offer refuses the whole program before any of it
+| runs: its top level never reached the base.
+before = asked
+emit Load { source = "emit Length { value = [1] } to arrays get one\nemit Note {} to secrets get _\n", name = "greedy", host = true } to plasmid get greedy
+assert greedy ∈ Exception
+assert greedy.message = "the host does not offer a module to this program: secrets"
+assert asked = before
+
+| Without `host`, a loaded program still links nothing, as before.
+emit Load { source = "Measure {} =>\n    emit Length { value = [1] } to arrays get size\n    return Measured { size = size.value }\n" } to plasmid get alone
+assert alone ∈ Exception
+
+| A hosted program still cannot link anything itself.
+emit Load { source = "link \"anything.so\" as x\n", host = true } to plasmid get linking
+assert linking ∈ Exception
+
+| What is loaded says which base modules each one reaches.
+emit Loaded {} to plasmid get listing
+assert listing.items[0].name = "measurer"
+assert listing.items[0].modules = ["arrays"]
+assert listing.items[1].modules = ["failing"]

@@ -23,6 +23,12 @@ fn main() {
         // crate rather than this archive — see `code_release`'s doc comment
         // in `src/lib.rs` for why that distinction matters for a `cdylib`.
         .define("code_release", "code_native_vendored_release")
+        // `code_abi.h` item 14: a Rust module's base is what the host hands
+        // over to *this crate* (`declare_base!`, `ask_base`), not to the
+        // vendored runtime, which has no program to answer from — renamed
+        // so the two never meet in one symbol table.
+        .define("code_module_set_base", "code_native_vendored_set_base")
+        .define("code_base_ask", "code_native_vendored_base_ask")
         .compile("code_native_runtime");
     println!("cargo:rerun-if-changed=vendor/runtime.c");
     println!("cargo:rerun-if-changed=vendor/code_abi.h");
