@@ -1124,7 +1124,8 @@ fn cmd_handlers(args: Vec<String>) -> ExitCode {
         };
         modules.push(module);
     }
-    println!("{}", render_handler_catalog(&handlers, &modules));
+    let emits = code::introspection::module_targets(&program);
+    println!("{}", render_handler_catalog(&handlers, &modules, &emits));
     ExitCode::SUCCESS
 }
 
@@ -1214,6 +1215,7 @@ fn native_module_description(alias: &str) -> code::introspection::ModuleDescript
 fn render_handler_catalog(
     handlers: &[code::introspection::HandlerDescription],
     modules: &[code::introspection::ModuleDescription],
+    emits: &[String],
 ) -> String {
     let mut output = String::from("{\n  \"schema_version\": 1,\n  \"handlers\": [");
     for (index, handler) in handlers.iter().enumerate() {
@@ -1239,7 +1241,18 @@ fn render_handler_catalog(
     if !modules.is_empty() {
         output.push('\n');
     }
-    output.push_str("  ]\n}");
+    // Every name an `emit … to <name>` reaches, sorted: linked aliases, and
+    // names the file does not link — what a gene expects its application to
+    // provide. A variable holding an address looks the same and is listed
+    // too; this reads the source, it does not run it.
+    output.push_str("  ],\n  \"emits\": [");
+    for (index, name) in emits.iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        output.push_str(&json_quote(name));
+    }
+    output.push_str("]\n}");
     output
 }
 

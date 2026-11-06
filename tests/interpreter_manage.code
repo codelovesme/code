@@ -1,0 +1,183 @@
+link "native_modules/arrays.so" as length_arrays
+| `interpreter` as a program manager (ticket 154): Check without running,
+| Replace that never loses a working version, Stop and Start that keep a
+| program's own state, Status with its failures, and two programs that
+| never disturb each other. The base here is any application: nothing in
+| it is Mike's.
+
+link "native_modules/interpreter.so" as plasmid
+
+offers = ["arrays", "failing", "manage"]
+asked = []
+victim = 0
+
+Offer { app, name } =>
+    loop one over offers
+        if one = name, return Offered
+    return Refusal
+
+Module { app, name, particle } =>
+    asked += [app + ":" + name]
+    if name = "arrays"
+        emit particle to length_arrays get answer
+        return answer
+    if name = "manage"
+        | The base asked about the very program that is asking it.
+        if particle ∈ Drop
+            emit Unload { id = victim } to plasmid get dropped
+            return dropped
+        emit Send { id = victim, particle = Ping {} } to plasmid get again
+        return again
+    return Exception { source = "base", message = "failing on purpose" }
+
+counter = "count = 0\n\nBump {} =>\n    count = count + 1\n    return Counted { count = count }\n\nTry {} =>\n    emit Anything {} to failing get answer\n    return Tried { failed = answer ∈ Exception }\n"
+
+| Check: what it emits to and what the base offers, nothing run. Its top
+| level emits to `arrays`, and the base was not asked.
+before = asked
+emit Check { source = "emit Length { value = [1] } to arrays get one\n", host = true } to plasmid get fine
+assert fine ∈ Checked
+assert fine.ok
+assert fine.modules = ["arrays"]
+assert fine.offered = ["arrays"]
+assert fine.missing = []
+assert asked = before
+
+emit Check { source = "Leak {} =>\n    emit Note {} to secrets get one\n    emit Length { value = [] } to arrays get two\n    return Done {}\n", host = true } to plasmid get greedy
+assert not greedy.ok
+assert greedy.stage = "binding"
+assert greedy.offered = ["arrays"]
+assert greedy.missing = ["secrets"]
+
+emit Check { source = "Bad {} =>\n    return missing_name\n" } to plasmid get broken
+assert not broken.ok
+assert broken.stage = "source"
+
+| Load refuses the same way, and says at which stage.
+emit Load { source = "emit Note {} to secrets get _\n", host = true } to plasmid get refused
+assert refused ∈ Exception
+assert refused.stage = "binding"
+assert refused.missing = ["secrets"]
+emit Load { source = "x = 1 / 0\n" } to plasmid get crashed
+assert crashed.stage = "activation"
+
+| Two programs, each with its own count.
+emit Load { source = counter, name = "a", host = true } to plasmid get a
+emit Load { source = counter, name = "b", host = true } to plasmid get b
+assert a.version = 1
+assert a.hash = b.hash
+emit Send { id = a.id, particle = Bump {} } to plasmid get ignored1
+emit Send { id = a.id, particle = Bump {} } to plasmid get ignored2
+emit Send { id = b.id, particle = Bump {} } to plasmid get b1
+assert b1.count = 1
+
+| Stop keeps the program and refuses its Sends; the other is untouched.
+emit Stop { id = a.id } to plasmid get stopped
+assert stopped ∈ Stopped
+assert stopped.was = "running"
+emit Stop { id = a.id } to plasmid get twice
+assert twice.was = "stopped"
+emit Send { id = a.id, particle = Bump {} } to plasmid get refused_send
+assert refused_send ∈ Exception
+assert refused_send.stage = "stopped"
+emit Send { id = b.id, particle = Bump {} } to plasmid get b2
+assert b2.count = 2
+emit Status { id = a.id } to plasmid get sa
+assert sa.state = "stopped"
+emit Start { id = a.id } to plasmid get started
+assert started.was = "stopped"
+emit Send { id = a.id, particle = Bump {} } to plasmid get a3
+assert a3.count = 3
+
+| A call that reached the base and failed is a failure of the program, with
+| the call it made — not a success because the name was offered.
+emit Send { id = b.id, particle = Try {} } to plasmid get tried
+assert tried.failed
+emit Status { id = b.id } to plasmid get sb
+assert sb.failures = 1
+assert sb.errors[0].operation = "Module"
+assert sb.errors[0].target = "failing"
+assert sb.errors[0].message = "failing on purpose"
+assert sb.errors[0].version = 1
+assert sb.calls = 3
+
+| A handler that fails is a failure too, with the class it was sent.
+emit Load { source = "Boom {} =>\n    x = 1 / 0\n    return Fine { x = x }\n", name = "boom" } to plasmid get boom
+emit Send { id = boom.id, particle = Boom {} } to plasmid get exploded
+assert exploded ∈ Exception
+emit Status { id = boom.id } to plasmid get sboom
+assert sboom.errors[0].operation = "Send"
+assert sboom.errors[0].target = "Boom"
+
+| History is bounded: the newest sixteen are kept, all are counted.
+loop i over [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    emit Send { id = boom.id, particle = Boom {} } to plasmid get ignored3
+emit Status { id = boom.id } to plasmid get bounded
+assert bounded.failures = 21
+emit Length { value = bounded.errors } to length_arrays get kept
+assert kept.value = 16
+assert bounded.errors[0].seq = 6
+emit Unload { id = boom.id } to plasmid get ignored4
+
+| Replace: bad source, an unoffered name, a failing top level — each leaves
+| version 1 answering, with its count.
+emit Replace { id = a.id, source = "Bump {} =>\n    return nope\n" } to plasmid get bad
+assert bad ∈ Exception
+assert bad.stage = "source"
+emit Replace { id = a.id, source = "Bump {} =>\n    emit X {} to secrets get one\n    return Done {}\n" } to plasmid get unbound
+assert unbound.stage = "binding"
+emit Replace { id = a.id, source = "y = 1 / 0\n" } to plasmid get failed_start
+assert failed_start.stage = "activation"
+emit Send { id = a.id, particle = Bump {} } to plasmid get a4
+assert a4.count = 4
+emit Status { id = a.id } to plasmid get sa1
+assert sa1.version = 1
+assert sa1.failures = 3
+assert sa1.errors[0].operation = "Replace"
+
+| A good one takes; a second replacer that read version 1 is stale.
+emit Replace { id = a.id, version = 1, source = "Bump {} =>\n    return Counted { count = 100 }\n" } to plasmid get took
+assert took ∈ Replaced
+assert took.version = 2
+assert not (took.hash = a.hash)
+emit Replace { id = a.id, version = 1, source = counter } to plasmid get stale
+assert stale.stage = "stale"
+emit Send { id = a.id, particle = Bump {} } to plasmid get a5
+assert a5.count = 100
+emit Status { id = a.id } to plasmid get sa2
+assert sa2.version = 2
+assert sa2.modules = []
+
+| Listing: identities, versions, states; names are not what tells them apart.
+emit Loaded {} to plasmid get listing
+assert listing.items[0].id = a.id
+assert listing.items[0].version = 2
+assert listing.items[1].id = b.id
+assert listing.items[1].state = "running"
+
+| Removing one leaves the other running with its own count; removing twice,
+| or stopping what is gone, says it is absent.
+emit Unload { id = a.id } to plasmid get gone
+assert gone.existed
+emit Unload { id = a.id } to plasmid get gone_again
+assert not gone_again.existed
+emit Stop { id = a.id } to plasmid get stop_gone
+assert stop_gone.stage = "absent"
+emit Status { id = a.id } to plasmid get status_gone
+assert status_gone.stage = "absent"
+emit Send { id = b.id, particle = Bump {} } to plasmid get b3
+assert b3.count = 3
+
+| From inside its own Send: a second Send into it is busy, and an Unload
+| marks it and drops it once that Send has answered.
+emit Load { source = "Ping {} =>\n    return Pong {}\n\nAgain {} =>\n    emit Again {} to manage get inner\n    return Saw { inner = inner }\n\nLeave {} =>\n    emit Drop {} to manage get dropped\n    return Left { existed = dropped.existed }\n", name = "self", host = true } to plasmid get me
+victim = me.id
+emit Send { id = me.id, particle = Again {} } to plasmid get saw
+assert saw.inner ∈ Exception
+assert saw.inner.stage = "busy"
+emit Send { id = me.id, particle = Leave {} } to plasmid get left
+assert left.existed
+emit Status { id = me.id } to plasmid get after
+assert after.stage = "absent"
+emit Send { id = b.id, particle = Bump {} } to plasmid get b4
+assert b4.count = 4
