@@ -1,70 +1,38 @@
-# Read-only loop-local element bindings (262)
+# Read-only collection iteration investigation (262)
 
-Investigate additional compiled native execution work, following 261. Baseline
-is source `f18461d` (2.25.0, not the old public 2.24.1 binary). No release,
-website update, new syntax, ABI, value layout or interpreter change in this lane.
+**Outcome: neither candidate was retained.** Main keeps its existing compiler,
+value layout, runtime and ABI. Snapshot regression tests and complete evidence
+remain; no release, website edit or performance claim follows from this study.
 
-## Diagnosis and candidate
+Both trials used source baseline `f18461d` (2.25.0), independently built matched
+compilers, one fresh VM/CPU per trial, 15 shuffled serial launches for all
+25 cases (750 samples each). Construction, queries, verification, cleanup and
+startup are included; compilation is excluded. Hosts differ between trials:
+compare before/after only within each trial, never their absolute durations.
 
-Local cumulative instruction probes separate construction from 16 queries and
-compare a diagnostic direct-field-read source variant. They are complete
-programs with different checks/code generation: do not subtract their counts
-as exact phase timings or report them as CPU-time percentages. All source and
-binary identities are retained. In weighted/nearest, the original local binding
-costs many code_copy instructions; scalar threshold already has a guarded path.
+- [First candidate](results/2026-11-06-first-candidate/README.md), source
+  `5db4eda`: ASCII +46.05%; large weighted -3.86%, nearest -9.51%. Rejected.
+- [Revised candidate](results/2026-11-06-revised-candidate/README.md), source
+  `991d238`: ASCII code restored byte-for-byte; large weighted -1.33%, nearest
+  -5.97%. No material regression, but neither target passes the fixed 10% gain.
+- All **1,500 samples / 100 summaries** remain with source/compiler/native
+  identities, ranges and MAD. Both bundles passed independent audits. The
+  [fixed protocol](PROTOCOL.md) and [unapplied patches](experiments/) preserve
+  the experiment without enabling an ineffective optimization.
 
-Candidate in codegen.rs: a freshly declared, once-assigned `v = values[i]` in an
-innermost loop can borrow an array element while the root remains unchanged. Roots must be inferred as Array; this only
-selects candidates and does not remove runtime checks.
-Only a simple number/known-numeric-name index qualifies. No native links,
-runtime links, either tracing mode, handler frame, emits or unknown control flow.
-Browser programs with handlers are also excluded: number-format imports can
-synchronously fire an event and change the source between statements. Existing
-bindings, loop binders, source mutation or read-binding mutation are excluded.
+Local cumulative instruction profiles show substantial reductions in record
+copying. They are not CPU-time shares or exact phase timings; the elapsed
+studies did not justify the ownership/alias complexity. A separate browser
+formatter callback probe exposed a snapshot violation in the first prototype;
+the revised guard and stock baseline pass. Regression tests retain this case.
 
-Both loop versions share a pointer cell for generic bailouts; the fast version
-keeps its direct array GEP visible so alias tagging can retain the heap proof. A successful guarded fast array read
-publishes the borrowed slot. The generic version owns a normal snapshot,
-including string-character scratch/missing-index values. A later statement
-bailing from fast to generic reads the same cell. A subsequent fast read drops
-any owned fallback first; the common loop exit clears it. Escaped values still
-copy/retain normally. Source evaluation, bounds/type/shape guards and diagnostic
-statement boundaries stay in their original places. No reference is borrowed
-from scratch; language-level snapshots and normal fallbacks remain.
+The next supported hypothesis concerns threshold accumulation: the complete
+small-case profile attributes 22.63% of dynamic instructions to `code_add` and
+20.51% to `code_add_into` (not elapsed percentages). Investigate a checked
+numeric-add path as a fresh experiment, not a changed acceptance gate here.
 
-## Fixed acceptance protocol — before timing
-
-`run.py` keeps 17 established controls plus all six 261 cases and two protected ASCII/Unicode
-character-iteration controls: 25 programs, 50 before/after groups, 15 shuffled
-serial launches each (750 samples). Same
-fresh hosted VM, one allowed CPU, separately built source compilers with the
-same toolchain/flags and distinct target directories. Record exact revisions,
-compiler/source/native/wrapper hashes, commands, environment and every sample.
-Native compilation is excluded; program startup, construction, queries,
-validation and cleanup are included. Physical isolation/frequency isn't assured.
-This is a matched source study, not a new public Code/C/Rust ranking.
-
-Keep the candidate only with >=10% elapsed reduction in at least one large
-weighted/nearest target. Reject any material regression across all 25 cases:
-an increase >=10% AND larger than max(0.2 ms, twice the sum of before/after MADs).
-Retain all small regressions and unchanged scalar results. Independent audit
-recomputes all statistics, source coverage and artifact identities. No samples
-are discarded. The two added string controls guard the scratch-owning fallback
-whose source read cannot borrow an array slot. If rejected, leave implementation unmerged and preserve evidence.
-
-Local `profile.py --code /source/compiler --output-dir /new/path` is untimed.
-Local `run.py --before /source/before --after /source/after --output-dir /new/path
---smoke-only` validates all 50 outputs without publishing machine timing.
-Full workspace, mutation/alias/bailout/scratch regressions in interpreter,
-native dev/release and compiled-WASM dev/release, leak/allocator checks and
-applicable frozen app/site checks must pass before retaining the change.
-
-## First candidate rejected
-
-[The first hosted trial](results/2026-11-06-first-candidate/README.md) retains all
-750 samples, including +46.05% ASCII regression and insufficient large-target
-gains. The revised candidate selects inferred Array roots, preserves direct
-fast SSA pointers for alias tagging, and clears earlier generic ownership
-before establishing new array facts. The fixed 25-case protocol and gates are
-unchanged. Browser callback snapshot regression additionally guards against
-reentrant mutation from a number-format host import.
+`archived-workflow.yml` is inactive. Reproduce from a frozen candidate revision
+with its matched baseline and original workflow; `run.py --smoke-only` can
+validate supplied source compilers locally. Never time unpatched main as the
+candidate and label it as this experiment. Existing historical reports/site
+numbers stay unchanged.

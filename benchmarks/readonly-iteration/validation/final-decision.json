@@ -1,0 +1,37 @@
+{
+  "decision": "Both prototypes rejected; source/runtime/inference/ABI unchanged relative to f18461d. Only tests and archival evidence retained.",
+  "all_samples": 1500,
+  "all_summary_groups": 100,
+  "restored_workspace": {
+    "passed": 347,
+    "failed": 0,
+    "ignored": 7,
+    "summaries": 69,
+    "log_sha256": "21dc78d8bf132f402fa77edde24c75e64ddec13cd6f36d3e262685d72bf3ab99"
+  },
+  "revised_candidate_ci": {
+    "run_id": 42284078358,
+    "conclusion": "success",
+    "workspace_passed": 347,
+    "workspace_failed": 0,
+    "workspace_ignored": 7,
+    "wasm32_job": "success"
+  },
+  "trials": [
+    {
+      "candidate": "5db4eda19f920a8fded716499d1da6f2eea3db1c",
+      "run_id": 42278353069,
+      "samples": 750,
+      "accepted": false,
+      "reason": "ASCII +46.05% material regression and neither large target >=10% gain"
+    },
+    {
+      "candidate": "991d238e92da52a2fb83c57614499676424e8755",
+      "run_id": 42284068886,
+      "samples": 750,
+      "accepted": false,
+      "reason": "No material regression, but weighted -1.33% and nearest -5.97% fail >=10% target gate"
+    }
+  ],
+  "follow_up_ticket": 263
+}
