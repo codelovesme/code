@@ -20,7 +20,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, json, os, subprocess, tarfile
-          spec = json.loads(Path('benchmarks/website-evidence/releases/v2.23.2.json').read_text())
+          spec = json.loads(Path('benchmarks/website-evidence/releases/v2.24.1.json').read_text())
           root = Path(os.environ['RUNNER_TEMP']) / 'website-release'
           root.mkdir()
           archive = root / 'code.tar.gz'
@@ -31,13 +31,13 @@ jobs:
           PY
       - name: Measure existing comparison entries on this VM
         run: |
-          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/website-evidence/run.py --code "$RUNNER_TEMP/website-release/code-v2.23.2-x86_64-linux/code" --release-manifest benchmarks/website-evidence/releases/v2.23.2.json --output-dir "$RUNNER_TEMP/website-results/comparison" --runs 15 --compile-runs 5
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/website-evidence/run.py --code "$RUNNER_TEMP/website-release/code-v2.24.1-x86_64-linux/code" --release-manifest benchmarks/website-evidence/releases/v2.24.1.json --output-dir "$RUNNER_TEMP/website-results/comparison" --runs 15 --compile-runs 5
       - name: Measure all existing sharing cases on the same VM
         run: |
-          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/history-pilot/run.py --code "$RUNNER_TEMP/website-release/code-v2.23.2-x86_64-linux/code" --release-manifest benchmarks/website-evidence/releases/v2.23.2.json --output-dir "$RUNNER_TEMP/website-results/history" --runs 15
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/history-pilot/run.py --code "$RUNNER_TEMP/website-release/code-v2.24.1-x86_64-linux/code" --release-manifest benchmarks/website-evidence/releases/v2.24.1.json --output-dir "$RUNNER_TEMP/website-results/history" --runs 15
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: public-v2.23.2-complete-website-evidence
+          name: public-v2.24.1-complete-website-evidence
           path: ${{ runner.temp }}/website-results
           retention-days: 30

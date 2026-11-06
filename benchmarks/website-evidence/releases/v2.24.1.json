@@ -1,0 +1,8 @@
+{
+  "tag": "v2.24.1",
+  "source_commit": "97d3df30eda7943100ed128880bbc3c2457ad055",
+  "artifact_url": "https://github.com/codelovesme/code/releases/download/v2.24.1/code-v2.24.1-x86_64-linux.tar.gz",
+  "artifact_sha256": "3ecbd6dda3abce8783de995c560d5f157d67e062bb667efa28e522d2fe87e986",
+  "launcher_sha256": "89e0e818c174c90205a940b5ec525088274cda4a44d63d0d509e3cc32bc0be47",
+  "driver_sha256": "cfb090c3b197ab7d55e28f2ce4285b354b44a824263a71a17e3554e651bf30e3"
+}
