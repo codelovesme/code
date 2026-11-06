@@ -1,0 +1,96 @@
+| Read-only loop-local reads may borrow array slots, but escaped values own
+| their snapshots and every mutation/call boundary must remain conservative.
+records = [{ x = 1, y = 2 }, { y = 4, x = 3 }, { x = 5, y = 6 }]
+kept = []
+sum = 0
+i = 0
+loop
+    if i = 3, break
+    row = records[i]
+    sum = sum + row.x
+    kept += row
+    edited = row
+    edited.x = 99
+    assert row.x ≠ 99
+    i = i + 1
+assert sum = 9
+assert kept = records
+kept[0].x = 77
+assert records[0].x = 1
+
+| A shape bailout BEFORE the borrow stores an owned generic value. The next
+| fast iteration must drop that reference, and later bailouts must read the
+| fast iteration's pointer, rather than last iteration's fallback slot.
+j = 0
+total = 0
+loop
+    if j = 3, break
+    before = records[j].x
+    item = records[j]
+    total = total + item.x + before
+    j = j + 1
+assert total = 18
+
+| Negative/out-of-range indexes go through the ordinary null fallback.
+k = -1
+nulls = 0
+loop
+    if k = 4, break
+    entry = records[k]
+    if entry = null, nulls = nulls + 1
+    if entry ∈ Object, assert entry.x > 0
+    k = k + 1
+assert nulls = 2
+
+| String indexing creates an owned character in scratch storage. It cannot
+| borrow that scratch across a statement boundary, including Unicode text.
+text = "éab"
+characters = []
+p = 0
+loop
+    if p = 4, break
+    character = text[p]
+    characters += [character]
+    p = p + 1
+assert characters = ["é", "a", "b", null]
+
+| Mutating a source or the read binding disables borrowing of that binding.
+mutable = [{ x = 10 }]
+a = 0
+loop
+    if a = 2, break
+    old = mutable[0]
+    mutable[0].x = mutable[0].x + 1
+    assert old.x + 1 = mutable[0].x
+    a = a + 1
+assert mutable[0].x = 12
+b = 0
+loop
+    if b = 2, break
+    changed = records[0]
+    changed.x = 123
+    assert records[0].x = 1
+    b = b + 1
+
+| Continue/break, nested arrays, and mixed scalar element kinds preserve the
+| original lifetime/lookup rules, including generic failure later in a body.
+mixed ∈ Array of Any = [true, 3, null, "a"]
+seen = []
+m = 0
+loop
+    if m = 4, break
+    value = mixed[m]
+    m = m + 1
+    if value = null, continue
+    seen += [value]
+assert seen = [true, 3, "a"]
+rows = [[1, 2], [3, 4]]
+flat = []
+loop outer over rows
+    q = 0
+    loop
+        if q = 2, break
+        number = outer[q]
+        flat += [number]
+        q = q + 1
+assert flat = [1, 2, 3, 4]

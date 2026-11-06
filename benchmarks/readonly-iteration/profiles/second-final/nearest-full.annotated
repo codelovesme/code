@@ -1,0 +1,47 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-262-profile-second-final/nearest-full.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 11621056
+Trigger: Program termination
+Profiled target:  /var/tmp/code-262-profile-second-final/nearest-full (PID 3274501, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                  
+--------------------------------------------------------------------------------
+45,957,914 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                   file:function
+--------------------------------------------------------------------------------
+25,362,873 (55.19%)  ???:main [/var/tmp/code-262-profile-second-final/nearest-full]
+ 4,659,283 (10.14%)  ???:0x00000000000a0fe0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 3,276,808 ( 7.13%)  ???:code_object_template [/var/tmp/code-262-profile-second-final/nearest-full]
+ 2,392,297 ( 5.21%)  ???:code_release.part.0 [/var/tmp/code-262-profile-second-final/nearest-full]
+ 2,031,677 ( 4.42%)  ???:free [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,638,552 ( 3.57%)  ???:code_add_take [/var/tmp/code-262-profile-second-final/nearest-full]
+ 1,540,608 ( 3.35%)  ???:0x00000000000a02e0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,409,116 ( 3.07%)  ???:malloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,179,666 ( 2.57%)  ???:code_move [/var/tmp/code-262-profile-second-final/nearest-full]
+   740,763 ( 1.61%)  ???:0x0000000000162880 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   720,896 ( 1.57%)  ???:code_number [/var/tmp/code-262-profile-second-final/nearest-full]
+   323,563 ( 0.70%)  ???:malloc_usable_size [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   262,144 ( 0.57%)  ???:drop_object_index [/var/tmp/code-262-profile-second-final/nearest-full]
+   131,109 ( 0.29%)  ???:code_release [/var/tmp/code-262-profile-second-final/nearest-full]
+   131,076 ( 0.29%)  ???:0x000000000009e390 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    27,086 ( 0.06%)  ???:0x0000000000013780 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    26,672 ( 0.06%)  ???:0x000000000000e870 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    26,155 ( 0.06%)  ???:0x000000000000a220 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    19,641 ( 0.04%)  ???:0x000000000000ae90 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     7,329 ( 0.02%)  ???:0x0000000000024740 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     5,607 ( 0.01%)  ???:0x000000000000a0a0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+

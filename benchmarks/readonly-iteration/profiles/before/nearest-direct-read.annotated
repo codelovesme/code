@@ -1,0 +1,48 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-262-profile-before/nearest-direct-read.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 11096717
+Trigger: Program termination
+Profiled target:  /var/tmp/code-262-profile-before/nearest-direct-read (PID 3088868, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                  
+--------------------------------------------------------------------------------
+44,352,101 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                   file:function
+--------------------------------------------------------------------------------
+23,757,208 (53.57%)  ???:main [/var/tmp/code-262-profile-before/nearest-direct-read]
+ 4,659,283 (10.51%)  ???:0x00000000000a0fe0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 3,276,808 ( 7.39%)  ???:code_object_template [/var/tmp/code-262-profile-before/nearest-direct-read]
+ 2,392,297 ( 5.39%)  ???:code_release.part.0 [/var/tmp/code-262-profile-before/nearest-direct-read]
+ 2,031,677 ( 4.58%)  ???:free [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,638,552 ( 3.69%)  ???:code_add_take [/var/tmp/code-262-profile-before/nearest-direct-read]
+ 1,540,608 ( 3.47%)  ???:0x00000000000a02e0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,409,116 ( 3.18%)  ???:malloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,179,666 ( 2.66%)  ???:code_move [/var/tmp/code-262-profile-before/nearest-direct-read]
+   740,763 ( 1.67%)  ???:0x0000000000162880 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   720,896 ( 1.63%)  ???:code_number [/var/tmp/code-262-profile-before/nearest-direct-read]
+   323,563 ( 0.73%)  ???:malloc_usable_size [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   262,144 ( 0.59%)  ???:drop_object_index [/var/tmp/code-262-profile-before/nearest-direct-read]
+   131,105 ( 0.30%)  ???:code_release [/var/tmp/code-262-profile-before/nearest-direct-read]
+   131,076 ( 0.30%)  ???:0x000000000009e390 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    27,086 ( 0.06%)  ???:0x0000000000013780 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    26,672 ( 0.06%)  ???:0x000000000000e870 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    26,155 ( 0.06%)  ???:0x000000000000a220 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    19,641 ( 0.04%)  ???:0x000000000000ae90 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     7,329 ( 0.02%)  ???:0x0000000000024740 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     5,607 ( 0.01%)  ???:0x000000000000a0a0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     5,366 ( 0.01%)  ???:0x0000000000015f00 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+

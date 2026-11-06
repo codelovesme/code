@@ -1,0 +1,117 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-262-profile-second-final/threshold-construct.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 802680
+Trigger: Program termination
+Profiled target:  /var/tmp/code-262-profile-second-final/threshold-construct (PID 3274038, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                 
+--------------------------------------------------------------------------------
+3,440,232 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                  file:function
+--------------------------------------------------------------------------------
+1,638,556 (47.63%)  ???:code_add_take [/var/tmp/code-262-profile-second-final/threshold-construct]
+  622,712 (18.10%)  ???:main [/var/tmp/code-262-profile-second-final/threshold-construct]
+  360,470 (10.48%)  ???:code_number [/var/tmp/code-262-profile-second-final/threshold-construct]
+  323,563 ( 9.41%)  ???:malloc_usable_size [/usr/lib/x86_64-linux-gnu/libc.so.6]
+  229,438 ( 6.67%)  ???:code_release.part.0 [/var/tmp/code-262-profile-second-final/threshold-construct]
+  114,663 ( 3.33%)  ???:0x0000000000162880 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   27,086 ( 0.79%)  ???:0x0000000000013780 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+   26,646 ( 0.77%)  ???:0x000000000000e870 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+   25,879 ( 0.75%)  ???:0x000000000000a220 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+   19,500 ( 0.57%)  ???:0x000000000000ae90 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    7,165 ( 0.21%)  ???:0x0000000000024740 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    5,484 ( 0.16%)  ???:0x000000000000a0a0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    5,366 ( 0.16%)  ???:0x0000000000015f00 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    4,665 ( 0.14%)  ???:0x0000000000013e00 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    2,478 ( 0.07%)  ???:0x0000000000007cb0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    1,628 ( 0.05%)  ???:0x000000000001e600 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    1,106 ( 0.03%)  ???:realloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      997 ( 0.03%)  ???:0x0000000000003680 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      858 ( 0.02%)  ???:0x000000000009eea0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      815 ( 0.02%)  ???:__tunable_get_val [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      735 ( 0.02%)  ???:0x00000000000a20c0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      728 ( 0.02%)  ???:getenv [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      705 ( 0.02%)  ???:0x000000000001de30 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      659 ( 0.02%)  ???:0x000000000000c2a0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      596 ( 0.02%)  ???:0x00000000000147c0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      570 ( 0.02%)  ???:0x000000000001be40 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      547 ( 0.02%)  ???:0x000000000001a800 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      530 ( 0.02%)  ???:0x00000000000a0fe0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      504 ( 0.01%)  ???:0x0000000000016170 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      495 ( 0.01%)  ???:0x00000000000110d0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      462 ( 0.01%)  ???:0x00000000000093a0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      441 ( 0.01%)  ???:0x0000000000017e70 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      411 ( 0.01%)  ???:0x0000000000024520 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      405 ( 0.01%)  ???:0x000000000001ade0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      401 ( 0.01%)  ???:0x000000000000bf50 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      385 ( 0.01%)  ???:0x0000000000023da0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      378 ( 0.01%)  ???:0x0000000000025d60 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      337 ( 0.01%)  ???:0x0000000000025b80 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      336 ( 0.01%)  ???:0x000000000000bc70 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      334 ( 0.01%)  ???:0x0000000000012670 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      302 ( 0.01%)  ???:0x000000000000bda0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      288 ( 0.01%)  ???:0x00000000001666a0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      284 ( 0.01%)  ???:0x0000000000011840 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      264 ( 0.01%)  ???:0x0000000000013760 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      256 ( 0.01%)  ???:0x0000000000004c80 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      256 ( 0.01%)  ???:0x0000000000011940 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      233 ( 0.01%)  ???:0x0000000000022ff0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      228 ( 0.01%)  ???:0x0000000000015a30 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      221 ( 0.01%)  ???:0x0000000000005aa0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      218 ( 0.01%)  ???:0x0000000000005d00 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      215 ( 0.01%)  ???:0x000000000001a9a0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      212 ( 0.01%)  ???:0x0000000000016260 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      212 ( 0.01%)  ???:0x000000000001af30 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      200 ( 0.01%)  ???:0x00000000000133c0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      199 ( 0.01%)  ???:0x0000000000004dd0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      194 ( 0.01%)  ???:0x00000000000148b0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      194 ( 0.01%)  ???:0x00000000000a0530 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      177 ( 0.01%)  ???:0x00000000000062f0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      174 ( 0.01%)  ???:0x00000000000076e0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      169 ( 0.00%)  ???:0x000000000000bad0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      165 ( 0.00%)  ???:0x0000000000023bc0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      164 ( 0.00%)  ???:0x000000000001b140 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      164 ( 0.00%)  ???:0x000000000008d710 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      159 ( 0.00%)  ???:_dl_allocate_tls_init [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      158 ( 0.00%)  ???:_IO_flush_all [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      153 ( 0.00%)  ???:0x000000000000ba00 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      144 ( 0.00%)  ???:0x0000000000012470 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      131 ( 0.00%)  ???:0x00000000000a02e0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      118 ( 0.00%)  ???:0x000000000000c200 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      117 ( 0.00%)  ???:_dl_catch_exception [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      112 ( 0.00%)  ???:0x00000000000a1f90 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      112 ( 0.00%)  ???:__cxa_finalize [/usr/lib/x86_64-linux-gnu/libc.so.6]
+      111 ( 0.00%)  ???:0x000000000001b220 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      108 ( 0.00%)  ???:0x0000000000007ab0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      108 ( 0.00%)  ???:0x0000000000011770 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+      102 ( 0.00%)  ???:0x0000000000001f70 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+       99 ( 0.00%)  ???:0x00000000000110a0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+       96 ( 0.00%)  ???:0x0000000000023bb0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+       94 ( 0.00%)  ???:malloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+       92 ( 0.00%)  ???:0x000000000001a900 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+       91 ( 0.00%)  ???:__libc_early_init [/usr/lib/x86_64-linux-gnu/libc.so.6]
+       84 ( 0.00%)  ???:0x0000000000005250 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+       83 ( 0.00%)  ???:0x0000000000042050 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+       82 ( 0.00%)  ???:(below main) [/var/tmp/code-262-profile-second-final/threshold-construct]
+       74 ( 0.00%)  ???:0x0000000000014f40 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+       72 ( 0.00%)  ???:0x0000000000005e20 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+       71 ( 0.00%)  ???:0x0000000000015890 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+       70 ( 0.00%)  ???:0x0000000000006240 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+       62 ( 0.00%)  ???:0x0000000000013070 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+       61 ( 0.00%)  ???:0x0000000000007090 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+       60 ( 0.00%)  ???:0x0000000000012d50 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+

@@ -98,6 +98,85 @@ fn wasm_character_counts_match_grown_unicode_snapshots() {
 }
 
 #[test]
+fn wasm_readonly_iteration_preserves_fallbacks_and_escaped_values() {
+    let dir = temp_dir("readonly-iteration");
+    let out = dir.join("readonly.wasm");
+    for release in [false, true] {
+        code::compile_file(
+            &fixture("stress_readonly_iteration.code"),
+            code::BuildTarget::Wasm,
+            &out,
+            release,
+        )
+        .expect("build readonly iteration regression for wasm");
+        run_wasm_under_node(&dir, &out);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn wasm_format_callbacks_preserve_a_readonly_snapshot() {
+    let dir = temp_dir("readonly-format-callback");
+    let source = dir.join("callback.code");
+    fs::write(
+        &source,
+        r#"
+records = [{ x = 1 }]
+Change {} =>
+    records[0].x = 99
+    return Changed {}
+fraction = 1 / 3
+i = 0
+loop
+    if i = 1, break
+    row = records[i]
+    rendered = "$fraction"
+    assert row.x = 1
+    assert records[0].x = 99
+    i = i + 1
+"#,
+    )
+    .unwrap();
+    let out = dir.join("callback.wasm");
+    for release in [false, true] {
+        code::compile_file(&source, code::BuildTarget::Wasm, &out, release)
+            .expect("build callback snapshot regression");
+        let script = format!(
+            r#"import {{ readFileSync }} from 'node:fs';
+{WASM_HOST_JS}
+let fired = false, exports;
+for (const name of ['code_host_number_exact', 'code_host_number_shortest']) {{
+    const original = env[name];
+    env[name] = (...args) => {{
+        if (!fired) {{
+            fired = true;
+            const bytes = enc.encode('{{"_class":"Change"}}');
+            const at = exports.code_event_text_reserve(BigInt(bytes.length));
+            new Uint8Array(memory.buffer).set(bytes, at);
+            exports.code_event_fire(BigInt(bytes.length));
+        }}
+        return original(...args);
+    }};
+}}
+const {{ instance }} = await WebAssembly.instantiate(readFileSync({out:?}), {{ env }});
+exports = instance.exports;
+memory = exports.memory;
+if (exports.main() !== 0 || !fired) throw new Error('callback was not verified');
+"#
+        );
+        let probe = dir.join("callback.mjs");
+        fs::write(&probe, script).unwrap();
+        let result = Command::new("node").arg(&probe).output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn shared_target_produces_a_loadable_library() {
     let dir = temp_dir("shared");
     let out = dir.join("libarith.so");

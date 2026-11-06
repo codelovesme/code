@@ -1,0 +1,11 @@
+==3274038== Callgrind, a call-graph generating cache profiler
+==3274038== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==3274038== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==3274038== Command: /var/tmp/code-262-profile-second-final/threshold-construct
+==3274038== 
+==3274038== For interactive control, run 'callgrind_control -h'.
+==3274038== 
+==3274038== Events    : Ir
+==3274038== Collected : 3440232
+==3274038== 
+==3274038== I   refs:      3,440,232

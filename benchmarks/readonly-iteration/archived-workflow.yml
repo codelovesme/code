@@ -1,0 +1,43 @@
+name: Measure read-only loop iteration
+on:
+  workflow_dispatch:
+  push:
+    branches: [readonly-iteration-262]
+    paths: ["src/codegen.rs", ".github/workflows/readonly-iteration.yml", "benchmarks/readonly-iteration/run.py"]
+permissions:
+  contents: read
+concurrency:
+  group: readonly-iteration
+  cancel-in-progress: false
+env:
+  LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install the LLVM backend used by both compilers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev
+      - name: Build the fixed source baseline and candidate identically
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$RUNNER_TEMP/read-before-source" f18461d9706406a484ded1955c1d6ce62c3f4c54
+          mkdir -p "$RUNNER_TEMP/read-compilers"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/read-build-before" cargo build --manifest-path "$RUNNER_TEMP/read-before-source/Cargo.toml" --workspace --release
+          cp "$RUNNER_TEMP/read-build-before/release/code" "$RUNNER_TEMP/read-compilers/before"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/read-build-after" cargo build --workspace --release
+          cp "$RUNNER_TEMP/read-build-after/release/code" "$RUNNER_TEMP/read-compilers/after"
+      - name: Validate and sample all before/after entries serially
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/readonly-iteration/run.py --before "$RUNNER_TEMP/read-compilers/before" --after "$RUNNER_TEMP/read-compilers/after" --output-dir "$RUNNER_TEMP/read-results" --runs 15
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: readonly-iteration
+          path: ${{ runner.temp }}/read-results
+          retention-days: 30

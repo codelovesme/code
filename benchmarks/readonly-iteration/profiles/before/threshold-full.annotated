@@ -1,0 +1,42 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-262-profile-before/threshold-full.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 8872808
+Trigger: Program termination
+Profiled target:  /var/tmp/code-262-profile-before/threshold-full (PID 3088827, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                  
+--------------------------------------------------------------------------------
+36,457,697 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                   file:function
+--------------------------------------------------------------------------------
+16,882,623 (46.31%)  ???:main [/var/tmp/code-262-profile-before/threshold-full]
+ 8,249,856 (22.63%)  ???:code_add [/var/tmp/code-262-profile-before/threshold-full]
+ 7,476,432 (20.51%)  ???:code_add_into [/var/tmp/code-262-profile-before/threshold-full]
+ 1,638,556 ( 4.49%)  ???:code_add_take [/var/tmp/code-262-profile-before/threshold-full]
+ 1,031,269 ( 2.83%)  ???:code_release [/var/tmp/code-262-profile-before/threshold-full]
+   360,635 ( 0.99%)  ???:code_number [/var/tmp/code-262-profile-before/threshold-full]
+   323,563 ( 0.89%)  ???:malloc_usable_size [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   229,438 ( 0.63%)  ???:code_release.part.0 [/var/tmp/code-262-profile-before/threshold-full]
+   114,663 ( 0.31%)  ???:0x0000000000162880 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    27,086 ( 0.07%)  ???:0x0000000000013780 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    26,646 ( 0.07%)  ???:0x000000000000e870 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    25,879 ( 0.07%)  ???:0x000000000000a220 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    19,500 ( 0.05%)  ???:0x000000000000ae90 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     7,165 ( 0.02%)  ???:0x0000000000024740 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     5,484 ( 0.02%)  ???:0x000000000000a0a0 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     5,366 ( 0.01%)  ???:0x0000000000015f00 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+
