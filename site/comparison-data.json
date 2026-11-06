@@ -1,8 +1,8 @@
 {
-  "release": "v2.23.2",
-  "source_commit": "1e57f007eb002074640b6b33f6661dab84581923",
-  "comparison": "benchmarks/website-evidence/results/2026-11-06-v2.23.2/comparison/report.json",
-  "history": "benchmarks/website-evidence/results/2026-11-06-v2.23.2/history/report.json",
-  "evidence_commit": "f23b8f0",
-  "readme": "benchmarks/website-evidence/results/2026-11-06-v2.23.2/README.md"
+  "release": "v2.24.1",
+  "source_commit": "97d3df30eda7943100ed128880bbc3c2457ad055",
+  "comparison": "benchmarks/website-evidence/results/2026-11-06-v2.24.1/comparison/report.json",
+  "history": "benchmarks/website-evidence/results/2026-11-06-v2.24.1/history/report.json",
+  "evidence_commit": "86b98bc",
+  "readme": "benchmarks/website-evidence/results/2026-11-06-v2.24.1/README.md"
 }

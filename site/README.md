@@ -5,26 +5,37 @@ published through `.github/workflows/pages.yml`. It uses the published browser
 engine pinned in that workflow; building the site does not publish a language
 release or replace the engine with a source build.
 
-## Current release and validation (236)
+## Current release and validation (243)
 
-The live site now targets public **Code v2.23.2**, including CLI/module download
-examples, code-native embedding and the published code-wasm@2.23.2 browser pin.
+The live site now targets public **Code v2.24.1**, including CLI/module download
+examples, code-native embedding and the published code-wasm@2.24.1 browser pin.
 The upgraded interpreter includes handler_recursion: 147 gallery programs and
 178 total gallery/featured/lesson checks, with no compatibility omission.
 Earlier task notes below retain their original validation versions/counts;
 use their pinned commits to reproduce those historical snapshots.
 
 Comparison's seven charts and 55 entries use one fresh VM and 785 retained
-samples from run 42139731690. `comparison-data.json` selects both reviewed
-reports and pins their raw links to f23b8f0. Runtime/memory claims are calculated
+samples from run 42212047785. `comparison-data.json` selects both reviewed
+reports and pins their raw links to 86b98bc. Runtime/memory claims are calculated
 from those reports; static tests independently check numbers and ratios against
 raw CSV. Old reports remain available. No additional compiled-algorithm table
-was added. The version and install changes follow verified release 235.
+was added. The version and install changes follow verified release 242.
+
+Validation for 243 used the delivered 2.24.1 launcher/driver and npm bytes:
+10 static tests, 178 example runs, six native guide suites and the compiled-WASM
+Chromium proof passed. Comparison checks preserve all seven ranked charts,
+35 bars and 55 detail rows. Navigation covered 26 journeys across 13 pages;
+responsive/accessibility checks covered four widths, keyboard/no-JS, 200% text,
+forced colors, touch and 26 expanded axe scans. The 805 automated review items
+are retained for review and are not a conformance certification. All eight
+sharing/playground/course/application-preview browser suites passed. Release
+242 records full local and hosted Rust workspace checks (343 passed, zero
+failed, seven ignored); this alignment changes no Rust source.
 
 Current local setup (from the repo root):
 
 ```sh
-npm install --prefix /tmp/code-site-engine --no-save code-wasm@2.23.2
+npm install --prefix /tmp/code-site-engine --no-save code-wasm@2.24.1
 mkdir -p /tmp/code-site-preview/code/pkg
 cp /tmp/code-site-engine/node_modules/code-wasm/dist/* /tmp/code-site-preview/code/pkg/
 PYTHONDONTWRITEBYTECODE=1 python3 site/build.py . /tmp/code-site-preview/code
@@ -32,7 +43,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s site -p 'test_*.py'
 node site/check_examples.mjs /tmp/code-site-preview/code
 ```
 
-Run the native guide checkers with the actual published v2.23.2 CLI; their
+Run the native guide checkers with the actual published v2.24.1 CLI; their
 commands/pins require that release. Browser checkers consume the generated site.
 
 ## Pages and shared shell

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check lesson 3's two local files and error semantics with public v2.23.2.
+"""Check lesson 3's two local files and error semantics with public v2.24.1.
 
 Usage: python3 site/check_messages.py /path/to/public/code /path/to/built-site
 Needs Linux x86_64, curl/cc/network. Uses a temporary project and isolated cache.
@@ -14,7 +14,7 @@ import sys
 import tempfile
 
 SITE = Path(__file__).resolve().parent
-RELEASE = 'https://github.com/codelovesme/code/releases/tag/v2.23.2'
+RELEASE = 'https://github.com/codelovesme/code/releases/tag/v2.24.1'
 
 
 def main():
@@ -40,12 +40,12 @@ def main():
                 assert result.stdout.strip() == expected, result.stdout
             return result
 
-        run(['--version'], root, 'Code v2.23.2')
+        run(['--version'], root, 'Code v2.24.1')
         run(['init', 'hello'], root)
         project = root / 'hello'
         run(['install', 'console'], project)
         console = json.loads((project / '.code/lock.json').read_text())['modules']['console']
-        assert console['version'] == '2.23.2' and console['source'] == RELEASE
+        assert console['version'] == '2.24.1' and console['source'] == RELEASE
         installed = project / '.code/modules/console' / console['version'] / console['asset']
         assert hashlib.sha256(installed.read_bytes()).hexdigest() == console['sha256']
         for name in ['greeter.code', 'main.code']:
@@ -104,7 +104,7 @@ def main():
                 if error:
                     assert 'assertion failed' in native.stderr
             probe.unlink()
-    print('Public v2.23.2: exact local files/commands, console provenance/hash, private-name refusals, '
+    print('Public v2.24.1: exact local files/commands, console provenance/hash, private-name refusals, '
           'independent file bindings, edited/empty greetings and all four error-boundary probes passed interpreted/compiled')
 
 

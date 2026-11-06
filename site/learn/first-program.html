@@ -19,10 +19,10 @@
     <p>You need <code>curl</code>, <code>tar</code> and a C compiler available as <code>cc</code>. Use a terminal in a new working directory, and keep the same terminal open through all three steps.</p>
     <h3>Download the language CLI</h3>
     <figure class="module-panel lesson-example"><pre class="codeblock" id="cli-install" tabindex="0">__LESSON_INSTALL__</pre><button class="tool-btn" data-copy="cli-install" data-copy-type="shell" hidden>Copy download commands</button><p role="status"></p></figure>
-    <p>Version output: <code>Code v2.23.2</code>. Keep the extracted <code>code</code> and <code>code-driver</code> together. <code>code_cli</code> points to this language’s executable, so these commands work even when your usual <code>code</code> command opens Visual Studio Code.</p>
+    <p>Version output: <code>Code v2.24.1</code>. Keep the extracted <code>code</code> and <code>code-driver</code> together. <code>code_cli</code> points to this language’s executable, so these commands work even when your usual <code>code</code> command opens Visual Studio Code.</p>
     <h3>Create your project and install console</h3>
     <figure class="module-panel lesson-example"><pre class="codeblock" id="cli-project" tabindex="0">__LESSON_PROJECT__</pre><button class="tool-btn" data-copy="cli-project" data-copy-type="shell" hidden>Copy project commands</button><p role="status"></p></figure>
-    <p>The file is the same greeting you ran in the browser. This tutorial pins the console module to the same v2.23.2 release.</p>
+    <p>The file is the same greeting you ran in the browser. This tutorial pins the console module to the same v2.24.1 release.</p>
     <h3>Check, run and build</h3>
     <figure class="module-panel lesson-example"><pre class="codeblock" id="cli-run" tabindex="0">__LESSON_RUN__</pre><button class="tool-btn" data-copy="cli-run" data-copy-type="shell" hidden>Copy run commands</button><p role="status"></p></figure>
     <p><code>check</code> returns a JSON report with <code>"diagnostics": []</code> when it finds no diagnostics. Each run prints <code>hello, world</code>. <code>run --interpret</code> uses the interpreter; <code>run</code> can reuse a cached native build. <code>build --release</code> creates <code>build/hello</code>, which you run on the final line.</p>
@@ -31,7 +31,7 @@
   </details>
   <details class="module-details"><summary>Other platforms and building from source</summary>
     <p>The published native bundle used here is Linux x86_64. This release does not provide native CLI bundles for macOS, Windows or ARM. The browser playground remains an available starting point.</p>
-    <p>Building the language from source requires Rust, LLVM 17 and a system C compiler. Follow the <a href="https://github.com/codelovesme/code/blob/v2.23.2/README.md#running-it">versioned source-build instructions</a>. Native platform support and module availability need checking for your target.</p>
+    <p>Building the language from source requires Rust, LLVM 17 and a system C compiler. Follow the <a href="https://github.com/codelovesme/code/blob/v2.24.1/README.md#running-it">versioned source-build instructions</a>. Native platform support and module availability need checking for your target.</p>
   </details>
 </section>
 <section aria-labelledby="first-next">

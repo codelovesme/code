@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the Memory guide with the actual Linux v2.23.2 CLI/modules/header.
+"""Check the Memory guide with the actual Linux v2.24.1 CLI/modules/header.
 
 Usage: python3 site/check_memory.py /absolute/path/to/code
 All projects, downloads and leak-checked native runs use a temporary directory.
@@ -23,7 +23,7 @@ def main():
     demo = next(x for x in json.loads((SITE / "demos.json").read_text()) if x["name"] == "value_snapshot")
     with tempfile.TemporaryDirectory(prefix="code-site-memory-") as directory:
         root = Path(directory)
-        env = dict(os.environ, CODE_MODULE_RELEASE="https://github.com/codelovesme/code/releases/tag/v2.23.2",
+        env = dict(os.environ, CODE_MODULE_RELEASE="https://github.com/codelovesme/code/releases/tag/v2.24.1",
                    CODE_CACHE_DIR=str(root / "cache"), CODE_CHECK_LEAKS="1")
         for name in ("CODE_RUN", "CODE_MODULE_PATH", "CODE_LINK"):
             env.pop(name, None)
@@ -35,8 +35,8 @@ def main():
                 raise AssertionError(f"{args}: {p.stdout!r}")
             return p.stdout
 
-        if run(["--version"], root).strip() != "Code v2.23.2":
-            raise SystemExit("Use the published v2.23.2 CLI")
+        if run(["--version"], root).strip() != "Code v2.24.1":
+            raise SystemExit("Use the published v2.24.1 CLI")
         run(["init", "memory-demo"], root)
         project = root / "memory-demo"
         run(["install", "console"], project)
@@ -75,7 +75,7 @@ assert self.child.child = null
         run(["build", "paths.code", "--release", "-o", "build/paths"], project)
         subprocess.run([str(project / "build/paths")], cwd=project, env=env, check=True)
 
-        header = "https://raw.githubusercontent.com/codelovesme/code/v2.23.2/src/code_abi.h"
+        header = "https://raw.githubusercontent.com/codelovesme/code/v2.24.1/src/code_abi.h"
         with urllib.request.urlopen(header, timeout=30) as response:
             (root / "code_abi.h").write_bytes(response.read())
         (root / "abi.c").write_text('#include "code_abi.h"\n#include <stdio.h>\n'
@@ -85,7 +85,7 @@ assert self.child.child = null
         if result.stdout != "16 2":
             raise AssertionError(f"Published ABI layout: {result.stdout!r}")
 
-    print("Published v2.23.2: visible snapshots, nested paths, arrays/text and self-snapshot "
+    print("Published v2.24.1: visible snapshots, nested paths, arrays/text and self-snapshot "
           "passed interpreted + native, with native leak checks; published ABI slot is 16 bytes (ABI 2)")
 
 

@@ -56,7 +56,7 @@ try {
   assert.equal((await downloaded.text()).trim(), source);
   assert.ok((await page.locator('#linux-setup').innerText()).includes('code-driver'));
   assert.ok((await page.locator('#linux-setup').innerText()).includes('Visual Studio Code'));
-  assert.equal(await page.locator('a[href*="v2.23.2/README.md#running-it"]').count(), 1);
+  assert.equal(await page.locator('a[href*="v2.24.1/README.md#running-it"]').count(), 1);
   for (const width of [360, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${width}px overflow`);

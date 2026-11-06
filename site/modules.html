@@ -8,7 +8,7 @@
 
 <section class="module-section" id="install">
   <h2>Install → link → use.</h2>
-  <p class="module-intro">A complete native example, using the published <a href="https://github.com/codelovesme/code/releases/tag/v2.23.2">Code v2.23.2 release</a> on Linux x86_64. You need <code>curl</code> and a C compiler (<code>cc</code>) for the native build.</p>
+  <p class="module-intro">A complete native example, using the published <a href="https://github.com/codelovesme/code/releases/tag/v2.24.1">Code v2.24.1 release</a> on Linux x86_64. You need <code>curl</code> and a C compiler (<code>cc</code>) for the native build.</p>
   <details class="module-details">
     <summary>Download the CLI and start in a fresh directory</summary>
     <pre class="codeblock"><code>__MODULE_SETUP__</code></pre>
@@ -36,7 +36,7 @@ cd hello
   <details class="module-details">
     <summary>What is pinned?</summary>
     <p><code>.code/lock.json</code> records the installed version, release URL and SHA-256 fingerprint. The fingerprint is checked when downloading and loading the module. Keep the lockfile with your source; downloaded binaries live under <code>.code/modules/</code>.</p>
-    <p>These instructions use CLI and modules v2.23.2 together. Installing by name uses the CLI’s release, rather than silently following a newer module release. <a href="https://github.com/codelovesme/code/blob/v2.23.2/README.md#native-modules-by-name">Module resolution reference ↗</a></p>
+    <p>These instructions use CLI and modules v2.24.1 together. Installing by name uses the CLI’s release, rather than silently following a newer module release. <a href="https://github.com/codelovesme/code/blob/v2.24.1/README.md#native-modules-by-name">Module resolution reference ↗</a></p>
   </details>
   <p class="module-note">Prefer the browser first? The <a href="playground.html?example=hello_home#playground">three-line playground example</a> uses a supplied <code>console</code> callback, with no installation.</p>
 </section>
@@ -57,23 +57,23 @@ cd hello
     <pre class="codeblock"><code>__MODULE_SECOND__</code></pre>
     <p>Run <code>"$code_cli" run team.code --interpret</code> to print <code>hello, Lin</code>. The same <code>greeter.code</code> supplies the behavior; each caller keeps its own variables.</p>
   </details>
-  <p class="module-note">A source <code>link</code> makes handlers reachable through <code>this</code>. A native library uses an alias and receives particles at that alias. <a href="https://github.com/codelovesme/code/blob/v2.23.2/README.md#modules">Read the module boundary rules ↗</a></p>
+  <p class="module-note">A source <code>link</code> makes handlers reachable through <code>this</code>. A native library uses an alias and receives particles at that alias. <a href="https://github.com/codelovesme/code/blob/v2.24.1/README.md#modules">Read the module boundary rules ↗</a></p>
 </section>
 
 <section class="module-section" id="targets">
   <h2>Choose capabilities for your target.</h2>
-  <p class="module-intro">A few of the modules available in v2.23.2. Compiled browser apps use released WASM archives plus their generated JavaScript host. The playground is a separate interpreter host: it currently supplies <strong>console only</strong>.</p>
+  <p class="module-intro">A few of the modules available in v2.24.1. Compiled browser apps use released WASM archives plus their generated JavaScript host. The playground is a separate interpreter host: it currently supplies <strong>console only</strong>.</p>
   <div class="module-table-wrap" tabindex="0" role="region" aria-label="Module target support">
     <table class="module-table">
-      <caption>Published v2.23.2 module targets</caption>
+      <caption>Published v2.24.1 module targets</caption>
       <thead><tr><th scope="col">Module</th><th scope="col">Native Linux x86_64</th><th scope="col">Compiled browser app</th><th scope="col">This playground</th></tr></thead>
       <tbody>
-        <tr><th scope="row"><a href="https://github.com/codelovesme/code/tree/v2.23.2/crates/modules/console">console</a><span>Print output</span></th><td>Yes</td><td>Yes</td><td>Supplied callback</td></tr>
-        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.23.2/crates/modules/math/README.md">math</a><span>Numeric utilities</span></th><td>Yes</td><td>Yes</td><td>Not supplied</td></tr>
-        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.23.2/crates/modules/json/README.md">json</a><span>Parse and stringify</span></th><td>Yes</td><td>Yes</td><td>Not supplied</td></tr>
-        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.23.2/crates/modules/http_client/README.md">http_client</a><span>HTTP requests</span></th><td>Yes</td><td>Yes · browser fetch rules</td><td>Not supplied</td></tr>
-        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.23.2/crates/modules/fs/README.md">fs</a><span>Local files</span></th><td>Yes</td><td>No</td><td>Not supplied</td></tr>
-        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.23.2/crates/modules/dom/README.md">dom</a><span>Render a page</span></th><td>Browser-only operations</td><td>Yes</td><td>Not supplied</td></tr>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/tree/v2.24.1/crates/modules/console">console</a><span>Print output</span></th><td>Yes</td><td>Yes</td><td>Supplied callback</td></tr>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.24.1/crates/modules/math/README.md">math</a><span>Numeric utilities</span></th><td>Yes</td><td>Yes</td><td>Not supplied</td></tr>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.24.1/crates/modules/json/README.md">json</a><span>Parse and stringify</span></th><td>Yes</td><td>Yes</td><td>Not supplied</td></tr>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.24.1/crates/modules/http_client/README.md">http_client</a><span>HTTP requests</span></th><td>Yes</td><td>Yes · browser fetch rules</td><td>Not supplied</td></tr>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.24.1/crates/modules/fs/README.md">fs</a><span>Local files</span></th><td>Yes</td><td>No</td><td>Not supplied</td></tr>
+        <tr><th scope="row"><a href="https://github.com/codelovesme/code/blob/v2.24.1/crates/modules/dom/README.md">dom</a><span>Render a page</span></th><td>Browser-only operations</td><td>Yes</td><td>Not supplied</td></tr>
       </tbody>
     </table>
   </div>
@@ -96,5 +96,5 @@ cd hello
     <pre class="codeblock"><code>__MODULE_COMPILED__</code></pre>
     <p>Run <code>"$code_cli" run compiled.code --interpret</code> to print <code>hello, Ada</code>. Use <code>--target static -o libgreeter.a</code> to produce an archive for compiled consumers instead.</p>
   </details>
-  <div class="section-links"><a href="docs.html#code-modules">Compiled Code libraries →</a><a href="https://github.com/codelovesme/code/blob/v2.23.2/crates/code-native/README.md">Rust module guide ↗</a><a href="https://github.com/codelovesme/code/blob/v2.23.2/src/code_abi.h">C ABI ↗</a><a href="docs.html#publishing">Publish your own module →</a></div>
+  <div class="section-links"><a href="docs.html#code-modules">Compiled Code libraries →</a><a href="https://github.com/codelovesme/code/blob/v2.24.1/crates/code-native/README.md">Rust module guide ↗</a><a href="https://github.com/codelovesme/code/blob/v2.24.1/src/code_abi.h">C ABI ↗</a><a href="docs.html#publishing">Publish your own module →</a></div>
 </section>

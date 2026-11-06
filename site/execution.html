@@ -8,7 +8,7 @@
 
 <section class="module-section" id="native">
   <h2>Run, interpret or build.</h2>
-  <p class="module-intro">Use the <a href="modules.html#install">published Linux x86_64 CLI v2.23.2</a>. Keep its full path in <code>$code_cli</code>, as in the module guide.</p>
+  <p class="module-intro">Use the <a href="modules.html#install">published Linux x86_64 CLI v2.24.1</a>. Keep its full path in <code>$code_cli</code>, as in the module guide.</p>
   <details class="module-details"><summary>Create a local project</summary>
     <pre class="codeblock"><code>"$code_cli" init hello
 cd hello
@@ -36,7 +36,7 @@ cd hello
   <details class="module-details"><summary>Launcher, optimization and interpreter fallback</summary>
     <p>The Linux release contains <code>code</code>, a lightweight launcher, and <code>code-driver</code>, the compiler/full CLI. Keep them together. A valid ordinary warm run starts the executable through the launcher; other commands and cache misses reach the driver.</p>
     <p>Small programs get an optimized build before the first run. Larger programs can start on a quick build while an optimized build is prepared in the background for later runs. Your program still runs once per invocation.</p>
-    <p>When a native build is unavailable, such as without the required compiler/linker, <code>code run</code> can use the interpreter. <code>--interpret</code> selects it explicitly; <code>code build</code> requests a compiled artifact. <a href="https://github.com/codelovesme/code/blob/v2.23.2/README.md#the-two-output-modes">Versioned execution reference ↗</a></p>
+    <p>When a native build is unavailable, such as without the required compiler/linker, <code>code run</code> can use the interpreter. <code>--interpret</code> selects it explicitly; <code>code build</code> requests a compiled artifact. <a href="https://github.com/codelovesme/code/blob/v2.24.1/README.md#the-two-output-modes">Versioned execution reference ↗</a></p>
   </details>
 </section>
 
@@ -66,5 +66,5 @@ cd browser-hello
     </article>
   </div>
   <p class="module-note">Native binaries target their built platform. Browser applications need WASM-compatible modules and their JavaScript host; the playground supplies its own module set. <a href="modules.html#targets">Check module support →</a></p>
-  <div class="section-links"><a href="modules.html">Install and reuse modules →</a><a href="docs.html#embedding">Embed the browser interpreter →</a><a href="https://github.com/codelovesme/code/blob/v2.23.2/README.md#modules">Browser module and hosting reference ↗</a></div>
+  <div class="section-links"><a href="modules.html">Install and reuse modules →</a><a href="docs.html#embedding">Embed the browser interpreter →</a><a href="https://github.com/codelovesme/code/blob/v2.24.1/README.md#modules">Browser module and hosting reference ↗</a></div>
 </section>

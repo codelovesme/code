@@ -1,6 +1,6 @@
 mkdir code-module-demo
 cd code-module-demo
-curl -fL https://github.com/codelovesme/code/releases/download/v2.23.2/code-v2.23.2-x86_64-linux.tar.gz -o code.tar.gz
+curl -fL https://github.com/codelovesme/code/releases/download/v2.24.1/code-v2.24.1-x86_64-linux.tar.gz -o code.tar.gz
 tar -xzf code.tar.gz
-code_cli="$PWD/code-v2.23.2-x86_64-linux/code"
+code_cli="$PWD/code-v2.24.1-x86_64-linux/code"
 "$code_cli" --version
