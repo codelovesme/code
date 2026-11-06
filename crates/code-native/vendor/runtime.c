@@ -1655,6 +1655,12 @@ static int offers_instances(void *lib) {
 }
 #endif
 
+#ifndef CODE_WASM
+/* What a module linked by this program is handed as its base (item 14),
+ * defined with the program's dispatch chain further down. */
+static void base_answer(CodeValue *out, const CodeValue *particle);
+#endif
+
 static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     /* A host, once installed, is the only way out. Not a fallback to opening
      * the file: a guest that could quietly reach past its host is a guest
@@ -1792,6 +1798,14 @@ static NativeHandle *open_native(const char *path, char *err, size_t errlen) {
     nh->inbound_count = 0;
     nh->closed = 0;
     code_mutex_init(&nh->lock);
+    /* Its base is this program (item 14): a module that asks its base gets
+     * this program's handlers, nested, the way a guest's `emit` reaches its
+     * host. Every compiled `.so` carries `code_module_set_base` in its copy
+     * of this runtime; one built before it does not, and asks nobody. */
+    void (*set_base)(void (*)(CodeValue *, const CodeValue *), void (*)(CodeValue *)) =
+        (void (*)(void (*)(CodeValue *, const CodeValue *), void (*)(CodeValue *)))dlsym(
+            handle, "code_module_set_base");
+    if (set_base) set_base(base_answer, code_release);
     void (*set_inbound)(void *, CodeEmitFn) =
         (void (*)(void *, CodeEmitFn))dlsym(handle, "code_module_set_inbound");
     nh->has_inbound = set_inbound != NULL;
@@ -2354,6 +2368,64 @@ static void (*code_program_dispatch)(CodeValue *out, const CodeValue *particle) 
 void code_set_program_dispatch(void (*fn)(CodeValue *out, const CodeValue *particle)) {
     code_program_dispatch = fn;
 }
+
+/* ---- Asking the base: item 14 ---------------------------------------------
+ *
+ * A module may ask the program that linked it a question, and get the
+ * program's handler's answer back — `emit … to base`, from a module
+ * written in another language. `code_base_ask` is what such a module calls.
+ *
+ * Which program is "the base" depends on where this copy of the runtime
+ * sits, and the order below is what keeps that right in every layout:
+ *
+ *  - This runtime *is* a program with handlers (a compiled program, or a
+ *    compiled application built `--target shared`). Then a `.a` module
+ *    linked into it shares this runtime, and its base is this program: its
+ *    own dispatch chain answers. Asked first, so an application that is
+ *    itself hosted still answers its own modules rather than its host.
+ *  - This runtime belongs to a `.so` module with no handlers of its own (a
+ *    module written in Rust or C carries a copy). Then whoever opened it
+ *    handed over a base with `code_module_set_base`, and that answers.
+ *  - Neither: nobody to ask, and the answer is null.
+ *
+ * The answer lands in this runtime's heap either way: a base in another
+ * copy of the runtime builds it in its own, so it is copied in and handed
+ * back to the base's own release. */
+static void (*code_base_ask_fn)(CodeValue *out, const CodeValue *particle) = NULL;
+static void (*code_base_release_fn)(CodeValue *v) = NULL;
+
+void code_module_set_base(void (*ask)(CodeValue *out, const CodeValue *particle),
+                          void (*release)(CodeValue *v)) {
+    code_base_ask_fn = ask;
+    code_base_release_fn = release;
+}
+
+void code_base_ask(CodeValue *out, const CodeValue *particle) {
+    code_null(out);
+    if (code_program_dispatch) {
+        code_program_dispatch(out, particle);
+        return;
+    }
+    if (!code_base_ask_fn) return;
+    CodeValue foreign = {0};
+    code_base_ask_fn(&foreign, particle);
+    code_native_copy_in(out, &foreign);
+    if (code_base_release_fn) code_base_release_fn(&foreign);
+}
+
+/* The other side: a module this program opened asks, and the program's
+ * handlers answer, nested, on this thread. The particle was built by the
+ * module's own runtime, so it is copied into this one first. */
+#ifndef CODE_WASM
+static void base_answer(CodeValue *out, const CodeValue *particle) {
+    code_null(out);
+    if (!code_program_dispatch) return;
+    CodeValue mine = {0};
+    code_native_copy_in(&mine, particle);
+    code_program_dispatch(out, &mine);
+    code_release(&mine);
+}
+#endif
 
 #ifndef CODE_WASM
 /* ---- Flows — what one interaction did, for the program's `Trace` --------

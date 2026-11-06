@@ -799,6 +799,94 @@ macro_rules! declare_inbound_reply {
     };
 }
 
+// ===========================================================================
+// Asking the base — `code_abi.h` item 14.
+// ===========================================================================
+
+/// The host's answerer, handed over by `code_module_set_base`: asks the
+/// program that linked this module and answers in the host's heap.
+pub type CodeBaseAskFn = unsafe extern "C" fn(out: *mut CodeValue, particle: *const CodeValue);
+/// Frees what [`CodeBaseAskFn`] answered, in the host's heap.
+pub type CodeBaseReleaseFn = unsafe extern "C" fn(v: *mut CodeValue);
+
+/// Where [`declare_base!`] parks what the host handed over, as raw
+/// addresses (an atomic cannot hold a `fn` pointer).
+static BASE_ASK: AtomicUsize = AtomicUsize::new(0);
+static BASE_RELEASE: AtomicUsize = AtomicUsize::new(0);
+
+/// Record what the host handed over. Called by the export
+/// [`declare_base!`] generates; not useful on its own.
+pub fn store_base(ask: CodeBaseAskFn, release: CodeBaseReleaseFn) {
+    BASE_ASK.store(ask as usize, Ordering::Release);
+    BASE_RELEASE.store(release as usize, Ordering::Release);
+}
+
+/// Generate the `code_module_set_base` export a `.so` needs to be asked
+/// nothing until it asks (`code_abi.h` item 14). A macro for the reason
+/// [`declare_inbound!`] is one: the export has to be emitted in *your*
+/// crate. A `.a` module needs none — it asks the host's own runtime.
+#[macro_export]
+macro_rules! declare_base {
+    () => {
+        /// Handed the host's answerer once, when the module is opened.
+        ///
+        /// # Safety
+        ///
+        /// Called by the host with functions that stay valid for as long as
+        /// the module is loaded.
+        #[no_mangle]
+        pub unsafe extern "C" fn code_module_set_base(
+            ask: $crate::CodeBaseAskFn,
+            release: $crate::CodeBaseReleaseFn,
+        ) {
+            $crate::store_base(ask, release);
+        }
+    };
+}
+
+#[cfg(any(not(feature = "shared-module"), feature = "static-module"))]
+extern "C" {
+    fn code_base_ask(out: *mut CodeValue, particle: *const CodeValue);
+}
+
+/// Ask the program that linked this module: `particle` goes to its
+/// handlers, nested, on this thread, and `read` sees their answer (null
+/// when no handler takes it) for as long as it runs. `None` when nobody
+/// handed this module a base — a host from before item 14.
+///
+/// The answer may live in the host's heap, so it is only lent to `read`:
+/// copy out what you need (e.g. into your own values) before returning.
+pub fn ask_base<R>(particle: &CodeValue, read: impl FnOnce(&CodeValue) -> R) -> Option<R> {
+    #[cfg(any(not(feature = "shared-module"), feature = "static-module"))]
+    {
+        // One runtime, the host's: it answers from its own handlers.
+        let mut answer = CodeValue::zeroed();
+        unsafe { code_base_ask(&mut answer, particle) };
+        let kept = read(&answer);
+        release(&mut answer);
+        Some(kept)
+    }
+    #[cfg(all(feature = "shared-module", not(feature = "static-module")))]
+    {
+        let ask = BASE_ASK.load(Ordering::Acquire);
+        let free = BASE_RELEASE.load(Ordering::Acquire);
+        if ask == 0 {
+            return None;
+        }
+        // SAFETY: non-zero only from real functions (`store_base`).
+        let ask: CodeBaseAskFn = unsafe { std::mem::transmute::<usize, CodeBaseAskFn>(ask) };
+        let mut answer = CodeValue::zeroed();
+        unsafe { ask(&mut answer, particle) };
+        let kept = read(&answer);
+        if free != 0 {
+            let free: CodeBaseReleaseFn =
+                unsafe { std::mem::transmute::<usize, CodeBaseReleaseFn>(free) };
+            unsafe { free(&mut answer) };
+        }
+        Some(kept)
+    }
+}
+
 /// Push a particle into the program, to be dispatched to *its* handlers the
 /// next time the host drains (between top-level statements).
 ///

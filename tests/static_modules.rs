@@ -165,3 +165,54 @@ fn real_modules_link_into_one_program() {
         "{refused}"
     );
 }
+
+/// `code_abi.h` item 14 in the layout applications use: `interpreter.a`
+/// linked into the program, so its base is the program's own dispatch
+/// chain through the one runtime. A loaded program emits to `arrays` by
+/// name and the program's `Offer`/`Module` handlers answer it.
+#[test]
+fn a_static_plasmid_reaches_its_base() {
+    let dir = std::env::temp_dir().join(format!("code-static-plasmid-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    for name in ["interpreter", "arrays", "console"] {
+        archive(name, &dir);
+    }
+    let source = dir.join("program.code");
+    fs::write(
+        &source,
+        r#"link "interpreter.a" as plasmid
+link "arrays.a" as arrays
+link "console.a" as term
+
+Offer { app, name } =>
+    if name = "arrays", return Offered
+    return Refused
+
+Module { app, name, particle } =>
+    emit particle to arrays get answer
+    return answer
+
+rule = "Measure { items } =>\n    emit Length { value = items } to arrays get size\n    return Measured { size = size.value }\n"
+emit Load { source = rule, name = "measurer", host = true } to plasmid get loaded
+assert loaded ∈ Loaded
+emit Send { id = loaded.id, particle = Measure { items = [1, 2, 3] } } to plasmid get measured
+assert measured.size = 3
+emit Load { source = "emit Nope {} to secrets get _\n", host = true } to plasmid get refused
+assert refused ∈ Exception
+size = measured.size
+emit Print { value = "measured $size" } to term
+"#,
+    )
+    .unwrap();
+    let bin = dir.join("plasmid");
+    code::compile_file(&source, code::BuildTarget::Exe, &bin, false)
+        .unwrap_or_else(|e| panic!("build: {e}"));
+    let out = Command::new(&bin).output().unwrap();
+    assert!(
+        out.status.success(),
+        "run: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "measured 3\n");
+}

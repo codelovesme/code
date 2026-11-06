@@ -1271,6 +1271,55 @@ pub fn close_hosted_guest(guest: usize) {
     });
 }
 
+/// `code_abi.h` item 14: what a module this program linked is handed as
+/// its base. The particle is the module's; the answer is this program's,
+/// built into an arena kept until `base_release`, exactly as an answer to a
+/// guest is (`hosted_dispatch`).
+unsafe extern "C" fn base_ask(out: *mut CodeValueFfi, particle: *const CodeValueFfi) {
+    let sent = unsafe { ffi_to_value(&*particle) };
+    let answer = ask(&sent);
+    let mut arena = Arena::default();
+    let built = arena.build(&answer);
+    HOSTING.with(|h| h.borrow_mut().pending.push(arena));
+    unsafe { *out = built };
+}
+
+/// The module is done with an answer `base_ask` built: last in, first out,
+/// as for `hosted_release`.
+unsafe extern "C" fn base_release(_v: *mut CodeValueFfi) {
+    HOSTING.with(|h| {
+        h.borrow_mut().pending.pop();
+    });
+}
+
+type BaseAskFn = unsafe extern "C" fn(*mut CodeValueFfi, *const CodeValueFfi);
+type BaseReleaseFn = unsafe extern "C" fn(*mut CodeValueFfi);
+type SetBaseFn = unsafe extern "C" fn(BaseAskFn, BaseReleaseFn);
+
+impl NativeModule {
+    /// Be this module's base (`code_abi.h` item 14): from here on, what the
+    /// module asks with `code_base_ask` is answered by `env`'s handlers,
+    /// nested. A module built before item 14 exports no
+    /// `code_module_set_base` and is left as it was. Must match
+    /// `runtime.c`'s `open_native`.
+    ///
+    /// # Safety
+    /// `env` must be the environment running this program, and must outlive
+    /// every dispatch into this module.
+    pub unsafe fn be_base(&self, env: *const crate::interpreter::Environment) {
+        let Ok(set_base) = (unsafe { self.lib.get::<SetBaseFn>(b"code_module_set_base") }) else {
+            return;
+        };
+        HOSTING.with(|h| {
+            let mut hosting = h.borrow_mut();
+            if hosting.env.is_none() {
+                hosting.env = Some(env);
+            }
+        });
+        unsafe { set_base(base_ask, base_release) };
+    }
+}
+
 impl NativeModule {
     /// Become this module's host: from here on every `link` inside it asks
     /// `env`'s handlers instead of the filesystem. Answers the guest's row,

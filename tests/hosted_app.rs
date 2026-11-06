@@ -1125,3 +1125,56 @@ emit Let { } to this
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// `code_abi.h` item 14 inside a hosted application — euglena's layout. The
+/// guest opens its own `interpreter`, and a program it loads with `host =
+/// true` reaches the *guest's* handlers, never the host's, although the
+/// host opened the guest and is its base in turn.
+#[test]
+fn a_plasmid_in_a_hosted_application_asks_the_application() {
+    let dir = temp_dir("plasmid");
+    module("interpreter", &dir.join("native_modules/interpreter.so"));
+
+    const GUEST: &str = r#"link "native_modules/interpreter.so" as plasmid
+
+Offer { app, name } =>
+    if name = "notes", return Offered
+    return Refused
+
+Module { app, name, particle } =>
+    return Noted { by = "guest", app = app, text = particle.text }
+
+Work { } =>
+    rule = "Say { text } =>\n    emit Note { text = text } to notes get noted\n    return noted\n"
+    emit Load { source = rule, name = "sayer", host = true } to plasmid get loaded
+    emit Send { id = loaded.id, particle = Say { text = "hi" } } to plasmid get said
+    emit Unload { id = loaded.id } to plasmid get _
+    return said
+"#;
+    build(&dir, "guest", GUEST, code::BuildTarget::Shared, "guest.so");
+
+    fs::write(
+        dir.join("main.code"),
+        r#"Module { app, name, particle } =>
+    return Noted { by = "host" }
+
+Run { } =>
+    link "./guest.so" as app
+    emit Work { } to app get r
+    unlink app
+    return r
+
+emit Run { } to this get r
+assert r.by = "guest"
+assert r.app = "sayer"
+assert r.text = "hi"
+"#,
+    )
+    .expect("write host");
+    run_both_ways(
+        &dir,
+        "a hosted application's plasmid did not reach the application",
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
