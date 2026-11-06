@@ -23,6 +23,7 @@ CASES = [('config_4k', 4096, 64, False), ('config_64k', 65536, 64, False),
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--code', required=True, type=Path)
+    parser.add_argument('--release-manifest', type=Path)
     parser.add_argument('--output-dir', required=True, type=Path)
     parser.add_argument('--runs', type=int, default=15)
     parser.add_argument('--smoke-only', action='store_true')
@@ -40,17 +41,14 @@ def main():
         if result.returncode:
             raise RuntimeError(f'{command}\n{result.stdout}\n{result.stderr}')
         return result
-    if run([code, '--version']).stdout.strip() != 'Code v2.23.0':
-        raise RuntimeError('Use actual public Code v2.23.0')
-    expected_hashes = ['531adc3dbdf413f1f625ee7df2f2271cdfa3ee19f082c00ef4cf3ef49e1d698d',
-                       '784519bd5dffe7ed8c448ad73c9c96c000c7a16bb45f4068d84b5324ac594363']
-    if [evidence.sha(code), evidence.sha(code.with_name('code-driver'))] != expected_hashes:
-        raise RuntimeError('Public release binary identity mismatch')
+    release = evidence.release_spec(args.release_manifest)
+    evidence.verify_release(code, release, run([code, '--version']).stdout.strip())
     tools = {name: shutil.which(name) for name in ['gcc', 'rustc']}
     if not all(tools.values()):
         raise RuntimeError(f'Missing tools: {tools}')
     report = {'status': 'preparing', 'source_revision': run(['git', 'rev-parse', 'HEAD']).stdout.strip(),
-              'release': {'tag': 'v2.23.0', 'source': evidence.PUBLIC_COMMIT, 'launcher': evidence.identity(code),
+              'release_manifest': evidence.identity(args.release_manifest) if args.release_manifest else None,
+              'release': {'tag': release['tag'], 'source': release['source_commit'], 'launcher': evidence.identity(code),
                           'driver': evidence.identity(code.with_name('code-driver'))},
               'environment': {'platform': evidence.platform.platform(), 'lscpu': run(['lscpu']).stdout,
                               'github_run_id': os.environ.get('GITHUB_RUN_ID'), 'runner_image': os.environ.get('ImageVersion'),

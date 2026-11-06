@@ -1,0 +1,8 @@
+{
+  "tag": "v2.23.2",
+  "source_commit": "1e57f007eb002074640b6b33f6661dab84581923",
+  "artifact_url": "https://github.com/codelovesme/code/releases/download/v2.23.2/code-v2.23.2-x86_64-linux.tar.gz",
+  "artifact_sha256": "7ae21f0fd6bb11d3963b36f97fb505bb7da6d616d92ddbaa75aa6030fac7f40e",
+  "launcher_sha256": "4be23b6c922b13507366c15afccd97ef42e4c070ac3839ba5120432a7705ad00",
+  "driver_sha256": "026058ab6023cfd8c83df81656bc5fcfb663d49f0aede289e60bf8b1103c498f"
+}

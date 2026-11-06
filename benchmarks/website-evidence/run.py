@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Public v2.23.0 website evidence. Prepare first, then sample serially.
+"""Public-release website evidence. Prepare first, then sample serially.
 
 Use a fresh GitHub runner for publication measurements. --smoke-only validates
 programs locally without publishing timing data. Historical results are read,
@@ -46,6 +46,33 @@ def checked(command, env=None):
 def identity(path):
     path = Path(path).resolve()
     return {"path": str(path), "sha256": sha(path), "bytes": path.stat().st_size}
+
+
+def release_spec(path=None):
+    spec = json.loads(Path(path).read_text()) if path else {
+        'tag': 'v2.23.0', 'source_commit': PUBLIC_COMMIT,
+        'artifact_url': 'https://github.com/codelovesme/code/releases/download/v2.23.0/code-v2.23.0-x86_64-linux.tar.gz',
+        'launcher_sha256': '531adc3dbdf413f1f625ee7df2f2271cdfa3ee19f082c00ef4cf3ef49e1d698d',
+        'driver_sha256': '784519bd5dffe7ed8c448ad73c9c96c000c7a16bb45f4068d84b5324ac594363',
+    }
+    if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', spec['tag']):
+        raise ValueError('Expected an exact public-release tag')
+    for key, size in [('source_commit', 40), ('launcher_sha256', 64), ('driver_sha256', 64)]:
+        if not re.fullmatch(r'[0-9a-f]{' + str(size) + '}', spec[key]):
+            raise ValueError('Invalid release identity: ' + key)
+    expected_url = f"https://github.com/codelovesme/code/releases/download/{spec['tag']}/code-{spec['tag']}-x86_64-linux.tar.gz"
+    if spec['artifact_url'] != expected_url:
+        raise ValueError('Release tag and artifact URL must match')
+    return spec
+
+
+def verify_release(code, spec, reported_version):
+    if reported_version != f"Code {spec['tag']}":
+        raise RuntimeError('Use the exact published release bundle')
+    if not code.is_file() or not code.with_name('code-driver').is_file():
+        raise RuntimeError('Keep the public launcher and code-driver together')
+    if [sha(code), sha(code.with_name('code-driver'))] != [spec['launcher_sha256'], spec['driver_sha256']]:
+        raise RuntimeError('Public release binary identity mismatch')
 
 
 def interference():
@@ -109,6 +136,7 @@ def summary(samples):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--code', type=Path, required=True)
+    ap.add_argument('--release-manifest', type=Path)
     ap.add_argument('--output-dir', type=Path, required=True)
     ap.add_argument('--runs', type=int, default=15)
     ap.add_argument('--compile-runs', type=int, default=5)
@@ -125,8 +153,8 @@ def main():
     base = dict(os.environ, CODE_CACHE='0')
     for key in ('CODE_RUN', 'CODE_MODULE_PATH', 'CODE_LINK', 'CODE_CHECK_LEAKS', 'CODE_TRACE', 'CODE_OBSERVE', 'NODE_COMPILE_CACHE'):
         base.pop(key, None)
-    if checked([code, '--version'], base).strip() != 'Code v2.23.0':
-        raise RuntimeError('Use the actual published v2.23.0 release bundle')
+    release = release_spec(args.release_manifest)
+    verify_release(code, release, checked([code, '--version'], base).strip())
     allowed = sorted(os.sched_getaffinity(0))
     cpu = args.cpu if args.cpu is not None else allowed[0]
     if cpu not in allowed:
@@ -139,8 +167,9 @@ def main():
         raise RuntimeError(f'Missing required tool: {tools}')
     report = {"schema": 1, "status": "preparing", "started_at_utc": utc(),
               "source_revision": checked(['git', 'rev-parse', 'HEAD']).strip(),
-              "public_release": {"tag": "v2.23.0", "source_commit": PUBLIC_COMMIT,
-                                 "artifact_url": "https://github.com/codelovesme/code/releases/download/v2.23.0/code-v2.23.0-x86_64-linux.tar.gz",
+              "release_manifest": identity(args.release_manifest) if args.release_manifest else None,
+              "public_release": {"tag": release["tag"], "source_commit": release["source_commit"],
+                                 "artifact_url": release["artifact_url"],
                                  "launcher": identity(code), "driver": identity(code.with_name('code-driver'))},
               "environment": {"platform": platform.platform(), "machine": platform.machine(),
                               "lscpu": checked(['lscpu']), "os_release": Path('/etc/os-release').read_text(),

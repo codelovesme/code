@@ -1,0 +1,43 @@
+name: Measure current public website release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: website-current-release
+  cancel-in-progress: false
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download and verify the fixed public release
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, json, os, subprocess, tarfile
+          spec = json.loads(Path('benchmarks/website-evidence/releases/v2.23.2.json').read_text())
+          root = Path(os.environ['RUNNER_TEMP']) / 'website-release'
+          root.mkdir()
+          archive = root / 'code.tar.gz'
+          subprocess.run(['curl', '-fL', '--retry', '3', spec['artifact_url'], '-o', str(archive)], check=True)
+          assert hashlib.sha256(archive.read_bytes()).hexdigest() == spec['artifact_sha256']
+          with tarfile.open(archive) as stream:
+              stream.extractall(root, filter='data')
+          PY
+      - name: Measure existing comparison entries on this VM
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/website-evidence/run.py --code "$RUNNER_TEMP/website-release/code-v2.23.2-x86_64-linux/code" --release-manifest benchmarks/website-evidence/releases/v2.23.2.json --output-dir "$RUNNER_TEMP/website-results/comparison" --runs 15 --compile-runs 5
+      - name: Measure all existing sharing cases on the same VM
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/history-pilot/run.py --code "$RUNNER_TEMP/website-release/code-v2.23.2-x86_64-linux/code" --release-manifest benchmarks/website-evidence/releases/v2.23.2.json --output-dir "$RUNNER_TEMP/website-results/history" --runs 15
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-v2.23.2-complete-website-evidence
+          path: ${{ runner.temp }}/website-results
+          retention-days: 30
