@@ -106,7 +106,9 @@ impl Store {
     fn make_room(&mut self, extra: usize) -> Vec<String> {
         let mut evicted = Vec::new();
         while self.bytes + extra > self.budget {
-            let Some((_, key)) = self.order.pop_first() else { break };
+            let Some((_, key)) = self.order.pop_first() else {
+                break;
+            };
             if let Some(entry) = self.map.remove(&key) {
                 self.bytes -= entry.size;
             }
@@ -121,7 +123,9 @@ struct Instance {
     store: Mutex<Store>,
 }
 
-static DEFAULT: Instance = Instance { store: Mutex::new(Store::new()) };
+static DEFAULT: Instance = Instance {
+    store: Mutex::new(Store::new()),
+};
 
 #[no_mangle]
 pub extern "C" fn code_module_abi_version() -> u32 {
@@ -141,7 +145,9 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
 /// not unloaded.
 #[no_mangle]
 pub extern "C" fn code_module_instance_new() -> *mut core::ffi::c_void {
-    Box::into_raw(Box::new(Instance { store: Mutex::new(Store::new()) })) as *mut core::ffi::c_void
+    Box::into_raw(Box::new(Instance {
+        store: Mutex::new(Store::new()),
+    })) as *mut core::ffi::c_void
 }
 
 /// # Safety
@@ -212,7 +218,9 @@ fn config(store: &mut Store, out: &mut CodeValue, particle: &CodeValue) -> Resul
 
 fn set(store: &mut Store, out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let key = key_of(particle, "Set")?.to_owned();
-    let value = find_field(particle, "value").map(to_json).unwrap_or(Json::Null);
+    let value = find_field(particle, "value")
+        .map(to_json)
+        .unwrap_or(Json::Null);
     let size = key.len() + value.to_string().len() + ENTRY_OVERHEAD;
     let refused = if store.budget == 0 {
         Some("the store is off (budget 0)")
@@ -228,7 +236,11 @@ fn set(store: &mut Store, out: &mut CodeValue, particle: &CodeValue) -> Result<(
         number(buf.slot_mut(2), size as f64);
         strings(buf.slot_mut(3), &[]);
         owned_str(buf.slot_mut(4), reason);
-        object_dyn(out, &["_class", "ok", "bytes", "evicted", "reason"], &mut buf);
+        object_dyn(
+            out,
+            &["_class", "ok", "bytes", "evicted", "reason"],
+            &mut buf,
+        );
         buf.release_all();
         return Ok(());
     }
@@ -269,8 +281,12 @@ fn get(store: &mut Store, out: &mut CodeValue, particle: &CodeValue) -> Result<(
 }
 
 fn get_many(store: &mut Store, out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
-    let keys = find_field(particle, "keys").filter(|v| v.tag == CodeTag::Array).ok_or("GetMany requires an array 'keys'")?;
-    let wanted: Vec<String> = array_elems(keys).filter_map(|k| read_str(k).map(str::to_owned)).collect();
+    let keys = find_field(particle, "keys")
+        .filter(|v| v.tag == CodeTag::Array)
+        .ok_or("GetMany requires an array 'keys'")?;
+    let wanted: Vec<String> = array_elems(keys)
+        .filter_map(|k| read_str(k).map(str::to_owned))
+        .collect();
     if wanted.len() > MAX_MANY {
         return Err(format!("GetMany takes at most {MAX_MANY} keys"));
     }
@@ -288,7 +304,11 @@ fn get_many(store: &mut Store, out: &mut CodeValue, particle: &CodeValue) -> Res
             store.misses += 1;
             null(item.slot_mut(2));
         }
-        object_dyn(items.slot_mut(i as i64), &["key", "found", "value"], &mut item);
+        object_dyn(
+            items.slot_mut(i as i64),
+            &["key", "found", "value"],
+            &mut item,
+        );
         item.release_all();
     }
     let mut buf = SlotBuffer::new(2);
@@ -311,12 +331,22 @@ fn remove(store: &mut Store, out: &mut CodeValue, particle: &CodeValue) -> Resul
     Ok(())
 }
 
-fn remove_prefix(store: &mut Store, out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
-    let prefix = read_field_str(particle, "prefix").ok_or("RemovePrefix requires a string 'prefix'")?;
+fn remove_prefix(
+    store: &mut Store,
+    out: &mut CodeValue,
+    particle: &CodeValue,
+) -> Result<(), String> {
+    let prefix =
+        read_field_str(particle, "prefix").ok_or("RemovePrefix requires a string 'prefix'")?;
     if prefix.is_empty() {
         return Err("RemovePrefix requires a non-empty 'prefix' (Config { budget_bytes = 0 } empties everything)".into());
     }
-    let doomed: Vec<String> = store.map.keys().filter(|k| k.starts_with(prefix)).cloned().collect();
+    let doomed: Vec<String> = store
+        .map
+        .keys()
+        .filter(|k| k.starts_with(prefix))
+        .cloned()
+        .collect();
     for key in &doomed {
         store.remove(key);
     }
@@ -332,9 +362,16 @@ fn keys(store: &Store, out: &mut CodeValue, particle: &CodeValue) -> Result<(), 
     let prefix = read_field_str(particle, "prefix").unwrap_or("");
     let limit = match find_field(particle, "limit") {
         None => usize::MAX,
-        Some(v) => read_number(v).filter(|n| *n >= 0.0).ok_or("Keys requires a non-negative 'limit'")? as usize,
+        Some(v) => read_number(v)
+            .filter(|n| *n >= 0.0)
+            .ok_or("Keys requires a non-negative 'limit'")? as usize,
     };
-    let mut found: Vec<String> = store.map.keys().filter(|k| k.starts_with(prefix)).cloned().collect();
+    let mut found: Vec<String> = store
+        .map
+        .keys()
+        .filter(|k| k.starts_with(prefix))
+        .cloned()
+        .collect();
     found.sort();
     found.truncate(limit);
     let mut buf = SlotBuffer::new(2);
@@ -354,7 +391,19 @@ fn stats(store: &Store, out: &mut CodeValue) {
     number(buf.slot_mut(4), store.evictions as f64);
     number(buf.slot_mut(5), store.hits as f64);
     number(buf.slot_mut(6), store.misses as f64);
-    object_dyn(out, &["_class", "count", "bytes", "budget_bytes", "evictions", "hits", "misses"], &mut buf);
+    object_dyn(
+        out,
+        &[
+            "_class",
+            "count",
+            "bytes",
+            "budget_bytes",
+            "evictions",
+            "hits",
+            "misses",
+        ],
+        &mut buf,
+    );
     buf.release_all();
 }
 
