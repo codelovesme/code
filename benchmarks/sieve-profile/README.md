@@ -56,3 +56,17 @@ PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/sieve-profile/run.py \
 
 Timing is restricted to the manual `Measure guarded Bool part writes` workflow.
 Verify retained results with `verify.py RESULTS [--artifacts DOWNLOADED_DIR]`.
+
+
+## Retained outcome
+
+[All measured outcomes](RESULTS.md): the million-bound sieve takes
+60.153 -> 30.981 ms (48.50% less time / 1.94x as fast), with RSS unchanged.
+All 510 samples and small costs remain visible; no workload crosses the
+preregistered material-regression gate. PR 76 merged after green full/wasm CI.
+This is a source improvement, with no release or website update.
+
+```
+python3 benchmarks/sieve-profile/verify.py \
+  benchmarks/sieve-profile/results/2026-11-05-source
+```

@@ -1,0 +1,52 @@
+{
+  "workspace": {
+    "passed": 341,
+    "failed": 0,
+    "ignored": 7,
+    "filtered": 0,
+    "summaries": 69,
+    "log_sha256": "8dfb3d91ce7bdd7024acf13b59637ca608b3627d8649a29af5928eb45e822199"
+  },
+  "clippy": "workspace all targets, warnings denied, passed",
+  "wasm": "release wasm32 interpreter built; two existing dead-code warnings retained",
+  "examples": 177,
+  "applications": {
+    "fixtures": 102,
+    "checks": 204,
+    "modes": [
+      "native dev",
+      "native release"
+    ],
+    "scratch_copy": true
+  },
+  "regression_modes": [
+    "interpreted",
+    "native dev",
+    "native release",
+    "compiled wasm dev",
+    "compiled wasm release"
+  ],
+  "generated_site_files_byte_identical": 46,
+  "aquarium": {
+    "before": {
+      "bytes": 892707,
+      "sha256": "9aeaafafe98ffee8a6ade4198afdafc676f7be432844eb3ec01f0cc21919833f"
+    },
+    "after": {
+      "bytes": 892707,
+      "sha256": "9aeaafafe98ffee8a6ade4198afdafc676f7be432844eb3ec01f0cc21919833f"
+    }
+  },
+  "remote_ci": {
+    "run": 42132296175,
+    "passed": 341,
+    "failed": 0,
+    "ignored": 7,
+    "jobs": [
+      "Build + test",
+      "code-wasm builds for wasm32 (playground)"
+    ],
+    "conditional_service_skip": "MinIO unavailable; live S3 fixture part skipped"
+  },
+  "source_merge": "a94eaecc959ae1f7ab69c7f026839d0b0b848bd0"
+}
