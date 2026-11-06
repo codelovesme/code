@@ -1,5 +1,9 @@
 # Rejected experiment — no runtime change retained
 
+Canonical work-list ticket: **241** (originally reserved as 240; renumbered
+after a concurrent Mike task also used 240). Frozen branch/CI/protocol names
+still use 240 for reproducibility; the experiment and criteria are unchanged.
+
 [Complete negative result](RESULTS.md): ASCII document-1m improves 38.74%,
 but Unicode document-1m regresses 28.99%, failing the preregistered gate.
 PR 81 is closed unmerged; main retains 239. The source experiment is preserved
