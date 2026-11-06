@@ -81,6 +81,23 @@ fn wasm_text_slice_boundaries_match_the_character_oracle() {
 }
 
 #[test]
+fn wasm_character_counts_match_grown_unicode_snapshots() {
+    let dir = temp_dir("text-character-count");
+    let out = dir.join("counts.wasm");
+    for release in [false, true] {
+        code::compile_file(
+            &fixture("stress_string_character_count.code"),
+            code::BuildTarget::Wasm,
+            &out,
+            release,
+        )
+        .expect("build text character-count regression for wasm");
+        run_wasm_under_node(&dir, &out);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn shared_target_produces_a_loadable_library() {
     let dir = temp_dir("shared");
     let out = dir.join("libarith.so");

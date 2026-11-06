@@ -941,13 +941,28 @@ void code_length_of(CodeValue *out, const CodeValue *value) {
         return;
     }
     if (value->tag == CODE_STR) {
-        /* Characters, not bytes — the same continuation-byte count text Length
-         * uses, and for the same reason. */
-        long long chars = 0;
-        for (const char *p = value->str; *p; p++) {
-            if (((unsigned char)*p & 0xC0) != 0x80) {
-                chars++;
-            }
+        /* Characters, not bytes. Count continuation bytes eight at a time:
+         * a byte starts with 10 exactly when bit 7 is set and bit 6 is clear.
+         * Moving those bits to each byte's low bit and multiplying sums them
+         * into the high byte, independently of byte order. All arithmetic is
+         * unsigned. memcpy avoids alignment/aliasing assumptions, and the
+         * strlen bound means no word load reaches the NUL or reads past it.
+         * Keep NUL-terminated behavior without adding cache/header state. */
+        size_t remaining = strlen(value->str);
+        size_t chars = remaining;
+        const unsigned char *p = (const unsigned char *)value->str;
+        while (remaining >= 8) {
+            unsigned long long word;
+            memcpy(&word, p, 8);
+            unsigned long long continuation =
+                (word & ~(word << 1) & 0x8080808080808080ULL) >> 7;
+            chars -= (size_t)((continuation * 0x0101010101010101ULL) >> 56);
+            p += 8;
+            remaining -= 8;
+        }
+        while (remaining) {
+            chars -= (*p++ & 0xC0) == 0x80;
+            remaining--;
         }
         code_number(out, (double)chars);
         return;

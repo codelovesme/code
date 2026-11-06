@@ -1,0 +1,48 @@
+| Count scalars independently while growing text across every byte-tail size.
+| The unique leading sentinel makes an incorrect length select another value.
+pieces = ["a", "é", "中", "🙂", "e", "́", "z"]
+text = "!"
+expected = 1
+which = 0
+step = 0
+snapshots = []
+counts = []
+loop
+    assert text[length - expected] = "!"
+    assert text[0, length) = text
+    snapshots += [text]
+    counts += [expected]
+    if step = 96, break
+    piece = pieces[which]
+    text += piece
+    expected += 1
+    assert text[length - 1] = piece
+    which += 1
+    if which = 7, which = 0
+    step += 1
+loop snapshot_index, saved over snapshots
+    assert saved[length - counts[snapshot_index]] = "!"
+
+| Literal, owned, aliased and changed values; sliced UTF-8 then rebuilt text.
+literal = "!aé中🙂éz"
+assert literal[length - 8] = "!"
+owned = literal + ""
+assert owned[length - 8] = "!"
+alias = owned
+owned += "?"
+assert owned[length - 9] = "!"
+assert alias[length - 8] = "!"
+cut = owned[1, length - 1)
+rebuilt = "!" + cut
+assert rebuilt = literal
+assert rebuilt[length - 8] = "!"
+empty = owned[99, 99)
+assert empty[length] = null
+assert empty[0, length) = ""
+owned_empty = "" + ""
+assert owned_empty[length] = null
+assert owned_empty[0, length) = ""
+
+| The other length kinds retain their existing paths.
+array = ["!", 2, 3]
+assert array[length - 3] = "!"
