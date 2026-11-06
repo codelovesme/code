@@ -1,0 +1,373 @@
+{
+  "status": "complete",
+  "source_revision": "d4fdec5f97cc8b5327f5e47e3bb814b2b405e18c",
+  "started": "2026-11-06T08:20:50+00:00",
+  "release": {
+    "tag": "v2.23.2",
+    "source_commit": "1e57f007eb002074640b6b33f6661dab84581923",
+    "artifact_url": "https://github.com/codelovesme/code/releases/download/v2.23.2/code-v2.23.2-x86_64-linux.tar.gz",
+    "artifact_sha256": "7ae21f0fd6bb11d3963b36f97fb505bb7da6d616d92ddbaa75aa6030fac7f40e",
+    "launcher_sha256": "4be23b6c922b13507366c15afccd97ef42e4c070ac3839ba5120432a7705ad00",
+    "driver_sha256": "026058ab6023cfd8c83df81656bc5fcfb663d49f0aede289e60bf8b1103c498f"
+  },
+  "launcher": {
+    "path": "/var/tmp/code-235-public/code-v2.23.2-x86_64-linux/code",
+    "sha256": "4be23b6c922b13507366c15afccd97ef42e4c070ac3839ba5120432a7705ad00",
+    "bytes": 558880
+  },
+  "driver": {
+    "path": "/var/tmp/code-235-public/code-v2.23.2-x86_64-linux/code-driver",
+    "sha256": "026058ab6023cfd8c83df81656bc5fcfb663d49f0aede289e60bf8b1103c498f",
+    "bytes": 59500312
+  },
+  "script": {
+    "path": "/home/cdlvsm/git/codelovesme/code/benchmarks/document-profile/run.py",
+    "sha256": "d0b45aceec629c6645be28e81cd571f15ebeb7976b942a4bfcea0535be3d6526",
+    "bytes": 6121
+  },
+  "template": {
+    "path": "/home/cdlvsm/git/codelovesme/code/benchmarks/history-pilot/history.code",
+    "sha256": "66ec625992546f837aff8fca0fa40f974c5cc8465e147bab636dcb4b09fb0bf1",
+    "bytes": 1152
+  },
+  "environment": {
+    "platform": "Linux-6.12.113+deb13-amd64-x86_64-with-glibc2.41",
+    "lscpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           46 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  12\nOn-line CPU(s) list:                     0-11\nVendor ID:                               GenuineIntel\nModel name:                              Intel(R) Core(TM) i7-5930K CPU @ 3.50GHz\nCPU family:                              6\nModel:                                   63\nThread(s) per core:                      2\nCore(s) per socket:                      6\nSocket(s):                               1\nStepping:                                2\nCPU(s) scaling MHz:                      97%\nCPU max MHz:                             3700.0000\nCPU min MHz:                             1200.0000\nBogoMIPS:                                6999.36\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 ds_cpl vmx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm cpuid_fault epb pti intel_ppin ssbd ibrs ibpb stibp tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm xsaveopt cqm_llc cqm_occup_llc dtherm ida arat pln pts vnmi md_clear flush_l1d\nVirtualization:                          VT-x\nL1d cache:                               192 KiB (6 instances)\nL1i cache:                               192 KiB (6 instances)\nL2 cache:                                1.5 MiB (6 instances)\nL3 cache:                                15 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-11\nVulnerability Gather data sampling:      Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             KVM: Mitigation: Split huge pages\nVulnerability L1tf:                      Mitigation; PTE Inversion; VMX conditional cache flushes, SMT vulnerable\nVulnerability Mds:                       Mitigation; Clear CPU buffers; SMT vulnerable\nVulnerability Meltdown:                  Mitigation; PTI\nVulnerability Mmio stale data:           Mitigation; Clear CPU buffers; SMT vulnerable\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; IBRS_FW; STIBP conditional; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace\n",
+    "cpu": 0,
+    "valgrind": "valgrind-3.24.0",
+    "valgrind_binary": {
+      "path": "/home/cdlvsm/.local/bin/valgrind",
+      "sha256": "9f40c7aeeb2e28881d424cdb769458d64adaff335fa66c0ba2844b4cb9fa9fe1",
+      "bytes": 272
+    },
+    "annotate": {
+      "path": "/home/cdlvsm/.local/opt/gdb-root/bin/callgrind_annotate",
+      "sha256": "23adee94ece6ea8a25f5b797e8a1f8663cd3642a50080a7c8f587758783998ce",
+      "bytes": 44669
+    }
+  },
+  "boundary": "Local Callgrind Ir counts, startup/construction/checks/cleanup included. Cumulative probes differ in checks and code generation; do not add or subtract them as exact isolated phase times. No wall-clock ranking.",
+  "profiles": {
+    "65536-construction": {
+      "source": {
+        "path": "/var/tmp/code-237-profile/65536-construction.code",
+        "sha256": "1f4735d72845467d4cb7608df22b0456bd1962b059c2390d8bdc587a8f43f1b2",
+        "bytes": 381
+      },
+      "binary": {
+        "path": "/var/tmp/code-237-profile/65536-construction",
+        "sha256": "a1fcc712bdbc5f7eb7b72f416d2b78ec58e848580a704a82365c11efd4109283",
+        "bytes": 98544
+      },
+      "build_command": [
+        "/var/tmp/code-235-public/code-v2.23.2-x86_64-linux/code",
+        "build",
+        "/var/tmp/code-237-profile/65536-construction.code",
+        "--release",
+        "-o",
+        "/var/tmp/code-237-profile/65536-construction"
+      ],
+      "instructions": 272408,
+      "raw": {
+        "path": "/var/tmp/code-237-profile/65536-construction.callgrind",
+        "sha256": "df1559927ac9bc1d34eedd923b9da54475ed3ae9f683742699665439d99b3f7f",
+        "bytes": 24323
+      },
+      "annotated": {
+        "path": "/var/tmp/code-237-profile/65536-construction.annotated",
+        "sha256": "bbd83c7be2ae7a730cef9e51f1f892ea0aa1c115e9b6722dfad9fd5bfb57b3a8",
+        "bytes": 17848
+      },
+      "profile_command": [
+        "/home/cdlvsm/.local/bin/valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-237-profile/65536-construction.callgrind",
+        "/var/tmp/code-237-profile/65536-construction"
+      ]
+    },
+    "65536-edits": {
+      "source": {
+        "path": "/var/tmp/code-237-profile/65536-edits.code",
+        "sha256": "f41233d117b114cadde102fbd7b93b375aa304907a0a57d2619c4bb6ba1b0926",
+        "bytes": 675
+      },
+      "binary": {
+        "path": "/var/tmp/code-237-profile/65536-edits",
+        "sha256": "d5a948505fcf28f96e8bd2a2be3ac931b3a875a5b0c1526bd88133fab228f272",
+        "bytes": 103384
+      },
+      "build_command": [
+        "/var/tmp/code-235-public/code-v2.23.2-x86_64-linux/code",
+        "build",
+        "/var/tmp/code-237-profile/65536-edits.code",
+        "--release",
+        "-o",
+        "/var/tmp/code-237-profile/65536-edits"
+      ],
+      "instructions": 194021878,
+      "raw": {
+        "path": "/var/tmp/code-237-profile/65536-edits.callgrind",
+        "sha256": "1bc4e5c306176c49de3ea04c88e4d02cb11e05c55949e94b1009dcecfaaf388d",
+        "bytes": 29532
+      },
+      "annotated": {
+        "path": "/var/tmp/code-237-profile/65536-edits.annotated",
+        "sha256": "0d3171bb418ff8fa11900a43c1ccecba1e348f2e5ec6fd568c743566fe6b2376",
+        "bytes": 2319
+      },
+      "profile_command": [
+        "/home/cdlvsm/.local/bin/valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-237-profile/65536-edits.callgrind",
+        "/var/tmp/code-237-profile/65536-edits"
+      ]
+    },
+    "65536-edits-expected": {
+      "source": {
+        "path": "/var/tmp/code-237-profile/65536-edits-expected.code",
+        "sha256": "f04392b52414f0fbc5a4321f78ec690af4e146fb3e7a09d21250f82787a56ff2",
+        "bytes": 1091
+      },
+      "binary": {
+        "path": "/var/tmp/code-237-profile/65536-edits-expected",
+        "sha256": "5f5ce22c2d869911518fcb39a18fd048762643042179284e7127b802a9b8e5a4",
+        "bytes": 107848
+      },
+      "build_command": [
+        "/var/tmp/code-235-public/code-v2.23.2-x86_64-linux/code",
+        "build",
+        "/var/tmp/code-237-profile/65536-edits-expected.code",
+        "--release",
+        "-o",
+        "/var/tmp/code-237-profile/65536-edits-expected"
+      ],
+      "instructions": 320318661,
+      "raw": {
+        "path": "/var/tmp/code-237-profile/65536-edits-expected.callgrind",
+        "sha256": "76764116b0a9e1b165d7ecd2a71069116645c0bbc1775ca742cd482ea85fcef4",
+        "bytes": 31405
+      },
+      "annotated": {
+        "path": "/var/tmp/code-237-profile/65536-edits-expected.annotated",
+        "sha256": "115bebfb5a7d178d738f7eb2a2211b32288487ab0bf94809ae31ac2f78973265",
+        "bytes": 2125
+      },
+      "profile_command": [
+        "/home/cdlvsm/.local/bin/valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-237-profile/65536-edits-expected.callgrind",
+        "/var/tmp/code-237-profile/65536-edits-expected"
+      ]
+    },
+    "65536-full": {
+      "source": {
+        "path": "/var/tmp/code-237-profile/65536-full.code",
+        "sha256": "dcda703bd673135defcd8d2d322a3551b89db8bc4b8a3f66c74f2018982931d7",
+        "bytes": 1127
+      },
+      "binary": {
+        "path": "/var/tmp/code-237-profile/65536-full",
+        "sha256": "01905b6f4e9dbef92aed89c497789e112467a674e1238b2ce58c39fc32f19877",
+        "bytes": 107848
+      },
+      "build_command": [
+        "/var/tmp/code-235-public/code-v2.23.2-x86_64-linux/code",
+        "build",
+        "/var/tmp/code-237-profile/65536-full.code",
+        "--release",
+        "-o",
+        "/var/tmp/code-237-profile/65536-full"
+      ],
+      "instructions": 321116248,
+      "raw": {
+        "path": "/var/tmp/code-237-profile/65536-full.callgrind",
+        "sha256": "213582eef9921efa8afda16bc821a4a65fa4ce6edc31048968d3aa578fc3d4b9",
+        "bytes": 31676
+      },
+      "annotated": {
+        "path": "/var/tmp/code-237-profile/65536-full.annotated",
+        "sha256": "13e0424bb14f4d9eb7564aebe20436f16d144f63c0ac9f8eec8b52e36ceff51a",
+        "bytes": 2148
+      },
+      "profile_command": [
+        "/home/cdlvsm/.local/bin/valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-237-profile/65536-full.callgrind",
+        "/var/tmp/code-237-profile/65536-full"
+      ]
+    },
+    "1048576-construction": {
+      "source": {
+        "path": "/var/tmp/code-237-profile/1048576-construction.code",
+        "sha256": "e6a7d09e1f5bf2e724650cb1fca32a3f6e51f48a981181f1f3fe6155e6e055c3",
+        "bytes": 383
+      },
+      "binary": {
+        "path": "/var/tmp/code-237-profile/1048576-construction",
+        "sha256": "a1eb782a28ec91abd527fab400aafee4e3b43e68027360abff699528aea2b221",
+        "bytes": 98544
+      },
+      "build_command": [
+        "/var/tmp/code-235-public/code-v2.23.2-x86_64-linux/code",
+        "build",
+        "/var/tmp/code-237-profile/1048576-construction.code",
+        "--release",
+        "-o",
+        "/var/tmp/code-237-profile/1048576-construction"
+      ],
+      "instructions": 2394828,
+      "raw": {
+        "path": "/var/tmp/code-237-profile/1048576-construction.callgrind",
+        "sha256": "7d6375b6cff59a04b1d0bf21151524eed0ded570c92ecfa13e6154c084d04a3d",
+        "bytes": 24815
+      },
+      "annotated": {
+        "path": "/var/tmp/code-237-profile/1048576-construction.annotated",
+        "sha256": "5f029a2118a0bddc5aa1a808c4f64453cb85613d16690a2a4c0edbc4cc14ba24",
+        "bytes": 11083
+      },
+      "profile_command": [
+        "/home/cdlvsm/.local/bin/valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-237-profile/1048576-construction.callgrind",
+        "/var/tmp/code-237-profile/1048576-construction"
+      ]
+    },
+    "1048576-edits": {
+      "source": {
+        "path": "/var/tmp/code-237-profile/1048576-edits.code",
+        "sha256": "1563c0a92b0f21dc78eb4cdde1125087e69dabb0932e86570b8624bec2d59903",
+        "bytes": 677
+      },
+      "binary": {
+        "path": "/var/tmp/code-237-profile/1048576-edits",
+        "sha256": "05aeadca1c6ae7d33a23b32e2f1b5636547bee2c6abc5bc67e55819789bc4f3e",
+        "bytes": 103384
+      },
+      "build_command": [
+        "/var/tmp/code-235-public/code-v2.23.2-x86_64-linux/code",
+        "build",
+        "/var/tmp/code-237-profile/1048576-edits.code",
+        "--release",
+        "-o",
+        "/var/tmp/code-237-profile/1048576-edits"
+      ],
+      "instructions": 3095150728,
+      "raw": {
+        "path": "/var/tmp/code-237-profile/1048576-edits.callgrind",
+        "sha256": "9b0110a89c8096f75958a859b75b2f52a8f5cf789d89f35cf67b7f468dadabab",
+        "bytes": 30006
+      },
+      "annotated": {
+        "path": "/var/tmp/code-237-profile/1048576-edits.annotated",
+        "sha256": "af153a1f493e1d4ceba3afa372d5e009d8b66f6d589d2e133ccf825933db696b",
+        "bytes": 1349
+      },
+      "profile_command": [
+        "/home/cdlvsm/.local/bin/valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-237-profile/1048576-edits.callgrind",
+        "/var/tmp/code-237-profile/1048576-edits"
+      ]
+    },
+    "1048576-edits-expected": {
+      "source": {
+        "path": "/var/tmp/code-237-profile/1048576-edits-expected.code",
+        "sha256": "e894a8120524e2dede44e291bb0eb3cf094dfb3be7dbb57fa5089e39bf28495a",
+        "bytes": 1093
+      },
+      "binary": {
+        "path": "/var/tmp/code-237-profile/1048576-edits-expected",
+        "sha256": "fa91aac1ac544d60991e51372ed6fb06ecdb04f51ccd7db6530d6cb1772ce2ad",
+        "bytes": 107848
+      },
+      "build_command": [
+        "/var/tmp/code-235-public/code-v2.23.2-x86_64-linux/code",
+        "build",
+        "/var/tmp/code-237-profile/1048576-edits-expected.code",
+        "--release",
+        "-o",
+        "/var/tmp/code-237-profile/1048576-edits-expected"
+      ],
+      "instructions": 5113821308,
+      "raw": {
+        "path": "/var/tmp/code-237-profile/1048576-edits-expected.callgrind",
+        "sha256": "2666a806aee28548174b114f063a0e7c18e687a1039be2b6e254e097166bef30",
+        "bytes": 32053
+      },
+      "annotated": {
+        "path": "/var/tmp/code-237-profile/1048576-edits-expected.annotated",
+        "sha256": "f9471ef2e09ba9c9fef062243ce060fd02d7e17609642e12f0c25f4fc3be1e7b",
+        "bytes": 1386
+      },
+      "profile_command": [
+        "/home/cdlvsm/.local/bin/valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-237-profile/1048576-edits-expected.callgrind",
+        "/var/tmp/code-237-profile/1048576-edits-expected"
+      ]
+    },
+    "1048576-full": {
+      "source": {
+        "path": "/var/tmp/code-237-profile/1048576-full.code",
+        "sha256": "4ecb470c008dc8d1cf6b044e04c7f7b48626c47d6ad789cd8fe38c0152a7c2ce",
+        "bytes": 1129
+      },
+      "binary": {
+        "path": "/var/tmp/code-237-profile/1048576-full",
+        "sha256": "155a26bf081925bd7e3c4676fc3bdf2959acb51f8bf1ba68b87222dc1f19f946",
+        "bytes": 107848
+      },
+      "build_command": [
+        "/var/tmp/code-235-public/code-v2.23.2-x86_64-linux/code",
+        "build",
+        "/var/tmp/code-237-profile/1048576-full.code",
+        "--release",
+        "-o",
+        "/var/tmp/code-237-profile/1048576-full"
+      ],
+      "instructions": 5126111052,
+      "raw": {
+        "path": "/var/tmp/code-237-profile/1048576-full.callgrind",
+        "sha256": "97fc22da1e9634e91e35456e60221331bd8242a6ce7c75a09315ef60d38034e7",
+        "bytes": 32422
+      },
+      "annotated": {
+        "path": "/var/tmp/code-237-profile/1048576-full.annotated",
+        "sha256": "aa7354e3d64da19ce220f503332747c9dbca8bd30f108cea2467e5ea5e1ad20b",
+        "bytes": 1431
+      },
+      "profile_command": [
+        "/home/cdlvsm/.local/bin/valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-237-profile/1048576-full.callgrind",
+        "/var/tmp/code-237-profile/1048576-full"
+      ]
+    }
+  },
+  "finished": "2026-11-06T08:23:05+00:00"
+}

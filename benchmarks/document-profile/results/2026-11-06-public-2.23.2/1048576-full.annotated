@@ -1,0 +1,31 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-237-profile/1048576-full.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 1346554351
+Trigger: Program termination
+Profiled target:  /var/tmp/code-237-profile/1048576-full (PID 2086185, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                     
+--------------------------------------------------------------------------------
+5,126,111,052 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                      file:function
+--------------------------------------------------------------------------------
+3,623,988,774 (70.70%)  ???:code_slice [/var/tmp/code-237-profile/1048576-full]
+1,207,963,904 (23.56%)  ???:code_length_of [/var/tmp/code-237-profile/1048576-full]
+  270,505,023 ( 5.28%)  ???:0x0000000000162840 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   12,287,473 ( 0.24%)  ???:0x0000000000164e30 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   10,666,064 ( 0.21%)  ???:0x00000000001655c0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+

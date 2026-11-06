@@ -1,0 +1,14 @@
+==2080408== Callgrind, a call-graph generating cache profiler
+==2080408== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==2080408== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==2080408== Command: /var/tmp/code-237-profile/1048576-edits-expected
+==2080408== 
+==2080408== For interactive control, run 'callgrind_control -h'.
+==2080408== brk segment overflow in thread #1: can't grow to 0x4859000
+==2080408== (see section Limitations in user manual)
+==2080408== NOTE: further instances of this message will not be shown
+==2080408== 
+==2080408== Events    : Ir
+==2080408== Collected : 5113821308
+==2080408== 
+==2080408== I   refs:      5,113,821,308

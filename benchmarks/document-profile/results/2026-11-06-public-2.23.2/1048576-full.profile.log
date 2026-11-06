@@ -1,0 +1,14 @@
+==2086185== Callgrind, a call-graph generating cache profiler
+==2086185== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==2086185== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==2086185== Command: /var/tmp/code-237-profile/1048576-full
+==2086185== 
+==2086185== For interactive control, run 'callgrind_control -h'.
+==2086185== brk segment overflow in thread #1: can't grow to 0x4859000
+==2086185== (see section Limitations in user manual)
+==2086185== NOTE: further instances of this message will not be shown
+==2086185== 
+==2086185== Events    : Ir
+==2086185== Collected : 5126111052
+==2086185== 
+==2086185== I   refs:      5,126,111,052

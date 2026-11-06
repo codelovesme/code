@@ -1,0 +1,42 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-237-profile/65536-edits.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 50607046
+Trigger: Program termination
+Profiled target:  /var/tmp/code-237-profile/65536-edits (PID 2077237, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+194,021,878 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                    file:function
+--------------------------------------------------------------------------------
+146,881,894 (75.70%)  ???:code_slice [/var/tmp/code-237-profile/65536-edits]
+ 37,750,912 (19.46%)  ???:code_length_of [/var/tmp/code-237-profile/65536-edits]
+  8,499,966 ( 4.38%)  ???:0x0000000000162840 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    349,925 ( 0.18%)  ???:0x00000000001655c0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+     74,512 ( 0.04%)  ???:0x00000000000a0fe0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+     36,967 ( 0.02%)  ???:free [/usr/lib/x86_64-linux-gnu/libc.so.6]
+     32,619 ( 0.02%)  ???:code_release.part.0 [/var/tmp/code-237-profile/65536-edits]
+     27,086 ( 0.01%)  ???:0x0000000000013780 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     26,654 ( 0.01%)  ???:0x000000000000e870 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     26,622 ( 0.01%)  ???:0x000000000000a220 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     24,595 ( 0.01%)  ???:malloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+     23,082 ( 0.01%)  ???:0x00000000000a02e0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+     19,959 ( 0.01%)  ???:0x000000000000ae90 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     19,564 ( 0.01%)  ???:code_add [/var/tmp/code-237-profile/65536-edits]
+     18,930 ( 0.01%)  ???:main [/var/tmp/code-237-profile/65536-edits]
+     18,263 ( 0.01%)  ???:code_release [/var/tmp/code-237-profile/65536-edits]
+

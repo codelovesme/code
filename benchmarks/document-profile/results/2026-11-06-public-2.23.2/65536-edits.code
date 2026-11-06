@@ -1,0 +1,28 @@
+| Complete histories: matching retained values, including validation and cleanup.
+payload_size = 65536
+section_count = 1
+version_count = 64
+document = true
+payload = "a"
+size = 1
+loop
+    if size = payload_size, break
+    payload += payload
+    size = size * 2
+current = []
+i = 0
+loop
+    if i = section_count, break
+    current += [{ enabled = false, text = payload }]
+    i += 1
+snapshots = []
+step = 0
+loop
+    if step = version_count, break
+    snapshots += [current]
+    if document
+        current[0].text = current[0].text[0, step) + "b" + current[0].text[step + 1, length)
+    if not document
+        current[step].enabled = true
+    step += 1
+snapshots += [current]

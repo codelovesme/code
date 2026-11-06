@@ -1,0 +1,17 @@
+| Complete histories: matching retained values, including validation and cleanup.
+payload_size = 65536
+section_count = 1
+version_count = 64
+document = true
+payload = "a"
+size = 1
+loop
+    if size = payload_size, break
+    payload += payload
+    size = size * 2
+current = []
+i = 0
+loop
+    if i = section_count, break
+    current += [{ enabled = false, text = payload }]
+    i += 1

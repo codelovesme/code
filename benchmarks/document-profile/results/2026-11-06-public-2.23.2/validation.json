@@ -1,0 +1,22 @@
+{
+  "workspace": {
+    "command": "env -u CARGO_TARGET_DIR cargo test --workspace",
+    "exit_code": 0,
+    "summaries": 69,
+    "passed": 341,
+    "failed": 0,
+    "ignored": 7,
+    "log": {
+      "path": "/var/tmp/code-237-workspace.log",
+      "sha256": "9a82bfe177f577575b3502a26fda591e535b2a92f8f0c38a35ed575cb24cb24f",
+      "bytes": 36221
+    }
+  },
+  "profiles": {
+    "silent_success": 8,
+    "native_leak_checks": 8,
+    "original_full_source_matches": 2,
+    "independent_identity_and_count_checks": 8
+  },
+  "scope": "No implementation or public evidence changed; native executables remain in /var/tmp/code-237-profile."
+}
