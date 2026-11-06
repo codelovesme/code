@@ -1,0 +1,53 @@
+| `vacuole` — an in-process key→value store with a byte budget: values keep
+| their shape, the least recently used go first, and every eviction is named.
+link "native_modules/vacuole.so" as cache
+
+emit Get { key = "x" } to cache get early
+assert early ∈ GetResult
+assert early.found = false
+
+emit Set { key = "a", value = { n = 1, tags = ["x"] } } to cache get a
+assert a.ok
+assert a.evicted = []
+emit Get { key = "a" } to cache get got
+assert got.found
+assert got.value = { n = 1, tags = ["x"] }
+
+| A budget that holds two entries of this size: the third evicts the least
+| recently used — "b", since "a" was just read.
+emit Config { budget_bytes = (a.bytes + 2) * 2 } to cache get small
+assert small.ok
+emit Set { key = "b", value = { n = 2, tags = ["y"] } } to cache get b
+assert b.ok
+emit Get { key = "a" } to cache get touched
+emit Set { key = "c", value = { n = 3, tags = ["z"] } } to cache get c
+assert c.evicted = ["b"]
+emit GetMany { keys = ["a", "b", "c"] } to cache get many
+assert many.items[0].found
+assert many.items[1].found = false
+assert many.items[2].value = { n = 3, tags = ["z"] }
+
+| Too large for the whole budget: refused, nothing evicted.
+emit Set { key = "big", value = "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789" } to cache get big
+assert big.ok = false
+assert big.evicted = []
+
+emit Keys { prefix = "" } to cache get listed
+assert listed.items = ["a", "c"]
+emit Stats to cache get stats
+assert stats.count = 2
+assert stats.evictions = 1
+emit RemovePrefix { prefix = "a" } to cache get dropped
+assert dropped.removed = 1
+emit Remove { key = "c" } to cache get gone
+assert gone.removed
+emit Stats to cache get empty
+assert empty.count = 0
+assert empty.bytes = 0
+
+| Off: nothing is kept.
+emit Config { budget_bytes = 0 } to cache get off
+emit Set { key = "a", value = 1 } to cache get refused
+assert refused.ok = false
+emit Get { key = "" } to cache get bad
+assert bad ∈ Exception
