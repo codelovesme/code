@@ -1099,6 +1099,8 @@ pub(crate) fn compile_to_object_traced(
         generic_entries: HashMap::new(),
         fast_temps_mark: 0,
         binding_slots: HashMap::new(),
+        readonly_reads: HashMap::new(),
+        borrowed_slots: HashMap::new(),
         scalar_names: HashMap::new(),
         scalar_slots: HashMap::new(),
         location_slot,
@@ -1586,6 +1588,11 @@ struct Gen<'a, 'm> {
     /// The slot a binding got the first time its statement was generated,
     /// by the statement's address: a loop's two versions are one variable.
     binding_slots: HashMap<(usize, usize), PointerValue<'a>>,
+    // A selected loop-local read has an owned slow-path slot and a pointer
+    // cell shared by both loop versions. Lookup loads that cell, so a bailout
+    // into a later generic statement sees the value chosen by the fast one.
+    readonly_reads: HashMap<usize, (PointerValue<'a>, PointerValue<'a>)>,
+    borrowed_slots: HashMap<PointerValue<'a>, PointerValue<'a>>,
     scalar_names: HashMap<String, crate::kinds::Kind>,
     /// The bindings that are a plain `double` or flag, not a slot, by the
     /// stack slot that holds them.
@@ -3373,6 +3380,17 @@ impl<'a, 'm> Gen<'a, 'm> {
     fn gen_loop(&mut self, over: Option<&LoopOver>, body: &[Stmt]) -> Result<(), String> {
         // `loop { }` has no iterable, no counter and no bound — `head_bb`
         // just falls into the body every time, and only a `break` leaves.
+        let readonly = if self.version.is_none()
+            && !contains_loop(body)
+            && self.handler_frame.is_none()
+            && !self.tracing
+            && self.native_links.is_empty()
+            && !self.links_at_runtime
+        {
+            self.prepare_readonly_reads(over, body)?
+        } else {
+            Vec::new()
+        };
         let iteration = match over {
             Some(over) => Some(self.gen_loop_cursor(over)?),
             None => None,
@@ -3406,7 +3424,80 @@ impl<'a, 'm> Gen<'a, 'm> {
             .build_unconditional_branch(head_bb)
             .map_err(|e| e.to_string())?;
         self.builder.position_at_end(after_bb);
+        for slot in readonly {
+            self.builder
+                .build_call(self.fn_clear, &[slot.into()], "")
+                .map_err(|e| e.to_string())?;
+        }
         Ok(())
+    }
+
+    /// Select only fresh loop-local bindings whose array root is never
+    /// assigned by this body and which are assigned exactly once per iteration.
+    /// Unknown control flow/calls reject the whole loop. The numeric index is
+    /// still checked by number_index; strings/misses use the owned generic path.
+    fn prepare_readonly_reads(
+        &mut self,
+        over: Option<&LoopOver>,
+        body: &[Stmt],
+    ) -> Result<Vec<PointerValue<'a>>, String> {
+        fn writes(body: &[Stmt], counts: &mut HashMap<String, usize>) -> bool {
+            for stmt in body {
+                match stmt {
+                    Stmt::Assign { name, .. } => *counts.entry(name.clone()).or_default() += 1,
+                    Stmt::If { body, .. } if writes(body, counts) => {}
+                    Stmt::Assert(_) | Stmt::Break | Stmt::Continue => {}
+                    _ => return false,
+                }
+            }
+            true
+        }
+        let mut counts = HashMap::new();
+        if !writes(body, &mut counts) {
+            return Ok(Vec::new());
+        }
+        let mut owned = Vec::new();
+        for stmt in body {
+            let Stmt::Assign {
+                name,
+                value: Expr::Index(base, index),
+                ..
+            } = stmt
+            else {
+                continue;
+            };
+            let Expr::Ident(root) = &**base else { continue };
+            let numeric_index = match &**index {
+                Expr::Number(_) => true,
+                Expr::Ident(key) => self.scalar_names.get(key) == Some(&crate::kinds::Kind::Number),
+                _ => false,
+            };
+            let loop_binder =
+                over.is_some_and(|o| &o.value == name || o.key.as_ref() == Some(name));
+            if !numeric_index
+                || loop_binder
+                || counts.get(name) != Some(&1)
+                || counts.contains_key(root)
+                || self.lookup(name).is_some()
+                || self.lookup(root).is_none()
+                || self.scalar_names.contains_key(name)
+            {
+                continue;
+            }
+            let Stmt::Assign { value, .. } = stmt else {
+                unreachable!()
+            };
+            let site = value as *const Expr as usize;
+            let slot = self.alloc_slot("readfallback")?;
+            let reference = self
+                .entry_builder()
+                .build_alloca(self.i8_ptr_ty, "readborrow")
+                .map_err(|e| e.to_string())?;
+            self.readonly_reads.insert(site, (slot, reference));
+            self.borrowed_slots.insert(slot, reference);
+            owned.push(slot);
+        }
+        Ok(owned)
     }
 
     /// One version of a loop (`gen_loop`): its head, body and back edge,
@@ -4231,6 +4322,54 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// two cases can never both apply.
     fn gen_assign(&mut self, name: &str, value: &Expr) -> Result<(), String> {
         let site = value as *const Expr as usize;
+        if let Some(&(owned, reference)) = self.readonly_reads.get(&site) {
+            // Fast number_index only returns a stable in-bounds array slot.
+            // The generic path owns a snapshot, including a string character
+            // built in scratch storage. Both publish through the same cell.
+            let source = self.gen_operand(value)?;
+            let source = self.box_val(source)?;
+            self.bind(name, owned);
+            if self.version == Some(Version::Fast) {
+                let heap_at = self.value_field(owned, 4)?;
+                let heap = self
+                    .builder
+                    .build_load(self.i32_ty, heap_at, "readheap")
+                    .map_err(|e| e.to_string())?
+                    .into_int_value();
+                let held = self
+                    .builder
+                    .build_int_compare(IntPredicate::NE, heap, self.i32_ty.const_zero(), "readheld")
+                    .map_err(|e| e.to_string())?;
+                let clear = self
+                    .context
+                    .append_basic_block(self.current_function(), "readclear");
+                let ready = self
+                    .context
+                    .append_basic_block(self.current_function(), "readready");
+                self.builder
+                    .build_conditional_branch(held, clear, ready)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(clear);
+                self.builder
+                    .build_call(self.fn_clear, &[owned.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(ready)
+                    .map_err(|e| e.to_string())?;
+                self.builder.position_at_end(ready);
+                self.builder
+                    .build_store(reference, source)
+                    .map_err(|e| e.to_string())?;
+            } else {
+                self.builder
+                    .build_call(self.fn_copy, &[owned.into(), source.into()], "")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(reference, owned)
+                    .map_err(|e| e.to_string())?;
+            }
+            return Ok(());
+        }
         if self.take_last_sites.contains(&site) && !self.scalar_names.contains_key(name) {
             let Expr::Index(array, _) = value else {
                 unreachable!("last-element site")
@@ -4990,10 +5129,20 @@ impl<'a, 'm> Gen<'a, 'm> {
     /// Searches the scope stack innermost-to-outermost, returning the
     /// first match — the permanent slot for `name`, wherever it lives.
     fn lookup(&self, name: &str) -> Option<PointerValue<'a>> {
-        self.env
+        let slot = self
+            .env
             .iter()
             .rev()
-            .find_map(|scope| scope.get(name).copied())
+            .find_map(|scope| scope.get(name).copied())?;
+        match self.borrowed_slots.get(&slot) {
+            Some(reference) => Some(
+                self.builder
+                    .build_load(self.i8_ptr_ty, *reference, "readvalue")
+                    .expect("a readonly reference cell")
+                    .into_pointer_value(),
+            ),
+            None => Some(slot),
+        }
     }
 
     /// No `else`, ever — a deliberate language decision, not a missing
