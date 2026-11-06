@@ -1,0 +1,27 @@
+n = __SIZE__
+values = []
+state = 17
+i = 0
+loop
+    if i = n, break
+    values += { x = state, y = 1024 - state }
+    state = state + 17
+    if state ≥ 1024, state = state - 1024
+    i = i + 1
+result = 0
+round = 0
+loop
+    if round = 16, break
+    answer = 3000000
+    i = 0
+    loop
+        if i = n, break
+        v = values[i]
+        dx = v.x - round * 17
+        dy = v.y - round * 11
+        distance = dx * dx + dy * dy
+        if distance < answer, answer = distance
+        i = i + 1
+    result = result + answer
+    round = round + 1
+assert result = __EXPECTED__

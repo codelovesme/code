@@ -1,0 +1,24 @@
+n = __SIZE__
+values = []
+state = 17
+i = 0
+loop
+    if i = n, break
+    values += state
+    state = state + 17
+    if state ≥ 1024, state = state - 1024
+    i = i + 1
+result = 0
+round = 0
+loop
+    if round = 16, break
+    answer = 0
+    i = 0
+    loop
+        if i = n, break
+        v = values[i]
+        if v > 512 + round, answer = answer + v
+        i = i + 1
+    result = result + answer
+    round = round + 1
+assert result = __EXPECTED__

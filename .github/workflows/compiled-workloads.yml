@@ -1,0 +1,28 @@
+name: Measure compiled workload benchmarks
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: compiled-workloads
+  cancel-in-progress: false
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the pinned public release
+        run: |
+          mkdir -p "$RUNNER_TEMP/algorithm-release"
+          curl -fL --retry 3 https://github.com/codelovesme/code/releases/download/v2.24.1/code-v2.24.1-x86_64-linux.tar.gz -o "$RUNNER_TEMP/algorithm-release/code.tar.gz"
+          tar -xzf "$RUNNER_TEMP/algorithm-release/code.tar.gz" -C "$RUNNER_TEMP/algorithm-release"
+      - name: Validate all variants and sample serially on this fresh VM
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/compiled-workloads/run.py --code "$RUNNER_TEMP/algorithm-release/code-v2.24.1-x86_64-linux/code" --output-dir "$RUNNER_TEMP/algorithm-results" --runs 15
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compiled-workloads-v2.24.1
+          path: ${{ runner.temp }}/algorithm-results
+          retention-days: 30
