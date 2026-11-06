@@ -1,0 +1,43 @@
+name: Measure bounded UTF-8 character counts
+on:
+  workflow_dispatch:
+  push:
+    branches: [utf8-character-count-239]
+    paths: ["src/runtime.c", ".github/workflows/character-count.yml", "benchmarks/character-count/run.py"]
+permissions:
+  contents: read
+concurrency:
+  group: character-count
+  cancel-in-progress: false
+env:
+  LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install the LLVM backend used by both compilers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev
+      - name: Build the fixed source baseline and candidate identically
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$RUNNER_TEMP/count-before-source" 3f9f23c2ba0d442837db86af52a81a5a6ab94978
+          mkdir -p "$RUNNER_TEMP/count-compilers"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/count-build-before" cargo build --manifest-path "$RUNNER_TEMP/count-before-source/Cargo.toml" --workspace --release
+          cp "$RUNNER_TEMP/count-build-before/release/code" "$RUNNER_TEMP/count-compilers/before"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/count-build-after" cargo build --workspace --release
+          cp "$RUNNER_TEMP/count-build-after/release/code" "$RUNNER_TEMP/count-compilers/after"
+      - name: Validate and sample all before/after entries serially
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/character-count/run.py --before "$RUNNER_TEMP/count-compilers/before" --after "$RUNNER_TEMP/count-compilers/after" --output-dir "$RUNNER_TEMP/count-results" --runs 15
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: utf8-character-count
+          path: ${{ runner.temp }}/count-results
+          retention-days: 30

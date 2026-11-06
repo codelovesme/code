@@ -90,6 +90,7 @@ const CASES: &[(&str, &str)] = &[
     ("slice_self_of_number", "n = 5\nn = n[0, 1)\n"),
     ("text_slice_bad_start", "s = \"héllo\"\nx = s[true, 2)\n"),
     ("text_slice_bad_end", "s = \"héllo\"\nx = s[0, false)\n"),
+    ("length_on_number", "n ∈ Any = 3\nx = n[length]\n"),
     (
         "likely_number_is_null_times",
         "o = { x = 1 }\no.x = null\nb = o.x * 2\n",
