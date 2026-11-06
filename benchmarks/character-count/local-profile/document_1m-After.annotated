@@ -1,0 +1,31 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-239-profiles/document_1m-After.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 693275265
+Trigger: Program termination
+Profiled target:  /var/tmp/code-239-smoke/binaries/document_1m-After (PID 2319392, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                     
+--------------------------------------------------------------------------------
+1,982,412,093 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                      file:function
+--------------------------------------------------------------------------------
+1,476,467,922 (74.48%)  ???:code_slice [/var/tmp/code-239-smoke/binaries/document_1m-After]
+  270,500,458 (13.65%)  ???:0x0000000000162880 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+  201,332,864 (10.16%)  ???:code_length_of [/var/tmp/code-239-smoke/binaries/document_1m-After]
+   21,157,446 ( 1.07%)  ???:0x00000000001655c0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   12,286,912 ( 0.62%)  ???:0x0000000000164e30 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+

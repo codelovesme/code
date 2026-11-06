@@ -86,3 +86,22 @@ A retained implementation also needs full workspace and required PR CI,
 runtime/vendor synchronization, clippy/formatting, source-WASM/gallery checks,
 applicable application regressions and Aquarium WASM size. More than 5% growth
 needs explanation. Record preparation problems as well as successful checks.
+
+
+## Retained outcome
+
+[All measured outcomes](RESULTS.md): complete document-1m takes
+257.369 → 185.443 ms (27.95% less elapsed time / 1.39× as fast), on top of
+the retained slice improvement. RSS remains unchanged. All 510 samples and
+the small string_build cost (+4.10%) remain visible. Both PR CI jobs pass;
+PR 80 merged as 5ac7d82. This is a frozen matched 2.24.0 source experiment,
+not a newly published package or a comparison with another host's numbers.
+
+Reproduce the frozen candidate e659667 (branch utf8-character-count-239)
+against baseline 3f9f23c. Verify the retained data with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/character-count/verify.py \
+  benchmarks/character-count/results/2026-11-06-source \
+  --artifacts /path/to/downloaded-utf8-character-count
+```

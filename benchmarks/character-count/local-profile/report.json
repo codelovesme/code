@@ -1,0 +1,140 @@
+{
+  "baseline": "3f9f23c2ba0d442837db86af52a81a5a6ab94978",
+  "candidate": "e6596676cd4c02be7b4ec05c627b8fddf9fd069f",
+  "runtime": {
+    "sha256": "f436f9cbf030e20d44d65d706281ecc557c02b3ecc4ae55b3000057fbcd22c5e",
+    "bytes": 230588
+  },
+  "environment": {
+    "platform": "Linux-6.12.113+deb13-amd64-x86_64-with-glibc2.41",
+    "lscpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           46 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  12\nOn-line CPU(s) list:                     0-11\nVendor ID:                               GenuineIntel\nModel name:                              Intel(R) Core(TM) i7-5930K CPU @ 3.50GHz\nCPU family:                              6\nModel:                                   63\nThread(s) per core:                      2\nCore(s) per socket:                      6\nSocket(s):                               1\nStepping:                                2\nCPU(s) scaling MHz:                      90%\nCPU max MHz:                             3700.0000\nCPU min MHz:                             1200.0000\nBogoMIPS:                                6999.36\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 ds_cpl vmx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm cpuid_fault epb pti intel_ppin ssbd ibrs ibpb stibp tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm xsaveopt cqm_llc cqm_occup_llc dtherm ida arat pln pts vnmi md_clear flush_l1d\nVirtualization:                          VT-x\nL1d cache:                               192 KiB (6 instances)\nL1i cache:                               192 KiB (6 instances)\nL2 cache:                                1.5 MiB (6 instances)\nL3 cache:                                15 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-11\nVulnerability Gather data sampling:      Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             KVM: Mitigation: Split huge pages\nVulnerability L1tf:                      Mitigation; PTE Inversion; VMX conditional cache flushes, SMT vulnerable\nVulnerability Mds:                       Mitigation; Clear CPU buffers; SMT vulnerable\nVulnerability Meltdown:                  Mitigation; PTI\nVulnerability Mmio stale data:           Mitigation; Clear CPU buffers; SMT vulnerable\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; IBRS_FW; STIBP conditional; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace\n",
+    "cpu": 0,
+    "valgrind": "valgrind-3.24.0\n",
+    "gcc": "gcc (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
+  },
+  "compilers": {
+    "Before": {
+      "sha256": "dab972f9bf541ee6f7ed6ac7cae5dc0698289884e74ff5a6af67869bc16ee108",
+      "bytes": 59762616
+    },
+    "After": {
+      "sha256": "67029275825b4e6a7935fe365297d40ffeaf3c6e5894d40368c124d7d3073a89",
+      "bytes": 59764104
+    }
+  },
+  "boundary": "Matched source full programs; local instruction counts only, not timing percentages or a C/Rust ranking. No heap/layout change.",
+  "profiles": {
+    "document_64k-Before": {
+      "instructions": 186822527,
+      "source": {
+        "sha256": "dcda703bd673135defcd8d2d322a3551b89db8bc4b8a3f66c74f2018982931d7",
+        "bytes": 1127
+      },
+      "binary": {
+        "sha256": "cb4c5bb4070b8d4a4b7d5878cea74a2e11b2c70c34f9937eaf581ba9c0a7b249",
+        "bytes": 108176
+      },
+      "raw": {
+        "sha256": "7f20115f9d2b34e54beba8cd992e112e49b79115fa30cfa8afd42c4e6f0c4592",
+        "bytes": 31456
+      },
+      "annotation": {
+        "sha256": "ed04551dd5000969ed9d2b5eb7578c5e062aa63af3f69e41a439c0079c0ba619",
+        "bytes": 2668
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-239-profiles/document_64k-Before.callgrind",
+        "/var/tmp/code-239-smoke/binaries/document_64k-Before"
+      ]
+    },
+    "document_64k-After": {
+      "instructions": 124571419,
+      "source": {
+        "sha256": "dcda703bd673135defcd8d2d322a3551b89db8bc4b8a3f66c74f2018982931d7",
+        "bytes": 1127
+      },
+      "binary": {
+        "sha256": "695f92ab73f082c934068c94d4ec384a80aa153a5b46d7d04fcbda1312512db8",
+        "bytes": 108176
+      },
+      "raw": {
+        "sha256": "fd1a0ae9c4006027916e4dedfaead8ebf8af55533f518259e7667312adf89a08",
+        "bytes": 31515
+      },
+      "annotation": {
+        "sha256": "e81544089d0ece5403e1bcde2a335f0bf31acbfa9280b73adcbb31ac924637c3",
+        "bytes": 3282
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-239-profiles/document_64k-After.callgrind",
+        "/var/tmp/code-239-smoke/binaries/document_64k-After"
+      ]
+    },
+    "document_1m-Before": {
+      "instructions": 2978551111,
+      "source": {
+        "sha256": "4ecb470c008dc8d1cf6b044e04c7f7b48626c47d6ad789cd8fe38c0152a7c2ce",
+        "bytes": 1129
+      },
+      "binary": {
+        "sha256": "d1950dcb438c3ce17965a8bfd3b6f13f383a740104e46f9643ad2065459943aa",
+        "bytes": 108176
+      },
+      "raw": {
+        "sha256": "c06f0d71d709d90af1edb4485c8fe5314ab533c59a7e2413e84c525623d3400f",
+        "bytes": 32098
+      },
+      "annotation": {
+        "sha256": "fc099cca514ecc2d185770414ddd23b379b5fc178e30f58cea6d3d8c3e233aab",
+        "bytes": 1476
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-239-profiles/document_1m-Before.callgrind",
+        "/var/tmp/code-239-smoke/binaries/document_1m-Before"
+      ]
+    },
+    "document_1m-After": {
+      "instructions": 1982412093,
+      "source": {
+        "sha256": "4ecb470c008dc8d1cf6b044e04c7f7b48626c47d6ad789cd8fe38c0152a7c2ce",
+        "bytes": 1129
+      },
+      "binary": {
+        "sha256": "b26ecd6007888f51c7c29f583a6ff1b601a62218b7f57a4ce1c5ad0fada6ee29",
+        "bytes": 108176
+      },
+      "raw": {
+        "sha256": "b9ec6c2805520b9362085ecb3e2a65817bde3f655de603f964e71c82beb2cd83",
+        "bytes": 32159
+      },
+      "annotation": {
+        "sha256": "261807cc4020576e40b3966ed32fabc6196f979ade91d023790fcde353985ded",
+        "bytes": 1472
+      },
+      "command": [
+        "valgrind",
+        "--tool=callgrind",
+        "--error-exitcode=99",
+        "--cache-sim=no",
+        "--branch-sim=no",
+        "--callgrind-out-file=/var/tmp/code-239-profiles/document_1m-After.callgrind",
+        "/var/tmp/code-239-smoke/binaries/document_1m-After"
+      ]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "before": {
+    "bytes": 892938,
+    "sha256": "46ae374c656804e77fcf21989b663894eac78acf4fa7d7960cdc956e381347bc"
+  },
+  "after": {
+    "bytes": 892938,
+    "sha256": "46ae374c656804e77fcf21989b663894eac78acf4fa7d7960cdc956e381347bc"
+  },
+  "size_change_percent": 0.0
+}
