@@ -1,0 +1,43 @@
+name: Measure one-walk text slices
+on:
+  workflow_dispatch:
+  push:
+    branches: [utf8-slice-walk-238]
+    paths: ["src/runtime.c", ".github/workflows/document-slice.yml", "benchmarks/document-slice/run.py"]
+permissions:
+  contents: read
+concurrency:
+  group: document-slice
+  cancel-in-progress: false
+env:
+  LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install the LLVM backend used by both compilers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev
+      - name: Build the fixed source baseline and candidate identically
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$RUNNER_TEMP/slice-before-source" 6540a56a00abd41ff2a028769f2a42ded4298d24
+          mkdir -p "$RUNNER_TEMP/slice-compilers"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/slice-build-before" cargo build --manifest-path "$RUNNER_TEMP/slice-before-source/Cargo.toml" --workspace --release
+          cp "$RUNNER_TEMP/slice-build-before/release/code" "$RUNNER_TEMP/slice-compilers/before"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/slice-build-after" cargo build --workspace --release
+          cp "$RUNNER_TEMP/slice-build-after/release/code" "$RUNNER_TEMP/slice-compilers/after"
+      - name: Validate and sample all before/after entries serially
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/document-slice/run.py --before "$RUNNER_TEMP/slice-compilers/before" --after "$RUNNER_TEMP/slice-compilers/after" --output-dir "$RUNNER_TEMP/slice-results" --runs 15
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: utf8-slice-walk
+          path: ${{ runner.temp }}/slice-results
+          retention-days: 30

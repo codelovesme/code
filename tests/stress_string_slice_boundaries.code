@@ -1,0 +1,45 @@
+| An independent character-list oracle for finite/clamped slice boundaries.
+| Huge finite bounds must clamp before any machine-sized integer conversion.
+huge = 100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+bounds = [0 - huge, 0 - 7, 0 - 0.5, 0, 0.5, 1, 1.5, 2, 2.9, 5, 6, 7, 99, 4294967296, 18446744073709551616, huge]
+samples = [
+    { text = "", chars = [] }
+    { text = "a", chars = ["a"] }
+    { text = "aé中🙂é", chars = ["a", "é", "中", "🙂", "e", "́"] }
+]
+loop sample over samples
+    loop lo over bounds
+        loop hi over bounds
+            expected = ""
+            loop index, character over sample.chars
+                if index + 1 > lo and index + 1 ≤ hi
+                    expected += character
+            assert sample.text[lo, hi) = expected
+
+| Infinity already uses the original non-finite clamping path.
+infinity = huge * huge
+text = "aé中🙂é"
+assert text[0 - infinity, infinity) = text
+assert text[infinity, infinity) = ""
+assert text[0, 0 - infinity) = ""
+
+| All four interval forms, including the combining mark as its own scalar.
+assert text[1, 4) = "é中🙂"
+assert text[1, 4] = "é中🙂e"
+assert text(1, 4) = "中🙂"
+assert text(1, 4] = "中🙂e"
+assert text[4, length) = "é"
+
+| Cutting the assigned value must preserve aliases and nested snapshots.
+saved = text
+text = text[1, length - 1)
+assert text = "é中🙂e"
+assert saved = "aé中🙂é"
+record = { text = saved }
+original = record
+record.text = record.text[2, 4)
+assert record.text = "中🙂"
+assert original.text = saved
+record.text = record.text[9, huge)
+assert record.text = ""
+assert original.text = saved

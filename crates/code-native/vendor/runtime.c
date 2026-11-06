@@ -980,6 +980,36 @@ void code_slice(CodeValue *out, const CodeValue *value, const CodeValue *from,
         return;
     }
     if (value->tag == CODE_STR) {
+        if (__builtin_isfinite(from->number) && __builtin_isfinite(to->number)) {
+            /* Find both character boundaries in one forward walk. A prefix
+             * must not scan the whole input just to clamp its bounds. Saturate
+             * before converting: a finite double may exceed size_t's range,
+             * and reaching the terminator supplies the upper clamp instead.
+             * The original path below retains non-finite-bound behavior. */
+            size_t limit = (size_t)-1;
+            size_t lo = from->number <= 0 ? 0 :
+                (from->number >= (double)limit ? limit : (size_t)from->number);
+            size_t hi = to->number <= 0 ? 0 :
+                (to->number >= (double)limit ? limit : (size_t)to->number);
+            if (lo >= hi) {
+                code_str(out, "");
+                return;
+            }
+            size_t offset = 0, seen = 0;
+            while (value->str[offset] && seen < lo) {
+                offset++;
+                while ((value->str[offset] & 0xC0) == 0x80) offset++;
+                seen++;
+            }
+            size_t begin = offset;
+            while (value->str[offset] && seen < hi) {
+                offset++;
+                while ((value->str[offset] & 0xC0) == 0x80) offset++;
+                seen++;
+            }
+            str_owned_n(out, value->str + begin, offset - begin);
+            return;
+        }
         /* Characters, not bytes, and the same clamping an array gets. */
         double chars = 0;
         for (const char *p = value->str; *p; p++) {
