@@ -66,11 +66,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('results', type=Path)
     parser.add_argument('--artifacts', type=Path)
+    parser.add_argument('--release-manifest', type=Path,
+                        default=REPO / 'benchmarks/website-evidence/releases/v2.23.2.json')
     args = parser.parse_args()
     a = audit(args.results / 'comparison', 485, 35, args.artifacts / 'comparison' if args.artifacts else None)
     b = audit(args.results / 'history', 300, 20, args.artifacts / 'history' if args.artifacts else None)
     release, history = a['public_release'], b['release']
-    spec = json.loads((REPO / 'benchmarks/website-evidence/releases/v2.23.2.json').read_text())
+    manifest = args.release_manifest.resolve(strict=True)
+    spec = json.loads(manifest.read_text())
     assert release['tag'] == history['tag'] == spec['tag']
     assert release['source_commit'] == history['source'] == spec['source_commit']
     for mode, field in [('launcher', 'launcher_sha256'), ('driver', 'driver_sha256')]:
@@ -79,7 +82,7 @@ def main():
     assert a['environment']['github_run_id'] == b['environment']['github_run_id'] != None
     assert a['environment']['pinned_logical_cpu'] == b['environment']['pinned_cpu']
     assert a['environment']['os_release'] == b['environment']['os_release']
-    assert a['release_manifest']['sha256'] == b['release_manifest']['sha256'] == digest(REPO / 'benchmarks/website-evidence/releases/v2.23.2.json')
+    assert a['release_manifest']['sha256'] == b['release_manifest']['sha256'] == digest(manifest)
     print('785 CSV/JSON rows, all 55 summaries/ranges/MAD, source hashes and shared host/CPU/public release verified' + ('; native/source/wrapper/warm-cache artifact hashes verified' if args.artifacts else '; artifact bytes not requested'))
 
 

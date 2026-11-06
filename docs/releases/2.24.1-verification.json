@@ -1,0 +1,173 @@
+{
+  "tag": "v2.24.1",
+  "release_url": "https://github.com/codelovesme/code/releases/tag/v2.24.1",
+  "release_assets": 248,
+  "cli_tar_sha256": "3ecbd6dda3abce8783de995c560d5f157d67e062bb667efa28e522d2fe87e986",
+  "cli": {
+    "code": {
+      "sha256": "89e0e818c174c90205a940b5ec525088274cda4a44d63d0d509e3cc32bc0be47",
+      "bytes": 558880
+    },
+    "code-driver": {
+      "sha256": "cfb090c3b197ab7d55e28f2ce4285b354b44a824263a71a17e3554e651bf30e3",
+      "bytes": 59505272
+    }
+  },
+  "vsix": "code-language-2.24.1.vsix",
+  "module_lock": {
+    "modules": {
+      "arrays": {
+        "name": "arrays",
+        "version": "2.24.1",
+        "source": "https://github.com/codelovesme/code/releases/tag/v2.24.1",
+        "asset": "arrays-linux-x86_64.so",
+        "sha256": "d3c62d1e6c9f0b55ccea8645188c7081f74b84686e6ac400f8dac0f4563d75d2",
+        "handlers": [
+          "Length",
+          "Contains",
+          "IndexOf",
+          "Reverse",
+          "Slice",
+          "Unique",
+          "Sort",
+          "Sum",
+          "Min",
+          "Max"
+        ],
+        "global": false,
+        "static_archive": {
+          "asset": "arrays-linux-x86_64.a",
+          "sha256": "09fd5eb1d1f15171c5471e7b9addd0975fa702d5c3bd4706d1527a4a9a5504a0",
+          "link": [
+            "-lgcc_s",
+            "-lutil",
+            "-lrt",
+            "-lpthread",
+            "-lm",
+            "-ldl",
+            "-lc"
+          ]
+        }
+      },
+      "console": {
+        "name": "console",
+        "version": "2.24.1",
+        "source": "https://github.com/codelovesme/code/releases/tag/v2.24.1",
+        "asset": "console-linux-x86_64.so",
+        "sha256": "a069c27dd5b709bec6be0f81235711dfaf0c1217acf2a8213e58c8d6985bdb4e",
+        "handlers": [
+          "Print"
+        ],
+        "global": false,
+        "static_archive": {
+          "asset": "console-linux-x86_64.a",
+          "sha256": "254aa9f2e012bd87d337507e9bfb59aa1f34fff7d7af4a7bc1cdd84c8753d781",
+          "link": [
+            "-lgcc_s",
+            "-lutil",
+            "-lrt",
+            "-lpthread",
+            "-lm",
+            "-ldl",
+            "-lc"
+          ]
+        }
+      },
+      "vacuole": {
+        "name": "vacuole",
+        "version": "2.24.1",
+        "source": "https://github.com/codelovesme/code/releases/tag/v2.24.1",
+        "asset": "vacuole-linux-x86_64.so",
+        "sha256": "511f542fc6adc4cb15191a67a82d1bedd639f3d4693299ee1b62d754aac5d782",
+        "handlers": [
+          "Config",
+          "Set",
+          "Get",
+          "GetMany",
+          "Remove",
+          "RemovePrefix",
+          "Keys",
+          "Stats"
+        ],
+        "setup": "Config",
+        "global": false,
+        "static_archive": {
+          "asset": "vacuole-linux-x86_64.a",
+          "sha256": "ff5c05ebda6da278eb0306ad38d5bbf89ed41ef6d2e3dc0d690c2e9102051817",
+          "link": [
+            "-lgcc_s",
+            "-lutil",
+            "-lrt",
+            "-lpthread",
+            "-lm",
+            "-ldl",
+            "-lc"
+          ]
+        }
+      }
+    }
+  },
+  "npm_integrity": "sha512-6AMxiToNSPEDgJfVLzdmORdDt/vXzr3sKMsciC2cltyMx+OIssGlidmWdzOyfEUFTw5hb4+Hz8d8b+fwn+2doQ==",
+  "crate": {
+    "version": "2.24.1",
+    "source": "registry+https://github.com/rust-lang/crates.io-index"
+  },
+  "checks": [
+    "actual CLI launcher+driver versions",
+    "Bool, UTF-8 bounds and character-count regressions interpret/dev/release/native leaks",
+    "console+arrays+vacuole registry pins, vacuole fixture and static-linked application",
+    "VSIX manifest and both platform payloads",
+    "published npm smoke suite",
+    "registry code-native ABI consumer"
+  ],
+  "verification_harness_correction": "The first vacuole fixture was named vacuole.code and shadowed its installed module, causing a circular-link diagnostic. Renamed to module-regression.code and reran the fixture against the actual installed module; no product change.",
+  "release_commit": "97d3df30eda7943100ed128880bbc3c2457ad055",
+  "verified_at_utc": "2026-11-06T11:47:15.351747+00:00",
+  "workspace": {
+    "local": {
+      "passed": 343,
+      "failed": 0,
+      "ignored": 7,
+      "summaries": 69
+    },
+    "ci": {
+      "run_id": 42210051553,
+      "passed": 343,
+      "failed": 0,
+      "ignored": 7,
+      "summaries": 69
+    }
+  },
+  "workflows": [
+    {
+      "conclusion": "success",
+      "databaseId": 42211737365,
+      "name": "Release",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 42211737233,
+      "name": "Publish npm (code-wasm)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 42211737509,
+      "name": "Publish crates.io (code-native)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 42211737363,
+      "name": "Publish VSIX (editor extension)",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 42211737292,
+      "name": "Publish modules",
+      "status": "completed"
+    }
+  ]
+}
