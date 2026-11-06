@@ -104,6 +104,9 @@ pub struct Layouts {
     /// only ever makes a number (or null): their address. Codegen reads the number in
     /// line when the tag says so, and calls the runtime when it does not.
     pub numbers: std::collections::HashSet<usize>,
+    /// Reads inferred as Array. This is a selection hint, never a replacement
+    /// for runtime tag/bounds checks (nullable or external values still exist).
+    pub arrays: std::collections::HashSet<usize>,
 }
 
 pub fn field_layouts(program: &Program) -> Layouts {
@@ -272,8 +275,14 @@ fn check_file_into(
         }
     }
     for (site, read) in std::mem::take(&mut infer.read_sites) {
-        if matches!(infer.shape(read), Shape::Scalar(ValueKind::Number)) {
-            infer.layouts.numbers.insert(site);
+        match infer.shape(read) {
+            Shape::Scalar(ValueKind::Number) => {
+                infer.layouts.numbers.insert(site);
+            }
+            Shape::Array(_) => {
+                infer.layouts.arrays.insert(site);
+            }
+            _ => {}
         }
     }
 }

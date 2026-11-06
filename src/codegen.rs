@@ -1101,6 +1101,7 @@ pub(crate) fn compile_to_object_traced(
         binding_slots: HashMap::new(),
         readonly_reads: HashMap::new(),
         borrowed_slots: HashMap::new(),
+        fast_borrowed_values: HashMap::new(),
         scalar_names: HashMap::new(),
         scalar_slots: HashMap::new(),
         location_slot,
@@ -1593,6 +1594,9 @@ struct Gen<'a, 'm> {
     // into a later generic statement sees the value chosen by the fast one.
     readonly_reads: HashMap<usize, (PointerValue<'a>, PointerValue<'a>)>,
     borrowed_slots: HashMap<PointerValue<'a>, PointerValue<'a>>,
+    // Keep the fast array GEP visible to alias.rs BEFORE mem2reg; loading the
+    // reference cell here would erase the heap-region proof during tagging.
+    fast_borrowed_values: HashMap<PointerValue<'a>, PointerValue<'a>>,
     scalar_names: HashMap<String, crate::kinds::Kind>,
     /// The bindings that are a plain `double` or flag, not a slot, by the
     /// stack slot that holds them.
@@ -3384,6 +3388,10 @@ impl<'a, 'm> Gen<'a, 'm> {
             && !contains_loop(body)
             && self.handler_frame.is_none()
             && !self.tracing
+            && !self.flows
+            // Browser number-format imports can synchronously fire an event.
+            // With no handlers there is no program state they can change.
+            && (!self.wasm || self.handler_fns.is_empty())
             && self.native_links.is_empty()
             && !self.links_at_runtime
         {
@@ -3474,7 +3482,11 @@ impl<'a, 'm> Gen<'a, 'm> {
             };
             let loop_binder =
                 over.is_some_and(|o| &o.value == name || o.key.as_ref() == Some(name));
-            if !numeric_index
+            if !self
+                .layouts
+                .arrays
+                .contains(&(&**base as *const Expr as usize))
+                || !numeric_index
                 || loop_binder
                 || counts.get(name) != Some(&1)
                 || counts.contains_key(root)
@@ -4326,9 +4338,6 @@ impl<'a, 'm> Gen<'a, 'm> {
             // Fast number_index only returns a stable in-bounds array slot.
             // The generic path owns a snapshot, including a string character
             // built in scratch storage. Both publish through the same cell.
-            let source = self.gen_operand(value)?;
-            let source = self.box_val(source)?;
-            self.bind(name, owned);
             if self.version == Some(Version::Fast) {
                 let heap_at = self.value_field(owned, 4)?;
                 let heap = self
@@ -4357,6 +4366,14 @@ impl<'a, 'm> Gen<'a, 'm> {
                     .build_unconditional_branch(ready)
                     .map_err(|e| e.to_string())?;
                 self.builder.position_at_end(ready);
+            }
+            // Release an earlier generic snapshot before establishing fresh
+            // array/shape facts. The immutable root keeps the source alive.
+            let source = self.gen_operand(value)?;
+            let source = self.box_val(source)?;
+            self.bind(name, owned);
+            if self.version == Some(Version::Fast) {
+                self.fast_borrowed_values.insert(owned, source);
                 self.builder
                     .build_store(reference, source)
                     .map_err(|e| e.to_string())?;
@@ -5134,6 +5151,11 @@ impl<'a, 'm> Gen<'a, 'm> {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).copied())?;
+        if self.version == Some(Version::Fast) {
+            if let Some(value) = self.fast_borrowed_values.get(&slot) {
+                return Some(*value);
+            }
+        }
         match self.borrowed_slots.get(&slot) {
             Some(reference) => Some(
                 self.builder
