@@ -1,0 +1,11 @@
+{
+  "program_sha256": "7acbd5b62b94b8c706a3665c8727fa2e35f2286fdbd59da3b508dccaab64db94",
+  "baseline": "f18461d",
+  "first_candidate": "5db4eda",
+  "expected_exits": {
+    "baseline": 0,
+    "first": 1,
+    "second": 0
+  },
+  "scope": "Fractional numeric formatting host import fires Change synchronously during a read-only loop; owned row must preserve x=1 while records[0].x becomes 99. Integer formatting stays local and is not a callback witness."
+}

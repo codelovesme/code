@@ -1,0 +1,29 @@
+{
+  "workspace": {
+    "passed": 346,
+    "failed": 0,
+    "ignored": 7,
+    "summaries": 69,
+    "log_sha256": "bf671fe09399026fc68c6c2b5b16dde73aad55820b8f57a35c64a4f7bb35c8bb"
+  },
+  "baseline": "f18461d9706406a484ded1955c1d6ce62c3f4c54",
+  "candidate_codegen_sha256": "0203ea7bec36bdd1b4a0963cdd18e3133aa74159d844484876231bfb382e096b",
+  "clippy": "workspace all targets, warnings denied passed",
+  "regressions": "Interpreter/native dev+release and compiled-WASM dev+release; alias, mutation exclusion, shape bailout before/after read, generic scratch, mixed values and escaped snapshots; native leak/allocator checks",
+  "workloads": "All 25 cases/50 source outputs checked locally; original 23 candidate programs also passed native leak/allocator checks",
+  "applications": "102 frozen fixtures, 204 native checks; exact prior validated fixture hashes; no live app changes claimed",
+  "site": "178 pinned-engine examples, 10 static tests; all 50 generated files unchanged",
+  "runtime_and_abi": "Unchanged; src/runtime.c and vendor remain byte identical",
+  "initial_test_setup_failures": [
+    {
+      "failure": "module_identity packaging cp could not find math.so",
+      "cause": "CARGO_TARGET_DIR was inherited by a script with a fixed output lookup",
+      "resolution": "Use cargo --target-dir instead of an exported target override; isolated module_identity and final full workspace passed"
+    },
+    {
+      "failure": "language suite could not find readonly_iteration.code",
+      "cause": "Fixture renamed to stress_readonly_iteration.code while test discovery was active",
+      "resolution": "Froze source/test hashes, reran targeted WASM and complete workspace without mutations; final run passed"
+    }
+  ]
+}

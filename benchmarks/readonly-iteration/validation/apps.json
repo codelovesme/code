@@ -1,5 +1,5 @@
 {
-  "compiler_sha256": "7f97384fa9e49a9ae780638f3d748045d12d14f81ff96462895cb01e054b41ad",
+  "compiler_sha256": "8bb501441f5264137304c2d58dce5aff838fddf3eb476c040f1395cd2acd0b63",
   "fixture_collection": "frozen 102-fixture regression corpus from task 234, copied; no live application changes",
   "fixtures": [
     {

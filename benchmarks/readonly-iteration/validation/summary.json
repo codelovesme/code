@@ -1,14 +1,14 @@
 {
   "workspace": {
-    "passed": 346,
+    "passed": 347,
     "failed": 0,
     "ignored": 7,
     "summaries": 69,
-    "log_sha256": "bf671fe09399026fc68c6c2b5b16dde73aad55820b8f57a35c64a4f7bb35c8bb"
+    "log_sha256": "97b0b0fa5b0c96f9a49deaf2858b54dfb0eb27f3174556b9cc1ec3184b61d8d0"
   },
   "baseline": "f18461d9706406a484ded1955c1d6ce62c3f4c54",
-  "candidate_codegen_sha256": "0203ea7bec36bdd1b4a0963cdd18e3133aa74159d844484876231bfb382e096b",
-  "clippy": "workspace all targets, warnings denied passed",
+  "candidate_codegen_sha256": "745550bb49879037f5e652501bf3e7f4d9fcdbe0d196c467c4e52e57e941406f",
+  "clippy": "Second candidate workspace all targets, warnings denied passed",
   "regressions": "Interpreter/native dev+release and compiled-WASM dev+release; alias, mutation exclusion, shape bailout before/after read, generic scratch, mixed values and escaped snapshots; native leak/allocator checks",
   "workloads": "All 25 cases/50 source outputs checked locally; original 23 candidate programs also passed native leak/allocator checks",
   "applications": "102 frozen fixtures, 204 native checks; exact prior validated fixture hashes; no live app changes claimed",
@@ -25,5 +25,13 @@
       "cause": "Fixture renamed to stress_readonly_iteration.code while test discovery was active",
       "resolution": "Froze source/test hashes, reran targeted WASM and complete workspace without mutations; final run passed"
     }
+  ],
+  "candidate_infer_sha256": "7f8e49934667a57b0e304f9c7292de143413da12410e2cb1e8fd5d1860b65130",
+  "revision_notes": [
+    "First elapsed trial rejected by unchanged gates; all 750 samples retained.",
+    "Selection now requires inferred Array root; native ASCII/Unicode artifacts match baseline exactly.",
+    "Direct fast SSA pointer preserves alias tagging; generic bailouts still load shared cell.",
+    "Both tracing modes and browser programs with handlers are excluded.",
+    "Fractional-format host callback: baseline passes, first candidate violates snapshot, revised candidate passes. Initial integer-format probe never called host and was corrected."
   ]
 }

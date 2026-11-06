@@ -1,0 +1,48 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-262-profile-second-final/weighted-full.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 13184308
+Trigger: Program termination
+Profiled target:  /var/tmp/code-262-profile-second-final/weighted-full (PID 3273981, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                  
+--------------------------------------------------------------------------------
+52,978,950 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                   file:function
+--------------------------------------------------------------------------------
+27,132,285 (51.21%)  ???:main [/var/tmp/code-262-profile-second-final/weighted-full]
+ 4,568,460 ( 8.62%)  ???:0x00000000000a0fe0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 3,670,024 ( 6.93%)  ???:code_object_template [/var/tmp/code-262-profile-second-final/weighted-full]
+ 3,375,621 ( 6.37%)  ???:0x00000000000a02e0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 2,621,673 ( 4.95%)  ???:code_release.part.0 [/var/tmp/code-262-profile-second-final/weighted-full]
+ 2,031,680 ( 3.83%)  ???:free [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,769,490 ( 3.34%)  ???:code_move [/var/tmp/code-262-profile-second-final/weighted-full]
+ 1,638,552 ( 3.09%)  ???:code_add_take [/var/tmp/code-262-profile-second-final/weighted-full]
+ 1,409,118 ( 2.66%)  ???:malloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,245,824 ( 2.35%)  ???:0x000000000009ed80 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,081,344 ( 2.04%)  ???:code_number [/var/tmp/code-262-profile-second-final/weighted-full]
+   753,528 ( 1.42%)  ???:0x000000000009eaf0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   675,213 ( 1.27%)  ???:0x0000000000162880 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   323,563 ( 0.61%)  ???:malloc_usable_size [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   262,144 ( 0.49%)  ???:drop_object_index [/var/tmp/code-262-profile-second-final/weighted-full]
+   131,113 ( 0.25%)  ???:code_release [/var/tmp/code-262-profile-second-final/weighted-full]
+   131,100 ( 0.25%)  ???:0x000000000009e390 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    27,086 ( 0.05%)  ???:0x0000000000013780 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    26,685 ( 0.05%)  ???:0x000000000000e870 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    26,155 ( 0.05%)  ???:0x000000000000a220 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    19,641 ( 0.04%)  ???:0x000000000000ae90 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+     7,329 ( 0.01%)  ???:0x0000000000024740 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+

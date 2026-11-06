@@ -14,12 +14,16 @@ binary identities are retained. In weighted/nearest, the original local binding
 costs many code_copy instructions; scalar threshold already has a guarded path.
 
 Candidate in codegen.rs: a freshly declared, once-assigned `v = values[i]` in an
-innermost loop can borrow an array element while the root remains unchanged.
+innermost loop can borrow an array element while the root remains unchanged. Roots must be inferred as Array; this only
+selects candidates and does not remove runtime checks.
 Only a simple number/known-numeric-name index qualifies. No native links,
-runtime links, tracing, handler frame, emits or unknown control flow. Existing
+runtime links, either tracing mode, handler frame, emits or unknown control flow.
+Browser programs with handlers are also excluded: number-format imports can
+synchronously fire an event and change the source between statements. Existing
 bindings, loop binders, source mutation or read-binding mutation are excluded.
 
-Both loop versions share a pointer cell. A successful guarded fast array read
+Both loop versions share a pointer cell for generic bailouts; the fast version
+keeps its direct array GEP visible so alias tagging can retain the heap proof. A successful guarded fast array read
 publishes the borrowed slot. The generic version owns a normal snapshot,
 including string-character scratch/missing-index values. A later statement
 bailing from fast to generic reads the same cell. A subsequent fast read drops
@@ -54,3 +58,13 @@ Local `run.py --before /source/before --after /source/after --output-dir /new/pa
 Full workspace, mutation/alias/bailout/scratch regressions in interpreter,
 native dev/release and compiled-WASM dev/release, leak/allocator checks and
 applicable frozen app/site checks must pass before retaining the change.
+
+## First candidate rejected
+
+[The first hosted trial](results/2026-11-06-first-candidate/README.md) retains all
+750 samples, including +46.05% ASCII regression and insufficient large-target
+gains. The revised candidate selects inferred Array roots, preserves direct
+fast SSA pointers for alias tagging, and clears earlier generic ownership
+before establishing new array facts. The fixed 25-case protocol and gates are
+unchanged. Browser callback snapshot regression additionally guards against
+reentrant mutation from a number-format host import.
