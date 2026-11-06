@@ -1,0 +1,11 @@
+==2956343== Callgrind, a call-graph generating cache profiler
+==2956343== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==2956343== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==2956343== Command: /var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release
+==2956343== 
+==2956343== For interactive control, run 'callgrind_control -h'.
+==2956343== 
+==2956343== Events    : Ir
+==2956343== Collected : 74834511
+==2956343== 
+==2956343== I   refs:      74,834,511

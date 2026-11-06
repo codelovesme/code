@@ -1,0 +1,3978 @@
+{
+  "status": "complete",
+  "source_revision": "600e4f335bc9ed1c7451f8966198948a0d64a321",
+  "release": {
+    "tag": "v2.24.1",
+    "source": "97d3df30eda7943100ed128880bbc3c2457ad055",
+    "launcher": {
+      "path": "/home/runner/work/_temp/algorithm-release/code-v2.24.1-x86_64-linux/code",
+      "sha256": "89e0e818c174c90205a940b5ec525088274cda4a44d63d0d509e3cc32bc0be47",
+      "bytes": 558880
+    },
+    "driver": {
+      "path": "/home/runner/work/_temp/algorithm-release/code-v2.24.1-x86_64-linux/code-driver",
+      "sha256": "cfb090c3b197ab7d55e28f2ce4285b354b44a824263a71a17e3554e651bf30e3",
+      "bytes": 59505272
+    }
+  },
+  "environment": {
+    "platform": "Linux-7.0.0-1017-azure-x86_64-with-glibc2.39",
+    "lscpu": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               AuthenticAMD\nModel name:                              AMD EPYC 7763 64-Core Processor\nCPU family:                              25\nModel:                                   1\nThread(s) per core:                      2\nCore(s) per socket:                      2\nSocket(s):                               1\nStepping:                                1\nBogoMIPS:                                4890.85\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl tsc_reliable nonstop_tsc cpuid extd_apicid aperfmperf tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy svm cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves user_shstk clzero xsaveerptr rdpru arat npt nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold v_vmsave_vmload umip vaes vpclmulqdq rdpid fsrm\nVirtualization:                          AMD-V\nHypervisor vendor:                       Microsoft\nVirtualization type:                     full\nL1d cache:                               64 KiB (2 instances)\nL1i cache:                               64 KiB (2 instances)\nL2 cache:                                1 MiB (2 instances)\nL3 cache:                                32 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Vulnerable: Safe RET, no microcode\nVulnerability Spec store bypass:         Vulnerable\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Vulnerable: No microcode\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Not affected\n",
+    "github_run_id": "42260715585",
+    "runner_image": "20261101.360.1",
+    "tools": {
+      "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+      "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+    },
+    "rust_verbose": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1\n",
+    "load_before_preparation": "0.44 0.10 0.03 1/265 2349\n",
+    "os_release": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+    "tool_executables": {
+      "gcc": {
+        "path": "/usr/bin/x86_64-linux-gnu-gcc-13",
+        "sha256": "1b99826121ae6682a634e5efe09bd3e3df58ce58e0b28f849114ab5b89139c26",
+        "bytes": 1023032
+      },
+      "rustc": {
+        "path": "/home/runner/.cargo/bin/rustup",
+        "sha256": "5be191e8c70a5007074254cb74d78dbfdd25cd5a61c27de7b8e5410122ec24f4",
+        "bytes": 21139856
+      }
+    },
+    "actual_rustc": {
+      "path": "/home/runner/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc",
+      "sha256": "b53b780f77f952062f8ca8a3b70aef2390b1e45ad91939be94afdc9543026853",
+      "bytes": 648536
+    },
+    "allowed_cpus": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "pinned_cpu": 0,
+    "pressure_before": "some avg10=1.79 avg60=1.86 avg300=0.51 total=1786985\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+    "pressure_after": "some avg10=1.23 avg60=1.72 avg300=0.52 total=1876104\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+  },
+  "protocol": {
+    "runs": 15,
+    "seed": 20261106,
+    "algorithms": "weighted record scoring; threshold aggregation; nearest point; 16 queries each",
+    "cases": [
+      [
+        "weighted",
+        32768
+      ],
+      [
+        "weighted",
+        262144
+      ],
+      [
+        "threshold",
+        32768
+      ],
+      [
+        "threshold",
+        262144
+      ],
+      [
+        "nearest",
+        32768
+      ],
+      [
+        "nearest",
+        262144
+      ]
+    ],
+    "includes": "startup, input construction, algorithm, result checks and cleanup",
+    "rss": "Linux wait4 largest process resident peak; not live heap or allocation count",
+    "boundary": "separate fresh-host pilot; never merge with the old host report"
+  },
+  "sources": {
+    "benchmarks/compiled-workloads/weighted.code": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/weighted.code",
+      "sha256": "1884996b64b4c16c606b2ec982939a3461afd70acb8f5a13c091edda3e938335",
+      "bytes": 502
+    },
+    "benchmarks/compiled-workloads/weighted.c": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/weighted.c",
+      "sha256": "853dd4e0cf96c1ca26e1a6cc837c89329770ca358eb515e6698b47c819e9e689",
+      "bytes": 780
+    },
+    "benchmarks/compiled-workloads/weighted.rs": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/weighted.rs",
+      "sha256": "006a62cc599ee4ea303348e92a811e3eb9e0d95437a69ba1711a274d5a29f436",
+      "bytes": 742
+    },
+    "benchmarks/compiled-workloads/threshold.code": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/threshold.code",
+      "sha256": "1c3c92be58a0f65f9e28503737711dc8536b73ea47da189541f5317afce7222e",
+      "bytes": 445
+    },
+    "benchmarks/compiled-workloads/threshold.c": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/threshold.c",
+      "sha256": "ac5f68fc28dadc4d8ffa5f465b94d3743fff0225a36b4bf2792a73ade3a3a592",
+      "bytes": 671
+    },
+    "benchmarks/compiled-workloads/threshold.rs": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/threshold.rs",
+      "sha256": "6b342e183be421d74d2d4b34c62e0d7d2e5e056b2f11d4655c251054e91afb6d",
+      "bytes": 569
+    },
+    "benchmarks/compiled-workloads/nearest.code": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/nearest.code",
+      "sha256": "239f59d01485f896b93edf906ff824f45f56a96c7f90ba41895d792c383c516a",
+      "bytes": 574
+    },
+    "benchmarks/compiled-workloads/nearest.c": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/nearest.c",
+      "sha256": "bcd8584291b7e8d9216b84d24a4783c71ac9af48979c8818e5d9bf3a2973fe67",
+      "bytes": 894
+    },
+    "benchmarks/compiled-workloads/nearest.rs": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/nearest.rs",
+      "sha256": "222fde407e73ec1cfce80aa9c6a30b6614f462e9b38dd94a2e5e40119683b68a",
+      "bytes": 848
+    },
+    "benchmarks/compiled-workloads/run.py": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/run.py",
+      "sha256": "25a91b26fd1d6e0bb8c3d61ac8c104c4c230308314cb4d7c651d74ec7f35e82e",
+      "bytes": 9054
+    },
+    "benchmarks/compiled-workloads/README.md": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/README.md",
+      "sha256": "81d6a5fc2cc884bb4c799ec433106752001918f71323706061b04d903266e27f",
+      "bytes": 3189
+    },
+    "benchmarks/compiled-workloads/verify.py": {
+      "path": "/home/runner/work/code/code/benchmarks/compiled-workloads/verify.py",
+      "sha256": "b75bceac71e0d75c826e853cb0f39f0c708a69fea55c2e9aebe05237e767bb21",
+      "bytes": 3210
+    },
+    "benchmarks/website-evidence/releases/v2.24.1.json": {
+      "path": "/home/runner/work/code/code/benchmarks/website-evidence/releases/v2.24.1.json",
+      "sha256": "8385e58f94b304252e30472d6bc802ed98bee1737c06a314c4534d52afc6d95f",
+      "bytes": 467
+    },
+    ".github/workflows/compiled-workloads.yml": {
+      "path": "/home/runner/work/code/code/.github/workflows/compiled-workloads.yml",
+      "sha256": "354811210d0ba479ecd707e014f63fb6be8c808778d708e46492e4901962dfde",
+      "bytes": 1161
+    },
+    "benchmarks/website-evidence/run.py": {
+      "path": "/home/runner/work/code/code/benchmarks/website-evidence/run.py",
+      "sha256": "74474e9019c4af1958f72844bd5c702288d3863b54f25dd9ad203dcd38d9c610",
+      "bytes": 20527
+    },
+    "benchmarks/language-comparison/peak.c": {
+      "path": "/home/runner/work/code/code/benchmarks/language-comparison/peak.c",
+      "sha256": "59019e0946ae15f3b8f33b9c7507e504821050b1461d8bc0645d11ac744d1611",
+      "bytes": 1553
+    }
+  },
+  "builds": [
+    {
+      "workload": "weighted_32768",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/weighted_32768.code",
+        "sha256": "4ebd0de3c0957e9b65a58d148042c9edbb2545010889019c609043c3606bad90",
+        "bytes": 497
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.24.1-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/weighted_32768.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/weighted_32768-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/weighted_32768-Code-release",
+        "sha256": "8d103610f1b6f437bcbd41dab3f26a96fbd7f69b9ed9801afb69d12a398f4d81",
+        "bytes": 102160
+      }
+    },
+    {
+      "workload": "weighted_32768",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/weighted_32768.c",
+        "sha256": "2d8d2cdd946bd259fffcc3531d5f372389696b74821cbf19ddc90f5d29c41df1",
+        "bytes": 775
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/weighted_32768.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/weighted_32768-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/weighted_32768-C-O2",
+        "sha256": "a06d193c17eabca26f9c31be2e18045f15db7a305ee2946de170dfd44f0c904f",
+        "bytes": 16016
+      }
+    },
+    {
+      "workload": "weighted_32768",
+      "mode": "C O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/weighted_32768.c",
+        "sha256": "2d8d2cdd946bd259fffcc3531d5f372389696b74821cbf19ddc90f5d29c41df1",
+        "bytes": 775
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O3",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/weighted_32768.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/weighted_32768-C-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/weighted_32768-C-O3",
+        "sha256": "a06d193c17eabca26f9c31be2e18045f15db7a305ee2946de170dfd44f0c904f",
+        "bytes": 16016
+      }
+    },
+    {
+      "workload": "weighted_32768",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/weighted_32768.rs",
+        "sha256": "9383071c41ef2ccbbe9508aaf0d12f1f061d55b4b28b3418802004f4ccb4f736",
+        "bytes": 737
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/weighted_32768.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/weighted_32768-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/weighted_32768-Rust-O3",
+        "sha256": "7ae31f29514582d39ab58ae6e6f5a36c70a3341cc77fe7306fab3e5a652713b0",
+        "bytes": 4564664
+      }
+    },
+    {
+      "workload": "weighted_262144",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/weighted_262144.code",
+        "sha256": "3e833dc45df563ac78bbc8305dd32e15e4586fe9fa687e1e3b9244e3fe24809a",
+        "bytes": 499
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.24.1-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/weighted_262144.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/weighted_262144-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/weighted_262144-Code-release",
+        "sha256": "579fecdc9a339318ea1dfd5bac952e04b8ac6cc2cfdcd5dd51ee8703c9893ce8",
+        "bytes": 102160
+      }
+    },
+    {
+      "workload": "weighted_262144",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/weighted_262144.c",
+        "sha256": "31b47efe679c6bc54c9962b9340e4defab1e6a8338f73e735d7b8dfa3dcc948f",
+        "bytes": 777
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/weighted_262144.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/weighted_262144-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/weighted_262144-C-O2",
+        "sha256": "17af83aeff2462d791c76eff1bb355452fe53d6c719534878353f3fb90d08c80",
+        "bytes": 16016
+      }
+    },
+    {
+      "workload": "weighted_262144",
+      "mode": "C O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/weighted_262144.c",
+        "sha256": "31b47efe679c6bc54c9962b9340e4defab1e6a8338f73e735d7b8dfa3dcc948f",
+        "bytes": 777
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O3",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/weighted_262144.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/weighted_262144-C-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/weighted_262144-C-O3",
+        "sha256": "17af83aeff2462d791c76eff1bb355452fe53d6c719534878353f3fb90d08c80",
+        "bytes": 16016
+      }
+    },
+    {
+      "workload": "weighted_262144",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/weighted_262144.rs",
+        "sha256": "810688b58763a10b9f9081db69a35cc12232e04813b70eb12960b8eb03dada13",
+        "bytes": 739
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/weighted_262144.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/weighted_262144-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/weighted_262144-Rust-O3",
+        "sha256": "56a057b926e4f1931288a992773507fd5abca5208d9a3f089b8a66b34fae54e3",
+        "bytes": 4564672
+      }
+    },
+    {
+      "workload": "threshold_32768",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/threshold_32768.code",
+        "sha256": "c7e3fc7c22172688b043b5a86dc055635610e2e31b37d18517757c92f6d7dcda",
+        "bytes": 439
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.24.1-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/threshold_32768.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/threshold_32768-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/threshold_32768-Code-release",
+        "sha256": "e9e25594734f23584a3c5733e99a3465b7624392b2216329e4ba1365f7712b9b",
+        "bytes": 102192
+      }
+    },
+    {
+      "workload": "threshold_32768",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/threshold_32768.c",
+        "sha256": "e2c97515d9449928c262a402e9cfaa50ea4dc7fdad5a096bb9b55b3d4a68b59b",
+        "bytes": 665
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/threshold_32768.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/threshold_32768-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/threshold_32768-C-O2",
+        "sha256": "4c89656c2bbc02de9d17764026cd01b17225c2725d50f1b4814438ae51aa6f52",
+        "bytes": 16016
+      }
+    },
+    {
+      "workload": "threshold_32768",
+      "mode": "C O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/threshold_32768.c",
+        "sha256": "e2c97515d9449928c262a402e9cfaa50ea4dc7fdad5a096bb9b55b3d4a68b59b",
+        "bytes": 665
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O3",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/threshold_32768.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/threshold_32768-C-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/threshold_32768-C-O3",
+        "sha256": "4c89656c2bbc02de9d17764026cd01b17225c2725d50f1b4814438ae51aa6f52",
+        "bytes": 16016
+      }
+    },
+    {
+      "workload": "threshold_32768",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/threshold_32768.rs",
+        "sha256": "f0d3f6cdf0a0f015fde2d2f6221c6e593799898a4a519dddb1a1ac39ff58b434",
+        "bytes": 563
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/threshold_32768.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/threshold_32768-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/threshold_32768-Rust-O3",
+        "sha256": "4563f147ed46754f54ccc8f641ec1635e59378abe33ed9967594bdc244c70fbc",
+        "bytes": 4565288
+      }
+    },
+    {
+      "workload": "threshold_262144",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/threshold_262144.code",
+        "sha256": "cedbd1c19f515465fe073bcccc3fc5644c699bdb22c1dc7ae98dc65ee6be8fba",
+        "bytes": 441
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.24.1-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/threshold_262144.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/threshold_262144-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/threshold_262144-Code-release",
+        "sha256": "46253f5686200e8d97d55208d601844b861f8b0205792d980c639dda797eff02",
+        "bytes": 102192
+      }
+    },
+    {
+      "workload": "threshold_262144",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/threshold_262144.c",
+        "sha256": "2b1262584a4c80c0843999b496d6596cd992ee7a4687de76279d38f3c53b5234",
+        "bytes": 667
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/threshold_262144.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/threshold_262144-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/threshold_262144-C-O2",
+        "sha256": "77dbc694931fb2dea0b72310e0d9d27ba93d511bf3118f110b1baab54dbc7d68",
+        "bytes": 16016
+      }
+    },
+    {
+      "workload": "threshold_262144",
+      "mode": "C O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/threshold_262144.c",
+        "sha256": "2b1262584a4c80c0843999b496d6596cd992ee7a4687de76279d38f3c53b5234",
+        "bytes": 667
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O3",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/threshold_262144.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/threshold_262144-C-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/threshold_262144-C-O3",
+        "sha256": "77dbc694931fb2dea0b72310e0d9d27ba93d511bf3118f110b1baab54dbc7d68",
+        "bytes": 16016
+      }
+    },
+    {
+      "workload": "threshold_262144",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/threshold_262144.rs",
+        "sha256": "79750d419a08d59414de4645fd954635919184198b4b0f5bf1ec5bcf3ce48e50",
+        "bytes": 565
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/threshold_262144.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/threshold_262144-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/threshold_262144-Rust-O3",
+        "sha256": "2101ce76a6a6ceec20f7622aed43a2576c9c06e6c24ec4714dd81dde1b0ffd29",
+        "bytes": 4565296
+      }
+    },
+    {
+      "workload": "nearest_32768",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/nearest_32768.code",
+        "sha256": "418b2f8ff4ef0d1c2619558b07b3b318a2ca3449bcb916818e2c8c9cf9fb5c4d",
+        "bytes": 566
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.24.1-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/nearest_32768.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/nearest_32768-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/nearest_32768-Code-release",
+        "sha256": "8676fd9ed098d4aac0190e66813f0ea6234e7a2211a72553b9d3e5b4466f65b9",
+        "bytes": 102160
+      }
+    },
+    {
+      "workload": "nearest_32768",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/nearest_32768.c",
+        "sha256": "ba673bd05d75bf7fe14ff898781ab4d2983285855c75dc5ac0c728b4c2362f8f",
+        "bytes": 886
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/nearest_32768.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/nearest_32768-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/nearest_32768-C-O2",
+        "sha256": "ad4d4f4c80026796be353dcaa7ef0379ba20a2d1846e6d64c70359bf98b3eb6d",
+        "bytes": 16008
+      }
+    },
+    {
+      "workload": "nearest_32768",
+      "mode": "C O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/nearest_32768.c",
+        "sha256": "ba673bd05d75bf7fe14ff898781ab4d2983285855c75dc5ac0c728b4c2362f8f",
+        "bytes": 886
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O3",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/nearest_32768.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/nearest_32768-C-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/nearest_32768-C-O3",
+        "sha256": "792517f6fdb4bc03d45a0de7199adffc5d932e436c90eeac14c77c962ddacacc",
+        "bytes": 16008
+      }
+    },
+    {
+      "workload": "nearest_32768",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/nearest_32768.rs",
+        "sha256": "4d5377c60a06bb0560de96390358e4dc78fda010f6111a31b9b84cf5d30bb723",
+        "bytes": 840
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/nearest_32768.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/nearest_32768-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/nearest_32768-Rust-O3",
+        "sha256": "e10b93148c9dad08e8618c3c916d788838bf3def329a0ced45cca764fc798fbf",
+        "bytes": 4559336
+      }
+    },
+    {
+      "workload": "nearest_262144",
+      "mode": "Code release",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/nearest_262144.code",
+        "sha256": "c4b57565aee182074e4af735d51ad83e563d4e7e05eea419373736cf54ba0c18",
+        "bytes": 567
+      },
+      "command": [
+        "/home/runner/work/_temp/algorithm-release/code-v2.24.1-x86_64-linux/code",
+        "build",
+        "/home/runner/work/_temp/algorithm-results/sources/nearest_262144.code",
+        "--release",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/nearest_262144-Code-release"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/nearest_262144-Code-release",
+        "sha256": "e0bf849712a4d50e4fea3f95a651c3a6cd7df2cc06af5963883c58fb54f91ee9",
+        "bytes": 102160
+      }
+    },
+    {
+      "workload": "nearest_262144",
+      "mode": "C O2",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/nearest_262144.c",
+        "sha256": "44a0866459f7eb63b53fbf241613092731024999c384fdda6fba81560e561d46",
+        "bytes": 887
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O2",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/nearest_262144.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/nearest_262144-C-O2"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/nearest_262144-C-O2",
+        "sha256": "f3a3b73a1ba14e6c089f2fad86e651dd47dc833bb9f6f980cc9e4edd557819b8",
+        "bytes": 16016
+      }
+    },
+    {
+      "workload": "nearest_262144",
+      "mode": "C O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/nearest_262144.c",
+        "sha256": "44a0866459f7eb63b53fbf241613092731024999c384fdda6fba81560e561d46",
+        "bytes": 887
+      },
+      "command": [
+        "/usr/bin/gcc",
+        "-std=c17",
+        "-O3",
+        "-march=native",
+        "-ffp-contract=off",
+        "/home/runner/work/_temp/algorithm-results/sources/nearest_262144.c",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/nearest_262144-C-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/nearest_262144-C-O3",
+        "sha256": "35a0d5272cfe55d4bf58569d4d0285954e496f6fd5c0f42365295b6b8f9d2fe9",
+        "bytes": 16016
+      }
+    },
+    {
+      "workload": "nearest_262144",
+      "mode": "Rust O3",
+      "source": {
+        "path": "/home/runner/work/_temp/algorithm-results/sources/nearest_262144.rs",
+        "sha256": "670c53c5a4d2a378d67e50b27b42738674085387fa47f530857ed89b28f5a5ef",
+        "bytes": 841
+      },
+      "command": [
+        "/home/runner/.cargo/bin/rustc",
+        "--edition",
+        "2024",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "target-cpu=native",
+        "/home/runner/work/_temp/algorithm-results/sources/nearest_262144.rs",
+        "-o",
+        "/home/runner/work/_temp/algorithm-results/binaries/nearest_262144-Rust-O3"
+      ],
+      "artifact": {
+        "path": "/home/runner/work/_temp/algorithm-results/binaries/nearest_262144-Rust-O3",
+        "sha256": "41c287b078a7a00efae43a029e9bf6a89de1d88b17a57e34313b47d9fc45f171",
+        "bytes": 4559352
+      }
+    }
+  ],
+  "samples": [
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.001611319,
+      "peak_rss_kib": 2364
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.001776679,
+      "peak_rss_kib": 2052
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.008370978,
+      "peak_rss_kib": 3872
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.015820849,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.005587412,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 1,
+      "elapsed_seconds": 0.01642971,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.001133384,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.006796256,
+      "peak_rss_kib": 5936
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.002827759,
+      "peak_rss_kib": 2620
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 1,
+      "elapsed_seconds": 0.005646271,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.007527015,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.004730876,
+      "peak_rss_kib": 3168
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 1,
+      "elapsed_seconds": 0.001236227,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.001232079,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 1,
+      "elapsed_seconds": 0.004768827,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.004032818,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.027069309,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 1,
+      "elapsed_seconds": 0.001150135,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.009350724,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 1,
+      "elapsed_seconds": 0.016931841,
+      "peak_rss_kib": 8120
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.081451876,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 1,
+      "elapsed_seconds": 0.002589793,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 1,
+      "elapsed_seconds": 0.002490197,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 1,
+      "elapsed_seconds": 0.063767845,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 2,
+      "elapsed_seconds": 0.004873203,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.001197224,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.081318486,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.001713121,
+      "peak_rss_kib": 2388
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.064460232,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.004891176,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.001274649,
+      "peak_rss_kib": 1632
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.026923716,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 2,
+      "elapsed_seconds": 0.001155245,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.004015155,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 2,
+      "elapsed_seconds": 0.015702668,
+      "peak_rss_kib": 7264
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.015625003,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.002597076,
+      "peak_rss_kib": 1828
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.002893843,
+      "peak_rss_kib": 2624
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.001798701,
+      "peak_rss_kib": 2124
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.007386122,
+      "peak_rss_kib": 5984
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.008373944,
+      "peak_rss_kib": 3844
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 2,
+      "elapsed_seconds": 0.005647204,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 2,
+      "elapsed_seconds": 0.001325644,
+      "peak_rss_kib": 1572
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 2,
+      "elapsed_seconds": 0.00250823,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.00951915,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 2,
+      "elapsed_seconds": 0.007623848,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 2,
+      "elapsed_seconds": 0.00569896,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 2,
+      "elapsed_seconds": 0.016938714,
+      "peak_rss_kib": 8124
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.027391543,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.082740972,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.008083159,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.00122729,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.008405983,
+      "peak_rss_kib": 3912
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.006821103,
+      "peak_rss_kib": 5944
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.064469279,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.015982973,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.002862615,
+      "peak_rss_kib": 2624
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 3,
+      "elapsed_seconds": 0.002511156,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.001549103,
+      "peak_rss_kib": 2316
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.009406458,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.001165264,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 3,
+      "elapsed_seconds": 0.004044149,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.001764186,
+      "peak_rss_kib": 2048
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.005747982,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 3,
+      "elapsed_seconds": 0.001242459,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 3,
+      "elapsed_seconds": 0.005579255,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.002492792,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 3,
+      "elapsed_seconds": 0.001135468,
+      "peak_rss_kib": 1376
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 3,
+      "elapsed_seconds": 0.01698462,
+      "peak_rss_kib": 8120
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 3,
+      "elapsed_seconds": 0.004730205,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 3,
+      "elapsed_seconds": 0.015756458,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 3,
+      "elapsed_seconds": 0.004734112,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.004737699,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 4,
+      "elapsed_seconds": 0.001263818,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.006939434,
+      "peak_rss_kib": 5948
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.008343556,
+      "peak_rss_kib": 3888
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.004011909,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.001556607,
+      "peak_rss_kib": 2404
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.01568797,
+      "peak_rss_kib": 7204
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 4,
+      "elapsed_seconds": 0.001162108,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.005793668,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.007863586,
+      "peak_rss_kib": 5996
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.081332502,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.002951191,
+      "peak_rss_kib": 2624
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.017221544,
+      "peak_rss_kib": 8056
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.001165605,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.06498172,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 4,
+      "elapsed_seconds": 0.015859842,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 4,
+      "elapsed_seconds": 0.005711985,
+      "peak_rss_kib": 5156
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 4,
+      "elapsed_seconds": 0.004701231,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 4,
+      "elapsed_seconds": 0.00178741,
+      "peak_rss_kib": 2052
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 4,
+      "elapsed_seconds": 0.002474958,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.002488214,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.027185658,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 4,
+      "elapsed_seconds": 0.010627978,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 4,
+      "elapsed_seconds": 0.001272124,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.00159551,
+      "peak_rss_kib": 2328
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.002506397,
+      "peak_rss_kib": 1888
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.008408758,
+      "peak_rss_kib": 3940
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 5,
+      "elapsed_seconds": 0.002494365,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.006987345,
+      "peak_rss_kib": 5960
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 5,
+      "elapsed_seconds": 0.001240084,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.083181206,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 5,
+      "elapsed_seconds": 0.00607754,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 5,
+      "elapsed_seconds": 0.001212803,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.066676806,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.0159759,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.017025336,
+      "peak_rss_kib": 8124
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.005967423,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.001816184,
+      "peak_rss_kib": 2116
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.004723623,
+      "peak_rss_kib": 3168
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.001115651,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.004031836,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.007758971,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 5,
+      "elapsed_seconds": 0.002871622,
+      "peak_rss_kib": 2624
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 5,
+      "elapsed_seconds": 0.015735269,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 5,
+      "elapsed_seconds": 0.004762405,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.026850729,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 5,
+      "elapsed_seconds": 0.009267618,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 5,
+      "elapsed_seconds": 0.001236437,
+      "peak_rss_kib": 1572
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.010224642,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.016441099,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 6,
+      "elapsed_seconds": 0.001193826,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.002952885,
+      "peak_rss_kib": 2624
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.004868799,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.083776761,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.065121746,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.006150212,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 6,
+      "elapsed_seconds": 0.001243814,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 6,
+      "elapsed_seconds": 0.015936176,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.007855857,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.008436355,
+      "peak_rss_kib": 3944
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.007123313,
+      "peak_rss_kib": 6072
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.004058183,
+      "peak_rss_kib": 1900
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.001585518,
+      "peak_rss_kib": 2380
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.001290968,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 6,
+      "elapsed_seconds": 0.027301358,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 6,
+      "elapsed_seconds": 0.004927631,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.001154685,
+      "peak_rss_kib": 1316
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 6,
+      "elapsed_seconds": 0.005878978,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 6,
+      "elapsed_seconds": 0.00253393,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 6,
+      "elapsed_seconds": 0.002471002,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.001807805,
+      "peak_rss_kib": 2064
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 6,
+      "elapsed_seconds": 0.017310073,
+      "peak_rss_kib": 7984
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.008446881,
+      "peak_rss_kib": 3940
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 7,
+      "elapsed_seconds": 0.001270976,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.001229661,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.001595264,
+      "peak_rss_kib": 2364
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.001132991,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.002541362,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 7,
+      "elapsed_seconds": 0.016001368,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 7,
+      "elapsed_seconds": 0.005689362,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.066086984,
+      "peak_rss_kib": 38252
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.00973901,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.006760856,
+      "peak_rss_kib": 5952
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.002862934,
+      "peak_rss_kib": 2624
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 7,
+      "elapsed_seconds": 0.00479252,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.005610338,
+      "peak_rss_kib": 5216
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.026945192,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.017184878,
+      "peak_rss_kib": 7952
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.004376349,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 7,
+      "elapsed_seconds": 0.002541091,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 7,
+      "elapsed_seconds": 0.001813974,
+      "peak_rss_kib": 2052
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.082828779,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 7,
+      "elapsed_seconds": 0.008356761,
+      "peak_rss_kib": 5992
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 7,
+      "elapsed_seconds": 0.001174923,
+      "peak_rss_kib": 1376
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.016066202,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 7,
+      "elapsed_seconds": 0.00502056,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.004132465,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.007321092,
+      "peak_rss_kib": 5980
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.015939775,
+      "peak_rss_kib": 7204
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 8,
+      "elapsed_seconds": 0.001139615,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.002536484,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.008414992,
+      "peak_rss_kib": 3924
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.002877834,
+      "peak_rss_kib": 2624
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 8,
+      "elapsed_seconds": 0.015865677,
+      "peak_rss_kib": 7264
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.009131806,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.00760293,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.001602153,
+      "peak_rss_kib": 2372
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.001225828,
+      "peak_rss_kib": 1632
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.004724174,
+      "peak_rss_kib": 3168
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.016964144,
+      "peak_rss_kib": 8124
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.02685358,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.067858064,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 8,
+      "elapsed_seconds": 0.081688405,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 8,
+      "elapsed_seconds": 0.001348528,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.001163521,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 8,
+      "elapsed_seconds": 0.00482345,
+      "peak_rss_kib": 3168
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 8,
+      "elapsed_seconds": 0.005903434,
+      "peak_rss_kib": 5216
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 8,
+      "elapsed_seconds": 0.005512933,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 8,
+      "elapsed_seconds": 0.001764968,
+      "peak_rss_kib": 2052
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 8,
+      "elapsed_seconds": 0.002552253,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.027290209,
+      "peak_rss_kib": 5484
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.009376204,
+      "peak_rss_kib": 3916
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.003324111,
+      "peak_rss_kib": 2624
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.099467438,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.001685118,
+      "peak_rss_kib": 2364
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.005988264,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.006634495,
+      "peak_rss_kib": 5988
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.007569858,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.009230961,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.001779645,
+      "peak_rss_kib": 2052
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 9,
+      "elapsed_seconds": 0.002532436,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 9,
+      "elapsed_seconds": 0.001266484,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.002528509,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 9,
+      "elapsed_seconds": 0.017251013,
+      "peak_rss_kib": 8124
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.001234224,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.004070098,
+      "peak_rss_kib": 1840
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.001127073,
+      "peak_rss_kib": 1376
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 9,
+      "elapsed_seconds": 0.065325768,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 9,
+      "elapsed_seconds": 0.006083421,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.004762625,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 9,
+      "elapsed_seconds": 0.015942877,
+      "peak_rss_kib": 7204
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 9,
+      "elapsed_seconds": 0.015724088,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 9,
+      "elapsed_seconds": 0.004776141,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 9,
+      "elapsed_seconds": 0.001169322,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.015925886,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.004117306,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 10,
+      "elapsed_seconds": 0.001252287,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.002901788,
+      "peak_rss_kib": 2624
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.067051248,
+      "peak_rss_kib": 38252
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 10,
+      "elapsed_seconds": 0.004982007,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.009641769,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 10,
+      "elapsed_seconds": 0.00553341,
+      "peak_rss_kib": 5156
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.027339426,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.002531765,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.004766693,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.001241677,
+      "peak_rss_kib": 1572
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.007007833,
+      "peak_rss_kib": 5976
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.005684983,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 10,
+      "elapsed_seconds": 0.001189869,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.001956347,
+      "peak_rss_kib": 2052
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.008620596,
+      "peak_rss_kib": 3888
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 10,
+      "elapsed_seconds": 0.00252959,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 10,
+      "elapsed_seconds": 0.01610411,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.082001666,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.017291846,
+      "peak_rss_kib": 7984
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 10,
+      "elapsed_seconds": 0.008118886,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 10,
+      "elapsed_seconds": 0.001136439,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 10,
+      "elapsed_seconds": 0.001581433,
+      "peak_rss_kib": 2352
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.009350764,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.005534292,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 11,
+      "elapsed_seconds": 0.015824697,
+      "peak_rss_kib": 7204
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.006790085,
+      "peak_rss_kib": 5968
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.001794834,
+      "peak_rss_kib": 2064
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.064777207,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.008190659,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.001134276,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.004787252,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.001214185,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 11,
+      "elapsed_seconds": 0.006070296,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 11,
+      "elapsed_seconds": 0.002521635,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.017175618,
+      "peak_rss_kib": 8124
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.008529855,
+      "peak_rss_kib": 3932
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 11,
+      "elapsed_seconds": 0.001239363,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.002878144,
+      "peak_rss_kib": 2632
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 11,
+      "elapsed_seconds": 0.004852363,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.004098811,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.002522317,
+      "peak_rss_kib": 1888
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.084233989,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 11,
+      "elapsed_seconds": 0.001658548,
+      "peak_rss_kib": 2396
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 11,
+      "elapsed_seconds": 0.015962685,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 11,
+      "elapsed_seconds": 0.001140507,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 11,
+      "elapsed_seconds": 0.027245439,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.009222413,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.001836301,
+      "peak_rss_kib": 2056
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.002650968,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 12,
+      "elapsed_seconds": 0.001190761,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.007947364,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.001261765,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.003996089,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.008361439,
+      "peak_rss_kib": 3912
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.006710936,
+      "peak_rss_kib": 5940
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.002829112,
+      "peak_rss_kib": 2592
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 12,
+      "elapsed_seconds": 0.002484847,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.001566416,
+      "peak_rss_kib": 2488
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.015845326,
+      "peak_rss_kib": 7204
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.064446707,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 12,
+      "elapsed_seconds": 0.015939071,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.081269966,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 12,
+      "elapsed_seconds": 0.001310876,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.005900728,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 12,
+      "elapsed_seconds": 0.026846492,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.001145637,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 12,
+      "elapsed_seconds": 0.004765561,
+      "peak_rss_kib": 3168
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 12,
+      "elapsed_seconds": 0.017016461,
+      "peak_rss_kib": 8012
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 12,
+      "elapsed_seconds": 0.005590707,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 12,
+      "elapsed_seconds": 0.004728773,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 13,
+      "elapsed_seconds": 0.002503762,
+      "peak_rss_kib": 1828
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.00251871,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.06571264,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.016058885,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.006753807,
+      "peak_rss_kib": 5968
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.017057066,
+      "peak_rss_kib": 7952
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.027032321,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.005672781,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.004758768,
+      "peak_rss_kib": 3168
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.00113123,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.004032256,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.008027193,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 13,
+      "elapsed_seconds": 0.015720951,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.009438138,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 13,
+      "elapsed_seconds": 0.001412798,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 13,
+      "elapsed_seconds": 0.006107395,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.001627811,
+      "peak_rss_kib": 2488
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 13,
+      "elapsed_seconds": 0.082550174,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.001871567,
+      "peak_rss_kib": 2180
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 13,
+      "elapsed_seconds": 0.001278626,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 13,
+      "elapsed_seconds": 0.001146168,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.002888212,
+      "peak_rss_kib": 2624
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 13,
+      "elapsed_seconds": 0.004806748,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 13,
+      "elapsed_seconds": 0.008337115,
+      "peak_rss_kib": 3908
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.004736346,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 14,
+      "elapsed_seconds": 0.015895219,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 14,
+      "elapsed_seconds": 0.001158501,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.010466045,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.064983102,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.081304018,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.006088661,
+      "peak_rss_kib": 5156
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 14,
+      "elapsed_seconds": 0.004823991,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.027242865,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.008517863,
+      "peak_rss_kib": 3896
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.017198832,
+      "peak_rss_kib": 7984
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 14,
+      "elapsed_seconds": 0.005846697,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 14,
+      "elapsed_seconds": 0.001303543,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.001163811,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.007358039,
+      "peak_rss_kib": 5948
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.001589298,
+      "peak_rss_kib": 2392
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.002941252,
+      "peak_rss_kib": 2744
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.008183837,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.015727935,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 14,
+      "elapsed_seconds": 0.001781709,
+      "peak_rss_kib": 2052
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.001271423,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 14,
+      "elapsed_seconds": 0.002507419,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 14,
+      "elapsed_seconds": 0.002520373,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 14,
+      "elapsed_seconds": 0.004030814,
+      "peak_rss_kib": 1904
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.081736609,
+      "peak_rss_kib": 46448
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.017478226,
+      "peak_rss_kib": 8124
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.0076195,
+      "peak_rss_kib": 6000
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.008372842,
+      "peak_rss_kib": 3928
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.015861505,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.009462083,
+      "peak_rss_kib": 7024
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.006921491,
+      "peak_rss_kib": 5964
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 15,
+      "elapsed_seconds": 0.001523946,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.001211911,
+      "peak_rss_kib": 1380
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 15,
+      "elapsed_seconds": 0.002611083,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 15,
+      "elapsed_seconds": 0.006364768,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 15,
+      "elapsed_seconds": 0.004731777,
+      "peak_rss_kib": 3172
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.001597394,
+      "peak_rss_kib": 2388
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.02689351,
+      "peak_rss_kib": 5488
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.001250163,
+      "peak_rss_kib": 1636
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.064954819,
+      "peak_rss_kib": 38256
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.001871578,
+      "peak_rss_kib": 2116
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 15,
+      "elapsed_seconds": 0.01628537,
+      "peak_rss_kib": 7268
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.005811051,
+      "peak_rss_kib": 5220
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "sample": 15,
+      "elapsed_seconds": 0.002900235,
+      "peak_rss_kib": 2624
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "sample": 15,
+      "elapsed_seconds": 0.004101156,
+      "peak_rss_kib": 1900
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.004779487,
+      "peak_rss_kib": 3108
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "sample": 15,
+      "elapsed_seconds": 0.002517347,
+      "peak_rss_kib": 1892
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "sample": 15,
+      "elapsed_seconds": 0.001242308,
+      "peak_rss_kib": 1636
+    }
+  ],
+  "summary": [
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.005747982,
+      "min_seconds": 0.005512933,
+      "max_seconds": 0.006150212,
+      "mad_seconds": 0.00015274600000000048,
+      "median_peak_rss_kib": 5220,
+      "min_peak_rss_kib": 5156,
+      "max_peak_rss_kib": 5220,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "n": 15,
+      "median_seconds": 0.005846697,
+      "min_seconds": 0.00553341,
+      "max_seconds": 0.006364768,
+      "mad_seconds": 0.00022359900000000054,
+      "median_peak_rss_kib": 5220,
+      "min_peak_rss_kib": 5156,
+      "max_peak_rss_kib": 5220,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.064983102,
+      "min_seconds": 0.063767845,
+      "max_seconds": 0.067858064,
+      "mad_seconds": 0.0005228699999999947,
+      "median_peak_rss_kib": 38256,
+      "min_peak_rss_kib": 38252,
+      "max_peak_rss_kib": 38256,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "nearest_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.006921491,
+      "min_seconds": 0.006634495,
+      "max_seconds": 0.007386122,
+      "mad_seconds": 0.00016063500000000012,
+      "median_peak_rss_kib": 5964,
+      "min_peak_rss_kib": 5936,
+      "max_peak_rss_kib": 6072,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.001241677,
+      "min_seconds": 0.001214185,
+      "max_seconds": 0.001290968,
+      "mad_seconds": 1.584900000000007e-05,
+      "median_peak_rss_kib": 1636,
+      "min_peak_rss_kib": 1572,
+      "max_peak_rss_kib": 1636,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "n": 15,
+      "median_seconds": 0.001263818,
+      "min_seconds": 0.001236227,
+      "max_seconds": 0.001412798,
+      "mad_seconds": 2.373400000000008e-05,
+      "median_peak_rss_kib": 1636,
+      "min_peak_rss_kib": 1572,
+      "max_peak_rss_kib": 1636,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.007863586,
+      "min_seconds": 0.007527015,
+      "max_seconds": 0.008356761,
+      "mad_seconds": 0.00024408600000000013,
+      "median_peak_rss_kib": 6000,
+      "min_peak_rss_kib": 5992,
+      "max_peak_rss_kib": 6000,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "nearest_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.00159551,
+      "min_seconds": 0.001549103,
+      "max_seconds": 0.001713121,
+      "mad_seconds": 1.5808999999999875e-05,
+      "median_peak_rss_kib": 2380,
+      "min_peak_rss_kib": 2316,
+      "max_peak_rss_kib": 2488,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.004758768,
+      "min_seconds": 0.004723623,
+      "max_seconds": 0.00502056,
+      "mad_seconds": 2.7891999999999847e-05,
+      "median_peak_rss_kib": 3172,
+      "min_peak_rss_kib": 3108,
+      "max_peak_rss_kib": 3172,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "n": 15,
+      "median_seconds": 0.00479252,
+      "min_seconds": 0.004701231,
+      "max_seconds": 0.004982007,
+      "mad_seconds": 3.147099999999993e-05,
+      "median_peak_rss_kib": 3172,
+      "min_peak_rss_kib": 3168,
+      "max_peak_rss_kib": 3172,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.027069309,
+      "min_seconds": 0.026846492,
+      "max_seconds": 0.027391543,
+      "mad_seconds": 0.00017613000000000004,
+      "median_peak_rss_kib": 5488,
+      "min_peak_rss_kib": 5484,
+      "max_peak_rss_kib": 5488,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "threshold_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.008408758,
+      "min_seconds": 0.008337115,
+      "max_seconds": 0.009376204,
+      "mad_seconds": 3.812299999999928e-05,
+      "median_peak_rss_kib": 3912,
+      "min_peak_rss_kib": 3844,
+      "max_peak_rss_kib": 3944,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.001145637,
+      "min_seconds": 0.001115651,
+      "max_seconds": 0.001211911,
+      "mad_seconds": 1.788400000000013e-05,
+      "median_peak_rss_kib": 1380,
+      "min_peak_rss_kib": 1316,
+      "max_peak_rss_kib": 1380,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "n": 15,
+      "median_seconds": 0.001162108,
+      "min_seconds": 0.001135468,
+      "max_seconds": 0.001523946,
+      "mad_seconds": 2.1601e-05,
+      "median_peak_rss_kib": 1380,
+      "min_peak_rss_kib": 1376,
+      "max_peak_rss_kib": 1380,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.004044149,
+      "min_seconds": 0.003996089,
+      "max_seconds": 0.004376349,
+      "mad_seconds": 2.899400000000007e-05,
+      "median_peak_rss_kib": 1904,
+      "min_peak_rss_kib": 1840,
+      "max_peak_rss_kib": 1904,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "threshold_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.001798701,
+      "min_seconds": 0.001764186,
+      "max_seconds": 0.001956347,
+      "mad_seconds": 1.9055999999999934e-05,
+      "median_peak_rss_kib": 2052,
+      "min_peak_rss_kib": 2048,
+      "max_peak_rss_kib": 2180,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.015939775,
+      "min_seconds": 0.015625003,
+      "max_seconds": 0.016441099,
+      "mad_seconds": 9.444899999999992e-05,
+      "median_peak_rss_kib": 7268,
+      "min_peak_rss_kib": 7204,
+      "max_peak_rss_kib": 7268,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "n": 15,
+      "median_seconds": 0.015865677,
+      "min_seconds": 0.015702668,
+      "max_seconds": 0.01642971,
+      "mad_seconds": 0.000130408000000002,
+      "median_peak_rss_kib": 7268,
+      "min_peak_rss_kib": 7204,
+      "max_peak_rss_kib": 7268,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.082001666,
+      "min_seconds": 0.081269966,
+      "max_seconds": 0.099467438,
+      "mad_seconds": 0.0006976479999999952,
+      "median_peak_rss_kib": 46448,
+      "min_peak_rss_kib": 46448,
+      "max_peak_rss_kib": 46448,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "weighted_262144",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.017175618,
+      "min_seconds": 0.016931841,
+      "max_seconds": 0.017478226,
+      "mad_seconds": 0.0001344549999999986,
+      "median_peak_rss_kib": 8120,
+      "min_peak_rss_kib": 7952,
+      "max_peak_rss_kib": 8124,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O2",
+      "n": 15,
+      "median_seconds": 0.002522317,
+      "min_seconds": 0.002488214,
+      "max_seconds": 0.002650968,
+      "mad_seconds": 1.4898000000000168e-05,
+      "median_peak_rss_kib": 1892,
+      "min_peak_rss_kib": 1828,
+      "max_peak_rss_kib": 1892,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "C O3",
+      "n": 15,
+      "median_seconds": 0.002520373,
+      "min_seconds": 0.002471002,
+      "max_seconds": 0.002611083,
+      "mad_seconds": 2.07180000000003e-05,
+      "median_peak_rss_kib": 1892,
+      "min_peak_rss_kib": 1828,
+      "max_peak_rss_kib": 1892,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Code release",
+      "n": 15,
+      "median_seconds": 0.009438138,
+      "min_seconds": 0.009131806,
+      "max_seconds": 0.010627978,
+      "mad_seconds": 0.00020363099999999926,
+      "median_peak_rss_kib": 7024,
+      "min_peak_rss_kib": 7024,
+      "max_peak_rss_kib": 7024,
+      "zero_rss_samples": 0
+    },
+    {
+      "workload": "weighted_32768",
+      "group": "prebuilt",
+      "mode": "Rust O3",
+      "n": 15,
+      "median_seconds": 0.002888212,
+      "min_seconds": 0.002827759,
+      "max_seconds": 0.003324111,
+      "mad_seconds": 2.5277999999999672e-05,
+      "median_peak_rss_kib": 2624,
+      "min_peak_rss_kib": 2592,
+      "max_peak_rss_kib": 2744,
+      "zero_rss_samples": 0
+    }
+  ],
+  "wrapper": {
+    "path": "/home/runner/work/_temp/algorithm-results/binaries/peak",
+    "sha256": "25a267817da30174783afaab1f7500d49fedd86d3310de4b86aa08a0d4f8accf",
+    "bytes": 16408
+  },
+  "sampling_started": "2026-11-06T17:20:39+00:00",
+  "sampling_finished": "2026-11-06T17:20:48+00:00"
+}

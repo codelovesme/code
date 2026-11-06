@@ -1,0 +1,39 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-261-weighted.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 17607861
+Trigger: Program termination
+Profiled target:  /var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release (PID 2956343, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       96
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                  
+--------------------------------------------------------------------------------
+74,834,511 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                   file:function
+--------------------------------------------------------------------------------
+26,607,949 (35.56%)  ???:main [/var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release]
+20,447,223 (27.32%)  ???:code_copy [/var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release]
+ 4,882,440 ( 6.52%)  ???:code_object_template [/var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release]
+ 4,568,460 ( 6.10%)  ???:0x00000000000a0fe0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 3,375,621 ( 4.51%)  ???:0x00000000000a02e0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 2,556,143 ( 3.42%)  ???:code_release.part.0 [/var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release]
+ 2,031,680 ( 2.71%)  ???:free [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,671,320 ( 2.23%)  ???:code_add_take [/var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release]
+ 1,671,185 ( 2.23%)  ???:code_move [/var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release]
+ 1,409,118 ( 1.88%)  ???:malloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,245,806 ( 1.66%)  ???:0x000000000009ed80 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+ 1,179,648 ( 1.58%)  ???:code_number [/var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release]
+   753,505 ( 1.01%)  ???:0x000000000009eaf0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+

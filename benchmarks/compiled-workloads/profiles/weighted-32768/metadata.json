@@ -1,0 +1,39 @@
+{
+  "public_release": "v2.24.1",
+  "workload": "weighted_32768",
+  "build": {
+    "workload": "weighted_32768",
+    "mode": "Code release",
+    "source": {
+      "path": "/var/tmp/code-261-final-smoke/sources/weighted_32768.code",
+      "sha256": "4ebd0de3c0957e9b65a58d148042c9edbb2545010889019c609043c3606bad90",
+      "bytes": 497
+    },
+    "command": [
+      "/var/tmp/code-242-public/code-v2.24.1-x86_64-linux/code",
+      "build",
+      "/var/tmp/code-261-final-smoke/sources/weighted_32768.code",
+      "--release",
+      "-o",
+      "/var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release"
+    ],
+    "artifact": {
+      "path": "/var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release",
+      "sha256": "8ee889b4b87c3eeb467e41e9412ab2c625b196cc2b0f21a89a22063cbfe0a83b",
+      "bytes": 102648
+    }
+  },
+  "tool_version": "valgrind-3.24.0",
+  "command": [
+    "valgrind",
+    "--tool=callgrind",
+    "--dump-instr=no",
+    "--cache-sim=no",
+    "/var/tmp/code-261-final-smoke/binaries/weighted_32768-Code-release"
+  ],
+  "events": "Ir (dynamic instruction count), not wall time",
+  "total_instructions": 74834511,
+  "code_copy_self_instructions": 20447223,
+  "code_copy_percent": 27.32325330488229,
+  "scope": "Single untimed local complete-program profile including initialization, queries, checks and cleanup; cannot attribute all copies to the query loop, infer full deep copies, or project a speedup."
+}

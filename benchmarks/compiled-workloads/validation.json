@@ -1,0 +1,25 @@
+{
+  "source_protocol_commit": "600e4f335bc9ed1c7451f8966198948a0d64a321",
+  "hosted_run": 42260715585,
+  "verified_at_utc": "2026-11-06T17:22:30.365419+00:00",
+  "workspace": {
+    "passed": 343,
+    "failed": 0,
+    "ignored": 7,
+    "summaries": 69
+  },
+  "checks": [
+    "6 cases, 24 native builds with independent exact integer oracles",
+    "6 Code format/native leak checks",
+    "6 C ASan/UBSan/leak and warning-as-error checks",
+    "Rust formatting and Python parsing",
+    "18 local/hosted generated sources identical",
+    "360 CSV/JSON samples, 24 groups and all medians/min/max/MAD verified",
+    "all 24 source and binary identities plus wrapper verified"
+  ],
+  "setup_notes": [
+    "First workflow dispatch immediately after initial push returned discovery 404; retry succeeded before any timing.",
+    "callgrind_annotate was absent from PATH; used installed prefix executable, no profile rerun or data change.",
+    "Tracker number 259 collided with concurrently renumbered Mike tickets; reconciled to 261 before source timing."
+  ]
+}
