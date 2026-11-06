@@ -274,6 +274,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "interpreter",
     "json",
     "json_store",
+    "vacuole",
     "jwt",
     "localai",
     "localai_mock",

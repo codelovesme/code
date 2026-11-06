@@ -1888,7 +1888,9 @@ out — see [its README](crates/modules/csv/README.md)),
 `fs` (files and directories under a sandboxed base directory — see
 [its README](crates/modules/fs/README.md)), `json_store` (a file-backed
 key-value store, one readable JSON file per key — see
-[its README](crates/modules/json_store/README.md)), `process` (run a command
+[its README](crates/modules/json_store/README.md)), `vacuole` (an in-process
+key→value store with a byte budget that names what it evicts — see
+[its README](crates/modules/vacuole/README.md)), `process` (run a command
 and capture its output, or spawn and track a child — see
 [its README](crates/modules/process/README.md)), `git` (init, clone, commit,
 push and status over the system `git`, with a `Config` that checks the
@@ -2117,7 +2119,7 @@ crates/
   code-lsp/     diagnostics, semantic tokens and formatting, over the real
                 lexer/parser and the same `code format` the CLI runs
   modules/      first-party modules: console, canvas, dom, guest, math, strings, arrays, time, env, json,
-                json_store, crypto, uuid, jwt, markdown, xml, regex, csv, fs, process, git, mailer,
+                json_store, vacuole, crypto, uuid, jwt, markdown, xml, regex, csv, fs, process, git, mailer,
                 azure_mailer,
                 oauth, mongodb, blob_storage, azure_blob, cloud_drive, localai,
                 searchxng, api_registry, media, clipboard, interpreter, mqtt, ntfy, tty, syntax, pty,
