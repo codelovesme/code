@@ -21,3 +21,4 @@ code-native = { path = "../../code-native" }
 # `crates/code-wasm` takes. A program loaded here links nothing, so there
 # is nothing for the module story to do.
 code = { path = "../../..", default-features = false }
+sha2 = "0.10"

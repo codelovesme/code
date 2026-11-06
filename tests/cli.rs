@@ -322,6 +322,34 @@ fn handlers_describes_source_contracts_as_json() {
 }
 
 #[test]
+fn handlers_lists_the_names_a_source_emits_to() {
+    // A gene emits to organelles its application links, not the gene: the
+    // catalog names them from the parsed source, without running anything.
+    let dir = temp_dir("handlers-emits");
+    fs::write(
+        dir.join("main.code"),
+        "link \"native.so\" as store\n\nRemind { text } =>\n    emit Notify { message = text } to push get sent\n    emit Save { text = text } to store get saved\n    emit Again {} to this get again\n    return Done {}\n",
+    )
+    .expect("write source");
+    fs::write(dir.join("native.so"), b"not a real shared library").expect("write native marker");
+    fs::write(
+        dir.join("native.json"),
+        r#"{"name": "native", "version": "1.0.0", "abi_version": 1, "handlers": ["Save"], "vars": [], "platforms": {}}"#,
+    )
+    .expect("write native manifest");
+    let out = code(&dir, &["handlers"]);
+    assert!(
+        out.status.success(),
+        "handlers command failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let document: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("catalog must be valid JSON");
+    assert_eq!(document["emits"], serde_json::json!(["push", "store"]));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn handlers_includes_linked_source_modules_in_source_order() {
     let dir = temp_dir("handlers-linked");
     fs::write(
