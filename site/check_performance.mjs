@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
 const base=new URL(process.argv[2] ?? 'http://127.0.0.1:8955/code/');
-const report=JSON.parse(readFileSync(new URL('../benchmarks/website-evidence/results/2026-11-04-v2.23.0/report.json',import.meta.url)));
+const config=JSON.parse(readFileSync(new URL('comparison-data.json',import.meta.url)));
+const report=JSON.parse(readFileSync(new URL('../'+config.comparison,import.meta.url)));
 const summaries=new Map(report.summary.map(r=>[[r.group,r.workload,r.mode].join('|'),r]));
-const pilot=JSON.parse(readFileSync(new URL('../benchmarks/history-pilot/results/2026-11-05-v2.23.0/report.json',import.meta.url)));
+const pilot=JSON.parse(readFileSync(new URL('../'+config.history,import.meta.url)));
 for(const row of pilot.summary)summaries.set(['history',row.workload,row.mode].join('|'),row);
 const browser=await chromium.launch({headless:true,channel:'chromium'});
 function expected(key){const parts=key.split('|');const [metric,stat='median']=parts.pop().split('-');const row=summaries.get(parts.join('|'));assert.ok(row,key);return metric==='time'?row[`${stat}_seconds`]*1000:row[`${stat}_peak_rss_kib`]/1024}
@@ -31,8 +32,9 @@ try {
  for(const span of await p.locator('[data-evidence]').all()){const key=await span.getAttribute('data-evidence');assert.ok(Math.abs(Number(await span.textContent())-expected(key))<=0.000500001,`rounding/value mismatch: ${key}`)}
  assert.equal(await p.locator('.comparison-all tbody tr').count(),35);
  assert.equal(await p.locator('.history-all tbody tr').count(),20);
- assert.match(await p.locator('#sharing').innerText(),/12.33× slower/);
- assert.match(await p.locator('#sharing').innerText(),/separate from the charts above/);
+ const documentRatio=summaries.get('history|document_1m|Code automatic').median_seconds/summaries.get('history|document_1m|Rust shared').median_seconds;
+ assert.ok((await p.locator('#sharing').innerText()).includes(`${documentRatio.toFixed(2)}× the time`));
+ assert.match(await p.locator('#sharing').innerText(),/Same measured VM/);
  const broadOrder=await p.locator('#broader-native-results tbody tr').evaluateAll(rows=>rows.map(row=>row.querySelector('[data-evidence]').dataset.evidence.split('|')[1]));
  const ratio=workload=>summaries.get(`prebuilt|${workload}|Code release`).median_seconds/Math.min(...['C O2','Rust O3'].map(mode=>summaries.get(`prebuilt|${workload}|${mode}`).median_seconds));
  const workloads=['binary_trees','dictionary','points','spectral_norm','string_build'];
@@ -59,7 +61,7 @@ try {
   await p.goto(new URL(`compare.html#${anchor}`,base).href,{waitUntil:'networkidle'});assert.equal(await p.locator(`#${anchor}`).isVisible(),true);
  }
  for(const width of [390,1440]){await p.setViewportSize({width,height:900});await p.evaluate(()=>scrollTo(0,0));await p.screenshot({path:`/var/tmp/code-229-comparison-${width}.png`,fullPage:true})}
- const sourceLinks=await p.locator('a[href*="github.com/codelovesme/code/blob/"]').evaluateAll(a=>a.map(el=>el.href));assert.ok(sourceLinks.length>=6);assert.ok(sourceLinks.every(x=>x.includes('/65403bd/') || x.includes('/8d0656a/')));
+ const sourceLinks=await p.locator('a[href*="github.com/codelovesme/code/blob/"]').evaluateAll(a=>a.map(el=>el.href));assert.ok(sourceLinks.length>=6);assert.ok(sourceLinks.every(x=>x.includes('/'+config.evidence_commit+'/') || x.includes('/65403bd/') || x.includes('/8d0656a/')));
  assert.deepEqual(errors,[]);assert.deepEqual(engines,[]);
  const plain=await browser.newContext({javaScriptEnabled:false,reducedMotion:'reduce'});const q=await plain.newPage();await q.goto(new URL('compare.html',base).href);assert.equal(await q.locator('.comparison-chart').count(),7);await q.locator('#full-results summary').click();assert.equal(await q.locator('.comparison-all tbody tr').count(),35);await q.getByText('All 20 sharing-study results · time and memory',{exact:true}).click();assert.equal(await q.locator('.history-all').isVisible(),true);assert.equal(await q.locator('.history-all tbody tr').count(),20);await plain.close();
  console.log('Comparison: seven visible ranked charts/35 bars, every median/range/linear scale, all 35 original and 20 separate pilot results, 14 legacy targets, keyboard/no-JS and four widths passed; no engine loaded');

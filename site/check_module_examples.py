@@ -2,7 +2,7 @@
 """Verify the website's native examples with the published Linux CLI.
 
 Usage: python3 site/check_module_examples.py /absolute/path/to/code
-Requires Code v2.23.0, curl, a C compiler and network access to its public
+Requires Code v2.23.2, curl, a C compiler and network access to its public
 release assets. All installs/builds happen in a fresh temporary project.
 This does not use source-built modules or modify the user's projects.
 """
@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 EXAMPLES = Path(__file__).resolve().parent / "module-examples"
-RELEASE = "https://github.com/codelovesme/code/releases/tag/v2.23.0"
+RELEASE = "https://github.com/codelovesme/code/releases/tag/v2.23.2"
 
 
 def main():
@@ -35,8 +35,8 @@ def main():
             raise AssertionError(f"{args}: expected {output!r}, got {result.stdout!r}")
         return result.stdout
 
-    if run(["--version"], EXAMPLES).strip() != "Code v2.23.0":
-        raise SystemExit("Use the published v2.23.0 CLI for these versioned examples")
+    if run(["--version"], EXAMPLES).strip() != "Code v2.23.2":
+        raise SystemExit("Use the published v2.23.2 CLI for these versioned examples")
 
     with tempfile.TemporaryDirectory(prefix="code-site-modules-") as directory:
         root = Path(directory)
@@ -45,7 +45,7 @@ def main():
         run(["install", "console"], hello)
         lock = json.loads((hello / ".code/lock.json").read_text())
         console = lock["modules"]["console"]
-        if console["version"] != "2.23.0" or console["source"] != RELEASE:
+        if console["version"] != "2.23.2" or console["source"] != RELEASE:
             raise AssertionError(f"Unexpected module provenance: {console}")
         asset = hello / ".code/modules/console" / console["version"] / console["asset"]
         if hashlib.sha256(asset.read_bytes()).hexdigest() != console["sha256"]:
@@ -90,7 +90,7 @@ def main():
             raise AssertionError(result.stdout)
         run(["format", "--check", "."], hello)
 
-    print("Published v2.23.0: clean install/hash, 4 interpreted + 4 native runs, "
+    print("Published v2.23.2: clean install/hash, 4 interpreted + 4 native runs, "
           "2 private-name refusals and shared/static library builds passed")
 
 

@@ -208,7 +208,7 @@ def main() -> None:
         ),
         "compare": (
             "performance", "Code comparison — runtime, compilation and memory",
-            "Compare Code v2.23.0 with C, Rust, JavaScript and Python through runtime, compile-time and memory charts, with complete measured results.",
+            "Compare Code v2.23.2 with C, Rust, JavaScript and Python through runtime, compile-time and memory charts, with complete measured results.",
         ),
     }
     plan = load_plan(site_dir)

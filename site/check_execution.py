@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify run/cache/interpret/native/WASM with published Linux Code v2.23.0.
+"""Verify run/cache/interpret/native/WASM with published Linux Code v2.23.2.
 
 Usage: python3 site/check_execution.py /path/to/code /new/browser-output-dir
 Requires curl, cc, wasm-ld and release network access. Projects and cache are
@@ -29,7 +29,7 @@ def main():
         root = Path(directory)
         cache = root / "cache"
         env = dict(os.environ, CODE_CACHE_DIR=str(cache), CODE_CACHE="1",
-                   CODE_MODULE_RELEASE="https://github.com/codelovesme/code/releases/tag/v2.23.0")
+                   CODE_MODULE_RELEASE="https://github.com/codelovesme/code/releases/tag/v2.23.2")
         for key in ("CODE_RUN", "CODE_LINK", "CODE_MODULE_PATH"):
             env.pop(key, None)
 
@@ -46,8 +46,8 @@ def main():
             return {p.name: (p.stat().st_ino, hashlib.sha256(p.read_bytes()).hexdigest())
                     for p in (cache / "run").glob("*") if p.is_file() and not p.suffix}
 
-        if run(["--version"], root).strip() != "Code v2.23.0":
-            raise SystemExit("Use the actual published v2.23.0 CLI")
+        if run(["--version"], root).strip() != "Code v2.23.2":
+            raise SystemExit("Use the actual published v2.23.2 CLI")
         run(["init", "hello"], root)
         native = root / "hello"
         (native / "main.code").write_text(source)
@@ -80,7 +80,7 @@ def main():
             raise AssertionError("Cache command did not report the isolated cache")
 
         large = native / "large.code"
-        large.write_text(source + "| size probe for the v2.23.0 build threshold\n" * 600)
+        large.write_text(source + "| size probe for the v2.23.2 build threshold\n" * 600)
         run(["run", large.name], native, "hello, world")
         deadline = time.monotonic() + 30
         while True:
@@ -104,7 +104,7 @@ def main():
         shutil.copyfile(SITE / "execution-examples/index.html.txt", browser / "web/index.html")
         shutil.copytree(browser / "web", destination)
 
-    print("Published v2.23.0: interpreted/native output, cold/warm native cache, "
+    print("Published v2.23.2: interpreted/native output, cold/warm native cache, "
           "source/lock invalidation, quick/background optimized tiers passed")
     print(f"Published CLI/modules produced the browser proof bundle: {destination}")
     print("Serve that directory and verify hello, world in a real browser")

@@ -72,7 +72,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></svg>
         </div>
         <h3>Native numbers</h3>
-        <p>Native compilation is close to C/Rust on the measured numeric loop in public v2.23.0. Broader workloads, runtime modes and snapshot memory are measured separately. <a href="compare.html#performance">See the measurements</a>.</p>
+        <p>Native compilation is close to C/Rust on the measured numeric loop in public v2.23.2. Broader workloads, runtime modes and snapshot memory are measured separately. <a href="compare.html#performance">See the measurements</a>.</p>
       </div>
       <div class="feat reveal">
         <div class="ico" style="background:rgba(94,234,212,0.1); color:var(--teal)">
@@ -160,10 +160,10 @@ code test</pre>
           <div>
             <div class="step-label"><span class="num">1</span> install</div>
 <pre class="codeblock"><span class="cm"># bundler (Vite, webpack, Rollup…)</span>
-npm install code-wasm@2.16.0
+npm install code-wasm@2.23.2
 
 <span class="cm"># …or straight from a CDN, no build step</span>
-import init, { run, run_with_modules } from "https://esm.sh/code-wasm@2.16.0";</pre>
+import init, { run, run_with_modules } from "https://esm.sh/code-wasm@2.23.2";</pre>
           </div>
           <div>
             <div class="step-label"><span class="num">2</span> run programs</div>
@@ -264,7 +264,7 @@ assert r.text = <span class="st">"hello ada"</span></pre>
 crate-type = [<span class="st">"cdylib"</span>]
 
 [dependencies]
-code-native = <span class="st">"2.16.0"</span></pre>
+code-native = <span class="st">"2.23.2"</span></pre>
           </div>
           <div>
             <div class="step-label"><span class="num">2</span> implement two exports</div>

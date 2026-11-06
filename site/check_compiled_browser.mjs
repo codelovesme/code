@@ -15,7 +15,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#status').textContent.startsWith('Could not run the compiled program:'));
   assert.equal(await page.locator('#output').innerText(), '');
   assert.deepEqual(errors, []);
-  console.log('Published v2.23.0 compiled WASM: real Chromium output and missing-artifact handling passed');
+  console.log('Published v2.23.2 compiled WASM: real Chromium output and missing-artifact handling passed');
 } finally {
   await browser.close();
 }

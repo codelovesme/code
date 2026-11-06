@@ -2,7 +2,7 @@
 """Run the lesson's exact assembled scripts in an empty Linux x86_64 project.
 
 Usage: python3 site/check_first_program.py /absolute/path/to/built-site
-Downloads the actual public v2.23.0 CLI and console. Needs sh/curl/tar/cc/network.
+Downloads the actual public v2.23.2 CLI and console. Needs sh/curl/tar/cc/network.
 No source-built CLI/modules or existing project/cache is used.
 """
 import hashlib
@@ -29,16 +29,16 @@ def main():
         env.update(CODE_CACHE='1', CODE_CACHE_DIR=str(root / 'cache'))
         result = subprocess.run(['sh', str(script)], cwd=root, env=env,
                                 text=True, capture_output=True, check=True)
-        if 'Code v2.23.0' not in result.stdout or result.stdout.splitlines().count('hello, world') != 3:
+        if 'Code v2.23.2' not in result.stdout or result.stdout.splitlines().count('hello, world') != 3:
             raise AssertionError(result.stdout)
-        bundle = root / 'code-first-program/code-v2.23.0-x86_64-linux'
+        bundle = root / 'code-first-program/code-v2.23.2-x86_64-linux'
         cli = bundle / 'code'
         assert cli.is_file() and (bundle / 'code-driver').is_file()
         project = root / 'code-first-program/hello'
         assert (project / 'main.code').read_bytes() == (assets / 'hello.code').read_bytes()
         console = json.loads((project / '.code/lock.json').read_text())['modules']['console']
-        assert console['version'] == '2.23.0'
-        assert console['source'] == 'https://github.com/codelovesme/code/releases/tag/v2.23.0'
+        assert console['version'] == '2.23.2'
+        assert console['source'] == 'https://github.com/codelovesme/code/releases/tag/v2.23.2'
         installed = project / '.code/modules/console' / console['version'] / console['asset']
         assert hashlib.sha256(installed.read_bytes()).hexdigest() == console['sha256']
 

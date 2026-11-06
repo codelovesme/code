@@ -14,6 +14,7 @@ import unittest
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+COMPARISON = json.loads((ROOT / 'site/comparison-data.json').read_text())
 
 
 class Page(HTMLParser):
@@ -144,6 +145,7 @@ class SiteBuild(unittest.TestCase):
         compatibility = json.loads((self.dist / 'browser-compatibility.json').read_text())
         if compatibility['engine'] != '2.16.0':
             self.assertFalse(compatibility['omitted'])
+            self.assertIn('handler_recursion', {x['name'] for x in json.loads((self.dist / 'examples.json').read_text())})
             return
         self.assertEqual([item['name'] for item in compatibility['omitted']], ['handler_recursion'])
         with tempfile.TemporaryDirectory(prefix='code-site-future-pin-') as directory:
@@ -186,11 +188,11 @@ class SiteBuild(unittest.TestCase):
                     self.key = None
 
         groups = defaultdict(list)
-        raw = ROOT / 'benchmarks/website-evidence/results/2026-11-04-v2.23.0/samples.csv'
+        raw = ROOT / Path(COMPARISON['comparison']).parent / 'samples.csv'
         with raw.open() as source:
             for row in csv.DictReader(source):
                 groups[row['group'], row['workload'], row['mode']].append(row)
-        pilot_raw = ROOT / 'benchmarks/history-pilot/results/2026-11-05-v2.23.0/samples.csv'
+        pilot_raw = ROOT / Path(COMPARISON['history']).parent / 'samples.csv'
         with pilot_raw.open() as source:
             for row in csv.DictReader(source):
                 groups['history', row['workload'], row['mode']].append(row)
@@ -213,6 +215,17 @@ class SiteBuild(unittest.TestCase):
             return times['Code release'] / min(times['C O2'], times['Rust O3'])
 
         self.assertEqual(page.broad_order, sorted(workloads, key=measured_ratio))
+        rendered = (self.dist / 'compare.html').read_text()
+        code_time = median(float(x['elapsed_seconds']) for x in groups['history', 'config_64k', 'Code automatic'])
+        rust_time = median(float(x['elapsed_seconds']) for x in groups['history', 'config_64k', 'Rust eager'])
+        self.assertIn(f'{rust_time / code_time:.2f}× as fast', rendered)
+        document_time = median(float(x['elapsed_seconds']) for x in groups['history', 'document_1m', 'Code automatic'])
+        rust_document = median(float(x['elapsed_seconds']) for x in groups['history', 'document_1m', 'Rust shared'])
+        self.assertIn(f'{document_time / rust_document:.2f}× the time', rendered)
+        self.assertIn(COMPARISON['release'], rendered)
+        self.assertIn('785 retained samples', rendered)
+        self.assertNotIn('__PERF_', rendered)
+
 
     def test_only_ready_lessons_are_published_and_linked(self):
         plan = json.loads((ROOT / 'site/lessons.json').read_text())
@@ -235,7 +248,7 @@ class SiteBuild(unittest.TestCase):
             (repo / 'tests').mkdir()
             for fixture in (ROOT / 'tests').glob('*.code'):
                 shutil.copyfile(fixture, repo / 'tests' / fixture.name)
-            for filename in ['.github/workflows/pages.yml', 'benchmarks/website-evidence/results/2026-11-04-v2.23.0/report.json', 'benchmarks/history-pilot/results/2026-11-05-v2.23.0/report.json']:
+            for filename in ['.github/workflows/pages.yml', COMPARISON['comparison'], COMPARISON['history']]:
                 destination = repo / filename
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / filename, destination)
