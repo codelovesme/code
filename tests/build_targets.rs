@@ -98,6 +98,23 @@ fn wasm_character_counts_match_grown_unicode_snapshots() {
 }
 
 #[test]
+fn wasm_ascii_slice_transitions_match_the_character_oracle() {
+    let dir = temp_dir("ascii-slice-transitions");
+    let out = dir.join("slices.wasm");
+    for release in [false, true] {
+        code::compile_file(
+            &fixture("stress_string_ascii_slices.code"),
+            code::BuildTarget::Wasm,
+            &out,
+            release,
+        )
+        .expect("build ASCII/Unicode slice transitions for wasm");
+        run_wasm_under_node(&dir, &out);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn shared_target_produces_a_loadable_library() {
     let dir = temp_dir("shared");
     let out = dir.join("libarith.so");

@@ -921,6 +921,41 @@ static size_t char_offset(const char *s, long long n) {
     return i;
 }
 
+#ifndef CODE_WASM
+/* Slice seeking on the native POSIX targets can skip ASCII runs. Bounded
+ * lookahead first establishes exactly which bytes are readable before NUL;
+ * memcpy word reads then stay inside that bound. Never scan beyond the
+ * character budget or more than 256 bytes ahead. Stop skipping at the first
+ * non-ASCII byte and use the existing UTF-8 walk for the remaining characters.
+ * No allocation capacity, alignment, cached length or new ISA is assumed. */
+static size_t native_slice_offset(const char *s, size_t n) {
+    size_t offset = 0, seen = 0;
+    while (n - seen >= 8) {
+        size_t want = n - seen;
+        if (want > 256) want = 256;
+        size_t available = strnlen(s + offset, want);
+        size_t ascii = 0;
+        while (available - ascii >= 8) {
+            unsigned long long word;
+            memcpy(&word, s + offset + ascii, 8);
+            if (word & 0x8080808080808080ULL) break;
+            ascii += 8;
+        }
+        while (ascii < available && (unsigned char)s[offset + ascii] < 0x80)
+            ascii++;
+        offset += ascii;
+        seen += ascii;
+        if (ascii < available || available < want) break;
+    }
+    while (s[offset] && seen < n) {
+        offset++;
+        while ((s[offset] & 0xC0) == 0x80) offset++;
+        seen++;
+    }
+    return offset;
+}
+#endif
+
 /* `n` bytes of `s` as a fresh owned string. `code_str_owned` cannot serve:
  * it takes a NUL-terminated whole, and a slice's end is in the middle. */
 static void str_owned_n(CodeValue *out, const char *s, size_t n) {
@@ -1010,6 +1045,11 @@ void code_slice(CodeValue *out, const CodeValue *value, const CodeValue *from,
                 code_str(out, "");
                 return;
             }
+#ifndef CODE_WASM
+            size_t begin = native_slice_offset(value->str, lo);
+            size_t end = begin + native_slice_offset(value->str + begin, hi - lo);
+            str_owned_n(out, value->str + begin, end - begin);
+#else
             size_t offset = 0, seen = 0;
             while (value->str[offset] && seen < lo) {
                 offset++;
@@ -1023,6 +1063,7 @@ void code_slice(CodeValue *out, const CodeValue *value, const CodeValue *from,
                 seen++;
             }
             str_owned_n(out, value->str + begin, offset - begin);
+#endif
             return;
         }
         /* Characters, not bytes, and the same clamping an array gets. */
