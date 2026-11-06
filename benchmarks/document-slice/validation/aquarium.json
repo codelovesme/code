@@ -1,0 +1,11 @@
+{
+  "before": {
+    "bytes": 892435,
+    "sha256": "f2570bcce56fcafec6aa2edd126b8bcf12c5e469f9a5ed9b1b438d3648190824"
+  },
+  "after": {
+    "bytes": 892938,
+    "sha256": "f11e43cebb964257a274dd706f5abd7cd0c5c85fac1dc2d22df5b4b54384fd1a"
+  },
+  "size_change_percent": 0.056362648260099846
+}

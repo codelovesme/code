@@ -69,3 +69,22 @@ WASM/gallery checks, local matched-source profiles, and Aquarium WASM size.
 More than 5% Aquarium growth needs explanation. Both PR CI jobs must pass before
 merging. No tag/release, website update or live application restart is part of
 this experiment.
+
+
+## Retained outcome
+
+[All measured outcomes](RESULTS.md): document-1m takes 273.388 → 147.846 ms
+(45.92% less time / 1.85× as fast), with peak RSS unchanged. All 510 samples
+and small costs are retained. Both PR CI jobs pass and PR 79 merged as
+5e231d4. These frozen before/after source builds identify as 2.23.2. The
+independent main version bump to 2.24.0 is preserved and is not substituted
+into this experiment. Reproduction uses baseline 6540a56 and candidate
+1dc4c65 (the retained utf8-slice-walk-238 branch), not a newer main build.
+
+Verify the retained source-experiment data:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/document-slice/verify.py \
+  benchmarks/document-slice/results/2026-11-06-source \
+  --artifacts /path/to/downloaded-utf8-slice-walk
+```

@@ -1,0 +1,45 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-238-profiles/document_64k-After.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 50719242
+Trigger: Program termination
+Profiled target:  /var/tmp/code-238-smoke/binaries/document_64k-After (PID 2200868, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+186,822,527 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                   file:function
+--------------------------------------------------------------------------------
+92,347,602 (49.43%)  ???:code_slice [/var/tmp/code-238-smoke/binaries/document_64k-After]
+75,501,184 (40.41%)  ???:code_length_of [/var/tmp/code-238-smoke/binaries/document_64k-After]
+16,881,886 ( 9.04%)  ???:0x0000000000162880 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   794,898 ( 0.43%)  ???:0x0000000000164e30 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+   681,878 ( 0.36%)  ???:0x00000000001655c0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    93,542 ( 0.05%)  ???:0x00000000000a0fe0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    44,072 ( 0.02%)  ???:free [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    37,355 ( 0.02%)  ???:code_release.part.0 [/var/tmp/code-238-smoke/binaries/document_64k-After]
+    35,686 ( 0.02%)  ???:0x00000000000a02e0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    29,805 ( 0.02%)  ???:main [/var/tmp/code-238-smoke/binaries/document_64k-After]
+    29,799 ( 0.02%)  ???:malloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    26,817 ( 0.01%)  ???:0x0000000000013780 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    26,737 ( 0.01%)  ???:0x000000000000e870 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    26,653 ( 0.01%)  ???:0x000000000000a220 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    19,923 ( 0.01%)  ???:0x000000000000ae90 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+    17,894 ( 0.01%)  ???:code_clear [/var/tmp/code-238-smoke/binaries/document_64k-After]
+    17,692 ( 0.01%)  ???:code_add [/var/tmp/code-238-smoke/binaries/document_64k-After]
+    14,486 ( 0.01%)  ???:code_copy [/var/tmp/code-238-smoke/binaries/document_64k-After]
+    11,642 ( 0.01%)  ???:0x000000000009eaf0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+

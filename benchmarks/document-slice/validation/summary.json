@@ -1,0 +1,103 @@
+{
+  "workspace": {
+    "passed": 342,
+    "failed": 0,
+    "ignored": 7,
+    "summaries": 69,
+    "log": {
+      "sha256": "c251881593c1692880b4464312b6ecd1709216e0e76a7fb9276fed9dd8b0b4d9",
+      "bytes": 40608
+    }
+  },
+  "runtime": {
+    "sha256": "d5f21e4196788db1c067eea1392b257a434fbcf1187c7f98d9649ffa97d50907",
+    "bytes": 229750
+  },
+  "abi_header": {
+    "sha256": "d40f2fa15062a675afe8c24501109d9940ba8ca47c358beefc228a0e0864d839",
+    "bytes": 32140
+  },
+  "clippy": "workspace all targets with warnings denied; passed",
+  "format": "Rust workspace and valid Code fixtures passed; deliberate parse-failure fixtures skipped by formatter",
+  "wasm": "native and compiled-WASM dev/release oracle and source-built WASM interpreter oracle passed; 178 source-engine gallery/featured/lesson examples passed",
+  "wasm_existing_warnings": [
+    "RuntimeModule.drain unused",
+    "module_address unused"
+  ],
+  "applications": {
+    "collection": "frozen 102-fixture corpus from task 234, copied into a fresh scratch tree; not live app changes",
+    "fixtures": 102,
+    "native_dev_release_checks": 204,
+    "full_interpreted_apps": "not run; interpreter unchanged, fixture oracle and workspace parity pass"
+  },
+  "regression_oracle": {
+    "finite_slices": 768,
+    "modes": [
+      "interpreter",
+      "native dev",
+      "native release",
+      "compiled WASM dev",
+      "compiled WASM release",
+      "source-built WASM interpreter"
+    ],
+    "native_leak_checks": true,
+    "infinity_fallback": true,
+    "wrong_bound_kind_messages": true
+  },
+  "website": {
+    "byte_identical_generated_files": 46,
+    "gallery_examples": 147
+  },
+  "source_hash_match": {
+    "hosted_vs_local": 17,
+    "hosted_vs_frozen_234": 17
+  },
+  "logs": {
+    "clippy": {
+      "sha256": "e51b99870bd3a7badf52b345a69ecd50db763a748ea3b1f26d321709609ded1c",
+      "bytes": 3825
+    },
+    "wasm-build": {
+      "sha256": "3ad5c24ab7b77ff71be24afb76a4aceb9a3342c90c3427a8111ae90af07ee38d",
+      "bytes": 1319
+    },
+    "fresh-examples": {
+      "sha256": "0fbe7d04015fca36203d20ae9e300fd97bc00f7f227a5b93b3afb7fbbea6b9be",
+      "bytes": 65
+    },
+    "apps": {
+      "sha256": "a68a68d1e6a84628d2992d0b3b1b0139a1b767a9cd2e7a205a899e8cdaa1ef1a",
+      "bytes": 5199
+    },
+    "final-fixture": {
+      "sha256": "c06ecb3872eed0570b9d8d577f36a281cd6b179bb54aa0abbb9c8d2731369e1b",
+      "bytes": 845
+    },
+    "final-wasm-fixture": {
+      "sha256": "5e15de179c6a054d5c236e3fd50462ccec3d50027e1705f6679d6d39efa72737",
+      "bytes": 393
+    }
+  },
+  "remote_ci": {
+    "run": 42191675111,
+    "passed": 342,
+    "failed": 0,
+    "ignored": 7,
+    "summaries": 69,
+    "jobs": [
+      "Build + test",
+      "code-wasm builds for wasm32 (playground)"
+    ],
+    "log_sha256": "804f239a84581c7f5b6eaedb2bd337c7141b7e1b626db1304ad78b1a553b4e11",
+    "conditional_service_skip": "MinIO unavailable; conditional live S3 fixture portion skipped independently of seven ignored tests"
+  },
+  "source_merge": "5e231d4029c442cb5318c4e22d3f11b918aeab5d",
+  "concurrent_main_version": "2.24.0 version bump preserved; frozen experiment remains source 2.23.2, not a public package measurement",
+  "primary_workspace_builds": {
+    "source": "5e231d4029c442cb5318c4e22d3f11b918aeab5d",
+    "version": "2.24.0",
+    "debug": "cargo build --workspace passed",
+    "release": "cargo build --workspace --release passed",
+    "note": "Local current-source binaries only; frozen performance data still uses the recorded 2.23.2 before/after compilers."
+  }
+}

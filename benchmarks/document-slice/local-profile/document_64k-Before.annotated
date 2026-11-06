@@ -1,0 +1,38 @@
+--------------------------------------------------------------------------------
+Profile data file '/var/tmp/code-238-profiles/document_64k-Before.callgrind' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 84285392
+Trigger: Program termination
+Profiled target:  /var/tmp/code-238-smoke/binaries/document_64k-Before (PID 2200850, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       99.9
+Include dirs:     
+User annotated:   
+Auto-annotation:  off
+
+--------------------------------------------------------------------------------
+Ir                   
+--------------------------------------------------------------------------------
+321,075,435 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                    file:function
+--------------------------------------------------------------------------------
+226,609,400 (70.58%)  ???:code_slice [/var/tmp/code-238-smoke/binaries/document_64k-Before]
+ 75,501,184 (23.52%)  ???:code_length_of [/var/tmp/code-238-smoke/binaries/document_64k-Before]
+ 16,881,886 ( 5.26%)  ???:0x0000000000162880 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    794,898 ( 0.25%)  ???:0x0000000000164e30 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+    681,878 ( 0.21%)  ???:0x00000000001655c0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+     93,542 ( 0.03%)  ???:0x00000000000a0fe0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+     44,072 ( 0.01%)  ???:free [/usr/lib/x86_64-linux-gnu/libc.so.6]
+     37,355 ( 0.01%)  ???:code_release.part.0 [/var/tmp/code-238-smoke/binaries/document_64k-Before]
+     35,686 ( 0.01%)  ???:0x00000000000a02e0 [/usr/lib/x86_64-linux-gnu/libc.so.6]
+     29,805 ( 0.01%)  ???:main [/var/tmp/code-238-smoke/binaries/document_64k-Before]
+     29,799 ( 0.01%)  ???:malloc [/usr/lib/x86_64-linux-gnu/libc.so.6]
+     26,817 ( 0.01%)  ???:0x0000000000013780 [/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2]
+
