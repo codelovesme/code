@@ -90,6 +90,14 @@ one that cannot be read, arrives with `data_base64 = ""` and `refused`
 saying why — the program is told rather than left waiting. One file per
 change; a box with `multiple` sends its first.
 
+The `file` also says **`last_modified`** (unix seconds, the browser's own
+field — a pasted image says now), and a JPEG whose Exif block says when or
+where it was taken carries **`photo`**: `{ taken_local, offset, lat, lon }`
+— the camera's wall clock as `"YYYY-MM-DD HH:MM:SS"`, its offset in
+minutes when the camera wrote one (`null` when it did not: a wall clock
+with no zone is not moved to a guessed one), and GPS degrees when there are
+any. A photo that says none of these has no `photo`.
+
 A **paste** — `on = { paste = "Pasted" }`, on a text box or any element —
 fires only when the clipboard carries a file (a copied screenshot, say): the
 first one arrives as `file` exactly as from a file box, and the browser does
@@ -148,6 +156,18 @@ a program is not woken for every point a finger passes:
   been held for 450ms. Until then vertical movement is left to the browser's
   scroll handling; once armed, the child wears `data-code-dragging` and can be
   carried among its siblings.
+
+- **`viewport`** — on a map or a timeline: one finger (or a mouse) carries
+  it, two fingers pinch it, a wheel zooms it. While it moves the page moves
+  the node's first child itself (a CSS transform), and when it is let go —
+  or a wheel has been still for 180ms — one particle says what happened:
+  **`dx`**, **`dy`** (pixels carried), **`scale`** (2 = twice as big),
+  **`x`**, **`y`** (the point it was zoomed about) and **`width`**,
+  **`height`** (the node's size), all in the node's own pixels. A point
+  `p` of the old view is now at `(p − (x, y)) × scale + (x, y) + (dx, dy)`.
+  The program redraws at its new view and the page lets go of its own
+  transform a moment later. A press that hardly moved is a tap: the
+  child's own `click` still lands; after a real carry it does not.
 
 A gesture is read from pointer events, so it needs the browser not to take
 the pointer for a scroll first: a list swiped across says `"touch-action" =

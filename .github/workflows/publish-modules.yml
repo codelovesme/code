@@ -526,6 +526,11 @@ jobs:
               # down with it.
               printf 'emit Config { port = 0 } to mod get c\nassert c.ok\nemit Listen { } to mod get l\nassert l.ok\nassert l.port > 0\nemit Stop { } to mod get s\nassert s.ok\n' >> dogfood/demo.code
               ;;
+            indexeddb)
+              # No page on a build machine: the artifact loads, routes, and
+              # says so rather than pretending to keep anything.
+              printf 'emit Get { key = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code
+              ;;
             media)
               # No page and no person on a build machine, which is exactly
               # what this checks: the artifact loads, routes, and says so
@@ -739,7 +744,8 @@ jobs:
               oauth) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "ReplaceOne", "DeleteOne", "DeleteMany", "EnsureIndex", "Drop"]' ;;
               azure_blob) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
-              media) handlers='["Record", "StopRecording", "StartCamera", "TakePhoto", "StopCamera", "Play", "StopPlaying"]' ;;
+              media) handlers='["Record", "StopRecording", "StartCamera", "TakePhoto", "StopCamera", "Play", "StopPlaying", "Locate"]' ;;
+              indexeddb) handlers='["Put", "Get", "Delete", "Keys", "Space", "Persist"]' ;;
               blob_storage) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
               cloud_drive) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode", "RefreshToken", "GetQuota", "ListFiles", "UploadFile", "DownloadFile", "DeleteFile"]' ;;
               localai) handlers='["Config", "ValidateImages", "Chat", "ChatJson", "Transcribe", "TranscribeWithOptions", "Speak"]' ;;

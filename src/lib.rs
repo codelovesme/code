@@ -257,6 +257,10 @@ mod compile {
             "http_client",
             include_str!("../crates/modules/http_client/page.mjs"),
         ),
+        (
+            "indexeddb",
+            include_str!("../crates/modules/indexeddb/page.mjs"),
+        ),
         ("media", include_str!("../crates/modules/media/page.mjs")),
         (
             "objects",
