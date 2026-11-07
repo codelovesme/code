@@ -1,0 +1,14 @@
+| A borrowed element may alias the destination's old container.
+round = 0
+loop
+    if round = 32, break
+    values ∈ Array of Any = [1, "é", { x = 2 }]
+    saved = values
+    i = 0
+    loop
+        if i = 512, break
+        values += values[2]
+        i = i + 1
+    assert values[length - 1] = { x = 2 }
+    assert saved = [1, "é", { x = 2 }]
+    round = round + 1

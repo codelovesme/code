@@ -1,0 +1,47 @@
+name: Measure numeric accumulation
+on:
+  workflow_dispatch:
+  push:
+    branches: [numeric-accumulation-263]
+    paths: ["src/runtime.c", ".github/workflows/numeric-accumulation.yml", "benchmarks/numeric-accumulation/run.py"]
+permissions:
+  contents: read
+concurrency:
+  group: numeric-accumulation
+  cancel-in-progress: false
+env:
+  LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install the LLVM backend used by both compilers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev
+      - name: Build the fixed source baseline and candidate identically
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$RUNNER_TEMP/numeric-before-source" 3c6cbae0d969596948760ec5df14ff6a3e844f0f
+          mkdir -p "$RUNNER_TEMP/numeric-compilers"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/numeric-build-before" cargo build --manifest-path "$RUNNER_TEMP/numeric-before-source/Cargo.toml" --workspace --release
+          cp "$RUNNER_TEMP/numeric-build-before/release/code" "$RUNNER_TEMP/numeric-compilers/before"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/numeric-build-after" cargo build --workspace --release
+          cp "$RUNNER_TEMP/numeric-build-after/release/code" "$RUNNER_TEMP/numeric-compilers/after"
+      - name: Validate and sample all before/after entries serially
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/numeric-accumulation/run.py --before "$RUNNER_TEMP/numeric-compilers/before" --after "$RUNNER_TEMP/numeric-compilers/after" --output-dir "$RUNNER_TEMP/numeric-results" --runs 15
+      - name: Audit every sample and apply the fixed decision gates
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/numeric-accumulation/verify.py "$RUNNER_TEMP/numeric-results" --artifacts "$RUNNER_TEMP/numeric-results"
+          PYTHONDONTWRITEBYTECODE=1 python3 benchmarks/numeric-accumulation/gate.py "$RUNNER_TEMP/numeric-results"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: numeric-accumulation
+          path: ${{ runner.temp }}/numeric-results
+          retention-days: 30

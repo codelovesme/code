@@ -1,0 +1,11 @@
+| Number-plus-text fallback, then a borrowed Unicode character scratch.
+value ∈ Any = 0
+i = 0
+loop
+    if i = 32768, break
+    value = i
+    value += "é"
+    value += value[length - 1]
+    assert value[length - 2, length) = "éé"
+    i = i + 1
+assert value = "32767éé"

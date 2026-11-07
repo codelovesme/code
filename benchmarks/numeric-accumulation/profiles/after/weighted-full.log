@@ -1,0 +1,11 @@
+==3354221== Callgrind, a call-graph generating cache profiler
+==3354221== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==3354221== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==3354221== Command: /var/tmp/code-263-profile-after/weighted-full
+==3354221== 
+==3354221== For interactive control, run 'callgrind_control -h'.
+==3354221== 
+==3354221== Events    : Ir
+==3354221== Collected : 72377396
+==3354221== 
+==3354221== I   refs:      72,377,396

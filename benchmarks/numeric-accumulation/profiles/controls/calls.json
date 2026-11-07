@@ -1,0 +1,70 @@
+{
+  "numeric_alias-before": [
+    {
+      "caller": "code_add",
+      "callee": "code_release",
+      "calls": 393216
+    },
+    {
+      "caller": "code_add_into",
+      "callee": "code_add",
+      "calls": 393216
+    },
+    {
+      "caller": "main",
+      "callee": "code_add_into",
+      "calls": 393216
+    }
+  ],
+  "numeric_take-before": [
+    {
+      "caller": "code_add",
+      "callee": "code_release",
+      "calls": 262144
+    },
+    {
+      "caller": "code_add_into",
+      "callee": "code_add",
+      "calls": 262144
+    },
+    {
+      "caller": "code_add_take",
+      "callee": "code_add_into",
+      "calls": 262144
+    },
+    {
+      "caller": "code_add_take",
+      "callee": "code_release",
+      "calls": 262144
+    },
+    {
+      "caller": "main",
+      "callee": "code_add_take",
+      "calls": 262144
+    }
+  ],
+  "numeric_alias-after": [
+    {
+      "caller": "main",
+      "callee": "code_add_into",
+      "calls": 393216
+    }
+  ],
+  "numeric_take-after": [
+    {
+      "caller": "code_add_take",
+      "callee": "code_add_into",
+      "calls": 262144
+    },
+    {
+      "caller": "code_add_take",
+      "callee": "code_release",
+      "calls": 262144
+    },
+    {
+      "caller": "main",
+      "callee": "code_add_take",
+      "calls": 262144
+    }
+  ]
+}

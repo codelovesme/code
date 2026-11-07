@@ -1,0 +1,24 @@
+{
+  "source_sha256": "8c9d91ff0b1a82534a5c0589a5cdd2bafc1434427861f548385f166c3b625edd",
+  "boundary": "Isolated frozen application wasm release compilation and size/host identity check; no browser frame-time or deployment claim",
+  "before": {
+    "aquarium.wasm": {
+      "sha256": "9102706a6c65a49d963243026baac7c064e486619c441df81cff5e17d2505749",
+      "bytes": 892458
+    },
+    "host.mjs": {
+      "sha256": "6095ffece9f334f10f957fdf3c2dc381b10fd0623035f1e3da19d005a634793f",
+      "bytes": 95724
+    }
+  },
+  "after": {
+    "aquarium.wasm": {
+      "sha256": "da49933ea2a36902d08fd361cc318071da5c13938b1d128c0af6b39be55a7938",
+      "bytes": 892492
+    },
+    "host.mjs": {
+      "sha256": "6095ffece9f334f10f957fdf3c2dc381b10fd0623035f1e3da19d005a634793f",
+      "bytes": 95724
+    }
+  }
+}

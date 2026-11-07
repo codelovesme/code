@@ -1,0 +1,822 @@
+{
+  "compiler_sha256": "4d9a0b349ff64041063dfb2e47e8e20d27d877dce46c4e0562a918be35d040f5",
+  "fixture_collection": "frozen 102-fixture regression corpus from task 234, copied; no live application changes",
+  "fixtures": [
+    {
+      "fixture": "aquarium-web/tests/numbers.code",
+      "sha256": "7219221390a01a24267b4bb109c72926e64a0fc9363546d6cbddb5c1f941faac",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "aquarium-web/tests/numbers_equivalence.code",
+      "sha256": "7373e578f8ac86ee3b245be2daabed9442bdfdeab574b9b8e47c642e77786d62",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "aquarium-web/tests/sort_equivalence.code",
+      "sha256": "7aad558976fd019bbd6ca48276c757c7ab44a23f25fbbc81c5761aa9b38e3647",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "auth/tests/accounts.code",
+      "sha256": "3fb6c741978f1d3c55bce0ac8f515ff1b2a8e8e8082b8f3efed09e493c8a0ebf",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "auth/tests/apps.code",
+      "sha256": "924d1035708052f559a0f881295fd1afa8396f1a319989c1a0dcff00ece8b121",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "auth/tests/delegation.code",
+      "sha256": "2928b7b2411a14d7789777e6fe21c6112454b3d7f31eaf7e3b32165a744aa981",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "auth/tests/deletion.code",
+      "sha256": "dbd0b1d187247808466f996ff9fcfd6cd76a768ac1baddeb110ccbf835cd937e",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "auth/tests/feedback.code",
+      "sha256": "1773ce1de97b9f8718e6f43a918d31ddc76ba2a6beacd7365eada7a685a5f02c",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "auth/tests/oauth.code",
+      "sha256": "ed05c27c9093f7f377db6c1a5318413b038a853000a9187271652b9d78e649b0",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "auth/tests/whole_equivalence.code",
+      "sha256": "dde045f949e97da6629f7638814c7282d2ae16c982847bf14508f623a6e477c4",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "backuper/tests/cycle.code",
+      "sha256": "3233bb65537a9e0c5d702dce47ee3bf213c8fad2ae2b9b6b82c691f66dc7d2b5",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "backuper/tests/selection.code",
+      "sha256": "41801f0ff51a8aa2c75c3591d04eb9c212a24b65479ca3266aaae1aa3f1dfe0b",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gems-api/tests/data.code",
+      "sha256": "dea139ac3ee3ed3131662428f18ec2d9de17e88d02db6cce3007fa822d211c91",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gems-api/tests/runs.code",
+      "sha256": "82bdbefab4779418d0bce7232171d4666c53026f769eb76fc748117119b820a5",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gems-web/tests/durations.code",
+      "sha256": "30f1bc1c4a77a4b241cf636f587e4f5f91917f2a7994bd3e136d99d6f89d553e",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gems-web/tests/typed_numbers.code",
+      "sha256": "00c3bec5bf13415a0ea1b7d0268e94fa2840b4b4cb3be9dc112d5ed402212150",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gems-worker/tests/alerts.code",
+      "sha256": "bd7e905f7dc3b0d3410a493ae4557f88fca6ed332eafcc8e0e95178e3e3f86be",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gems-worker/tests/contains_equivalence.code",
+      "sha256": "11ce2517bf41cef63b65290bc6a771b5321c66c4f0baaaf60b080a2d23845038",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gems-worker/tests/cycle.code",
+      "sha256": "22ea8d75df5c7b192e0e65022d67592afd39c3693ab826d0ba59558fb70fb722",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gems-worker/tests/evidence.code",
+      "sha256": "0c4d359a58a20cdf86120e5a39cbe3ff29fae556105d722bce4dbff6e81d7980",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gems-worker/tests/half_equivalence.code",
+      "sha256": "614db84f4c02763e6670100dea75017c7cf07a7c513ce1755dbfad5dc89da392",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gems-worker/tests/machine.code",
+      "sha256": "99404d637b02589f5ab6b6cbe8d2d75496159dd5de9ff1e59581b6d88669fba3",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gold-api/tests/data.code",
+      "sha256": "2a8e3fd7c8e31742ea2ebd0851a16351de96df3fd1e8f67428b54967e0b4f01c",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gold-worker/tests/analysis.code",
+      "sha256": "e2acfb4c87bb2aa6bd6ac193ffcdfdea7cea98a965b7e402f49d07f13ce763d9",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "gold-worker/tests/lifecycle.code",
+      "sha256": "453892683d00a2072e4a3603474942f5ab9bdb4f596aae2916ed6b7b281f7c17",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/admin.code",
+      "sha256": "b6d8700a93b0843b869506ba63d1dfd2f505a90ba509b183a2dc57088a94e8b5",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/failed_start.code",
+      "sha256": "c72f0864c9c18f7d73f5940d80aedd020b75d8bf71e1b47aa516c27e7e958b2c",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/holding.code",
+      "sha256": "c7b818d1f4bb7acf057e96751d528ce106a3847932c18fe8284601fb335bd384",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/install.code",
+      "sha256": "77bfb0a3114595d202d379ce7e2e0d6e05de95a402efeabf099dbd41c4d36d40",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/nucleus.code",
+      "sha256": "63c7d7336899641b25ec81cbdf953a32ef67267aaa8a3ccb5137cb69b9371b95",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/permission.code",
+      "sha256": "ae614fc79b5bb14f222f565aefb561e28bbdd673f12e59a539a9f2b595b68eec",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/reconcile.code",
+      "sha256": "57973801395e3592c24c27e6f1c43c7fb1f876b33861348d995f0e569eb9bb79",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/relay.code",
+      "sha256": "4c9e335aaa2b4490b430e9777bdde31753aa774379a0fd8472b74773b7a41e22",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/relayed_log.code",
+      "sha256": "b77d7cb0d78128f87636ea83dadf8b71caba9d89657c5dc6db3276af82c3ba19",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/shipping.code",
+      "sha256": "a7f8ad4e438d14763ff0dee81ed3c952744bcf409ab50e2e7b4fbddc09098ea5",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/tracing.code",
+      "sha256": "d30ea213cb6cfef1d2e816ab761d53687f860e19464a5ad6ac498e51fb60b9d6",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host/tests/virtual.code",
+      "sha256": "f77efd90711ce401c4691308755edd99905a9c27fde0f95469ea76701e88743f",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "host-web/tests/hub_utilities.code",
+      "sha256": "f1405001b975c32d583799fd46a935ce6826d356d155afb4c55e83d09901881e",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "log-analytics/tests/day_label_equivalence.code",
+      "sha256": "b855eea75e3f1b7f3ff45b9090f479c7e4acee3517f2b8df7ad04748ef9f957b",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "log-analytics/tests/entries.code",
+      "sha256": "4fe24df93eb8619b0c421a0c74ed78c2f39604cb524843918d4c8b1b9a85b028",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "log-analytics/tests/flows.code",
+      "sha256": "e89b265217fe94c421723709ad600aab9bf318de941c30025dc62e945217ad50",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "log-analytics/tests/nucleus.code",
+      "sha256": "60114a933fe86582f207a47f344b0d7e3b3420acbcc0c8f34d8ec98e939718f1",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "log-analytics/tests/usage.code",
+      "sha256": "dea8ad4ee018396aaf1c4f6398a7d4d78b30304bd5f95462524b74cedc28b9ab",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "log-analytics/tests/whole_part_equivalence.code",
+      "sha256": "d3a61acc54569e2bea1c806be9124e019383b5be455a306b9dfdd5e5f7f87e0b",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-api/tests/context.code",
+      "sha256": "fca78df09fa4e5b873bdde1713f42b30522b631588d1dbd388d7628cc7b9d009",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-api/tests/conversations.code",
+      "sha256": "9e31b85b27d3698b9e1a83a61b4b20e164e5d9c8828414a7d3b25a5775c01f27",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-api/tests/device_input.code",
+      "sha256": "a6ef5897f30e18553e804743302a4101f92f4dc99211acd5f455ff7a360d5aae",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-api/tests/editor.code",
+      "sha256": "71526434d5a75d9062ccc5385716bda713fb0ab439e58d21bbd8d7b22ca47cfd",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-api/tests/memory_outage.code",
+      "sha256": "ec7aaef139e73d2c97316093889152f84c684ddc16a1d4dc586527d3452e6434",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-api/tests/nucleus.code",
+      "sha256": "06b31394111100a77146b9141df9fba58d1b7be8f76d066a9d38db180911029c",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-api/tests/options.code",
+      "sha256": "3087d3f624266a27723da375ed2563e019385fafaa697a082e2cafabbaa3746a",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-api/tests/turns.code",
+      "sha256": "91ba0df2504f53d689a3e54902a1cdf983206c41970dbe1fae3dddf9cd2bd525",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-desktop/tests/confirmation.code",
+      "sha256": "9d0b584952ab2f709a0c0f1223583887d2bb3cf3d86fd6e702c3005d1178de86",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-desktop/tests/files.code",
+      "sha256": "2777ecb32eb1331162403b20b4c9345598f238059ebb7d71cb280cf873cf5ca9",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-desktop/tests/voice.code",
+      "sha256": "08f655086d4e63f5228ad052bef477eeb38364eb4e239b4beb67e434da2e2fc3",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-interface-api/tests/headless.code",
+      "sha256": "7341908a12faf52879de349241d3bd9e4be56cb8679d2a9a2855fca7ef4e2a7d",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-interface-api/tests/registry.code",
+      "sha256": "96c79f1730de5b4dcf16d8c9f09e202051bf38e518dba6432293952df1253987",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-interface-api/tests/terminal_modes.code",
+      "sha256": "eaab1d4a369195a41d36e07be1e8853d4f142dfc96cee931916d8983820e91b2",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-web/tests/today_equivalence.code",
+      "sha256": "74c24f63b051f6e4d3aaeb9a3315f1c3766fe451ed5ea26f354e6c78b3b0010f",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "mike-web/tests/upper_equivalence.code",
+      "sha256": "09b85e599f37988369f8834d12c888b8f43279993c1e733c272e9ca9522f61ed",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "organelle-web/tests/search.code",
+      "sha256": "aa03ed1a3396481e1b45f5b7931eb4a4d16f5c957f3da9e3757762b4237b9331",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "ping-api/tests/nucleus.code",
+      "sha256": "cd6c90d5be7755c2ad0971a7e1e810b0cce4630c6eb6517fd344cac782b705ae",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "ping-api/tests/routes.code",
+      "sha256": "939da949e690e82c08dbbd601a1210313b807a71dfb0ef5ae8a70230b324e5b9",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "service-catalog-api/tests/catalog.code",
+      "sha256": "8881ee4e7bf82270126630ebe083c6f4a280a6ee79fe920b1450de5a8a9c35cc",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "service-catalog-api/tests/gateway.code",
+      "sha256": "770b5347eb7fb11d76b8ad38d02b0b4f2281a276e21e5bd1edff0b6107ff09bb",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "service-catalog-api/tests/verification_url.code",
+      "sha256": "c43ed5515728bce6eec7d6811f888092a0b4c8fbd0a67cb4e6645c661390efe9",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "service-catalog-worker/tests/worker.code",
+      "sha256": "9c7457714fe618dbca6403313fa5f4523a4a2e2db631ada989d13119851c001e",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/alerts.code",
+      "sha256": "500389227532f5e2890b310139c551f983610e0551799c22475ffbf9a6cd3ba9",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/boiler.code",
+      "sha256": "932feecec83ea0d95b30454f9529074d397793f07c39183402849078dc4956b2",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/bridge.code",
+      "sha256": "f4c4bbb45616765a3f36271d82c9d28152ab547d4b682a7a399782734b9027e5",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/cameras.code",
+      "sha256": "cf8b7ce10baf63bd28bb3b3d4ea1baea743a9108c2f61992e252d318b17e27fb",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/clock.code",
+      "sha256": "95b4ff698921540b82339a89e023cb959181935d08d94b2fdca9637d7989711d",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/dashboard.code",
+      "sha256": "6e738397f79d6779483ecdfd0f36adf6bee9c613378db26725914015ed0fb13c",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/gas.code",
+      "sha256": "e1199440b4de810f156cffcee5a3b6371ad91598bc40b4741e5dd817ec6b2081",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/history.code",
+      "sha256": "038c0ca6b9e71bae3d8ab432862bd34499a5c4feb5ca6b5d794e71a170ba5eb5",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/house.code",
+      "sha256": "575a706c59f0179a7a2af6ebd79e038be93f58f9d4a76280b6484270624e7c96",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/inputs.code",
+      "sha256": "5e55f852ff8b7bda9434fe514999786c56091c376d4906ac02625d6fd1b4463a",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/light.code",
+      "sha256": "d46403f8a5d13b5895aa34a7347a0038e40cd49ae8f73d9d10f30e9aa8135792",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/nucleus.code",
+      "sha256": "c6d77a83596fbe65ddf89ae8c7c815f2acf97abb2e182ad20d58f8145385816e",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/registry.code",
+      "sha256": "2decdbe4243997bd30c4b2a2f8131f5ff8f7b860b78153efca93043149cf25be",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/rules.code",
+      "sha256": "1b5ba0a2150319c8183b6f2498dde928722ad6b9878e2a31dbba810f9a888983",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/valve.code",
+      "sha256": "3cace3fba8f34336a00885bd23c611560224a2df1abadea1eb491637cc838501",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/weekday_equivalence.code",
+      "sha256": "5072eea1ea3f0d90424d4cb1b4c0b6a5432febd0ec56a1c70e29a1736792a6d5",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home/tests/whole_part_equivalence.code",
+      "sha256": "cc607ab8e8323b597b4afb6ae138da742562a4762083ca527e6d9138e91aab2c",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home-web/tests/date_when.code",
+      "sha256": "6bdb4b8dbb2537cc066105d2ae59d3d044187837529950b5256c7d087877f49a",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "smart-home-web/tests/whole_part.code",
+      "sha256": "616bbb32de7987c6d0d9a9e504252d4db2842eafdc89e6907f9cb54dcd845cbc",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "system-monitor-web/tests/numbers.code",
+      "sha256": "c986d92fb1e5025cbeada4ef17389a6b3cac9dddc4686b670da4e538810d0d31",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "tictac-web/tests/stored_count.code",
+      "sha256": "f6acf80fff44a1dffa36bf31baf7a655f965c5868d42d59832e131d3ea231249",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-api/tests/attachments.code",
+      "sha256": "f424c80021000e5717bcf0cc886fb8359b559473f720ede3ad326657731e5d59",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-api/tests/forget.code",
+      "sha256": "dbdd05840970575b1a95a3a665c5d1f5a948ab0c8de4ea97868ffa015d8827ad",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-api/tests/gpu.code",
+      "sha256": "0e3203e2bc0a3076bf0582c27ce4112a7ce3e9bd1dd5f77bb537bdc3eb78559c",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-api/tests/nucleus.code",
+      "sha256": "f61be60954bed5e1b4b448ad5f88ed7009d3daa45b6845a4d4cc203799169294",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-api/tests/ordering.code",
+      "sha256": "13b0bf9138840da50fd401039858e884960eda06c11bd5c3b081f776d027eb4b",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-api/tests/ordering_equivalence.code",
+      "sha256": "a29fa656d5d7e93024b201a905649e614a22a56256d01ecc032f92e50d2b838a",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-api/tests/settings.code",
+      "sha256": "ae0f11dafe7caaac40e81ae14af0422d02ca97b330a669b6401c5dba5efd8e49",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-api/tests/tasks.code",
+      "sha256": "75c5f40f2da196bee8731ca8ecc68f04c022275ecaadb4c55fd4f222baa69aa5",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-web/tests/outbox_lengths.code",
+      "sha256": "e77b5d552ae06e5edca63d05690291dffd00f784adcf80d786018abf740aaf7e",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-web/tests/private_views.code",
+      "sha256": "b263744641aa127e0d14db68c46a5e7ec2225fb97533b7d438e7a2bd31de647e",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-web/tests/text_equivalence.code",
+      "sha256": "29804875049210018f0b657e96ba6782887ab4782be7aaa3b4de5f3771c94c09",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-web/tests/when_equivalence.code",
+      "sha256": "017f10c1fded4fa83f9c3fccf07b24c2b14d70d44b8bcc9be8adfb65e5143daf",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "todo-worker/tests/gateway.code",
+      "sha256": "691e3fd4133e34a63180c9f25ee785c8c5dcbde8eb6b0780aae6bc3a1c44c207",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    },
+    {
+      "fixture": "video-forge-api/tests/workflow.code",
+      "sha256": "26e68058825f6d8a17d7b3a17417a0c8da01e07bf9ec74d5c00f145bdb030099",
+      "modes": [
+        "dev",
+        "release"
+      ]
+    }
+  ]
+}
