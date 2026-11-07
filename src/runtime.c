@@ -4998,6 +4998,13 @@ static int grow_object_in_place(CodeValue *dst, const CodeValue *b) {
 /* What `name = name + value` and `name += value` compile to. Same answer as
  * `code_add(dst, dst, b)`, which is what it falls back to. */
 void code_add_into(CodeValue *dst, const CodeValue *b) {
+    /* A Number owns no heap block. Read both payloads before the store,
+     * including when the right operand is the destination itself. Keep the
+     * same floating-point operation and operand order as code_add. */
+    if (dst->tag == CODE_NUMBER && b->tag == CODE_NUMBER) {
+        dst->number = dst->number + b->number;
+        return;
+    }
     if (b != dst) {
         if (dst->tag == CODE_ARRAY && (held_alone(dst) || !dst->heap)) {
             if (append_in_place(dst, b)) {

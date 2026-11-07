@@ -1,0 +1,55 @@
+{
+  "baseline": "3c6cbae0d969596948760ec5df14ff6a3e844f0f",
+  "compiler_before_sha256": "a9daf47d09434bbe025b577ae8cc1785da0bd2315cf796fe1d1e17865abaafac",
+  "compiler_after_sha256": "4d9a0b349ff64041063dfb2e47e8e20d27d877dce46c4e0562a918be35d040f5",
+  "runtime_before_sha256": "0d8329a310c67ad336a4becf889de5d1b5b149f22de93ddd0f87e5e8bd273b42",
+  "runtime_after_sha256": "8c0bbd00cc792e1c60b0fa2c586f4c41dc3fbbc1c0bd74184a873a8e654195c1",
+  "vendor_byte_identical": true,
+  "smoke": {
+    "cases": 30,
+    "variant_outputs": 60,
+    "timing": "none"
+  },
+  "local_profiles": "18 cumulative programs; complete instruction and call counts, not elapsed percentages",
+  "site": {
+    "static_tests": 10,
+    "pinned_engine_examples": 178,
+    "files_byte_identical_to_262_and_243": 50,
+    "engine_version": "2.24.1",
+    "initial_setup_failure": "Example checker initially lacked the assembled pinned pkg/ assets; restored previously hash-verified 2.24.1 package, verified all 50 files, then all 178 passed"
+  },
+  "release_and_deployment": "none; no live app or site changes",
+  "numeric_runtime_test": "16x16 IEEE operand matrix plus 16 self-add cases and consumed scratch at -O0/-O2 passed; exact finite/zero/infinity bits, NaN classification, unchanged RHS/tag/heap checks",
+  "test_setup_failure": {
+    "failure": "C harness omitted the private code_check_leaks prototype; GCC 14 refused implicit declaration",
+    "resolution": "Added explicit declaration. Targeted IEEE test passed. Initial full run was explicitly stopped during the unrelated deep WASM test and restarted from frozen final sources; no passing full run claimed for the interrupted attempt."
+  },
+  "applications": "102 unchanged frozen fixtures / 204 native dev/release checks passed; fixture hashes match 262 corpus exactly; not live app deployment",
+  "clippy": "workspace all targets, warnings denied passed after final test fix",
+  "concurrent_main_update": {
+    "revision": "ab9b9ac002fdd08c911d1329aa8275908cf310fc",
+    "version": "2.26.0 (separate owner release, not made by this task)",
+    "scope": "plasmid management and CLI handlers; numeric runtime, ABI and compiler code generation unchanged from our fixed 2.25 baseline",
+    "unchanged_performance_sources": [
+      "src/runtime.c",
+      "src/codegen.rs",
+      "src/alias.rs",
+      "src/infer.rs",
+      "src/lib.rs",
+      "src/code_abi.h"
+    ]
+  },
+  "workspace": {
+    "passed_in_recovery_run": 348,
+    "failed": 0,
+    "ignored": 7,
+    "filtered": 1,
+    "separately_passed_deep_wasm": 1,
+    "total_distinct_test_coverage": 349,
+    "summaries": 70,
+    "complete_log_sha256": "64efe1ae3d4fac31efb078b3dbfbc0c8430cabcc9c1ebd9be88c225394f5e8f4",
+    "prior_log_sha256": "e3285e2c59b60005115d9e65bed67444bfa7bc51f920417c8764d03a77274137",
+    "note": "Previous execution session disappeared after the deep WASM test passed. Recovered workspace run filters only that already-passed expensive test; every other workspace test completed, exit 0. CI will run the entire unfiltered workspace before merge."
+  },
+  "benchmark_control_setup": "Untimed disassembly initially showed numeric_alias/numeric_take optimized to plain numbers despite Any labels. Added unused readers to keep destinations boxed; dynamic call probes confirm 393216/262144 helper calls before and after. Same 30 cases and gates; no elapsed samples had been taken. Final 60 output and allocator/leak checks passed."
+}

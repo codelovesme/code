@@ -1,0 +1,12 @@
+| A shared object merge and numeric field accumulation.
+state = { x = 1, y = 2 }
+i = 0
+loop
+    if i = 32768, break
+    saved = state
+    state += { x = state.y, y = state.x }
+    state.x += 1
+    assert state.x = saved.y + 1
+    assert state.y = saved.x
+    i = i + 1
+assert state = { x = 16385, y = 16386 }

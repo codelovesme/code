@@ -1,0 +1,9 @@
+| Arithmetic temporary passed to a boxed accumulator.
+total ∈ Any = 0
+ReadTotal {} => return Result { value = total }
+i = 0
+loop
+    if i = 262144, break
+    total += i * 3 + 1
+    i = i + 1
+assert total = 103079084032

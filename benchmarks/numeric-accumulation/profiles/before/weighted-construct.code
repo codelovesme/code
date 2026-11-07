@@ -1,0 +1,12 @@
+n = 32768
+values = []
+state = 17
+i = 0
+loop
+    if i = n, break
+    values += { x = state, y = 1024 - state, z = state * 2 }
+    state = state + 17
+    if state ≥ 1024, state = state - 1024
+    i = i + 1
+assert values[0].x = 17
+assert values[length - 1].x = 0

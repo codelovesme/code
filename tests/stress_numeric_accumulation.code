@@ -1,0 +1,78 @@
+| Exercise boxed destinations, self-aliasing, operand order and fallbacks.
+number ∈ Any = 3
+ReadNumber {} => return Result { value = number }
+number += number
+assert number = 6
+held = number
+number = number + -2
+assert number = 4
+assert held = 6
+fraction = 1 / 3
+number += fraction
+assert number = 4 + fraction
+
+| The signed-zero bit is checked directly by the native runtime test.
+number = -0.0
+number += -0.0
+assert number = 0
+number += 0
+assert number = 0
+
+huge = 1
+loop
+    if huge = huge * 10, break
+    huge = huge * 10
+number = huge
+number += number
+assert number = huge
+number += -huge
+assert number ≠ number
+number = huge - huge
+number += 1
+assert number ≠ number
+
+| A scratch RHS and containers retaining their old values.
+number = 7
+number += "éab"[0]
+assert number = "7é"
+number += number[length - 1]
+assert number = "7éé"
+number = 9
+number += [number]
+assert number = [9, 9]
+list ∈ Array of Any = [2, "x", { x = 3 }]
+kept_list = list
+list += list[2]
+assert list = [2, "x", { x = 3 }, { x = 3 }]
+assert kept_list = [2, "x", { x = 3 }]
+list += list
+assert list[7] = { x = 3 }
+assert kept_list[3] = null
+text = "é"
+kept_text = text
+text += text
+assert text = "éé"
+assert kept_text = "é"
+object = { x = 1, y = 2 }
+kept_object = object
+object += { x = object.y, y = object.x }
+assert object = { x = 2, y = 1 }
+assert kept_object = { x = 1, y = 2 }
+
+| Evaluating the RHS can fail: the old accumulator must survive.
+number = 11
+FailOperand {} => number += 1 / 0
+FailAddition {} => number += true
+emit FailOperand to this get operand_failure
+emit FailAddition to this get addition_failure
+assert operand_failure ∈ Exception
+assert addition_failure ∈ Exception
+assert number = 11
+emit ReadNumber to this get observed
+assert observed.value = 11
+
+| Preserve left-to-right IEEE operation order in boxed accumulation.
+number = 10000000000000000
+number += -10000000000000000
+number += 1
+assert number = 1

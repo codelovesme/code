@@ -1,0 +1,273 @@
+{
+  "boundary": "Dynamic call counts of complete local programs, not wall-time shares or exact phase subtraction.",
+  "probes": {
+    "nearest-construct": [
+      {
+        "caller": "code_add_take",
+        "callee": "0x00000000000133c0",
+        "calls": 2
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc",
+        "calls": 1
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc_usable_size",
+        "calls": 32766
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "realloc",
+        "calls": 12
+      },
+      {
+        "caller": "main",
+        "callee": "code_add_take",
+        "calls": 32768
+      }
+    ],
+    "nearest-direct-read": [
+      {
+        "caller": "code_add_take",
+        "callee": "0x00000000000133c0",
+        "calls": 2
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc",
+        "calls": 1
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc_usable_size",
+        "calls": 32766
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "realloc",
+        "calls": 12
+      },
+      {
+        "caller": "main",
+        "callee": "code_add_take",
+        "calls": 32768
+      }
+    ],
+    "nearest-full": [
+      {
+        "caller": "code_add_take",
+        "callee": "0x00000000000133c0",
+        "calls": 2
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc",
+        "calls": 1
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc_usable_size",
+        "calls": 32766
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "realloc",
+        "calls": 12
+      },
+      {
+        "caller": "main",
+        "callee": "code_add_take",
+        "calls": 32768
+      }
+    ],
+    "threshold-construct": [
+      {
+        "caller": "code_add_take",
+        "callee": "0x00000000000133c0",
+        "calls": 3
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc_usable_size",
+        "calls": 32766
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "realloc",
+        "calls": 12
+      },
+      {
+        "caller": "main",
+        "callee": "code_add_take",
+        "calls": 32768
+      }
+    ],
+    "threshold-direct-read": [
+      {
+        "caller": "code_add",
+        "callee": "code_release",
+        "calls": 257808
+      },
+      {
+        "caller": "code_add_into",
+        "callee": "code_add",
+        "calls": 257808
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "0x00000000000133c0",
+        "calls": 3
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "code_add_into",
+        "calls": 257792
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "code_release",
+        "calls": 257792
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc_usable_size",
+        "calls": 32766
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "realloc",
+        "calls": 12
+      },
+      {
+        "caller": "main",
+        "callee": "code_add_into",
+        "calls": 16
+      },
+      {
+        "caller": "main",
+        "callee": "code_add_take",
+        "calls": 290560
+      }
+    ],
+    "threshold-full": [
+      {
+        "caller": "code_add",
+        "callee": "code_release",
+        "calls": 257808
+      },
+      {
+        "caller": "code_add_into",
+        "callee": "code_add",
+        "calls": 257808
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "0x00000000000133c0",
+        "calls": 3
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc_usable_size",
+        "calls": 32766
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "realloc",
+        "calls": 12
+      },
+      {
+        "caller": "main",
+        "callee": "code_add_into",
+        "calls": 257808
+      },
+      {
+        "caller": "main",
+        "callee": "code_add_take",
+        "calls": 32768
+      }
+    ],
+    "weighted-construct": [
+      {
+        "caller": "code_add_take",
+        "callee": "0x00000000000133c0",
+        "calls": 2
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc",
+        "calls": 1
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc_usable_size",
+        "calls": 32766
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "realloc",
+        "calls": 12
+      },
+      {
+        "caller": "main",
+        "callee": "code_add_take",
+        "calls": 32768
+      }
+    ],
+    "weighted-direct-read": [
+      {
+        "caller": "code_add_take",
+        "callee": "0x00000000000133c0",
+        "calls": 2
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc",
+        "calls": 1
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc_usable_size",
+        "calls": 32766
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "realloc",
+        "calls": 12
+      },
+      {
+        "caller": "main",
+        "callee": "code_add_take",
+        "calls": 32768
+      }
+    ],
+    "weighted-full": [
+      {
+        "caller": "code_add_take",
+        "callee": "0x00000000000133c0",
+        "calls": 2
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc",
+        "calls": 1
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "malloc_usable_size",
+        "calls": 32766
+      },
+      {
+        "caller": "code_add_take",
+        "callee": "realloc",
+        "calls": 12
+      },
+      {
+        "caller": "main",
+        "callee": "code_add_take",
+        "calls": 32768
+      }
+    ]
+  }
+}

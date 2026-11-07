@@ -1,0 +1,15 @@
+| Boxed destinations, self-add and an independent saved operand.
+total ∈ Any = 0
+value ∈ Any = 0
+ReadNumbers {} => return Result { value = value, total = total }
+i = 0
+loop
+    if i = 131072, break
+    value = i
+    kept = value
+    value += value
+    value = value + kept
+    assert kept = i
+    total += value
+    i = i + 1
+assert total = 25769607168

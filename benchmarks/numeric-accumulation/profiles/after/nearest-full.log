@@ -1,0 +1,11 @@
+==3355658== Callgrind, a call-graph generating cache profiler
+==3355658== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==3355658== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==3355658== Command: /var/tmp/code-263-profile-after/nearest-full
+==3355658== 
+==3355658== For interactive control, run 'callgrind_control -h'.
+==3355658== 
+==3355658== Events    : Ir
+==3355658== Collected : 65847907
+==3355658== 
+==3355658== I   refs:      65,847,907
