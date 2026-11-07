@@ -51,5 +51,27 @@
     "prior_log_sha256": "e3285e2c59b60005115d9e65bed67444bfa7bc51f920417c8764d03a77274137",
     "note": "Previous execution session disappeared after the deep WASM test passed. Recovered workspace run filters only that already-passed expensive test; every other workspace test completed, exit 0. CI will run the entire unfiltered workspace before merge."
   },
-  "benchmark_control_setup": "Untimed disassembly initially showed numeric_alias/numeric_take optimized to plain numbers despite Any labels. Added unused readers to keep destinations boxed; dynamic call probes confirm 393216/262144 helper calls before and after. Same 30 cases and gates; no elapsed samples had been taken. Final 60 output and allocator/leak checks passed."
+  "benchmark_control_setup": "Untimed disassembly initially showed numeric_alias/numeric_take optimized to plain numbers despite Any labels. Added unused readers to keep destinations boxed; dynamic call probes confirm 393216/262144 helper calls before and after. Same 30 cases and gates; no elapsed samples had been taken. Final 60 output and allocator/leak checks passed.",
+  "hosted_elapsed": {
+    "run": 42316511222,
+    "candidate": "8206a24c01a57bad6e1f17a7b4a3018d350a09e3",
+    "baseline": "3c6cbae0d969596948760ec5df14ff6a3e844f0f",
+    "samples": 900,
+    "summaries": 60,
+    "audited": "CSV/JSON statistics, coverage and native/source/wrapper hashes verified",
+    "accepted": true,
+    "large_threshold_before_ms": 27.863978,
+    "large_threshold_after_ms": 19.692489000000002,
+    "material_regressions": []
+  },
+  "hosted_ci": {
+    "run": 42316545587,
+    "passed": 350,
+    "failed": 0,
+    "ignored": 7,
+    "filtered": 0,
+    "summaries": 70,
+    "log_sha256": "6615cdff4a2034ab44454fc0e253eaa4549e8ac72578e2c3d1ca56c8ab7eb539",
+    "statement": "Full unfiltered workspace, formatting, clippy and wasm32 build passed on the PR merge with owner 2.26.0 main"
+  }
 }
