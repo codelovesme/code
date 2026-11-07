@@ -29,6 +29,8 @@ TakePhoto {}       → TakePhotoResult   { ok }   · later: Captured { image_bas
 StopCamera {}      → StopResult        { ok }
 Play { audio_base64, format } → PlayResult { ok }   · later: Played {}
 StopPlaying {}     → StopResult        { ok }
+Locate { precise?, timeout_ms?, max_age_ms? }
+                   → LocateResult      { ok }   · later: Located { lat, lon, accuracy, at }
 ```
 
 `Play` is the speaker: bytes the program holds — a recording, or speech a
@@ -121,3 +123,15 @@ one. Chromium takes `--use-fake-device-for-media-stream` (a synthetic camera
 and microphone) and `--use-fake-ui-for-media-capture` (permission granted
 without a prompt), which is how `my-euglena-apps`' browser suite drives this
 for real rather than with a stub.
+
+## Where the device is
+
+`Locate` asks the browser where the device is; the browser asks the
+person. The answer is later — `Located { lat, lon, accuracy, at }`, in
+degrees, metres and unix seconds of the fix — or `Denied { device =
+"location" }` when the person says no, `Unavailable` when there is no fix
+(timeout, no signal, no API). `precise = true` asks for GPS rather than a
+network guess; `timeout_ms` (15 s) and `max_age_ms` (a fix up to a minute
+old is fine) are the browser's own. Where a photo or a recording was made
+is a different question: a file says that itself (`dom`'s file box), and
+where the device is *now* is no evidence of it.

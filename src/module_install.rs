@@ -283,6 +283,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "mailer_mock",
     "markdown",
     "math",
+    "indexeddb",
     "media",
     "membrane",
     "mongodb",

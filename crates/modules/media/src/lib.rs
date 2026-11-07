@@ -22,6 +22,11 @@
 //!   `PlayResult { ok }` at once and fires `Played {}` when it ends; a sound
 //!   already playing is stopped first.
 //! - `StopPlaying {}` — stop the sound. Answers `StopResult { ok }`.
+//! - `Locate { precise?, timeout_ms?, max_age_ms? }` — where the device is.
+//!   Answers `LocateResult { ok }` at once; the browser asks the person, and
+//!   `Located { lat, lon, accuracy, at }` (degrees, metres, unix seconds of
+//!   the fix) arrives later — or `Denied` / `Unavailable { device =
+//!   "location" }` when it cannot be had.
 //!
 //! Asking for a device is asking a *person*, and they may say no. A refusal
 //! fires `Denied { device, reason }` rather than an `Exception`: a reader
@@ -96,7 +101,7 @@ mod machine {
             match read_field_str(particle, "_class") {
                 Some("Record") | Some("StopRecording") | Some("StartCamera")
                 | Some("TakePhoto") | Some("SwitchCamera") | Some("StopCamera") | Some("Play")
-                | Some("StopPlaying") => exception(out, "media", NO_BROWSER),
+                | Some("StopPlaying") | Some("Locate") => exception(out, "media", NO_BROWSER),
                 // A class this module does not handle answers null and does
                 // not end the program: it may have been meant for something
                 // else entirely.

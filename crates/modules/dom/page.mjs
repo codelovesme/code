@@ -34,9 +34,100 @@
   // A file goes to the application as `file` — name, type, size and the
   // bytes as base64 — with `value` its name. Too large to carry, or
   // unreadable, the data is empty and `refused` says why.
+  // What a JPEG says about itself: when it was taken (the camera's wall
+  // clock, and its offset when the camera wrote one) and where (GPS). Read
+  // from the Exif block, only the few tags a person's memory needs; any
+  // other file, or a photo without them, says nothing rather than guessing.
+  const photoFacts = (bytes) => {
+    try {
+      const v = new DataView(bytes);
+      if (v.byteLength < 4 || v.getUint16(0) !== 0xffd8) return null;
+      let at = 2;
+      while (at + 4 <= v.byteLength) {
+        if (v.getUint8(at) !== 0xff) return null;
+        const marker = v.getUint8(at + 1);
+        const length = v.getUint16(at + 2);
+        if (marker === 0xe1 && at + 10 <= v.byteLength && v.getUint32(at + 4) === 0x45786966) {
+          return exifFacts(v, at + 10, Math.min(v.byteLength, at + 2 + length));
+        }
+        if (marker === 0xda || marker === 0xd9) return null;
+        at += 2 + length;
+      }
+    } catch {
+      // A broken header is a photo with nothing to say.
+    }
+    return null;
+  };
+  const exifFacts = (v, tiff, end) => {
+    const little = v.getUint16(tiff) === 0x4949;
+    const u16 = (o) => v.getUint16(o, little);
+    const u32 = (o) => v.getUint32(o, little);
+    const entries = (ifd) => {
+      const found = new Map();
+      if (!ifd || tiff + ifd + 2 > end) return found;
+      const count = u16(tiff + ifd);
+      for (let i = 0; i < count; i++) {
+        const e = tiff + ifd + 2 + i * 12;
+        if (e + 12 > end) break;
+        found.set(u16(e), { type: u16(e + 2), count: u32(e + 4), at: e + 8 });
+      }
+      return found;
+    };
+    const text = (entry) => {
+      if (!entry || entry.type !== 2) return null;
+      const from = entry.count > 4 ? tiff + u32(entry.at) : entry.at;
+      let s = "";
+      for (let i = 0; i < entry.count && from + i < end; i++) {
+        const c = v.getUint8(from + i);
+        if (c === 0) break;
+        s += String.fromCharCode(c);
+      }
+      return s;
+    };
+    const rationals = (entry) => {
+      if (!entry || entry.type !== 5) return null;
+      const from = tiff + u32(entry.at);
+      const out = [];
+      for (let i = 0; i < entry.count; i++) {
+        const o = from + i * 8;
+        if (o + 8 > end) return null;
+        const d = u32(o + 4);
+        out.push(d === 0 ? 0 : u32(o) / d);
+      }
+      return out;
+    };
+    const top = entries(u32(tiff + 4));
+    const pointer = (tag) => (top.get(tag) ? u32(top.get(tag).at) : 0);
+    const exif = entries(pointer(0x8769));
+    const gps = entries(pointer(0x8825));
+    const facts = {};
+    const taken = text(exif.get(0x9003)) || text(top.get(0x0132));
+    const shape = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(taken || "");
+    if (shape && shape[1] !== "0000") {
+      facts.taken_local = `${shape[1]}-${shape[2]}-${shape[3]} ${shape[4]}:${shape[5]}:${shape[6]}`;
+      const zone = /^([+-])(\d{2}):(\d{2})$/.exec(text(exif.get(0x9011)) || "");
+      facts.offset = zone ? (zone[1] === "-" ? -1 : 1) * (Number(zone[2]) * 60 + Number(zone[3])) : null;
+    }
+    const lat = rationals(gps.get(2));
+    const lon = rationals(gps.get(4));
+    if (lat && lon && lat.length === 3 && lon.length === 3) {
+      const deg = (p) => p[0] + p[1] / 60 + p[2] / 3600;
+      const la = deg(lat) * (text(gps.get(1)) === "S" ? -1 : 1);
+      const lo = deg(lon) * (text(gps.get(3)) === "W" ? -1 : 1);
+      if (Number.isFinite(la) && Number.isFinite(lo) && !(la === 0 && lo === 0) && Math.abs(la) <= 90 && Math.abs(lo) <= 180) {
+        facts.lat = Math.round(la * 1e6) / 1e6;
+        facts.lon = Math.round(lo * 1e6) / 1e6;
+      }
+    }
+    return Object.keys(facts).length ? facts : null;
+  };
+
   const sendFile = (particle, chosen) => {
     const name = chosen.name || "pasted";
     const said = { name, type: chosen.type || "", size: chosen.size };
+    // When the file says it was last changed: the browser's own field, so
+    // a pasted image (made just now) says now. Seconds, like every clock here.
+    if (Number.isFinite(chosen.lastModified)) said.last_modified = Math.floor(chosen.lastModified / 1000);
     if (chosen.size > FILE_CAP) {
       fire({ ...particle, value: name, file: { ...said, data_base64: "", refused: `larger than ${FILE_CAP_SAID}` } });
       return;
@@ -45,7 +136,18 @@
     reader.onload = () => {
       const url = String(reader.result || "");
       const data_base64 = url.slice(url.indexOf(",") + 1);
-      fire({ ...particle, value: name, file: { ...said, data_base64 } });
+      if (!/^image\/jpe?g$/i.test(said.type) || typeof chosen.slice !== "function") {
+        fire({ ...particle, value: name, file: { ...said, data_base64 } });
+        return;
+      }
+      // A JPEG's Exif block is in its first 128 KB.
+      const head = new FileReader();
+      head.onload = () => {
+        const photo = photoFacts(head.result);
+        fire({ ...particle, value: name, file: photo ? { ...said, photo, data_base64 } : { ...said, data_base64 } });
+      };
+      head.onerror = () => fire({ ...particle, value: name, file: { ...said, data_base64 } });
+      head.readAsArrayBuffer(chosen.slice(0, 131072));
     };
     reader.onerror = () => {
       fire({ ...particle, value: name, file: { ...said, data_base64: "", refused: "could not be read" } });
@@ -77,7 +179,7 @@
   // Names in `on` the page reads as gestures rather than forwarding as
   // events. Nothing is held between renders here either: what a gesture
   // needs to remember lives on the node, and goes when the node does.
-  const GESTURES = new Set(["swipeleft", "swiperight", "doubletap", "drag", "edgeclose", "reorder", "longreorder"]);
+  const GESTURES = new Set(["swipeleft", "swiperight", "doubletap", "drag", "edgeclose", "reorder", "longreorder", "viewport"]);
 
   // SVG needs its own namespace when it is created through the DOM API. A
   // plain `createElement("svg")` looks like an element in the HTML namespace
@@ -99,6 +201,132 @@
   const LONG_REORDER_MS = 450;
 
   function gesture(el, name, particle) {
+    if (name === "viewport") {
+      // A map or a timeline: one finger (or a mouse) carries it, two fingers
+      // pinch it, a wheel zooms it. While it moves the page moves the first
+      // child itself — a program woken for every point would be too slow —
+      // and when it is let go one particle says what happened:
+      //   { dx, dy, scale, x, y, width, height }
+      // `dx`/`dy` the pixels it was carried, `scale` how much bigger it got
+      // (0.5 = half), `x`/`y` the point it was zoomed about and `width`/
+      // `height` the element's size, all in the element's own pixels. The
+      // program redraws at its new view; the page lets go of its own
+      // transform shortly after. A press that hardly moved is a tap, left
+      // to the child's own `click`.
+      const points = new Map();
+      let begun = null;
+      let moved = false;
+      let suppressClick = false;
+      let surface = null;
+      let view = { dx: 0, dy: 0, scale: 1, x: 0, y: 0 };
+      let wheelTimer = null;
+      let releaseTimer = null;
+      const local = (e) => {
+        const box = el.getBoundingClientRect();
+        return { x: e.clientX - box.left, y: e.clientY - box.top };
+      };
+      const both = () => [...points.values()];
+      const middle = (ps) => ({ x: (ps[0].x + ps[1].x) / 2, y: (ps[0].y + ps[1].y) / 2 });
+      const apart = (ps) => Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y) || 1;
+      const show = () => {
+        surface = surface || el.firstElementChild || (el.children && el.children[0]) || null;
+        if (!surface || !surface.style) return;
+        if (releaseTimer !== null) { clearTimeout(releaseTimer); releaseTimer = null; }
+        surface.style.transformOrigin = `${view.x}px ${view.y}px`;
+        surface.style.transform = `translate(${view.dx}px, ${view.dy}px) scale(${view.scale})`;
+      };
+      const letGo = () => {
+        const held = surface;
+        surface = null;
+        if (!held || !held.style) return;
+        releaseTimer = setTimeout(() => {
+          releaseTimer = null;
+          held.style.transform = "";
+          held.style.transformOrigin = "";
+        }, 250);
+      };
+      const send = () => {
+        const box = el.getBoundingClientRect();
+        fire({
+          ...particle,
+          dx: Math.round(view.dx), dy: Math.round(view.dy),
+          scale: Math.round(view.scale * 1000) / 1000,
+          x: Math.round(view.x), y: Math.round(view.y),
+          width: Math.round(box.width), height: Math.round(box.height),
+        });
+        letGo();
+      };
+      const restart = () => {
+        const ps = both();
+        if (ps.length >= 2) {
+          const m = middle(ps);
+          begun = { mid: m, apart: apart(ps), view: { ...view } };
+        } else if (ps.length === 1) {
+          begun = { mid: ps[0], apart: 1, view: { ...view } };
+        }
+      };
+      el.addEventListener("click", (e) => {
+        if (!suppressClick) return;
+        suppressClick = false;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }, true);
+      el.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        if (points.size === 0) {
+          moved = false;
+          suppressClick = false;
+          const at = local(e);
+          view = { dx: 0, dy: 0, scale: 1, x: at.x, y: at.y };
+        }
+        points.set(e.pointerId, local(e));
+        restart();
+      });
+      const follow = (e) => {
+        if (!points.has(e.pointerId) || !begun) return;
+        points.set(e.pointerId, local(e));
+        const ps = both();
+        if (ps.length >= 2) {
+          const m = middle(ps);
+          const s = Math.max(0.05, Math.min(40, begun.view.scale * apart(ps) / begun.apart));
+          view = { ...view, scale: s, x: begun.mid.x - begun.view.dx, y: begun.mid.y - begun.view.dy, dx: begun.view.dx + m.x - begun.mid.x, dy: begun.view.dy + m.y - begun.mid.y };
+        } else {
+          view = { ...view, dx: begun.view.dx + ps[0].x - begun.mid.x, dy: begun.view.dy + ps[0].y - begun.mid.y };
+        }
+        if (!moved && (Math.hypot(view.dx, view.dy) > TAP_PX / 2 || Math.abs(view.scale - 1) > 0.02)) {
+          moved = true;
+          try { el.setPointerCapture(e.pointerId); } catch { /* a release still comes */ }
+        }
+        if (moved) {
+          e.preventDefault();
+          show();
+        }
+      };
+      el.addEventListener("pointermove", follow);
+      const up = (e, cancelled) => {
+        if (!points.has(e.pointerId)) return;
+        if (!cancelled) follow(e);
+        points.delete(e.pointerId);
+        if (points.size > 0) { restart(); return; }
+        begun = null;
+        if (!moved) return;
+        suppressClick = true;
+        send();
+      };
+      el.addEventListener("pointerup", (e) => up(e, false));
+      el.addEventListener("pointercancel", (e) => up(e, true));
+      el.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const at = local(e);
+        if (wheelTimer === null) view = { dx: 0, dy: 0, scale: 1, x: at.x, y: at.y };
+        const step = Math.exp(-Math.max(-200, Math.min(200, e.deltaY)) * 0.002);
+        view = { ...view, scale: Math.max(0.05, Math.min(40, view.scale * step)) };
+        show();
+        if (wheelTimer !== null) clearTimeout(wheelTimer);
+        wheelTimer = setTimeout(() => { wheelTimer = null; send(); }, 180);
+      }, { passive: false });
+      return;
+    }
     if (name === "swipeleft" || name === "swiperight") {
       // A press, and a release far enough along the one axis, soon enough.
       // `pointercancel` is the browser taking the pointer for a scroll — a

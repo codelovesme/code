@@ -526,6 +526,43 @@
           return ok("StopResult");
         }
 
+        // Where the device is, when the person lets the page know. The
+        // answer is later, like a recording: the browser asks the person
+        // first, and a fix can take seconds. `Located { lat, lon, accuracy,
+        // at }` — degrees, metres, unix seconds of the fix — or `Denied` /
+        // `Unavailable { device = "location" }`, never an Exception.
+        case "Locate": {
+          const geo = globalThis.navigator?.geolocation;
+          if (!geo || typeof geo.getCurrentPosition !== "function") {
+            fire({ _class: "Unavailable", device: "location", reason: "this browser cannot say where it is" });
+            return ok("LocateResult", false);
+          }
+          const timeout = Number.isFinite(particle.timeout_ms) ? Math.max(1000, particle.timeout_ms) : 15000;
+          const maximumAge = Number.isFinite(particle.max_age_ms) ? Math.max(0, particle.max_age_ms) : 60000;
+          geo.getCurrentPosition(
+            (position) => {
+              const c = position.coords;
+              fire({
+                _class: "Located",
+                lat: c.latitude,
+                lon: c.longitude,
+                accuracy: Number.isFinite(c.accuracy) ? c.accuracy : null,
+                at: Math.floor((position.timestamp || Date.now()) / 1000),
+              });
+            },
+            (error) => {
+              const denied = error && error.code === 1;
+              fire({
+                _class: denied ? "Denied" : "Unavailable",
+                device: "location",
+                reason: String(error?.message || (denied ? "the person said no" : "no position could be had")),
+              });
+            },
+            { enableHighAccuracy: particle.precise === true, timeout, maximumAge },
+          );
+          return ok("LocateResult");
+        }
+
         case "StopCamera": {
           if (!camStream) return ok("StopResult", false);
           const shown = sink();
