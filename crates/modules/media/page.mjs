@@ -46,8 +46,8 @@
   let camStream = null;
   let camFacingMode = "environment";
   let camDeviceId = null;   // the camera asked for by id, if one was
-  let gravity = null;       // { x, y } from the motion sensor, while the camera is open
-  let motionWatch = null;   // the devicemotion listener, while the camera is open
+  let camZoom = 1;          // the zoom now: the camera's own, or the module's crop
+  let zoomPending = false;  // a camera zoom is on its way to the track
   let watching = null;      // MutationObserver, while the camera is open
   let playing = null;       // HTMLAudioElement, while a sound plays
 
@@ -252,6 +252,8 @@
   function fillSinks() {
     if (!camStream) return;
     const el = sink();
+    watchPinch(el);
+    showDigitalZoom(el);
     if (!el || el.srcObject === camStream) return;
     el.srcObject = camStream;
     // A viewfinder nobody asked to hear, and one that plays without being
@@ -361,10 +363,10 @@
     const known = cameras.find((c) => c.camera_id === id);
     const facing = settings.facingMode || known?.facing || "";
     if (facing === "user" || facing === "environment") camFacingMode = facing;
-    const zoom =
-      caps?.zoom && typeof caps.zoom.min === "number" && caps.zoom.max > caps.zoom.min
-        ? { min: caps.zoom.min, max: caps.zoom.max, step: caps.zoom.step || 0.1, value: settings.zoom ?? 1 }
-        : null;
+    const range = zoomRange();
+    camZoom = range.kind === "track" ? settings.zoom ?? range.min : 1;
+    const zoom = { kind: range.kind, min: range.min, max: range.max, value: camZoom };
+    showDigitalZoom(sink());
     return {
       _class: "CameraReady",
       camera_id: id,
@@ -376,62 +378,96 @@
     };
   }
 
-  /// Which way the phone is held, from gravity: the motion sensor's pull
-  /// along the screen's two sides. Watched only while the camera is open.
-  /// iOS reports the pull the other way round, and asks the person first.
-  const IOS_MOTION = typeof globalThis.DeviceMotionEvent?.requestPermission === "function";
-  function watchMotion() {
-    if (motionWatch || typeof globalThis.addEventListener !== "function") return;
-    if (IOS_MOTION) {
-      try {
-        const asked = globalThis.DeviceMotionEvent.requestPermission();
-        if (asked && typeof asked.catch === "function") asked.catch(() => {});
-      } catch {
-        // Not from a tap, or refused: the photo keeps the screen's way up.
-      }
+  // A camera that cannot zoom is zoomed by the module: the viewfinder is
+  // scaled and the photo cropped to match, up to this far.
+  const DIGITAL_ZOOM_MAX = 5;
+  const CAMERA_ZOOM_MAX = 10;
+
+  const videoTrack = () => camStream?.getVideoTracks?.()[0] ?? null;
+
+  /// How far the open camera zooms: the camera's own range when it has one
+  /// ("track"), else the module's crop ("digital").
+  function zoomRange() {
+    const track = videoTrack();
+    const caps = typeof track?.getCapabilities === "function" ? track.getCapabilities() : {};
+    if (caps?.zoom && typeof caps.zoom.min === "number" && caps.zoom.max > caps.zoom.min) {
+      return { kind: "track", min: caps.zoom.min, max: Math.min(caps.zoom.max, CAMERA_ZOOM_MAX) };
     }
-    motionWatch = (e) => {
-      const g = e?.accelerationIncludingGravity;
-      if (!g || typeof g.x !== "number" || typeof g.y !== "number") return;
-      gravity = IOS_MOTION ? { x: -g.x, y: -g.y } : { x: g.x, y: g.y };
+    return { kind: "digital", min: 1, max: DIGITAL_ZOOM_MAX };
+  }
+
+  /// Zoom to `want`, clamped: the camera's own zoom when it has one (at
+  /// most one change on its way at a time — a pinch asks far faster than a
+  /// camera moves), else the viewfinder scaled and the photo cropped.
+  function zoomTo(want) {
+    const range = zoomRange();
+    const z = Math.min(range.max, Math.max(range.min, Number(want) || 1));
+    camZoom = z;
+    if (range.kind === "track") {
+      if (zoomPending) return z;
+      zoomPending = true;
+      const send = () => {
+        const asked = camZoom;
+        const applied = videoTrack()?.applyConstraints?.({ advanced: [{ zoom: asked }] });
+        const done = () => {
+          zoomPending = false;
+          if (camZoom !== asked && camStream) {
+            zoomPending = true;
+            send();
+          }
+        };
+        if (applied && typeof applied.then === "function") applied.then(done, done);
+        else done();
+      };
+      send();
+    } else {
+      showDigitalZoom(sink());
+    }
+    return z;
+  }
+
+  function showDigitalZoom(el) {
+    if (!el?.style) return;
+    const digital = zoomRange().kind === "digital" && camZoom > 1;
+    el.style.transform = digital ? `scale(${camZoom})` : "";
+  }
+
+  /// Pinch on the viewfinder zooms the camera, live; a trackpad's pinch
+  /// (a wheel with ctrl) does too. `CameraZoomed { zoom }` says where the
+  /// pinch ended. Two fingers are the camera's, not the page's zoom.
+  function watchPinch(el) {
+    if (!el || el.__codePinch || typeof el.addEventListener !== "function") return;
+    el.__codePinch = true;
+    let start = null;
+    const apart = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    el.addEventListener("touchstart", (e) => {
+      if (e.touches?.length === 2) {
+        start = { d: apart(e.touches) || 1, z: camZoom };
+        e.preventDefault?.();
+      }
+    }, { passive: false });
+    el.addEventListener("touchmove", (e) => {
+      if (!start || e.touches?.length !== 2) return;
+      e.preventDefault?.();
+      zoomTo(start.z * (apart(e.touches) / start.d));
+    }, { passive: false });
+    const end = (e) => {
+      if (!start || (e.touches?.length ?? 0) >= 2) return;
+      start = null;
+      fire({ _class: "CameraZoomed", zoom: camZoom });
     };
-    globalThis.addEventListener("devicemotion", motionWatch);
-  }
-
-  function stopMotion() {
-    if (motionWatch) globalThis.removeEventListener?.("devicemotion", motionWatch);
-    motionWatch = null;
-    gravity = null;
-  }
-
-  /// How far the phone is turned from upright, counter-clockwise: 0, 90,
-  /// 180 or 270 — or null when it lies flat or the sensor says nothing.
-  function heldAngle() {
-    if (!gravity) return null;
-    const { x, y } = gravity;
-    if (Math.max(Math.abs(x), Math.abs(y)) < 4) return null;
-    if (Math.abs(y) >= Math.abs(x)) return y > 0 ? 0 : 180;
-    return x > 0 ? 90 : 270;
-  }
-
-  /// How far the screen itself has turned, the same way round.
-  function screenAngle() {
-    const a = globalThis.screen?.orientation?.angle ?? globalThis.orientation ?? 0;
-    return ((Number(a) || 0) % 360 + 360) % 360;
-  }
-
-  /// How far to turn the frame, counter-clockwise, so the photo is the way
-  /// up it was held. A frame is the screen's way up; a phone turned on its
-  /// side while the screen stayed put (rotation locked, or an app that
-  /// stays upright) needs the difference. `orientation` "portrait" or
-  /// "landscape" asks for that shape whatever the sensor says.
-  function turnFor(orientation, width, height) {
-    const held = heldAngle();
-    let turn = held === null ? 0 : (held - screenAngle() + 360) % 360;
-    const tall = turn % 180 === 0 ? height > width : width > height;
-    if (orientation === "landscape" && tall) turn = held === 270 ? (turn + 270) % 360 : (turn + 90) % 360;
-    if (orientation === "portrait" && !tall) turn = (turn + 90) % 360;
-    return turn;
+    el.addEventListener("touchend", end);
+    el.addEventListener("touchcancel", end);
+    // Safari's own pinch gesture would zoom the page.
+    for (const name of ["gesturestart", "gesturechange"]) {
+      el.addEventListener(name, (e) => e.preventDefault?.(), { passive: false });
+    }
+    el.addEventListener("wheel", (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault?.();
+      zoomTo(camZoom * Math.exp(-e.deltaY / 100));
+      fire({ _class: "CameraZoomed", zoom: camZoom });
+    }, { passive: false });
   }
 
   return [
@@ -518,7 +554,6 @@
             camFacingMode = particle.facing;
             if (!particle.camera_id) camDeviceId = null;
           }
-          watchMotion();
           openCamera(media)
             .then(async (stream) => {
               camStream = stream;
@@ -543,10 +578,15 @@
           if (ownView) ownView.srcObject = null;
           letGo(camStream);
           camStream = null;
+          camZoom = 1;
+          showDigitalZoom(shown);
           // A camera named by id is that camera; none named is the other
           // side's, the way a front/back button means.
           if (typeof particle.camera_id === "string" && particle.camera_id) {
             camDeviceId = particle.camera_id;
+          } else if (particle.facing === "user" || particle.facing === "environment") {
+            camDeviceId = null;
+            camFacingMode = particle.facing;
           } else {
             camDeviceId = null;
             camFacingMode = camFacingMode === "environment" ? "user" : "environment";
@@ -563,16 +603,9 @@
         }
 
         case "ZoomCamera": {
-          const track = camStream?.getVideoTracks?.()[0] ?? null;
-          const caps = typeof track?.getCapabilities === "function" ? track.getCapabilities() : {};
           const want = Number(particle.zoom);
-          if (!track || !caps?.zoom || !Number.isFinite(want)) return ok("ZoomCameraResult", false);
-          const zoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min, want));
-          const applied = track.applyConstraints?.({ advanced: [{ zoom }] });
-          if (applied && typeof applied.catch === "function") {
-            applied.catch((e) => fire({ _class: "Unavailable", device: "camera", reason: `the zoom was refused: ${e?.message ?? e}` }));
-          }
-          return { _class: "ZoomCameraResult", ok: true, zoom };
+          if (!camStream || !Number.isFinite(want)) return ok("ZoomCameraResult", false);
+          return { _class: "ZoomCameraResult", ok: true, zoom: zoomTo(want) };
         }
 
         case "TakePhoto": {
@@ -599,13 +632,25 @@
             const maxSide = asked > 0 ? Math.min(PHOTO_LARGEST_SIDE, asked) : PHOTO_MAX_SIDE;
             const q = Number(particle.quality);
             const quality = q > 0 && q <= 1 ? q : PHOTO_QUALITY;
-            const scale = Math.min(1, maxSide / Math.max(width, height));
-            const fw = Math.max(1, Math.round(width * scale));
-            const fh = Math.max(1, Math.round(height * scale));
-            // Turned the way it was held: a quarter turn swaps the sides.
-            const turn = turnFor(particle.orientation, fw, fh);
-            const w = turn % 180 === 0 ? fw : fh;
-            const h = turn % 180 === 0 ? fh : fw;
+            // What the viewfinder shows: the module's zoom is a centred
+            // crop, and a shape asked for ("portrait", "landscape") that
+            // the frame is not is the frame's own proportions turned — a
+            // centred crop the viewfinder shows as `object-fit: cover`.
+            const dz = zoomRange().kind === "digital" ? Math.max(1, camZoom) : 1;
+            let sw = width / dz;
+            let sh = height / dz;
+            const wantWide = particle.orientation === "landscape";
+            const wantTall = particle.orientation === "portrait";
+            if ((wantWide && sh > sw) || (wantTall && sw > sh)) {
+              const aspect = sh / sw;
+              if (sw / sh > aspect) sw = sh * aspect;
+              else sh = sw / aspect;
+            }
+            const sx = (width - sw) / 2;
+            const sy = (height - sh) / 2;
+            const scale = Math.min(1, maxSide / Math.max(sw, sh));
+            const w = Math.max(1, Math.round(sw * scale));
+            const h = Math.max(1, Math.round(sh * scale));
             const canvas = doc.createElement("canvas");
             canvas.width = w;
             canvas.height = h;
@@ -618,17 +663,7 @@
               });
               return;
             }
-            if (turn === 90) {
-              pen.translate(0, h);
-              pen.rotate(-Math.PI / 2);
-            } else if (turn === 180) {
-              pen.translate(w, h);
-              pen.rotate(Math.PI);
-            } else if (turn === 270) {
-              pen.translate(w, 0);
-              pen.rotate(Math.PI / 2);
-            }
-            pen.drawImage(view, 0, 0, fw, fh);
+            pen.drawImage(view, sx, sy, sw, sh, 0, 0, w, h);
             canvas.toBlob(async (blob) => {
             if (!blob) {
               fire({
@@ -749,7 +784,7 @@
           letGo(camStream);
           camStream = null;
           stopWatching();
-          stopMotion();
+          camZoom = 1;
           return ok("StopResult");
         }
 
