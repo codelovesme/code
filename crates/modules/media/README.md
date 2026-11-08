@@ -23,9 +23,13 @@ Recorded { audio_base64, format, ms } => {
 Record { until_silence_ms?, max_ms? }
                    → RecordResult      { ok }   · later: Recorded { audio_base64, format, ms }
 StopRecording {}   → StopResult        { ok }
-StartCamera {}     → StartCameraResult { ok }   · later: CameraReady {}
-SwitchCamera {}    → SwitchCameraResult { ok }  · later: CameraReady {}
-TakePhoto {}       → TakePhotoResult   { ok }   · later: Captured { image_base64, width, height }
+StartCamera { camera_id?, facing? }
+                   → StartCameraResult { ok }   · later: CameraReady { camera_id, facing, cameras, width, height, zoom }
+SwitchCamera { camera_id? }
+                   → SwitchCameraResult { ok }  · later: CameraReady { … }
+ZoomCamera { zoom } → ZoomCameraResult { ok, zoom }
+TakePhoto { max_side?, quality?, orientation? }
+                   → TakePhotoResult   { ok }   · later: Captured { image_base64, width, height, orientation }
 StopCamera {}      → StopResult        { ok }
 Play { audio_base64, format } → PlayResult { ok }   · later: Played {}
 StopPlaying {}     → StopResult        { ok }
@@ -71,6 +75,19 @@ Asking for a device is asking a **person**, and they may say no.
 Neither is an `Exception`. A reader declining the microphone is the system
 working, and an application should answer it rather than treat it as a fault.
 
+## Which camera, and how big
+
+A phone has several cameras — front, rear, often a wide and a telephoto
+lens — and `CameraReady.cameras` lists every one as `{ camera_id, label,
+facing }` once a camera has been allowed (a browser keeps the labels back
+until then). `SwitchCamera { camera_id }` opens that one; `SwitchCamera {}`
+still means "the other side". Some phones show their lenses as one camera
+that zooms: then `CameraReady.zoom` is `{ min, max, step, value }`, a `min`
+below 1 is the wide lens, and `ZoomCamera { zoom }` moves between them.
+
+The camera is asked for at the most pixels it has. Left unsaid, a browser
+opens a phone's camera at 640×480 whatever its sensor can do.
+
 ## The viewfinder
 
 A camera needs somewhere to show itself, and `dom` is what draws. `dom`
@@ -91,12 +108,21 @@ that attribute and attaches the stream wherever it appears.
 application redraws whenever anything changes. Attaching once would mean a
 viewfinder that goes black on the next keystroke.
 
-`TakePhoto` draws the frame from that same element, so a photo is what the
-reader could see rather than what the camera happened to be sending. It is
-cut down before it leaves — the longer side capped at 1600 pixels, JPEG at
-0.85 — because a phone's frame is thousands of pixels across, and as base64
-that is more than a service takes in one request. `width` and `height` on
-`Captured` are the picture's as sent.
+`TakePhoto` draws the frame the reader could see rather than what the
+camera happened to be sending. It is cut down before it leaves — by default
+the longer side capped at 1600 pixels, JPEG at 0.85 — because a phone's frame
+is thousands of pixels across, and as base64 that is more than many services
+take in one request. An application that keeps photos asks for more:
+`TakePhoto { max_side = 4096, quality = 0.92 }` (at most 8192). `width` and
+`height` on `Captured` are the picture's as sent.
+
+**The way it was held.** A frame is the screen's way up, and a phone turned
+on its side while the screen stayed upright (rotation locked) would give a
+sideways portrait. So the module watches the motion sensor while the camera
+is open and turns the photo the way the phone was held; `Captured.orientation`
+says which shape came out. `orientation = "landscape"` or `"portrait"` on
+`TakePhoto` asks for that shape whatever the sensor says (a phone without
+one, or an iPhone that was not given motion access).
 
 ## Bytes
 

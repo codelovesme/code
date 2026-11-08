@@ -10,12 +10,26 @@
 //!   caps it either way. Quiet with no speech fires nothing.
 //! - `StopRecording {}` — stop, and fire `Recorded { audio_base64, format,
 //!   ms }`. Answers `StopResult { ok }`.
-//! - `StartCamera {}` — open the camera and fill any viewfinder in the page
-//!   (see below). Answers `StartCameraResult { ok }`.
-//! - `SwitchCamera {}` — switch between the front and rear camera and fire
-//!   `CameraReady {}` when the replacement stream has a frame.
-//! - `TakePhoto {}` — grab the current frame and fire `Captured {
-//!   image_base64, width, height }`. Answers `TakePhotoResult { ok }`.
+//! - `StartCamera { camera_id?, facing? }` — open the camera (a camera from
+//!   `CameraReady.cameras` by id, or "environment"/"user"; the rear one by
+//!   default) at the most pixels it has, and fill any viewfinder in the page
+//!   (see below). Answers `StartCameraResult { ok }` and fires
+//!   `CameraReady { camera_id, facing, cameras, width, height, zoom }` once
+//!   there is a frame: `cameras` is every camera the device has, as
+//!   `{ camera_id, label, facing }`, and `zoom` is `{ min, max, step, value }`
+//!   when the camera can zoom (a phone's wide lens is often a zoom below 1),
+//!   else null.
+//! - `SwitchCamera { camera_id? }` — open that camera instead, or with no id
+//!   the other side's (front ↔ rear); fires `CameraReady` again.
+//! - `ZoomCamera { zoom }` — zoom the open camera, clamped to its range.
+//!   Answers `ZoomCameraResult { ok, zoom }`.
+//! - `TakePhoto { max_side?, quality?, orientation? }` — grab the current
+//!   frame, turned the way the phone is held (the motion sensor's gravity
+//!   against the screen's own turn), and fire `Captured { image_base64,
+//!   width, height, orientation }`. The longer side is cut to `max_side`
+//!   (1600 by default, at most 8192) at JPEG `quality` (0.85 by default);
+//!   `orientation` "portrait" or "landscape" asks for that shape whatever
+//!   the sensor says. Answers `TakePhotoResult { ok }`.
 //! - `StopCamera {}` — release the camera. Answers `StopResult { ok }`.
 //! - `Play { audio_base64, format }` — play a sound the program holds, as
 //!   base64 bytes of the named subtype ("wav", "mp3", "webm"). Answers
@@ -100,7 +114,7 @@ mod machine {
         guarded(&mut *out, "media", |out| {
             match read_field_str(particle, "_class") {
                 Some("Record") | Some("StopRecording") | Some("StartCamera")
-                | Some("TakePhoto") | Some("SwitchCamera") | Some("StopCamera") | Some("Play")
+                | Some("TakePhoto") | Some("SwitchCamera") | Some("ZoomCamera") | Some("StopCamera") | Some("Play")
                 | Some("StopPlaying") | Some("Locate") => exception(out, "media", NO_BROWSER),
                 // A class this module does not handle answers null and does
                 // not end the program: it may have been meant for something
