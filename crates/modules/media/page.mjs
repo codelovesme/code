@@ -21,10 +21,19 @@
   // is the whole of what passes between them.
   const SINK = "data-code-media";
 
-  // What a photograph is cut down to before it leaves: the longer side in
-  // pixels, and the JPEG quality. 1600 at 0.85 is a few hundred KB.
+  // What a photograph is cut down to before it leaves, unless `TakePhoto`
+  // says otherwise: the longer side in pixels, and the JPEG quality. 1600 at
+  // 0.85 is a few hundred KB — a task-sized picture. A keepsake asks for
+  // more with `max_side` / `quality`, up to these bounds.
   const PHOTO_MAX_SIDE = 1600;
   const PHOTO_QUALITY = 0.85;
+  const PHOTO_LARGEST_SIDE = 8192;
+
+  // What the camera is asked for. Left unsaid, a browser opens a phone's
+  // camera at 640×480 whatever the sensor can do, and every photo is
+  // that small; asked for this much, it gives the most it has. 4:3 is a
+  // photo sensor's own shape.
+  const CAMERA_IDEAL = { width: { ideal: 4096 }, height: { ideal: 3072 } };
 
   let recorder = null;      // MediaRecorder, while recording
   let restarting = false;   // the recorder is being replaced, not finished
@@ -36,6 +45,9 @@
   let micStream = null;
   let camStream = null;
   let camFacingMode = "environment";
+  let camDeviceId = null;   // the camera asked for by id, if one was
+  let gravity = null;       // { x, y } from the motion sensor, while the camera is open
+  let motionWatch = null;   // the devicemotion listener, while the camera is open
   let watching = null;      // MutationObserver, while the camera is open
   let playing = null;       // HTMLAudioElement, while a sound plays
 
@@ -293,8 +305,134 @@
 
   const devices = () => globalThis.navigator?.mediaDevices ?? null;
 
-  const cameraConstraints = (mode = camFacingMode) => ({ video: { facingMode: { exact: mode } } });
-  const cameraFallbackConstraints = (mode = camFacingMode) => ({ video: { facingMode: { ideal: mode } } });
+  /// The camera, opened: the one asked for by id, or the one facing the
+  /// way asked for — exactly, then as near as the browser has, then any.
+  /// Each step asks for the most pixels the camera has.
+  function openCamera(media) {
+    if (camDeviceId) {
+      return media
+        .getUserMedia({ video: { deviceId: { exact: camDeviceId }, ...CAMERA_IDEAL } })
+        .catch(() => media.getUserMedia({ video: { deviceId: { exact: camDeviceId } } }));
+    }
+    return media
+      .getUserMedia({ video: { facingMode: { exact: camFacingMode }, ...CAMERA_IDEAL } })
+      .catch(() => media.getUserMedia({ video: { facingMode: { ideal: camFacingMode }, ...CAMERA_IDEAL } }))
+      .catch(() => media.getUserMedia({ video: true }));
+  }
+
+  /// Which way a camera looks: "user" (at the person), "environment"
+  /// (away), or "" when the browser does not say. Its capabilities say
+  /// when they can; a label ("camera2 0, facing back", "Front Camera")
+  /// otherwise.
+  function facingOf(info) {
+    const caps = typeof info?.getCapabilities === "function" ? info.getCapabilities() : null;
+    const said = Array.isArray(caps?.facingMode) ? caps.facingMode[0] : caps?.facingMode;
+    if (said === "user" || said === "environment") return said;
+    const label = String(info?.label ?? "").toLowerCase();
+    if (/front|user|selfie|facetime/.test(label)) return "user";
+    if (/back|rear|environment|world/.test(label)) return "environment";
+    return "";
+  }
+
+  /// Every camera the device has. Labels are only there once a camera has
+  /// been allowed, which is why this is said when one opens.
+  async function camerasNow(media) {
+    if (typeof media?.enumerateDevices !== "function") return [];
+    try {
+      const all = await media.enumerateDevices();
+      return all
+        .filter((d) => d.kind === "videoinput" && d.deviceId)
+        .map((d, i) => ({ camera_id: d.deviceId, label: d.label || `Camera ${i + 1}`, facing: facingOf(d) }));
+    } catch {
+      return [];
+    }
+  }
+
+  /// `CameraReady`, with what the application needs to offer a choice:
+  /// which camera is open, every camera there is, the picture's size, and
+  /// the zoom it allows (a phone whose wide lens is one camera with the
+  /// others says so as a zoom below 1).
+  async function cameraReady(media, stream) {
+    const track = stream?.getVideoTracks?.()[0] ?? null;
+    const settings = typeof track?.getSettings === "function" ? track.getSettings() : {};
+    const caps = typeof track?.getCapabilities === "function" ? track.getCapabilities() : {};
+    const cameras = await camerasNow(media);
+    const id = settings.deviceId || camDeviceId || "";
+    const known = cameras.find((c) => c.camera_id === id);
+    const facing = settings.facingMode || known?.facing || "";
+    if (facing === "user" || facing === "environment") camFacingMode = facing;
+    const zoom =
+      caps?.zoom && typeof caps.zoom.min === "number" && caps.zoom.max > caps.zoom.min
+        ? { min: caps.zoom.min, max: caps.zoom.max, step: caps.zoom.step || 0.1, value: settings.zoom ?? 1 }
+        : null;
+    return {
+      _class: "CameraReady",
+      camera_id: id,
+      facing,
+      cameras,
+      width: ownView?.videoWidth || settings.width || 0,
+      height: ownView?.videoHeight || settings.height || 0,
+      zoom,
+    };
+  }
+
+  /// Which way the phone is held, from gravity: the motion sensor's pull
+  /// along the screen's two sides. Watched only while the camera is open.
+  /// iOS reports the pull the other way round, and asks the person first.
+  const IOS_MOTION = typeof globalThis.DeviceMotionEvent?.requestPermission === "function";
+  function watchMotion() {
+    if (motionWatch || typeof globalThis.addEventListener !== "function") return;
+    if (IOS_MOTION) {
+      try {
+        const asked = globalThis.DeviceMotionEvent.requestPermission();
+        if (asked && typeof asked.catch === "function") asked.catch(() => {});
+      } catch {
+        // Not from a tap, or refused: the photo keeps the screen's way up.
+      }
+    }
+    motionWatch = (e) => {
+      const g = e?.accelerationIncludingGravity;
+      if (!g || typeof g.x !== "number" || typeof g.y !== "number") return;
+      gravity = IOS_MOTION ? { x: -g.x, y: -g.y } : { x: g.x, y: g.y };
+    };
+    globalThis.addEventListener("devicemotion", motionWatch);
+  }
+
+  function stopMotion() {
+    if (motionWatch) globalThis.removeEventListener?.("devicemotion", motionWatch);
+    motionWatch = null;
+    gravity = null;
+  }
+
+  /// How far the phone is turned from upright, counter-clockwise: 0, 90,
+  /// 180 or 270 — or null when it lies flat or the sensor says nothing.
+  function heldAngle() {
+    if (!gravity) return null;
+    const { x, y } = gravity;
+    if (Math.max(Math.abs(x), Math.abs(y)) < 4) return null;
+    if (Math.abs(y) >= Math.abs(x)) return y > 0 ? 0 : 180;
+    return x > 0 ? 90 : 270;
+  }
+
+  /// How far the screen itself has turned, the same way round.
+  function screenAngle() {
+    const a = globalThis.screen?.orientation?.angle ?? globalThis.orientation ?? 0;
+    return ((Number(a) || 0) % 360 + 360) % 360;
+  }
+
+  /// How far to turn the frame, counter-clockwise, so the photo is the way
+  /// up it was held. A frame is the screen's way up; a phone turned on its
+  /// side while the screen stayed put (rotation locked, or an app that
+  /// stays upright) needs the difference. `orientation` "portrait" or
+  /// "landscape" asks for that shape whatever the sensor says.
+  function turnFor(orientation, width, height) {
+    const held = heldAngle();
+    let turn = held === null ? 0 : (held - screenAngle() + 360) % 360;
+    const tall = turn % 180 === 0 ? height > width : width > height;
+    if (orientation === "landscape" && tall) turn = held === 270 ? (turn + 270) % 360 : (turn + 90) % 360;
+    if (orientation === "portrait" && !tall) turn = (turn + 90) % 360;
+    return turn;
+  }
 
   return [
     "media",
@@ -375,9 +513,13 @@
             });
             return ok("StartCameraResult", false);
           }
-          media
-            .getUserMedia(cameraConstraints())
-            .catch(() => media.getUserMedia(cameraFallbackConstraints()))
+          if (typeof particle.camera_id === "string" && particle.camera_id) camDeviceId = particle.camera_id;
+          if (particle.facing === "user" || particle.facing === "environment") {
+            camFacingMode = particle.facing;
+            if (!particle.camera_id) camDeviceId = null;
+          }
+          watchMotion();
+          openCamera(media)
             .then(async (stream) => {
               camStream = stream;
               watchForSinks();
@@ -386,7 +528,7 @@
               // permission was given — otherwise the first `TakePhoto` after
               // it is a race the application cannot see.
               await ownViewReady(stream);
-              fire({ _class: "CameraReady" });
+              fire(await cameraReady(media, stream));
             })
             .catch((e) => refused("camera", e));
           return ok("StartCameraResult");
@@ -401,19 +543,36 @@
           if (ownView) ownView.srcObject = null;
           letGo(camStream);
           camStream = null;
-          const nextFacingMode = camFacingMode === "environment" ? "user" : "environment";
-          camFacingMode = nextFacingMode;
-          media
-            .getUserMedia(cameraConstraints())
-            .catch(() => media.getUserMedia(cameraFallbackConstraints()))
+          // A camera named by id is that camera; none named is the other
+          // side's, the way a front/back button means.
+          if (typeof particle.camera_id === "string" && particle.camera_id) {
+            camDeviceId = particle.camera_id;
+          } else {
+            camDeviceId = null;
+            camFacingMode = camFacingMode === "environment" ? "user" : "environment";
+          }
+          openCamera(media)
             .then(async (stream) => {
               camStream = stream;
               fillSinks();
               await ownViewReady(stream);
-              fire({ _class: "CameraReady" });
+              fire(await cameraReady(media, stream));
             })
             .catch((e) => refused("camera", e));
           return ok("SwitchCameraResult");
+        }
+
+        case "ZoomCamera": {
+          const track = camStream?.getVideoTracks?.()[0] ?? null;
+          const caps = typeof track?.getCapabilities === "function" ? track.getCapabilities() : {};
+          const want = Number(particle.zoom);
+          if (!track || !caps?.zoom || !Number.isFinite(want)) return ok("ZoomCameraResult", false);
+          const zoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min, want));
+          const applied = track.applyConstraints?.({ advanced: [{ zoom }] });
+          if (applied && typeof applied.catch === "function") {
+            applied.catch((e) => fire({ _class: "Unavailable", device: "camera", reason: `the zoom was refused: ${e?.message ?? e}` }));
+          }
+          return { _class: "ZoomCameraResult", ok: true, zoom };
         }
 
         case "TakePhoto": {
@@ -436,9 +595,17 @@
             // So the longer side is capped, the way the application this
             // replaced did before sending — a task-sized picture, in a
             // request-sized body.
-            const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(width, height));
-            const w = Math.max(1, Math.round(width * scale));
-            const h = Math.max(1, Math.round(height * scale));
+            const asked = Number(particle.max_side);
+            const maxSide = asked > 0 ? Math.min(PHOTO_LARGEST_SIDE, asked) : PHOTO_MAX_SIDE;
+            const q = Number(particle.quality);
+            const quality = q > 0 && q <= 1 ? q : PHOTO_QUALITY;
+            const scale = Math.min(1, maxSide / Math.max(width, height));
+            const fw = Math.max(1, Math.round(width * scale));
+            const fh = Math.max(1, Math.round(height * scale));
+            // Turned the way it was held: a quarter turn swaps the sides.
+            const turn = turnFor(particle.orientation, fw, fh);
+            const w = turn % 180 === 0 ? fw : fh;
+            const h = turn % 180 === 0 ? fh : fw;
             const canvas = doc.createElement("canvas");
             canvas.width = w;
             canvas.height = h;
@@ -451,7 +618,17 @@
               });
               return;
             }
-            pen.drawImage(view, 0, 0, w, h);
+            if (turn === 90) {
+              pen.translate(0, h);
+              pen.rotate(-Math.PI / 2);
+            } else if (turn === 180) {
+              pen.translate(w, h);
+              pen.rotate(Math.PI);
+            } else if (turn === 270) {
+              pen.translate(w, 0);
+              pen.rotate(Math.PI / 2);
+            }
+            pen.drawImage(view, 0, 0, fw, fh);
             canvas.toBlob(async (blob) => {
             if (!blob) {
               fire({
@@ -467,6 +644,7 @@
                 image_base64: await toBase64(blob),
                 width: w,
                 height: h,
+                orientation: w > h ? "landscape" : "portrait",
               });
             } catch (e) {
               fire({
@@ -475,7 +653,7 @@
                 reason: `the frame could not be read: ${e}`,
               });
             }
-            }, "image/jpeg", PHOTO_QUALITY);
+            }, "image/jpeg", quality);
           });
           return ok("TakePhotoResult");
         }
@@ -571,6 +749,7 @@
           letGo(camStream);
           camStream = null;
           stopWatching();
+          stopMotion();
           return ok("StopResult");
         }
 

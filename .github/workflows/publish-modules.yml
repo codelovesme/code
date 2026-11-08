@@ -744,7 +744,7 @@ jobs:
               oauth) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode"]' ;;
               mongodb) handlers='["Config", "Store", "Fetch", "Delete", "Insert", "InsertMany", "Find", "Count", "ReplaceOne", "DeleteOne", "DeleteMany", "EnsureIndex", "Drop"]' ;;
               azure_blob) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
-              media) handlers='["Record", "StopRecording", "StartCamera", "TakePhoto", "StopCamera", "Play", "StopPlaying", "Locate"]' ;;
+              media) handlers='["Record", "StopRecording", "StartCamera", "SwitchCamera", "ZoomCamera", "TakePhoto", "StopCamera", "Play", "StopPlaying", "Locate"]' ;;
               indexeddb) handlers='["Put", "Get", "Delete", "Keys", "Space", "Persist"]' ;;
               blob_storage) handlers='["Config", "Put", "Upload", "Get", "Download", "Delete", "List"]' ;;
               cloud_drive) handlers='["Config", "AuthUrl", "BuildAuthUrl", "ExchangeCode", "RefreshToken", "GetQuota", "ListFiles", "UploadFile", "DownloadFile", "DeleteFile"]' ;;
