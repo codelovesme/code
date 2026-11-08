@@ -1,14 +1,15 @@
 //! `media`'s camera: it opens at the most pixels the camera has (not the
 //! browser's 640×480), says which cameras there are so one can be picked,
-//! zooms within the camera's range, keeps the photo's pixels when asked, and
-//! turns the photo the way the phone was held. Run under node against a
-//! stand-in phone; the probe is `media_camera_probe.mjs`.
+//! zooms by a pinch on the viewfinder (the camera's own zoom, or a crop when
+//! it has none), keeps the photo's pixels when asked, and takes the shape
+//! picked by hand. Run under node against a stand-in phone; the probe is
+//! `media_camera_probe.mjs`.
 
 use std::path::Path;
 use std::process::Command;
 
 #[test]
-fn the_camera_is_picked_sharp_and_the_right_way_up() {
+fn the_camera_is_picked_sharp_zoomed_by_a_pinch_and_shaped_by_hand() {
     if Command::new("node")
         .arg("--version")
         .output()

@@ -25,9 +25,9 @@ Record { until_silence_ms?, max_ms? }
 StopRecording {}   → StopResult        { ok }
 StartCamera { camera_id?, facing? }
                    → StartCameraResult { ok }   · later: CameraReady { camera_id, facing, cameras, width, height, zoom }
-SwitchCamera { camera_id? }
+SwitchCamera { camera_id?, facing? }
                    → SwitchCameraResult { ok }  · later: CameraReady { … }
-ZoomCamera { zoom } → ZoomCameraResult { ok, zoom }
+ZoomCamera { zoom } → ZoomCameraResult { ok, zoom }   · a pinch: CameraZoomed { zoom }
 TakePhoto { max_side?, quality?, orientation? }
                    → TakePhotoResult   { ok }   · later: Captured { image_base64, width, height, orientation }
 StopCamera {}      → StopResult        { ok }
@@ -80,10 +80,17 @@ working, and an application should answer it rather than treat it as a fault.
 A phone has several cameras — front, rear, often a wide and a telephoto
 lens — and `CameraReady.cameras` lists every one as `{ camera_id, label,
 facing }` once a camera has been allowed (a browser keeps the labels back
-until then). `SwitchCamera { camera_id }` opens that one; `SwitchCamera {}`
-still means "the other side". Some phones show their lenses as one camera
-that zooms: then `CameraReady.zoom` is `{ min, max, step, value }`, a `min`
-below 1 is the wide lens, and `ZoomCamera { zoom }` moves between them.
+until then). `SwitchCamera { camera_id }` opens that one, `SwitchCamera { facing }` that
+side's, and `SwitchCamera {}` still means "the other side".
+
+**Zoom is a pinch.** Two fingers on the viewfinder zoom the camera, live —
+the page itself does not zoom — and `CameraZoomed { zoom }` says where the
+pinch ended (a trackpad's pinch works too). `CameraReady.zoom` is `{ kind,
+min, max, value }`: "track" when the camera zooms itself (on many phones a
+`min` below 1 is the wide lens), "digital" when it cannot and the module
+scales the viewfinder and crops the photo to match. `ZoomCamera { zoom }`
+does the same from a program. A digital zoom scales the viewfinder element,
+so put it in a box with `overflow: hidden`.
 
 The camera is asked for at the most pixels it has. Left unsaid, a browser
 opens a phone's camera at 640×480 whatever its sensor can do.
@@ -116,13 +123,11 @@ take in one request. An application that keeps photos asks for more:
 `TakePhoto { max_side = 4096, quality = 0.92 }` (at most 8192). `width` and
 `height` on `Captured` are the picture's as sent.
 
-**The way it was held.** A frame is the screen's way up, and a phone turned
-on its side while the screen stayed upright (rotation locked) would give a
-sideways portrait. So the module watches the motion sensor while the camera
-is open and turns the photo the way the phone was held; `Captured.orientation`
-says which shape came out. `orientation = "landscape"` or `"portrait"` on
-`TakePhoto` asks for that shape whatever the sensor says (a phone without
-one, or an iPhone that was not given motion access).
+**Its shape is picked, not guessed.** `orientation = "landscape"` (or
+`"portrait"`) on `TakePhoto` that the frame is not takes the frame's middle
+in its own proportions turned — a 3:4 frame gives a 4:3 photo. Show the
+viewfinder in that shape with `object-fit: cover` (`CameraReady` gives the
+frame's `width` and `height`) and the photo is what was seen.
 
 ## Bytes
 

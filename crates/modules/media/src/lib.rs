@@ -16,20 +16,19 @@
 //!   (see below). Answers `StartCameraResult { ok }` and fires
 //!   `CameraReady { camera_id, facing, cameras, width, height, zoom }` once
 //!   there is a frame: `cameras` is every camera the device has, as
-//!   `{ camera_id, label, facing }`, and `zoom` is `{ min, max, step, value }`
-//!   when the camera can zoom (a phone's wide lens is often a zoom below 1),
-//!   else null.
-//! - `SwitchCamera { camera_id? }` — open that camera instead, or with no id
-//!   the other side's (front ↔ rear); fires `CameraReady` again.
-//! - `ZoomCamera { zoom }` — zoom the open camera, clamped to its range.
-//!   Answers `ZoomCameraResult { ok, zoom }`.
-//! - `TakePhoto { max_side?, quality?, orientation? }` — grab the current
-//!   frame, turned the way the phone is held (the motion sensor's gravity
-//!   against the screen's own turn), and fire `Captured { image_base64,
-//!   width, height, orientation }`. The longer side is cut to `max_side`
-//!   (1600 by default, at most 8192) at JPEG `quality` (0.85 by default);
-//!   `orientation` "portrait" or "landscape" asks for that shape whatever
-//!   the sensor says. Answers `TakePhotoResult { ok }`.
+//!   `{ camera_id, label, facing }`, and `zoom` is `{ kind, min, max, value }`
+//!   — "track" when the camera zooms itself, "digital" when the module crops.
+//! - `SwitchCamera { camera_id?, facing? }` — open that camera, or that side's,
+//!   or with neither the other side's (front ↔ rear); fires `CameraReady`.
+//! - `ZoomCamera { zoom }` — zoom, clamped to the range. Answers
+//!   `ZoomCameraResult { ok, zoom }`. A pinch on the viewfinder zooms too,
+//!   live, and fires `CameraZoomed { zoom }` where it ends.
+//! - `TakePhoto { max_side?, quality?, orientation? }` — grab what the
+//!   viewfinder shows and fire `Captured { image_base64, width, height,
+//!   orientation }`. The longer side is cut to `max_side` (1600 by default,
+//!   at most 8192) at JPEG `quality` (0.85 by default); `orientation`
+//!   "portrait" or "landscape" that the frame is not takes the frame's
+//!   middle in its proportions turned. Answers `TakePhotoResult { ok }`.
 //! - `StopCamera {}` — release the camera. Answers `StopResult { ok }`.
 //! - `Play { audio_base64, format }` — play a sound the program holds, as
 //!   base64 bytes of the named subtype ("wav", "mp3", "webm"). Answers
