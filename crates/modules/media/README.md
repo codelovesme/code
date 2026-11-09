@@ -35,6 +35,9 @@ Play { audio_base64, format } → PlayResult { ok }   · later: Played {}
 StopPlaying {}     → StopResult        { ok }
 Locate { precise?, timeout_ms?, max_age_ms? }
                    → LocateResult      { ok }   · later: Located { lat, lon, accuracy, at }
+Shrink { image_base64, content_type?, max_side?, quality?, ref? }
+                   → ShrinkResult      { ok }   · later: Shrunk { ref, image_base64, content_type, width, height }
+                                                  or Unshrinkable { ref, reason }
 ```
 
 `Play` is the speaker: bytes the program holds — a recording, or speech a
@@ -166,3 +169,20 @@ network guess; `timeout_ms` (15 s) and `max_age_ms` (a fix up to a minute
 old is fine) are the browser's own. Where a photo or a recording was made
 is a different question: a file says that itself (`dom`'s file box), and
 where the device is *now* is no evidence of it.
+
+## A picture made small
+
+`Shrink` takes a picture the program already holds — a photo chosen from
+the device, one downloaded from a service — and makes a small JPEG of it:
+the longer side cut to `max_side` (400 by default), at `quality` (0.8). A
+list of memories or files shows these, so a page of them is kilobytes
+where the photos are megabytes. The browser decodes the picture, so a
+phone photo's own turn (its Exif orientation) is applied as the browser
+shows it, and anything it can show it can shrink. A picture already that
+small is redrawn at its own size.
+
+The answer is later, as with a recording: decoding takes time. `ref` is
+whatever the program passed, handed back on `Shrunk` or `Unshrinkable {
+ref, reason }` (not a picture the browser can read), so a program shrinking
+several at once knows which is which. No device is asked for, so there is
+no `Denied`.
