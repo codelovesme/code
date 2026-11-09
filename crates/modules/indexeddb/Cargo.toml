@@ -6,7 +6,7 @@
 
 [package]
 name = "indexeddb"
-version = "2.29.0"
+version = "2.30.0"
 edition = "2021"
 description = "The `indexeddb` module for the Code programming language — what a page keeps that is too large for `storage`. Written in Rust on code-native."
 license = "GPL-3.0"

@@ -35,7 +35,7 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "code"
-version = "2.29.0"
+version = "2.30.0"
 dependencies = [
  "js-sys",
  "libc",
@@ -43,7 +43,7 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "2.29.0"
+version = "2.30.0"
 dependencies = [
  "cc",
 ]
@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "interpreter"
-version = "2.29.0"
+version = "2.30.0"
 dependencies = [
  "code",
  "code-native",

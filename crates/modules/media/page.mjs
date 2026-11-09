@@ -470,6 +470,75 @@
     }, { passive: false });
   }
 
+  // A picture the program already holds, made small: a list's preview of a
+  // photo that is megabytes, so a page of them is kilobytes. The longer side
+  // is cut to `max_side` (400 by default) at JPEG `quality` (0.8); a picture
+  // already that small is redrawn as it is. The browser decodes it, so what
+  // it can show it can shrink, and a phone photo's own turn (its Exif
+  // orientation) is applied the way the browser shows it.
+  const SHRINK_MAX_SIDE = 400;
+  const SHRINK_QUALITY = 0.8;
+
+  function bytesOf(b64) {
+    const raw = atob(b64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return bytes;
+  }
+
+  async function decoded(blob) {
+    if (typeof createImageBitmap === "function") {
+      try {
+        return await createImageBitmap(blob, { imageOrientation: "from-image" });
+      } catch (_) {
+        // Some browsers refuse the option; the plain call still decodes.
+        return await createImageBitmap(blob);
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = new Image();
+      await new Promise((done, fail) => {
+        img.onload = done;
+        img.onerror = () => fail(new Error("the browser could not read it as a picture"));
+        img.src = url;
+      });
+      return img;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function shrink(particle) {
+    const ref = particle.ref ?? null;
+    const refuse = (reason) => fire({ _class: "Unshrinkable", ref, reason });
+    try {
+      const picture = await decoded(new Blob([bytesOf(particle.image_base64)], { type: particle.content_type || "image/jpeg" }));
+      const width = picture.width || picture.naturalWidth;
+      const height = picture.height || picture.naturalHeight;
+      if (!width || !height) return refuse("the picture has no size");
+      const asked = Number(particle.max_side);
+      const maxSide = asked > 0 ? Math.min(PHOTO_LARGEST_SIDE, asked) : SHRINK_MAX_SIDE;
+      const q = Number(particle.quality);
+      const quality = q > 0 && q <= 1 ? q : SHRINK_QUALITY;
+      const scale = Math.min(1, maxSide / Math.max(width, height));
+      const w = Math.max(1, Math.round(width * scale));
+      const h = Math.max(1, Math.round(height * scale));
+      const canvas = doc.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const pen = canvas.getContext("2d");
+      if (!pen) return refuse("this browser has no 2d canvas to draw on");
+      pen.drawImage(picture, 0, 0, w, h);
+      picture.close?.();
+      const blob = await new Promise((done) => canvas.toBlob(done, "image/jpeg", quality));
+      if (!blob) return refuse("the picture could not be encoded");
+      fire({ _class: "Shrunk", ref, image_base64: await toBase64(blob), content_type: "image/jpeg", width: w, height: h });
+    } catch (e) {
+      refuse(String(e?.message ?? e));
+    }
+  }
+
   return [
     "media",
     (particle) => {
@@ -608,6 +677,11 @@
           return { _class: "ZoomCameraResult", ok: true, zoom: zoomTo(want) };
         }
 
+        case "Shrink": {
+          if (typeof particle.image_base64 !== "string" || particle.image_base64 === "") return ok("ShrinkResult", false);
+          shrink(particle);
+          return ok("ShrinkResult");
+        }
         case "TakePhoto": {
           if (!camStream) return ok("TakePhotoResult", false);
           const stream = camStream;

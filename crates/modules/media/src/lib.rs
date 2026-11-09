@@ -40,6 +40,13 @@
 //!   `Located { lat, lon, accuracy, at }` (degrees, metres, unix seconds of
 //!   the fix) arrives later — or `Denied` / `Unavailable { device =
 //!   "location" }` when it cannot be had.
+//! - `Shrink { image_base64, content_type?, max_side?, quality?, ref? }` — a
+//!   picture the program holds, made small (a list's preview of a photo).
+//!   Answers `ShrinkResult { ok }` at once; `Shrunk { ref, image_base64,
+//!   content_type, width, height }` follows — the longer side cut to
+//!   `max_side` (400 by default) as JPEG at `quality` (0.8), turned the way
+//!   the browser shows it — or `Unshrinkable { ref, reason }` when the
+//!   browser cannot read it as a picture. `ref` is handed back untouched.
 //!
 //! Asking for a device is asking a *person*, and they may say no. A refusal
 //! fires `Denied { device, reason }` rather than an `Exception`: a reader
@@ -114,7 +121,7 @@ mod machine {
             match read_field_str(particle, "_class") {
                 Some("Record") | Some("StopRecording") | Some("StartCamera")
                 | Some("TakePhoto") | Some("SwitchCamera") | Some("ZoomCamera") | Some("StopCamera") | Some("Play")
-                | Some("StopPlaying") | Some("Locate") => exception(out, "media", NO_BROWSER),
+                | Some("StopPlaying") | Some("Locate") | Some("Shrink") => exception(out, "media", NO_BROWSER),
                 // A class this module does not handle answers null and does
                 // not end the program: it may have been meant for something
                 // else entirely.
