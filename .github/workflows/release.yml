@@ -55,7 +55,10 @@ jobs:
         run: |
           set -euo pipefail
           for kind in exe shared wasm32; do
-            obj=$(ls -t target/release/build/code-*/out/runtime-$kind.o | head -1)
+            # Found wherever cargo keeps build-script output: Rust 1.100 moved
+            # it, and a fixed `build/code-*/out` path then found nothing.
+            obj=$(find target/release -name "runtime-$kind.o" -path '*/out/*' -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+            test -n "$obj" || { echo "::error::runtime-$kind.o not found under target/release"; exit 1; }
             test -s "$obj" || { echo "::error::runtime-$kind.o is empty: build.rs could not compile the runtime"; exit 1; }
           done
 
