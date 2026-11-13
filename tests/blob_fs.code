@@ -1,0 +1,155 @@
+| `blob_fs` — blob_storage's handlers, every blob a plain file under
+| `<root>/data/<bucket>/<key>` with its meta beside it under `<root>/meta/`.
+| The `fs` module looks at the disk directly, so what is asserted is the
+| file a person would find, not only what the module answers.
+link "native_modules/blob_fs.so" as blobs
+link "native_modules/fs.so" as disk
+
+root = "/tmp/code-blob-fs-fixture"
+
+emit Put { key = "x", data = "y" } to blobs get early
+assert early ∈ Exception
+assert early.source = "blob_fs"
+
+| Fresh slate: the folder persists between run and build modes.
+emit Config { base_path = root } to disk
+emit RemoveDir { path = "data" } to disk
+emit RemoveDir { path = "meta" } to disk
+emit RemoveDir { path = "tmp" } to disk
+
+| Without `create`, the bucket's folders must already be there.
+emit Config { bucket = "photos", root = root } to blobs get missing
+assert missing ∈ Exception
+emit Config { bucket = "photos", root = "relative/path", create = true } to blobs get relative
+assert relative ∈ Exception
+emit Config { bucket = "..", root = root, create = true } to blobs get dots
+assert dots ∈ Exception
+
+emit Config { bucket = "photos", root = root, create = true } to blobs get c
+assert c ∈ ConfigResult
+assert c.ok
+
+| ---------------------------------------------------------------------------
+| A blob is a file with its own name
+| ---------------------------------------------------------------------------
+
+emit Put { key = "ada/2026/11/note.txt", data = "first", content_type = "text/plain" } to blobs get p
+assert p ∈ PutResult
+assert p.key = "ada/2026/11/note.txt"
+
+emit ReadFile { path = "data/photos/ada/2026/11/note.txt" } to disk get on_disk
+assert on_disk.content = "first"
+
+emit Exists { path = "meta/photos/ada/2026/11/note.txt.json" } to disk get meta_there
+assert meta_there.is_file
+
+emit Get { key = "ada/2026/11/note.txt" } to blobs get g
+assert g ∈ GetResult
+assert g.found
+assert g.data = "first"
+assert g.content_type = "text/plain"
+
+| Bytes through base64, the way a photo travels.
+emit Put { key = "ada/hello.bin", data = "aGVsbG8=", base64 = true } to blobs
+emit ReadFile { path = "data/photos/ada/hello.bin" } to disk get raw
+assert raw.content = "hello"
+emit Get { key = "ada/hello.bin", base64 = true } to blobs get g64
+assert g64.data = "aGVsbG8="
+assert g64.content_type = "application/octet-stream"
+
+| A second Put replaces the whole file.
+emit Put { key = "ada/2026/11/note.txt", data = "second", content_type = "text/plain" } to blobs
+emit Get { key = "ada/2026/11/note.txt" } to blobs get replaced
+assert replaced.data = "second"
+
+emit Get { key = "nobody/here.txt" } to blobs get miss
+assert miss ∈ GetResult
+assert miss.found = false
+
+| A file someone copied in by hand, with no meta, is still a blob.
+emit WriteFile { path = "data/photos/ada/by-hand.txt", content = "hand" } to disk
+emit Get { key = "ada/by-hand.txt" } to blobs get by_hand
+assert by_hand.found
+assert by_hand.data = "hand"
+assert by_hand.content_type = "application/octet-stream"
+
+| ---------------------------------------------------------------------------
+| No key reaches outside its bucket
+| ---------------------------------------------------------------------------
+
+emit Put { key = "../escape.txt", data = "no" } to blobs get up
+assert up ∈ Exception
+emit Put { key = "ada/../../escape.txt", data = "no" } to blobs get up_deep
+assert up_deep ∈ Exception
+emit Put { key = "/etc/passwd", data = "no" } to blobs get absolute
+assert absolute ∈ Exception
+emit Get { key = "ada//double.txt" } to blobs get empty_part
+assert empty_part ∈ Exception
+emit Get { key = "ada/./here.txt" } to blobs get dot_part
+assert dot_part ∈ Exception
+emit Delete { key = "..\\photos" } to blobs get backslash
+assert backslash ∈ Exception
+emit Exists { path = "escape.txt" } to disk get escaped
+assert escaped.exists = false
+emit Exists { path = "data/escape.txt" } to disk get escaped_data
+assert escaped_data.exists = false
+
+| ---------------------------------------------------------------------------
+| A write killed half-way leaves no file
+| ---------------------------------------------------------------------------
+
+| What a killed write leaves behind: a staged part in `tmp/`, never a file
+| in the bucket. It is not listed, and its key is not found.
+emit WriteFile { path = "tmp/999-0-0.part", content = "half a pho" } to disk
+emit List { prefix = "" } to blobs get after_kill
+assert after_kill.keys = ["ada/2026/11/note.txt", "ada/by-hand.txt", "ada/hello.bin"]
+
+| ---------------------------------------------------------------------------
+| Archived: on a disk somewhere, not here
+| ---------------------------------------------------------------------------
+
+emit WriteFile {
+    path = "meta/photos/ada/2019/beach.jpg.json"
+    content = "{ \"content_type\": \"image/jpeg\", \"size\": 3, \"sha256\": \"x\", \"archived\": true, \"disks\": [\"A-007\", \"B-003\"] }"
+} to disk
+emit Get { key = "ada/2019/beach.jpg" } to blobs get archived
+assert archived ∈ Archived
+assert archived.key = "ada/2019/beach.jpg"
+assert archived.disks = ["A-007", "B-003"]
+
+emit List { prefix = "ada/2019/" } to blobs get archived_listed
+assert archived_listed.keys = ["ada/2019/beach.jpg"]
+
+| ---------------------------------------------------------------------------
+| List, Delete
+| ---------------------------------------------------------------------------
+
+emit List { prefix = "ada/2026/" } to blobs get l
+assert l ∈ ListResult
+assert l.count = 1
+assert l.keys = ["ada/2026/11/note.txt"]
+
+emit Delete { key = "ada/2026/11/note.txt" } to blobs get d
+assert d ∈ DeleteResult
+assert d.existed
+emit Delete { key = "ada/2026/11/note.txt" } to blobs get d2
+assert d2.existed = false
+emit Get { key = "ada/2026/11/note.txt" } to blobs get gone
+assert gone.found = false
+
+| The folders it left empty went with it; the bucket stays.
+emit Exists { path = "data/photos/ada/2026" } to disk get empty_folder
+assert empty_folder.exists = false
+emit Exists { path = "meta/photos/ada/2026" } to disk get empty_meta_folder
+assert empty_meta_folder.exists = false
+emit Exists { path = "data/photos" } to disk get bucket
+assert bucket.is_dir
+
+| Upload and Download are Put and Get by another name.
+emit Upload { key = "ada/up.txt", data = "u" } to blobs get up_ok
+assert up_ok ∈ PutResult
+emit Download { key = "ada/up.txt" } to blobs get down
+assert down.data = "u"
+
+emit Presign {} to blobs get u
+assert u = null
