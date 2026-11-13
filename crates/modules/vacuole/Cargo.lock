@@ -14,7 +14,7 @@ dependencies = [
 
 [[package]]
 name = "code-native"
-version = "2.30.0"
+version = "2.31.0"
 dependencies = [
  "cc",
 ]
@@ -152,7 +152,7 @@ checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
 name = "vacuole"
-version = "2.30.0"
+version = "2.31.0"
 dependencies = [
  "code-native",
  "serde_json",

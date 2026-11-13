@@ -122,14 +122,17 @@
     return Object.keys(facts).length ? facts : null;
   };
 
-  const sendFile = (particle, chosen) => {
+  // `then` runs once this file has been sent (or refused), so several
+  // chosen together cross one after another, in the order they were chosen.
+  const sendFile = (particle, chosen, then) => {
+    const fire1 = (p) => { fire(p); if (then) then(); };
     const name = chosen.name || "pasted";
     const said = { name, type: chosen.type || "", size: chosen.size };
     // When the file says it was last changed: the browser's own field, so
     // a pasted image (made just now) says now. Seconds, like every clock here.
     if (Number.isFinite(chosen.lastModified)) said.last_modified = Math.floor(chosen.lastModified / 1000);
     if (chosen.size > FILE_CAP) {
-      fire({ ...particle, value: name, file: { ...said, data_base64: "", refused: `larger than ${FILE_CAP_SAID}` } });
+      fire1({ ...particle, value: name, file: { ...said, data_base64: "", refused: `larger than ${FILE_CAP_SAID}` } });
       return;
     }
     const reader = new FileReader();
@@ -137,20 +140,20 @@
       const url = String(reader.result || "");
       const data_base64 = url.slice(url.indexOf(",") + 1);
       if (!/^image\/jpe?g$/i.test(said.type) || typeof chosen.slice !== "function") {
-        fire({ ...particle, value: name, file: { ...said, data_base64 } });
+        fire1({ ...particle, value: name, file: { ...said, data_base64 } });
         return;
       }
       // A JPEG's Exif block is in its first 128 KB.
       const head = new FileReader();
       head.onload = () => {
         const photo = photoFacts(head.result);
-        fire({ ...particle, value: name, file: photo ? { ...said, photo, data_base64 } : { ...said, data_base64 } });
+        fire1({ ...particle, value: name, file: photo ? { ...said, photo, data_base64 } : { ...said, data_base64 } });
       };
-      head.onerror = () => fire({ ...particle, value: name, file: { ...said, data_base64 } });
+      head.onerror = () => fire1({ ...particle, value: name, file: { ...said, data_base64 } });
       head.readAsArrayBuffer(chosen.slice(0, 131072));
     };
     reader.onerror = () => {
-      fire({ ...particle, value: name, file: { ...said, data_base64: "", refused: "could not be read" } });
+      fire1({ ...particle, value: name, file: { ...said, data_base64: "", refused: "could not be read" } });
     };
     reader.readAsDataURL(chosen);
   };
@@ -827,10 +830,12 @@
         // base64 — with `value` the file's name, the way every other box
         // carries text. Too large to carry, and the data is empty and
         // `refused` says why: the program is told, never left waiting.
+        // A box with `multiple` may hold several: each is sent as its own
+        // event, one after another, the way one file is.
         if (isFileBox(target)) {
-          const chosen = target.files && target.files[0];
-          if (!chosen) return;
-          sendFile(particle, chosen);
+          const chosen = Array.from(target.files || []);
+          const next = (i) => { if (i < chosen.length) sendFile(particle, chosen[i], () => next(i + 1)); };
+          next(0);
           return;
         }
         // A paste carries a file when something like a screenshot was

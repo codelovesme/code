@@ -114,6 +114,18 @@ check("an unreadable file was not said", fired, [{{ _class: "Chosen", slot: 2, v
   file: {{ name: "gone.bin", type: "", size: 3, data_base64: "", refused: "could not be read" }} }}]);
 fired.length = 0;
 
+// Several chosen together (`multiple`): one event each, in their order, a
+// too-large one refused on its own without stopping the rest.
+box.files = [
+  {{ name: "a.jpg", type: "image/png", size: 4, b64: "QUFB" }},
+  {{ name: "big.png", type: "image/png", size: 40 * 1024 * 1024, b64: "" }},
+  {{ name: "c.png", type: "image/png", size: 4, b64: "Q0ND" }},
+];
+box.send("change", {{}});
+check("several files were not each carried, in order", fired.map((p) => [p.value, p.file.data_base64, p.file.refused || ""]),
+  [["a.jpg", "QUFB", ""], ["big.png", "", "larger than 12 MB"], ["c.png", "Q0ND", ""]]);
+fired.length = 0;
+
 // A change with no file chosen says nothing; a text box is untouched.
 box.files = [];
 box.send("change", {{}});
