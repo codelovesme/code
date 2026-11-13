@@ -259,6 +259,7 @@ pub fn native_metadata_for(
 pub const FIRST_PARTY: &[&str] = &[
     "arrays",
     "azure_blob",
+    "blob_fs",
     "blob_storage",
     "blob_storage_mock",
     "canvas",
