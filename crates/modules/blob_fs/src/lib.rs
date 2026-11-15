@@ -37,6 +37,31 @@
 //!   folders left empty are removed.
 //! - `List { prefix? }` → `ListResult { keys, count }` — sorted, archived ones
 //!   included.
+//! - `Get { key, start, length }` — the same answer for that byte range only,
+//!   read without the rest of the file.
+//! - `Move { key, dest }` → `MoveResult { key }` — a rename on the disk, meta
+//!   and all; nothing is read. A file already at `dest` is refused.
+//! - `Hash { key }` → `HashResult { key, found, size, sha256 }` — from the
+//!   meta, or read through once for a file that has none.
+//! - `Locate { key }` → `LocateResult { key, found, path }` — the file's
+//!   absolute path on this machine, for a program that hands a large file to
+//!   something that reads files (a web server's byte ranges, ffmpeg).
+//!
+//! A file too large to cross as one particle arrives in parts:
+//!
+//! - `PutPart { key, offset, data, base64?, sha256? }` → `PartResult { key,
+//!   received }` — writes the bytes at `offset` of the key's staged file. An
+//!   offset past what has arrived is refused (no gaps); one before it writes
+//!   again, so a part sent twice after a lost answer does no harm. `sha256`,
+//!   when given, is checked against the part's bytes first.
+//! - `Received { key }` → `ReceivedResult { key, received }` — how many bytes
+//!   have arrived, so an upload cut off goes on from there.
+//! - `Seal { key, size?, sha256?, content_type? }` → `SealResult { key, size,
+//!   sha256 }` — reads the staged file through once for its sha256, checks
+//!   `size` and `sha256` when given, and moves it into place like a `Put`.
+//!   A file that does not match is thrown away, so the next try starts clean.
+//! - `Abandon { key }` → `AbandonResult { existed }` — throws a staged file
+//!   away.
 //!
 //! A key is a relative path: `/`-separated, no empty part, no `.` or `..`, no
 //! backslash or NUL, and not absolute. Anything else is an `Exception` — a key
@@ -100,6 +125,13 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             "Get" | "Download" => get(out, particle),
             "Delete" => delete(out, particle),
             "List" => list(out, particle),
+            "Move" => move_blob(out, particle),
+            "Hash" => hash(out, particle),
+            "Locate" => locate(out, particle),
+            "PutPart" => put_part(out, particle),
+            "Received" => received(out, particle),
+            "Seal" => seal(out, particle),
+            "Abandon" => abandon(out, particle),
             _ => {
                 null(out);
                 Ok(())
@@ -201,7 +233,27 @@ fn get(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     let (file, meta, _) = paths(key)?;
     let about = read_meta(&meta).map_err(|e| format!("cannot read what '{key}' is: {e}"))?;
 
-    let bytes = match fs::read(&file) {
+    let range = match (
+        find_field(particle, "start"),
+        find_field(particle, "length"),
+    ) {
+        (None, None) => None,
+        (start, length) => {
+            let start = start.and_then(read_number).unwrap_or(0.0);
+            let length = length.and_then(read_number).unwrap_or(f64::MAX);
+            if start.is_nan() || length.is_nan() || start < 0.0 || length < 0.0 {
+                return Err(format!(
+                    "Get '{key}': 'start' and 'length' must be numbers ≥ 0"
+                ));
+            }
+            Some((start as u64, length.min(u64::MAX as f64) as u64))
+        }
+    };
+    let read = match range {
+        None => fs::read(&file),
+        Some((start, length)) => read_range(&file, start, length),
+    };
+    let bytes = match read {
         Ok(bytes) => Some(bytes),
         Err(e) if e.kind() == io::ErrorKind::NotFound => None,
         Err(e) => return Err(format!("cannot read '{key}': {e}")),
@@ -323,6 +375,218 @@ fn list(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
     Ok(())
 }
 
+fn move_blob(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let key = require_str(particle, "key", "Move")?.to_string();
+    let dest = require_str(particle, "dest", "Move")?.to_string();
+    let (file, meta, _) = paths(&key)?;
+    let (to_file, to_meta, _) = paths(&dest)?;
+    let (data_root, meta_root) = roots()?;
+    if key != dest {
+        if !file.is_file() {
+            return Err(format!("Move: there is no '{key}' to move"));
+        }
+        if to_file.exists() {
+            return Err(format!("Move: '{dest}' is taken"));
+        }
+        let parent = to_file.parent().ok_or("no parent folder")?;
+        fs::create_dir_all(parent).map_err(|e| format!("cannot make room for '{dest}': {e}"))?;
+        fs::rename(&file, &to_file).map_err(|e| format!("cannot move '{key}' to '{dest}': {e}"))?;
+        if meta.is_file() {
+            let parent = to_meta.parent().ok_or("no parent folder")?;
+            fs::create_dir_all(parent).map_err(|e| format!("cannot describe '{dest}': {e}"))?;
+            fs::rename(&meta, &to_meta).map_err(|e| format!("cannot describe '{dest}': {e}"))?;
+        }
+        prune(&file, &data_root);
+        prune(&meta, &meta_root);
+    }
+    let mut b = SlotBuffer::new(2);
+    borrowed_str(b.slot_mut(0), c"MoveResult");
+    owned_str(b.slot_mut(1), &dest);
+    object(out, &[c"_class", c"key"], &mut b);
+    b.release_all();
+    Ok(())
+}
+
+fn hash(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let key = require_str(particle, "key", "Hash")?;
+    let (file, meta, _) = paths(key)?;
+    let about = read_meta(&meta).map_err(|e| format!("cannot read what '{key}' is: {e}"))?;
+    let known = about.as_ref().and_then(|a| {
+        Some((
+            a.get("size")?.as_u64()?,
+            a.get("sha256")?.as_str()?.to_string(),
+        ))
+    });
+    let found = file.is_file();
+    let (size, sha256) = match (found, known) {
+        (false, _) => (0, String::new()),
+        (true, Some(known)) => known,
+        (true, None) => hash_file(&file).map_err(|e| format!("cannot read '{key}': {e}"))?,
+    };
+    let mut b = SlotBuffer::new(5);
+    borrowed_str(b.slot_mut(0), c"HashResult");
+    owned_str(b.slot_mut(1), key);
+    boolean(b.slot_mut(2), found);
+    number(b.slot_mut(3), size as f64);
+    owned_str(b.slot_mut(4), &sha256);
+    object(
+        out,
+        &[c"_class", c"key", c"found", c"size", c"sha256"],
+        &mut b,
+    );
+    b.release_all();
+    Ok(())
+}
+
+fn locate(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let key = require_str(particle, "key", "Locate")?;
+    let (file, _, _) = paths(key)?;
+    let mut b = SlotBuffer::new(4);
+    borrowed_str(b.slot_mut(0), c"LocateResult");
+    owned_str(b.slot_mut(1), key);
+    boolean(b.slot_mut(2), file.is_file());
+    owned_str(b.slot_mut(3), &file.to_string_lossy());
+    object(out, &[c"_class", c"key", c"found", c"path"], &mut b);
+    b.release_all();
+    Ok(())
+}
+
+fn put_part(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let key = require_str(particle, "key", "PutPart")?.to_string();
+    let offset = find_field(particle, "offset")
+        .and_then(read_number)
+        .filter(|n| *n >= 0.0 && n.fract() == 0.0)
+        .ok_or("PutPart requires a whole number 'offset' ≥ 0")? as u64;
+    let data = find_field(particle, "data")
+        .and_then(read_str)
+        .ok_or("PutPart requires a string 'data'")?;
+    let bytes = if read_field_bool(particle, "base64").unwrap_or(false) {
+        B64.decode(data.trim())
+            .map_err(|e| format!("'data' is not valid base64: {e}"))?
+    } else {
+        data.as_bytes().to_vec()
+    };
+    if let Some(want) = find_field(particle, "sha256")
+        .and_then(read_str)
+        .filter(|s| !s.is_empty())
+    {
+        let got = hex(&Sha256::digest(&bytes));
+        if !got.eq_ignore_ascii_case(want) {
+            return Err(format!(
+                "PutPart '{key}' at {offset}: the part's sha256 is {got}, not {want} — it was damaged on the way; send it again"
+            ));
+        }
+    }
+    paths(&key)?;
+    let staged = staged_path(&key)?;
+    let parent = staged.parent().ok_or("no parent folder")?;
+    fs::create_dir_all(parent).map_err(|e| format!("cannot stage '{key}': {e}"))?;
+    let have = fs::metadata(&staged).map(|m| m.len()).unwrap_or(0);
+    if offset > have {
+        return Err(format!(
+            "PutPart '{key}': offset {offset} is past the {have} bytes received — send from {have}"
+        ));
+    }
+    let received = (|| -> io::Result<u64> {
+        use std::io::{Seek, SeekFrom};
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&staged)?;
+        f.seek(SeekFrom::Start(offset))?;
+        f.write_all(&bytes)?;
+        f.sync_data()?;
+        Ok(f.metadata()?.len())
+    })()
+    .map_err(|e| format!("cannot write part of '{key}': {e}"))?;
+    part_answer(out, c"PartResult", &key, received);
+    Ok(())
+}
+
+fn received(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let key = require_str(particle, "key", "Received")?.to_string();
+    paths(&key)?;
+    let have = fs::metadata(staged_path(&key)?)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    part_answer(out, c"ReceivedResult", &key, have);
+    Ok(())
+}
+
+fn part_answer(out: &mut CodeValue, class: &'static std::ffi::CStr, key: &str, received: u64) {
+    let mut b = SlotBuffer::new(3);
+    borrowed_str(b.slot_mut(0), class);
+    owned_str(b.slot_mut(1), key);
+    number(b.slot_mut(2), received as f64);
+    object(out, &[c"_class", c"key", c"received"], &mut b);
+    b.release_all();
+}
+
+fn seal(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let key = require_str(particle, "key", "Seal")?.to_string();
+    let (file, meta, tmp) = paths(&key)?;
+    let staged = staged_path(&key)?;
+    if !staged.is_file() {
+        return Err(format!("Seal: nothing of '{key}' has arrived"));
+    }
+    let (size, sha256) = hash_file(&staged).map_err(|e| format!("cannot read '{key}': {e}"))?;
+    let want_size = find_field(particle, "size").and_then(read_number);
+    let want_sha = find_field(particle, "sha256")
+        .and_then(read_str)
+        .filter(|s| !s.is_empty());
+    let wrong = match (want_size, want_sha) {
+        (Some(n), _) if n as u64 != size => Some(format!("{size} bytes arrived, not {n}")),
+        (_, Some(w)) if !w.eq_ignore_ascii_case(&sha256) => {
+            Some(format!("its sha256 is {sha256}, not {w}"))
+        }
+        _ => None,
+    };
+    if let Some(wrong) = wrong {
+        let _ = fs::remove_file(&staged);
+        return Err(format!(
+            "Seal '{key}': {wrong} — the file was thrown away; upload it again"
+        ));
+    }
+    let content_type = find_field(particle, "content_type")
+        .and_then(read_str)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let about =
+        json!({ "content_type": content_type, "size": size, "sha256": sha256, "archived": false });
+    let about =
+        serde_json::to_vec_pretty(&about).map_err(|e| format!("cannot describe '{key}': {e}"))?;
+    let parent = file.parent().ok_or("no parent folder")?;
+    fs::create_dir_all(parent).map_err(|e| format!("cannot write '{key}': {e}"))?;
+    fs::rename(&staged, &file).map_err(|e| format!("cannot put '{key}' in place: {e}"))?;
+    if let Ok(dir) = File::open(parent) {
+        let _ = dir.sync_all();
+    }
+    commit(&tmp, &meta, &about).map_err(|e| format!("cannot describe '{key}': {e}"))?;
+    let mut b = SlotBuffer::new(4);
+    borrowed_str(b.slot_mut(0), c"SealResult");
+    owned_str(b.slot_mut(1), &key);
+    number(b.slot_mut(2), size as f64);
+    owned_str(b.slot_mut(3), &sha256);
+    object(out, &[c"_class", c"key", c"size", c"sha256"], &mut b);
+    b.release_all();
+    Ok(())
+}
+
+fn abandon(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let key = require_str(particle, "key", "Abandon")?.to_string();
+    paths(&key)?;
+    let existed =
+        remove(&staged_path(&key)?).map_err(|e| format!("cannot throw away '{key}': {e}"))?;
+    let mut b = SlotBuffer::new(2);
+    borrowed_str(b.slot_mut(0), c"AbandonResult");
+    boolean(b.slot_mut(1), existed);
+    object(out, &[c"_class", c"existed"], &mut b);
+    b.release_all();
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Keys and paths
 // ---------------------------------------------------------------------------
@@ -361,6 +625,24 @@ fn paths(key: &str) -> Result<(PathBuf, PathBuf, PathBuf), String> {
         place.meta.join(format!("{key}.json")),
         place.tmp.clone(),
     ))
+}
+
+/// Where a key's parts gather until `Seal`: `<root>/tmp/parts/<bucket>/`, by
+/// the key's sha256 so no key can name a path there. Inside `tmp/`, so a
+/// staged file is never a blob.
+fn staged_path(key: &str) -> Result<PathBuf, String> {
+    let guard = PLACE.lock().unwrap_or_else(|e| e.into_inner());
+    let place = guard.as_ref().ok_or(NOT_CONFIGURED)?;
+    let bucket = place
+        .data
+        .file_name()
+        .map(|b| b.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Ok(place
+        .tmp
+        .join("parts")
+        .join(bucket)
+        .join(hex(&Sha256::digest(key.as_bytes()))))
 }
 
 fn roots() -> Result<(PathBuf, PathBuf), String> {
@@ -405,6 +687,37 @@ fn commit(tmp: &Path, dest: &Path, bytes: &[u8]) -> io::Result<()> {
         let _ = dir.sync_all();
     }
     Ok(())
+}
+
+/// `length` bytes from `start`, or fewer at the end of the file.
+fn read_range(path: &Path, start: u64, length: u64) -> io::Result<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = File::open(path)?;
+    let size = f.metadata()?.len();
+    let start = start.min(size);
+    let take = length.min(size - start);
+    f.seek(SeekFrom::Start(start))?;
+    let mut bytes = Vec::with_capacity(take as usize);
+    f.take(take).read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+/// Size and sha256 of a file, read through in 1 MB pieces.
+fn hash_file(path: &Path) -> io::Result<(u64, String)> {
+    use std::io::Read;
+    let mut f = File::open(path)?;
+    let mut digest = Sha256::new();
+    let mut piece = vec![0u8; 1 << 20];
+    let mut size = 0u64;
+    loop {
+        let n = f.read(&mut piece)?;
+        if n == 0 {
+            break;
+        }
+        digest.update(&piece[..n]);
+        size += n as u64;
+    }
+    Ok((size, hex(&digest.finalize())))
 }
 
 fn read_meta(path: &Path) -> Result<Option<Json>, String> {

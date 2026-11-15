@@ -122,17 +122,136 @@
     return Object.keys(facts).length ? facts : null;
   };
 
+  // A file too large to carry whole is kept here under a `handle`, so the
+  // program can read it in parts (`ReadFilePart`). The last few only: a page
+  // that never forgets them does not keep every file ever chosen.
+  const heldFiles = new Map();
+  let heldCount = 0;
+  const holdFile = (chosen) => {
+    heldCount += 1;
+    const handle = `file-${heldCount}`;
+    heldFiles.set(handle, chosen);
+    while (heldFiles.size > 16) heldFiles.delete(heldFiles.keys().next().value);
+    return handle;
+  };
+
+  // Bytes of a slice of a file, as a promise.
+  const sliceBytes = (file, start, end) => new Promise((done, failed) => {
+    const reader = new FileReader();
+    reader.onload = () => done(reader.result);
+    reader.onerror = () => failed(new Error("could not be read"));
+    reader.readAsArrayBuffer(file.slice(start, end));
+  });
+  const ascii = (v, at, n) => {
+    let s = "";
+    for (let i = 0; i < n; i++) s += String.fromCharCode(v.getUint8(at + i));
+    return s;
+  };
+  const isVideo = (chosen) => /^video\//i.test(chosen.type || "") || /\.(mov|mp4|m4v)$/i.test(chosen.name || "");
+
+  // What a QuickTime/MP4 video says about itself: Apple's creation date (the
+  // camera's wall clock and its offset — a copy the phone makes for a page
+  // keeps it, while the container's own time becomes the moment it was
+  // picked), its length, the camera, and the video codec. Read from the
+  // `moov` box alone, wherever it is in the file; nothing else is read.
+  const videoFacts = async (file) => {
+    let at = 0;
+    let moov = null;
+    for (let boxes = 0; at + 8 <= file.size && boxes < 64; boxes++) {
+      const h = new DataView(await sliceBytes(file, at, Math.min(at + 16, file.size)));
+      let size = h.getUint32(0);
+      const type = ascii(h, 4, 4);
+      if (size === 1 && h.byteLength >= 16) size = Number(h.getBigUint64(8));
+      if (size === 0) size = file.size - at;
+      if (size < 8) return null;
+      if (type === "moov") { moov = [at, size]; break; }
+      at += size;
+    }
+    if (!moov || moov[1] > 64 * 1024 * 1024) return null;
+    const v = new DataView(await sliceBytes(file, moov[0], moov[0] + moov[1]));
+    const kids = (start, end) => {
+      const out = [];
+      for (let p = start; p + 8 <= end;) {
+        let size = v.getUint32(p);
+        let head = 8;
+        if (size === 1) { size = Number(v.getBigUint64(p + 8)); head = 16; }
+        if (size === 0) size = end - p;
+        if (size < head || p + size > end) break;
+        out.push({ type: ascii(v, p + 4, 4), body: p + head, end: p + size });
+        p += size;
+      }
+      return out;
+    };
+    const child = (box, type) => kids(box.body, box.end).find((k) => k.type === type) || null;
+    const path = (box, types) => types.reduce((b, t) => (b ? child(b, t) : null), box);
+    const root = { body: 8, end: v.byteLength };
+    const facts = {};
+    const mvhd = child(root, "mvhd");
+    if (mvhd) {
+      const wide = v.getUint8(mvhd.body) === 1;
+      const scale = v.getUint32(mvhd.body + (wide ? 20 : 12));
+      const length = wide ? Number(v.getBigUint64(mvhd.body + 24)) : v.getUint32(mvhd.body + 16);
+      if (scale) facts.seconds = Math.round((length / scale) * 1000) / 1000;
+    }
+    for (const trak of kids(root.body, root.end).filter((k) => k.type === "trak")) {
+      const handler = path(trak, ["mdia", "hdlr"]);
+      const stsd = path(trak, ["mdia", "minf", "stbl", "stsd"]);
+      if (handler && stsd && ascii(v, handler.body + 8, 4) === "vide" && stsd.end - stsd.body >= 16) {
+        facts.codec = ascii(v, stsd.body + 12, 4);
+        break;
+      }
+    }
+    const meta = child(root, "meta");
+    const keys = meta && child(meta, "keys");
+    const ilst = meta && child(meta, "ilst");
+    if (keys && ilst) {
+      const names = [];
+      for (let p = keys.body + 8, i = 0, n = v.getUint32(keys.body + 4); i < n && p + 8 <= keys.end; i++) {
+        const size = v.getUint32(p);
+        if (size < 8) break;
+        names.push(ascii(v, p + 8, size - 8));
+        p += size;
+      }
+      const said = {};
+      for (const item of kids(ilst.body, ilst.end)) {
+        const name = names[v.getUint32(item.body - 4) - 1];
+        const data = kids(item.body, item.end).find((k) => k.type === "data");
+        if (!name || !data || (v.getUint32(data.body) & 0xffffff) !== 1) continue;
+        said[name] = new TextDecoder().decode(new Uint8Array(v.buffer, data.body + 8, data.end - data.body - 8));
+      }
+      const when = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:([+-])(\d{2}):?(\d{2})|Z)?/.exec(said["com.apple.quicktime.creationdate"] || "");
+      if (when) {
+        facts.taken_local = `${when[1]}-${when[2]}-${when[3]} ${when[4]}:${when[5]}:${when[6]}`;
+        facts.offset = when[7] ? (when[7] === "-" ? -1 : 1) * (Number(when[8]) * 60 + Number(when[9])) : null;
+      }
+      if (said["com.apple.quicktime.make"]) facts.make = said["com.apple.quicktime.make"];
+      if (said["com.apple.quicktime.model"]) facts.model = said["com.apple.quicktime.model"];
+      if (said["com.apple.quicktime.content.identifier"]) facts.live_id = said["com.apple.quicktime.content.identifier"];
+    }
+    return Object.keys(facts).length ? facts : null;
+  };
+
   // `then` runs once this file has been sent (or refused), so several
   // chosen together cross one after another, in the order they were chosen.
   const sendFile = (particle, chosen, then) => {
+    if (isVideo(chosen) && typeof chosen.slice === "function" && typeof FileReader === "function") {
+      // A video says what it is first; a broken one simply says nothing.
+      videoFacts(chosen).then((video) => carryFile(particle, chosen, then, video), () => carryFile(particle, chosen, then, null));
+      return;
+    }
+    carryFile(particle, chosen, then, null);
+  };
+  const carryFile = (particle, chosen, then, video) => {
     const fire1 = (p) => { fire(p); if (then) then(); };
     const name = chosen.name || "pasted";
     const said = { name, type: chosen.type || "", size: chosen.size };
     // When the file says it was last changed: the browser's own field, so
     // a pasted image (made just now) says now. Seconds, like every clock here.
     if (Number.isFinite(chosen.lastModified)) said.last_modified = Math.floor(chosen.lastModified / 1000);
+    if (video) said.video = video;
     if (chosen.size > FILE_CAP) {
-      fire1({ ...particle, value: name, file: { ...said, data_base64: "", refused: `larger than ${FILE_CAP_SAID}` } });
+      // Not carried whole, but held: `handle` reads it in parts.
+      fire1({ ...particle, value: name, file: { ...said, data_base64: "", refused: `larger than ${FILE_CAP_SAID}`, handle: holdFile(chosen) } });
       return;
     }
     const reader = new FileReader();
@@ -1207,6 +1326,35 @@
         if (typeof parent.removeChild === "function") parent.removeChild(link);
         else if (typeof link.remove === "function") link.remove();
         return { _class: "DownloadResult", ok: true };
+      }
+      if (particle._class === "ReadFilePart") {
+        // Answers at once; the part comes later as `then`, with the bytes
+        // as base64 and their sha256, or `refused` saying why not.
+        const file = heldFiles.get(particle.handle);
+        const then = asParticle(particle.then);
+        const start = Number(particle.start);
+        const length = Number(particle.length);
+        if (!file || !then || !Number.isFinite(start) || start < 0 || !Number.isFinite(length) || length <= 0) {
+          return { _class: "ReadFilePartResult", ok: false };
+        }
+        const end = Math.min(file.size, start + length);
+        const answer = { ...then, handle: particle.handle, start, size: file.size };
+        sliceBytes(file, start, end).then(async (bytes) => {
+          const view = new Uint8Array(bytes);
+          let text = "";
+          for (let i = 0; i < view.length; i += 32768) text += String.fromCharCode.apply(null, view.subarray(i, i + 32768));
+          const part = { ...answer, length: view.length, data_base64: btoa(text) };
+          const subtle = globalThis.crypto && globalThis.crypto.subtle;
+          if (subtle) {
+            const digest = new Uint8Array(await subtle.digest("SHA-256", bytes));
+            part.sha256 = Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+          }
+          fire(part);
+        }, () => fire({ ...answer, length: 0, data_base64: "", refused: "could not be read" }));
+        return { _class: "ReadFilePartResult", ok: true };
+      }
+      if (particle._class === "ForgetFile") {
+        return { _class: "ForgetFileResult", existed: heldFiles.delete(particle.handle) };
       }
       if (particle._class !== "Render") return null;
 

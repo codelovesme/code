@@ -24,7 +24,44 @@ Get    { key, base64? }                              → GetResult    { found, k
                                                      | Archived     { key, disks }
 Delete { key }                                       → DeleteResult { existed }
 List   { prefix? }                                   → ListResult   { keys, count }
+Get    { key, start, length, base64? }               → GetResult    (that range only)
+Move   { key, dest }                                 → MoveResult   { key }
+Hash   { key }                                       → HashResult   { key, found, size, sha256 }
+Locate { key }                                       → LocateResult { key, found, path }
+
+PutPart  { key, offset, data, base64?, sha256? }     → PartResult     { key, received }
+Received { key }                                     → ReceivedResult { key, received }
+Seal     { key, size?, sha256?, content_type? }      → SealResult     { key, size, sha256 }
+Abandon  { key }                                     → AbandonResult  { existed }
 ```
+
+## A large file, in parts
+
+A video of hundreds of MB does not cross as one particle, and is never held
+in memory whole: it arrives in parts.
+
+```code
+emit Received { key = "ada/film.mov" } to blobs get so_far      | resume from so_far.received
+emit PutPart { key = "ada/film.mov", offset = 0, data = part, base64 = true, sha256 = part_sha } to blobs get p
+| … every part, each at the offset where the last one ended …
+emit Seal { key = "ada/film.mov", size = 812345678, content_type = "video/quicktime" } to blobs get sealed
+| sealed.sha256 — the whole file's, read through once on the disk
+```
+
+- Parts gather in `tmp/parts/<bucket>/` (named by the key's sha256), so a
+  half-uploaded file is never a blob.
+- `PutPart` writes at `offset`. Past what has arrived is refused (no gaps);
+  before it writes again, so a part resent after a lost answer does no harm.
+  A part whose `sha256` does not match its bytes is refused.
+- `Seal` reads the staged file through once for its sha256, checks `size`
+  and `sha256` when given, then renames it into place and writes its meta.
+  A file that does not match is thrown away and the upload starts over.
+- `Get { start, length }` reads only that range; `Move` is a rename, meta and
+  all, never a copy; `Hash` answers from the meta (or reads a file that has
+  none) — so a large file is never read whole to rename it or to know it.
+- `Locate` gives the file's absolute path, for handing a large file to
+  something that reads files itself (a web server answering byte ranges,
+  ffmpeg) instead of passing its bytes through a particle.
 
 `Upload` is an alias for `Put`, `Download` for `Get`. `Config` is the setup
 particle; everything else is an `Exception` until it has run.

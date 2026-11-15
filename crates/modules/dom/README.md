@@ -26,6 +26,10 @@ assert r.ok
 `Render { into?, styles?, tree } → RenderResult { ok }` replaces the selected
 page contents and stylesheet. `ok` is false when `into` matched nothing.
 
+`ReadFilePart { handle, start, length, then } → ReadFilePartResult { ok }`
+and `ForgetFile { handle } → ForgetFileResult { existed }` read a large
+chosen file in parts — see *A large file, in parts* below.
+
 `Download { uri, name } → DownloadResult { ok }` starts a browser download for
 an already fetched `data:` or `blob:` URI. The page uses a temporary anchor and
 removes it immediately, so the action stays inside the user's gesture and
@@ -97,6 +101,28 @@ where it was taken carries **`photo`**: `{ taken_local, offset, lat, lon }`
 minutes when the camera wrote one (`null` when it did not: a wall clock
 with no zone is not moved to a guessed one), and GPS degrees when there are
 any. A photo that says none of these has no `photo`.
+
+A **video** (QuickTime or MP4) carries **`video`**: `{ seconds, codec,
+taken_local, offset, make, model, live_id }`, those it says — read from its
+`moov` box alone, wherever that is in the file. `taken_local` and `offset`
+are Apple's creation date: a copy an iPhone makes when a page picks the
+video keeps them, while the container's own time becomes the moment it was
+picked. `live_id` pairs it with its Live Photo.
+
+**A large file, in parts.** A file over 12 MB still arrives with `refused`,
+and also with a **`handle`**: the page keeps it (the last sixteen), and the
+program reads it a part at a time —
+
+```code
+emit ReadFilePart { handle = file.handle, start = 0, length = 4194304, then = { _class = "PartRead", upload = id } } to dom
+```
+
+`ReadFilePartResult { ok }` answers at once (`ok` false for a handle it does
+not hold); the part arrives later as the `then` particle with `handle`,
+`start`, `length` (fewer at the end), `size` (the whole file's),
+`data_base64` and its `sha256` — or `refused` when it could not be read.
+`ForgetFile { handle } → ForgetFileResult { existed }` lets it go. The file
+is never read whole.
 
 A **paste** — `on = { paste = "Pasted" }`, on a text box or any element —
 fires only when the clipboard carries a file (a copied screenshot, say): the

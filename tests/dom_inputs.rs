@@ -104,7 +104,7 @@ fired.length = 0;
 box.files = [{{ name: "film.mov", type: "video/quicktime", size: 40 * 1024 * 1024, b64: "" }}];
 box.send("change", {{}});
 check("a large file was not refused with a word", fired, [{{ _class: "Chosen", slot: 2, value: "film.mov",
-  file: {{ name: "film.mov", type: "video/quicktime", size: 41943040, data_base64: "", refused: "larger than 12 MB" }} }}]);
+  file: {{ name: "film.mov", type: "video/quicktime", size: 41943040, data_base64: "", refused: "larger than 12 MB", handle: "file-1" }} }}]);
 fired.length = 0;
 
 // One the browser could not read: the same, in its own words.
@@ -217,6 +217,106 @@ check("the temporary download link was left on the page", body.children.includes
     assert!(
         output.status.success(),
         "dom's file box did not hold: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A video too large to carry whole is held under a `handle` and read in
+/// parts, each with its sha256; and what the video says about itself —
+/// Apple's creation date and offset, its length, codec and camera — comes
+/// with it, read from the `moov` box alone. Node's own `File` stands in for
+/// the browser's.
+#[test]
+fn a_large_video_is_held_read_in_parts_and_says_what_it_is() {
+    if !tool_exists("node") {
+        eprintln!("skipped: needs node");
+        return;
+    }
+    let half = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/modules/dom/page.mjs");
+    let dir = std::env::temp_dir().join(format!("code-dom-large-file-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("create the probe dir");
+    let probe = dir.join("probe.mjs");
+    let script = r#"import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+const half = new Function("return (" + readFileSync(HALF, "utf8") + ")")();
+globalThis.FileReader = class {
+  readAsArrayBuffer(b) { b.arrayBuffer().then((r) => { this.result = r; this.onload(); }, () => this.onerror()); }
+  readAsDataURL(b) { b.arrayBuffer().then((r) => { this.result = "data:;base64," + Buffer.from(r).toString("base64"); this.onload(); }); }
+};
+const check = (what, got, want) => {
+  if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${what}: got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+};
+
+// A QuickTime file's boxes, built by hand: size, type, body.
+const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
+const box = (type, ...parts) => { const body = Buffer.concat(parts); return Buffer.concat([u32(body.length + 8), Buffer.from(type, "latin1"), body]); };
+const mvhd = box("mvhd", u32(0), u32(0), u32(0), u32(600), u32(7584), Buffer.alloc(80));
+const hdlr = box("hdlr", u32(0), u32(0), Buffer.from("vide"), Buffer.alloc(13));
+const stsd = box("stsd", u32(0), u32(1), u32(16), Buffer.from("hvc1"), Buffer.alloc(8));
+const trak = box("trak", box("mdia", hdlr, box("minf", box("stbl", stsd))));
+const names = ["com.apple.quicktime.creationdate", "com.apple.quicktime.make", "com.apple.quicktime.model"];
+const values = ["2026-09-27T09:46:06+0200", "Apple", "iPhone 11"];
+const keys = box("keys", u32(0), u32(names.length), ...names.map((n) => Buffer.concat([u32(n.length + 8), Buffer.from("mdta"), Buffer.from(n)])));
+const ilst = box("ilst", ...values.map((v, i) => Buffer.concat([u32(8 + 16 + v.length), u32(i + 1), box("data", u32(1), u32(0), Buffer.from(v))])));
+const moov = box("moov", mvhd, trak, box("meta", keys, ilst));
+const head = box("ftyp", Buffer.from("qt  "), u32(0));
+const film = Buffer.concat([head, box("mdat", Buffer.alloc(13 * 1024 * 1024, 7)), moov]);
+
+const fired = [];
+class El {
+  constructor(t) { this.tagName = t.toUpperCase(); this.nodeType = 1; this.children = []; this.attrs = {}; this.listeners = {}; this.files = []; }
+  addEventListener(n, f) { (this.listeners[n] ||= []).push(f); }
+  setAttribute(k, v) { this.attrs[k] = String(v); }
+  hasAttribute(k) { return k in this.attrs; }
+  getAttribute(k) { return this.attrs[k]; }
+  appendChild(c) { c.parentNode = this; this.children.push(c); return c; }
+  replaceChildren(c) { this.children = []; this.appendChild(c); }
+  querySelector() { return null; }
+  send(n, e) { for (const f of this.listeners[n] || []) f({ target: this, ...e }); }
+}
+const body = new El("body");
+const doc = { createElement: (t) => new El(t), createTextNode: (s) => ({ nodeType: 3, text: s }), body, querySelector: (s) => (s === "body" ? body : null), getElementById: () => null, head: body, activeElement: null };
+const [, dom] = half({ doc, fire: (p) => fired.push(p) });
+dom({ _class: "Render", into: "body", tree: { tag: "input", attrs: { type: "file" }, on: { change: "Chosen" } } });
+const settle = () => new Promise((r) => setTimeout(r, 200));
+
+body.children[0].files = [new File([film], "IMG_2681.MOV", { type: "video/quicktime", lastModified: 1790000000000 })];
+body.children[0].send("change", {});
+await settle();
+check("a large video was not held and described", fired, [{ _class: "Chosen", value: "IMG_2681.MOV", file: {
+  name: "IMG_2681.MOV", type: "video/quicktime", size: film.length, last_modified: 1790000000,
+  video: { seconds: 12.64, codec: "hvc1", taken_local: "2026-09-27 09:46:06", offset: 120, make: "Apple", model: "iPhone 11" },
+  data_base64: "", refused: "larger than 12 MB", handle: "file-1" } }]);
+fired.length = 0;
+
+// A part: answered at once, the bytes later as the application's particle.
+const asked = dom({ _class: "ReadFilePart", handle: "file-1", start: 8, length: 4, then: { _class: "Part", upload: "u1" } });
+check("ReadFilePart did not answer at once", asked, { _class: "ReadFilePartResult", ok: true });
+await settle();
+const four = film.subarray(8, 12);
+check("the part did not come back", fired, [{ _class: "Part", upload: "u1", handle: "file-1", start: 8, size: film.length,
+  length: 4, data_base64: four.toString("base64"), sha256: createHash("sha256").update(four).digest("hex") }]);
+fired.length = 0;
+
+// The last part is what is left; an unknown handle is told no; a forgotten
+// file is gone.
+dom({ _class: "ReadFilePart", handle: "file-1", start: film.length - 3, length: 1000, then: "Part" });
+await settle();
+check("the last part was not what was left", [fired[0].length, fired[0].data_base64], [3, film.subarray(film.length - 3).toString("base64")]);
+check("an unknown handle was read", dom({ _class: "ReadFilePart", handle: "file-9", start: 0, length: 1, then: "Part" }), { _class: "ReadFilePartResult", ok: false });
+check("forgetting a held file", dom({ _class: "ForgetFile", handle: "file-1" }), { _class: "ForgetFileResult", existed: true });
+check("a forgotten file was read", dom({ _class: "ReadFilePart", handle: "file-1", start: 0, length: 1, then: "Part" }), { _class: "ReadFilePartResult", ok: false });
+"#
+    .replace("HALF", &format!("{half:?}"));
+    fs::write(&probe, script).expect("write the probe");
+    let output = Command::new("node")
+        .arg(&probe)
+        .output()
+        .expect("run the probe under node");
+    assert!(
+        output.status.success(),
+        "dom did not hold a large video: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let _ = fs::remove_dir_all(&dir);

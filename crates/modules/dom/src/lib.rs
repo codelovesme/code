@@ -8,6 +8,10 @@
 //!   the selector matched nothing.
 //! - `Download { uri, name }` — asks the page to download an already fetched
 //!   URI under `name`, and answers `DownloadResult { ok }`.
+//! - `ReadFilePart { handle, start, length, then }` — reads part of a chosen
+//!   file too large to carry whole (its `handle`), answers
+//!   `ReadFilePartResult { ok }`, and sends the part later as `then`.
+//! - `ForgetFile { handle }` → `ForgetFileResult { existed }`.
 //!
 //! # The tree is a value, not markup
 //!
@@ -153,7 +157,7 @@ mod machine {
                 // A class this module does not handle answers null and does
                 // not end the program: it may have been meant for something
                 // else entirely.
-                Some("Render") | Some("Download") => exception(out, "dom", NO_PAGE),
+                Some("Render") | Some("Download") | Some("ReadFilePart") | Some("ForgetFile") => exception(out, "dom", NO_PAGE),
                 _ => null(out),
             }
         })
