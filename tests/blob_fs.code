@@ -153,3 +153,87 @@ assert down.data = "u"
 
 emit Presign {} to blobs get u
 assert u = null
+
+| ---------------------------------------------------------------------------
+| A range of a file, a rename, a file's hash
+| ---------------------------------------------------------------------------
+
+emit Put { key = "ada/words.txt", data = "hello world" } to blobs
+emit Get { key = "ada/words.txt", start = 6, length = 5 } to blobs get part
+assert part.data = "world"
+emit Get { key = "ada/words.txt", start = 6, length = 100 } to blobs get tail
+assert tail.data = "world"
+emit Get { key = "ada/words.txt", start = 50, length = 5 } to blobs get past
+assert past.found
+assert past.data = ""
+
+emit Move { key = "ada/words.txt", dest = "ada/2027/words.txt" } to blobs get moved
+assert moved ∈ MoveResult
+emit Get { key = "ada/2027/words.txt" } to blobs get after_move
+assert after_move.data = "hello world"
+emit Exists { path = "data/photos/ada/words.txt" } to disk get old_place
+assert old_place.exists = false
+emit Exists { path = "meta/photos/ada/2027/words.txt.json" } to disk get meta_moved
+assert meta_moved.is_file
+emit Put { key = "ada/taken.txt", data = "t" } to blobs
+emit Move { key = "ada/taken.txt", dest = "ada/2027/words.txt" } to blobs get clash
+assert clash ∈ Exception
+emit Move { key = "ada/nothing.txt", dest = "ada/else.txt" } to blobs get no_source
+assert no_source ∈ Exception
+
+emit Hash { key = "ada/2027/words.txt" } to blobs get h
+assert h ∈ HashResult
+assert h.found
+assert h.size = 11
+assert h.sha256 = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+emit Hash { key = "ada/none.txt" } to blobs get no_hash
+assert not no_hash.found
+
+| ---------------------------------------------------------------------------
+| A large file arrives in parts
+| ---------------------------------------------------------------------------
+
+emit Received { key = "ada/film.bin" } to blobs get nothing_yet
+assert nothing_yet.received = 0
+emit PutPart { key = "ada/film.bin", offset = 0, data = "hello" } to blobs get p1
+assert p1 ∈ PartResult
+assert p1.received = 5
+| Nothing is a blob until it is sealed.
+emit Get { key = "ada/film.bin" } to blobs get not_yet
+assert not not_yet.found
+| A gap is refused; a damaged part is refused; a part sent twice is fine.
+emit PutPart { key = "ada/film.bin", offset = 9, data = "x" } to blobs get gap
+assert gap ∈ Exception
+emit PutPart { key = "ada/film.bin", offset = 5, data = " world", sha256 = "0000" } to blobs get damaged
+assert damaged ∈ Exception
+emit PutPart { key = "ada/film.bin", offset = 5, data = " world", sha256 = "045f13dd864bafaad0dd977ac971de549b090cb2836f061d0779b26dd9bb8f4b" } to blobs get p2
+assert p2.received = 11
+emit PutPart { key = "ada/film.bin", offset = 5, data = " world" } to blobs get again
+assert again.received = 11
+emit Received { key = "ada/film.bin" } to blobs get so_far
+assert so_far.received = 11
+
+emit Seal { key = "ada/film.bin", size = 11, sha256 = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9", content_type = "video/quicktime" } to blobs get sealed
+assert sealed ∈ SealResult
+assert sealed.size = 11
+assert sealed.sha256 = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+emit Get { key = "ada/film.bin" } to blobs get film
+assert film.data = "hello world"
+assert film.content_type = "video/quicktime"
+emit Received { key = "ada/film.bin" } to blobs get after_seal
+assert after_seal.received = 0
+
+| A file that does not match what was promised is thrown away.
+emit PutPart { key = "ada/bad.bin", offset = 0, data = "abc" } to blobs
+emit Seal { key = "ada/bad.bin", size = 4 } to blobs get wrong_size
+assert wrong_size ∈ Exception
+emit Received { key = "ada/bad.bin" } to blobs get thrown
+assert thrown.received = 0
+emit Seal { key = "ada/bad.bin" } to blobs get nothing_to_seal
+assert nothing_to_seal ∈ Exception
+
+emit PutPart { key = "ada/left.bin", offset = 0, data = "abc" } to blobs
+emit Abandon { key = "ada/left.bin" } to blobs get left
+assert left.existed
+emit Received { key = "ada/left.bin" } to blobs get none_left
+assert none_left.received = 0
