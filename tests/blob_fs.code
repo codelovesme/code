@@ -237,3 +237,12 @@ emit Abandon { key = "ada/left.bin" } to blobs get left
 assert left.existed
 emit Received { key = "ada/left.bin" } to blobs get none_left
 assert none_left.received = 0
+
+emit Locate { key = "ada/film.bin" } to blobs get where
+assert where ∈ LocateResult
+assert where.found
+assert where.path = root + "/data/photos/ada/film.bin"
+emit Locate { key = "ada/none.bin" } to blobs get nowhere
+assert not nowhere.found
+emit Locate { key = "../escape" } to blobs get escape
+assert escape ∈ Exception

@@ -43,6 +43,9 @@
 //!   and all; nothing is read. A file already at `dest` is refused.
 //! - `Hash { key }` → `HashResult { key, found, size, sha256 }` — from the
 //!   meta, or read through once for a file that has none.
+//! - `Locate { key }` → `LocateResult { key, found, path }` — the file's
+//!   absolute path on this machine, for a program that hands a large file to
+//!   something that reads files (a web server's byte ranges, ffmpeg).
 //!
 //! A file too large to cross as one particle arrives in parts:
 //!
@@ -124,6 +127,7 @@ pub unsafe extern "C" fn code_module_dispatch(out: *mut CodeValue, particle: *co
             "List" => list(out, particle),
             "Move" => move_blob(out, particle),
             "Hash" => hash(out, particle),
+            "Locate" => locate(out, particle),
             "PutPart" => put_part(out, particle),
             "Received" => received(out, particle),
             "Seal" => seal(out, particle),
@@ -430,6 +434,19 @@ fn hash(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
         &[c"_class", c"key", c"found", c"size", c"sha256"],
         &mut b,
     );
+    b.release_all();
+    Ok(())
+}
+
+fn locate(out: &mut CodeValue, particle: &CodeValue) -> Result<(), String> {
+    let key = require_str(particle, "key", "Locate")?;
+    let (file, _, _) = paths(key)?;
+    let mut b = SlotBuffer::new(4);
+    borrowed_str(b.slot_mut(0), c"LocateResult");
+    owned_str(b.slot_mut(1), key);
+    boolean(b.slot_mut(2), file.is_file());
+    owned_str(b.slot_mut(3), &file.to_string_lossy());
+    object(out, &[c"_class", c"key", c"found", c"path"], &mut b);
     b.release_all();
     Ok(())
 }

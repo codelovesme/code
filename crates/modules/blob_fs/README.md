@@ -27,6 +27,7 @@ List   { prefix? }                                   → ListResult   { keys, co
 Get    { key, start, length, base64? }               → GetResult    (that range only)
 Move   { key, dest }                                 → MoveResult   { key }
 Hash   { key }                                       → HashResult   { key, found, size, sha256 }
+Locate { key }                                       → LocateResult { key, found, path }
 
 PutPart  { key, offset, data, base64?, sha256? }     → PartResult     { key, received }
 Received { key }                                     → ReceivedResult { key, received }
@@ -58,6 +59,9 @@ emit Seal { key = "ada/film.mov", size = 812345678, content_type = "video/quickt
 - `Get { start, length }` reads only that range; `Move` is a rename, meta and
   all, never a copy; `Hash` answers from the meta (or reads a file that has
   none) — so a large file is never read whole to rename it or to know it.
+- `Locate` gives the file's absolute path, for handing a large file to
+  something that reads files itself (a web server answering byte ranges,
+  ffmpeg) instead of passing its bytes through a particle.
 
 `Upload` is an alias for `Put`, `Download` for `Get`. `Config` is the setup
 particle; everything else is an `Exception` until it has run.
