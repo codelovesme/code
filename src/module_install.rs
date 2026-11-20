@@ -297,6 +297,7 @@ pub const FIRST_PARTY: &[&str] = &[
     "process",
     "strings",
     "clipboard",
+    "telemetry",
     "console",
     "dom",
     "guest",

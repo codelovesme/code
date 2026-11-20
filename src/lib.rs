@@ -268,6 +268,10 @@ mod compile {
         ),
         ("router", include_str!("../crates/modules/router/page.mjs")),
         (
+            "telemetry",
+            include_str!("../crates/modules/telemetry/page.mjs"),
+        ),
+        (
             "storage",
             include_str!("../crates/modules/storage/page.mjs"),
         ),

@@ -1,0 +1,19 @@
+| `telemetry` keeps a page's trouble, and this is not a page. Every handler
+| answers an Exception rather than pretending: a held program on a machine
+| has `Log` through its membrane, which the host keeps.
+|
+| The module is linkable here anyway, so one application can be built both
+| ways. The half that keeps anything is a `.a` linked into a `--target wasm`
+| build; nothing in this suite is one.
+
+link "native_modules/telemetry.so" as telemetry
+
+emit Note { level = "error", message = "the upload was refused" } to telemetry get r
+assert r ∈ Exception
+assert r.source = "telemetry"
+emit Configure { url = "/api/logs", token = "t" } to telemetry get c
+assert c ∈ Exception
+
+| A class it does not handle is null, not an error.
+emit Whatever {} to telemetry get other
+assert other = null
