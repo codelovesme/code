@@ -20,6 +20,17 @@
     _request_id: id,
   });
 
+  // What `telemetry` keeps of an exchange, when the page links it: a step on
+  // the trail for every one, and a line of trouble for one that never came
+  // back as a particle. Class names and times only — never what was said.
+  const said = (payload) =>
+    payload.particle && typeof payload.particle._class === "string"
+      ? `${payload._class}/${payload.particle._class}`
+      : payload._class;
+  const step = (message) => globalThis.__code_telemetry?.crumb?.({ app: ctx.program, message });
+  const trouble = (message, ms) =>
+    globalThis.__code_telemetry?.trouble?.({ app: ctx.program, level: "warn", kind: "net", message, ms });
+
   return [
     "net_client",
     (particle) => {
@@ -81,6 +92,8 @@
       // an application cannot see.
       const stop = new AbortController();
       const timer = setTimeout(() => stop.abort(), timeoutMs);
+      const began = Date.now();
+      const what = said(payload);
 
       fetch(url, {
         method: "POST",
@@ -94,12 +107,15 @@
           try {
             answer = JSON.parse(text);
           } catch {
+            trouble(`${what} to ${url}: the answer is not JSON (${response.status})`, Date.now() - began);
             return ctx.fire(failed(which, `answer from '${url}' is not JSON`));
           }
           if (answer === null || typeof answer !== "object" || Array.isArray(answer)) {
+            trouble(`${what} to ${url}: the answer is not a particle (${response.status})`, Date.now() - began);
             return ctx.fire(failed(which, `answer from '${url}' is not a particle`));
           }
           if (typeof answer._class !== "string") {
+            trouble(`${what} to ${url}: the answer has no class (${response.status})`, Date.now() - began);
             // A far side that answered something, but not something with a
             // class — including anything that is not a `net_server` at all,
             // which is what a status line here usually means.
@@ -110,10 +126,17 @@
           // The far side's own particle, with the number this exchange is
           // known by added. Its own `_request_id`, if it had one, is not ours
           // to keep — this one names *this* request.
+          step(`${what} → ${answer._class} ${Date.now() - began}ms`);
+          // The far side failing in its own words is trouble too, said by it.
+          if (answer._class === "Exception" || answer._class === "Unavailable") {
+            const why = String(answer.message ?? answer.reason ?? "").slice(0, 300);
+            globalThis.__code_telemetry?.trouble?.({ app: ctx.program, level: "error", kind: "service", message: `${what} to ${url}: ${answer._class} ${why}`, ms: Date.now() - began });
+          }
           ctx.fire({ ...answer, _request_id: which });
         })
         .catch((e) => {
           const why = e?.name === "AbortError" ? `no answer within ${timeoutMs}ms` : String(e);
+          trouble(`${what} to ${url}: ${why}`, Date.now() - began);
           ctx.fire(failed(which, `cannot reach '${url}': ${why}`));
         })
         .finally(() => clearTimeout(timer));

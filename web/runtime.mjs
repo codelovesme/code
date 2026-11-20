@@ -215,6 +215,10 @@ export function createHost({
     store,
     address,
     flows,
+    // Whose page half this is: the guest's name when one program runs
+    // another, null for the program that is the page. `telemetry` says whose
+    // trouble a line is with it.
+    program,
     fire: (particle) => fire(particle),
     ask: (particle) => ask(particle),
   };
@@ -264,6 +268,9 @@ export function createHost({
       result = answer_for(name, particle, currentInstance());
     } catch (e) {
       result = { _class: "Exception", source: name, message: String(e?.message ?? e) };
+      // A half that threw is a fault in the page, not an answer the program
+      // chose: kept for whoever reads the page's trouble, when someone does.
+      globalThis.__code_telemetry?.trouble?.({ app: program, level: "error", kind: "module", message: `${name}: ${result.message}` });
     }
     // Nothing answered: no half for this module, or a half that had nothing
     // to say to this class. The module reads a negative length as that, and

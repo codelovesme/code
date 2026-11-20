@@ -562,7 +562,7 @@ jobs:
               # is `code_abi.h`'s hosting section and a different thing.
               printf 'emit Load { app = "x", url = "x.wasm" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code
               ;;
-            router|storage|clipboard)
+            router|storage|clipboard|telemetry)
               # Same as `dom`: no browser on a build machine, and the
               # artifact says so rather than pretending. The half that can do
               # the work is a wasm archive, which this job does not build.
@@ -570,6 +570,7 @@ jobs:
                 router)  printf 'emit Route { } to mod get r\nassert r ∈ Exception\nemit Where { } to mod get w\nassert w ∈ Exception\n' >> dogfood/demo.code ;;
                 storage) printf 'emit Get { key = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
                 clipboard) printf 'emit Copy { text = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
+                telemetry) printf 'emit Note { level = "error", message = "k" } to mod get r\nassert r ∈ Exception\n' >> dogfood/demo.code ;;
               esac
               ;;
             time)
@@ -764,6 +765,7 @@ jobs:
               router) handlers='["Route", "Navigate", "Watch", "Where"]' ;;
               storage) handlers='["Get", "Set", "Remove"]' ;;
               clipboard) handlers='["Copy"]' ;;
+              telemetry) handlers='["Configure", "Note", "Flush", "Kept"]' ;;
               time) handlers='["Timestamp", "TimezoneOffset", "DaysFromDate", "DateFromDays"]' ;;
               timer) handlers='["Delay", "Cancel"]' ;;
               mqtt) handlers='["Config", "Subscribe", "Unsubscribe", "Publish", "Status", "Disconnect", "SetWill"]' ;;
