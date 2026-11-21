@@ -1,0 +1,8 @@
+{
+ "version": "9.9.9",
+ "count": 2,
+ "modules": [
+  {"name": "console", "version": "9.9.9", "description": "Print one line.", "handlers": ["Print"], "setup": null, "platforms": ["linux-x86_64", "wasm32"], "runs": "both", "test_double": false, "readme": "# `console`\n\nPrints."},
+  {"name": "mongodb_mock", "version": "9.9.9", "description": "A drop-in for `mongodb`.", "handlers": ["Config", "Find"], "setup": "Config", "platforms": ["linux-x86_64"], "runs": "machine", "test_double": true, "readme": ""}
+ ]
+}

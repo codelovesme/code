@@ -19,6 +19,9 @@ on:
 
 permissions:
   contents: write
+  # `gh workflow run pages.yml` once the release's modules-index.json is
+  # attached, so the site's catalog shows the new release.
+  actions: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -828,6 +831,18 @@ jobs:
           EOF
             python3 -m json.tool "dist/${m}.json" >/dev/null # validate
           done
+      # What the site's module catalog is drawn from: every module this
+      # release offers, its handlers and platforms (the files just written)
+      # and, from the source it was built from, its description and README.
+      - name: Check out the source, for each module's description and README
+        uses: actions/checkout@v4
+        with:
+          path: src
+      - name: Write modules-index.json
+        run: |
+          set -euo pipefail
+          python3 src/scripts/module-index.py dist src > dist/modules-index.json
+          python3 -m json.tool dist/modules-index.json >/dev/null
       - name: Upload build artifacts (always — usable as a dry-run record)
         uses: actions/upload-artifact@v4
         with:
@@ -839,3 +854,11 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: dist/*
+      # The site reads the newest release's modules-index.json when it is
+      # built, and is otherwise built only when site/ changes: so a release
+      # rebuilds it once its index is attached.
+      - name: Rebuild the site's module catalog
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main

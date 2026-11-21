@@ -53,6 +53,9 @@ class SiteBuild(unittest.TestCase):
         cls.dist = Path(cls.temp.name)
         cls.environment = dict(os.environ)
         cls.environment.pop('PLAYGROUND_CODE_WASM_VERSION', None)
+        # The catalog's index, from a fixture rather than the newest release:
+        # these tests must not depend on the network.
+        cls.environment['MODULE_INDEX'] = str(ROOT / 'site/test-modules-index.json')
         subprocess.run(['python3', str(ROOT / 'site/build.py'), str(ROOT), str(cls.dist)],
                        env=cls.environment, check=True, capture_output=True)
         cls.pages = {p.relative_to(cls.dist).as_posix(): Page(p.read_text()) for p in cls.dist.rglob('*.html')}
@@ -62,14 +65,14 @@ class SiteBuild(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_direct_pages_share_working_navigation(self):
-        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'execution.html', 'memory.html', 'learn/quick-start.html', 'learn/first-program.html', 'learn/values.html', 'learn/messages.html', 'learn/small-program.html'})
+        self.assertEqual(set(self.pages), {'index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html', 'modules.html', 'catalog.html', 'execution.html', 'memory.html', 'learn/quick-start.html', 'learn/first-program.html', 'learn/values.html', 'learn/messages.html', 'learn/small-program.html'})
         expected = ['index.html', 'learn.html', 'playground.html', 'docs.html', 'compare.html']
         for name, page in self.pages.items():
             prefix = '../' if name.startswith('learn/') else ''
             self.assertEqual(page.navigation, [prefix + href if not href.startswith('https:') else href for href in expected], name)
             self.assertEqual(len(page.ids), len(set(page.ids)), name)
             self.assertIn('main', page.ids)
-            current = 'learn.html' if name.startswith('learn/') else ('docs.html' if name in ('modules.html', 'execution.html', 'memory.html') else name)
+            current = 'learn.html' if name.startswith('learn/') else ('docs.html' if name in ('modules.html', 'catalog.html', 'execution.html', 'memory.html') else name)
             self.assertEqual(page.current, [prefix + current], name)
 
     def test_local_links_and_assets_exist_at_github_pages_subpath(self):
@@ -287,6 +290,16 @@ class SiteBuild(unittest.TestCase):
             subprocess.run(command, env=self.environment, check=True, capture_output=True)
             self.assertFalse((dist / 'lesson-examples/first-program/start.sh').exists())
             self.assertFalse((dist / 'learn/first-program.html').exists())
+
+    def test_module_catalog_is_built_from_the_release_index(self):
+        catalog = (self.dist / 'catalog.html').read_text()
+        self.assertIn('<script type="module" src="catalog.mjs"></script>', catalog)
+        self.assertIn('id="catalog-list"', catalog)
+        self.assertTrue((self.dist / 'catalog.mjs').exists())
+        self.assertEqual((self.dist / 'modules-index.json').read_bytes(),
+                         (ROOT / 'site/test-modules-index.json').read_bytes())
+        self.assertIn('href="catalog.html"', (self.dist / 'modules.html').read_text())
+        self.assertIn('href="catalog.html"', (self.dist / 'docs.html').read_text())
 
     def test_rebuilding_is_deterministic(self):
         before = {str(p.relative_to(self.dist)): p.read_bytes() for p in self.dist.rglob('*') if p.is_file()}
