@@ -1,0 +1,25 @@
+<header class="page-intro">
+  <p class="breadcrumb"><a href="docs.html">Docs</a> / <a href="modules.html">Modules</a> / Catalog</p>
+  <div class="overline">Every published module</div>
+  <h1>Module catalog.</h1>
+  <p>Every module in the newest Code release: what it does, the particles it handles, where it runs, and how to install it. <a href="modules.html#install">New to modules? Start here.</a></p>
+</header>
+
+<section class="module-section catalog" id="catalog">
+  <div class="catalog-bar">
+    <label class="catalog-search"><span class="visually-hidden">Search modules</span>
+      <input id="catalog-query" type="search" placeholder="Search by name, handler or description" autocomplete="off">
+    </label>
+    <div class="catalog-filters" role="group" aria-label="Show">
+      <button type="button" data-filter="all" aria-pressed="true">All</button>
+      <button type="button" data-filter="machine" aria-pressed="false">Machine</button>
+      <button type="button" data-filter="browser" aria-pressed="false">Browser</button>
+      <button type="button" data-filter="test" aria-pressed="false">Test doubles</button>
+    </div>
+  </div>
+  <p class="catalog-count" id="catalog-count" aria-live="polite">Loading the catalog…</p>
+  <div class="catalog-layout">
+    <ul class="catalog-list" id="catalog-list"></ul>
+    <article class="catalog-detail module-panel" id="catalog-detail" hidden></article>
+  </div>
+</section>

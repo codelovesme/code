@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import sys
+import urllib.request
 from pathlib import Path
 
 from performance import render as render_performance
@@ -110,6 +111,27 @@ def engine_version(repo_root: Path) -> str:
     return match.group(1)
 
 
+# What the module catalog lists: the newest release's own index, written by
+# publish-modules beside its modules. MODULE_INDEX names a local copy instead
+# (a build with no network, or a check against a release not yet out).
+MODULE_INDEX_URL = "https://github.com/codelovesme/code/releases/latest/download/modules-index.json"
+
+
+def module_index() -> bytes:
+    local = os.environ.get("MODULE_INDEX")
+    if local:
+        return Path(local).read_bytes()
+    try:
+        with urllib.request.urlopen(MODULE_INDEX_URL, timeout=60) as answer:
+            data = answer.read()
+    except OSError as e:
+        raise SystemExit(f"build.py: could not fetch {MODULE_INDEX_URL} ({e}); set MODULE_INDEX to a local copy")
+    index = json.loads(data)
+    if not index.get("modules"):
+        raise SystemExit("build.py: the release's modules-index.json lists no modules")
+    return data
+
+
 def main() -> None:
     repo_root = Path(sys.argv[1])
     dist_dir = Path(sys.argv[2])
@@ -198,6 +220,10 @@ def main() -> None:
             "docs", "Code modules — install, link and reuse",
             "Install a published module, reuse your own handlers with private state, and choose native or browser capabilities.",
         ),
+        "catalog": (
+            "docs", "Code module catalog — every published module",
+            "Search every module in the newest Code release: what it does, its handlers, where it runs and how to install it.",
+        ),
         "execution": (
             "docs", "How Code runs — interpreter, native builds and WebAssembly",
             "Choose cached native execution, bytecode interpretation or a compiled application. See the two ways Code runs with WebAssembly.",
@@ -237,6 +263,8 @@ def main() -> None:
         scripts = ""
         if filename in lesson_pages:
             scripts = '<script type="module" src="__ROOT__lesson.mjs"></script>'
+        if filename == "catalog":
+            scripts = '<script type="module" src="catalog.mjs"></script>'
         if page == "playground":
             scripts = (
                 '<script id="examples-data" type="application/json">'
@@ -288,7 +316,8 @@ def main() -> None:
     )
     for item in omitted:
         print(f"Browser {version} omits {item['name']}: {item['reason']}")
-    for name in ["site.css", "navigation.css", "navigation.js", "playground.mjs", "lesson.mjs"]:
+    (dist_dir / "modules-index.json").write_bytes(module_index())
+    for name in ["site.css", "navigation.css", "navigation.js", "playground.mjs", "lesson.mjs", "catalog.mjs"]:
         shutil.copyfile(site_dir / name, dist_dir / name)
     for asset in sorted(site_dir.glob("*.png")):
         shutil.copyfile(asset, dist_dir / asset.name)
