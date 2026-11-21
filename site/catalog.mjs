@@ -130,7 +130,7 @@ const showDetail = (m) => {
   const link = browserOnly ? `link "${m.name}.a" as ${m.name}` : `link "${m.name}.so" as ${m.name}`;
   detail.append(...[
     el("h2", {}, m.name),
-    el("p", { class: "catalog-lede" }, m.description || ""),
+    el("p", { class: "catalog-lede" }, inline(m.description || "")),
     m.runs === "both" ? el("p", { class: "catalog-note" }, "On a machine install as below; for a browser build add ", el("code", {}, "--platform wasm32"), " and link the ", el("code", {}, ".a"), ".") : null,
     el("dl", { class: "catalog-facts" },
       el("dt", {}, "Version"), el("dd", {}, m.version),
@@ -173,7 +173,7 @@ const draw = () => {
         el("button", { type: "button", "data-name": m.name, "aria-current": m.name === chosen ? "true" : "false", onclick: () => showDetail(m) },
           el("span", { class: "catalog-name" }, m.name),
           el("span", { class: "catalog-kind" }, where(m)),
-          el("span", { class: "catalog-desc" }, m.description || ""),
+          el("span", { class: "catalog-desc" }, inline(m.description || "")),
         ),
       ),
     ),
