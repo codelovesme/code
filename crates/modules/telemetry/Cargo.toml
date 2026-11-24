@@ -6,7 +6,7 @@
 
 [package]
 name = "telemetry"
-version = "2.34.0"
+version = "2.35.0"
 edition = "2021"
 description = "The `telemetry` native module for the Code programming language — what went wrong on a page, kept and sent. Written in Rust on code-native."
 license = "GPL-3.0"
