@@ -51,7 +51,7 @@ class El {
     for (const old of this.children) { old.parentNode = null; old.isConnected = false; }
     this.children = []; for (const child of children) this.appendChild(child);
   }
-  focus() { this.focused = true; doc.activeElement = this; }
+  focus() { this.focused = true; this.focusCalls = (this.focusCalls || 0) + 1; doc.activeElement = this; }
   contains(other) { for (let n = other; n; n = n.parentNode) if (n === this) return true; return false; }
   walk() { return this.children.flatMap(c => [c, ...(c.walk ? c.walk() : [])]); }
   querySelector(sel) {
@@ -120,6 +120,20 @@ check("Shift+Tab escaped the modal", doc.activeElement === controls[controls.len
 dom({ _class: "Render", into: "#app", tree: { tag: "div", children: [{ tag: "button", attrs: { class: "fab" } }] } });
 const replacement = app.querySelector(".fab");
 check("closing a modal did not restore its opener", doc.activeElement === replacement, true);
+
+// A box the reader is typing in keeps its focus across a render without
+// being focused again: Chrome's date and time boxes forget the digits typed
+// so far in a segment when focus() is called on them while focused, so
+// "45" in the minutes became 04, then 05.
+const boxTree = value => ({ tag: "div", children: [{ tag: "input", attrs: { type: "time", value } }] });
+dom({ _class: "Render", into: "#app", tree: boxTree("20:00") });
+const box = app.children[0].children[0];
+box.focus();
+const before = box.focusCalls;
+dom({ _class: "Render", into: "#app", tree: boxTree("20:04") });
+check("the focused box was replaced", app.children[0].children[0] === box, true);
+check("the focused box lost focus", doc.activeElement === box, true);
+check("the focused box was focused again", box.focusCalls, before);
 "##,
     );
     fs::write(&probe, script).expect("write the probe");
