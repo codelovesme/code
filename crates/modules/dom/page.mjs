@@ -1165,7 +1165,10 @@
       if (!n) return;
     }
     if (n.tagName !== was.tag || typeof n.focus !== "function") return;
-    n.focus();
+    // The node the render kept is still the focused one: leave it be. A
+    // second focus() is not free — Chrome's date and time boxes forget the
+    // digits typed so far in a segment, so "45" in the minutes became 04.
+    if (n !== doc.activeElement) n.focus();
     if (was.sel && typeof n.setSelectionRange === "function") {
       try { n.setSelectionRange(was.sel.start, was.sel.end); } catch { /* a box that has no caret */ }
     }
@@ -1408,7 +1411,9 @@
       // page, ahead of the caret coming back: the application said so for
       // this render, and says nothing on the ones after.
       const wanted = target.querySelector && target.querySelector("[autofocus]");
-      if (wanted && typeof wanted.focus === "function") wanted.focus();
+      if (wanted && typeof wanted.focus === "function") {
+        if (wanted !== doc.activeElement) wanted.focus();
+      }
       else if (was) giveBack(target, was);
       if (!nextModal && modalFocus.dialog) {
         const previous = modalFocus;
